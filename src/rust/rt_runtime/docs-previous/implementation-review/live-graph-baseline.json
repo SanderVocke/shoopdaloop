@@ -1,0 +1,55 @@
+{
+  "implementation_parent": "b071ffc4d446b5b100beaf16cafb0fa6ef854d70",
+  "scope": "Fixed-role loop facade live-route and paired timing/graph changes; no authored destination edits. Not a full earlier-stage documentation backfill.",
+  "reviewed_destinations": {
+    "src/rust/shoop_loop_engine/docs/runtime.md": {
+      "sha256": "6f652ee1c2b1f4a0158677c7ed1ada43dca1ba30e576a867b368304a367f3291",
+      "status": "Read completely; actionable corrections/additions in loop-facade-live-graphs.md."
+    },
+    "src/rust/shoop_loop_engine/docs/topology-activation.md": {
+      "sha256": "48634bbaddeef64ea6d636c2b8c8f04bb69419c4bc9d2ccbec7341f428599c69",
+      "status": "Read completely; actionable corrections/additions in loop-facade-live-graphs.md."
+    }
+  },
+  "implementation_inputs": {
+    "src/rust/shoop_loop_engine/src/runtime/mod.rs": "b4bc5f3320b9a34776e065299d65500e77d66b2056112f6232450de3ab00e54e",
+    "src/rust/shoop_loop_engine/src/runtime/planner.rs": "dd34cbfc1c8541573cab506896cf8e98676f03130f89a35b502c9d742e82e101",
+    "src/rust/shoop_loop_engine/src/runtime/topology.rs": "f1e30afaee9fbe5d67a29a446c306d1419f5c9200a129c3b0e1524d4e3f5fdc4",
+    "src/rust/shoop_loop_engine/tests/runtime_topology.rs": "998ba0e8bc20ca5a7b2031f02477bcbd7327ec155a9e7d0712f8512f4a7d73ee",
+    "src/rust/rt_runtime/src/graph/activation.rs": "321b21311d46f868f8e996c77801652e5e9f245d284b7ea278a82fd21cd0d3ba"
+  },
+  "other_destinations": "README, program guide and architecture destinations named in the note remain part of the full cross-cutting review; this is not a claim that all such files have been fully reviewed.",
+  "concurrent_book_drift": {
+    "DOCS_REWRITE_PLAN.md": {
+      "initial_sha256": "ec0d84e9293a4e233017bc2080571eb6c56fb944bb73a1de36fcdb629c54b5cb",
+      "current_sha256": "930caa0799431f54f9cddadb216da81c0ee88584224a69ae661087b5f6fe184c",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/01-the-runtime-and-the-host.md": {
+      "initial_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "6abaca197159e86b688c717d9daf46a63ad78a58631fc06debc58a06587af853",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/02-your-first-audio-graph.md": {
+      "initial_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "98cca968e44da207861d8bb1631d2051c1016dd0f83131ae834cd4f4078eddf6",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/03-writing-processors.md": {
+      "initial_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "0bb9f02a34a9b00743fcce6b4ffd6e641daf78afbd122d832f5beed465872dc1",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/04-connecting-an-audio-callback.md": {
+      "initial_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "10f5887744f1dc1996c4ada689d8c10be831a5548393566c543e4cdd7eb7f6fc",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    },
+    "src/rust/rt_runtime/docs/part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md": {
+      "initial_sha256": "8eda1af503d2df6f98eb8605e4147bf0a6dabc4f8e03c566ab861b9e0bea25da",
+      "current_sha256": "5c4d8919afacbdd5225b0cef08566c981c667884baefaaf3aa38d24ab9ec5edc",
+      "review_status": "Not re-reviewed for this loop-only slice; earlier full-book backfill remains pending."
+    }
+  },
+  "acceptance": "Separate documentation-worker application and final verification remain pending."
+}

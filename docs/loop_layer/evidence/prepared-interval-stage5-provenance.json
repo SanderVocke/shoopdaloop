@@ -1,0 +1,1019 @@
+{
+  "scope": "Stage 5 first-interval capture preflight: lifetime/authority proofs, 134 fresh combined selected Miri executions (114 runtime plus twenty loop), three new reservation cases, seventeen disconnect cuts, and existing-host regressions.",
+  "lifetime_proof": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+      "sha256": "71e302165e7d070eafecacd5f1719f61ee22b84742ecdc36dc6d166ea1ca8ff7"
+    },
+    "library": {
+      "path": "target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+      "sha256": "751a752a1ff68bacedac3a16f55a2b0e4ab8a8004386370e8d945845323c356f"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-prepared-interval-stage5/lifetime-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-prepared-interval-stage5/lifetime-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/lifetime",
+          "--cfg",
+          "compile_fail_reuse"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-prepared-interval-stage5/lifetime-refusal.log",
+        "sha256": "2d34c3a7ef74993380c6ae2a79de5e4e6b17e51db4630dae516bd713f156684e"
+      }
+    ],
+    "result": "Positive production-trait borrow compiles/runs; retained immutable decision borrow across planner mutation is refused with E0502."
+  },
+  "capture_authority": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/capture_authority.rs",
+      "sha256": "71392463238e3141ae65a48811e788c9de8cb09348e17c17b85a7a8a51ee9b01"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-prepared-interval-stage5/authority-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-prepared-interval-stage5/authority-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-prepared-interval-stage5/authority",
+          "--cfg",
+          "compile_fail_capture"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-prepared-interval-stage5/authority-refusal.log",
+        "sha256": "bd1c20387c03fea031b1e6590f4e5948b7acbb5829ce07f69247e0b62e9936c5"
+      }
+    ],
+    "result": "Planner capture authority compiles/runs; consumer ResourceIo cannot acquire it (E0599). Runtime boundary/ceiling checks are separately exercised by capture_boundary."
+  },
+  "miri": {
+    "passed": true,
+    "package_filter": null,
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "package": "rt_runtime",
+        "target": "contracts",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "00-contracts-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/00-contracts-seed0.log",
+          "sha256": "3977eb7967cda44af045d2420b24d2d458448c993a4099c269211863e27250e4"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planning_graph",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "01-planning_graph-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/01-planning_graph-seed0.log",
+          "sha256": "852d2ccd25780e558ca3bba8b4028bec24c931ec165a44d5e4db9df7a4eb3ff5"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planner_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 9,
+        "log": "02-planner_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/02-planner_execution-seed0.log",
+          "sha256": "7d23d83ca91896859137579ca2e8df6985678ccf7990ef490c455031fb3e2ebf"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_render",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "03-resource_render-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/03-resource_render-seed0.log",
+          "sha256": "c2a0c3805b18e8bf1796797b1fd00ff0bee4f614a12887c250446364c68fa009"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "04-resource_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/04-resource_index-seed0.log",
+          "sha256": "039c19c5f056f5d84cd1e558556b8736079ff170ad9e95a10de3a3cad67bec7d"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "05-midi_state-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/05-midi_state-seed0.log",
+          "sha256": "5ad024123c93113b31cadc44aabdcf79c8f5162412ec4901590323b23fa2c1a4"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_restore_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "06-midi_restore_state-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/06-midi_restore_state-seed0.log",
+          "sha256": "a7ab7ccf86854c324a4f45aae2d154bfc1619ffe3e2da01018a5ecb283f06974"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "07-midi_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/07-midi_index-seed0.log",
+          "sha256": "206eadd5a8e4adbb2138326bd1adfcd350527e90830c6b6ad00916c4f1eb2f57"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_schedule",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "08-typed_schedule-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/08-typed_schedule-seed0.log",
+          "sha256": "68fb0c6e6d90f6728cd128e1d23f16b47c59fcbbac9fa2dba090258e149d8bd4"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 11,
+        "log": "09-typed_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/09-typed_execution-seed0.log",
+          "sha256": "12fc7a4899a7312f7ec9e4c79ff8b341f704bdff62c2dfbad8ed1d464c908c4f"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "wire_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "10-wire_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/10-wire_properties-seed0.log",
+          "sha256": "18e865d91f611eb1fe16cf18b88be77373fb2f7accbc57f735282f591d7b5d4e"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "11-resource_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/11-resource_properties-seed0.log",
+          "sha256": "fbf904ba244f5249e3e77c8938eda241882211dfe1d2a32f62078ef5d0d95846"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "mixed_stress",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "12-mixed_stress-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/12-mixed_stress-seed0.log",
+          "sha256": "35693bda18e1253e7f76742dbf86879ddc2347681972d6cbe2e74f002747a17a"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "13-capture-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/13-capture-seed0.log",
+          "sha256": "572ded259782311b180e1f8f55359905e152ef0233d955eb1938b130a2e637db"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_groups",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "14-capture_groups-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/14-capture_groups-seed0.log",
+          "sha256": "2c1b0a4058cdf8ccfca2b36d20b5750f777da763cdae6b1daf85a2e288b263fb"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_intervals",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "15-capture_group_intervals-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/15-capture_group_intervals-seed0.log",
+          "sha256": "b9a6f6f740f19e01d5e3f11b764e628c58e8da75f54494f549e343e4bcbf55a9"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_prepared_interval",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "16-capture_prepared_interval-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/16-capture_prepared_interval-seed0.log",
+          "sha256": "7f41effc026a14558ea5942abde6f547333408b3b5045eb1072592e4c558f671"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_planner",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "17-capture_group_planner-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/17-capture_group_planner-seed0.log",
+          "sha256": "dfdb88fa02f32910b54d748149001d2eaa46df02361b91d22714a1f13c0c250f"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_boundary",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "18-capture_boundary-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/18-capture_boundary-seed0.log",
+          "sha256": "77eac18a93811c38577d9cf81cfe1f0d0a3064c4a49f4657b9949de25d5004ed"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_model",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "19-capture_group_model-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/19-capture_group_model-seed0.log",
+          "sha256": "9755dc3514d1a2e1b7df58310cf337d5493ecb1c65e46b4b45643957ac5b0612"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_disconnect",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "20-capture_group_disconnect-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/20-capture_group_disconnect-seed0.log",
+          "sha256": "0c358ab5f37f8e587d6908bdb6b5a711b715d2863a3094e730fcd29fc32af448"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "host_processor",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "21-host_processor-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/21-host_processor-seed0.log",
+          "sha256": "63d38331e241449615558798056b5dfc992b8a6b6b6bc8ddfc33185d2c473fcc"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "--",
+          "--skip",
+          "deterministic_admission_model",
+          "--skip",
+          "cancellation_flag_model"
+        ],
+        "seed": 0,
+        "passed": 9,
+        "log": "22-lifecycle-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/22-lifecycle-seed0.log",
+          "sha256": "fa0e80a101d99aea2be883fc615b52b8cc555bc48a7b13dc980d54de8d6c7d7d"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_execution",
+        "arguments": [
+          "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "23-resource_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/23-resource_execution-seed0.log",
+          "sha256": "732632f828190c479ca13cd6a326134beb1411ed63815d5ed8496160a6fa347f"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 1,
+        "passed": 1,
+        "log": "24-lifecycle-seed1.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/24-lifecycle-seed1.log",
+          "sha256": "3748027cc18af473a29faced9e0fc0624a1c1e289777e56fd8636ed9c3c67332"
+        }
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 2,
+        "passed": 1,
+        "log": "25-lifecycle-seed2.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/25-lifecycle-seed2.log",
+          "sha256": "cf42e5314fbc880cf42db00b26253e1628b13f1eda5d8f9841260512de640ca2"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "26-audio-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/26-audio-seed0.log",
+          "sha256": "af73d7adcdde211b274debed5ffa41143aded7868b324f355bc886bb7dc8be94"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "27-media_decisions-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/27-media_decisions-seed0.log",
+          "sha256": "6e654912b5e9af0e04f670d38fc8290541a0bf795ffd42340c139a5d8957b07b"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi_restore",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "28-midi_restore-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/28-midi_restore-seed0.log",
+          "sha256": "b6598490af272570cd7e8267af41786bcf49a7c34bd08a1301d5c5a5f11e2177"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "29-midi-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-prepared-interval-stage5/miri/29-midi-seed0.log",
+          "sha256": "46e96db9584ce99bd225906fa28a68bb3be5abdda27d7913d8f97d49d4fd7d42"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py'",
+  "receipt_model": {
+    "seed": "0xa36b20472f5881d9",
+    "native_and_wasm_steps": 8192,
+    "miri_steps": 64,
+    "model": "Independent three-slot state/terminal FIFO model; compares delivery, completion, cancellation, credit snapshots, lane reservations, and complete draining back to baseline. Oracle storage is outside heap guards."
+  },
+  "midi_state_model": {
+    "seed": "0xad473b29385cc291",
+    "operations": 4096,
+    "miri_workload": "same full workload",
+    "oracle": "Independent ordered map of keys/held flags and separate channel pedal/pitch arrays, compared across all channels/keys after every 64 operations; targeted pressure/program/hold/reset/malformed cases supplement it."
+  },
+  "midi_index_oracle": {
+    "events": 273,
+    "queried_frames": 81,
+    "duration": 80,
+    "checkpoint_span": 8,
+    "method": "Linear event boundaries plus independent ordered map for notes/held flags, pedal state and program; equal-time bursts and a 257-byte SysEx span pages. Full workload is retained under Miri. Separate cases cover capture prefixes, exhaustion, rollback, stale/foreign scopes, reuse, empty and u64::MAX duration."
+  },
+  "capture_cases": {
+    "native_wasm_miri": "Retains the twelve preceding group/boundary/planner cases at full workload, plus three prepared-first-interval cases, the complete generated ownership model and seventeen disconnect cuts. Three content partitions; three runtime partitions with exhaustion changing sample 24; 32 prepare/cancel cycles; saturated lifecycle credits; immutable prefixes; stale tokens; producer-contract faults."
+  },
+  "initial_failures": [],
+  "prepared_intervals": {
+    "tests": 3,
+    "method": "Old audio/MIDI remain current until exact activation; one pre-reserved token survives activation/staging/commit/freeze, with independent byte/state expectations and old-lease checks. Thirty-two alternating two-group competitions check all-or-none page reservation, cancellation, stale tokens and unchanged revisions. Scoped/window/frame-overflow and insufficient MIDI-checkpoint refusals preserve credits and active resources. Full workloads under native/Wasm/Miri."
+  },
+  "loop_midi": {
+    "tests": 6,
+    "method": "Indexed complete packet playback, stopped input state/capture, runtime overflow/reset graph, and complete packet oracle over 128 one-sample resolver intervals; full workloads under native/Wasm/Miri."
+  },
+  "midi_emission": {
+    "runtime_metadata_tests": 2,
+    "loop_tests": 4,
+    "cleanup_bound": 2096,
+    "restore_bound": 8449,
+    "method": "Independent key/pedal machine checks sustain/hold/sostenuto reconstruction. Independent bank/selector machine checks loaded versus pending bank and no accidental parameter writes. Full channels/keys/control/pressure bound and source-projection comparisons; refusing sinks preserve source and do not retry. Full workload under Miri/Wasm.",
+    "limitations": "Protocol projection only, not voice/vendor SysEx/parameter-value history. Untracked parameter history is explicit. Helpers do not themselves deliver runtime recovery."
+  },
+  "audio_cases": {
+    "tests": 6,
+    "partitions": {
+      "sample_ramp": [
+        [
+          40
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          7,
+          6,
+          4,
+          9,
+          14
+        ]
+      ],
+      "capture": [
+        [
+          5
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "one_sample": [
+        [
+          64,
+          64
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          7,
+          53,
+          19,
+          49
+        ]
+      ]
+    },
+    "channels": [
+      1,
+      2,
+      5
+    ],
+    "miri_workload": "All six complete loop-crate tests; no cfg(miri) reduction.",
+    "oracle": "Independent scalar source position/sample/ramp recurrence; production resolver drives actual renderer intervals. Separate explicit input/FX capture expectations and full pool recovery. No complete mixed-media runtime adapter claim."
+  },
+  "prior_failures": "Prior capture-stage4-provenance.json retains the preceding milestone test-setup failures; those records are unchanged.",
+  "group_model": {
+    "seed": "0x7a49c83d502e19b6",
+    "steps_per_capacity": 1024,
+    "page_capacities": [
+      64,
+      16
+    ],
+    "miri_workload": "same complete 2048-step workload",
+    "method": "Independent active/prepared/pinned version, physical page/private-tail, reserved-page, final-lease and MIDI-row model. Checks counters/state after every action; complete original audio/MIDI snapshots and bounded state positions every 32 steps. Full final pool recovery.",
+    "actions": [
+      "release_snapshot",
+      "snapshot",
+      "cancel_take",
+      "activate",
+      "cancel_interval",
+      "stage_audio",
+      "stage_midi",
+      "commit",
+      "freeze",
+      "reserve",
+      "reserve_refusal",
+      "prepare",
+      "prepare_refusal"
+    ],
+    "counts": {
+      "64": [
+        115,
+        82,
+        6,
+        20,
+        43,
+        95,
+        79,
+        68,
+        20,
+        111,
+        0,
+        26,
+        310
+      ],
+      "16": [
+        112,
+        73,
+        9,
+        23,
+        17,
+        48,
+        39,
+        36,
+        23,
+        53,
+        10,
+        32,
+        504
+      ]
+    },
+    "prior_parameter_log": {
+      "path": "target/loop-layer-capture-ownership-stage4/model-capacities.log",
+      "sha256": "6504d3ec0b85bfebd4ddc3dd4eb1f79cff956ec8f6d444e774a0bbc061eaabb5"
+    }
+  },
+  "disconnect": {
+    "cuts": [
+      "unbound",
+      "bound",
+      "prepared",
+      "activated",
+      "reserved",
+      "audio-staged",
+      "all-staged",
+      "committed",
+      "frozen",
+      "first-lease-released",
+      "both-leases-released",
+      "group-released",
+      "prepared-cancelled",
+      "interval-cancelled",
+      "prepared-interval-reserved",
+      "prepared-interval-cancelled",
+      "prepared-interval-activated"
+    ],
+    "method": "Queue payload-free recovery stop, disconnect the real control transport before delivery, then settle/cancel/freeze/release without callback heap/destruction. Runtime extraction destroys the processor off-render; explicit resource cleanup returns all pools. This tests a queued stop plus disconnect, not automatic disconnect-triggered musical stop."
+  },
+  "host_reports": {
+    "result": {
+      "passed": true,
+      "reports": [
+        {
+          "bytes": 1703936,
+          "callbacks": 2601,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 332928,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 3308430490,
+          "mode": "offline",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 480331717,
+          "type": "stopped"
+        },
+        {
+          "bytes": 1703936,
+          "callbacks": 13444,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 1720832,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 4022855181,
+          "mode": "live",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 738985413,
+          "type": "stopped"
+        }
+      ],
+      "tools": {
+        "chrome": "Chromium 147.0.7727.137",
+        "chromedriver": "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})"
+      },
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ],
+      "failure_canaries": [
+        {
+          "kind": "processor",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        },
+        {
+          "kind": "rust-heap",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        }
+      ]
+    },
+    "native-debug-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "native-release-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    }
+  },
+  "journal": {
+    "bytes": 529292,
+    "sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+    "unchanged_historical_golden": true
+  },
+  "limitations": [
+    "Existing-runtime host regression is not loop-library AudioWorklet proof.",
+    "Complete loop-domain adapters, coherent mixed-media export, separate-node graph/example and independent loop hosts remain pending."
+  ]
+}

@@ -1,0 +1,26 @@
+warning: Git tree '/home/sander/dev/shoopdaloop' is dirty
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.85s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/first_graph`
+first graph: active at startup, eight checked samples, no render heap work
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.86s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/prepared_processor`
+prepared processor: two-frame delay across 3/1/4-frame callbacks, no render heap work
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.87s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/callback_adapter`
+callback adapter: zero/invalid/error/continued blocks checked, no callback heap work
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 1.07s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/first_graph`
+first graph: active at startup, eight checked samples, no render heap work
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 1.00s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/prepared_processor`
+prepared processor: two-frame delay across 3/1/4-frame callbacks, no render heap work
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 1.04s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/callback_adapter`
+callback adapter: zero/invalid/error/continued blocks checked, no callback heap work
+docs/part-1-process-audio/04-connecting-an-audio-callback.md: Rust excerpt differs from examples/callback_adapter.rs

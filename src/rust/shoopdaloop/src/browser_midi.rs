@@ -50,6 +50,7 @@ pub struct BrowserMidiCore {
     subscriptions: BTreeMap<u64, InputSubscription>,
     next_subscription: u64,
     track_messages: VecDeque<TrackMidiInput>,
+    forward_tracks: bool,
     dropped_track_messages: u32,
     refused_track_messages: u32,
     refused_control_messages: u32,
@@ -70,6 +71,7 @@ impl BrowserMidiCore {
             subscriptions: BTreeMap::new(),
             next_subscription: 1,
             track_messages: VecDeque::with_capacity(MIDI_TRACK_QUEUE_CAPACITY),
+            forward_tracks: false,
             dropped_track_messages: 0,
             refused_track_messages: 0,
             refused_control_messages: 0,
@@ -168,20 +170,27 @@ impl BrowserMidiCore {
         self.subscriptions.remove(&subscription);
     }
 
-    pub fn receive(&mut self, endpoint_id: &str, data: &[u8]) {
+    /// Track messages go to a forwarder instead of the track queue.
+    pub fn set_track_forwarding(&mut self, forward: bool) {
+        self.forward_tracks = forward;
+        self.track_messages.clear();
+    }
+
+    /// Returns whether a forwarder must deliver the message to track inputs.
+    pub fn receive(&mut self, endpoint_id: &str, data: &[u8]) -> bool {
         if data.is_empty() || data.len() > MAX_MIDI_MESSAGE_BYTES {
             self.refused_control_messages = self.refused_control_messages.saturating_add(1);
             if data.len() > TRACK_MIDI_MESSAGE_BYTES || data.is_empty() {
                 self.refused_track_messages = self.refused_track_messages.saturating_add(1);
             }
-            return;
+            return false;
         }
         if !self
             .endpoints
             .get(endpoint_id)
             .is_some_and(|endpoint| endpoint.direction == MidiEndpointDirection::Output)
         {
-            return;
+            return false;
         }
         for subscription in self
             .subscriptions
@@ -196,6 +205,8 @@ impl BrowserMidiCore {
         }
         if data.len() > TRACK_MIDI_MESSAGE_BYTES {
             self.refused_track_messages = self.refused_track_messages.saturating_add(1);
+        } else if self.forward_tracks {
+            return true;
         } else if self.track_messages.len() >= MIDI_TRACK_QUEUE_CAPACITY {
             self.dropped_track_messages = self.dropped_track_messages.saturating_add(1);
         } else {
@@ -204,6 +215,7 @@ impl BrowserMidiCore {
                 data: data.to_vec(),
             });
         }
+        false
     }
 
     pub fn drain_subscription(
@@ -274,8 +286,12 @@ mod platform {
         generation: u64,
     }
 
+    /// Receives track MIDI with its endpoint and Web MIDI timestamp in milliseconds.
+    pub type TrackForwarder = Rc<dyn Fn(&str, &[u8], f64)>;
+
     struct HubInner {
         core: BrowserMidiCore,
+        track_forwarder: Option<TrackForwarder>,
         access: Option<MidiAccess>,
         inputs: BTreeMap<String, InputHandle>,
         outputs: BTreeMap<String, OutputHandle>,
@@ -351,9 +367,14 @@ mod platform {
                 let callback_id = id.clone();
                 let handler = Closure::wrap(Box::new(move |event: MidiMessageEvent| {
                     if let Some(inner) = weak.upgrade() {
-                        match event.data() {
-                            Ok(data) => inner.borrow_mut().core.receive(&callback_id, &data),
-                            Err(_) => inner.borrow_mut().core.receive(&callback_id, &[]),
+                        let data = event.data().unwrap_or_default();
+                        let forwarder = {
+                            let mut state = inner.borrow_mut();
+                            let forward = state.core.receive(&callback_id, &data);
+                            forward.then(|| state.track_forwarder.clone()).flatten()
+                        };
+                        if let Some(forwarder) = forwarder {
+                            forwarder(&callback_id, &data, event.time_stamp());
                         }
                     }
                 }) as Box<dyn FnMut(_)>);
@@ -534,6 +555,7 @@ mod platform {
             Self {
                 inner: Rc::new(RefCell::new(HubInner {
                     core: BrowserMidiCore::new(midi_supported()),
+                    track_forwarder: None,
                     access: None,
                     inputs: BTreeMap::new(),
                     outputs: BTreeMap::new(),
@@ -561,6 +583,13 @@ mod platform {
 
         pub fn endpoints(&self) -> Vec<BrowserMidiEndpoint> {
             self.inner.borrow().core.endpoints()
+        }
+
+        /// Deliver track MIDI to `forwarder` as it arrives instead of queueing it.
+        pub fn forward_tracks(&self, forwarder: TrackForwarder) {
+            let mut state = self.inner.borrow_mut();
+            state.core.set_track_forwarding(true);
+            state.track_forwarder = Some(forwarder);
         }
 
         pub fn drain_track_messages(&self, max_messages: usize) -> Vec<TrackMidiInput> {
@@ -694,6 +723,16 @@ mod platform {
         }
 
         pub fn send(&self, endpoint_id: &str, message: &[u8]) -> anyhow::Result<()> {
+            self.send_at(endpoint_id, message, None)
+        }
+
+        /// Send at a performance time in milliseconds; a past time sends at once.
+        pub fn send_at(
+            &self,
+            endpoint_id: &str,
+            message: &[u8],
+            timestamp_ms: Option<f64>,
+        ) -> anyhow::Result<()> {
             if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
                 anyhow::bail!("invalid MIDI message length {}", message.len());
             }
@@ -706,9 +745,11 @@ mod platform {
             let result = match output {
                 Some(output) => {
                     let data = Uint8Array::from(message);
-                    output
-                        .send(data.as_ref())
-                        .map_err(|error| anyhow!("could not send Web MIDI: {error:?}"))
+                    match timestamp_ms {
+                        Some(timestamp) => output.send_with_timestamp(data.as_ref(), timestamp),
+                        None => output.send(data.as_ref()),
+                    }
+                    .map_err(|error| anyhow!("could not send Web MIDI: {error:?}"))
                 }
                 None => Err(anyhow!(
                     "Web MIDI output endpoint disappeared: {endpoint_id}"
@@ -990,7 +1031,7 @@ mod platform {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use platform::BrowserMidiController;
+pub use platform::{BrowserMidiController, BrowserMidiHub, TrackForwarder};
 
 #[cfg(test)]
 mod tests {
@@ -1075,6 +1116,31 @@ mod tests {
                 endpoint_id,
                 data: vec![0x90, 60, 100],
             }]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn forwarding_replaces_the_track_queue_and_keeps_control_fan_out() {
+        let mut core = BrowserMidiCore::new(true);
+        core.set_state(BrowserMidiState::Running, None, false);
+        let endpoint = source("in");
+        let endpoint_id = endpoint.id.clone();
+        core.replace_endpoints(vec![endpoint, sink("out")]);
+        let subscription = core.subscribe_input(&endpoint_id).unwrap();
+        assert!(!core.receive(&endpoint_id, &[0x90, 60, 100]));
+        core.set_track_forwarding(true);
+        assert!(core.drain_track_messages(usize::MAX).is_empty());
+        assert!(core.receive(&endpoint_id, &[0x80, 60, 0]));
+        assert!(!core.receive(&endpoint_id, &[0xf0, 1, 2, 3, 0xf7]));
+        assert!(!core.receive("webmidi:sink:out", &[0x90, 60, 100]));
+        assert!(core.drain_track_messages(usize::MAX).is_empty());
+        assert_eq!(core.dropped_track_messages(), 0);
+        assert_eq!(core.refused_track_messages(), 1);
+        assert_eq!(
+            core.drain_subscription(subscription, usize::MAX)
+                .unwrap()
+                .len(),
+            3
         );
     }
 

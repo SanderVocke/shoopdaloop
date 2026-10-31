@@ -1,0 +1,1846 @@
+{
+  "passed": true,
+  "iterations_per_case": 20000,
+  "warmup_callbacks_per_case": 512,
+  "trials": [
+    {
+      "trial": 0,
+      "elapsed_host_seconds": 0.7639484040009847,
+      "records": [
+        {
+          "case": "idle",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 0,
+          "edges_max": 0,
+          "mean_ns": 58.6772,
+          "p50_ns": 60,
+          "p99_ns": 71,
+          "p999_ns": 90,
+          "max_ns": 22993,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3696,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 3,
+            "minor_faults": 2,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 1412,
+              "nanoseconds": 22993,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 8790,
+              "nanoseconds": 4669,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 0,
+              "nanoseconds": 170,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 13372,
+              "nanoseconds": 160,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 13371,
+              "nanoseconds": 151,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dag-16",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1122.5036,
+          "p50_ns": 1112,
+          "p99_ns": 1473,
+          "p999_ns": 2234,
+          "max_ns": 9538,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3728,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 9,
+            "minor_faults": 1,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 2231,
+              "nanoseconds": 9538,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 8076,
+              "nanoseconds": 5350,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 13082,
+              "nanoseconds": 5230,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 13906,
+              "nanoseconds": 4469,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 9728,
+              "nanoseconds": 4418,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dense-dag-64",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 64,
+          "edges_max": 256,
+          "mean_ns": 6154.18455,
+          "p50_ns": 6082,
+          "p99_ns": 6682,
+          "p999_ns": 8446,
+          "max_ns": 17913,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 19,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 3255,
+              "nanoseconds": 17913,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 5845,
+              "nanoseconds": 15960,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 17369,
+              "nanoseconds": 14557,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 3095,
+              "nanoseconds": 13305,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 1157,
+              "nanoseconds": 12454,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "midi-64-through-8",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 27,
+          "mean_ns": 12001.07035,
+          "p50_ns": 12052,
+          "p99_ns": 13254,
+          "p999_ns": 15790,
+          "max_ns": 35857,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 20,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 9934,
+              "nanoseconds": 35857,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 11703,
+              "nanoseconds": 31158,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 324,
+              "nanoseconds": 24917,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 4200,
+              "nanoseconds": 20559,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 12666,
+              "nanoseconds": 20228,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "stereo-capture",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 1,
+          "edges_max": 4,
+          "mean_ns": 1268.6846,
+          "p50_ns": 1192,
+          "p99_ns": 2705,
+          "p999_ns": 3016,
+          "max_ns": 14397,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 1024,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 20480000,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 625,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 65536,
+          "resource_used_pages_at_callback_boundary_max": 128,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 7,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 7363,
+              "nanoseconds": 14397,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 12554,
+              "nanoseconds": 7074,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 1430,
+              "nanoseconds": 5601,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 3660,
+              "nanoseconds": 5410,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 6624,
+              "nanoseconds": 4379,
+              "copy_bytes": 1024,
+              "validation_steps": 128,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "graph-transfers",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1369.5486,
+          "p50_ns": 1423,
+          "p99_ns": 2034,
+          "p999_ns": 2885,
+          "max_ns": 13906,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 10000,
+          "refusals": 0,
+          "graph_activations": 10000,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 9,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 6696,
+              "nanoseconds": 13906,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 3605
+            },
+            {
+              "callback": 5350,
+              "nanoseconds": 6442,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 2932
+            },
+            {
+              "callback": 13284,
+              "nanoseconds": 5480,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 6899
+            },
+            {
+              "callback": 1320,
+              "nanoseconds": 4589,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 917
+            },
+            {
+              "callback": 13974,
+              "nanoseconds": 4198,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 7244
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "resource-roundtrip",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 18,
+          "mean_ns": 739.7671,
+          "p50_ns": 731,
+          "p99_ns": 1092,
+          "p999_ns": 1413,
+          "max_ns": 13686,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 2048,
+          "validation_steps_max": 33,
+          "core_copy_bytes": 37445632,
+          "control_copy_bytes": 37445632,
+          "copy_mib_per_measured_callback_second": 2413.660833254142,
+          "copy_mib_per_simulated_second": 0.669580078125,
+          "commands_completed": 20000,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 131072,
+          "resource_used_pages_at_callback_boundary_max": 64,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 9,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 3322,
+              "nanoseconds": 13686,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 17837,
+              "nanoseconds": 7844,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 1251,
+              "nanoseconds": 6001,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 6417,
+              "nanoseconds": 5180,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 11616,
+              "nanoseconds": 4138,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        }
+      ],
+      "raw_directory": "target/rt-runtime-bench/trial-0-raw"
+    },
+    {
+      "trial": 1,
+      "elapsed_host_seconds": 0.7871142799995141,
+      "records": [
+        {
+          "case": "idle",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 0,
+          "edges_max": 0,
+          "mean_ns": 57.8266,
+          "p50_ns": 60,
+          "p99_ns": 70,
+          "p999_ns": 341,
+          "max_ns": 661,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3696,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 2,
+            "minor_faults": 2,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 16035,
+              "nanoseconds": 661,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 5879,
+              "nanoseconds": 501,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 10991,
+              "nanoseconds": 490,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 15609,
+              "nanoseconds": 401,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 11616,
+              "nanoseconds": 400,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dag-16",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1131.06,
+          "p50_ns": 1112,
+          "p99_ns": 1422,
+          "p999_ns": 2254,
+          "max_ns": 15329,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3728,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 6,
+            "minor_faults": 1,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 7962,
+              "nanoseconds": 15329,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 5506,
+              "nanoseconds": 13205,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 1350,
+              "nanoseconds": 9628,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 8762,
+              "nanoseconds": 5009,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 2189,
+              "nanoseconds": 4107,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dense-dag-64",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 64,
+          "edges_max": 256,
+          "mean_ns": 6564.8877,
+          "p50_ns": 6091,
+          "p99_ns": 9708,
+          "p999_ns": 10881,
+          "max_ns": 23996,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 19,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 1105,
+              "nanoseconds": 23996,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 15567,
+              "nanoseconds": 17173,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 13566,
+              "nanoseconds": 16321,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 15347,
+              "nanoseconds": 15369,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 13150,
+              "nanoseconds": 15359,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "midi-64-through-8",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 27,
+          "mean_ns": 12001.42025,
+          "p50_ns": 11772,
+          "p99_ns": 13987,
+          "p999_ns": 20068,
+          "max_ns": 28313,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 42,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 368,
+              "nanoseconds": 28313,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 11769,
+              "nanoseconds": 26951,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 17367,
+              "nanoseconds": 25688,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 14281,
+              "nanoseconds": 25508,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 10630,
+              "nanoseconds": 20729,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "stereo-capture",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 1,
+          "edges_max": 4,
+          "mean_ns": 1277.1803,
+          "p50_ns": 1183,
+          "p99_ns": 2705,
+          "p999_ns": 3226,
+          "max_ns": 19116,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 1024,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 20480000,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 625,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 65536,
+          "resource_used_pages_at_callback_boundary_max": 128,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 2,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 7021,
+              "nanoseconds": 19116,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 2584,
+              "nanoseconds": 7063,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 4768,
+              "nanoseconds": 3957,
+              "copy_bytes": 1024,
+              "validation_steps": 128,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 13674,
+              "nanoseconds": 3697,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 2944,
+              "nanoseconds": 3677,
+              "copy_bytes": 1024,
+              "validation_steps": 128,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "graph-transfers",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1360.9723,
+          "p50_ns": 1413,
+          "p99_ns": 1874,
+          "p999_ns": 2665,
+          "max_ns": 6031,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 10000,
+          "refusals": 0,
+          "graph_activations": 10000,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 7,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 1529,
+              "nanoseconds": 6031,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1022
+            },
+            {
+              "callback": 16446,
+              "nanoseconds": 5631,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 8480
+            },
+            {
+              "callback": 2209,
+              "nanoseconds": 4999,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1362
+            },
+            {
+              "callback": 5635,
+              "nanoseconds": 4689,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 3075
+            },
+            {
+              "callback": 6310,
+              "nanoseconds": 4038,
+              "copy_bytes": 0,
+              "validation_steps": 128,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 3412
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "resource-roundtrip",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 18,
+          "mean_ns": 751.7812,
+          "p50_ns": 731,
+          "p99_ns": 1112,
+          "p999_ns": 1433,
+          "max_ns": 7624,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 2048,
+          "validation_steps_max": 33,
+          "core_copy_bytes": 37445632,
+          "control_copy_bytes": 37445632,
+          "copy_mib_per_measured_callback_second": 2375.0884898425234,
+          "copy_mib_per_simulated_second": 0.669580078125,
+          "commands_completed": 20000,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 131072,
+          "resource_used_pages_at_callback_boundary_max": 64,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 4,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 10032,
+              "nanoseconds": 7624,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 2876,
+              "nanoseconds": 5591,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 7015,
+              "nanoseconds": 3216,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 12050,
+              "nanoseconds": 3206,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 17162,
+              "nanoseconds": 2715,
+              "copy_bytes": 0,
+              "validation_steps": 33,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        }
+      ],
+      "raw_directory": "target/rt-runtime-bench/trial-1-raw"
+    },
+    {
+      "trial": 2,
+      "elapsed_host_seconds": 0.739032503002818,
+      "records": [
+        {
+          "case": "idle",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 0,
+          "edges_max": 0,
+          "mean_ns": 57.6488,
+          "p50_ns": 60,
+          "p99_ns": 70,
+          "p999_ns": 71,
+          "max_ns": 4208,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3696,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 2,
+            "minor_faults": 2,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 14391,
+              "nanoseconds": 4208,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 14317,
+              "nanoseconds": 431,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 19983,
+              "nanoseconds": 431,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 0,
+              "nanoseconds": 200,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            },
+            {
+              "callback": 10334,
+              "nanoseconds": 81,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 0,
+              "edges": 0,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dag-16",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1114.47025,
+          "p50_ns": 1112,
+          "p99_ns": 1142,
+          "p999_ns": 2445,
+          "max_ns": 19497,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 3728,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 9,
+            "minor_faults": 1,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 3741,
+              "nanoseconds": 19497,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 382,
+              "nanoseconds": 7164,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 1221,
+              "nanoseconds": 5971,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 14646,
+              "nanoseconds": 5921,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            },
+            {
+              "callback": 7914,
+              "nanoseconds": 5159,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "dense-dag-64",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 64,
+          "edges_max": 256,
+          "mean_ns": 6107.91305,
+          "p50_ns": 6061,
+          "p99_ns": 6462,
+          "p999_ns": 8656,
+          "max_ns": 23825,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 18,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 14902,
+              "nanoseconds": 23825,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 3260,
+              "nanoseconds": 21750,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 1148,
+              "nanoseconds": 21230,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 10056,
+              "nanoseconds": 17984,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            },
+            {
+              "callback": 13604,
+              "nanoseconds": 13796,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 64,
+              "edges": 256,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "midi-64-through-8",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 27,
+          "mean_ns": 11886.424,
+          "p50_ns": 11712,
+          "p99_ns": 14627,
+          "p999_ns": 19367,
+          "max_ns": 31750,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 0,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 0,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 0,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 27,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 11548,
+              "nanoseconds": 31750,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 16891,
+              "nanoseconds": 25969,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 3804,
+              "nanoseconds": 24567,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 11344,
+              "nanoseconds": 22572,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            },
+            {
+              "callback": 5013,
+              "nanoseconds": 22332,
+              "copy_bytes": 0,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 27,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "stereo-capture",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 1,
+          "edges_max": 4,
+          "mean_ns": 1260.2898,
+          "p50_ns": 1193,
+          "p99_ns": 2695,
+          "p999_ns": 2945,
+          "max_ns": 13335,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 1024,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 20480000,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 625,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 65536,
+          "resource_used_pages_at_callback_boundary_max": 128,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 11,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 5432,
+              "nanoseconds": 13335,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 931,
+              "nanoseconds": 7514,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 2435,
+              "nanoseconds": 5450,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 4675,
+              "nanoseconds": 5090,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            },
+            {
+              "callback": 15129,
+              "nanoseconds": 4990,
+              "copy_bytes": 1024,
+              "validation_steps": 0,
+              "nodes": 1,
+              "edges": 4,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "graph-transfers",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 16,
+          "edges_max": 34,
+          "mean_ns": 1349.25205,
+          "p50_ns": 1422,
+          "p99_ns": 1833,
+          "p999_ns": 2865,
+          "max_ns": 21480,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 0,
+          "validation_steps_max": 128,
+          "core_copy_bytes": 0,
+          "control_copy_bytes": 0,
+          "copy_mib_per_measured_callback_second": 0,
+          "copy_mib_per_simulated_second": 0,
+          "commands_completed": 10000,
+          "refusals": 0,
+          "graph_activations": 10000,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 4096,
+          "resource_used_pages_at_callback_boundary_max": 0,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 5,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 10593,
+              "nanoseconds": 21480,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 5554
+            },
+            {
+              "callback": 17329,
+              "nanoseconds": 6953,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 8922
+            },
+            {
+              "callback": 971,
+              "nanoseconds": 4589,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 743
+            },
+            {
+              "callback": 9189,
+              "nanoseconds": 4027,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 4852
+            },
+            {
+              "callback": 8501,
+              "nanoseconds": 3847,
+              "copy_bytes": 0,
+              "validation_steps": 6,
+              "nodes": 16,
+              "edges": 34,
+              "epoch": 4508
+            }
+          ],
+          "tail_candidates": 0
+        },
+        {
+          "case": "resource-roundtrip",
+          "callbacks": 20000,
+          "sample_rate": 48000,
+          "frames_per_callback": 128,
+          "nodes": 8,
+          "edges_max": 18,
+          "mean_ns": 736.0912,
+          "p50_ns": 722,
+          "p99_ns": 1092,
+          "p999_ns": 1153,
+          "max_ns": 9278,
+          "deadline_ns": 2666666,
+          "deadline_misses": 0,
+          "copy_bytes_max": 2048,
+          "validation_steps_max": 33,
+          "core_copy_bytes": 37445632,
+          "control_copy_bytes": 37445632,
+          "copy_mib_per_measured_callback_second": 2425.7141981863115,
+          "copy_mib_per_simulated_second": 0.669580078125,
+          "commands_completed": 20000,
+          "refusals": 0,
+          "graph_activations": 0,
+          "outstanding_owners_max": 1,
+          "prepared_resource_bytes": 131072,
+          "resource_used_pages_at_callback_boundary_max": 64,
+          "process_peak_rss_kib": 4500,
+          "scheduler_counters": {
+            "voluntary_switches": 0,
+            "involuntary_switches": 7,
+            "minor_faults": 0,
+            "major_faults": 0
+          },
+          "rust_heap_operations": 0,
+          "slowest_callbacks": [
+            {
+              "callback": 56,
+              "nanoseconds": 9278,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 4226,
+              "nanoseconds": 5421,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 2133,
+              "nanoseconds": 4688,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 11514,
+              "nanoseconds": 3577,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            },
+            {
+              "callback": 1099,
+              "nanoseconds": 2946,
+              "copy_bytes": 2048,
+              "validation_steps": 0,
+              "nodes": 8,
+              "edges": 18,
+              "epoch": 1
+            }
+          ],
+          "tail_candidates": 0
+        }
+      ],
+      "raw_directory": "target/rt-runtime-bench/trial-2-raw"
+    }
+  ],
+  "canaries": [
+    {
+      "profile": "debug",
+      "kind": "allocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    },
+    {
+      "profile": "debug",
+      "kind": "reallocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    },
+    {
+      "profile": "debug",
+      "kind": "deallocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    },
+    {
+      "profile": "release",
+      "kind": "allocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    },
+    {
+      "profile": "release",
+      "kind": "reallocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    },
+    {
+      "profile": "release",
+      "kind": "deallocation",
+      "expected_failure_observed": true,
+      "exit_code": 101
+    }
+  ],
+  "host": {
+    "platform": "Linux-7.0.3-x86_64-with-glibc2.42",
+    "cpu_model": "AMD Ryzen AI 7 350 w/ Radeon 860M",
+    "logical_cpus": 16,
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "affinity_cpu": 0,
+    "scaling_governor": "performance"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "rustflags": "-D warnings",
+  "release_profile": {},
+  "source_sha256": "8ae0537611e3d0cbf4cf87c56d19996bcda7070a0482c86c7373c8c884e43fdf",
+  "limitations": [
+    "Instant measures elapsed wall time around the guarded core render path, including preemption and guard overhead, not hardware CPU cycles.",
+    "Control submission, output verification, owner destruction, and raw-file I/O are outside measured callbacks.",
+    "No device/OS priority/deadline or JavaScript hard-real-time guarantee; no comparison with the Shoop engine.",
+    "Resource arena sizes are fixed prepared allocations. Used-page peaks are sampled at callback boundaries; VmHWM is cumulative whole-process RSS including measurement buffers.",
+    "Throughput uses both summed measured callback time and simulated audio time; it is not MessagePort/device/network throughput.",
+    "Deadline misses and tail candidates are recorded, never used as brittle CI pass/fail thresholds."
+  ]
+}

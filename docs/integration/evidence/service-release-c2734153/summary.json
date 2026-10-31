@@ -1,0 +1,485 @@
+{
+  "current/idle": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 0,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 16830976,
+    "executions": 0,
+    "forwarded": 0,
+    "meter_batch_mean_per_read_ns": {
+      "max": 4428.0,
+      "median": 90.0,
+      "n": 6144,
+      "p95": 120.0,
+      "p99": 121.0
+    },
+    "midi_packets": 0,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 0,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6036,
+        6036,
+        6036
+      ],
+      "rss_after_warmup_kib": [
+        5992,
+        5992,
+        5992
+      ],
+      "rss_constructed_kib": [
+        5992,
+        5992,
+        5992
+      ],
+      "rss_live_kib": [
+        5992,
+        5992,
+        5992
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 16210,
+        "median": 2185.0,
+        "n": 6144,
+        "p95": 2916,
+        "p99": 2956
+      },
+      "control_ns": {
+        "max": 61,
+        "median": 30.0,
+        "n": 6144,
+        "p95": 40,
+        "p99": 41
+      },
+      "meter_ns": {
+        "max": 4428,
+        "median": 90.0,
+        "n": 6144,
+        "p95": 120,
+        "p99": 121
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  },
+  "current/steady": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 0,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 18392996,
+    "executions": 0,
+    "forwarded": 0,
+    "meter_batch_mean_per_read_ns": {
+      "max": 250.0,
+      "median": 90.0,
+      "n": 6144,
+      "p95": 120.0,
+      "p99": 121.0
+    },
+    "midi_packets": 0,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 0,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6036,
+        6036,
+        6036
+      ],
+      "rss_after_warmup_kib": [
+        5992,
+        5992,
+        5992
+      ],
+      "rss_constructed_kib": [
+        5992,
+        5992,
+        5992
+      ],
+      "rss_live_kib": [
+        5992,
+        5992,
+        5992
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 14968,
+        "median": 2385.0,
+        "n": 6144,
+        "p95": 3196,
+        "p99": 4459
+      },
+      "control_ns": {
+        "max": 50,
+        "median": 30.0,
+        "n": 6144,
+        "p95": 40,
+        "p99": 41
+      },
+      "meter_ns": {
+        "max": 250,
+        "median": 90.0,
+        "n": 6144,
+        "p95": 120,
+        "p99": 121
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  },
+  "service/export": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 6144,
+    "copied_bytes": 1568256,
+    "elapsed_wall_ns": 39244131,
+    "executions": 18,
+    "forwarded": 6144,
+    "meter_batch_mean_per_read_ns": {
+      "max": 80.0,
+      "median": 50.0,
+      "n": 6144,
+      "p95": 61.0,
+      "p99": 70.0
+    },
+    "midi_packets": 0,
+    "nominal_48khz_copy_bytes_per_second": 191437.5,
+    "owning_returns": 6144,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6692,
+        6692,
+        6692
+      ],
+      "rss_after_warmup_kib": [
+        12776,
+        12776,
+        12776
+      ],
+      "rss_constructed_kib": [
+        12724,
+        12724,
+        12724
+      ],
+      "rss_live_kib": [
+        12784,
+        12784,
+        12784
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 26069,
+        "median": 5190.0,
+        "n": 6144,
+        "p95": 6973,
+        "p99": 7144
+      },
+      "control_ns": {
+        "max": 3657,
+        "median": 110.0,
+        "n": 6144,
+        "p95": 150,
+        "p99": 160
+      },
+      "meter_ns": {
+        "max": 80,
+        "median": 50.0,
+        "n": 6144,
+        "p95": 61,
+        "p99": 70
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 39961542.27494552
+  },
+  "service/idle": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 0,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 29455244,
+    "executions": 0,
+    "forwarded": 0,
+    "meter_batch_mean_per_read_ns": {
+      "max": 441.0,
+      "median": 50.0,
+      "n": 6144,
+      "p95": 61.0,
+      "p99": 70.0
+    },
+    "midi_packets": 0,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 0,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6620,
+        6620,
+        6620
+      ],
+      "rss_after_warmup_kib": [
+        12712,
+        12712,
+        12712
+      ],
+      "rss_constructed_kib": [
+        12708,
+        12708,
+        12708
+      ],
+      "rss_live_kib": [
+        12712,
+        12712,
+        12712
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 30688,
+        "median": 4048.0,
+        "n": 6144,
+        "p95": 5430,
+        "p99": 5470
+      },
+      "control_ns": {
+        "max": 131,
+        "median": 30.0,
+        "n": 6144,
+        "p95": 40,
+        "p99": 41
+      },
+      "meter_ns": {
+        "max": 441,
+        "median": 50.0,
+        "n": 6144,
+        "p95": 61,
+        "p99": 70
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  },
+  "service/poll": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 6144,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 37382227,
+    "executions": 6144,
+    "forwarded": 6144,
+    "meter_batch_mean_per_read_ns": {
+      "max": 178.140625,
+      "median": 16.59375,
+      "n": 6144,
+      "p95": 22.234375,
+      "p99": 22.234375
+    },
+    "midi_packets": 6144,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 6144,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6692,
+        6692,
+        6692
+      ],
+      "rss_after_warmup_kib": [
+        12784,
+        12784,
+        12784
+      ],
+      "rss_constructed_kib": [
+        12708,
+        12708,
+        12708
+      ],
+      "rss_live_kib": [
+        12784,
+        12784,
+        12784
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 35497,
+        "median": 3807.0,
+        "n": 6144,
+        "p95": 5100,
+        "p99": 15930
+      },
+      "control_ns": {
+        "max": 2023,
+        "median": 110.0,
+        "n": 6144,
+        "p95": 151,
+        "p99": 161
+      },
+      "meter_ns": {
+        "max": 11401,
+        "median": 1062.0,
+        "n": 6144,
+        "p95": 1423,
+        "p99": 1423
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  },
+  "service/preset": {
+    "clock_median_ns": [
+      40,
+      30,
+      30
+    ],
+    "control_attempts": 12288,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 27524959,
+    "executions": 0,
+    "forwarded": 0,
+    "meter_batch_mean_per_read_ns": {
+      "max": 1873.0,
+      "median": 50.0,
+      "n": 6144,
+      "p95": 61.0,
+      "p99": 70.0
+    },
+    "midi_packets": 6144,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 0,
+    "refusals": 6144,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6624,
+        6624,
+        6624
+      ],
+      "rss_after_warmup_kib": [
+        12716,
+        12716,
+        12716
+      ],
+      "rss_constructed_kib": [
+        12708,
+        12708,
+        12708
+      ],
+      "rss_live_kib": [
+        12716,
+        12716,
+        12716
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 22943,
+        "median": 3818.0,
+        "n": 6144,
+        "p95": 4429,
+        "p99": 17674
+      },
+      "control_ns": {
+        "max": 2004,
+        "median": 111.0,
+        "n": 6144,
+        "p95": 150,
+        "p99": 170
+      },
+      "meter_ns": {
+        "max": 1873,
+        "median": 50.0,
+        "n": 6144,
+        "p95": 61,
+        "p99": 70
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  },
+  "service/steady": {
+    "clock_median_ns": [
+      40,
+      40,
+      30
+    ],
+    "control_attempts": 0,
+    "copied_bytes": 0,
+    "elapsed_wall_ns": 27767625,
+    "executions": 0,
+    "forwarded": 0,
+    "meter_batch_mean_per_read_ns": {
+      "max": 4829.0,
+      "median": 60.0,
+      "n": 6144,
+      "p95": 61.0,
+      "p99": 70.0
+    },
+    "midi_packets": 6144,
+    "nominal_48khz_copy_bytes_per_second": 0.0,
+    "owning_returns": 0,
+    "refusals": 0,
+    "rss_kib": {
+      "rss_after_cleanup_kib": [
+        6624,
+        6624,
+        6624
+      ],
+      "rss_after_warmup_kib": [
+        12716,
+        12716,
+        12716
+      ],
+      "rss_constructed_kib": [
+        12708,
+        12708,
+        12708
+      ],
+      "rss_live_kib": [
+        12716,
+        12716,
+        12716
+      ]
+    },
+    "timing_ns": {
+      "callback_ns": {
+        "max": 22993,
+        "median": 4278.0,
+        "n": 6144,
+        "p95": 4369,
+        "p99": 20378
+      },
+      "control_ns": {
+        "max": 130,
+        "median": 40.0,
+        "n": 6144,
+        "p95": 41,
+        "p99": 41
+      },
+      "meter_ns": {
+        "max": 4829,
+        "median": 60.0,
+        "n": 6144,
+        "p95": 61,
+        "p99": 70
+      }
+    },
+    "unpaced_host_copy_bytes_per_second": 0.0
+  }
+}

@@ -323,55 +323,11 @@ jobs:
         with:
           node-version: 22.22.2
 
-      - name: Install pinned Chrome and matching ChromeDriver
-        if: matrix.target == 'web' && env.ACT != 'true'
-        id: pinned-chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: 147.0.7727.117
-          install-chromedriver: true
-
-      - name: Select pinned Chrome
-        if: matrix.target == 'web' && env.ACT != 'true'
-        shell: bash
-        run: |
-          chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
-          driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
-          "$chrome" --version | grep '147.0.7727.117'
-          "$driver" --version | grep '147.0.7727.117'
-          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
-          dirname "$driver" >> "$GITHUB_PATH"
-
       - name: Install pinned wasm-pack
         if: matrix.target == 'web' && env.ACT != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack@0.15.0
-
-      - name: Detect browser-runtime changes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        id: wasm-browser-policy
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            browser:
-              - '.github/workflows/build_and_test.yml'
-              - 'scripts/run_wasm_tests.py'
-              - 'scripts/wasm_test_report.py'
-              - 'scripts/check_shoop_test_usage.py'
-              - 'src/rust/shoop_test_macros/**'
-              - 'src/rust/shoop_wasm_test_support/**'
-              - 'src/rust/shoop_wasm_runtime_tests/**'
-              - 'src/rust/shoop_audio_worklet/**'
-              - 'src/rust/shoop_worklet_client/**'
-              - 'src/rust/shoopdaloop/Cargo.toml'
-              - 'src/rust/shoopdaloop/audio_worker.js'
-              - 'src/rust/shoopdaloop/audio_worklet.js'
-              - 'src/rust/shoopdaloop/raw_wasm_host.js'
-              - 'src/rust/shoopdaloop/build_worklet.py'
-              - 'src/rust/shoopdaloop/src/browser_*.rs'
-              - 'src/rust/shoopdaloop/worker_fixture_contract.js'
-              - 'tests/wasm/**'
 
       - name: Cache Rust builds
         if: env.ACT != 'true'
@@ -383,6 +339,10 @@ jobs:
           cache-all-crates: "true"
           cache-on-failure: "true"
           cache-bin: ${{ matrix.target == 'web' }}
+          workspaces: |
+            . -> target
+            tests/rt_runtime_host -> target
+            tests/loops_host -> target
 
       - name: Check local act prerequisites
         if: env.ACT == 'true'
@@ -795,7 +755,12 @@ jobs:
             -p shoop_backend \
             -p shoop_app \
             -p shoop_egui \
-            -p shoopdaloop
+            -p shoopdaloop \
+            -p shoop_rt_protocol \
+            -p shoop_rt_engine \
+            -p shoop_rt_backend \
+            -p shoop_rt_host_native \
+            -p shoop_rt_host_worklet
 
       - name: Test complete retained workspace
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -808,6 +773,70 @@ jobs:
         run: |
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
+
+      - name: Test independent runtime, loop library and native hosts
+        if: matrix.target != 'web'
+        env:
+          RUSTFLAGS: -D warnings
+        shell: bash
+        run: |
+          cargo test --locked -p rt_runtime -p shoop_loops ${{ matrix.cargo_args }}
+          cargo test --locked --manifest-path tests/loops_host/Cargo.toml ${{ matrix.cargo_args }}
+          cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example gain_graph
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example planned_pair
+          cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example pending_operations
+          cargo run --locked -p shoop_loops ${{ matrix.cargo_args }} --example coordinated_loop
+          python3 scripts/run_rt_runtime_hosts.py --native-only --profile '${{ matrix.profile }}'
+          python3 scripts/run_loops_hosts.py --native-only --profile '${{ matrix.profile }}'
+          python3 scripts/check_rt_runtime_boundary.py
+          python3 scripts/check_loops_boundary.py
+          python3 scripts/check_rt_engine_boundary.py
+          python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
+
+      - name: Measure guarded rt_runtime release workloads
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+        run: python3 scripts/benchmark_rt_runtime.py --iterations 4096 --trials 1
+
+      - name: Measure guarded loop release workloads
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          python3 scripts/benchmark_loops.py --iterations 1024 --trials 3 \
+            --report-dir '${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}'
+
+      - name: Upload guarded loop measurement evidence
+        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload rt_runtime native and benchmark evidence
+        if: always() && matrix.target != 'web'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-runtime-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: |
+            target/rt-runtime-host/reports
+            target/rt-runtime-bench
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload independent loop native replay evidence
+        if: always() && matrix.target != 'web'
+        uses: actions/upload-artifact@v7
+        with:
+          name: loop-host-native-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/loops-host/reports/native-${{ matrix.profile }}
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Smoke-test Carla benchmarks
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -852,10 +881,13 @@ jobs:
           cargo check --locked -p shoop_engine --features carla
           cargo check --locked -p shoop_engine
           cargo check --locked -p shoopdaloop --no-default-features
+          cargo check --locked -p shoop_rt_host_native --no-default-features
           cargo tree -p shoop_engine --no-default-features > /tmp/engine-minimal-tree.txt
           cargo tree -p shoop_engine --features carla > /tmp/engine-carla-tree.txt
+          cargo tree -p shoop_rt_host_native --no-default-features > /tmp/rt-host-dummy-tree.txt
           if grep -E '(^| )((lilv|lv2_raw) v)' /tmp/engine-carla-tree.txt; then exit 1; fi
           if grep -E '(^| )((lilv|lv2_raw|libloading|rfd) v)' /tmp/engine-minimal-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack) v)' /tmp/rt-host-dummy-tree.txt; then exit 1; fi
           if rg -i 'CarlaLv2Host|lv2_carla|feature = "lv2"|shoop_engine/lv2|LV2_PATH' Cargo.toml Cargo.lock src/rust INSTALL.md README.md docs scripts third_party/carla --glob '!src/rust/shoop_engine/test_data/**'; then exit 1; fi
 
       - name: Smoke-test bundled Carla external UI
@@ -922,6 +954,7 @@ jobs:
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -945,27 +978,33 @@ jobs:
         run: |
           cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop --target wasm32-unknown-unknown
           cargo build --locked ${{ matrix.cargo_args }} -p shoop_audio_worklet --target wasm32-unknown-unknown
+          cargo build --locked ${{ matrix.cargo_args }} -p shoop_rt_host_worklet --target wasm32-unknown-unknown
 
       - name: Inspect browser dependency isolation
         if: matrix.target == 'web'
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
+          cargo tree -p shoop_rt_host_worklet --target wasm32-unknown-unknown > /tmp/rt-worklet-tree.txt
           cargo tree -p shoopdaloop --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
           python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/rt-worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
           node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
+          node src/rust/shoopdaloop/rt_worklet_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm
 
       - name: Audit Wasm harness policy and dependencies
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package shoop_app --package shoop_app_api \
+            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
-            --package shoop_latency --package shoop_plugin_protocol --package shoop_scripting \
+            --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
+            --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
+            --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_scripting \
             --package shoop_session --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop
@@ -976,16 +1015,7 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
-      - name: Run policy-triggered Chromium Wasm suite
-        if: >-
-          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
-          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-          steps.wasm-browser-policy.outputs.browser == 'true')
-        env:
-          RUSTFLAGS: -D warnings
-        run: python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
-
-      - name: Run intentional Node and Chromium Perfetto failure canaries
+      - name: Run intentional Node Perfetto failure canaries
         if: >-
           matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
           inputs.perfetto_failure_canary
@@ -996,41 +1026,37 @@ jobs:
             "SELECT string_value FROM args WHERE key = 'debug.phase' AND string_value = 'failure';" \
             "SELECT t.name, c.value FROM counter c JOIN counter_track t ON c.track_id = t.id WHERE t.name LIKE '%shoop.wasm_test_capture.plot';" \
             > "$RUNNER_TEMP/perfetto-wasm-canary.sql"
-          for runtime in node chrome; do
-            for canary in \
-              shared_failure_canary_is_ignored_by_default \
-              shared_result_failure_canary_is_ignored_by_default; do
-              set +e
-              python3 scripts/run_wasm_tests.py --profile dev --runtime "$runtime" \
-                --package shoop_wasm_test_support \
-                --feature wasm-test-failure-canary \
-                --filter "$canary" \
-                --trace failure
-              status=$?
-              set -e
-              test "$status" -ne 0
-              trace=$(find "target/wasm-tests/dev/reports/$runtime/traces" \
-                -name '*.pftrace' -type f -print -quit)
-              test -n "$trace"
-              scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
-                "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'shoop.wasm_test_capture.span' \
-                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'failure' "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-              grep 'shoop.wasm_test_capture.plot' \
-                "$RUNNER_TEMP/perfetto-wasm-$runtime-$canary-query.txt"
-            done
+          for canary in \
+            shared_failure_canary_is_ignored_by_default \
+            shared_result_failure_canary_is_ignored_by_default; do
+            set +e
+            python3 scripts/run_wasm_tests.py --profile dev --runtime node \
+              --package shoop_wasm_test_support \
+              --feature wasm-test-failure-canary \
+              --filter "$canary" \
+              --trace failure
+            status=$?
+            set -e
+            test "$status" -ne 0
+            trace=$(find "target/wasm-tests/dev/reports/node/traces" \
+              -name '*.pftrace' -type f -print -quit)
+            test -n "$trace"
+            scripts/trace_processor --query-file "$RUNNER_TEMP/perfetto-wasm-canary.sql" \
+              "$trace" | tee "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'shoop.wasm_test_capture.span' \
+              "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'failure' "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
+            grep 'shoop.wasm_test_capture.plot' \
+              "$RUNNER_TEMP/perfetto-wasm-node-$canary-query.txt"
           done
 
-      - name: Run optimized nightly/manual Wasm suites
+      - name: Run optimized nightly/manual Node Wasm suite
         if: >-
           matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true' &&
           (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           RUSTFLAGS: -D warnings
-        run: |
-          python3 scripts/run_wasm_tests.py --profile ci --runtime node
-          python3 scripts/run_wasm_tests.py --profile ci --runtime chrome
+        run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
@@ -1041,45 +1067,23 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Run retained hosted Chrome AudioWorklet smoke
+      - name: Check independent runtime host formatting and boundary
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-
-      - name: Run hosted Chromium multirealm Perfetto smokes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        run: |
-          TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
-            node --experimental-websocket browser_tracing_smoke.mjs
-          TRACE_REALM=audio TRACE_REBUILD=1 WEB_PORT=19892 DEBUG_PORT=19893 \
-            node --experimental-websocket browser_tracing_smoke.mjs
-          cat > "$RUNNER_TEMP/browser-perfetto.sql" <<'SQL'
-          SELECT
-            (SELECT COUNT(*) FROM track WHERE name = 'Window') AS window_tracks,
-            (SELECT COUNT(*) FROM track WHERE name IN ('Engine Worker', 'AudioWorklet')) AS engine_tracks,
-            (SELECT COUNT(*) FROM slice WHERE name = 'engine.rt.callback') AS callbacks,
-            (SELECT MAX(a.int_value) > 8192 FROM args a JOIN slice s USING(arg_set_id)
-              JOIN track t ON s.track_id = t.id
-              WHERE a.key = 'debug.emitted_records' AND t.name != 'Window') AS sustained_capture,
-            (SELECT COALESCE(SUM(a.int_value), 0) = 0 FROM args a JOIN slice s USING(arg_set_id)
-              JOIN track t ON s.track_id = t.id
-              WHERE a.key = 'debug.dropped_records' AND t.name != 'Window') AS no_drops,
-            (SELECT COALESCE(SUM(value), 0) FROM stats WHERE severity = 'error') AS import_errors;
-          SQL
-          for trace in ../../../target/perfetto-validation/browser-{worker,audio}.pftrace; do
-            ../../../scripts/trace_processor --query-file "$RUNNER_TEMP/browser-perfetto.sql" \
-              "$trace" | tee "$trace.query.txt"
-            grep '1,1,' "$trace.query.txt"
-            grep ',1,1,0$' "$trace.query.txt"
-          done
-
-      - name: Run retained self-contained Chrome AudioWorklet smoke
-        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
         env:
-          SELF_CONTAINED_PATH: ${{ env.SHOOP_HTML_ARTIFACT }}
-        run: SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          RUSTFLAGS: -D warnings
+        run: |
+          cargo fmt --manifest-path tests/rt_runtime_host/Cargo.toml -- --check
+          python3 scripts/check_rt_runtime_boundary.py
+
+      - name: Check independent loop host formatting and boundary
+        if: matrix.target == 'web' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
+          python3 scripts/check_loops_boundary.py
+          python3 scripts/check_rt_engine_boundary.py
 
       - name: Start virtual Firefox audio output
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
@@ -1110,9 +1114,7 @@ jobs:
 
       - name: Upload Perfetto validation traces
         if: >-
-          always() && env.ACT != 'true' &&
-          ((matrix.target == 'linux' && matrix.profile == 'debug') ||
-          (matrix.target == 'web' && matrix.profile == 'debug'))
+          always() && env.ACT != 'true' && matrix.target == 'linux' && matrix.profile == 'debug'
         uses: actions/upload-artifact@v7
         with:
           name: perfetto-validation-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}

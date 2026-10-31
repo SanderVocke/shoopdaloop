@@ -1,0 +1,193 @@
+warning: Git tree '/home/sander/dev/shoopdaloop' is dirty
+................+ cargo run --locked -p rt_runtime --example demo
+.+ cargo run --locked -p rt_runtime --example demo -- --iterations 1024
++ cargo run --locked -p rt_runtime --release --example demo -- --iterations 1024
+...
+----------------------------------------------------------------------
+Ran 20 tests in 0.081s
+
+OK
+rt_runtime book: contents, links, navigation, inventory and excerpts OK
++ cargo run --locked -p rt_runtime --example gain_graph
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling find-msvc-tools v0.1.11
+   Compiling shlex v2.0.1
+   Compiling pin-project-lite v0.2.17
+   Compiling once_cell v1.21.4
+   Compiling cfg-if v1.0.4
+   Compiling regex-syntax v0.8.11
+   Compiling log v0.4.34
+   Compiling typenum v1.20.1
+   Compiling paste v1.0.15
+   Compiling rustversion v1.0.23
+   Compiling thiserror v1.0.69
+   Compiling lazy_static v1.5.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling thread_local v1.1.10
+   Compiling smallvec v1.15.2
+   Compiling sharded-slab v0.1.7
+   Compiling perfetto-everywhere-core v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling cc v1.4.3
+   Compiling tracing-core v0.1.36
+   Compiling futures-core v0.3.34
+   Compiling futures-sink v0.3.34
+   Compiling bitflags v2.13.1
+   Compiling futures-channel v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling memchr v2.8.3
+   Compiling futures-io v0.3.34
+   Compiling thiserror v2.0.20
+   Compiling libc v0.2.189
+   Compiling const-oid v0.10.2
+   Compiling slab v0.4.12
+   Compiling cpufeatures v0.3.0
+   Compiling linktime-proc-macro v0.2.3
+   Compiling tracing-log v0.2.0
+   Compiling link-section v0.19.3
+   Compiling perfetto-everywhere-raw v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling assert_no_alloc v1.1.2
+   Compiling base64 v0.23.1
+   Compiling rtrb v0.4.0
+   Compiling hybrid-array v0.4.14
+   Compiling scoped-tls v1.0.1
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+   Compiling regex-automata v0.4.18
+   Compiling perfetto-sdk-sys v1.3.0
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling digest v0.11.3
+   Compiling sha2 v0.11.0
+   Compiling syn v2.0.119
+   Compiling syn v3.0.4
+   Compiling ctor v1.0.13
+   Compiling matchers v0.2.0
+   Compiling generator v0.8.11
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.20
+   Compiling shoop_test_macros v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_test_macros)
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling futures-util v0.3.34
+   Compiling tracing v0.1.44
+   Compiling tracing-subscriber v0.3.23
+   Compiling perfetto-everywhere-tracing v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling loom v0.7.2
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling perfetto-sdk v1.1.1
+   Compiling perfetto-everywhere-native v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling shoop_tracing v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_tracing)
+   Compiling shoop_wasm_test_support v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_wasm_test_support)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 35.42s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/gain_graph`
+gain graph: exact-frame output and owning teardown verified
++ cargo run --locked -p rt_runtime --example planned_gain
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.79s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/planned_gain`
+planned gain: 32 checked samples, five intervals, one exact-frame event
++ cargo run --locked -p rt_runtime --example bounded_runtime -- --iterations 1024
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.02s
+     Running `/tmp/rt-runtime-docs-rewrite-target/debug/examples/bounded_runtime --iterations 1024`
+{"case":"idle","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":0,"edges_max":0,"mean_ns":1994.4296875,"p50_ns":1813,"p99_ns":2855,"p999_ns":3086,"max_ns":6682,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":5500,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":0,"minor_faults":2,"major_faults":0},"rust_heap_operations":0}
+{"case":"dag-16","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":16,"edges_max":34,"mean_ns":71480.62890625,"p50_ns":58661,"p99_ns":134483,"p999_ns":146135,"max_ns":174148,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":5540,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":36,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"dense-dag-64","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":64,"edges_max":256,"mean_ns":321949.314453125,"p50_ns":312898,"p99_ns":449716,"p999_ns":479713,"max_ns":668999,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":5652,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":141,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"midi-64-through-8","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":8,"edges_max":27,"mean_ns":137333.9619140625,"p50_ns":136607,"p99_ns":195788,"p999_ns":214233,"max_ns":238478,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":5652,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":58,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"stereo-capture","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":1,"edges_max":4,"mean_ns":21299.3359375,"p50_ns":21180,"p99_ns":27182,"p999_ns":30156,"max_ns":30908,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":1024,"validation_steps_max":128,"core_copy_bytes":1048576,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":32,"refusals":0,"graph_activations":0,"outstanding_owners_max":1,"prepared_resource_bytes":65536,"resource_used_pages_at_callback_boundary_max":128,"process_peak_rss_kib":5672,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":10,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"graph-transfers","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":16,"edges_max":34,"mean_ns":71074.8564453125,"p50_ns":71184,"p99_ns":86773,"p999_ns":104537,"max_ns":118964,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":128,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":512,"refusals":0,"graph_activations":512,"outstanding_owners_max":1,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":5672,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":23,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"resource-roundtrip","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":8,"edges_max":18,"mean_ns":34461.0185546875,"p50_ns":34255,"p99_ns":42640,"p999_ns":45866,"max_ns":49083,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":2048,"validation_steps_max":33,"core_copy_bytes":1916928,"control_copy_bytes":1916928,"copy_mib_per_measured_callback_second":51.805732830542254,"copy_mib_per_simulated_second":0.6694793701171875,"commands_completed":1024,"refusals":0,"graph_activations":0,"outstanding_owners_max":1,"prepared_resource_bytes":131072,"resource_used_pages_at_callback_boundary_max":64,"process_peak_rss_kib":5736,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":12,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+rt_runtime book: contents, links, navigation, inventory and excerpts OK
++ cargo run --locked -p rt_runtime --release --example gain_graph
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling find-msvc-tools v0.1.11
+   Compiling shlex v2.0.1
+   Compiling pin-project-lite v0.2.17
+   Compiling once_cell v1.21.4
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling log v0.4.34
+   Compiling regex-syntax v0.8.11
+   Compiling paste v1.0.15
+   Compiling rustversion v1.0.23
+   Compiling lazy_static v1.5.0
+   Compiling thiserror v1.0.69
+   Compiling smallvec v1.15.2
+   Compiling thread_local v1.1.10
+   Compiling futures-core v0.3.34
+   Compiling nu-ansi-term v0.50.3
+   Compiling sharded-slab v0.1.7
+   Compiling futures-sink v0.3.34
+   Compiling cc v1.4.3
+   Compiling perfetto-everywhere-core v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling futures-channel v0.3.34
+   Compiling tracing-core v0.1.36
+   Compiling const-oid v0.10.2
+   Compiling memchr v2.8.3
+   Compiling thiserror v2.0.20
+   Compiling futures-task v0.3.34
+   Compiling bitflags v2.13.1
+   Compiling libc v0.2.189
+   Compiling slab v0.4.12
+   Compiling futures-io v0.3.34
+   Compiling tracing-log v0.2.0
+   Compiling cpufeatures v0.3.0
+   Compiling link-section v0.19.3
+   Compiling linktime-proc-macro v0.2.3
+   Compiling perfetto-everywhere-raw v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling hybrid-array v0.4.14
+   Compiling assert_no_alloc v1.1.2
+   Compiling base64 v0.23.1
+   Compiling rtrb v0.4.0
+   Compiling scoped-tls v1.0.1
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling perfetto-sdk-sys v1.3.0
+   Compiling regex-automata v0.4.18
+   Compiling digest v0.11.3
+   Compiling sha2 v0.11.0
+   Compiling syn v2.0.119
+   Compiling syn v3.0.4
+   Compiling ctor v1.0.13
+   Compiling generator v0.8.11
+   Compiling matchers v0.2.0
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.20
+   Compiling shoop_test_macros v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_test_macros)
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling futures-util v0.3.34
+   Compiling tracing v0.1.44
+   Compiling tracing-subscriber v0.3.23
+   Compiling perfetto-everywhere-tracing v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling loom v0.7.2
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling perfetto-sdk v1.1.1
+   Compiling perfetto-everywhere-native v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling shoop_tracing v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_tracing)
+   Compiling shoop_wasm_test_support v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/shoop_wasm_test_support)
+    Finished `release` profile [optimized] target(s) in 1m 18s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/gain_graph`
+gain graph: exact-frame output and owning teardown verified
++ cargo run --locked -p rt_runtime --release --example planned_gain
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 1.12s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/planned_gain`
+planned gain: 32 checked samples, five intervals, one exact-frame event
++ cargo run --locked -p rt_runtime --release --example bounded_runtime -- --iterations 1024
+   Compiling rt_runtime v0.3.0 (/home/sander/dev/shoopdaloop/src/rust/rt_runtime)
+    Finished `release` profile [optimized] target(s) in 1.24s
+     Running `/tmp/rt-runtime-docs-rewrite-target/release/examples/bounded_runtime --iterations 1024`
+{"case":"idle","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":0,"edges_max":0,"mean_ns":65.36328125,"p50_ns":61,"p99_ns":80,"p999_ns":110,"max_ns":400,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":2836,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":0,"minor_faults":2,"major_faults":0},"rust_heap_operations":0}
+{"case":"dag-16","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":16,"edges_max":34,"mean_ns":1192.60546875,"p50_ns":1172,"p99_ns":1884,"p999_ns":1974,"max_ns":6292,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":2876,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":1,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"dense-dag-64","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":64,"edges_max":256,"mean_ns":6420.48828125,"p50_ns":6282,"p99_ns":7785,"p999_ns":10349,"max_ns":40216,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":2988,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":4,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"midi-64-through-8","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":8,"edges_max":27,"mean_ns":11965.416015625,"p50_ns":11872,"p99_ns":15339,"p999_ns":17833,"max_ns":18114,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":0,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":0,"refusals":0,"graph_activations":0,"outstanding_owners_max":0,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":2988,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":5,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"stereo-capture","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":1,"edges_max":4,"mean_ns":1267.3203125,"p50_ns":1213,"p99_ns":2836,"p999_ns":3056,"max_ns":3868,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":1024,"validation_steps_max":128,"core_copy_bytes":1048576,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":32,"refusals":0,"graph_activations":0,"outstanding_owners_max":1,"prepared_resource_bytes":65536,"resource_used_pages_at_callback_boundary_max":128,"process_peak_rss_kib":3008,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":0,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"graph-transfers","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":16,"edges_max":34,"mean_ns":1433.7578125,"p50_ns":1522,"p99_ns":1573,"p999_ns":2024,"max_ns":4820,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":0,"validation_steps_max":128,"core_copy_bytes":0,"control_copy_bytes":0,"copy_mib_per_measured_callback_second":0,"copy_mib_per_simulated_second":0,"commands_completed":512,"refusals":0,"graph_activations":512,"outstanding_owners_max":1,"prepared_resource_bytes":4096,"resource_used_pages_at_callback_boundary_max":0,"process_peak_rss_kib":3008,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":2,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}
+{"case":"resource-roundtrip","callbacks":1024,"sample_rate":48000,"frames_per_callback":128,"nodes":8,"edges_max":18,"mean_ns":813.56640625,"p50_ns":802,"p99_ns":1122,"p999_ns":1172,"max_ns":5280,"deadline_ns":2666666,"deadline_misses":0,"copy_bytes_max":2048,"validation_steps_max":33,"core_copy_bytes":1916928,"control_copy_bytes":1916928,"copy_mib_per_measured_callback_second":2194.385494039074,"copy_mib_per_simulated_second":0.6694793701171875,"commands_completed":1024,"refusals":0,"graph_activations":0,"outstanding_owners_max":1,"prepared_resource_bytes":131072,"resource_used_pages_at_callback_boundary_max":64,"process_peak_rss_kib":3072,"scheduler_counters":{"voluntary_switches":0,"involuntary_switches":1,"minor_faults":0,"major_faults":0},"rust_heap_operations":0}

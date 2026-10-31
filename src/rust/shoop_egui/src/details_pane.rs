@@ -1,6 +1,6 @@
 use crate::{
-    colors, AppIntent, CompositeLoopWidget, LoopDetailsState, LoopId, MidiSequenceWidget,
-    TimelineEditTool, WaveformWidget,
+    colors, AppIntent, BackendCapability, CompositeLoopWidget, LoopDetailsState, LoopId,
+    MidiSequenceWidget, TimelineEditTool, WaveformWidget,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -257,6 +257,10 @@ impl DetailsPane {
         )
         .on_hover_text(format!("Media zoom: {:.1}×", self.media_view.zoom));
 
+        let timing_edits = crate::supports(ui.ctx(), BackendCapability::LoopTimingEdits);
+        if !timing_edits {
+            self.edit_tool = None;
+        }
         ui.horizontal(|ui| {
             ui.label("Click tool:");
             for (tool, label) in [
@@ -265,7 +269,11 @@ impl DetailsPane {
                 (TimelineEditTool::LoopEnd, "Loop end"),
             ] {
                 if ui
-                    .selectable_label(self.edit_tool == Some(tool), label)
+                    .add_enabled(
+                        timing_edits,
+                        egui::Button::selectable(self.edit_tool == Some(tool), label),
+                    )
+                    .on_disabled_hover_text(BackendCapability::LoopTimingEdits.unavailable_reason())
                     .clicked()
                 {
                     self.edit_tool = (self.edit_tool != Some(tool)).then_some(tool);

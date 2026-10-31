@@ -58,6 +58,21 @@ cargo run -p shoopdaloop -- \
 
 `--tracing-engine-detail` requires `--tracing` and increases callback overhead and capture volume. Abort, fatal signals, forced termination, OOM, and power loss cannot finalize an in-process trace.
 
+**Settings > Audio > Audio backend** chooses the legacy engine (the default) or the new engine backend at startup; `--audio-backend legacy|new_engine` overrides it for one run:
+
+```sh
+cargo run -p shoopdaloop -- --audio-backend new_engine
+```
+
+The new engine backend supports the core looping workflow only and presents everything else as unavailable. It runs the preferred dummy or CPAL driver with its settings; JACK is replaced by CPAL's JACK host, or CPAL's default devices where that host is absent, and a device driver that fails to start is replaced by the dummy driver. Such fallbacks and the host's warnings, such as missing MIDI ports, appear as notifications. Its track, loop, channel and loop-memory capacities are prepared at startup from the **New engine** settings; exceeding them is refused with a notification. Driver, capacity and backend changes apply after a restart.
+
+An opt-in test runs the core workflow on the default CPAL devices; without its variable it skips:
+
+```sh
+SHOOP_TEST_CPAL_DEVICE=1 cargo nextest run -p shoopdaloop --no-capture \
+  -E 'test(new_engine_backend_runs_the_core_workflow_on_a_cpal_device)'
+```
+
 On first run this starts the first available native engine in JACK, CPAL, then dummy/offline preference order with a stereo **Master**. Browser runs use Web Audio unless explicit offline mode is requested. Fresh sessions connect Master to the first complete preferred playback group reported by the active driver when one is available. The bottom bar's **buses** button opens a resizable mixer pane that supports adding named mono/stereo/multichannel buses, confirmation-gated removal (including Master), and persisted visual-only horizontal drag ordering. Each mixer strip provides vertical post-sum output meters, a vertical volume fader, mute, and stereo-only balance without creating an implicit route. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage scripts discovered from the external built-ins tree or path-based user scripts. This is the only script-management dialog. The packaged default is `builtins` beside the executable on Linux/Windows and `Contents/Resources/builtins` on macOS. Change the global location or use **Rescan built-in scripts** to reconcile additions, changes, and removals without restarting. New identities are disabled until enabled; dynamic identity toggles and ordered user path/enabled entries are preserved after **Save**. The tab groups scripts by kind in collapsible tables with runtime-only icon controls for start/restart, stop, and reload. Built-in groups start expanded; the Example scripts group starts collapsed and exposes bundled examples such as `dialogs.lua` for on-demand execution. Separate per-script windows show Markdown documentation extracted from each Lua source's leading comment block, logs, callbacks/timers, MIDI connections, dropped messages, and failures.
 
 Packaged native archives carry a pinned Carla runtime. Source builds need no Carla SDK and report Carla processors unavailable when no runtime can be loaded. `--probe-carla-native` validates the runtime without starting the GUI and `--probe-carla-native-ui` exercises every external UI lifecycle; `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR` select an exact development/test runtime and must be absolute paths.
@@ -110,6 +125,8 @@ The same startup options are available as query parameters. For example, `?sessi
 For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. The browser permissions dialog opens at app startup, reports exceptional audio, microphone, and Web MIDI permission states, and can be reopened from **Settings → Audio**. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and configure microphone and destination channels as visible host ports around the AudioWorklet. Click **Enable output-only audio** to skip microphone capture; destination host ports remain available while capture inventory is empty, and microphone access can be requested later from the dialog. Click **Enable Web MIDI + SysEx** independently to request MIDI and SysEx access. Granted capabilities remain visible as disabled green **Granted** buttons. Permission denial, unsupported APIs, and driver failure leave the application responsive and expose truthful retry or unavailable state.
 
 The optional single-file HTML embeds the application and AudioWorklet Wasm modules, the worklet script, and the complete built-ins catalog/tree. It may be opened directly through `file:` and attempts both output-only and microphone modes without rejecting the URL. Browser security and media-permission behavior for local files varies, so HTTPS or `localhost` remains the portable option. Both physical-audio modes still require an explicit click because of browser autoplay policies.
+
+In the browser, the same **Audio backend** setting and `?audio-backend=new_engine` select the new engine backend. The application starts on it once browser audio is enabled; until then it shows only a notice. The engine runs in its own AudioWorklet (`rt_audio_worklet.js` with `generated/shoop_rt_host_worklet.wasm`) at the context's sample rate in 128-frame quanta, prepared from the **New engine** capacity settings with loop memory limited to 256 MiB. Its host ports are fixed when it starts: without a microphone it reserves two capture channels, so enabling the microphone later connects it without restarting audio, while Web MIDI ports must be allowed before audio is enabled; ports allowed or connected later need a reload. Web MIDI input is placed at the frame of its timestamp, a fixed two quanta ahead, and MIDI output is scheduled for when its frame is heard. Offline and Worker modes exist only for the legacy backend; with the new engine selected they show an error.
 
 The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. The Connections dialog has a Tracks tab showing System inputs → Tracks → either Buses or System outputs and a Bus outputs tab showing Buses → System outputs. The destination toggle is presentation-only and never displays buses and system outputs simultaneously. Negotiated endpoints include `webaudio:capture_N`, `webaudio:destination_N`, and stable `webmidi:source|sink:<MIDIPort.id>` host ports. External ports remain grouped by client/device and application ports by track/script owner; ShoopDaLoop-owned host rows are omitted from the outer system columns. Audio, MIDI, and track filters reduce the overview without changing routes. Audio and MIDI endpoint labels, connectors, and routes use consistent type colors instead of `A`/`M` label prefixes, with explicit type names retained in hover help. Drag from a source connector to a compatible sink to connect, or click a user-managed connection line to disconnect. Script-owned autoconnections are visible but not editable here. Audio and track-MIDI connection commands mutate authoritative worklet routes. Web MIDI input is assigned to frame zero of the next available quantum and output preserves engine order with browser scheduling latency; sample-exact timing is not claimed. All routed audio tracks sum with final clipping to `[-1, 1]`; input monitoring defaults off. See `../../../docs/port_model.md` and `../../../docs/web_midi_contract.md`.
 
@@ -180,7 +197,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR, and scheduled and manual workflows also execute the optimized Node suite. CI lacks the capacity for Chromium, so the Chromium suite and the Chrome smokes below are run manually. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
@@ -194,7 +211,7 @@ act pull_request -W .github/workflows/build_and_test.yml \
   -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
 ```
 
-The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
+The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Firefox, Windows, and macOS.
 
 ## Cross-target test workflow
 
@@ -226,7 +243,7 @@ The orchestrator discovers package opt-in metadata, builds one profile-specific 
 
 ## Browser verification
 
-Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. Packaged-browser CI retains only these irreducible physical AudioWorklet smokes after building artifacts:
+Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. These irreducible physical AudioWorklet smokes run against the built artifacts. CI runs only the Firefox smoke; the two Chrome smokes are run manually:
 
 ```sh
 cd src/rust/shoopdaloop
@@ -236,6 +253,13 @@ SELF_CONTAINED=1 OUTPUT_ONLY=1 \
     -name 'shoopdaloop-web-wasm32-release-*.html' -print -quit) \
   node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
+```
+
+The new engine backend's core workflow runs through `?new-engine-self-test=1` with the browser's fake microphone: a new session, an audio and a MIDI track, host connections and routes to Master, synchronized and immediate record, play, stop and clear, controls, meters, loop progress, waveform and MIDI details, and no error notifications:
+
+```sh
+xvfb-run -a python3 browser_firefox_smoke.py --backend new_engine
+NEW_ENGINE=1 node --experimental-websocket browser_smoke.mjs
 ```
 
 The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` for non-standard executable paths. These smokes assert only packaged loading, application-to-worklet startup commands, genuine 128-frame callback progress, hosted/self-contained policy, and clean process teardown.

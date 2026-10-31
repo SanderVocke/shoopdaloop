@@ -1,0 +1,5 @@
+meta engine=current mode=steady frames=64 loop_frames=4096 sample_rate=48000 samples=2048 warmup=128 debug=false clock_median_ns=40 rss_constructed_kib=Some(5992)
+meta rss_after_warmup_kib=Some(5992)
+meta elapsed_wall_ns=7362010 rss_live_kib=Some(5992)
+meta current_channel_samples=[4096, 4096] current_storage_remaining=[Some(0), Some(0)] current_subblocks=1
+meta rss_after_cleanup_kib=Some(6036)

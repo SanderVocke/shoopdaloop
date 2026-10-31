@@ -1,0 +1,197 @@
+{
+  "passed": true,
+  "base_commit": "7dfd657c7b908d79d6a95e6cb9e2c66c6a5bcb3b",
+  "scope": "Stage 2 compiler milestone only. Runtime resolver, complete timing reference model and render/media integration are not yet implemented.",
+  "sources_sha256": {
+    "Cargo.lock": "0fb60e3f1a9cf70a79117bdbf3036aba6e0385452b5910f89f48fc4ac33c8191",
+    "scripts/check_loop_engine_boundary.py": "f22f3d02cd0b70ebfa5175e3f145346d5f57719618f47a2960673d22eefd00cd",
+    "src/rust/shoop_loop_engine/Cargo.toml": "f212d6e6fb946719316a6d10c9dc01e4075d6608a196fb5eeb141edeb77d99c6",
+    "src/rust/shoop_loop_engine/src/config.rs": "83a684219f072f4cb5d34d19396e10a6da737823b42ea675d9c0be6b4611436a",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "cc4eb88804f7c580c5bd1220a8bc5172841787f7777fd6baa60e0805081a64ca",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece"
+  },
+  "native_tests_per_profile": 19,
+  "wasm": [
+    {
+      "elapsed_seconds": 13.043056103997515,
+      "executed": 19,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 19,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 19,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 19,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 6.521180505995289,
+      "executed": 19,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 19,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 19,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 19,
+      "traces": {}
+    }
+  ],
+  "property_cases": {
+    "topology_vs_independent_reachability": 4096,
+    "sparse_program_vs_dense_reference": 1024,
+    "deep_action_chain_nodes": 2048,
+    "sparse_single_segment_ticks": 1000000000
+  },
+  "workspace": {
+    "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci",
+    "nextest": "0.9.116",
+    "passed": 1912,
+    "existing_ignored_canaries": 4,
+    "log": "target/loop-layer-compiler/workspace-tests.log",
+    "log_sha256": "0685ef25b2927711496a54422404823623322428b363eee14dce4be425bcf3a2"
+  },
+  "commands": [
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/native-debug.log",
+      "log_sha256": "f5299db48437f0308b3fa5ad2d3b9fdbca57012622ec23879736b5a8a387d226"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/native-release.log",
+      "log_sha256": "2b3d272daa4b3b812ae51e455083e03d3df41bed70a9acaa556a7d6ce4021e12"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/runtime-boundary.log",
+      "log_sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/loop-boundary.log",
+      "log_sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/boundary-tests.log",
+      "log_sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/test-policy.log",
+      "log_sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/tracing-policy.log",
+      "log_sha256": "99c6a6d16129fc9eb2fb814d3007646ed3abef8bf39b3ca0dcf156ca74b91168"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "log": "target/loop-layer-compiler/workspace-build.log",
+      "log_sha256": "0053f44ebdddf591fc19a3f43cafe9351b8b046fec42556129ee5cf150873ccf"
+    }
+  ],
+  "wasm_commands": [
+    "python3 scripts/check_wasm_test_dependencies.py --package shoop_loop_engine",
+    "python3 scripts/run_wasm_tests.py --runtime node --package shoop_loop_engine",
+    "python3 scripts/run_wasm_tests.py --runtime chrome --package shoop_loop_engine"
+  ],
+  "environment": {
+    "wrapper": "nix develop",
+    "RUSTFLAGS": "-D warnings",
+    "rustc": "1.97.1",
+    "node": "22.22.2",
+    "chrome_and_driver": "147.0.7727.137",
+    "wasm_pack": "0.15.0",
+    "wasm_bindgen": "0.2.127"
+  },
+  "limitations": [
+    "Compiler preparation may allocate; guards cover checked value validation and immutable lookup, not control-side compilation.",
+    "Node/Chromium package execution is not a loop AudioWorklet test.",
+    "Native dependency trees for Windows/macOS are metadata audits, not execution on those platforms.",
+    "Four workspace ignored cases are the existing intentional canaries enumerated in baseline-stage0.json."
+  ]
+}

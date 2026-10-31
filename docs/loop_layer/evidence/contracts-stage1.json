@@ -1,0 +1,189 @@
+{
+  "passed": true,
+  "base_commit": "6ad71196b63e61956610ec2a71ecc48369d7a040",
+  "prototype": "docs/loop_layer/prototypes/interval_lifecycle.rs",
+  "prototype_sha256": "2ab3aba545a8ee0fb219472f682a2ad5a5c3562998dcb4b6017f490547e87af5",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "scope": "Stage-1 contract/type-lifetime verification only, before production implementation.",
+  "native_assertion_groups_per_profile": [
+    "one callback / two intervals",
+    "irregular callbacks and reversed consumer bindings",
+    "128 single-frame callbacks",
+    "128 intervals in one callback / reversed bindings",
+    "invalid binding refused at preparation",
+    "observation writer refusal preserves first value"
+  ],
+  "normative_semantic_cases": {
+    "path": "docs/loop_layer/SEMANTICS.md",
+    "section": "Normative boundary examples",
+    "status": "Expected results reviewed against documented phases and progress rules; production/reference conformance execution is a Stage-2 and later obligation, not claimed here."
+  },
+  "limitations": [
+    "Wasm compiled, not executed by this prototype.",
+    "No production planner/resource/receipt interface implemented yet.",
+    "No allocation-guard, signal-DAG, ownership-transport, or AudioWorklet claim for this prototype."
+  ],
+  "cases": [
+    {
+      "case": "format",
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2021",
+        "--check",
+        "docs/loop_layer/prototypes/interval_lifecycle.rs"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.008,
+      "log": "target/loop-layer-contracts/format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "compile-debug",
+      "command": [
+        "rustc",
+        "--edition",
+        "2021",
+        "-D",
+        "warnings",
+        "docs/loop_layer/prototypes/interval_lifecycle.rs",
+        "-o",
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/prototype-debug"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.549,
+      "log": "target/loop-layer-contracts/compile-debug.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "run-debug",
+      "command": [
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/prototype-debug"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.001,
+      "log": "target/loop-layer-contracts/run-debug.log",
+      "log_sha256": "b783969aafb87173df551dcc63c25443413e11e386e40bba608c3e183d896e3a"
+    },
+    {
+      "case": "compile-release",
+      "command": [
+        "rustc",
+        "--edition",
+        "2021",
+        "-D",
+        "warnings",
+        "-O",
+        "docs/loop_layer/prototypes/interval_lifecycle.rs",
+        "-o",
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/prototype-release"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.624,
+      "log": "target/loop-layer-contracts/compile-release.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "run-release",
+      "command": [
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/prototype-release"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.001,
+      "log": "target/loop-layer-contracts/run-release.log",
+      "log_sha256": "b783969aafb87173df551dcc63c25443413e11e386e40bba608c3e183d896e3a"
+    },
+    {
+      "case": "compile-wasm",
+      "command": [
+        "rustc",
+        "--edition",
+        "2021",
+        "-D",
+        "warnings",
+        "--target",
+        "wasm32-unknown-unknown",
+        "docs/loop_layer/prototypes/interval_lifecycle.rs",
+        "-o",
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/prototype.wasm"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.083,
+      "log": "target/loop-layer-contracts/compile-wasm.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "reject-live-view-reuse",
+      "command": [
+        "rustc",
+        "--edition",
+        "2021",
+        "--cfg",
+        "compile_fail_reuse",
+        "docs/loop_layer/prototypes/interval_lifecycle.rs",
+        "-o",
+        "/home/sander/dev/shoopdaloop/target/loop-layer-contracts/must-not-compile"
+      ],
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "passed": true,
+      "seconds": 0.037,
+      "log": "target/loop-layer-contracts/reject-live-view-reuse.log",
+      "log_sha256": "4a97c6ed0f0ace2e9646117bb8090b806ce2d35c23b5fa2793aae4ec5316eb6d"
+    },
+    {
+      "case": "workspace-format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 1.382,
+      "log": "target/loop-layer-contracts/workspace-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 2.852,
+      "log": "target/loop-layer-contracts/workspace-build.log",
+      "log_sha256": "2fba351831782ffe43802c28665f11435bfffb50447f0d3edddf856a18ce83eb"
+    },
+    {
+      "case": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "passed": true,
+      "seconds": 0.032,
+      "log": "target/loop-layer-contracts/test-policy.log",
+      "log_sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    }
+  ]
+}

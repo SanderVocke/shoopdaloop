@@ -1,0 +1,34 @@
+[package]
+name = "shoop_rt_host_worklet"
+version.workspace = true
+edition = "2021"
+description = "The new engine backend's browser host: an import-free AudioWorklet module around the engine"
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["exports"]
+# The module's exported functions. Without them the crate only provides the
+# configuration, framing and MIDI lane formats, for the main-thread half.
+exports = []
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dependencies]
+# For the audio and MIDI buffer types of the render owner's callback.
+rt_runtime = { path = "../rt_runtime" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

@@ -74,6 +74,7 @@ The main gates are::
   python3 scripts/check_tracing_coverage.py --require-closed
 
 Web verification additionally builds both Wasm packages, checks browser
-dependency isolation, verifies hosted/self-contained artifacts, and runs Chrome
-and Firefox workflows where available. The GitHub workflow is authoritative for
-Linux, Windows, macOS, and browser release surfaces.
+dependency isolation, verifies hosted/self-contained artifacts, and runs the
+Firefox workflow. Chrome workflows and the Chromium Wasm suite are run manually.
+The GitHub workflow is authoritative for Linux, Windows, macOS, and the Firefox
+release surface.

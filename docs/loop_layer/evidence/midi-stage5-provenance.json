@@ -1,0 +1,100 @@
+{
+  "scope": "Stage 5 indexed MIDI operations and runtime recovery, scoped loop validation. Stage 5 remains incomplete.",
+  "miri": {
+    "passed": true,
+    "package_filter": "shoop_loop_engine",
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "00-audio-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-midi-stage5/miri/00-audio-seed0.log",
+          "sha256": "70fe4c33a8f9d777ad3cd19d71f4fa456c52d910901c2148f6b5fc5438ce1826"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "01-media_decisions-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-midi-stage5/miri/01-media_decisions-seed0.log",
+          "sha256": "6e654912b5e9af0e04f670d38fc8290541a0bf795ffd42340c139a5d8957b07b"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi_restore",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "02-midi_restore-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-midi-stage5/miri/02-midi_restore-seed0.log",
+          "sha256": "3c5847ce985f9e39b9a7e4281b262f08a089022506fe270fb9ae2346a8c50658"
+        }
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "03-midi-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-midi-stage5/miri/03-midi-seed0.log",
+          "sha256": "1efb4e76a1cd2fbce06ad725a0a5b9871190d5f3adbe37746457afa5c53509ae"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py --package shoop_loop_engine'",
+  "journal_capacities": [
+    0,
+    1,
+    1024
+  ],
+  "audio": "Existing scalar/ramp and dense one-sample comparisons now consume authoritative decision flags at every journal capacity; original fully provisioned cases retained. Complete workloads run unchanged in Miri/Wasm.",
+  "media_cases": [
+    "Twenty-frame primitive table including same-state seek/replace, idempotent Play, retrigger, recording monitor continuity, monitored capture failure, stop and empty-content refusal; repeated previews.",
+    "Losing/cancelled/refused intents; retry discards prior candidate restart while retaining a later natural wrap.",
+    "Clock-reactive Stop masks an earlier start flag in the final decision; higher-priority reactive restart restores playback after pre-clock Stop.",
+    "Nested authoritative program snapshots emit only primitive flags even without a journal."
+  ],
+  "initial_failures": [
+    {
+      "artifact": {
+        "path": "target/loop-layer-midi-stage5/focused-first.log",
+        "sha256": "193face538f2a10daa7ca6e5e546bc37cfa537c7dec2a16ae5f0dfc80a963423"
+      },
+      "reason": "Native runtime-graph test aborted with stack overflow while processors carried large inline channel projections. Prepared boxed projections reduce generic processor/command payload size without changing stack limits, workloads or heap guards. The exact overflowing stack frame was not captured."
+    }
+  ],
+  "midi_cases": {
+    "tests": 6,
+    "workload": "Full native/Wasm/Miri workloads: independent absolute packet oracle and 257-byte SysEx; same-frame restoration ordering; stopped input and frozen initial state; invalid/stale/zero-frame calls; actual runtime overflow/reset graph preserving audio and clearing seeded downstream note; complete packet comparison across 128 one-sample intervals and three host partitions."
+  },
+  "prior_full_baseline": {
+    "path": "docs/loop_layer/evidence/midi-restore-stage5.json",
+    "sha256": "7f9437398b6fbdd104fcabd73f08721f9955ff0c18806bf5c0b1aea4c344e1d2"
+  },
+  "limitations": [
+    "Twenty fresh selected loop Miri executions, not a fresh 131-case combined run or full loop-suite Miri claim.",
+    "The preceding runtime/host/full selected Miri evidence is historical; no rt_runtime implementation changed in this milestone.",
+    "Complete loop facade, coherent mixed-media outcomes/export, full example/graph and independent loop hosts remain pending."
+  ]
+}

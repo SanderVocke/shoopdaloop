@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "base_commit": "b5b240d0beff626d9e38df50a797607307a730ad",
+  "rust_sources": 122,
+  "unchanged_previous_sources": 114,
+  "scoped_gates": 19,
+  "native_loop_tests": 152,
+  "node_loop_tests": 152,
+  "chrome_loop_tests": 152,
+  "workspace_passed": 2140,
+  "workspace_skipped": 4,
+  "positive_prototypes_executed": 8,
+  "expected_compile_failures": 23,
+  "miri_registered": 227,
+  "miri_run": false,
+  "evidence_sha256": "ee29123713e27c88ea56fdc91fae48d3715e65d30e8e3939e4bd30cec7abac5f",
+  "proofs_sha256": "1ddf3933dd4d75dd233784eac34b14ad942a4e831755f90a2b0e75ee71e16aeb",
+  "baseline_sha256": "01ca92bdd1a5b6af5ab255a2181aed769ea4eeabd2500e653a05b3db3591a215",
+  "limitations": [
+    "Not a whole-tree clean/fresh claim; concurrent documentation drafts/examples remain preserved and separate.",
+    "No fresh interpreter, independent actual loop host, final CI or completed Stage6.",
+    "Native exact-filter mirror is not Miri."
+  ]
+}

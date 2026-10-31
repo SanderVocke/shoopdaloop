@@ -1,0 +1,40 @@
+ M DESIGN_RT_ENGINE.md
+ M PLAN_LOOP_LAYER.md
+ M docs/loop_layer/MIRI_JOBS.md
+ M docs/loop_layer/TEST_EXECUTION_TIMES.md
+ M docs/loop_layer/TOPOLOGY_ACTIVATION_DESIGN.md
+ M docs/loop_layer/VALIDATION.md
+ M docs/loop_layer/prototypes/runtime_view_lifetime.rs
+ M docs/rt_runtime/CONTRACTS.md
+ M docs/tracing_coverage.csv
+ M scripts/run_rt_runtime_miri.py
+ M scripts/tests/test_rt_runtime_miri.py
+ M src/rust/rt_runtime/README.md
+ D src/rust/rt_runtime/docs/capture-groups.md
+ D src/rust/rt_runtime/docs/getting-started.md
+ D src/rust/rt_runtime/docs/integration.md
+ D src/rust/rt_runtime/docs/midi-indexing.md
+ D src/rust/rt_runtime/docs/midi-state.md
+ D src/rust/rt_runtime/docs/performance.md
+ D src/rust/rt_runtime/docs/planning.md
+ D src/rust/rt_runtime/docs/resources.md
+ D src/rust/rt_runtime/docs/scheduling-midi.md
+ M src/rust/rt_runtime/src/executor.rs
+ M src/rust/rt_runtime/src/graph.rs
+ M src/rust/rt_runtime/src/planner.rs
+ M src/rust/rt_runtime/src/transport.rs
+ M src/rust/rt_runtime/tests/lifecycle.rs
+?? .pi/
+?? DOCS_REWRITE_PLAN.md
+?? docs/loop_layer/evidence/graph-activation-stage6.json
+?? docs/loop_layer/prototypes/graph_activation_lifetime.rs
+?? src/rust/rt_runtime/docs-changes-loop-layer/
+?? src/rust/rt_runtime/docs-previous/
+?? src/rust/rt_runtime/docs/README.md
+?? src/rust/rt_runtime/docs/part-1-process-audio/
+?? src/rust/rt_runtime/docs/part-2-control-a-running-graph/
+?? src/rust/rt_runtime/docs/part-3-work-with-stored-media/
+?? src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/
+?? src/rust/rt_runtime/docs/part-5-configure-and-operate-the-runtime/
+?? src/rust/rt_runtime/src/graph/
+?? src/rust/rt_runtime/tests/graph_activation.rs

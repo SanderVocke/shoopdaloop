@@ -1,0 +1,598 @@
+{
+  "scope": "Stage 4 capture transactions: lifetime and consumer-authority proofs, 107 Miri executions, independent audio/MIDI content and boundary checks, existing-host regressions.",
+  "lifetime_proof": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+      "sha256": "71e302165e7d070eafecacd5f1719f61ee22b84742ecdc36dc6d166ea1ca8ff7"
+    },
+    "library": {
+      "path": "target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+      "sha256": "a43dc7eb7431a8f17f5d8d256acb97da6e6394970c399f84dcc666075315ef0e"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-capture-stage4/lifetime-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-capture-stage4/lifetime-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/lifetime",
+          "--cfg",
+          "compile_fail_reuse"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-capture-stage4/lifetime-refusal.log",
+        "sha256": "2d34c3a7ef74993380c6ae2a79de5e4e6b17e51db4630dae516bd713f156684e"
+      }
+    ],
+    "result": "Positive production-trait borrow compiles/runs; retained immutable decision borrow across planner mutation is refused with E0502."
+  },
+  "capture_authority": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/capture_authority.rs",
+      "sha256": "71392463238e3141ae65a48811e788c9de8cb09348e17c17b85a7a8a51ee9b01"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-capture-stage4/authority-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-capture-stage4/authority-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-capture-stage4/authority",
+          "--cfg",
+          "compile_fail_capture"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-capture-stage4/authority-refusal.log",
+        "sha256": "bd1c20387c03fea031b1e6590f4e5948b7acbb5829ce07f69247e0b62e9936c5"
+      }
+    ],
+    "result": "Planner capture authority compiles/runs; consumer ResourceIo cannot acquire it (E0599). Runtime boundary/ceiling checks are separately exercised by capture_boundary."
+  },
+  "miri": {
+    "passed": true,
+    "toolchain": "nightly-2026-05-04",
+    "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+    "cases": [
+      {
+        "target": "contracts",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "00-contracts-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/00-contracts-seed0.log",
+          "sha256": "1f460d9c9d5baf18fce2bdec638bfd56b3a47f49bfee6860bce7b789b61fa8cd"
+        }
+      },
+      {
+        "target": "planning_graph",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "01-planning_graph-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/01-planning_graph-seed0.log",
+          "sha256": "fd655b49eeca30812dacf244f4d8705d35b9a77794af975c240ffb6791bab3c3"
+        }
+      },
+      {
+        "target": "planner_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 9,
+        "log": "02-planner_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/02-planner_execution-seed0.log",
+          "sha256": "d11174478daca138dac466ea0f08bcaa66ed406725aec13c900c8ca31c6c910c"
+        }
+      },
+      {
+        "target": "resource_render",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "03-resource_render-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/03-resource_render-seed0.log",
+          "sha256": "eedaab40a2eeff949a371d7fd2ae1d8eba967a2ab4bd70284f399eb60a6e5f76"
+        }
+      },
+      {
+        "target": "resource_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "04-resource_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/04-resource_index-seed0.log",
+          "sha256": "5680c74820e8335f9a0056c3a5620b84165b26a727e4afdc357d52155790ddc9"
+        }
+      },
+      {
+        "target": "midi_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "05-midi_state-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/05-midi_state-seed0.log",
+          "sha256": "41bb2afb59ae5bd9c5d2af1658c4ae6f6d413d6f2a364cee18ce23ae63934b33"
+        }
+      },
+      {
+        "target": "midi_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "06-midi_index-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/06-midi_index-seed0.log",
+          "sha256": "76ab3d937711e3603f2060a7b1e6650c0854e0ecec2abcc6603efa9e01ee7381"
+        }
+      },
+      {
+        "target": "typed_schedule",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "07-typed_schedule-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/07-typed_schedule-seed0.log",
+          "sha256": "25292e831b853866e0093404484208ebc7742ec31c8a5e487f4db198f0b86dbb"
+        }
+      },
+      {
+        "target": "typed_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 11,
+        "log": "08-typed_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/08-typed_execution-seed0.log",
+          "sha256": "8efa5a093ed72d4d051d105062cbd9fcaaa41215e135f5a5973bac4c1c3e53ba"
+        }
+      },
+      {
+        "target": "wire_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "09-wire_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/09-wire_properties-seed0.log",
+          "sha256": "6ecc87f6c150c222f0e4ee0ec4fe405d869e42e2411c2d1b0baed1f33288bb77"
+        }
+      },
+      {
+        "target": "resource_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "10-resource_properties-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/10-resource_properties-seed0.log",
+          "sha256": "6e0033e79df301887da0b792eaa18f3da60acc8c6c8c58157f65040bb8dcfc21"
+        }
+      },
+      {
+        "target": "mixed_stress",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "11-mixed_stress-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/11-mixed_stress-seed0.log",
+          "sha256": "ea9cbcaa36db41a451374f3b2c89cb685028e0a31e5eec409eb9e0f848781fb0"
+        }
+      },
+      {
+        "target": "capture",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "12-capture-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/12-capture-seed0.log",
+          "sha256": "572ded259782311b180e1f8f55359905e152ef0233d955eb1938b130a2e637db"
+        }
+      },
+      {
+        "target": "capture_groups",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "13-capture_groups-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/13-capture_groups-seed0.log",
+          "sha256": "902b044be0154d6a1a6ee218b531d728da9d65bc72dba9d275317a88b15d2d77"
+        }
+      },
+      {
+        "target": "capture_group_intervals",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "14-capture_group_intervals-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/14-capture_group_intervals-seed0.log",
+          "sha256": "f33664d7c40b7ec0f64363559c75b7adb67dcb158f70511f4589a5db1ecc8707"
+        }
+      },
+      {
+        "target": "capture_group_planner",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "15-capture_group_planner-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/15-capture_group_planner-seed0.log",
+          "sha256": "844ad2e4c58c7a7067815df7c2d0bff47841182d243733e7d07c9d1f3fc7f4bc"
+        }
+      },
+      {
+        "target": "capture_boundary",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "16-capture_boundary-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/16-capture_boundary-seed0.log",
+          "sha256": "c894f7ee9ea16ea54b0e5f58ddffbf0b62bd5df827a64da986205108dde7567e"
+        }
+      },
+      {
+        "target": "host_processor",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "17-host_processor-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/17-host_processor-seed0.log",
+          "sha256": "230123bff8202081254d90367abff2a55ee036ecdb1c7f63c897530e6dabd466"
+        }
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "--",
+          "--skip",
+          "deterministic_admission_model",
+          "--skip",
+          "cancellation_flag_model"
+        ],
+        "seed": 0,
+        "passed": 9,
+        "log": "18-lifecycle-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/18-lifecycle-seed0.log",
+          "sha256": "37647bd61a9102629ac8826ddeef198e73d3feb79a6dc1b954f01bc8e31ae0f3"
+        }
+      },
+      {
+        "target": "resource_execution",
+        "arguments": [
+          "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "19-resource_execution-seed0.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/19-resource_execution-seed0.log",
+          "sha256": "da10aa9f23e79dd2e98d87331b9e153581553913ea8c4596278d440848995f9a"
+        }
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 1,
+        "passed": 1,
+        "log": "20-lifecycle-seed1.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/20-lifecycle-seed1.log",
+          "sha256": "3748027cc18af473a29faced9e0fc0624a1c1e289777e56fd8636ed9c3c67332"
+        }
+      },
+      {
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 2,
+        "passed": 1,
+        "log": "21-lifecycle-seed2.log",
+        "artifact": {
+          "path": "target/loop-layer-capture-stage4/miri/21-lifecycle-seed2.log",
+          "sha256": "cf42e5314fbc880cf42db00b26253e1628b13f1eda5d8f9841260512de640ca2"
+        }
+      }
+    ],
+    "limitations": [
+      "Not a whole-workspace or whole-suite Miri claim.",
+      "Loom's generator/FFI model runs natively, not under Miri.",
+      "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+      "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+    ]
+  },
+  "miri_command": "nix develop --command bash -c 'export RUSTUP_HOME=\"$HOME/.cache/rt-runtime-miri-rustup\"; python3 scripts/run_rt_runtime_miri.py'",
+  "receipt_model": {
+    "seed": "0xa36b20472f5881d9",
+    "native_and_wasm_steps": 8192,
+    "miri_steps": 64,
+    "model": "Independent three-slot state/terminal FIFO model; compares delivery, completion, cancellation, credit snapshots, lane reservations, and complete draining back to baseline. Oracle storage is outside heap guards."
+  },
+  "midi_state_model": {
+    "seed": "0xad473b29385cc291",
+    "operations": 4096,
+    "miri_workload": "same full workload",
+    "oracle": "Independent ordered map of keys/held flags and separate channel pedal/pitch arrays, compared across all channels/keys after every 64 operations; targeted pressure/program/hold/reset/malformed cases supplement it."
+  },
+  "midi_index_oracle": {
+    "events": 273,
+    "queried_frames": 81,
+    "duration": 80,
+    "checkpoint_span": 8,
+    "method": "Linear event boundaries plus independent ordered map for notes/held flags, pedal state and program; equal-time bursts and a 257-byte SysEx span pages. Full workload is retained under Miri. Separate cases cover capture prefixes, exhaustion, rollback, stale/foreign scopes, reuse, empty and u64::MAX duration."
+  },
+  "capture_cases": {
+    "native_wasm_miri": "Same complete workload for all twelve new group/boundary/planner tests. Three 16-frame content partitions; three 32-frame runtime partitions with exhaustion changing sample 24; 32 prepare/cancel reuse cycles; saturated lifecycle credits; immutable prefixes; stale scopes/take/interval sequences; producer-contract faults."
+  },
+  "initial_failures": [
+    {
+      "artifact": {
+        "path": "target/loop-layer-capture-stage4/lifecycle-first.log",
+        "sha256": "5ba7fde2d8d2254c776f0b47e4680bfb61e127df83b5dc2c38203395cae7ce96"
+      },
+      "reason": "Test constructor needed MidiBuffer::new(...).unwrap(); corrected the test type."
+    },
+    {
+      "artifact": {
+        "path": "target/loop-layer-capture-stage4/lifecycle.log",
+        "sha256": "009b6edcb6e2faaca027527f6b8041880a0f4be9c2ca24817aabb136e5b1caa3"
+      },
+      "reason": "Test Config required transfer_bytes >= page_bytes; changed allowance and consumption together to 16 bytes, retaining zero available background credits."
+    },
+    {
+      "artifact": {
+        "path": "target/loop-layer-capture-stage4/lifecycle-configured.log",
+        "sha256": "a6c484686c76e9bb1a7f148b5c3217b2293bde890f8cfdb46192b0017f0e9856"
+      },
+      "reason": "Two MIDI members need 448 declared staging bytes; corrected fixture preparation so the intended checkpoint-row refusal is reached. Assertions and workloads were retained."
+    }
+  ],
+  "host_reports": {
+    "result": {
+      "passed": true,
+      "reports": [
+        {
+          "bytes": 1703936,
+          "callbacks": 2601,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 332928,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 3308430490,
+          "mode": "offline",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 480331717,
+          "type": "stopped"
+        },
+        {
+          "bytes": 1703936,
+          "callbacks": 13444,
+          "cross_origin_isolated": false,
+          "decoder_fallback": true,
+          "finalBytes": 1703936,
+          "frames": 1720832,
+          "graph_hash": 487351092,
+          "independent_instances": true,
+          "max_copy": 1042,
+          "max_steps": 512,
+          "midi_events": 34,
+          "midi_hash": 4022855181,
+          "mode": "live",
+          "pressure": {
+            "continued_frames": 2048,
+            "delayed_lateness": 1984,
+            "duplicate_refusals": 1,
+            "held_credits": 5,
+            "oversized_refusals": 1
+          },
+          "sample_hash": 738985413,
+          "type": "stopped"
+        }
+      ],
+      "tools": {
+        "chrome": "Chromium 147.0.7727.137",
+        "chromedriver": "ChromeDriver 147.0.7727.137 (68ba233a543d25e75c30f1228dd3bafa2da96937-refs/tags/147.0.7727.137@{#0})"
+      },
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ],
+      "failure_canaries": [
+        {
+          "kind": "processor",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        },
+        {
+          "kind": "rust-heap",
+          "expected_failure_observed": true,
+          "exit_code": 1
+        }
+      ]
+    },
+    "native-debug-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "debug",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    },
+    "native-release-result": {
+      "passed": true,
+      "browser": "not run; replaying checked-in real-worklet evidence",
+      "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+      "profile": "release",
+      "native": [
+        {
+          "mode": "offline",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        },
+        {
+          "mode": "two-thread",
+          "quanta": 2601,
+          "frames": 332928,
+          "sample_hash": 480331717,
+          "midi_hash": 3308430490,
+          "midi_events": 34,
+          "graph_hash": 487351092,
+          "max_copy": 1042,
+          "max_steps": 512
+        }
+      ]
+    }
+  },
+  "journal": {
+    "bytes": 529292,
+    "sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+    "unchanged_historical_golden": true
+  },
+  "limitations": [
+    "Existing-runtime host regression is not loop-library AudioWorklet proof.",
+    "Additional group model/disconnect coverage, complete Stage 4 acceptance, restoration emission and loop-domain adaptation remain pending."
+  ]
+}

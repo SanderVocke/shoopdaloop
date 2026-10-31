@@ -1,0 +1,963 @@
+{
+  "scope": "Stage 6 fixed-graph facade timing-topology activation; implementation and broad gates verified, complete stage-level Miri pending.",
+  "base_commit": "9bab9ddfdc034af6e60621c7e2e44a3895074858",
+  "source_files": 104,
+  "broad_gates": 25,
+  "runtime_view_lifetime": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+      "sha256": "8d3523ab34534c329392c0b129ccbe51f7508a8cfd73fecbd772c5cbfa2e62fb"
+    },
+    "library": {
+      "path": "target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+      "sha256": "82358aa441cc5b9f58ab9cb005bbf596ff74e18abfa68a5a07ffb6b96a2874c7"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/lifetime-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/lifetime"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/lifetime-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/runtime_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/lifetime",
+          "--cfg",
+          "compile_fail_reuse"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/lifetime-refusal.log",
+        "sha256": "2d34c3a7ef74993380c6ae2a79de5e4e6b17e51db4630dae516bd713f156684e"
+      }
+    ]
+  },
+  "capture_authority": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/capture_authority.rs",
+      "sha256": "71392463238e3141ae65a48811e788c9de8cb09348e17c17b85a7a8a51ee9b01"
+    },
+    "library": {
+      "path": "target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+      "sha256": "82358aa441cc5b9f58ab9cb005bbf596ff74e18abfa68a5a07ffb6b96a2874c7"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/authority-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/authority"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/authority-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/capture_authority.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "rt_runtime=/home/sander/dev/shoopdaloop/target/debug/deps/librt_runtime-1ba50cef277d176f.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/authority",
+          "--cfg",
+          "compile_fail_capture"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/authority-refusal.log",
+        "sha256": "bd1c20387c03fea031b1e6590f4e5948b7acbb5829ce07f69247e0b62e9936c5"
+      }
+    ]
+  },
+  "topology_view_lifetime": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/topology_view_lifetime.rs",
+      "sha256": "822a8fd9931a3d9a6edd9239f2bdc31834896cf694081f0fbd452fb4f03d497e"
+    },
+    "library": {
+      "path": "target/debug/libshoop_loop_engine.rlib",
+      "sha256": "9531e53e47c32cdc8b5f4c6d39665873279aca075f4e71970aee996073c82e32"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/topology-views"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/views-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/topology-views"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/views-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/topology-views",
+          "--cfg",
+          "compile_fail_program"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/views-program-refusal.log",
+        "sha256": "79e65e021a7d4c3b9bad727d6174308c66f8dde0950e4538ceb46e03ff20ca77"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/topology-views",
+          "--cfg",
+          "compile_fail_target"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/views-target-refusal.log",
+        "sha256": "c1a7de118371fbde18e2f4b709f0b3649fe2063bd2fd56acb9661df057e429e9"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_view_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/topology-views",
+          "--cfg",
+          "compile_fail_component"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/views-component-refusal.log",
+        "sha256": "fef82d1e4cec09fc3bc75c8d108c263ae03f4c1aaaf74361445c0135823ad6aa"
+      }
+    ]
+  },
+  "staging_lifetime": {
+    "source": {
+      "path": "docs/loop_layer/prototypes/topology_staging_lifetime.rs",
+      "sha256": "c257ce7be6c11983c60e9df4f460cd3b9a8d98c7920c0a2cfb6daad0f51684ab"
+    },
+    "library": {
+      "path": "target/debug/libshoop_loop_engine.rlib",
+      "sha256": "9531e53e47c32cdc8b5f4c6d39665873279aca075f4e71970aee996073c82e32"
+    },
+    "commands": [
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_staging_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/staging-views"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/staging-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/staging-views"
+        ],
+        "exit_code": 0,
+        "path": "target/loop-layer-facade-topology-stage6/staging-run.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_staging_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/staging-views",
+          "--cfg",
+          "compile_fail_cancel"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/staging-cancel-refusal.log",
+        "sha256": "8376aa8860faa8f8e35ede47d43956ffc0091203deca6bdaf08c7d1220fb262c"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_staging_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/staging-views",
+          "--cfg",
+          "compile_fail_take"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/staging-take-refusal.log",
+        "sha256": "96a5773a5bc33d2f7286346ae5e7256607aa80e7c1844edd7d2122582190748e"
+      },
+      {
+        "command": [
+          "rustc",
+          "--edition",
+          "2021",
+          "-D",
+          "warnings",
+          "docs/loop_layer/prototypes/topology_staging_lifetime.rs",
+          "-L",
+          "dependency=target/debug/deps",
+          "--extern",
+          "shoop_loop_engine=/home/sander/dev/shoopdaloop/target/debug/libshoop_loop_engine.rlib",
+          "-o",
+          "/home/sander/dev/shoopdaloop/target/loop-layer-facade-topology-stage6/staging-views",
+          "--cfg",
+          "compile_fail_recycle"
+        ],
+        "exit_code": 1,
+        "path": "target/loop-layer-facade-topology-stage6/staging-recycle-refusal.log",
+        "sha256": "a2b452e3d25aa86519bab45bb34af3108ed3f9434d9df6a5032897f6dfacee6e"
+      }
+    ]
+  },
+  "miri": {
+    "status": "interrupted",
+    "completed_executions": 171,
+    "runtime_executions": 119,
+    "loop_executions": 52,
+    "registered_executions": 178,
+    "partial_record": {
+      "path": "target/loop-layer-facade-topology-stage6/miri-interrupted/partial.json",
+      "sha256": "b4b62432a5ae20b2acbf285b32fa04322be1952d84f3499023e5869261fb8d03"
+    },
+    "completed_cases": [
+      {
+        "package": "rt_runtime",
+        "target": "contracts",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "00-contracts-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planning_graph",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "01-planning_graph-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "planner_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 9,
+        "log": "02-planner_execution-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "initial_graph",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "03-initial_graph-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_render",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "04-resource_render-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "05-resource_index-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "06-midi_state-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_restore_state",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "07-midi_restore_state-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "midi_index",
+        "arguments": [],
+        "seed": 0,
+        "passed": 8,
+        "log": "08-midi_index-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_schedule",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "09-typed_schedule-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "typed_execution",
+        "arguments": [],
+        "seed": 0,
+        "passed": 12,
+        "log": "10-typed_execution-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "wire_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "11-wire_properties-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_properties",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "12-resource_properties-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "mixed_stress",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "13-mixed_stress-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "14-capture-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_groups",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "15-capture_groups-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_intervals",
+        "arguments": [],
+        "seed": 0,
+        "passed": 5,
+        "log": "16-capture_group_intervals-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_prepared_interval",
+        "arguments": [],
+        "seed": 0,
+        "passed": 3,
+        "log": "17-capture_prepared_interval-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_planner",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "18-capture_group_planner-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_boundary",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "19-capture_boundary-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_model",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "20-capture_group_model-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "capture_group_disconnect",
+        "arguments": [],
+        "seed": 0,
+        "passed": 1,
+        "log": "21-capture_group_disconnect-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "host_processor",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "22-host_processor-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "--",
+          "--skip",
+          "deterministic_admission_model",
+          "--skip",
+          "cancellation_flag_model"
+        ],
+        "seed": 0,
+        "passed": 9,
+        "log": "23-lifecycle-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "resource_execution",
+        "arguments": [
+          "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "24-resource_execution-seed0.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 1,
+        "passed": 1,
+        "log": "25-lifecycle-seed1.log"
+      },
+      {
+        "package": "rt_runtime",
+        "target": "lifecycle",
+        "arguments": [
+          "two_thread_stress_keeps_completion_and_state_publication_coherent"
+        ],
+        "seed": 2,
+        "passed": 1,
+        "log": "26-lifecycle-seed2.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "27-audio-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "audio_ports",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "28-audio_ports-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "lib",
+        "arguments": [],
+        "seed": 0,
+        "passed": 2,
+        "log": "29-lib-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "topology_staging",
+        "arguments": [],
+        "seed": 0,
+        "passed": 7,
+        "log": "30-topology_staging-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime_topology",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "31-runtime_topology-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "32-media-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "media_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "33-media_decisions-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "capture_decisions",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "34-capture_decisions-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi_restore",
+        "arguments": [],
+        "seed": 0,
+        "passed": 4,
+        "log": "35-midi_restore-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "midi",
+        "arguments": [],
+        "seed": 0,
+        "passed": 6,
+        "log": "36-midi-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "37-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "38-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::stopped_input_initial_state_and_half_open_prefix_export_survive_immediate_play",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "39-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "40-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "41-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "42-runtime-seed0.log"
+      },
+      {
+        "package": "shoop_loop_engine",
+        "target": "runtime",
+        "arguments": [
+          "scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners",
+          "--",
+          "--exact"
+        ],
+        "seed": 0,
+        "passed": 1,
+        "log": "43-runtime-seed0.log"
+      }
+    ],
+    "source_sha256": {
+      "src/rust/rt_runtime/examples/bounded_runtime.rs": "8ae0537611e3d0cbf4cf87c56d19996bcda7070a0482c86c7373c8c884e43fdf",
+      "src/rust/rt_runtime/examples/gain_graph.rs": "858a526f005a98b2057861e9d3006ef726b04a62838a3b4a8787549e59a08f4d",
+      "src/rust/rt_runtime/examples/planned_gain.rs": "65ff31eee381287d7f448193d1fcd8e1990312b131f1f9259f361073ef53f090",
+      "src/rust/rt_runtime/src/buffer.rs": "103e498c1949fc937439a2aeb24766db5c02bfe7f576eff1fa6b57c86fea1276",
+      "src/rust/rt_runtime/src/config.rs": "36a5e2606c441ffdef022c664252ccc778b200cac01e65faa52a0f9682608372",
+      "src/rust/rt_runtime/src/error.rs": "8481d9e94b0c5b7c589af1cb91717ac51dda8594a1776038ae6b4e62bc8361b7",
+      "src/rust/rt_runtime/src/executor.rs": "f0475a843ba443f1a29781ba58c3281c9821bf7f282736bda2bff07cdb5e9e72",
+      "src/rust/rt_runtime/src/graph.rs": "23843bf513a92f8c7a9d948a5bd92ff7770b21fb6bcaff7d7890389167c5b9c7",
+      "src/rust/rt_runtime/src/ids.rs": "5bbe51f53d13fa1e50b74095dc5a6f2e6ce5a23dfa4bb38b4ee818ba841d00fd",
+      "src/rust/rt_runtime/src/lib.rs": "1ebadd03d83f182324f8e29912ffcdac376c1cadb1a73a9d03aa88216778db46",
+      "src/rust/rt_runtime/src/midi.rs": "dac779e7eb74eab481f7003474bf248facdd2c2bd544fdb1d16703a721fe3276",
+      "src/rust/rt_runtime/src/midi_state.rs": "26952858f8dfe1ec273eaa9ff8ee41146b227afb6ef8fe9b8b8ecfdc0fd6c51b",
+      "src/rust/rt_runtime/src/planner.rs": "4c9a4b955911ebc8abf4ab6eb3cc2fb3f239704c323f7924bdf887b0ea941b4c",
+      "src/rust/rt_runtime/src/processor.rs": "fcd582646ff2d54b6ca15a523f7506a0f476fcbd3c70ab8c5d31e480ad98b689",
+      "src/rust/rt_runtime/src/render.rs": "396ce1bd7be0a9c675f7c7b1b69534a877247cc1e8c9746c773650aca6ce3184",
+      "src/rust/rt_runtime/src/resource/boundary.rs": "560d7f39da583a8bc5cf6f0974bf49c233172830c1814c89c51031a93650b0b6",
+      "src/rust/rt_runtime/src/resource/capture.rs": "efc7bb0e11476e20ff95cbb50c708f1ef5065fb3aff4490791923b2ca265445f",
+      "src/rust/rt_runtime/src/resource/format.rs": "913c7106f9b196846fa0a24cad415fe889556ca4c0db1cd88d85ece1267f443f",
+      "src/rust/rt_runtime/src/resource/group/interval.rs": "117a51a46b551aca73992e4a2cfad613a9e054690c5cbdee8d416fcc83a10b22",
+      "src/rust/rt_runtime/src/resource/group.rs": "85a18b1de592e236e9dca2da2bf46d8a4063aff1d4e46a330e3ea33aec836952",
+      "src/rust/rt_runtime/src/resource/index.rs": "79b548226d1be7c216ed32b38690135891cabd30ab876a90cb13e067753a06dd",
+      "src/rust/rt_runtime/src/resource/midi_index.rs": "38d5d51d7346e1c139ba273d12ba2cd044ef5f28d038a5f3688f76ad2bc60fad",
+      "src/rust/rt_runtime/src/resource/midi_read.rs": "02fc6046e8ac9e31db311d375519fc810da52564c1a8e366fd244119e888cc55",
+      "src/rust/rt_runtime/src/resource/mod.rs": "f8bb943f50f4f835aa92fbfcaeaaf1fde269c09d0afd7811da053ed8384045ce",
+      "src/rust/rt_runtime/src/resource/render.rs": "d3ee49713db47daeab5681cc636ca90cd663215660b10c6ff9eee5ebf43322a5",
+      "src/rust/rt_runtime/src/resource/request.rs": "cdb048a653fc0c9d5659872198694fddd419e7bac720cd355dcf05f8ce3119a3",
+      "src/rust/rt_runtime/src/resource/tests.rs": "d88b636c66a6847d6b20387b5001617251ac98fc68d6bc414918ead2b04b5914",
+      "src/rust/rt_runtime/src/schedule.rs": "03e6632cd3ad8e0934634edb480c8de26aa9423468e2161b208fe62fef19ea75",
+      "src/rust/rt_runtime/src/transport.rs": "639a31dbf0e5c9365bd2fc699d2229e5857dc81160dabd377ddc77519ac59a8e",
+      "src/rust/rt_runtime/tests/capture.rs": "c0c4ef82f24d71793cf484147dc15efbe3ba12c77ec6cce21ea0f02b818313a9",
+      "src/rust/rt_runtime/tests/capture_boundary.rs": "aefb1c1dc5a4db8d5e87f5e8c0118f99f074ba0422aebc5f5c31ec448d3451fe",
+      "src/rust/rt_runtime/tests/capture_group_disconnect.rs": "251f293c6ac148d83935dede6de833af5096ccf6d87977612c021c6f8e87e13e",
+      "src/rust/rt_runtime/tests/capture_group_intervals.rs": "6b14c1bbede95f22d362a1003e43bf71c180c445cde02325b52f631800ac19a2",
+      "src/rust/rt_runtime/tests/capture_group_model.rs": "ddbf136c2cf40e0f6862c57358261f64a13a492e32ca3d7aaa7464d2abc7dfa0",
+      "src/rust/rt_runtime/tests/capture_group_planner.rs": "be958e4b5f38d8863e173333180954efadc01a55662733f42a487186316c7d86",
+      "src/rust/rt_runtime/tests/capture_groups.rs": "71533f2e47d303de47d45595ab700a9ddcbdfdc211c4076c6b1f1555408f2eb0",
+      "src/rust/rt_runtime/tests/capture_prepared_interval.rs": "c82740d9ade303d622b8b2fbdb26d834daf24e7305b70d98c61b2fe835be66cd",
+      "src/rust/rt_runtime/tests/contracts.rs": "772c18626db2c271d34b8a3630119ae078fd34df48379096d1344476a6415bca",
+      "src/rust/rt_runtime/tests/executor.rs": "6bf197264d1b0f5965e0d76337b2759b81405729687e2f2ddd6d91aa8e4c783d",
+      "src/rust/rt_runtime/tests/graph.rs": "2dd9ad680a71d6dfab5a8826ea75189195105394a9e4fc21cfd4536f11db22c7",
+      "src/rust/rt_runtime/tests/host_processor.rs": "c80d1e53025a9946eea3f8f56e8d08e6ca956e4f408526300d026d863e7511a6",
+      "src/rust/rt_runtime/tests/initial_graph.rs": "f3deeefc7d7e2ac66621d4d18b3415562e6216ebf1c19404d6308b9fa335b678",
+      "src/rust/rt_runtime/tests/lifecycle.rs": "535c0b6c1688f3d485bd5fc3fa4619f87ef28713a15b67bd95124c2e53187686",
+      "src/rust/rt_runtime/tests/midi.rs": "051be5f9aad49939375b6b8f7ff7543b5bd9c6636a84b3d2d241454ee01ed95b",
+      "src/rust/rt_runtime/tests/midi_index.rs": "ca56721761b8dd03ce9b48d9901dbd8184d8545ee35b715142bb79aa12f32d47",
+      "src/rust/rt_runtime/tests/midi_restore_state.rs": "86ea27b7970f74c31377020295d98de2314df4afa480192e8d0964fe22945560",
+      "src/rust/rt_runtime/tests/midi_state.rs": "878b023f9554b5d63ce43f4354218e12ba73e0c3f149947a576ebe430f0512e1",
+      "src/rust/rt_runtime/tests/mixed_stress.rs": "938659f7372373e2316d8c1f409ee32df7267f3544ef6f4b575f390a33db4d60",
+      "src/rust/rt_runtime/tests/planner_execution.rs": "fd3024b2d1a4b3f6152de360461a7e66adca562456207907fd8982e9556d35a2",
+      "src/rust/rt_runtime/tests/planning_graph.rs": "8a7d3f0ddd7b2d27d7979687b65a293810f6d511567898db9a03d7e7494ecc44",
+      "src/rust/rt_runtime/tests/prepared_ingress.rs": "76886e69770d8e0ac0903cb46e701c5a26badef7ce1a2716ad27b709332621ac",
+      "src/rust/rt_runtime/tests/resource_execution.rs": "ca883b5bad80a1221601f4c972ced5ddc0e7ac7a8b3c359dddd246cd82dea17f",
+      "src/rust/rt_runtime/tests/resource_index.rs": "9739afaee5a16a7c131b8546bb11ba58dc2dd070c040a14beab361a0f6b910de",
+      "src/rust/rt_runtime/tests/resource_properties.rs": "c7f801e898b8a6a2edae2bf80830f5c708cd1a9b79609ce3f7ab4e02a0d6a225",
+      "src/rust/rt_runtime/tests/resource_render.rs": "fc65e8486eab62d80a41d6abf95f8cfa392e955039e45ca8a6a8879955f90d73",
+      "src/rust/rt_runtime/tests/resources.rs": "ac91df131f77fba90244b4af73ae3543c847223f3ab2687820e8c9e76d449347",
+      "src/rust/rt_runtime/tests/schedule.rs": "378d34da2e46dd207784cedc2b9cc29cc643f443a3c2c8ead94b5d4c634c99ef",
+      "src/rust/rt_runtime/tests/support/mod.rs": "daa99afdcfe9f9ca484de11d286f918f112a4251485370f539b8f134fbb1b6bb",
+      "src/rust/rt_runtime/tests/typed_execution.rs": "3eddf5a3e429c04d07dd457804685840c99672b256935d888aeb4a3175886f95",
+      "src/rust/rt_runtime/tests/typed_schedule.rs": "2d05e8502dff4fbdbf1bfd5898c5e2a0a7facbe95464fd705155862f58799e0f",
+      "src/rust/rt_runtime/tests/wire_properties.rs": "6b3394e3c3cc3dfb2e1f55b9b8f8bce0c10a25854faba9dd8b1949e8f7cd8b21",
+      "src/rust/shoop_loop_engine/examples/coordinated_loop.rs": "890b44c39fc97f018ed0e9d8d8eabc29a902a7637ae7cf3b5cdec1f5be6c5c61",
+      "src/rust/shoop_loop_engine/src/audio.rs": "57c663a1fc0dc7b74e611b7b326bfcc81c279761a39d2d8587507add29b02074",
+      "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+      "src/rust/shoop_loop_engine/src/config.rs": "c4dd12d2bd0c46ee0a6b5f2ad6b5b5417b3f121be2fd04068728be6576d8f7e5",
+      "src/rust/shoop_loop_engine/src/decision.rs": "a7723310cdf674b97b378302ef37ba24f9821aa8c0ccf5435b8d14c0c26b7f28",
+      "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+      "src/rust/shoop_loop_engine/src/lib.rs": "b65822f5563c8fddf57508d05d173ffabfbfd752dd1d5d37549f52e01aff5dc6",
+      "src/rust/shoop_loop_engine/src/media.rs": "940f162823079a52852ad96e9914f22ca74f944988f45f240bed461c2be9dc10",
+      "src/rust/shoop_loop_engine/src/media_tests.rs": "b7b660dffcc10a1455ba6de241d98c8091d3efccc19708a3f42b295e874d90af",
+      "src/rust/shoop_loop_engine/src/midi.rs": "ea410585ad388cfdacdb06efc858e32f274e77f095f666706e352c0218b3052a",
+      "src/rust/shoop_loop_engine/src/midi_restore.rs": "5cccf7e16e8502213fab7a8a9fc50a2ae33083d6a4eb06931d752edf07653322",
+      "src/rust/shoop_loop_engine/src/program.rs": "f060fcf7cca4128ac929de77f39ea79f0260a2adc0c382f7b333f5599cbadd3e",
+      "src/rust/shoop_loop_engine/src/resolver.rs": "cdc19bbad4d2b4a3b107b91f6db74812b4daaffdbb9108ad67f6719f5b166ae9",
+      "src/rust/shoop_loop_engine/src/runtime/mod.rs": "1f32f19d93087badfad40cec98544e08a089aaea250a75bc1f8e8dcb3c9ac98c",
+      "src/rust/shoop_loop_engine/src/runtime/planner.rs": "d5a123b66b7fb087068a9ee9c5318c7f3572a70f704141f8b75d3d40a7841dc9",
+      "src/rust/shoop_loop_engine/src/runtime/processor.rs": "c72dd3a6ce3499ccef6b32bb64bc9afab8a1f0fc5a5c2b1571ba614b81da94ec",
+      "src/rust/shoop_loop_engine/src/runtime/topology.rs": "eefd006a7f6762446b19f36916e9bf72328336f126995a2a5e3ef85518557e2a",
+      "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+      "src/rust/shoop_loop_engine/src/topology/staging/codec.rs": "427822eaf6fbcb59aad0fd0a31e759f1a3a42c642d4eb2bbfdffef3255f6588c",
+      "src/rust/shoop_loop_engine/src/topology/staging/validate.rs": "c676c797b83862118ed39dbff1176ba187b3ed6382b7e9be3027398497adfe13",
+      "src/rust/shoop_loop_engine/src/topology/staging.rs": "1a7466962b5e9bf189260752b5cfc741e0d32c0ce437e11b44da60a81a241b5f",
+      "src/rust/shoop_loop_engine/src/topology.rs": "adcb993d9451b285457dba2ab82e39c72e6a98043ede52d278d05704b3d8c827",
+      "src/rust/shoop_loop_engine/tests/audio.rs": "e3b3ebb013eb8826de281d7400e770dba0ae45d6ed69d6955f6c4218724aed2f",
+      "src/rust/shoop_loop_engine/tests/audio_ports.rs": "f678823bd5a44f71179d5b09c0828ca7fb664bfdf091bb579cb11ce76c875d6e",
+      "src/rust/shoop_loop_engine/tests/capture_decisions.rs": "da13b551654a59a0e5c0c524d75ac9e31b6b4982106f6eba7a52a9b2760e6ac0",
+      "src/rust/shoop_loop_engine/tests/compiler.rs": "2cc171aca9484596283b8f3cf1ccb24d0fcc8b14d768bc02ccd102addc173f32",
+      "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+      "src/rust/shoop_loop_engine/tests/interloop.rs": "51ee21a23a33d24f6cc555a4787d83f1a943ba698868f7bcf8f592d31ef63b8d",
+      "src/rust/shoop_loop_engine/tests/media.rs": "08b48d6f1a6d9a90355394bf94c262f994cd01854073583d27a8dbef897d8640",
+      "src/rust/shoop_loop_engine/tests/media_decisions.rs": "6311ab6ab61bf0bbdee2b8d2c050510567f857d9423e8bf1352c173c97f4c52a",
+      "src/rust/shoop_loop_engine/tests/midi.rs": "32da82ff3723d5444e9d05e4004cab65b39d303b0b663d562d4935317db07053",
+      "src/rust/shoop_loop_engine/tests/midi_restore.rs": "beb5545b887d23272e0876d888ae421c8aebffe9cd934d0a609904bc3adba662",
+      "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+      "src/rust/shoop_loop_engine/tests/runtime.rs": "c6955bafd379de6a4b54241129f6ca03a8aa660845c0bd292adb3cdcc53234ee",
+      "src/rust/shoop_loop_engine/tests/runtime_topology.rs": "4c21835883e6b89620c49d2fbc786131d5de0067388ea46bc9df585d49a8171c",
+      "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+      "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a",
+      "src/rust/shoop_loop_engine/tests/support/runtime_scenarios.rs": "4ec543b8d7e6c4e6bfed1c28ac3f8741b6ebcb4817c06c34c9f37762c16b02cb",
+      "src/rust/shoop_loop_engine/tests/topology_staging.rs": "911f40155251ed102e362dfd221a8d310ddab1fb8d48d602e85498bddeb15004",
+      "src/rust/shoop_loop_engine/tests/topology_views.rs": "b643f75c49839a836bc9de3486391afa043885d400fa00a664b7d4cb32784e54",
+      "src/rust/shoop_wasm_test_support/src/heap.rs": "ec81a124e39654adfdbad32f33a6a6da37f67508b4683347ca1d4d5db1c61699",
+      "src/rust/shoop_wasm_test_support/src/lib.rs": "145f5df6f59cbb9a3ff9efd16cd2ed455c9e766b3f8166de9dce7a0667473b64",
+      "src/rust/shoop_wasm_test_support/tests/shared_integration.rs": "bce4e507a85432cfb9baa9f18287c7991370b63c2cbfeabb667e5970a043e605"
+    },
+    "artifact_sha256": {
+      "processes-before-cleanup.txt": "97bb8702c44fd20c9325246fd275055c78554e660064b2468a34cdedbb300664",
+      "00-contracts-seed0.log": "0e7f3c2029eb7222ecd13638e4f69b426ef641086a2077c7604b2455e51da09f",
+      "01-planning_graph-seed0.log": "fd655b49eeca30812dacf244f4d8705d35b9a77794af975c240ffb6791bab3c3",
+      "02-planner_execution-seed0.log": "af3c60174bff0741599dc8f4748b439a7e3b0ebbe37057990056f113105c911b",
+      "03-initial_graph-seed0.log": "9fd495714156c5a1c076d95a714705207a81ee19c834117b2fe7c4515946417d",
+      "04-resource_render-seed0.log": "e7f3b19c813831b801e84da4da0b64fcdde13de2a2844f41e115d79e873dcd8a",
+      "05-resource_index-seed0.log": "039c19c5f056f5d84cd1e558556b8736079ff170ad9e95a10de3a3cad67bec7d",
+      "06-midi_state-seed0.log": "9214ed1bbf5acb18a5551afaa39880df02c9159892a6c118745a3b263f3c25d5",
+      "07-midi_restore_state-seed0.log": "9981efcb154d9a0e5a099e39853e39b3f44e489e8da13f4a38808ecf8a0eea41",
+      "08-midi_index-seed0.log": "692c1b2ce7d5611a0d89ffb2b61fdf04baecbd1859e20f0db0d1bf2927597fa1",
+      "09-typed_schedule-seed0.log": "587c11deeddf7b226d6447f5297ff9816b0746932f626856a88017496cb0005a",
+      "10-typed_execution-seed0.log": "32339badbfcdae6da1b7c4b5af078274c382ee7548ca20f2bcee9276d77ef157",
+      "11-wire_properties-seed0.log": "caf6bff74bf98812739b62fa6bc467c0c60b6bb52d37f7aeb75cec15e9aa67c6",
+      "12-resource_properties-seed0.log": "fbf904ba244f5249e3e77c8938eda241882211dfe1d2a32f62078ef5d0d95846",
+      "13-mixed_stress-seed0.log": "35693bda18e1253e7f76742dbf86879ddc2347681972d6cbe2e74f002747a17a",
+      "14-capture-seed0.log": "572ded259782311b180e1f8f55359905e152ef0233d955eb1938b130a2e637db",
+      "15-capture_groups-seed0.log": "e95f1aa55603ab6f187564cc7e2cefea740ad478ff3771641e4f8b97c8ec33ba",
+      "16-capture_group_intervals-seed0.log": "b9a6f6f740f19e01d5e3f11b764e628c58e8da75f54494f549e343e4bcbf55a9",
+      "17-capture_prepared_interval-seed0.log": "0efcf2d78d0a913641bbc7a1ddbfc19dd4b1ba556977f2cafcfc89b9a53653dc",
+      "18-capture_group_planner-seed0.log": "dfdb88fa02f32910b54d748149001d2eaa46df02361b91d22714a1f13c0c250f",
+      "19-capture_boundary-seed0.log": "af82a1960b90139d8c2f168ca8c3a1d07c69c8ca653275c2a10b4840c79c5bec",
+      "20-capture_group_model-seed0.log": "9755dc3514d1a2e1b7df58310cf337d5493ecb1c65e46b4b45643957ac5b0612",
+      "21-capture_group_disconnect-seed0.log": "0c358ab5f37f8e587d6908bdb6b5a711b715d2863a3094e730fcd29fc32af448",
+      "22-host_processor-seed0.log": "230123bff8202081254d90367abff2a55ee036ecdb1c7f63c897530e6dabd466",
+      "23-lifecycle-seed0.log": "37647bd61a9102629ac8826ddeef198e73d3feb79a6dc1b954f01bc8e31ae0f3",
+      "24-resource_execution-seed0.log": "b20cec2ee085568cb75ac8f74e851120335fcf2c4cb5b0f547ee472f7e30334e",
+      "25-lifecycle-seed1.log": "9ddac2c3e5e57cc53f613c07ecb88d5acb0829bbb072fd552b4119477a67cbc0",
+      "26-lifecycle-seed2.log": "3b688e94008d4e0a8b17fc79de3550c6dcec40cdfdf0ef3c7329ad20ab352ce3",
+      "27-audio-seed0.log": "61b80e6ef490db5b0e6f581834df81f8fd9fc01b5b6723b60aff8e811de07b52",
+      "28-audio_ports-seed0.log": "735f734a1c74851889404b0dde99a175caae5d2c6ece1682e4fe9533434f3b9b",
+      "29-lib-seed0.log": "885ed8e39285da0a11a7b19bf278f17fd4d30a34e86eada1a7085c939342f330",
+      "30-topology_staging-seed0.log": "588aedc79b4b8c9a23a0d3cfad21ce31da49f7419871b9175bde3638f33cc9bb",
+      "31-runtime_topology-seed0.log": "79b57035485e92c34c0fef11f25f00d8e6ecfb86bdf1c90af982009ee49b4b87",
+      "32-media-seed0.log": "970a2ccd52fb64b413977a0cd7b9a0e3deac3053e49dccc2a37f02ec9e4c9b85",
+      "33-media_decisions-seed0.log": "3872339f287cdcb16946cfdbe0cc9d4e6fe01e8261bc381d3f7648dbd5ac48f8",
+      "34-capture_decisions-seed0.log": "f34484b813df313b70d73eab7033f91cd867144e4cda1a8f4cf05bf3f93dbda1",
+      "35-midi_restore-seed0.log": "6f028790e8e1c19f93215e119d7afa84c02a6f7025b8d7be8049dc200aba37a2",
+      "36-midi-seed0.log": "93f1c782feb52c5473548220cbfc4c791c1d1e35c971a53374b4e93621684c75",
+      "37-runtime-seed0.log": "05cbf8d87b5592435d4c6bf72143df8e41681a1814f903577c11553bd1f76a90",
+      "38-runtime-seed0.log": "1db4ee4905782089cae864219db1de35759767cb63a42cfd2f6e76f625c77ca8",
+      "39-runtime-seed0.log": "78107aec2fc8f259a1e4967a37a40175856452f05476e8c75bc7e85c1583804b",
+      "40-runtime-seed0.log": "5ae51637a9c49b7767693db4825e09251ae63e615b2f3525c5a1e4236ca1acef",
+      "41-runtime-seed0.log": "9c4bf2d577c89f56634f5ab167da9f349aeff0f573b6152baa0516f51a79d6e5",
+      "42-runtime-seed0.log": "a616e5caeb1cf3b0504c54993e9567b7eb462d126befd7d4df90f377743694af",
+      "43-runtime-seed0.log": "1e175c7d07039d5d7e38f47d0f2aac8fa12c3686e62f00149aff6c35981524d7",
+      "driver.log": "79a248e561b5a39cf45ca450369bec6f19d23cb157c8cab221dc3b06646abf31",
+      "runner.py": "43bbd87dc981a0d3269939c34577eb83d95c0b37caa5dece0e0cd91b6aefdd94"
+    },
+    "scope": "Completed logs are partial evidence, not a full 178-execution pass. The six new facade cases and generic context case completed. Seven selected loop executions remain uncompleted/unreported. No whole-invocation wall duration is available. Consolidated Stage 6 Miri remains pending under the user-approved background/stage-level cadence."
+  },
+  "implementation": [
+    "Generic PlanContext/OperationContext expose authoritative active graph epoch and enclosing nonempty callback start. NoPlanner behavior remains unchanged; zero-frame callbacks do not process queued changes.",
+    "Opt-in Engine::prepare_with_staging and TopologySettings prepare receiver banks and full-capacity initial topology off-render. Default constructors keep staging disabled.",
+    "Copy typed begin/append/validate/status/cancel/activate/recycle operations use owning scheduled payload returns and reliable execution receipts. Non-payload operations reject unexpected bytes.",
+    "Record/validation work allowances reset only at a new callback start; errors conservatively consume the offered allowance. Explicit validation calls never wait for later ingress or refresh work at musical intervals.",
+    "Activation checks actual graph epoch, expected topology epoch and exact logical identities/kinds. Signal graph, role bindings, media ownership and selections are unchanged. Rejected candidates remain Ready. Changed running programs still refuse.",
+    "Displaced topology owners are retained in prepared slots; explicit recycle releases the candidate-bank credit without destroying storage. Prepared cancellation is recovery-safe; active configuration is not cancelled by that operation.",
+    "State/export cuts expose graph/topology epochs after same-frame settlement. Stop at F does not pre-settle a previously running program before an activation operation at F.",
+    "Explicit black-box writes pre-touch metadata and validator scratch, including subsequently cleared vectors; no allocator/paging/deadline guarantee is inferred."
+  ],
+  "tests": [
+    "Fixed-graph staged program change: failed running activation, stale graph/topology refusal, same-frame activation/play/query, held retired bank and recycling. Complete independent stereo samples, MIDI packets, journals, every observer-provided public State field, coherent cuts and retained export reads across whole/single/irregular partitions, reversed declarations and journals0/1/1024.",
+    "Two-record/three-step callback budgets remain shared across one-sample internal intervals and separate scheduled commands. Validation resumes with measured progress; recovery cancels a Ready owner with32 normal receipt slots stalled while128 automatic frames continue.",
+    "Foreign/stale stage identities, logical-generation incompatibility, malformed chunk syntax and semantic records, unexpected payloads and failed readiness leave the live clock/configuration intact.",
+    "Pre-delivery transport cancellation preserves a Ready candidate. Successful sync-source revalidation completes an already delivered u64::MAX countdown with MissingSync and exact requested/delivered/terminal frames.",
+    "Guarded idempotent stopped cleanup recovers Receiving/Validating/Ready/Failed/Taken-retired banks and all resource/media references.",
+    "Timing activation during monitored stereo/MIDI recording preserves the active take. Independent FX audio, complete MIDI (including repeated restoration originals), immutable prefix/full audio and MIDI bytes, durations/revisions/cuts and16-channel initial states pass across three partitions.",
+    "Generic context test proves operation/planning graph epochs and callback origins across internal intervals, graph replacement and a zero-frame callback."
+  ],
+  "host_golden": {
+    "compressed": {
+      "path": "tests/rt_runtime_host/data/offline.rtj.gz",
+      "sha256": "68bd149dc5cca7e899de913d98bf4bdf963eb3b4d30691bc81e14b22a485fc76"
+    },
+    "raw_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+    "unchanged": true
+  },
+  "retained_failures": [
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-first.log",
+      "sha256": "3dbb6d415f297c13a5870214425e32d2ed769b1524573ebe0d178fb3096114f7",
+      "classification": "Fixture compilation: content_revision field and owning ResourceCommand access corrected."
+    },
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-runtime.log",
+      "sha256": "d7c1eced06ecc2cc4bf5f29cf739692453b387dab998b7a3f17577f51d6f6354",
+      "classification": "Fixture admission refusal before richer diagnostic."
+    },
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-admission.log",
+      "sha256": "fedb7436ae30bb770bde1b416b73e01cbe23330c44324ea9d052d1e54a7fc10d",
+      "classification": "Payload Capacity: scheduler stride is capped by configured transfer_bytes; positive fixture64-byte budget did not cover the multi-record image."
+    },
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-payload.log",
+      "sha256": "d946093821789684ecfd30f923d441d30852487856c5f5781b3e3d1e4f5ead64",
+      "classification": "Observer oracle incorrectly summed an already cumulative dropped-event counter; exact per-frame journal assertions retained."
+    },
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-lifecycle.log",
+      "sha256": "b70bd795786313d346d924688134f83586336de56b5416a52a514a9fd73ae6c0",
+      "classification": "Fixture delivered_frame is Option<Frame>, corrected to Some."
+    },
+    {
+      "path": "target/loop-layer-facade-topology-stage6/focused-capture.log",
+      "sha256": "9fb58a3ecf354245efd00f0b4114d7054f2d07233bcc8455f91ef68379df8509",
+      "classification": "State::new is crate-private; reference now independently checks every public field without exposing private API."
+    }
+  ],
+  "notes": [
+    "Initial fixture failures are retained; intermediate pre-correction source trees were not archived.",
+    "Positive media fixture explicitly provisions128 pages,256 capture events, four128-event checkpoint rows and sufficient scheduled transfer storage for full image chunks and replayed restoration originals. No workload/guard/watchdog was reduced.",
+    "Broad gate ignored Nix SQLite-busy warning; all25 gates passed.",
+    "The interactive goal pause aborted Miri supervision. Remaining orphan process group2424461 was explicitly terminated; incomplete case in-memory output was not recovered."
+  ],
+  "limitations": [
+    "Stage6 remains incomplete. No general live graph/node/media-role-generation transaction or next-iteration-zero running program replacement.",
+    "Fixed-graph activation occurs at operation delivery before musical preview; a same-frame Stop alone does not satisfy the changed-program quiescence precondition.",
+    "Validation readiness is optional external preparation; it may require more explicit validate operations and is not a promise to activate before ready.",
+    "No actual loop AudioWorklet or final CI/review acceptance is supplied by the existing generic-host regressions.",
+    "No full178 Miri pass is claimed; completion is deferred to the applicable consolidated stage run, not automatically repeated for this smaller step."
+  ]
+}

@@ -1,0 +1,2033 @@
+diff --git a/DESIGN_RT_ENGINE.md b/DESIGN_RT_ENGINE.md
+index 14b208b3..45ac4d92 100644
+--- a/DESIGN_RT_ENGINE.md
++++ b/DESIGN_RT_ENGINE.md
+@@ -185,4 +185,41 @@ Pending musical requests retain generation-checked terminal receipts from the ru
+ 
+ Resource work is divided into fixed storage/owners, external admission, budgeted background maintenance, counted required rendering, and non-semantic diagnostics. Prepared version-scoped indexes and group capture reservations must make freeze-to-play immediate. Failed preflight may re-preview an uncommitted boundary only by adding a new latched group/activation failure, giving a finite structural progress argument rather than an arbitrary retry allowance. No request outcome, generation, or musical event is published twice across previews. Required rendering cannot consume a throttled background-copy quota.
+ 
+-The loop layer's precise pulse/conflict/termination model belongs in `docs/loop_layer/SEMANTICS.md`, not the generic executor. The generic planner lifecycle and typed receipt implementation now have guarded native/Wasm tests, selected Miri coverage, a production-trait lifetime proof, and existing-host regression evidence. Indexed resources and prepared capture transactions now have dedicated APIs and focused tests, with milestone evidence recorded separately. Complete group ownership validation, the loop adapter, and a real loop AudioWorklet remain later-stage requirements; generic fixture regression is not evidence for those features.
++The loop layer's precise pulse/conflict/termination model belongs in `docs/loop_layer/SEMANTICS.md`, not the generic executor. The generic planner lifecycle and typed receipt implementation now have guarded native/Wasm tests, selected Miri coverage, a production-trait lifetime proof, and existing-host regression evidence. Indexed resources and prepared capture transactions now have dedicated APIs and focused tests, with milestone evidence recorded separately. Subsequent Stage4–5 evidence verifies group ownership and the coordinated loop adapter; the independent actual loop AudioWorklet remains required. Generic fixture regression is not evidence for that host.
++
++### Stage-6 validated graph banks and activation permits
++
++A planner cannot safely publish a domain change and then attempt an ordinary
++fallible graph commit. The generic extension instead separates owning admission
++from activation authority. Opt-in fixed slots retain fully validated graph owners
++at a recorded runtime epoch; scope/generation IDs identify each admitted attempt.
++The existing callback-wide validator allowance applies, and rejected or released
++owners return through existing command completion credits.
++
++`GraphAccess` in operation/planning contexts lends an exclusive `GraphActivation`
++permit only after readiness, epoch/exhaustion, storage and pending MIDI checks.
++The planner performs all fallible domain work first. It may then publish its
++preflighted state and consume the permit for an infallible metadata/epoch swap,
++retaining the displaced owner. Dropping the permit changes nothing; it does not
++undo domain mutations. Views cannot cross activation or escape the callback, and
++outside code cannot construct authority. No loop concepts enter the generic API.
++
++A planning-time change cannot remove a node with already-delivered MIDI waiting
++in its injection buffer: explicit Busy refusal preserves that frame's execution
++instead of dropping the packet or replaying it when the node later returns.
++Operation-time activation precedes MIDI delivery under existing scheduler order;
++a subsequently missing target receives InvalidId. Recovery operation contexts
++cannot activate. This does not provide domain-specific note or role cleanup.
++
++Plan accounting includes vector capacity, not just populated rows. Checked stage
++budgets conservatively cover all retained candidates plus one compatible active
++owner. Staging never enlarges descriptor storage; compiler temporaries and command
++owners remain separate preparation costs. The ownership swap is constant work;
++preflight's prepared node/input-port scan is finite, not a deadline guarantee.
++
++See `src/rust/rt_runtime/docs/graph-activation.md` and
++`docs/loop_layer/evidence/graph-activation-stage6{,-provenance}.json`. Guarded
++native/Wasm scenarios, generation/epoch limits, lifetime refusals and legacy
++NoPlanner/worklet regressions pass. New Miri coverage is queued for consolidated
++Stage6 verification. General loop graph/role-generation/media transactions and
++the independent loop hosts remain incomplete.
+diff --git a/PLAN_LOOP_LAYER.md b/PLAN_LOOP_LAYER.md
+index 69653a7a..2a3af340 100644
+--- a/PLAN_LOOP_LAYER.md
++++ b/PLAN_LOOP_LAYER.md
+@@ -90,7 +90,7 @@ or final delivery requirements.
+ 1. Evolve `rt_runtime` to support generic planner-led interval execution, typed domain-operation delivery, prepared decision/observation storage, and resource access suitable for sample-exact looping.
+ 2. Implement `src/rust/shoop_loop_engine` as a portable library containing one authoritative loop/composite timeline resolver and separate audio/MIDI render operations.
+ 3. Prove coordinated recording, playback, inter-loop triggering, and prepared composite execution in native and actual non-shared-memory AudioWorklet hosts.
+-4. Update runtime API documentation, architecture documents, examples, audits, and validation evidence to describe the implemented contracts accurately.
++4. Prepare a complete documentation change set for the separate documentation worker's final pass, rather than editing the documentation in place. Keep executable examples, implementation audits and validation evidence accurate; final published documentation must still match the implemented contracts.
+ 
+ Here, “RT backend changes” means the runtime and its integration with the new loop library. Switching the production `shoop_backend`, `Session`, application protocol, or production worklet to this library is **not** part of this milestone.
+ 
+@@ -98,6 +98,61 @@ Here, “RT backend changes” means the runtime and its integration with the ne
+ 
+ **Excluded:** complete legacy API/behavior compatibility, in-place overdub/replacing modes, prerecord/preplay and latency compensation, full dry/wet application-mode policy, track/scene/UI integration, persistence/undo/scripting execution, plugin hosting, device adapters, signal feedback graphs, parallel DSP, resampling, MIDI 2.0, unlimited recording, shared-memory acceleration, and guaranteed callback deadlines. An ordinary gain/FX test node is sufficient to prove routing; no production plugin host is required.
+ 
++## Documentation change-set handoff — no in-place documentation edits
++
++The user is rewriting the documentation with a separate documentation worker.
++For all remaining implementation stages, including Stage 9, **do not edit the
++book, archived guides, README documentation or other authored documentation in
++place**. Instead, write what must change or be added under the new sibling folder
++`src/rust/rt_runtime/docs-changes-loop-layer/`. This overrides earlier instructions
++to directly update documentation; completed historical checklist entries remain
++historical. Do not revert existing edits or alter the user's concurrent drafts.
++Maintaining this implementation plan, test/evidence reports and operational
++verification ledgers is separate from rewriting documentation and remains required.
++
++The change set is an actionable handoff, not a second book or a collection of
++vague reminders. It must cover **all loop-layer-related documentation deltas**,
++including work already implemented in earlier stages, not just subsequent edits:
++
++- Read the current `src/rust/rt_runtime/docs/README.md`, its five-part/nineteen-
++  chapter structure and affected chapter contents, alongside relevant material in
++  `src/rust/rt_runtime/docs-previous/`. Both trees are read-only inputs for this
++  worker. Record the reviewed source revision and documentation baseline (file
++  paths and hashes for uncommitted drafts); recheck evolving drafts before handoff.
++- Add `docs-changes-loop-layer/README.md` as an index and coverage checklist. Map
++  every chapter and relevant archived guide to a change note, or explicitly record
++  that no loop-layer-related change is needed and why. Empty chapters are not
++  evidence of completeness: use the archived material and implemented APIs to
++  identify all required additions.
++- Mirror the book's `part-*` directories and numbered chapter filenames inside
++  `docs-changes-loop-layer/` for chapter-specific notes. These files describe
++  changes for the corresponding destination chapter; do not write replacements
++  into `docs/` or backport new API prose into `docs-previous/`.
++- Each note identifies the destination and reviewed baseline; existing statements
++  to correct, remove or qualify; missing concepts/APIs to add; exact implemented
++  behavior and rationale; preparation/capacity formulas, ownership/lifetimes,
++  timing, failure and recovery implications; and relevant source symbols, tests,
++  examples and evidence. Supply concrete verified snippets/commands or example
++  requirements where useful, with expected results and verification status.
++  Distinguish shipped behavior from pending implementation and historical evidence.
++- Include cross-cutting notes for README/contents/navigation, API/rustdoc changes,
++  terminology and shared contracts, plus follow-up notes for repository runtime
++  documents, architecture documents, loop-library guides and fixture READMEs.
++  Name the intended destination files so the documentation worker can apply the
++  complete change set without rediscovering implementation decisions. Preserve
++  historical measurements and acceptance evidence rather than relabeling them.
++- Use `docs-previous/changing-parameters.md` as the eventual chapter-style reference:
++  task/example-led explanations, ordered API steps, result checks, and relevant
++  ownership/timing/failure details. The notes should give the documentation worker
++  the facts and verified examples needed for that style, not duplicate entire
++  finished chapters or copy obsolete relative links from archived guides.
++- Maintain and reconcile these notes as implementation and the user's drafts
++  evolve. Record gaps already covered by a newer draft to avoid duplicate or
++  conflicting instructions. The separate documentation worker applies the notes
++  in a **later final pass**; this worker verifies handoff coverage, not publication.
++  A complete change set does not mean the book has been updated. Final LL-A12
++  documentation acceptance remains pending until that pass is applied and checked.
++
+ ## Immutable acceptance criteria
+ 
+ | ID | Required result |
+@@ -215,7 +270,7 @@ Depends on: Stage 3 and Stage 1 resource/failure contracts. Required before loop
+ 
+ Milestone evidence: `docs/loop_layer/evidence/{accounting,index,midi-state,midi-index}-stage4.json` and the corresponding provenance records. Required data accounting, append-maintained scoped page indexing, fixed MIDI channel/key state, opt-in checkpoint rows, complete event/packet access, and bounded state positioning are verified. The MIDI-index milestone (`e64011b1`) passes 155 runtime tests per native profile, 151 per Wasm runtime, 2008 workspace tests (four existing canaries skipped), and 95 selected Miri executions, plus existing native/actual-worklet regressions. At that milestone, capture lifecycle/lease reservations, coordinated transactions, and observation integration remained incomplete. Renderer restoration emission remains Stage 5 work.
+ 
+-The subsequent prepared capture-transaction milestone implements exclusive writer claims, reserved version/MIDI-index/final-lease capacity, scoped take/interval tokens, all-member staging/commit, common-prefix freeze, and planner-only frame/ceiling-bound authority. See `docs/loop_layer/CAPTURE_TRANSACTIONS_DESIGN.md`, the crate's `docs/capture-groups.md`, and `docs/loop_layer/evidence/capture-stage4{,-provenance}.json`. Verified results: 167 runtime tests per native profile, 163 per Wasm runtime, 2020 workspace passes/four existing skips, 107 selected Miri executions, lifetime/authority compile-fail proofs, and existing native/actual-worklet regressions. That milestone left generated group ownership/content models and lifecycle-cut disconnect validation open.
++The subsequent prepared capture-transaction milestone implements exclusive writer claims, reserved version/MIDI-index/final-lease capacity, scoped take/interval tokens, all-member staging/commit, common-prefix freeze, and planner-only frame/ceiling-bound authority. See `docs/loop_layer/CAPTURE_TRANSACTIONS_DESIGN.md`, the historical crate guide now preserved at `src/rust/rt_runtime/docs-previous/capture-groups.md`, and `docs/loop_layer/evidence/capture-stage4{,-provenance}.json`. Verified results: 167 runtime tests per native profile, 163 per Wasm runtime, 2020 workspace passes/four existing skips, 107 selected Miri executions, lifetime/authority compile-fail proofs, and existing native/actual-worklet regressions. That milestone left generated group ownership/content models and lifecycle-cut disconnect validation open.
+ 
+ Stage 4 is now complete with `docs/loop_layer/evidence/capture-ownership-stage4{,-provenance}.json`: an independent 2,048-action model predicts page/version/lease/MIDI-row usage, currentness and immutable original content; fourteen real control-transport disconnect cuts verify queued recovery settlement, off-render owner destruction, and full explicit pool recovery. The full workloads pass unchanged under Miri and Wasm. Final Stage 4 results: 169 runtime tests per native profile, 165 per Wasm runtime, 2022 workspace passes/four existing skips, 109 selected Miri executions, lifetime/authority compile-fail proofs, and unchanged existing native/actual-worklet regressions. `docs/loop_layer/VALIDATION.md` maps every Stage 4 checklist item to evidence. This closes generic resource integration, not the Stage 5 loop renderers or later loop-host/end-to-end acceptance.
+ 
+@@ -269,6 +324,8 @@ The standalone owning-program slice now retains one candidate and normal request
+ 
+ The following fixed-graph facade slice now connects `ProgramActivate` to Ready receiver owners, reliable runtime/domain receipts, authoritative epochs and actual capture preflight. Failed/cancelled candidates return Ready; displaced owners stay in retirement banks until explicit recycle. Permanent quiescence enables stopped/faulted owner recovery without finishing unrendered intervals or rolling back published state. Five new facade cases and one core lifecycle case verify independent complete audio/MIDI/state/journals, immutable capture exports, family refusal, full normal domain slots/unread receipts, cancellation/generations, stale replacement, disconnect and post-publication faults. `facade-program-stage6{,-provenance}.json` records **loop131 per native profile and Node/Chromium,workspace2110/four existing skips,19 scoped gates and four production borrowing refusals**. The current Miri inventory is197=119runtime+78loop; no new interpreter invocation was launched for this smaller slice. General graph/role-generation transactions, broader mixed lifecycle stress and consolidated Stage6 verification remain open; the restricted controller cannot yet test an intervening live signal-graph change.
+ 
++The generic graph-publication prerequisite now provides opt-in validated owner banks, scoped stage IDs, reliable release and borrow-scoped activation permits in planner contexts. After all fallible domain preflight, the permit swaps graph/epoch/retirement infallibly. Actual vector capacities and aggregate retained storage are checked; pending injected MIDI prevents unsafe target removal, and recovery operations cannot activate. Seven guarded integration cases, one guarded transport case and one private exhaustion case cover exact audio/MIDI/domain cuts, ownership/stalls/cancellation, physical catalog generations, same-frame MIDI and128 NoPlanner owner exchanges. A reproduced recovery obstruction during held validation is fixed by one prepared parking slot, preserved validator progress and unchanged cancellation/FIFO semantics. The earlier broad snapshot (runtime187/loop131 native,183/131 Node/Chromium,workspace2118/four existing skips) is preserved in `target/loop-layer-graph-activation-stage6/first-broad/`. After the recovery correction, focused tests pass, but the refreshed broad batch was interrupted at the user's pause; final source-matched broad evidence and provenance remain pending. Do not treat that interrupted batch or its intended counts as a pass. The current Miri inventory is206=128runtime+78loop, registered but not newly interpreted. This is the generic prerequisite, not completed loop graph/role-generation/media integration; Stage6 remains open.
++
+ - [ ] Implement prepared topology/program activation and replacement with runtime graph/loop generation checks. Define and enforce a consistent activation boundary across view bindings, resources, and program state. Failed/stale candidates leave the current working configuration intact; displaced owners retire off-render.
+ - [ ] Implement primitive/composite stop, seek, nested activation, and program replacement using the Stage 1 precedence rules. Exercise active/pending/stopped states and same-frame primitive → composite → primitive interactions, not just standalone composite simulation.
+ - [ ] Publish coherent loop/composite state and capture metadata tagged with frame/program identity. Use bounded snapshot/telemetry mechanisms; no UI locks, mixed-time field reads, or retry-until-consistent loops. Snapshot refusal must not block musical execution.
+@@ -306,26 +363,40 @@ Depends on: Stages 3–7. No optimization may weaken LL-A3–LL-A10.
+ 
+ **Verification:** CI definitions and helper-script tests pass locally where applicable; new jobs fail on injected semantic/guard failures and missing tests/artifacts. Review dense-workload tails with recorded evidence rather than reducing required work. Identify any unavailable platform checks as pending until remote CI runs them.
+ 
+-### Stage 9 — Runtime documentation, examples, and final contract audit
++### Stage 9 — Documentation change-set handoff, examples, and final contract audit
++
++Depends on: implemented Stages 3–8; accumulate documentation change notes during those stages as well. Follow **Documentation change-set handoff — no in-place documentation edits** above. The separate documentation worker owns the later publication pass.
+ 
+-Depends on: implemented Stages 3–8; update affected API docs during those stages as well.
++- [ ] Create and maintain `src/rust/rt_runtime/docs-changes-loop-layer/README.md`, the chapter-specific change notes and cross-cutting/follow-up notes. Inventory all documentation impacts of Stages 0–8 and subsequent fixes against the current `docs/` and `docs-previous/`, including already-implemented changes. Record baseline identities, coverage, verified facts/examples, unresolved questions and explicit no-change findings.
++- [ ] Write change instructions for `src/rust/rt_runtime/README.md`, `src/rust/rt_runtime/docs/README.md`, and crate/module rustdoc, identifying API and navigation updates without editing those destinations. Do not recreate the moved flat guides.
++- [ ] Complete the chapter change notes using the topic-to-chapter map below and the example-led style reference. Resolve current filenames from the contents page; mirror those paths under `docs-changes-loop-layer/`. The table names eventual documentation-worker destinations, not files this worker should edit:
+ 
+-- [ ] Update `src/rust/rt_runtime/README.md`, crate/module rustdoc, and all crate-local guides: `docs/getting-started.md`, `integration.md`, `scheduling-midi.md`, `resources.md`, and `performance.md`. Describe planner/no-planner paths, dependency/view lifetimes, typed delivery, callback versus interval lifecycle, changed capacity formulas, media indexing/capture groups, separate work classes, failure/termination obligations, and shutdown. Keep these guides self-contained within the crate.
+-- [ ] Update repository runtime documents: `docs/rt_runtime/{CONTRACTS,RESOURCES,GUIDE,AUDIT,HOST_FIXTURE,PERFORMANCE,VALIDATION}.md`. Clearly distinguish current contracts from dated initial evidence; add new audit/evidence sections rather than falsifying earlier measurements or test runs. Retain `DONE_INITIAL_CRATE.md` unchanged.
+-- [ ] Update `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md` from proposed capability to implemented status only where demonstrated; preserve rationale and list remaining limitations. Cross-check consistency with `INTER_LOOP_PROCESSING.md` without silently changing its decision.
+-- [ ] Write the loop crate README and user-facing preparation, commands/composites, recording/MIDI, state/export, and host-integration guides. Finalize `docs/loop_layer/{SEMANTICS,RUNTIME_INTEGRATION,VALIDATION}.md` and add callback/ownership audit and performance reports with acceptance/evidence links.
+-- [ ] Add/run executable generic planner and coordinated-loop examples; update both standalone fixture READMEs and any changed wire/journal version descriptions. Check Markdown links, rustdoc/doctests, code snippets, advertised commands, and capacity arithmetic against the final code.
++  | Eventual destination under `src/rust/rt_runtime/docs/` | Required coverage in the corresponding change notes |
++  | --- | --- |
++  | `part-1-process-audio/` | **1–4:** runtime/host responsibilities, first graph, processor implementation, callback integration; preparation and borrowed buffers, callback safety, and the ordinary NoPlanner path. |
++  | `part-2-control-a-running-graph/` | **5–8:** commands/completions/ownership, routing/live edits, exact-sample parameters, MIDI processing/scheduling; admission versus execution, owning returns, timing, cancellation, overload and recovery. |
++  | `part-3-work-with-stored-media/` | **9–12:** loading/reading resources, recording/export, MIDI event seeking, MIDI state/checkpointed seeking; indexed access, immutable snapshots, capacities and failure behavior. |
++  | `part-4-coordinate-processors-and-changes/` | **13:** planner-led intervals, dependency/view lifetimes and observations. **14:** typed application operations and retained outcomes. **15:** staged graph validation, coordinated activation permits, epochs and retirement. **16:** coordinated resource recording, preflight, capture groups and coherent publication. |
++  | `part-5-configure-and-operate-the-runtime/` | **17:** capacity formulas, separate work classes, diagnostics and termination/failure obligations without an arbitrary internal-work cutoff. **18:** prepared allocation-free submission and bounded ingress. **19:** stop, cancellation, disconnect, retirement and off-render reclamation. |
++
++- [ ] Add follow-up change notes for `docs/rt_runtime/{CONTRACTS,RESOURCES,GUIDE,AUDIT,HOST_FIXTURE,PERFORMANCE,VALIDATION}.md`. Specify current-contract corrections and new audit/evidence references without falsifying earlier measurements or test runs. Retain `DONE_INITIAL_CRATE.md` unchanged.
++- [ ] Record required changes to `DESIGN_RT_ENGINE.md`, `PROPOSAL_RT_ENGINE.md`, and `PROPOSAL_LOOP_LAYER.md`: proposed-to-implemented transitions only where demonstrated, rationale, remaining limitations and consistency with `INTER_LOOP_PROCESSING.md`. Do not silently change its decision or rewrite these documents in place.
++- [ ] Record all required additions/corrections to the loop crate README and preparation, commands/composites, recording/MIDI, state/export and host-integration guides, and documentation follow-ups for `docs/loop_layer/{SEMANTICS,RUNTIME_INTEGRATION,VALIDATION}.md`. Continue producing actual callback/ownership audits, performance reports and acceptance evidence as implementation artifacts; link them from the change notes rather than substituting proposed prose for measured results.
++- [ ] Add/run executable generic planner and coordinated-loop examples. Record required changes to both standalone fixture READMEs and wire/journal descriptions. Verify snippets, commands, capacity arithmetic and referenced source/examples in the change set against final code. Specify correct links for the nested chapter destinations and the checks the documentation worker must run after applying the notes; do not edit chapter navigation here.
+ - [ ] Audit LL-A1–LL-A12 item by item. Record exact test names/artifacts, intentional legacy semantic differences, unsupported features, and evidence limits. No claim of compatibility, lossless unbounded MIDI/recording, browser hard real time, or measured performance outside the tested configuration.
++- [ ] Hand the complete indexed change set to the separate documentation worker for the later final pass. Track publication and final documentation checks separately; do not mark LL-A12 documentation acceptance complete merely because the notes are ready.
++
++**Handoff verification:** every affected chapter, archived-guide topic and cross-document follow-up is covered by actionable change notes or a justified no-change finding. Baselines, source/evidence references, snippets, commands and capacity arithmetic are checked; warning-denied rustdoc and executable examples pass where applicable. No implementation-worker rewrite of the protected documentation trees is required to complete this handoff.
+ 
+-**Verification:** warning-denied rustdoc and examples pass; documentation describes no stale blanket subdivision/render-I/O CPU limit and no unimplemented API as shipped. A reader can prepare, run, observe, and dispose the new layer from the public docs without studying the old backend.
++**Later documentation-worker verification:** after applying the notes, check the actual book/README/API documentation, Markdown navigation, rustdoc/doctests and examples against final code. The published docs must describe no stale blanket subdivision/render-I/O CPU limit or unimplemented API as shipped, and must support preparation, execution, observation and disposal without studying the old backend. Preserve archived guides, dated evidence and the user's chapter work. This final-pass result, not the handoff alone, satisfies the documentation part of LL-A12.
+ 
+ ### Stage 10 — Final end-to-end validation and delivery
+ 
+-Depends on: all prior stages. Completes LL-A12; do not stop at local success.
++Depends on: all prior stages, including the separate documentation worker's final pass and its verification. A completed Stage 9 change-set handoff alone does not satisfy this dependency. Completes LL-A12; do not stop at local success.
+ 
+ - [ ] Run the complete final gate set below from the final implementation tree, including existing application/browser smoke checks. Record actual discovered/passed/skipped counts and reasons; do not copy initial-crate totals or treat unexpected skips as success.
+ - [ ] Rerun the coordinated reference/partition suite, mixed saturation/exhaustion teardown, actual offline/live worklet, failure canaries, selected Miri, and release benchmarks. Launch final Miri in the background against the frozen final implementation snapshot while other gates run; collect and verify its complete result before final acceptance. Reconcile the Miri job ledger and refresh evidence invalidated by subsequent implementation changes. Verify artifacts contain real results and full logical resource/owner recovery, not just successful command exits.
+-- [ ] Commit each remaining meaningful milestone, documentation, plan progress, and evidence. Push the dedicated branch and open/update the PR with scope, architectural/API changes, semantic decisions, tests, limitations, and LL-A acceptance mapping. Do not merge without a separate request.
++- [ ] Commit each remaining meaningful milestone, documentation change notes, plan progress, and evidence; include the separately applied documentation final pass before final delivery. Push the dedicated branch and open/update the PR with scope, architectural/API changes, semantic decisions, tests, limitations, and LL-A acceptance mapping. Do not merge without a separate request.
+ - [ ] Watch required CI to green on the final PR head, including all native matrix cells, full Node/Chromium/application checks, actual worklet, ownership checks, and documentation/policy gates. Inspect/download representative artifacts; verify head SHA/run attempt and fixture hashes/counts. Fix failures, rerun behavioral gates, commit, and push as needed; never weaken a gate to obtain green status.
+ - [ ] Check PR reviews, inline comments, and check-run feedback for automated review. Repeatedly address applicable feedback, explain justified disagreements, and request reruns/re-review until the reviewer approves. If no automated reviewer is configured or available, record that explicitly; passing CI is not reviewer approval.
+ - [ ] Close the acceptance/evidence checklist and update this plan. After any final commit, verify CI for that new head; record final run/review links in the PR so evidence bookkeeping does not falsely attribute an older green run to newer code. Report the delivered PR/head, remaining limitations, and whether it is unmerged.
+diff --git a/docs/loop_layer/MIRI_JOBS.md b/docs/loop_layer/MIRI_JOBS.md
+index 2d258015..bf8cabac 100644
+--- a/docs/loop_layer/MIRI_JOBS.md
++++ b/docs/loop_layer/MIRI_JOBS.md
+@@ -18,8 +18,8 @@ Use [`scripts/run_rt_runtime_miri_jobs.py`](../../scripts/run_rt_runtime_miri_jo
+ for launch/status/collection; [MIRI_BACKGROUND.md](MIRI_BACKGROUND.md) documents the
+ commands, committed-snapshot requirement, Linux-only wrapper and failure handling.
+ No real background interpreter job has been launched for the subsequent smaller
+-program-probe, owning-transaction or facade-adapter steps. The current required
+-inventory is197=119runtime+78loop. The interrupted partial evidence remains unchanged.
++program-probe, owning-transaction, facade-adapter or generic graph-permit steps.
++The current required inventory is206=128runtime+78loop. The interrupted partial evidence remains unchanged.
+ 
+ ## Job record requirements
+ 
+@@ -51,6 +51,7 @@ launching a new job after every edit.
+ | Unpublished program-boundary probe prerequisite | Deferred to consolidated Stage6 run | Four new executions registered: one private library case and three `program_boundaries` cases; native/release/Node/Chromium/workspace gates pass | Include these and affected resolver regressions in the stage snapshot. Current selected inventory is182=119runtime+63loop, not a completed run |
+ | Standalone owning single-program transaction | Deferred to consolidated Stage6 run | Nine `program_changes` executions registered; native/release/Node/Chromium/workspace gates pass | Include the new owner/activation cases and affected resolver regressions in the stage snapshot. Current inventory is191=119runtime+72loop; no fresh interpreter pass is claimed |
+ | Fixed-graph facade owning program activation and permanent quiescence | Deferred to consolidated Stage6 run | Five new `runtime_topology` cases and one new `program_changes` case registered; native/release/Node/Chromium/workspace gates pass | Include all new and affected resolver/facade lifecycle cases. Current inventory is197=119runtime+78loop; no interpreter run for this slice |
++| Generic staged-graph activation capability | Deferred to consolidated Stage6 run | Seven guarded `graph_activation` cases, one guarded held-request recovery transport case and one exact private scope/generation/epoch case registered; both packages' native/Node/Chromium, workspace, generic hosts/canaries and lifetime proofs pass | Include new cases and affected executor/planner/graph/transport regressions. Current inventory is206=128runtime+78loop. Exact-filter Cargo/harness argument separation is checked by helper tests and a native mirror, not a Miri invocation |
+ | Final implementation Miri selection | Pending | Historical/milestone runs retain their original scope | Run and collect the complete required final selection against the final implementation snapshot; reconcile later changes and final-head CI |
+ 
+ The interrupted invocation used the working-tree candidate based on `9bab9ddf`,
+diff --git a/docs/loop_layer/TEST_EXECUTION_TIMES.md b/docs/loop_layer/TEST_EXECUTION_TIMES.md
+index f4bc033e..eef68ab2 100644
+--- a/docs/loop_layer/TEST_EXECUTION_TIMES.md
++++ b/docs/loop_layer/TEST_EXECUTION_TIMES.md
+@@ -234,6 +234,22 @@ the consolidated applicable stage run. No interpreter duration exists for this
+ slice. Standalone runtime/package-Wasm and generic host reruns are not included;
+ package Chromium remains distinct from the required actual loop AudioWorklet.
+ 
++## Generic graph activation prerequisite observation
++
++The final25 broad gates in `graph-activation-stage6.json` total **638.18 seconds**
++of summed monotonic command wall time on the same warm local Linux/Nix host.
++Native runtime/loop debug and release took10.14/14.86s; both-package Node235.52s,
++Chromium267.92s; workspace nextest52.61s; native host debug/release2.56/3.49s;
++actual generic-worklet regressions plus both canaries41.05s. The helper gate was
++refreshed after the exact-filter separator assertion was added (14 tests,1.02s).
++Borrow/authority prototypes and the native exact-filter mirror are separate from
++this25-gate sum. Earlier focused failure output remains retained.
++
++These are observed warm timings, not CI margin, cold-cache results or deadline
++thresholds. Eight new Miri executions bring the registered selection to205; they
++have no interpreter timing yet. Existing generic-host execution is not evidence
++for the still-required independent loop AudioWorklet.
++
+ ## Implications to consider when designing the strategy
+ 
+ 1. Focused native tests and cheap policies provide fast iteration feedback.
+diff --git a/docs/loop_layer/TOPOLOGY_ACTIVATION_DESIGN.md b/docs/loop_layer/TOPOLOGY_ACTIVATION_DESIGN.md
+index 8ce31c82..3cb8d77b 100644
+--- a/docs/loop_layer/TOPOLOGY_ACTIVATION_DESIGN.md
++++ b/docs/loop_layer/TOPOLOGY_ACTIVATION_DESIGN.md
+@@ -43,8 +43,8 @@ Rust layouts. The fixed-graph integration associates ready identities with relia
+ operation outcomes and authoritative graph/topology epochs. It prepares a
+ maximum-capacity initial owner and reserves a retirement slot before activation;
+ rejected candidates stay Ready and displaced owners await explicit recycling.
+-General graph/role-generation compatibility and facade integration of the
+-standalone iteration-zero transaction remain.
++The standalone iteration-zero transaction is now integrated with the fixed-graph
++facade. General graph/role-generation compatibility remains open.
+ 
+ Storage must be derived from total declared limits, not an accidental
+ programs × targets × maximum-segments expansion. Allocation/pre-touch belongs to
+@@ -100,11 +100,12 @@ working configuration. There must be one unambiguous activation cut across graph
+ resolver/program state and media selection; publishing one component before an
+ ordinary failure in another is not transactional activation.
+ 
+-Investigate an explicit generic prepared-graph activation capability or owning
+-bundle hook, rather than exposing unchecked facade access to `Control::submit`.
+-Any generic extension must remain independent of loop modes/program types and
+-preserve the existing NoPlanner path. Retired graph/topology/node owners must be
+-retained in prepared return/recycling storage and ultimately destroyed off-render.
++The generic prepared-graph capability below now supplies the graph half of this
++contract, rather than exposing unchecked facade access to `Control::submit`.
++It remains independent of loop modes/program types and preserves NoPlanner.
++The loop adapter must still preflight and coordinate its own topology/media/role
++changes. Retired graph/topology/node owners must remain in prepared return storage
++and ultimately be destroyed off-render.
+ 
+ Changing a logical loop generation must not leave consumers addressing the old
+ owner, inherit stale request targets, or invalidate external old-media exports.
+@@ -113,6 +114,51 @@ logical loop generation they currently serve. Required MIDI cleanup, input-state
+ continuity/reset, resource claims and initial media selection need explicit tests,
+ not an assumption that changing a decision ID is sufficient.
+ 
++## Implemented generic graph-bank and permit prerequisite
++
++`GraphRuntime::prepare_graph_staging` opts into fixed receiver-owner slots before
++rendering. Normal-lane `StageGraph` validates a prepared descriptor incrementally
++at an expected epoch, then returns a scoped StageId in its owning completion.
++Ready is not active. `ReleaseGraph` returns rejected/unneeded or displaced owners
++through existing transport credits; slot generations never wrap.
++
++Planner operation/planning contexts lend `GraphAccess`. Its exclusive permit
++rechecks readiness/current and validated epochs, next-epoch availability and
++retirement capacity before any domain publication. The domain completes every
++fallible preflight first, publishes its prepared state, and consumes the permit
++for an infallible graph/epoch swap. Dropping it leaves graph owners unchanged,
++not a rollback of arbitrary domain mutation. Actual vector capacities are counted;
++checked aggregate stage storage includes one compatible active owner. Returned
++plans retain their capacities; this API is not a graph wire materializer.
++
++Review identified another boundary precondition: a planning-time swap must not
++remove a node with a delivered but unconsumed MIDI injection. Otherwise the old
++buffer could survive until a future graph and replay at the wrong frame. The
++permit now refuses Busy before domain mutation; the old graph consumes that
++frame. Operation-time activation runs before MIDI delivery under existing
++scheduler order, so a later missing target fails InvalidId. A dedicated guarded
++case verifies both lifecycle orders and no replay when the node returns.
++
++Seven guarded integration cases, one guarded transport case and one private
++exhaustion/sizing case pass. Recovery stress reproduced a held normal validation
++request hiding the next callback's recovery lane. One fixed parking slot now
++preserves that owner while servicing eligible recovery; resumption retains its
++original cancellation observation and FIFO order. Unrelated completions no longer
++reset validator progress. One-step staging and legacy validation both finish under
++continuous recovery, with publication limits and owning returns intact.
++
++`graph-activation-stage6{,-provenance}.json` records runtime188/loop131 native,
++runtime184/loop131 Node/Chromium,workspace2119/four existing skips,25 broad gates,
++five new capability compile refusals and refreshed existing lifetime proofs.
++Generic native/actual-worklet regressions and canaries pass with unchanged golden
++semantics and fixed1,703,936-byte memory. Nine selected Miri executions are added
++for consolidated verification, not run separately.
++
++This resolves the generic graph publication prerequisite, not the general loop
++transaction. Logical/physical role generation, old-role MIDI cleanup, resource
++claims, retained old-generation exports and simultaneous loop/media activation
++still require facade preflight, publication and mixed-lifecycle tests.
++
+ ## Implemented unpublished program-cut prerequisite
+ 
+ `Resolver::probe_program_boundary` now shares normal input validation, shadow
+diff --git a/docs/loop_layer/VALIDATION.md b/docs/loop_layer/VALIDATION.md
+index 51f84663..4bb989a7 100644
+--- a/docs/loop_layer/VALIDATION.md
++++ b/docs/loop_layer/VALIDATION.md
+@@ -1439,3 +1439,115 @@ transactions, broader mixed stress and consolidated Stage6 verification remain
+ open. The restricted controller cannot yet exercise a real intervening live graph
+ change; its planning-time epoch recheck needs that later integrated case.
+ Independent loop hosts, final-head CI and review acceptance remain pending.
++
++## Stage 6 — Generic graph-bank and activation-permit prerequisite
++
++The generic runtime now separates validated graph ownership from publication.
++`prepare_graph_staging` allocates fixed owner slots before rendering; normal-lane
++`StageGraph` validates incrementally and returns a scoped StageId in the owning
++command completion. Ready candidates and Taken retirement slots retain exactly
++one graph owner, returned through `ReleaseGraph` and normal completion credits.
++NoPlanner and legacy commit/remove/install paths remain available.
++
++Planner contexts lend `GraphAccess`, whose exclusive permit preflights identity,
++current/validated epoch, next epoch, actual-capacity retirement budget and pending
++MIDI compatibility. The caller finishes all fallible domain work before publishing
++its state and consuming an infallible graph/epoch swap. Dropping the permit changes
++nothing. This is graph authority, not arbitrary domain rollback, role cleanup or
++processor/resource construction. Conservative aggregate preparation arithmetic and
++`PreparedPlan::storage_bytes` account for vector capacities rather than row counts.
++
++Review exposed a same-frame compatibility hazard: planning occurs after due MIDI
++injections, so removing an injected target could strand its buffer until a later
++graph. Preflight now refuses Busy and leaves the old graph to consume the packet.
++Operation-time activation precedes MIDI delivery under existing scheduler ordering;
++a subsequently missing target fails InvalidId. Recovery operation contexts cannot
++activate even if a synthetic planner over-classifies that operation as recovery-safe.
++
++Evidence: [`graph-activation-stage6.json`](evidence/graph-activation-stage6.json),
++[`graph-activation-stage6-provenance.json`](evidence/graph-activation-stage6-provenance.json),
++logs `target/loop-layer-graph-activation-stage6/`, and the
++[generic guide](../../src/rust/rt_runtime/docs-previous/graph-activation.md).
++
++Seven guarded integration cases verify:
++
++1. Complete independent audio, absolute MIDI and domain/epoch cuts: operation-time
++   and deferred activation7 across whole/single/irregular callbacks and reversed
++   declarations. Callback-end7 remains unpublished until a nonempty callback;
++   zero callbacks leave MIDI and epoch untouched. New routes/bindings and domain
++   values appear together, with correct delivered/actual result frames.
++2. Dropped/refused permits, wrong/foreign/stale IDs and epochs, busy owners,
++   overallocated candidate and displaced metadata, recovery refusal and stage
++   generation reuse preserve both owners and working output.
++3. One-step validation keeps the old graph running; malformed descriptors and
++   pre-dequeue cancellation return original owners without issuing new IDs.
++   Deferred cancellation and release-before-activation resolve without publication.
++   Continuous recovery is serviced while both staged and legacy validation retain
++   progress with one validation step per callback.
++4. All16 normal results remain unread while128 one-sample intervals execute;
++   independent recovery cannot force a graph swap. Rendering continues after
++   controller disappearance while ready/retired owners remain retained.
++5. Removing/reinstalling an inactive physical node changes catalog generation and
++   epoch, making a staged reference stale; its owner returns and revalidation
++   rejects the old generation, without changing active output.
++6. A delivered injected MIDI packet prevents planning-time removal, is consumed
++   once, and never replays after that node returns. The operation-before-MIDI case
++   instead rejects the missing target at delivery.
++7. NoPlanner stages/releases the same owner128 times, then uses legacy commit;
++   output and normal owning lifecycle remain intact.
++
++One private edge case verifies nonwrapping scope/generation/epoch exhaustion,
++aggregate-size rejection before allocation, initial activation without a displaced
++owner, and inert authority. The seven integration cases run heap/destructor guards;
++the private arithmetic/identity case is separate, not claimed heap-instrumented.
++
++A guarded transport case separately checks parking/resumption with one/two
++publication slots, cancelled recovery, late cancellation of an already-dequeued
++normal request, FIFO order, unread owning returns and off-render disconnected
++cleanup of current/parked/queued owners. Parking uses one fixed inline slot,
++creates no admission credit, and never rechecks the old cancellation observation.
++
++Fresh results: **runtime188/loop131 native per profile**, **runtime184/loop131 in
++Node and Chromium**, **2119 workspace passes/four existing skips**, **25 broad
++gates**,110 Rust source hashes and103 unchanged preceding sources. Tracing
++inventory203 closes at59 excluded/33 direct/111 indirect. Seven positive production
++prototypes and18 expected compile refusals pass, including five new graph authority
++checks: E0502 graph/candidate views, E0505 permit consumption, E0515 escaping
++borrowed authority, and E0624 private construction. Existing planner/resource/loop
++lifetime proofs were refreshed against the changed context schema.
++
++Generic native debug/release offline/two-thread and actual non-isolated browser
++host regressions pass. Offline hashes remain samples480331717/MIDI3308430490/
++graph487351092 for2601 callbacks/332928 frames/34 MIDI events. Offline/live memory
++remains1,703,936 bytes initial=final. Both processor and Rust-heap canaries fail as
++intended; the golden raw journal hash is unchanged. This remains generic-host
++regression evidence, not actual loop-host acceptance.
++
++`focused-expanded.log` retains one fixture-order failure: it assumed MIDI preceded
++a planner operation solely by submission sequence (observed sequence3 before2).
++The established scheduler orders planner operations first. The corrected case
++uses deferred planning activation to test already-delivered MIDI, and separately
++checks operation-time activation before injection. No assertion/workload was
++removed. The intermediate failing fixture source was not archived.
++
++Inspection also caught a missing Cargo/test-harness separator in the new exact Miri
++filter before any interpreter launch. The filter now includes `--`, a helper
++assertion checks all exact-filter separators, and a native mirror discovers/passes
++exactly one case. The helper gate was refreshed (14 tests); its earlier passing
++log is retained. Neither helper execution nor that native mirror is Miri evidence.
++
++The expanded recovery regression initially failed at `execution` because the
++second callback could not obtain a recovery result while normal validation held
++the transport's current slot. `recovery-pre-fix/` retains the failed log, tracked
++source patch against the recorded base, and both new Rust source files needed to
++reproduce it. The correction parks the normal owner before servicing the next
++callback's eligible recovery and preserves validation progress across unrelated
++completions. The unchanged expanded assertion then passes for staged and legacy
++validation. `first-broad/` preserves the preceding successful25-gate snapshot;
++all broad gates were repeated after this behavioral correction.
++
++Nine new selected executions bring the inventory to206=128runtime+78loop, still
++awaiting consolidated Stage6 Miri. Historical171/178 remains partial and cannot
++certify changed executor/planner inputs. General loop graph/role-generation/media
++transactions, broader mixed stress, independent loop hosts and final delivery
++remain open. No stage completion or deadline guarantee follows from this slice.
+diff --git a/docs/loop_layer/prototypes/runtime_view_lifetime.rs b/docs/loop_layer/prototypes/runtime_view_lifetime.rs
+index 76b5e365..88b2a081 100644
+--- a/docs/loop_layer/prototypes/runtime_view_lifetime.rs
++++ b/docs/loop_layer/prototypes/runtime_view_lifetime.rs
+@@ -29,6 +29,7 @@ fn main() {
+         &mut planner,
+         PlanContext {
+             graph_epoch: rt_runtime::Epoch(0),
++            graphs: rt_runtime::graph::activation::GraphAccess::disabled(),
+             callback_start: Frame(0),
+             frame: Frame(0),
+             ceiling: Frame(128),
+diff --git a/docs/rt_runtime/CONTRACTS.md b/docs/rt_runtime/CONTRACTS.md
+index 71306405..d0966c66 100644
+--- a/docs/rt_runtime/CONTRACTS.md
++++ b/docs/rt_runtime/CONTRACTS.md
+@@ -11,7 +11,7 @@ The initial table below records the delivered runtime's contract; `DONE_INITIAL_
+ | Clock | Unsigned 64-bit absolute sample frames, starting at zero. Nonzero successful blocks advance exactly by their frame count. Reject noncontiguous host positions or arithmetic overflow. Frame positions travel as plain data; no required 64-bit atomic or hidden lock-based fallback. |
+ | IDs | Typed slot plus nonzero generation. Validate both. Reuse increments generation with checked arithmetic; exhaust a slot rather than wrap. Sequence/epoch/revision exhaustion rejects new mutations; no silent ABA. |
+ | Graph | Typed DAG; mono audio ports can be grouped/routed as multichannel signals. Deterministic node/source order; sum fan-in without clipping. Missing input/output connections are silence/empty MIDI. Reject cycles, invalid ports, bad references, illegal aliasing, or capacity violations. |
+-| Transactions | Prepare/stage privately; expected-epoch/revision checked at commit. All reference/range/topological/alias validation finishes before activation. Swap a plan/resource handle at a block boundary; do not scan or destroy the displaced graph. Retained processor slots preserve state. |
++| Transactions | Prepare/stage privately; expected-epoch/revision checked at commit. All reference/range/topological/alias validation finishes before activation. Legacy plan/resource commits occur at callback boundaries. Opt-in validated graph permits can publish at operation/planning boundaries after domain preflight; retain the displaced graph without scanning or destroying it. Retained processor slots preserve state. |
+ | Scheduling | Absolute-frame parameter/MIDI operations. Queue submission does not promise scheduling. Render admission reserves future-event, split, and execution-result capacity before issuing an accepted scheduling result. The initial conservative outstanding limit is `min(scheduled_events, budgets.events, budgets.subranges - 1)`; unread results retain their slot. Apply on-time admitted events at exact frames; late arrivals apply at the next available frame with lateness reported. Reject excess work before acceptance. |
+ | Equal times | Stable source/port order, then monotonically increasing per-source sequence. Preserve input FIFO. Parameters at frame F affect sample F; events at block end belong to the next block. |
+ | MIDI | MIDI 1.0 short/system messages and bounded SysEx bytes; no silent truncation. Fixed event and byte arenas per prepared port. Reject invalid message lengths/data; deterministic merges. Report overflow and reserve capacity for bounded note-release/reset recovery, never silently overwrite note-offs. Recovery uses a separate reserved path emitting CC120 (all sound off), then CC123 (all notes off), on each of 16 channels. Refuse ordinary traffic while recovery is pending; acknowledge each reset packet only after downstream admission. Repeated overflow does not restart an unfinished reset. Runtime integration must preserve these credits independently of ordinary event capacity. |
+@@ -47,9 +47,9 @@ Every group must exercise tiny capacities (one/two slots and the minimum valid b
+ 
+ Use recorded seeds/configurations, 48 kHz, and block sizes 32, 128, and 512 where supported. Measure idle, gain chains, fan-in/out DAGs, representative 16-node and near-configured-capacity graphs, short-MIDI/SysEx bursts, sustained bounded capture, and concurrent plan/resource staging. Report duration distribution/max and nominal deadline misses, operation/byte/split counters, transfer throughput, peak live storage, and refusal counts. Keep the active graph/data workload identical when comparing baseline versus concurrent control traffic. Timing is diagnostic on a named host, not a brittle CI pass threshold or a claim about the old engine.
+ 
+-## Coordination contract (generic Stage 3 implemented; resource/domain stages pending)
++## Coordination contracts (implemented generic extensions)
+ 
+-Implemented in the interval milestone: `Planner`, `NoPlanner`, `GraphRuntime<P, L>`, `Processor<L>`, validated planner bindings, immutable interval views, producer-reserved observations, and one callback envelope with positive-progress internal intervals. External event/result capacity is now `min(scheduled_events, budgets.events)`; `budgets.subranges` is ignored. Traversal diagnostics saturate with `counter_overflow`, rather than rejecting configurations based on a worst-case counter estimate. The generic implementation remains domain-independent. Typed planner/processor operations and retained runtime terminal receipts are implemented, with a separate recovery slot and explicit requested/delivered/terminal frames. Queued typed cancellation prevents delivery; pending cancellation completes a retained token. Runtime success and domain outcome remain distinct. The first Stage 4 resource milestone implements restricted required read/capture access and independent saturating work diagnostics while retaining background quotas and legacy behavior. Append-maintained balanced page indexes now provide checked store-scoped byte positioning. Opt-in fixed MIDI checkpoint rows now provide incremental event/state indexing and bounded seek. Prepared group transactions now use exclusive claims, reserved final leases, staged all-member publication, and planner-only frame-bound authority. Generated pool/content models and fourteen lifecycle-cut control disconnect cases verify the generic group ownership contract. Loop adaptation and restoration emission remain outstanding. See `docs/loop_layer/VALIDATION.md` for exact tests, Miri, lifetime proof, and existing-host regression evidence.
++Implemented in the interval milestone: `Planner`, `NoPlanner`, `GraphRuntime<P, L>`, `Processor<L>`, validated planner bindings, immutable interval views, producer-reserved observations, and one callback envelope with positive-progress internal intervals. External event/result capacity is now `min(scheduled_events, budgets.events)`; `budgets.subranges` is ignored. Traversal diagnostics saturate with `counter_overflow`, rather than rejecting configurations based on a worst-case counter estimate. The generic implementation remains domain-independent. Typed planner/processor operations and retained runtime terminal receipts are implemented, with a separate recovery slot and explicit requested/delivered/terminal frames. Queued typed cancellation prevents delivery; pending cancellation completes a retained token. Runtime success and domain outcome remain distinct. The first Stage 4 resource milestone implements restricted required read/capture access and independent saturating work diagnostics while retaining background quotas and legacy behavior. Append-maintained balanced page indexes now provide checked store-scoped byte positioning. Opt-in fixed MIDI checkpoint rows now provide incremental event/state indexing and bounded seek. Prepared group transactions now use exclusive claims, reserved final leases, staged all-member publication, and planner-only frame-bound authority. Generated pool/content models and seventeen lifecycle-cut control disconnect cases verify the generic group ownership contract. Loop adaptation and restoration emission live in the separate loop library; general loop graph/role-generation transactions remain outstanding. See `docs/loop_layer/VALIDATION.md` for exact tests, Miri, lifetime proof, and existing-host regression evidence.
+ 
+ | Area | Required evolution and verification |
+ | --- | --- |
+@@ -60,10 +60,13 @@ Implemented in the interval milestone: `Planner`, `NoPlanner`, `GraphRuntime<P,
+ | Background allowances | Command service, uploads/exports, descriptor/program validation, optional publication, and reclamation remain incremental and callback-budgeted. A held command cannot wait for a future upload command to complete its input. |
+ | Required rendering | Prepared reads/index lookup, capture appends/checks, exact-frame activation/freeze, and finite internal transitions are counted but not throttled by a background quota. Verify tiny background allowances do not interrupt otherwise provisioned musical execution. |
+ | Resource transactions | Version-scoped indexes and exclusive managed capture writers; group preflight before dependent samples, common-prefix append/freeze, reserved playback readiness, immutable old leases, and explicit failure/retirement. Test no whole-resource scan or asynchronous gap at record-to-play. |
++| Graph activation | Fixed staged-owner slots, incremental validation at an expected epoch, scoped nonwrapping identities, checked actual-capacity budgets and reliable owning release. A borrow-scoped permit rechecks current/validated epochs and pending MIDI compatibility, reserves retirement, then commits infallibly after all fallible domain work. Recovery operations cannot activate; an injected node cannot be removed before consuming its packet. |
+ | Boundary preview | Provisional reservations/shadow state are not externally committed. A re-preview must latch an additional previously unlatched prepared group/activation failure; no duplicate pulse, receipt completion, generation advance, or publication. Musical failure decisions precede affected samples. |
+ | Diagnostics | Counts may saturate with an overflow flag; observation limits never change musical execution. Semantic frames/IDs/revisions still use checked exhaustion, not wrapping or diagnostic-style saturation. |
+ | Claim boundary | Allocation/deallocation-free, deterministic execution with finite application-dependent work; no guaranteed callback CPU/deadline bound. Planners, like processors, must honor their documented semantic and callback-safety contract. |
+ 
+ Preparation may compile/install an initial signal/planning graph through `GraphRuntime::prepare_with_initial_graph`: the returned runtime starts at epoch one/frame zero with no warm-up callback, scheduling receipt or ingress credit consumed. All preparation validation and rejected-owner destruction occur off-render. Normal later graph changes retain expected epochs, incremental validation and reliable owning returns. Quiescent `into_planner_and_resources` retains the planner ledger and resource store for explicit domain cleanup while other runtime owners are destroyed off-render; it does not settle pending work or emit cleanup to a stopped device.
+ 
++The production graph-capability prototype is `docs/loop_layer/prototypes/graph_activation_lifetime.rs`: positive execution and five compile refusals cover retained graph/candidate/permit views, escaped authority and private construction. The corresponding guide is `src/rust/rt_runtime/docs/graph-activation.md`. This capability swaps graph metadata, not arbitrary processors/resources or unvalidated domain state.
++
+ The generic lifetime prototype is `docs/loop_layer/prototypes/interval_lifecycle.rs`; the integration/ownership specification is `docs/loop_layer/RUNTIME_INTEGRATION.md`. Musical clock/coalescing/conflict rules belong to the loop layer. Prototype success is not proof of production resource, scheduler, graph-validation, or AudioWorklet behavior. Implementation stages must replace proposed claims with actual API/tests and retain the initial evidence with its original scope.
+diff --git a/docs/tracing_coverage.csv b/docs/tracing_coverage.csv
+index e58e20d0..2be1abe2 100644
+--- a/docs/tracing_coverage.csv
++++ b/docs/tracing_coverage.csv
+@@ -4,6 +4,7 @@ src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent
+ src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.
+ src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independent bounded renderer; no application tracing dependency. Hosts can observe Copy work and fault diagnostics outside rendering.
+ src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent graph compiler and bounded validator; no application tracing dependency.
++src/rust/rt_runtime/src/graph/activation.rs,generic_realtime_library,excluded,Generic scoped graph activation capabilities; bounded stage status and authoritative epochs expose outcomes without application tracing.
+ src/rust/rt_runtime/src/ids.rs,generic_realtime_library,excluded,Identity and clock value types; no execution boundary to instrument.
+ src/rust/rt_runtime/src/lib.rs,generic_realtime_library,excluded,Independent crate declarations; no application tracing dependency.
+ src/rust/rt_runtime/src/midi_state.rs,generic_realtime_library,excluded,Fixed MIDI protocol-state projection; no host tracing dependency.
+diff --git a/scripts/run_rt_runtime_miri.py b/scripts/run_rt_runtime_miri.py
+index d2e4bc74..757d6d54 100644
+--- a/scripts/run_rt_runtime_miri.py
++++ b/scripts/run_rt_runtime_miri.py
+@@ -19,6 +19,8 @@ CASES = [
+     ("planning_graph", [], 8),
+     ("planner_execution", [], 9),
+     ("initial_graph", [], 3),
++    ("graph_activation", [], 7),
++    ("lib", ["graph::activation::tests::stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners", "--", "--exact"], 1),
+     ("resource_render", [], 4),
+     ("resource_index", [], 5),
+     ("midi_state", [], 6),
+@@ -38,7 +40,7 @@ CASES = [
+     ("capture_group_model", [], 1),
+     ("capture_group_disconnect", [], 1),
+     ("host_processor", [], 2),
+-    ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 9),
++    ("lifecycle", ["--", "--skip", "deterministic_admission_model", "--skip", "cancellation_flag_model"], 10),
+     ("resource_execution", ["resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"], 1),
+ ]
+ 
+diff --git a/scripts/tests/test_rt_runtime_miri.py b/scripts/tests/test_rt_runtime_miri.py
+index 5c75b5ef..1d8e5cae 100644
+--- a/scripts/tests/test_rt_runtime_miri.py
++++ b/scripts/tests/test_rt_runtime_miri.py
+@@ -17,9 +17,13 @@ from scripts import run_rt_runtime_miri as runner
+ 
+ class MiriRunnerTests(unittest.TestCase):
+     def test_inventory_is_available_without_running_miri(self):
+-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 197)
+-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 119)
++        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 206)
++        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 128)
+         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loop_engine")), 78)
++        for _, _, arguments, _, _ in runner.selected_cases():
++            if "--exact" in arguments:
++                self.assertIn("--", arguments)
++                self.assertLess(arguments.index("--"), arguments.index("--exact"))
+ 
+     def test_case_output_can_stream_to_a_durable_file(self):
+         with tempfile.TemporaryDirectory() as directory:
+diff --git a/src/rust/rt_runtime/README.md b/src/rust/rt_runtime/README.md
+index 8b8b499b..f6f1c0c5 100644
+--- a/src/rust/rt_runtime/README.md
++++ b/src/rust/rt_runtime/README.md
+@@ -19,7 +19,7 @@ flowchart LR
+ | Capability | User-visible behavior |
+ |---|---|
+ | Typed audio/MIDI graphs | Deterministic DAG execution; audio fan-in sums without clipping |
+-| Live graph edits | Old graph keeps rendering during validation; complete plans activate at callback boundaries |
++| Live graph edits | Old graph keeps rendering during validation; legacy commits activate at callback boundaries, opt-in staged permits coordinate exact domain boundaries |
+ | Sample-frame scheduling | Parameter changes and MIDI injections split rendering at their target frames |
+ | Generic interval planning | Explicit shared decision bindings and per-consumer observations; no internal subdivision quota |
+ | Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed byte/event/state positioning; opt-in reserved capture groups and staged commits |
+@@ -33,17 +33,17 @@ flowchart LR
+ 
+ ## Documentation
+ 
++The [new book](docs/README.md) currently contains the ordered chapter structure only. The previous guides are preserved in `docs-previous/`:
++
+ | Start here | Then read |
+ |---|---|
+-| [Getting started](docs/getting-started.md) — a complete gain graph | [Host integration](docs/integration.md) — callbacks, graph edits, ownership, shutdown |
+-| [Scheduling and MIDI](docs/scheduling-midi.md) — timing and overload recovery | [Resources](docs/resources.md) — upload, playback access, capture, export |
+-| [MIDI checkpoint state](docs/midi-state.md) — fixed protocol-state projection | [MIDI indexing](docs/midi-indexing.md) — preparation, scoped packets, bounded positioning |
+-| [Capture groups](docs/capture-groups.md) — claims, promises, staging, boundary authority | |
+-| [Generic planning](docs/planning.md) — prepared decisions, observations, internal intervals | [Capacity and performance](docs/performance.md) — defaults, sizing, tuning |
++| [Getting started](docs-previous/getting-started.md) — a complete gain graph | [Host integration](docs-previous/integration.md) — callbacks, graph edits, ownership, shutdown |
++| [Scheduling and MIDI](docs-previous/scheduling-midi.md) — timing and overload recovery | [Resources](docs-previous/resources.md) — upload, playback access, capture, export |
++| [MIDI checkpoint state](docs-previous/midi-state.md) — fixed protocol-state projection | [MIDI indexing](docs-previous/midi-indexing.md) — preparation, scoped packets, bounded positioning |
++| [Capture groups](docs-previous/capture-groups.md) — claims, promises, staging, boundary authority | |
++| [Generic planning](docs-previous/planning.md) — prepared decisions, observations, internal intervals | [Capacity and performance](docs-previous/performance.md) — defaults, sizing, tuning |
+ | Public API reference | `cargo doc -p rt_runtime --no-deps --open` |
+ 
+-These guides are self-contained; their links stay within this crate.
+-
+ ## Try it
+ 
+ From this directory, in an environment with the workspace's Rust toolchain and dependencies:
+@@ -54,11 +54,11 @@ cargo run -p rt_runtime --release --example gain_graph
+ cargo test -p rt_runtime
+ ```
+ 
+-The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime benchmark](examples/bounded_runtime.rs) measures seven offline workloads; see [performance measurement](docs/performance.md#measure-and-diagnose) for usage and limitations.
++The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime benchmark](examples/bounded_runtime.rs) measures seven offline workloads; see [performance measurement](docs-previous/performance.md#measure-and-diagnose) for usage and limitations.
+ 
+ ## Current boundaries
+ 
+-- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed planner/processor operations retain reliable terminal receipts, with independent recovery admission. Required resource access and indexed byte positioning have separate saturating diagnostics, while legacy access retains shared quotas. MIDI event/state indexing is opt-in with fixed prepared checkpoint rows. Opt-in capture groups reserve take/final-lease credits and stage coordinated appends under planner-only boundary authority. Generated group ownership/content models and lifecycle-cut disconnect tests cover the generic APIs. Loop integration and restoration emission remain pending.
++- Generic planning supports borrowed decisions, observations, and internal intervals through `GraphRuntime<P, L = NoPlanner>`. Typed planner/processor operations retain reliable terminal receipts, with independent recovery admission. Required resource access and indexed byte positioning have separate saturating diagnostics, while legacy access retains shared quotas. MIDI event/state indexing is opt-in with fixed prepared checkpoint rows. Opt-in capture groups reserve take/final-lease credits and stage coordinated appends under planner-only boundary authority. Generated group ownership/content models and lifecycle-cut disconnect tests cover the generic APIs. Loop integration/restoration live in the separate loop library. [Staged graph activation](docs-previous/graph-activation.md) now adds scoped ready/retired ownership and an infallible final graph swap after domain preflight; loop-specific general graph/role-generation transactions remain pending.
+ - Graphs are acyclic: no feedback edges or automatic delay compensation.
+ - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
+ - Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.
+diff --git a/src/rust/rt_runtime/docs/capture-groups.md b/src/rust/rt_runtime/docs/capture-groups.md
+deleted file mode 100644
+index b1bc40e7..00000000
+--- a/src/rust/rt_runtime/docs/capture-groups.md
++++ /dev/null
+@@ -1,63 +0,0 @@
+-# Prepared capture groups
+-
+-[Resources](resources.md) · [MIDI indexing](midi-indexing.md) · [Planning](planning.md)
+-
+-Capture groups coordinate fixed audio/MIDI members around one logical cut. This is generic storage/lifecycle machinery, not a loop clock, renderer, or device adapter.
+-
+-## Preparation and claims
+-
+-Create `ResourceStore::with_capture_groups(prepared_config, optional_midi_index_config, CaptureGroupConfig { groups, members_per_group, staging_bytes_per_group })` before rendering. Concrete group/member/staging products are checked against the common native/Wasm ceiling and storage is initialized/touched. Ordinary stores allocate no group rows or staging buffers.
+-
+-Create resource IDs, then `bind_capture_group(&[CaptureMember { resource, format, midi_events, midi_bytes }, ...])`. Audio members require zero MIDI bounds; MIDI members declare the maximum downstream event count and total payload bytes per interval. Include recovery messages in these bounds when the producer can supply them. Audio staging capacity is `max_frames × channels × 4`; MIDI staging capacity is `12 × midi_events + midi_bytes`. Their sum must fit the declared group region. Nonempty membership, unique resources, formats and arithmetic are validated before any claim changes.
+-
+-Claims last while the group is managed, including idle/frozen periods. Legacy remove, replacement commit, capture start/stop and raw appends cannot bypass them. A previously prepared upload may still be completed/cancelled but cannot replace claimed content. Binding a running unmanaged capture is refused. Read access and immutable leases remain available.
+-
+-`release_capture_group` requires an idle group, releases its claims/identity, and preserves active frozen content and external leases. Explicitly remove resources later when their active content is no longer wanted. `capture_group_info` and `capture_group_usage` expose plain-data state/storage counters; the runtime owner can also query group usage between callbacks.
+-
+-## Take lifecycle
+-
+-`prepare_capture_take(group, initial_midi_states)` preflights every member, then reserves all take versions, MIDI index rows and final playback-lease slots. Initial states correspond to MIDI members in declaration order. This does not alter old active content or reserve unlimited future data pages. A MIDI member requires an enabled MIDI-index pool.
+-
+-Preparation returns an opaque `CaptureTakeId`, combining the scoped group identity with a checked per-group take sequence. A cancelled or completed old take cannot retarget a newly prepared one, even at the same frame. Use that token for activation, cancellation and freeze; a stable group identity alone is not take authority.
+-
+-- `cancel_capture_take(take)` accepts only a prepared take. It returns reserved lease/MIDI credits and retires versions incrementally, preserving old content.
+-- `activate_capture_take(take, F)` validates all members before replacing any active revision. Each member starts empty at F; old leases retain the prior revisions.
+-- `freeze_capture_take(take, F, incomplete, output)` requires the common next-frame F and no reserved interval. Supply exactly one empty `Option<Snapshot>` output slot per member. It makes the versions immutable and publishes their already reserved playback leases without a tail copy or whole-content/index build. Ordinary snapshot saturation and exhausted background allowance cannot consume these promises.
+-
+-Generic freeze permits empty content. A domain's record-to-play operation must separately reject empty playback if required by its semantics. The caller must retain/release each returned snapshot exactly once. Required page/MIDI access is immediately usable through `ReadIndex`. Freeze does not emit MIDI restoration.
+-
+-## Interval reservation and staging
+-
+-For a new take, `reserve_prepared_capture_interval(take, F, N)` optionally reserves its first interval **before** replacing any active media. This moves `Prepared → PreparedReserved` and leaves current resource revisions/content unchanged. It preflights both activation and append revision increments, pages and MIDI checkpoint capacity. Staging/commit are refused until `activate_capture_take(take, F)` changes it to `Reserved` at exactly the reserved start frame; the same interval token and credits survive activation. A wrong activation frame is refused without publication. Cancellation returns `PreparedReserved → Prepared`, releases only interval credit and preserves the take's lifecycle reservations; cancel the interval before cancelling the take. Retrying consumes a fresh interval sequence. This permits a planner to reserve all groups and re-preview before publishing any new take. The existing activate-then-reserve path remains supported.
+-
+-At F, call `reserve_capture_interval(take, F, N)` before dependent samples render. N must be positive and fit prepared maximum frames. The operation validates common state, next-frame/duration/revision arithmetic, all members' page needs, and worst-case MIDI checkpoint capacity before reserving anything. It returns an opaque `CaptureIntervalId` with a checked sequence. No active content or musical revision is published by reservation.
+-
+-Audio bytes are exact for N frames. MIDI reserves the member's declared full producer bound, not a guess based on actual content or interval length. This conservative strategy can refuse earlier than exact-content reservation; it is an explicit storage tradeoff, not a CPU quota. Unused reservations are returned on commit or cancellation.
+-
+-Consumers supply each member once with `stage_capture_audio(interval, member, samples)` or `stage_capture_midi(interval, member, input)`. Audio is interleaved and must match the complete reserved shape. MIDI is a validated arena with offsets in `[0,N)` and packet/event/byte limits within the promise. Each contribution is copied into prepared staging; no input borrow survives the call. Different signal nodes may stage different members.
+-
+-`commit_capture_interval` first checks that every member is ready and its reservation remains valid. It then appends all actual staged data, updates indexes, publishes every member at the same new duration/cut, and returns unused credit in one exclusive store call. Other processors cannot observe intermediate commits or index rotations. Old partial snapshot tails remain immutable. A missing member yields `Incomplete` without changing published content. `cancel_capture_interval` returns all provisional page credit and resets staged lengths/readiness without clearing buffers or publishing data. Cancelled/consumed tokens cannot affect another interval.
+-
+-Exceeding a producer promise or malformed staging after reservation is an interface/programming fault, not normal physical exhaustion to report retroactively at F. The transaction remains cancellable, but dependent audio already rendered is not rolled back. Storage exhaustion belongs in preflight; normal failure handling must decide/freeze the preceding common prefix before crossing F.
+-
+-## Runtime capabilities and time
+-
+-Planner operation/plan/finish contexts now contain `PlannerResourceIo`. It dereferences to existing `ResourceIo` for compatible read/optional-publication methods and additionally exposes `capture()` returning `CaptureBoundaryIo`. That capability provides prepared take/interval lifecycle methods but no arbitrary upload, resource creation/removal, reclamation or budget reset.
+-
+-The runtime stamps the capability with its current boundary and ceiling. Activation/freeze must use that frame; `reserve` and `reserve_prepared` must start there and end no later than the ceiling; commit must happen at the reserved end boundary. Operation and finish contexts have a zero-width planning window, so they cannot reserve samples beyond their boundary. Plan contexts use the next external-action/host ceiling. Standalone store owners can construct `planner_io(frame, ceiling)` explicitly and are responsible for those authoritative values.
+-
+-Ordinary processors retain `ResourceIo`, which cannot acquire planner lifecycle authority. `ResourceIo::render()` provides `stage_audio`/`stage_midi` plus existing required reads and unmanaged single-resource appends. Managed members refuse those raw append methods. Planner `finish` commits staged contributions after traversal and before advancing domain state through the interval.
+-
+-A planner must handle preflight refusal before rendering: release other provisional reservations, latch a previously unlatched group failure, re-preview affected decisions, then commit the stable boundary. Termination follows from the finite prepared group/activation set, not a retry counter. The generic store does not implement musical arbitration or silently stop unrelated audio.
+-
+-## Accounting and current limits
+-
+-Group data work never consumes/replenishes background allowances. Lifecycle, reservation and staging/commit operations contribute to render diagnostics. The current safe-borrow implementation uses a fixed 64-byte stack copy between group staging and resource pages: actual media data therefore incurs three counted copies overall (input to staging, staging to stack, stack to pages). Checkpoint-state copies have their own counters. This is a correctness-first implementation, not a zero-copy or performance-improvement claim.
+-
+-Optional active-capture snapshots still use background allowances and may need private tail pages; group final leases are a separate prior reservation. Retirement stays incremental. Semantic frame/revision/token exhaustion is explicit; diagnostic overflow cannot change results.
+-
+-Store and synthetic-planner tests cover exact-boundary failure and interval partitions. A generated independent ownership/content model checks 2,048 actions across 64-page and 16-page stores, including conservative reservations, optional private-tail snapshots, stale currentness, cancellation, retained old revisions, and complete pool recovery. Real control-transport disconnects are tested at seventeen lifecycle cuts (including first-interval reservation/cancellation/activation), with a recovery stop queued before disconnect. This does not imply automatic musical stop on transport disconnect.
+-
+-After callbacks have stopped, `GraphRuntime::into_resources()` consumes the runtime off-render and returns its store, destroying the other runtime owners. It does not automatically cancel domain reservations or release leases known only to the planner: settle those first, or retain their handles for explicit cleanup. Retained active resource content remains owned by the returned store until removed or the store is destroyed. The disconnect tests verify off-render processor destruction and full pool recovery after explicit cleanup. `GraphRuntime::into_planner_and_resources()` additionally retains the planner alongside the store, allowing explicit cleanup from its still-owned handle ledger. It consumes a stopped runtime off-render and destroys the other runtime owners; it does not settle pending operations or emit cleanup to a stopped device.
+-
+-Prepared loop audio/MIDI operations and a focused runtime recovery proof are now available. Full loop integration, coherent mixed-media export, actual loop AudioWorklet execution, and final delivery evidence remain separate requirements. Generic Stage 4 verification is not end-to-end loop acceptance.
+diff --git a/src/rust/rt_runtime/docs/getting-started.md b/src/rust/rt_runtime/docs/getting-started.md
+deleted file mode 100644
+index 838a2e99..00000000
+--- a/src/rust/rt_runtime/docs/getting-started.md
++++ /dev/null
+@@ -1,137 +0,0 @@
+-# Getting started
+-
+-[Overview](../README.md) · [Host integration](integration.md) · [Capacity and performance](performance.md)
+-
+-Use `executor::GraphRuntime` for graphs. The lower-level `RenderRuntime` only validates audio blocks, advances a clock, and produces silence; it does not run processors.
+-
+-## Build a gain graph
+-
+-```text
+-host audio input 0 ──► Gain(0.5) ──► host audio output 0
+-                         │
+-                   one stable NodeId
+-```
+-
+-The following complete program prepares one processor and commits its routing. It drives callbacks synchronously for an offline demonstration; in a live host, the control endpoint and callback run independently.
+-
+-```rust
+-use rt_runtime::buffer::{AudioBlock, MidiBlock};
+-use rt_runtime::executor::{Command, GraphRuntime, PreparedNode};
+-use rt_runtime::graph::{
+-    compile, Connection, Endpoint, GraphDescription, PortCounts, PortType,
+-};
+-use rt_runtime::processor::{ProcessBlock, Processor};
+-use rt_runtime::transport::{Lane, Outcome};
+-use rt_runtime::{Config, Error, NodeId};
+-
+-struct Gain(f32);
+-
+-impl Processor for Gain {
+-    fn ports(&self) -> PortCounts {
+-        PortCounts {
+-            audio_inputs: 1,
+-            audio_outputs: 1,
+-            ..PortCounts::default()
+-        }
+-    }
+-
+-    fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+-        let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
+-        for (input, output) in input.iter().zip(output) {
+-            *output = input * self.0;
+-        }
+-        Ok(())
+-    }
+-}
+-
+-fn main() -> Result<(), Error> {
+-    // Everything through submit happens outside the render callback.
+-    let config = Config {
+-        audio_inputs: 1,
+-        audio_outputs: 1,
+-        midi_inputs: 0,
+-        midi_outputs: 0,
+-        max_nodes: 1,
+-        max_ports: 4, // two host ports + two processor ports
+-        max_edges: 2,
+-        ..Config::default()
+-    }.prepare()?;
+-    let id = NodeId::from_parts(0, 1)?;
+-    let (mut control, mut runtime) = GraphRuntime::prepare(
+-        config,
+-        vec![PreparedNode::new(id, Gain(0.5))],
+-    )?;
+-    let description = GraphDescription {
+-        nodes: vec![id],
+-        connections: vec![
+-            Connection {
+-                source: Endpoint::host(PortType::Audio, 0),
+-                destination: Endpoint::node(id, PortType::Audio, 0),
+-            },
+-            Connection {
+-                source: Endpoint::node(id, PortType::Audio, 0),
+-                destination: Endpoint::host(PortType::Audio, 0),
+-            },
+-        ],
+-    };
+-    let plan = compile(runtime.catalog(), &description)?;
+-    let ticket = control.submit(
+-        Lane::Normal,
+-        Command::commit(runtime.epoch(), plan),
+-    ).map_err(|refusal| refusal.error)?;
+-
+-    let input = [1.0; 128];
+-    let mut output = [0.0; 128];
+-    loop {
+-        let frame = runtime.next_frame();
+-        // Render callback scope: borrowed buffers, no heap work.
+-        runtime.process(
+-            AudioBlock {
+-                frame,
+-                frames: 128,
+-                inputs: &[&input],
+-                outputs: &mut [&mut output],
+-            },
+-            MidiBlock { inputs: &[], outputs: &mut [] },
+-        )?;
+-        // Back in control context; validation may take several callbacks.
+-        if let Some(completion) = control.try_completion() {
+-            assert_eq!(completion.outcome, Outcome::Applied);
+-            drop(completion);
+-            break;
+-        }
+-    }
+-    assert_eq!(output, [0.5; 128]);
+-    drop(ticket);
+-    // No callback can run again: final destruction is non-RT.
+-    drop(runtime);
+-    drop(control);
+-    Ok(())
+-}
+-```
+-
+-`submit` succeeding only means the command was queued. Until the first plan activates, output is silent. Use the completion to determine whether an edit applied; production code must also handle rejected and cancelled commands and retain refused payloads when retrying.
+-
+-For exact-frame gain automation and explicit removal, run the [gain graph example](../examples/gain_graph.rs).
+-
+-## Write a processor
+-
+-| Entry point | Context | Obligation |
+-|---|---|---|
+-| Construction / optional `PrepareProcessor::prepare` | Non-RT | Allocate and touch all working storage |
+-| `Processor::ports` via `PreparedNode::new` | Non-RT | Declare a fixed port signature |
+-| `Processor::process` | Render | Process `block.frames`, which may be shorter than a host block |
+-| `Processor::set_parameter` | Render, before the target sample | Bounded mutation; default implementation returns `InvalidParameter` |
+-| Destruction | Non-RT | Reclaim only after ownership is returned or callbacks have stopped |
+-
+-Use `Box<dyn Processor>` for heterogeneous processors, or an application-defined enum for concrete dispatch. `Processor: Send` allows moving the runtime to its render owner; it does not make concurrent access to a processor safe.
+-
+-Inside processing:
+-
+-- Read planar audio through `AudioPorts`; `pair` borrows one input/output pair without building temporary vectors.
+-- Treat MIDI offsets as relative to the current **subrange**, not the original host block.
+-- Use `block.resources` for [bounded resource I/O](resources.md).
+-- Do not allocate, free, lock, wait, perform external I/O, log through an unbounded logger, or panic in normal processing.
+-- Continue audio work when ordinary MIDI output fills. Handle reset packets and report `Error::Full` after doing the required audio work. Other propagated processor errors fail and silence the host block.
+-
+-Expected auxiliary failures, such as a full recording store, should be handled locally if audio must continue. See [capture failure handling](resources.md#capture).
+diff --git a/src/rust/rt_runtime/docs/integration.md b/src/rust/rt_runtime/docs/integration.md
+deleted file mode 100644
+index 0994f9cf..00000000
+--- a/src/rust/rt_runtime/docs/integration.md
++++ /dev/null
+@@ -1,141 +0,0 @@
+-# Host integration
+-
+-[Overview](../README.md) · [Getting started](getting-started.md) · [Scheduling and MIDI](scheduling-midi.md)
+-
+-## Ownership and callback lifecycle
+-
+-```text
+-PREPARE (non-RT)            RUN                         STOP (non-RT)
+-─────────────────          ───────────────────────     ───────────────────
+-validate Config            control: submit + drain     stop new submissions
+-prepare processors         render: process buffers    stop/join callbacks
+-allocate runtime/buffers   host: deliver MIDI resets   dispose returned owners
+-compile initial graph      repeat                     destroy endpoints
+-```
+-
+-Keep `GraphRuntime` with one owner. The control endpoint can live on another thread; it is not a multi-producer command bus. If several UI/worker sources produce commands, serialize them on the control side rather than locking the render owner.
+-
+-### One nonempty callback
+-
+-```text
+-validate host buffers and frame
+-        │ invalid: bounded output clearing; no clock/control progress
+-        ▼
+-advance clock → snapshot queued work → stage commands / validate plan
+-        ▼
+-repeat: due events → plan interval → borrowed views + signal DAG → observations
+-        ▼
+-reclaim within remaining budget
+-        ▼
+-publish diagnostics → host drains MIDI recovery → host delivers outputs
+-```
+-
+-| Host input | Required behavior |
+-|---|---|
+-| `AudioBlock::frame` | Use `runtime.next_frame()`; starts at `Frame(0)` and must remain contiguous |
+-| `frames` | Variable sizes up to `max_frames`; channel slices contain at least this many samples |
+-| Port arrays | Exact configured audio and MIDI input/output counts |
+-| Audio layout | One `f32` slice per channel; only the selected prefix is processed |
+-| MIDI inputs | Preallocated `MidiBuffer`s with valid offsets inside this host block and within configured count/byte limits |
+-| Zero frames | No-op: no shape validation, clock advance, output clearing, or command progress |
+-
+-Preallocate host MIDI buffers, recovery sinks, and any conversion scratch before starting. `process` clears ordinary host outputs itself; the host manages input buffers and separate recovery sinks.
+-
+-A processing error is **not a rollback**. Invalid host blocks leave the clock unchanged, but a processor error occurs after clock advance and possibly after state changes. On a propagated render error the runtime clears host audio/MIDI outputs, records `render_error`, and returns the error. Do not replay the same frame; consult `next_frame()`.
+-
+-## Optional planner
+-
+-Use `GraphRuntime<P, L = NoPlanner>` with `Processor<L>` and a prepared `Planner` to select internal intervals and share immutable decisions with consumers. See [Generic interval planning](planning.md) for preparation, explicit bindings, observation reservations, and the runnable planned-gain example. Internal intervals do not resnapshot ingress or refresh callback-wide allowances. The default `NoPlanner` retains ordinary processor usage. Typed planner operations may retain runtime receipts after delivery; processor operations are immediate. Recovery-safe planner cancellation/stop has one independent result slot and must finish before advancing beyond its delivery frame. See the planning guide for domain outcomes versus generic delivery success.
+-
+-## Graph edits
+-
+-```mermaid
+-flowchart LR
+-    D[GraphDescription] --> C["compile against control-side Catalog"]
+-    C --> Q["submit Commit with expected epoch"]
+-    Q --> V["incremental validation<br/>old graph still renders"]
+-    V -->|valid + matching epoch| A["activate before callback samples"]
+-    V -->|invalid or stale| R["reject; keep old graph"]
+-    A --> O["completion returns displaced plan"]
+-    R --> O2["completion returns rejected plan"]
+-```
+-
+-- A host endpoint is an **input when used as a source**, and an **output when used as a destination**. Node endpoints have the opposite direction.
+-- Audio fan-in sums; there is no clipping, normalization, or extra routing block of latency. A host-to-host route is valid.
+-- Nodes run in deterministic dependency order. Reordering a description does not change compiler ordering. Cycles, duplicate edges/nodes, missing IDs, and incompatible ports are rejected.
+-- Only nodes in the active plan run. Rewiring retains processor state; excluding a node pauses its processing rather than destroying it.
+-- Commit, remove, and install all use `Lane::Normal`. Successful structural edits advance the epoch. Track completion epochs and maintain a matching control-side `Catalog`/signature description. Do not borrow `runtime.catalog()` concurrently with rendering.
+-- Use completion results, not lossy telemetry, to confirm an edit. A stale epoch requires reconsidering/recompiling the edit against current state.
+-
+-Validation may occupy several callbacks and holds the current command until finished. Commands behind it wait, **including recovery commands**; recovery admission is reserved, not preemption of an already-held operation.
+-
+-### Replace a processor
+-
+-```text
+-commit plan without node → await Applied
+-        → Remove old NodeId → await processor in Retired::Processor
+-        → dispose processor / release its resource leases on control side
+-        → Install prepared replacement with next-generation NodeId
+-        → await Applied → commit plan using replacement
+-```
+-
+-The slot must have been declared at startup. Its replacement must use the exact same audio/MIDI port counts and planning-access signature. Increasing `max_nodes` alone does not create installable slots. Stale IDs never target the replacement.
+-
+-## Commands, results, and backpressure
+-
+-```text
+-submit ──refused──────────────► SubmitError { error, value: original command }
+-   │
+-   └─queued─► callback ──────► Completion { outcome, request, retired, epoch }
+-                                     │
+-                              try_completion()
+-                                     │
+-                              admission credit reusable
+-```
+-
+-| Channel | How to consume it | If not drained |
+-|---|---|---|
+-| Owning completions | `Control::try_completion`; inspect then dispose/recycle off RT | Command slots stay occupied |
+-| Scheduled execution results | `Control::try_execution`; distinct from command completion | Scheduler slots stay occupied |
+-| Copy diagnostics | `Control::try_telemetry` | New telemetry may be refused; audio/terminal completions continue |
+-
+-A completion returns the command in its **post-operation state** plus any retired object. For example, an applied commit has moved its candidate plan into the runtime; a rejected commit still owns its candidate. Do not drop owning results in a callback.
+-
+-### Lanes and cancellation
+-
+-| Normal lane | Recovery lane |
+-|---|---|
+-| Graph edits, scheduling, ordinary resource requests | `ResetMidi`, upload cancellation, snapshot release, capture stop |
+-| `command_slots` admission credits | One independent admission credit in `GraphRuntime` |
+-| FIFO within the lane | Selected before normal work when no operation is already held |
+-
+-Recovery can overtake dependent normal requests. Releasing a snapshot before its queued read executes can make that read fail. There is no global FIFO across lanes.
+-
+-`Ticket::cancel()` is best effort **until dequeue observes it**. It cannot undo an applied command or cancel an event already admitted to the scheduler. The terminal completion—not the ticket flag—is authoritative. Requests arriving after the callback's queue snapshot wait for a later callback.
+-
+-### Allocation-free submission when needed
+-
+-Ordinary `submit` allocates a cancellation flag and belongs off RT. For a bounded ingress adapter:
+-
+-1. Call `prepare_submissions` before callbacks, with no outstanding requests.
+-2. Prepare owning payloads/buffers in advance; use `submit_prepared`.
+-3. Recycle returned payloads and drop finished tickets/completions off RT. Retaining them can exhaust cancellation-flag availability (`Busy`) even after command credit returns.
+-
+-Submission scans at most that lane's slot count. This does not make constructing arbitrary payloads or disposing them RT-safe.
+-
+-## Shutdown and disconnect
+-
+-Stop submitting, then stop/join callbacks **before destroying the runtime**. Drain and dispose received completions/tickets on a non-RT context. If graceful completion is required, keep rendering nonzero blocks and draining results before stopping; there is no blocking flush method.
+-
+-Disconnect does not mean immediate reclamation. Dropping control leaves render-owned and queued objects retained until non-RT teardown. Dropping the render endpoint causes future submissions to return `Disconnected` with their payload. Endpoint destruction after callbacks stop reclaims remaining queued/held owners; it does not publish terminal results for work abandoned at shutdown.
+-
+-## Using the lower-level pieces
+-
+-Most hosts should use `GraphRuntime`; the following are opt-in building blocks:
+-
+-| API | Additional host responsibility |
+-|---|---|
+-| `transport::channel<T, R, S>` | `T` is a command, `R` an owned retirement bundle, `S: Copy` telemetry. Call `begin_cycle` once per callback, borrow via `next_operation`, then `complete`. Retain the retirement payload if completion fails; never drop it on RT. No queued closures are executed. |
+-| `PreparedPlan::from_descriptor` | Checks storage bounds only, **not execution safety**. Run `PlanValidator` before execution; keep plan and catalog unchanged throughout incremental validation. `GraphRuntime` does this on commit. |
+-| `PreparedPlan::with_capacity` | Prepare reusable plan storage off RT. Only edit exclusively owned inactive plans; bound `push_step`/`push_connection` work per ingress callback. Materialization is not validation. |
+-| `ResourceStore` / `Scheduler` | Respect callback-wide budgets/credits yourself. The executor normally owns this lifecycle. |
+diff --git a/src/rust/rt_runtime/docs/midi-indexing.md b/src/rust/rt_runtime/docs/midi-indexing.md
+deleted file mode 100644
+index 871690b3..00000000
+--- a/src/rust/rt_runtime/docs/midi-indexing.md
++++ /dev/null
+@@ -1,40 +0,0 @@
+-# MIDI event and state indexing
+-
+-[Resources](resources.md) · [Protocol-state policy](midi-state.md)
+-
+-## Preparation and ownership
+-
+-Construct `ResourceStore::with_midi_indexing(prepared_config, MidiIndexConfig { versions, checkpoints_per_version, replay_events })` before rendering. All three capacities must be positive and concrete storage arithmetic is checked against the common native/Wasm ceiling. Legacy `ResourceStore::new` allocates no MIDI checkpoint rows.
+-
+-Each indexed version reserves one mutable protocol-state slot and a complete fixed row of checkpoints. The first checkpoint is the supplied initial state, before any recorded packet. Further checkpoints follow every `replay_events` complete packets. Storage is approximately `versions × (1 + checkpoints_per_version) × size_of::<MidiState>()`, plus fixed metadata/free stacks. The per-version reservation deliberately trades utilization for simple ownership: another version cannot consume a take's reserved checkpoint space. It is not a copy of the media bytes or an implicit version-by-media-page allocation.
+-
+-Use `begin_indexed_midi_upload(resource, expected_revision, description, &initial_state)` for streamed content, or `begin_indexed_midi_capture(resource, expected_revision, absolute_frame, &initial_state)` for single-resource capture. These are structural store operations, not prepared render-side group activation tokens. Ordinary `ResourceIo` does not expose them. Initial state must describe the source before the first recorded packet; the index does not infer prior input history.
+-
+-The normal finish/commit/cancel, capture append/stop, and snapshot APIs remain in use. Leases retain both the data version and its MIDI row. Replacement/removal does not invalidate old leased content. After the final reference is released, the plain-data row is recycled in constant metadata work without clearing or walking it; media pages continue through incremental reclamation. Row source identity and used length prevent stale contents from becoming visible on reuse.
+-
+-## Incremental construction and capacity
+-
+-Uploads validate a candidate parser and checkpoint capacity before publishing any received bytes or state. The accepted chunk is then interpreted for complete-record summaries. This second pass is bounded by the admitted chunk, not the whole resource or a whole spanning SysEx message. A malformed later packet cannot publish earlier packets from that rejected chunk. Validation work remains charged on refusal; the prefix and checkpoint state remain unchanged.
+-
+-Capture preflights checkpoint needs before appending data. Every packet counts toward checkpoint spacing, including opaque SysEx and realtime messages. Capacity is a storage limit, not a subdivision or timing quota. With `C` checkpoints and span `K`, one version can retain at most `C × K − 1` packets; checkpoint zero is the initial state. A valid MIDI upload may exhaust this declared record capacity before its byte reservation fills. Refused uploads remain incomplete and cancellable. Capture exhaustion retains the previous complete prefix with an explicit incomplete reason.
+-
+-This is per-resource atomicity only. Coordinated audio/MIDI preflight, reserved lifecycle/lease tokens, and group commit remain required before promising multichannel capture behavior.
+-
+-## Lease-scoped access
+-
+-Obtain a `ReadIndex` from a successful snapshot, then use `ResourceIo::render()` or `ResourceStore::render_io()`:
+-
+-- `midi_cursor(index)` starts sequential event access, including for legacy validated MIDI without state checkpoints.
+-- `midi_next(&mut cursor)` returns an opaque `MidiEvent` with relative `frame()` and `byte_len()`, or EOF. It preserves equal-time order and advances only after successful metadata validation.
+-- `midi_read(event, &mut prepared_output)` copies the complete original packet and returns its byte length. Too-small output is refused before copying. Storage must cover the declared packet size.
+-- `midi_seek(index, relative_frame)` returns `MidiPosition { cursor, state, replayed_events }`. State is strictly **before** that frame; the cursor retains the first event at or after it. Seeking to duration yields the state through the captured prefix and EOF. Beyond duration is invalid.
+-
+-Seek chooses the last checkpoint whose final packet is strictly before the target, constrained to the snapshot prefix. It replays fewer than `replay_events` packets and returns without scanning from the resource start. Search is logarithmic in checkpoint count; local reconstruction uses page-indexed headers and short state-bearing data, skipping large opaque payload bodies. A violated prepared replay invariant is a fault, not a musical-work cutoff. All original payload bytes remain available for playback.
+-
+-The returned state follows the documented channel/key projection, not arbitrary external synthesizer/device state. Restoration **emission** is a separate renderer operation and is not implemented by seek. Legacy MIDI without checkpoints refuses `midi_seek` explicitly rather than falling back to a whole-history scan.
+-
+-Cursor/event/index handles validate store scope, lease/version, format, packet/prefix bounds, and offsets. They borrow an existing lease rather than duplicating it. Release each acquired snapshot once; copied handles become invalid after release. Raw legacy IDs still require their same-store precondition and opaque handles are not portable between Wasm instances.
+-
+-## Accounting
+-
+-Required packet/seek reads do not consume background allowances. `MidiIndexWork` reports background/render indexed records, replayed records, and conceptual initial/checkpoint state copies, with saturating overflow. Data copies and page positioning retain their separate counters. Index work resets once per host callback; reborrowing or selecting an interval does not reset it. Diagnostics expose `midi_index_work`; store/runtime usage reports expose reserved/free MIDI version rows. These are work observations, not deadline promises.
+diff --git a/src/rust/rt_runtime/docs/midi-state.md b/src/rust/rt_runtime/docs/midi-state.md
+deleted file mode 100644
+index 0fafb97c..00000000
+--- a/src/rust/rt_runtime/docs/midi-state.md
++++ /dev/null
+@@ -1,29 +0,0 @@
+-# MIDI checkpoint state foundation
+-
+-`midi_state::MidiState` is a fixed, Copy, allocation-free projection of MIDI 1.0 channel/key messages. It has no clock, device, loop, or renderer authority. It is suitable as initial/checkpoint metadata; the resource store's [MIDI index](midi-indexing.md) supplies checkpoint pools and indexed event/state positioning. Restoration emission is not implemented by this type.
+-
+-## State and updates
+-
+-- Sixteen channels, each with 128 key records and controller slots; no dynamic maps or callback allocation.
+-- A key records the latest note-on velocity, whether it is held, its sostenuto latch, and observed poly pressure. Velocity zero means no projected sounding note. Note-on velocity zero is a note-off. Repeated note-ons update that key's velocity; they remain separate packets in the media stream. This is not a model of a synthesizer's per-voice allocation/envelopes.
+-- CC64 sustain and CC69 hold retain released keys until released. CC66 latches keys held on its off-to-on edge, not keys pressed later. Releasing one pedal respects the other holds. Held keys survive pedal release. Repeated values still update the observed controller value but do not rescan keys when the pedal's logical up/down state has not changed. Releasing unheld keys is a no-op while another sustain/hold pedal remains down.
+-- CC120 clears notes immediately without resetting controllers. CC123 and mode changes CC124–127 release held keys while respecting holds. Momentary CC120/121/123 commands are not cached as persistent controller values to replay accidentally after restoring notes.
+-- Programs, pitch bend, channel pressure, and poly pressure are retained. The bank selectors observed at program change are retained separately from later pending bank selectors. The last RPN/NRPN selector family is retained as an ordering hint; parameter Data Entry/relative-command history is explicitly marked as untracked. CC96/97 are momentary commands, not cached values to replay. Of each opposed CC124/125 and CC126/127 mode pair, only the latest setting remains current. Unobserved program/pressure/controllers remain unknown rather than acquiring invented defaults. Initial pedal states are off and pitch is centered.
+-- CC121 establishes a reset baseline: pitch and pressure reset, pedals release, held keys remain, and recommended known control values are recorded. Bank, volume, pan, sound/effects controls, program, and channel-mode settings remain retained. Device-specific defaults remain unknown. `reset_controllers_seen()` records the baseline operation for eventual restoration before known control values.
+-- System Reset clears the projection and sets `system_reset_seen()`. Other system messages and opaque SysEx do not fabricate channel state. Their packets are still part of the media stream; this projection does not reconstruct device-specific effects or RPN/NRPN parameter histories.
+-
+-The reset policy follows the MIDI Association's [Response to Reset All Controllers (RP-015)](https://midi.org/response-to-reset-all-controllers/) and [Control Change definitions](https://midi.org/midi-1-0-control-change-messages). Known reset values include modulation 0, expression 127, holds/portamento/soft pedal off, and null RPN/NRPN selectors. Unknown device-specific defaults are not represented as zero.
+-
+-`apply(Message)` accepts an already validated complete packet; `apply_packet(bytes, max_bytes)` first validates and leaves state unchanged on malformed/oversized input. Ordinary notes/program/pressure/pitch updates use fixed work; pedal/mode/reset operations traverse only the fixed protocol channels/keys. Copying state is bounded by this fixed representation, not recording duration. The type itself does not retain packets, consume scheduler credits, or impose a musical-work quota.
+-
+-`MidiState::from_channels([ChannelState; 16], system_reset_seen)` reassembles copied
+-channel projections and the global reset marker without message replay. This is
+-useful for fixed-size channel-wise export replies. The caller must obtain all
+-channels and the marker from the same immutable snapshot; the constructor does
+-not certify that independently sampled live values form a coherent cut.
+-
+-## Renderer integration
+-
+-The resource index preserves an initial state and checkpoints built incrementally while records arrive, with reserved per-version rows and a declared maximum local replay span. Positioning returns state before the requested frame and retains equal-time events for playback. Renderer integration must still emit restoration and those events in the specified order; the value type alone is not a renderer.
+-
+-Restoration must preserve reset markers, distinguish held from pedal-latched keys, order bank/program/controller/pressure/note operations deliberately, and expose output-capacity failures through runtime MIDI recovery. The loop crate now provides bounded cleanup/projected-state emission helpers with those ordering rules and an explicit untracked-parameter-history report; indexed playback/capture and runtime recovery are supplied by the loop crate, not by this value type. Protocol-state restoration is not a snapshot of an external synthesizer or device. No renderer or loop-worklet integration is claimed here.
+diff --git a/src/rust/rt_runtime/docs/performance.md b/src/rust/rt_runtime/docs/performance.md
+deleted file mode 100644
+index d226fdd7..00000000
+--- a/src/rust/rt_runtime/docs/performance.md
++++ /dev/null
+@@ -1,173 +0,0 @@
+-# Capacity and performance
+-
+-[Overview](../README.md) · [Host integration](integration.md) · [Scheduling and MIDI](scheduling-midi.md) · [Resources](resources.md)
+-
+-The main tuning distinction is **storage capacity versus work allowed per callback**. More storage handles larger bursts or longer retention; it does not automatically increase processing throughput.
+-
+-```text
+-                    TOO SMALL                         TOO LARGE
+-capacity      refusals / short capture          more prepared memory
+-work budget   slower control / refused I/O      more callback CPU / less headroom
+-block size    less time per callback            more device/block latency
+-```
+-
+-Choose realistic upper bounds, then measure a mixed workload—not just an idle graph.
+-
+-## Configuration reference
+-
+-`Config::prepare()` validates capacities and arithmetic; it does not allocate the full runtime. `GraphRuntime::prepare()` allocates its pools, queues, and processor scratch and can report additional preparation errors. Prepared limits cannot be resized while running.
+-
+-| Capacity | Default | Size it for |
+-|---|---:|---|
+-| `sample_rate` | 48,000 | Host engine rate; this field does not resample buffers |
+-| `max_frames` | 128 | Largest host callback; smaller callbacks are accepted |
+-| `audio_inputs`, `audio_outputs` | 2 each | Exact host channel counts |
+-| `midi_inputs`, `midi_outputs` | 1 each | Exact host port counts |
+-| `max_nodes` | 64 | Processor slot index space; declare reusable slots at preparation |
+-| `max_ports` | 128 | **Sum** of all host and prepared-node audio/MIDI inputs and outputs |
+-| `max_edges` | 256 | Connections in a candidate/active plan |
+-| `midi_events_per_port` | 256 | Ordinary events in each MIDI arena, including worst-case fan-in |
+-| `midi_bytes_per_port` | 4096 | Ordinary packet bytes per arena, including SysEx |
+-| `scheduled_events` | 256 | Storage ceiling; effective outstanding capacity is also limited by the external event budget |
+-| `command_slots` | 64 | Outstanding normal commands, **including unread completions** |
+-| `resource_slots` | 32 | Size of each separate identity, version, and snapshot pool |
+-| `resource_pages`, `page_bytes` | 256 × 4096 | Fixed resource payload storage; includes retained/reserved content |
+-| `resource_io_bytes`, `resource_io_steps` | 0 each | Callback headroom protected for legacy quota-based resource I/O and optional snapshots |
+-
+-| Per-callback budget | Default | What it limits |
+-|---|---:|---|
+-| `commands` | 8 | Command dispatch/dequeue work; cancellations also consume transport work |
+-| `publications` | 8 | Terminal publication allowance; telemetry has a separate allowance so it cannot steal completion capacity |
+-| `events` | 64 | Normal scheduler admission/execution bound; also host MIDI recovery attempts per output. Planned runtimes reserve one additional domain-recovery receipt |
+-| `subranges` | 65 | Legacy source-compatible field; ignored, including zero |
+-| `transfer_bytes` | 4096 | Resource copies and scheduled MIDI payload staging, **not ordinary audio/MIDI routing** |
+-| `validation_steps` | 32 | Graph validation, MIDI upload byte validation, MIDI capture checks, and resource reclamation |
+-
+-Host port counts and resource I/O reservations may be zero; the ignored `subranges` field may have any value. Other capacities/budgets must be positive. `page_bytes` must be divisible by four, and `transfer_bytes` must cover at least one page. Storage checks use a common `i32::MAX` byte/index ceiling; passing those checks is not a guarantee that the machine has enough memory.
+-
+-### Common surprises at the defaults
+-
+-```text
+-normal event/result slots          min(256, 64) = 64; planned runtimes reserve one extra recovery slot
+-MIDI upload validation throughput  at most 32 bytes/callback before other work
+-resource payload pool             256 × 4096 = 1 MiB (not total runtime memory)
+-reserved processor resource I/O    zero — background commands can use the budget
+-```
+-
+-## Estimate memory before preparing
+-
+-These are payload estimates, not a complete allocator/RSS accounting:
+-
+-| Component | Approximate storage |
+-|---|---|
+-| Processor audio scratch | Prepared-node audio input/output ports × `max_frames` × 4 bytes |
+-| Each MIDI arena | `(midi_events_per_port + 32) × size_of::<Event>() + midi_bytes_per_port + 96` |
+-| Scheduled payloads | (Normal event capacity + optional recovery slot) × `min(max(midi_bytes_per_port, declared operation_bytes), budgets.transfer_bytes)` |
+-| Resource payloads | `resource_pages × page_bytes` |
+-| Additional storage | Processor state, slot/catalog/plan metadata, queues, resource metadata, scheduler records, host buffers, staging buffers |
+-
+-Node MIDI inputs have both a routed-input arena and a scheduled-injection arena; node outputs have another arena. Host-owned buffers and recovery sinks are additional. At the defaults, the scheduler alone reserves 256 KiB of payload bytes, even if only parameter actions are used.
+-
+-`PreparedConfig::{audio_samples, midi_bytes, resource_bytes}` describe configuration-derived storage quantities, **not total runtime memory**. Plans and command payloads may also remain owned while awaiting completion consumption. Measure live memory with representative prepared processors and outstanding work.
+-
+-### Example: reserve playback + recording headroom
+-
+-Assume stereo playback reads and stereo recording both process 128 frames per callback:
+-
+-```text
+-playback read   2 × 128 × 4 = 1024 bytes
+-capture write  2 × 128 × 4 = 1024 bytes
+-                            ──────────
+-processor minimum               2048 bytes/callback
+-```
+-
+-For the legacy quota-based path, with 4096-byte pages, use at least `resource_io_bytes = 2048` and `budgets.transfer_bytes = 6144`. That leaves one page for control progress. Add headroom for concurrent voices, extra reads, and snapshot tail copies; this is not a universal preset. Legacy MIDI capture needs step headroom too. Required `ResourceIo::render()` read/capture does not use this headroom: its work is counted separately and cannot be stopped by background quotas. Physical storage and per-operation shape limits still apply; optional snapshots remain budgeted. This distinction does not imply a deadline guarantee.
+-
+-One minute of stereo 48 kHz audio requires `60 × 48000 × 2 × 4 = 23,040,000` payload bytes, or **5625 pages** of 4096 bytes. Replacement, snapshots, and reclamation lag require additional space. The default 1 MiB pool is not a long-recording preset.
+-
+-## What affects callback cost?
+-
+-```text
+-callback cost ≈ bounded control work
+-              + audio sample processing / route mixing
+-              + per-subrange graph dispatch and MIDI work
+-              + resource copying / capture / maintenance
+-              + host adapter work
+-```
+-
+-| Workload change | Performance consequence |
+-|---|---|
+-| More audio edges | More sample copies/adds; fan-out is not free |
+-| More distinct scheduled frames | More processor calls and graph traversals per host callback |
+-| Larger scheduler capacity | More payload memory and bounded ordered-list shifting at admission/execution |
+-| Dense MIDI fan-in | Stable insertion shifts descriptors; worst-case ordering can approach quadratic descriptor work per destination |
+-| More MIDI bytes | More packet validation/copying; event count alone misses SysEx cost |
+-| Larger graph validation budget | Faster activation, but more control work before rendering |
+-| Oversized `max_nodes` | More preparation memory and validation work even for small candidate graphs |
+-| Larger transfer budget | Faster resource movement, but more per-callback memory traffic |
+-| Long-lived snapshots | Retained pages/versions; pool exhaustion despite low current transfer traffic |
+-| Small callbacks | Less wall-clock time and more per-second callback overhead, though control work gets serviced more frequently |
+-
+-For a graph with `N` active nodes, `E` edges, and `R` rendered subranges, expect `N × R` processor calls and `E × R` route visits. Audio sample work remains proportional to the total samples processed; per-call overhead and MIDI merge work increase with splitting. Processor algorithm cost is outside runtime budgets—`budgets.events` is not a general CPU instruction limit.
+-
+-MIDI resets have separate bounded work: up to 32 internal reset messages per affected port, plus host drain attempts per output. Include overload/recovery in benchmarks.
+-
+-### Signal latency versus control latency
+-
+-| Latency | What determines it |
+-|---|---|
+-| Audio signal | Host/device buffering and processor algorithms; graph routing adds no extra signal block |
+-| Graph edit | Queue snapshot, preceding commands, validation budget, publication limits; activation at a callback boundary |
+-| Scheduled action | Admission lead time, then the absolute sample frame; lateness is explicit |
+-| Upload/export | Command and byte/validation budgets, page boundaries, competing processor work |
+-
+-A held multi-callback validation or payload-staging command can delay later commands. Larger queues absorb backlog; they do not remove that latency. Recovery admission does not preempt the held command.
+-
+-## Measure and diagnose
+-
+-At 48 kHz, 128 frames represents about **2.67 ms** of audio. That is a nominal callback interval, not a safe runtime CPU allowance: the host, other processing, and scheduling jitter need headroom too.
+-
+-The crate includes an offline benchmark with sample/reference checks and heap guards:
+-
+-```sh
+-cargo run -p rt_runtime --release --example bounded_runtime -- \
+-  --iterations 20000 --raw-dir measurements
+-```
+-
+-It exercises idle rendering, 16-node and dense 64-node audio graphs, MIDI routing, stereo capture, graph replacement, and resource roundtrips. Output includes JSON timing percentiles/maxima, work counters, and throughput; `--raw-dir` writes per-callback CSV files. Timing includes the benchmark's render guard/host wrapper. Linux process memory/scheduler counters are optional and are not per-runtime memory accounting. These synthetic offline workloads do not cover arbitrary DSP or real device scheduling.
+-
+-For your own measurements:
+-
+-1. Use release builds and realistic processors, graph fan-in/out, MIDI density, variable block sizes, and scheduled splits.
+-2. Exercise resource upload/capture/export concurrently, with slow completion consumers and nearly full pools.
+-3. Record callback-duration distributions and maxima outside the measured render scope; never print or allocate timing records in the callback.
+-4. Check samples/event results as well as speed. Include overload, cancellation, and shutdown paths.
+-5. Repeat on the actual device/browser/thread environment. Native or offline measurements alone do not establish browser callback timing.
+-
+-| Observation | Check first |
+-|---|---|
+-| `Full` on command submission | Drain completions; check outstanding normal/recovery credits |
+-| `Busy` on prepared submission | Release completed tickets/results so cancellation flags can be reused |
+-| Schedule rejected `Full` | Drain execution results; reduce lookahead or raise all effective-capacity limits |
+-| Resource `Budget` | Shared copy/validation load and reserved processor headroom |
+-| Resource `Capacity` | Active/retained versions, uploads, snapshot leases, and unreclaimed pages |
+-| Repeated `midi_overflows` | Destination fan-in capacities, processor output handling, host recovery delivery |
+-| Slow graph activation | Validation budget, queued/held commands, completion publication cap |
+-| `StaleEpoch` / `StaleRevision` | Refresh state and reconsider the edit; blindly retrying the same expectation will not fix it |
+-| `Exhausted` | Counter/generation space cannot wrap; plan explicit reinitialization after safe shutdown |
+-
+-`Diagnostics` exposes nodes/connections processed, events/subranges, copied bytes, validation steps, MIDI overflows, reclamation counts, and render errors. Validation steps include resource maintenance—not just graph checks. `resource_usage()` gives pool counters to the runtime owner between callbacks. Traversal/event/MIDI-overflow counters saturate and latch `counter_overflow`; diagnostic bounds do not refuse legitimate rendering. Telemetry is bounded and lossy; it is neither a timing profiler nor an authoritative command acknowledgement.
+-
+-## Check the RT contract
+-
+-From this crate directory in the configured build environment:
+-
+-```sh
+-cargo test -p rt_runtime
+-cargo test -p rt_runtime --release
+-cargo run -p rt_runtime --release --example gain_graph
+-```
+-
+-The [contract tests](../tests/contracts.rs) install allocation/reallocation/deallocation canaries; [executor tests](../tests/executor.rs) check routing, timing, and overload; [resource execution tests](../tests/resource_execution.rs) exercise competing resource work. These are useful checks, not a certification of arbitrary processor implementations.
+-
+-Allocation guards do not detect locks, waits, external I/O, OS scheduling delays, or every possible input path. Audit callback-reachable host/processor code and measure target-specific timing separately. The library does not promise a hard-real-time deadline or a portable throughput figure.
+diff --git a/src/rust/rt_runtime/docs/planning.md b/src/rust/rt_runtime/docs/planning.md
+deleted file mode 100644
+index 0aafde5a..00000000
+--- a/src/rust/rt_runtime/docs/planning.md
++++ /dev/null
+@@ -1,70 +0,0 @@
+-# Generic interval planning
+-
+-[Overview](../README.md) · [Host integration](integration.md) · [Scheduling](scheduling-midi.md)
+-
+-`GraphRuntime<P, L = NoPlanner>` can own one prepared `Planner`. The default keeps ordinary `Processor` implementations usable without planning. A planner is not a signal node: it publishes immutable decisions before each signal traversal and consumes observations afterward.
+-
+-## Prepare and bind
+-
+-1. Prepare the planner's initialized, pre-touched decision storage and private state. Its `PlannerSpec` and decision-slice length must remain fixed. Associated decisions are `Copy`; observations are `Copy + Default`. Neither owns heap objects. Third-party implementations must still uphold the nonblocking/no-heap callback contract.
+-2. Implement `Processor<L>` for consumers. `planning()` declares whether a decision is required, the maximum observations produced per interval, and the reserved operation-payload signature. This metadata is queried only during preparation.
+-3. Wrap processors in `PreparedNode<P, L>` and call `GraphRuntime::prepare_with_planner`, or `prepare_with_planner_and_resources`. The runtime checks typed storage arithmetic and initializes/touches observation storage. Alternatively, `prepare_with_initial_graph(config, nodes, planner, resources, graph, bindings)` compiles the initial signal/planning graph off-render and returns epoch one at frame zero. It does not execute a warm-up callback, use ingress/result credits, or invoke the planner/processors during preparation. Invalid graphs consume/drop preparation inputs off-render. Later live commits retain normal validation, epochs and owning receipts.
+-4. Call `compile_planned` with explicit `DecisionBinding` records. Each consumer has at most one binding; several consumers can share a slot. Ordinary FX nodes need no binding. The planning prefix, generations, signatures, membership, aggregate observation reservations, and independent signal DAG are validated before activation.
+-5. Submit the plan through `Command<P, L>` and drain `Control<P, L>` completions. Replaced/rejected plans retain the ordinary owning-return contract.
+-
+-The runnable [planned gain example](../examples/planned_gain.rs) checks 32 samples, five internal intervals, and a typed processor gain operation at frame 13:
+-
+-```sh
+-cargo run -p rt_runtime --example planned_gain
+-cargo run -p rt_runtime --release --example planned_gain
+-```
+-
+-## Interval lifecycle
+-
+-- `Planner::plan(PlanContext)` settles the current frame and returns `frame < end <= ceiling`. The ceiling is the earlier of the next admitted external action and host end. Due external actions execute before planning at that frame.
+-- `ProcessBlock<L>::decision` lends only that node's validated slot, tagged with planner identity and interval. Its immutable borrow ends before planner mutation. Renderers do not receive mutable access to planner state.
+-- `ProcessBlock<L>::observations` stamps the producer identity and enforces that producer's reservation. `push` returns `Capacity` without changing earlier values when its allowance is exhausted. Unused reservations do not let another producer exceed its own allowance.
+-- `Planner::finish(FinishContext)` receives only values written in this interval and advances through the interval; it must not settle its end boundary. The runtime clears observation length before the next traversal, without clearing or freeing the backing allocation.
+-- A configured planner advances even with no active signal graph; in that case it receives no consumer observations. A `None` preparation signature selects the signal-only lifecycle and requires empty decisions and ordinary consumer signatures.
+-
+-`PlanContext` and planner `OperationContext` include `graph_epoch`, the active
+-runtime graph identity, and `callback_start`, the enclosing nonempty host callback's
+-absolute start. `frame` still denotes the current internal/delivery boundary.
+-The callback origin remains unchanged across every internal interval and operation;
+-planners can use it to reset private background allowances once, not per interval.
+-These are runtime-provided identities, not a new musical clock. Manual context
+-construction in standalone prototypes must now supply both fields.
+-
+-Zero-length host callbacks do nothing. Invalid planner intervals or changed decision-slice length are explicit render errors before consumers run. As with processor errors, a propagated failure is not rollback: outputs are cleared and the outer clock has already advanced. Hosts must not replay the failed frame.
+-
+-## Accounting and current limits
+-
+-Ingress, event-credit recycling, resource accounting, validation, telemetry publication, and host MIDI recovery remain one host-callback lifecycle. Returning results or traversing many intervals does not refresh those allowances. `Budgets::subranges` is ignored, including zero. Positive frame progress bounds interval count by actual frames, not an arbitrary subdivision quota. Finite same-frame settlement is the planner's responsibility. Application-dependent expensive work may miss a host deadline.
+-
+-Normal external event/result capacity is `min(scheduled_events, budgets.events)`. A configured planner also has one independent recovery receipt. Planner boundaries consume no scheduler slots. Diagnostic traversal counters saturate and set `Diagnostics::counter_overflow`; diagnostic exhaustion cannot refuse rendering.
+-
+-Planner operation/plan/finish contexts expose `PlannerResourceIo`, which dereferences to restricted `ResourceIo` and adds `capture()` boundary authority. Its direct methods retain shared callback quotas; `render()` borrows required read/capture access counted independently of those quotas. Neither reborrowing nor internal intervals reset allowances or diagnostics. `ReadIndex` supplies store-scoped logarithmic byte positioning with separate index-work diagnostics. Opt-in MIDI checkpoint rows provide bounded event/state positioning; their work counters share the same callback envelope. [Capture groups](capture-groups.md) reserve take/index/final-lease credits, stage all members before publication, and commit coherent prefixes. The boundary capability checks runtime frame/ceiling; processors get staged writes but cannot acquire lifecycle authority. Generated ownership/content models and disconnect-at-lifecycle-cut tests cover the generic mechanisms; loop adaptation remains separate. Typed operations and retained receipts are described below; delivery does not refresh any resource allowance.
+-
+-## Typed operations and terminal receipts
+-
+-A planner family defines associated `Operation` and `Result` types as compact `Copy + Send + 'static` plain data. Submit `Action::Planner { planner, operation }` or `Action::Processor { node, operation }` through `Command::Schedule`. Targets are distinct generational identities. `operation_bytes` bounds borrowed payloads per planner/consumer; payloads also must fit prepared scheduler stride and callback transfer headroom. A larger typed payload arena does not enlarge the MIDI packet limit.
+-
+-`Processor::operation` returns an immediate typed result. `Planner::operation` receives an `OperationContext` with requested/delivery frames, a runtime-scoped `ReceiptToken`, borrowed payload/resources, and a restricted receipt writer. It returns `Disposition::Complete(result)` or `Disposition::Pending`. Pending delivery leaves the due queue but **does not release its result credit**. Retain only the token and prepared plain-data state, never the borrowed payload/context. Complete retained tokens with `context.receipts.complete(token, result)` during operation, planning, or finishing. Exactly one terminal write is accepted; stale, foreign-runtime, or duplicate tokens are rejected. Completion cannot be backdated before delivery.
+-
+-`Execution<Operation, Result>` separates:
+-
+-- `requested_frame`: external scheduled timestamp;
+-- `delivered_frame: Option<Frame>`: actual delivery, or `None` for cancellation before delivery;
+-- `actual_frame`: terminal completion/cancellation frame;
+-- `result`: generic runtime delivery/receipt success or error;
+-- `operation_result`: the domain's terminal value, which may itself say applied, refused, cancelled, or superseded.
+-
+-Generic `result == Ok(())` is **not** proof of domain application: inspect `operation_result`. `late_by()` measures delivery lateness, not time spent legitimately pending. Normal parameter/MIDI results keep `operation_result == None`. Both command completions and execution results must be drained; the former returns original owning payloads, while the latter releases receipt credit at a later callback boundary.
+-
+-## Recovery and cancellation
+-
+-Ticket cancellation retains its existing pre-dequeue cut. After delivery, a planner cancels pending domain work by completing its retained receipt with a domain cancellation outcome. `ReceiptWriter::cancel_queued(sequence, outcome)` can cancel a normal typed operation before delivery; ordinary parameter/MIDI automation retains its existing cancellation contract. Queued cancellation reports `delivered_frame == None` and prevents later delivery.
+-
+-A recovery-safe planner action may use `Lane::Recovery`. `Planner::recovery_safe` must classify only payload-free, nonstructural cancellation/stop-like operations. Future timestamps, payload bytes, ordinary parameter/MIDI actions, and unsafe operations are refused on that lane. One separately prepared recovery receipt remains available even when every normal receipt is pending or unread. Its terminal result must be produced immediately or during planning at the delivery frame, **before any interval advances**; leaving it unresolved is an explicit interface fault. A domain must likewise reserve its own recovery state independently of normal pending storage.
+-
+-Unread recovery results retain that one credit. Recovery admission does not preempt a held finite validation command. Per-lane monotonic admission sequences permit priority recovery to be dequeued before older normal traffic; the ordinary transport still assigns globally unique submission sequences. Receipt scope identities are local to a Rust/Wasm instance, not transferable capabilities across separate Wasm instances. Host codecs must preserve instance/generation boundaries and encode domain operations explicitly, never Rust pointers or float parameter IDs.
+diff --git a/src/rust/rt_runtime/docs/resources.md b/src/rust/rt_runtime/docs/resources.md
+deleted file mode 100644
+index 5b432f31..00000000
+--- a/src/rust/rt_runtime/docs/resources.md
++++ /dev/null
+@@ -1,178 +0,0 @@
+-# Resources: upload, capture, and read
+-
+-`RenderIo::snapshot(ReadIndex)` returns the checked metadata for the pinned prefix, not a newer active resource version. It borrows the existing scoped lease without acquiring another lease or consuming background transfer credit. Audio renderers can validate format and duration before touching output.
+-
+-[Overview](../README.md) · [Host integration](integration.md) · [Capacity and performance](performance.md)
+-
+-`ResourceStore` holds audio/MIDI content in a fixed page pool. It provides revisioned storage and bounded copying—not a sampler, file decoder, resampler, or sequencer. Processors implement playback and recording behavior using that storage.
+-
+-```text
+-ResourceId (stable identity)
+-    │
+-    └─► active revision ──────────────────────► pages
+-            │ replacement
+-            ▼
+-        old revision ◄── Snapshot lease ─────► old pages remain readable
+-                              │ release
+-                              ▼
+-                       incremental reclamation
+-```
+-
+-## Choose an access path
+-
+-| Context | API | Budget/lifecycle owner |
+-|---|---|---|
+-| Running host control | `Command::resource(Request::...)` | Executor applies requests at callback boundaries and returns owning completions |
+-| Processor/planner, legacy/background access | `ResourceIo` | Shared callback budgets; bounded read/capture/snapshot/metadata access |
+-| Required data access | `ResourceIo::render()` (`RenderIo`) | Fixed-capacity read/capture; counted independently, never throttled by background allowances |
+-| Before startup / custom integration | `ResourceStore` directly | Caller manages `begin_callback`, reclamation, and final destruction |
+-
+-To preload content or playback leases, prepare a store and pass it to `GraphRuntime::prepare_with_resources`. Its configuration must match the runtime. Processors can retain IDs, snapshot IDs, and cursors from that same store.
+-
+-**IDs and cursors are scoped to one store.** Do not reuse them across independent runtime instances. Copying a snapshot handle does not create a new lease; release each acquired lease exactly once.
+-
+-## Required rendering versus background work
+-
+-`RenderIo::read`, `capture_audio`, and `capture_midi` use the same prepared storage, cursor/lease validation, frame/shape checks, and explicit physical-capacity failures as the legacy methods. They do not consume or replenish background byte/validation allowances. Reads copy at most one page remainder; audio appends remain bounded by configured frames and resource channels; MIDI appends remain bounded by configured arena capacities. They do not promise a CPU deadline.
+-
+-`ResourceStore::render_work()` reports attempted data operations, copied bytes, and charged MIDI event-validation units. These counters saturate and latch `counter_overflow`; they cannot refuse work. The executor publishes the same counts as `Diagnostics::render_operations`, `render_copied_bytes`, and `render_validation_steps`, merging overflow into `counter_overflow`. All counters reset once at the host callback boundary, not when a view is reborrowed or a planner chooses an interval.
+-
+-The capability cannot upload, allocate a snapshot lease, begin/stop capture, reclaim, or reset accounting. Optional snapshots and exports still use background allowances. Existing `ResourceIo` methods retain their quota-based behavior and reservations. Separate opt-in [capture groups](capture-groups.md) provide lifecycle reservations, exclusive claims, and staged coordinated commits. Planner contexts add frame-bound lifecycle authority; consumers receive only staged writes through `RenderIo`. Single-resource append methods reject managed members and are not group transactions.
+-
+-## Positional byte access
+-
+-`ResourceStore::read_index(snapshot_id)` or `ResourceIo::read_index` prepares a `ReadIndex` in constant metadata work. It borrows the existing lease rather than allocating or duplicating ownership. `RenderIo::cursor_at(index, byte_offset)` positions a cursor in logarithmic page-index steps; `ResourceStore::cursor_at` is also available to custom integrations. Reads then use the same page-bounded copy operation. Offset equal to prefix length denotes EOF; larger offsets fail. There is no content scan at prepare, seek, wrap, or freeze.
+-
+-A balanced append-only search tree is maintained as upload/capture pages arrive. Its nodes occupy the existing page metadata pool; storage is O(total pages), not a version-by-page cross product. Insertion/rebalancing and positional lookup take O(log version pages); sequential reads retain their direct next-page link. Snapshot cuts retain the version index and private-tail semantics across further appends, rotations, replacement, and removal. Reclamation still clears at most one data/index page per maintenance step.
+-
+-`ReadIndex` and all cursors carry an opaque store-instance scope and reject foreign/released handles. Legacy raw snapshot/resource IDs still require the documented same-store precondition at preparation. Scopes are allocated only before rendering, with checked exhaustion; handles are not portable between independent Wasm instances.
+-
+-`IndexWork` separately reports background/render metadata steps and saturating overflow through `Diagnostics::resource_index_work`. Upload index maintenance is bounded overhead of admitted page materialization, not a separate content scan or additional quota; existing transfer, parser, and reclamation budgets remain effective. Required lookup/append metadata work is counted without background throttling. These counters reset once per host callback.
+-
+-The page index positions bytes. Opt-in [MIDI checkpoint indexing](midi-indexing.md) adds event-boundary cursors, complete packet reads, and bounded state positioning. Seeking to an arbitrary MIDI byte is not event positioning. Restoration emission remains separate work; coordinated capture uses the explicit capture-group API rather than raw single-resource append.
+-
+-## Upload an immutable revision
+-
+-```text
+-Create → BeginUpload(expected_revision, description)
+-                 │ reserves all required page credits
+-                 ▼
+-       Write(offset 0) → Write(next offset) → ...
+-                 ▼
+-              Finish        checks completeness
+-                 ▼
+-              Commit        checks expected revision again
+-                 ▼
+-          new active revision; existing snapshots stay readable
+-
+-Before commit: CancelUpload releases the unused reservation and retires written data.
+-```
+-
+-A newly created resource has revision zero and no content. Only a finished upload can become active. Concurrent replacement may make `Commit` fail with `StaleRevision`; cancel an upload you will not use.
+-
+-### Content layout
+-
+-| Format | Bytes | Duration |
+-|---|---|---|
+-| `Format::Audio { channels }` | Interleaved little-endian `f32`; exactly `frames × channels × 4` bytes | Explicit frame count; channels must be nonzero |
+-| `Format::Midi` | Repeated little-endian `u64 frame`, `u32 packet_length`, complete packet bytes | Explicit frame count, including trailing silence; records ordered by frame and strictly before the end |
+-
+-Use `encode_midi_record` with caller-provided storage to encode a record. Resource audio is **interleaved**, unlike planar callback audio. Decode/interleave into preallocated processor scratch as needed. There is no sample-rate metadata conversion.
+-
+-### Chunk sizing
+-
+-```text
+-chunk bytes ≤ remaining bytes in current page
+-            ≤ remaining callback copy budget
+-MIDI also:  ≤ remaining callback validation steps (one step per byte)
+-```
+-
+-Write offsets must exactly match the received prefix. Chunks cannot cross page boundaries, but MIDI records can span multiple chunks/pages. Empty writes and malformed chunks fail without advancing the prefix. A failed MIDI parser attempt still consumes validation work.
+-
+-Executor read/write buffers cannot exceed `page_bytes`; an oversize buffer is refused before queue admission. With default budgets, a MIDI upload chunk is at most **32 bytes before other validation work**, despite a 4096-byte page size.
+-
+-### Receiving resource replies
+-
+-```text
+-submit Command::resource(request)
+-       ↓
+-try_completion()
+-       ├─ Applied → returned ResourceCommand::reply() contains Reply
+-       └─ Rejected / Cancelled → no reply; request ownership still returns
+-```
+-
+-Inspect both the completion outcome and the reply. A queued request is pending, not a successful operation. `Request::Read` returns the **advanced cursor and filled buffer inside the returned request**; consume only `Reply::Read { written, eof }`'s written prefix. Use `request()` or `into_request()` to recover the data.
+-
+-`Budget` means that operation was refused, not automatically queued for retry. Retry a returned request in a later callback when appropriate; do not busy-loop on the control thread expecting more work in the same callback.
+-
+-## Snapshot and export
+-
+-```text
+-Snapshot(resource) → Cursor(snapshot) → Read → Read → ... → ReleaseSnapshot
+-                                         │
+-                                  at most one page remainder per call
+-```
+-
+-A snapshot pins an immutable uploaded revision or a coherent captured prefix. Each cursor advances sequentially; indexed positioning is explicit and reads do not perform a hidden whole-resource seek. A short read may merely reach a page boundary, not EOF. With the direct API, compare cursor position with snapshot byte length; an empty output buffer also returns zero.
+-
+-| `Currentness` | Meaning |
+-|---|---|
+-| `Current` | Snapshot still matches active content and capture status |
+-| `Stale` | Content was replaced/appended or capture status changed |
+-| `ResourceRemoved` | The identity no longer exists |
+-
+-All three states permit reading a still-held snapshot. Release the lease even if export is cancelled. Dropping a copied `Snapshot` value does **not** release its pool reservation.
+-
+-## Capture
+-
+-```text
+-BeginCapture → append contiguous blocks → StopCapture → frozen content
+-                       │
+-                       └─ storage/copy/validation exhaustion
+-                              ▼
+-                     stopped + incomplete prefix
+-                              │
+-                     start a NEW capture explicitly
+-```
+-
+-- `BeginCapture` activates a fresh revision. Processor calls to `capture_audio` or `capture_midi` append at contiguous absolute engine frames.
+-- Audio capture takes interleaved samples. MIDI offsets become resource-relative frames; empty MIDI blocks still extend duration.
+-- Successful nonempty appends advance the revision. `stop_capture` freezes bytes without changing their revision, but its status change makes prior status snapshots stale.
+-- Storage exhaustion (or work-budget exhaustion through the legacy access path) stops recording atomically: none of the refused append is stored. Earlier successful appends—including earlier subranges—remain valid. Capacity recovery does not silently resume after a gap.
+-- Report capture failure through application state without abandoning unrelated audio processing. Propagating a capture error from `Processor::process` will instead fail/silence the host block.
+-
+-A running-capture snapshot shares complete pages and copies only its partial mutable tail. It needs one spare page when that tail exists, plus copy budget for its used bytes. Refusal leaves capture unchanged. `Snapshot::cut_frame` is the **actual captured prefix end**, not necessarily the time a control request was submitted. Inspect `capture.active` and `capture.incomplete` through snapshot metadata or `info`.
+-
+-## Budget and pool planning
+-
+-```text
+-budgets.transfer_bytes
+-┌─────────────────────────────────────┬───────────────────────────┐
+-│ control + scheduled payload staging │ resource_io_bytes reserved│
+-└─────────────────────────────────────┴───────────────────────────┘
+-                                     processors may use reservation
+-                                     PLUS unused control allowance
+-
+-budgets.validation_steps
+-┌─────────────────────────────────────┬───────────────────────────┐
+-│ graph / upload validation           │ resource_io_steps reserved│
+-└─────────────────────────────────────┴───────────────────────────┘
+-                                     unused steps can reclaim later
+-```
+-
+-Reservations are **inside**, not on top of, the total budgets. Defaults reserve zero. For legacy quota-based access, size byte headroom for all processor reads, captures, and snapshot-tail copies in the worst callback; size step headroom for MIDI capture event checks. Required `RenderIo` access does not need this headroom, but still needs sufficient physical storage; optional snapshot-tail copies remain budgeted. Reborrowing `ResourceIo` for another node or subrange does not reset counters. Background work cannot consume reserved headroom.
+-
+-Preparation requires at least one page of unreserved copy budget and one unreserved validation step. Reclamation runs after rendering with remaining validation steps, so sustained consumption can postpone page reuse.
+-
+-| Pool | What competes for it |
+-|---|---|
+-| `resource_pages × page_bytes` | Active content, reserved uploads, old leased versions, capture snapshot tails, retired pages awaiting recycling |
+-| `resource_slots` identity pool | Live resource IDs |
+-| Separate `resource_slots` version pool | Uploads, active/captured revisions, retained and retiring revisions |
+-| Separate `resource_slots` snapshot pool | Outstanding leases |
+-
+-An atomic replacement needs room for **old and new content together**, plus any older pinned revisions. Retained leases can exhaust pools even when no upload is active. Removing a resource or releasing a lease need not make its pages immediately reusable.
+-
+-Executor reclamation is automatic and bounded; custom direct-store hosts must call `reclaim` under the remaining budget. Direct users call `begin_callback` once per callback, never per operation. Final store destruction is non-RT.
+-
+-Upload cancellation, snapshot release, and capture stop may use the recovery lane. They can overtake queued normal reads/writes, which may then fail with stale handles. Removing a processor does not release leases hidden in its state: retrieve the processor, then explicitly release those leases through control requests while the runtime is running, or reclaim everything after callbacks stop.
+diff --git a/src/rust/rt_runtime/docs/scheduling-midi.md b/src/rust/rt_runtime/docs/scheduling-midi.md
+deleted file mode 100644
+index 0fca2a76..00000000
+--- a/src/rust/rt_runtime/docs/scheduling-midi.md
++++ /dev/null
+@@ -1,117 +0,0 @@
+-# Scheduling and MIDI
+-
+-[Overview](../README.md) · [Host integration](integration.md) · [Capacity and performance](performance.md)
+-
+-## Exact-frame control
+-
+-Submit `Command::Schedule { at, action, payload }` on `Lane::Normal`. `at` is an absolute engine sample frame, not a wall-clock time or block-relative offset.
+-
+-| Action | Payload | Application |
+-|---|---|---|
+-| `Action::Parameter { node, parameter, value }` | Empty `Box<[u8]>`; finite value | Calls `set_parameter` before that frame's samples |
+-| `Action::Midi { node, port }` | One complete validated MIDI 1.0 packet | Injects into that node's MIDI input at that frame |
+-| `Action::Planner { planner, operation }` | Family-typed operation plus bounded borrowed bytes | Immediate or pending domain terminal result |
+-| `Action::Processor { node, operation }` | Family-typed operation plus bounded borrowed bytes | Immediate typed processor result |
+-
+-The processor defines parameter IDs, units, ranges, and smoothing. The runtime provides timing, not interpolation.
+-
+-A scheduled MIDI packet must fit `min(midi_bytes_per_port, budgets.transfer_bytes - resource_io_bytes)`. Larger packets are rejected. Staging shares control-side copy allowance; a packet waiting for this callback's remaining allowance is still **unadmitted**.
+-
+-```text
+-Host callback: [ frame 1000 ................................... 1128 )
+-Schedule:                         gain = 0.25 at 1064
+-
+-Processor calls: [ 1000 .. 1064 )  │  [ 1064 .. 1128 )
+-Gain:                  0.50       │        0.25
+-                                  ▲
+-                           set_parameter runs here
+-```
+-
+-A frame equal to the block's end belongs to the next callback. An event arriving late is admitted at the current callback frame with lateness reported; accepted events are not silently shifted to fit a later block's work budget. Queueing, graph validation, and MIDI payload staging can delay **admission**, so submit with appropriate lead time.
+-
+-### Two different acknowledgements
+-
+-```text
+-submit Schedule
+-      │
+-      ▼
+-try_completion() → Outcome::Scheduled { effective_frame, late_by }
+-      │            "admitted", NOT "applied successfully"
+-      ▼
+-target frame reached → try_execution() → Execution { actual_frame, result, ... }
+-                                             │
+-                                      scheduler credit returns
+-                                      at a callback boundary
+-```
+-
+-Always drain both streams. Unsupported parameter IDs return execution errors. A removed target returns an explicit failure rather than addressing a new generation. MIDI injection also requires the node to be in the active graph at execution; parameter changes can target an installed but inactive processor.
+-
+-### Admission capacity
+-
+-```text
+-outstanding event/result capacity = min(
+-    scheduled_events,
+-    budgets.events
+-)
+-
+-Default: min(256, 64) = 64
+-```
+-
+-Every admitted event reserves an external delivery/result slot, even when events share a frame or are far in the future. Unread execution results retain the reservation. Internal planner intervals consume no such slots; the legacy `budgets.subranges` field is ignored. Raising `scheduled_events` alone may therefore do nothing. Use a bounded lookahead window rather than filling the scheduler with an entire long sequence.
+-
+-For equal timestamps, planner targets precede processor targets. Within a processor target, ordering is parameter, MIDI, then typed processor operation, followed by parameter/port and submission sequence. This preserves ordinary node/kind/port ordering; it is not a global “all parameters before all MIDI” rule across nodes.
+-
+-A configured planner has one additional, independent recovery receipt; it does not consume the normal capacity above. See [Typed operations and recovery](planning.md#typed-operations-and-terminal-receipts) for pending tokens, queued cancellation, payload limits, and separate requested/delivery/terminal frames. `Execution::operation_result` is authoritative for the domain outcome; generic delivery success alone does not mean the domain action applied.
+-
+-## MIDI buffers and ordering
+-
+-```text
+-raw MIDI byte stream → HOST parses running status / separates realtime bytes
+-                     → complete packets → MidiBuffer → graph
+-```
+-
+-| Rule | Consequence |
+-|---|---|
+-| Event count and byte count are separate capacities | Many short messages and one large SysEx stress different limits |
+-| `push` appends timestamp-ordered events | Rejects an earlier offset; equal timestamps are allowed |
+-| `insert` maintains stable timestamp order | Useful for fan-in; descriptor shifting has a performance cost |
+-| Offsets satisfy `0 <= offset < frames` | Processor offsets are rebased into each subrange and back to host offsets |
+-| Ordinary writer refusal is atomic | A failed write does not append a partial packet |
+-| SysEx must be complete and bounded | No running status or interleaved status bytes within a packet |
+-
+-Graph-routed MIDI uses timestamp order, with canonical source ordering for ties. Scheduled local injections follow routed sources at equal timestamps. Host input buffers and processor output buffers must be prepared outside rendering.
+-
+-## Overload recovery is part of host integration
+-
+-A partially delivered note stream can strand voices. The runtime therefore uses reset delivery, not arbitrary note dropping, when routing overflows.
+-
+-```text
+-internal input overflow
+-      └─► replace affected input with reserved resets
+-          └─► processor handles CC120 + CC123 on all 16 channels
+-
+-reported MIDI overflow
+-      └─► request recovery on every host MIDI output
+-          └─► suppress ordinary host MIDI while that output is pending
+-              └─► host drains reserved recovery sink
+-                  └─► normal output resumes in a subsequent render
+-```
+-
+-Each `MidiBuffer` reserves **32 messages / 96 bytes** beyond ordinary capacity for internal resets. CC120 (All Sound Off) precedes CC123 (All Notes Off) on each channel. Processors must handle these messages and keep doing audio work, including when their ordinary output writer refuses a message.
+-
+-### Host delivery order, per callback
+-
+-```text
+-1. runtime.process(audio, midi)
+-2. For each output port:
+-   a. clear its separately reserved, preallocated recovery sink
+-   b. runtime.drain_midi_recovery(port, sink, frames)
+-   c. deliver all accepted reset packets from that sink
+-   d. deliver ordinary output packets, if any
+-```
+-
+-A sink with at least 32 ordinary event slots and 96 ordinary bytes can hold one full reset sequence. The host-drain API uses ordinary sink capacity; the sink's internal emergency reserve is not a substitute. Smaller sinks work but require more callbacks. Pre-reserve downstream delivery capacity too: successfully draining into a sink acknowledges those packets, so do not discard them afterwards.
+-
+-Recovery attempts are capped by `budgets.events` **per output per callback**, shared across repeated drain calls. A full sink preserves the next reset packet. Repeated overflow does not restart an unfinished reset. Use `midi_recovery_pending(port)` to observe completion; audio continues while recovery is pending.
+-
+-`Command::ResetMidi` may use recovery-lane admission when the normal lane is full. It requests host-output resets; it is not a general reset of arbitrary processor state. Internal reset delivery on routing overflow is separate and bounded by 32 messages per affected port.
+diff --git a/src/rust/rt_runtime/src/executor.rs b/src/rust/rt_runtime/src/executor.rs
+index 3a743d47..f61e94ba 100644
+--- a/src/rust/rt_runtime/src/executor.rs
++++ b/src/rust/rt_runtime/src/executor.rs
+@@ -1,6 +1,7 @@
+ //! Single-owner graph executor with stable processor slots and transactional plans.
+ 
+ use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
++use crate::graph::activation::{GraphAccess, GraphStages, StageId};
+ use crate::graph::{
+     compile_planned, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator,
+     PortCounts, PortType, PreparedPlan, ValidationStatus,
+@@ -45,6 +46,16 @@ impl<P: Processor<L>, L: Planner> PreparedNode<P, L> {
+ }
+ 
+ pub enum Command<P, L: Planner = NoPlanner> {
++    StageGraph {
++        slot: usize,
++        expected_epoch: Epoch,
++        plan: Option<PreparedPlan>,
++        /// Filled only after complete validation and owning admission.
++        id: Option<StageId>,
++    },
++    ReleaseGraph {
++        id: StageId,
++    },
+     Commit {
+         expected_epoch: Epoch,
+         plan: Option<PreparedPlan>,
+@@ -64,6 +75,14 @@ pub enum Command<P, L: Planner = NoPlanner> {
+     Resource(resource::ResourceCommand),
+ }
+ impl<P, L: Planner> Command<P, L> {
++    pub fn stage_graph(slot: usize, expected_epoch: Epoch, plan: PreparedPlan) -> Self {
++        Self::StageGraph {
++            slot,
++            expected_epoch,
++            plan: Some(plan),
++            id: None,
++        }
++    }
+     pub fn resource(request: resource::Request) -> Self {
+         Self::Resource(resource::ResourceCommand::new(request))
+     }
+@@ -211,11 +230,25 @@ struct Slot<P> {
+     buffers: Buffers,
+ }
+ 
++fn activation_compatible<P>(
++    slots: &[Option<Slot<P>>],
++    candidate: &PreparedPlan,
++) -> Result<(), Error> {
++    for slot in slots.iter().flatten() {
++        if !candidate.contains(slot.id) && slot.buffers.injected.iter().any(|port| !port.is_empty())
++        {
++            return Err(Error::Busy);
++        }
++    }
++    Ok(())
++}
++
+ pub struct GraphRuntime<P, L: Planner = NoPlanner> {
+     clock: RenderRuntime,
+     catalog: Catalog,
+     slots: Vec<Option<Slot<P>>>,
+     active: Option<PreparedPlan>,
++    graph_stages: GraphStages,
+     validator: PlanValidator,
+     validating: Option<Sequence>,
+     epoch: Epoch,
+@@ -373,6 +406,7 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+                 catalog,
+                 slots,
+                 active: None,
++                graph_stages: GraphStages::disabled(),
+                 validator: PlanValidator::new(config),
+                 validating: None,
+                 epoch: Epoch(0),
+@@ -390,6 +424,16 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+         ))
+     }
+ 
++    /// Allocate fixed graph-owner slots before the first nonempty callback.
++    /// May be called once; validation and later activation never allocate storage.
++    pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
++        if self.clock.next_frame() != Frame(0) || self.graph_stages.enabled() {
++            return Err(Error::InvalidState);
++        }
++        self.graph_stages = GraphStages::prepare(candidates, self.clock.config())?;
++        Ok(())
++    }
++
+     /// Borrow the catalog only from the owner while no callback is active. Hosts
+     /// should retain their control-side signature description for compiling edits.
+     pub fn catalog(&self) -> &Catalog {
+@@ -479,6 +523,8 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+         self.resources.control_phase(false);
+         self.diagnostics.epoch = self.epoch;
+         let result = self.run_scheduled(&mut audio, &mut midi);
++        self.diagnostics.epoch = self.epoch;
++        self.ingress.set_epoch(self.epoch);
+         if let Err(error) = result {
+             audio.clear_bounded(limits.audio_outputs, frames);
+             for port in midi.outputs.iter_mut() {
+@@ -532,6 +578,61 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+             let mut retired = None;
+             let mut admitted = None;
+             let result = match operation.request {
++                Command::StageGraph {
++                    slot,
++                    expected_epoch,
++                    plan,
++                    id,
++                } => {
++                    if operation.lane != Lane::Normal || id.is_some() {
++                        Err(Error::InvalidState)
++                    } else if *expected_epoch != self.epoch {
++                        Err(Error::StaleEpoch)
++                    } else if let Err(error) = self.graph_stages.can_stage(*slot) {
++                        Err(error)
++                    } else if let Some(error) = plan
++                        .as_ref()
++                        .and_then(|p| self.graph_stages.accepts(p).err())
++                    {
++                        Err(error)
++                    } else if let Some(candidate) = plan.as_ref() {
++                        if self.validating != Some(operation.sequence) {
++                            self.validator.begin();
++                            self.validating = Some(operation.sequence);
++                        }
++                        let progress = self.validator.advance(
++                            candidate,
++                            &self.catalog,
++                            self.resources.steps_remaining(),
++                        );
++                        match self.resources.charge_external(0, progress.steps) {
++                            Err(error) => Err(error),
++                            Ok(()) => match progress.status {
++                                ValidationStatus::Pending => break,
++                                ValidationStatus::Invalid(error) => Err(error),
++                                ValidationStatus::Valid => {
++                                    *id = Some(self.graph_stages.install(
++                                        *slot,
++                                        self.epoch,
++                                        plan.take().expect("validated candidate"),
++                                    ));
++                                    Ok(())
++                                }
++                            },
++                        }
++                    } else {
++                        Err(Error::InvalidGraph)
++                    }
++                }
++                Command::ReleaseGraph { id } => {
++                    if operation.lane != Lane::Normal {
++                        Err(Error::InvalidState)
++                    } else {
++                        self.graph_stages
++                            .release(*id)
++                            .map(|owner| retired = owner.map(Retired::Plan))
++                    }
++                }
+                 Command::Resource(command) => {
+                     if operation.lane == Lane::Recovery && !command.recovery_safe() {
+                         Err(Error::InvalidState)
+@@ -661,7 +762,9 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+                     }
+                 }
+             };
+-            self.validating = None;
++            if self.validating == Some(operation.sequence) {
++                self.validating = None;
++            }
+             self.ingress.set_epoch(self.epoch);
+             let outcome = match result {
+                 Ok(()) => admitted.map_or(Outcome::Applied, |admission| Outcome::Scheduled {
+@@ -755,6 +858,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+                                 operation,
+                                 OperationContext {
+                                     graph_epoch: self.epoch,
++                                    graphs: GraphAccess::new(
++                                        &mut self.graph_stages,
++                                        &mut self.active,
++                                        &mut self.epoch,
++                                        event.lane == Lane::Normal,
++                                        &|candidate| activation_compatible(&self.slots, candidate),
++                                    ),
+                                     callback_start: audio.frame,
+                                     token: event.token,
+                                     frame: at,
+@@ -858,6 +968,13 @@ impl<P: Processor<L>, L: Planner> GraphRuntime<P, L> {
+             let selected = if self.catalog.planner().is_some() {
+                 self.planner.plan(PlanContext {
+                     graph_epoch: self.epoch,
++                    graphs: GraphAccess::new(
++                        &mut self.graph_stages,
++                        &mut self.active,
++                        &mut self.epoch,
++                        true,
++                        &|candidate| activation_compatible(&self.slots, candidate),
++                    ),
+                     callback_start: audio.frame,
+                     frame: at,
+                     ceiling,
+diff --git a/src/rust/rt_runtime/src/graph.rs b/src/rust/rt_runtime/src/graph.rs
+index f53ab492..3dd72135 100644
+--- a/src/rust/rt_runtime/src/graph.rs
++++ b/src/rust/rt_runtime/src/graph.rs
+@@ -4,6 +4,8 @@
+ //! scratch offsets. Prepared plans own immutable descriptors; activation/retirement
+ //! transfers that ownership without rebuilding or freeing on the render thread.
+ 
++pub mod activation;
++
+ use crate::planner::{
+     ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
+ };
+@@ -283,6 +285,32 @@ struct Membership {
+ }
+ 
+ impl PreparedPlan {
++    /// Retained metadata bytes, including spare vector capacity but not allocator overhead.
++    pub fn storage_bytes(&self) -> Result<usize, Error> {
++        let mut bytes = size_of::<Self>();
++        for (count, size) in [
++            (self.descriptor.steps.capacity(), size_of::<NodeStep>()),
++            (
++                self.descriptor.connections.capacity(),
++                size_of::<Connection>(),
++            ),
++            (self.membership.capacity(), size_of::<Membership>()),
++            (
++                self.planning.bindings.capacity(),
++                size_of::<DecisionBinding>(),
++            ),
++        ] {
++            bytes = count
++                .checked_mul(size)
++                .and_then(|n| bytes.checked_add(n))
++                .ok_or(Error::Capacity)?;
++        }
++        if bytes > i32::MAX as usize {
++            return Err(Error::Capacity);
++        }
++        Ok(bytes)
++    }
++
+     /// Control-side envelope for an untrusted descriptor. Only storage bounds are
+     /// checked here. This deliberately does not certify graph validity.
+     pub fn from_descriptor(
+diff --git a/src/rust/rt_runtime/src/planner.rs b/src/rust/rt_runtime/src/planner.rs
+index adb524ad..ca997fe9 100644
+--- a/src/rust/rt_runtime/src/planner.rs
++++ b/src/rust/rt_runtime/src/planner.rs
+@@ -66,6 +66,7 @@ pub struct Interval {
+ 
+ pub struct PlanContext<'a, O = (), R = ()> {
+     pub graph_epoch: crate::Epoch,
++    pub graphs: crate::graph::activation::GraphAccess<'a>,
+     /// Start of the enclosing nonempty host callback, not the internal interval.
+     pub callback_start: Frame,
+     pub frame: Frame,
+@@ -82,6 +83,7 @@ pub enum Disposition<R> {
+ 
+ pub struct OperationContext<'a, O, R> {
+     pub graph_epoch: crate::Epoch,
++    pub graphs: crate::graph::activation::GraphAccess<'a>,
+     /// Stable across every operation and planning interval in this callback.
+     pub callback_start: Frame,
+     pub token: crate::schedule::ReceiptToken,
+diff --git a/src/rust/rt_runtime/src/transport.rs b/src/rust/rt_runtime/src/transport.rs
+index 8fa8b626..a8935aa3 100644
+--- a/src/rust/rt_runtime/src/transport.rs
++++ b/src/rust/rt_runtime/src/transport.rs
+@@ -136,6 +136,7 @@ pub struct RenderEndpoint<T, R, S> {
+     telemetry: Producer<S>,
+     config: TransportConfig,
+     current: Option<Completion<T, R>>,
++    parked_normal: Option<Completion<T, R>>,
+     pending_return: Option<Completion<T, R>>,
+     normal_remaining: usize,
+     recovery_remaining: usize,
+@@ -188,6 +189,7 @@ pub fn channel<T, R, S: Copy>(
+             telemetry: telemetry_tx,
+             config,
+             current: None,
++            parked_normal: None,
+             pending_return: None,
+             normal_remaining: 0,
+             recovery_remaining: 0,
+@@ -344,6 +346,15 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
+         self.counters = WorkCounters::default();
+         self.normal_remaining = self.normal.slots().min(self.config.operations_per_cycle);
+         self.recovery_remaining = self.recovery.slots().min(self.config.recovery_per_cycle);
++        if self.recovery_remaining > 0
++            && self
++                .current
++                .as_ref()
++                .is_some_and(|p| p.lane == Lane::Normal)
++        {
++            debug_assert!(self.parked_normal.is_none());
++            self.parked_normal = self.current.take();
++        }
+         self.flush_return();
+     }
+ 
+@@ -367,6 +378,11 @@ impl<T, R, S: Copy> RenderEndpoint<T, R, S> {
+             while self.counters.operations < self.config.operations_per_cycle
+                 && self.counters.completions < self.config.publications_per_cycle
+             {
++                if self.recovery_remaining == 0 && self.parked_normal.is_some() {
++                    // Already dequeued: preserve FIFO and the original cancellation observation.
++                    self.current = self.parked_normal.take();
++                    break;
++                }
+                 let packet = if self.recovery_remaining > 0 {
+                     self.recovery_remaining -= 1;
+                     self.recovery.pop().ok()
+diff --git a/src/rust/rt_runtime/tests/lifecycle.rs b/src/rust/rt_runtime/tests/lifecycle.rs
+index a7345ef1..2f8e98ad 100644
+--- a/src/rust/rt_runtime/tests/lifecycle.rs
++++ b/src/rust/rt_runtime/tests/lifecycle.rs
+@@ -65,6 +65,104 @@ fn transport_configuration_rejects_invalid_capacities() {
+     ));
+ }
+ 
++#[shoop_test]
++fn recovery_preempts_held_normal_without_rechecking_cancellation_or_bypassing_fifo() {
++    for publications in [1, 2] {
++        for cancelled in [false, true] {
++            let drops = Arc::new(AtomicUsize::new(0));
++            let mut settings = config(2);
++            settings.publications_per_cycle = publications;
++            let (mut control, mut render) = channel::<Owned, Owned, u32>(settings).unwrap();
++            let first = control.submit(Lane::Normal, owned(1, &drops)).unwrap();
++            let second = control.submit(Lane::Normal, owned(2, &drops)).unwrap();
++            assert_no_heap(|| {
++                render.begin_cycle(Frame(0), Epoch(0));
++                assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
++            });
++            first.cancel();
++            let recovery = control.submit(Lane::Recovery, owned(3, &drops)).unwrap();
++            if cancelled {
++                recovery.cancel();
++            }
++            let mut retired = (!cancelled).then(|| owned(4, &drops));
++            assert_no_heap(|| {
++                render.begin_cycle(Frame(1), Epoch(7));
++                if !cancelled {
++                    assert_eq!(
++                        render.next_operation().unwrap().sequence,
++                        recovery.sequence()
++                    );
++                    render.complete(Outcome::Applied, retired.take()).unwrap();
++                }
++                if publications == 1 {
++                    assert!(render.next_operation().is_none());
++                } else {
++                    assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
++                    render.complete(Outcome::Applied, None).unwrap();
++                    assert!(render.next_operation().is_none());
++                }
++                assert_eq!(render.counters().operations, 1);
++                assert_eq!(render.counters().completions, publications);
++                render.begin_cycle(Frame(2), Epoch(7));
++                if publications == 1 {
++                    assert_eq!(render.next_operation().unwrap().sequence, first.sequence());
++                    render.complete(Outcome::Applied, None).unwrap();
++                    assert!(render.next_operation().is_none());
++                    render.begin_cycle(Frame(3), Epoch(7));
++                }
++                assert_eq!(render.next_operation().unwrap().sequence, second.sequence());
++                render.complete(Outcome::Applied, None).unwrap();
++            });
++            assert_eq!(drops.load(Ordering::Relaxed), 0);
++            let result = control.try_completion().unwrap();
++            assert_eq!(
++                (result.sequence, result.frame),
++                (recovery.sequence(), Frame(1))
++            );
++            assert_eq!(
++                result.outcome,
++                if cancelled {
++                    Outcome::Cancelled
++                } else {
++                    Outcome::Applied
++                }
++            );
++            assert_eq!(
++                result.retired.as_ref().map(|r| r.id),
++                (!cancelled).then_some(4)
++            );
++            drop(result);
++            let result = control.try_completion().unwrap();
++            assert_eq!(result.sequence, first.sequence());
++            assert_eq!(result.outcome, Outcome::Applied);
++            assert_eq!(result.frame, Frame(if publications == 1 { 2 } else { 1 }));
++            drop(result);
++            let result = control.try_completion().unwrap();
++            assert_eq!(result.sequence, second.sequence());
++            drop(result);
++            assert_eq!(control.outstanding(), 0);
++            assert_eq!(drops.load(Ordering::Relaxed), if cancelled { 3 } else { 4 });
++        }
++    }
++    let drops = Arc::new(AtomicUsize::new(0));
++    let (mut control, mut render) = channel::<Owned, (), u32>(config(2)).unwrap();
++    control.submit(Lane::Normal, owned(1, &drops)).unwrap();
++    control.submit(Lane::Normal, owned(2, &drops)).unwrap();
++    assert_no_heap(|| {
++        render.begin_cycle(Frame(0), Epoch(0));
++        assert_eq!(render.next_operation().unwrap().request.id, 1);
++    });
++    control.submit(Lane::Recovery, owned(3, &drops)).unwrap();
++    assert_no_heap(|| {
++        render.begin_cycle(Frame(1), Epoch(0));
++        assert_eq!(render.next_operation().unwrap().request.id, 3);
++    });
++    drop(control);
++    assert_eq!(drops.load(Ordering::Relaxed), 0);
++    drop(render);
++    assert_eq!(drops.load(Ordering::Relaxed), 3);
++}
++
+ #[shoop_test]
+ fn full_return_queue_retains_credits_and_recovery_has_reserved_admission() {
+     let drops = Arc::new(AtomicUsize::new(0));

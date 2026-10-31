@@ -1706,6 +1706,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1be81b31c9ce4caf7f3178eeb90662bb1864d3ad363ec6bdada3201adff19c37"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "windows-link",
+ "windows-result",
+]
+
+[[package]]
 name = "generic-array"
 version = "1.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2437,6 +2452,19 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "loom"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "lua-code"
@@ -3951,6 +3979,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_runtime"
+version = "0.3.0"
+dependencies = [
+ "loom",
+ "rtrb",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "rtrb"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4220,6 +4258,8 @@ dependencies = [
  "shoop_app_api",
  "shoop_backend",
  "shoop_latency",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
@@ -4362,6 +4402,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_engine_service"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "rtrb",
+ "shoop_engine",
+ "shoop_example_dsp",
+ "shoop_latency",
+ "shoop_loops",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_example_dsp"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_latency"
 version = "0.3.0"
 dependencies = [
@@ -4371,11 +4434,89 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_loops"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_loops_test_support",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_loops_test_support"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_loops",
+]
+
+[[package]]
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_backend"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "shoop_app_api",
+ "shoop_backend",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "tracing",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_engine"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_loops",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_host_native"
+version = "0.3.0"
+dependencies = [
+ "cpal",
+ "midir",
+ "rt_runtime",
+ "rtrb",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "shoop_rt_host_worklet"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_protocol"
+version = "0.3.0"
+dependencies = [
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4535,6 +4676,11 @@ dependencies = [
  "shoop_egui",
  "shoop_engine",
  "shoop_plugin_protocol",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_host_native",
+ "shoop_rt_host_worklet",
+ "shoop_rt_protocol",
  "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",

@@ -1,0 +1,6 @@
+meta engine=service mode=steady frames=64 loop_frames=4096 sample_rate=48000 samples=2048 warmup=128 debug=false clock_median_ns=40 rss_constructed_kib=Some(12708)
+meta rss_after_warmup_kib=Some(12716)
+meta elapsed_wall_ns=10069527 rss_live_kib=Some(12716)
+meta service_resource_pages=8192 pool_before_cleanup=PoolUsage { free_pages: 8064, reserved_pages: 0, free_versions: 30, free_snapshots: 30, retired_versions: 0, retired_pages: 0 } media_before_cleanup=Usage { free_media: 7, free_exports: 4, free_pins: 8, references: 2 }
+meta pool_after_cleanup=PoolUsage { free_pages: 8192, reserved_pages: 0, free_versions: 32, free_snapshots: 32, retired_versions: 0, retired_pages: 0 }
+meta rss_after_cleanup_kib=Some(6624)

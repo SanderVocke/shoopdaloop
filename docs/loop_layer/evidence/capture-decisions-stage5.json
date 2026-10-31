@@ -1,0 +1,282 @@
+{
+  "passed": true,
+  "base_commit": "813f8311fafedb82d4fae2a33b1563250b3f7156",
+  "scope": "Stage 5 capture preflight decisions: target-scoped autonomous start/restart refusal, independent running-take exhaustion, and deterministic request-family refusal precedence. Complete loop facade remains pending.",
+  "source_sha256": {
+    "src/rust/shoop_loop_engine/src/audio.rs": "79669f4c43eab3ca7333a9cd833d15be01885d759b66f830eda94e3d6dc7b064",
+    "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "a7723310cdf674b97b378302ef37ba24f9821aa8c0ccf5435b8d14c0c26b7f28",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "e4386d75748fe1c1b872184b7cf1f2074d74c3eec289ae0dfeff627d1da339e2",
+    "src/rust/shoop_loop_engine/src/midi.rs": "ea410585ad388cfdacdb06efc858e32f274e77f095f666706e352c0218b3052a",
+    "src/rust/shoop_loop_engine/src/midi_restore.rs": "5cccf7e16e8502213fab7a8a9fc50a2ae33083d6a4eb06931d752edf07653322",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "9d29e22c0ff0c471b27dd37f171f2639f8fe0f3b0a40d7ec2a7fce0aab0508b8",
+    "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/audio.rs": "e3b3ebb013eb8826de281d7400e770dba0ae45d6ed69d6955f6c4218724aed2f",
+    "src/rust/shoop_loop_engine/tests/capture_decisions.rs": "da13b551654a59a0e5c0c524d75ac9e31b6b4982106f6eba7a52a9b2760e6ac0",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+    "src/rust/shoop_loop_engine/tests/media_decisions.rs": "6311ab6ab61bf0bbdee2b8d2c050510567f857d9423e8bf1352c173c97f4c52a",
+    "src/rust/shoop_loop_engine/tests/midi.rs": "32da82ff3723d5444e9d05e4004cab65b39d303b0b663d562d4935317db07053",
+    "src/rust/shoop_loop_engine/tests/midi_restore.rs": "beb5545b887d23272e0876d888ae421c8aebffe9cd934d0a609904bc3adba662",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a",
+    "scripts/run_rt_runtime_miri.py": "37d1c0246ace620fd99542d6b7651ab268508cb81f0275d35f6095d8ade7349b"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.4540845720039215,
+      "log": "target/loop-layer-capture-decisions-stage5/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 2.649984935997054,
+      "log": "target/loop-layer-capture-decisions-stage5/native-debug.log",
+      "sha256": "3c25a5aca6c3fedf5e5e432a03408a8297b7a1c674f94b7a5131909ce600627d"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 3.1126332790008746,
+      "log": "target/loop-layer-capture-decisions-stage5/native-release.log",
+      "sha256": "a6df9b04d943a884da6302cb7f211998d87aff8216426fed3f9a52f7696f84fd"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 2.5074094439914916,
+      "log": "target/loop-layer-capture-decisions-stage5/workspace-build.log",
+      "sha256": "c05fb99484563cc9c86f80971ad6acf06321d3783f8e78f0800da0f83e6087c7"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "--no-deps",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5283839139883639,
+      "log": "target/loop-layer-capture-decisions-stage5/rustdoc.log",
+      "sha256": "e0e146afafa9e038af16978c0888046e45bb1509f5f7dcce16b1973c6b026af5"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.39431594699271955,
+      "log": "target/loop-layer-capture-decisions-stage5/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.3620910249883309,
+      "log": "target/loop-layer-capture-decisions-stage5/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.03954352698929142,
+      "log": "target/loop-layer-capture-decisions-stage5/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.045842564999475144,
+      "log": "target/loop-layer-capture-decisions-stage5/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.05545161799818743,
+      "log": "target/loop-layer-capture-decisions-stage5/tracing-policy.log",
+      "sha256": "569bbeec5201f94fd72b501e155e7217976caddbf648b72ccde1f324f47d2b38"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.18064648698782548,
+      "log": "target/loop-layer-capture-decisions-stage5/wasm-dependencies.log",
+      "sha256": "077ad4115bb6999f06ac6926c3a6f657925a3a589fafa1b457cc5fe74e2a4a59"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 51.02868258400122,
+      "log": "target/loop-layer-capture-decisions-stage5/node.log",
+      "sha256": "621bcbe3df9c4e2e4504259692fdd51f28893bb70bb6b4beef25d909384ee4c0"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 43.43505117400491,
+      "log": "target/loop-layer-capture-decisions-stage5/chrome.log",
+      "sha256": "406f19417d49a32b21ff3cdaeb4f5bf8a8d356f931989a1a0d40b997eca2172c"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.02319388900650665,
+      "log": "target/loop-layer-capture-decisions-stage5/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 38.520486820998485,
+      "log": "target/loop-layer-capture-decisions-stage5/workspace-tests.log",
+      "sha256": "c3f0437ce2d7cad8ec6f922e1840fa04f6973266f5b595118586eb3196535d33"
+    }
+  ],
+  "loop_native_per_profile": 77,
+  "wasm": [
+    {
+      "elapsed_seconds": 44.937513929995475,
+      "executed": 77,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 77,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 77,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 77,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 42.91836258099647,
+      "executed": 77,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 77,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 77,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 77,
+      "traces": {}
+    }
+  ],
+  "limitations": [
+    "This scoped loop milestone does not rerun the unchanged standalone runtime release/Wasm suites, native/worklet fixtures or generic runtime Miri cases. Their preceding full run remains historical prepared-interval-stage5 evidence.",
+    "Full workspace nextest and warning-denied workspace build are freshly executed.",
+    "Selected loop Miri is recorded separately; not a whole loop-suite Miri claim.",
+    "Complete loop adapter, coherent mixed-media ownership/outcomes/export, full graph/example, independent loop hosts and final CI/review remain pending."
+  ]
+}

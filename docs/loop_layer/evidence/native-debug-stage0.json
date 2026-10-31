@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "browser": "not run; replaying checked-in real-worklet evidence",
+  "golden_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+  "profile": "debug",
+  "native": [
+    {
+      "mode": "offline",
+      "quanta": 2601,
+      "frames": 332928,
+      "sample_hash": 480331717,
+      "midi_hash": 3308430490,
+      "midi_events": 34,
+      "graph_hash": 487351092,
+      "max_copy": 1042,
+      "max_steps": 512
+    },
+    {
+      "mode": "two-thread",
+      "quanta": 2601,
+      "frames": 332928,
+      "sample_hash": 480331717,
+      "midi_hash": 3308430490,
+      "midi_events": 34,
+      "graph_hash": 487351092,
+      "max_copy": 1042,
+      "max_steps": 512
+    }
+  ]
+}

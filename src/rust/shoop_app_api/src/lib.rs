@@ -1670,6 +1670,170 @@ pub struct BusFxSpec {
     pub processor_type: TrackProcessorTypeId,
 }
 
+/// An optional backend feature. Every feature outside the core looping workflow is one of these.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum BackendCapability {
+    SessionCapture,
+    /// Loading sessions whose loops carry content. Structure-only documents need no capability.
+    SessionContentLoad,
+    /// Composite loops, scheduled by the backend or, without its support, by the application.
+    CompositeLoops,
+    Grab,
+    ReplacingMode,
+    /// Playing dry through wet and recording dry into wet, as loop modes and track defaults.
+    DryWetModes,
+    /// Dry/wet tracks, with an external or a hosted processor.
+    DryWetTracks,
+    TrackFx,
+    BusFx,
+    LatencyCompensation,
+    TakeAlignment,
+    /// Replacing loop content from imports, generated click tracks and duplication.
+    LoopContentImport,
+    /// Editing loop length, start offset and pre-play.
+    LoopTimingEdits,
+    /// Creating and removing buses other than Master.
+    BusManagement,
+    AudioDriverSwitching,
+    MidiInjection,
+}
+
+impl BackendCapability {
+    pub const ALL: [Self; 16] = [
+        Self::SessionCapture,
+        Self::SessionContentLoad,
+        Self::CompositeLoops,
+        Self::Grab,
+        Self::ReplacingMode,
+        Self::DryWetModes,
+        Self::DryWetTracks,
+        Self::TrackFx,
+        Self::BusFx,
+        Self::LatencyCompensation,
+        Self::TakeAlignment,
+        Self::LoopContentImport,
+        Self::LoopTimingEdits,
+        Self::BusManagement,
+        Self::AudioDriverSwitching,
+        Self::MidiInjection,
+    ];
+
+    const fn bit(self) -> u32 {
+        1 << self as u32
+    }
+
+    pub const fn unavailable_reason(self) -> &'static str {
+        match self {
+            Self::SessionCapture => "This audio backend cannot save sessions.",
+            Self::SessionContentLoad => {
+                "This audio backend cannot load sessions with loop content."
+            }
+            Self::CompositeLoops => "This audio backend does not support composite loops.",
+            Self::Grab => "This audio backend does not support grabbing.",
+            Self::ReplacingMode => "This audio backend does not support replacing.",
+            Self::DryWetModes => "This audio backend does not support the dry/wet loop modes.",
+            Self::DryWetTracks => "This audio backend does not support dry/wet tracks.",
+            Self::TrackFx => "This audio backend does not support track FX.",
+            Self::BusFx => "This audio backend does not support bus FX.",
+            Self::LatencyCompensation => {
+                "This audio backend does not support latency compensation."
+            }
+            Self::TakeAlignment => "This audio backend does not support take alignment.",
+            Self::LoopContentImport => "This audio backend cannot replace loop content.",
+            Self::LoopTimingEdits => {
+                "This audio backend does not support editing loop length or timing."
+            }
+            Self::BusManagement => "This audio backend supports only the Master bus.",
+            Self::AudioDriverSwitching => {
+                "This audio backend cannot switch audio drivers at runtime; restart with other settings instead."
+            }
+            Self::MidiInjection => "This audio backend does not support MIDI input injection.",
+        }
+    }
+}
+
+/// The set of optional features a backend supports. The application presents the others as
+/// unavailable, refuses them and rejects documents that need them. Defaults to every feature.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct BackendCapabilities {
+    supported: u32,
+}
+
+impl BackendCapabilities {
+    pub const FULL: Self = {
+        let mut supported = 0;
+        let mut index = 0;
+        while index < BackendCapability::ALL.len() {
+            supported |= BackendCapability::ALL[index].bit();
+            index += 1;
+        }
+        Self { supported }
+    };
+    pub const NONE: Self = Self { supported: 0 };
+
+    pub const fn supports(self, capability: BackendCapability) -> bool {
+        self.supported & capability.bit() != 0
+    }
+
+    #[must_use]
+    pub const fn with(self, capability: BackendCapability, supported: bool) -> Self {
+        Self {
+            supported: if supported {
+                self.supported | capability.bit()
+            } else {
+                self.supported & !capability.bit()
+            },
+        }
+    }
+
+    pub fn require(self, capability: BackendCapability) -> Result<(), String> {
+        if self.supports(capability) {
+            Ok(())
+        } else {
+            Err(capability.unavailable_reason().to_owned())
+        }
+    }
+
+    pub fn unsupported(self) -> impl Iterator<Item = BackendCapability> {
+        BackendCapability::ALL
+            .into_iter()
+            .filter(move |capability| !self.supports(*capability))
+    }
+}
+
+impl Default for BackendCapabilities {
+    fn default() -> Self {
+        Self::FULL
+    }
+}
+
+impl fmt::Debug for BackendCapabilities {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_set()
+            .entries(
+                BackendCapability::ALL
+                    .into_iter()
+                    .filter(|capability| self.supports(*capability)),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NotificationLevel {
+    Warning,
+    Error,
+}
+
+/// A message for the user about a refused or failed action, shown until dismissed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppNotification {
+    pub id: u64,
+    pub level: NotificationLevel,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
@@ -1682,6 +1846,8 @@ pub struct AppSnapshot {
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
+    pub capabilities: BackendCapabilities,
+    pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
     pub scripting: Arc<ScriptingState>,
@@ -2198,6 +2364,9 @@ pub enum AppIntent {
         message: String,
     },
     ResetXruns,
+    DismissNotification {
+        id: u64,
+    },
     RequestNewSession,
     RequestSaveSession,
     RequestLoadSessionPicker,
@@ -2457,6 +2626,7 @@ impl AppIntent {
                 "audio_driver.complete_persistence"
             }
             Self::ResetXruns => "audio.reset_xruns",
+            Self::DismissNotification { .. } => "app.dismiss_notification",
             Self::RequestNewSession => "session.request_new",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
@@ -2489,6 +2659,37 @@ pub type AppAction = AppIntent;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_capabilities_toggle_each_capability_independently() {
+        assert_eq!(BackendCapabilities::default(), BackendCapabilities::FULL);
+        assert_eq!(BackendCapabilities::FULL.unsupported().count(), 0);
+        assert_eq!(
+            BackendCapabilities::NONE.unsupported().collect::<Vec<_>>(),
+            BackendCapability::ALL
+        );
+        for capability in BackendCapability::ALL {
+            let reduced = BackendCapabilities::FULL.with(capability, false);
+            assert!(!reduced.supports(capability));
+            assert_eq!(reduced.unsupported().collect::<Vec<_>>(), [capability]);
+            assert_eq!(
+                reduced.require(capability),
+                Err(capability.unavailable_reason().to_owned())
+            );
+            assert_eq!(reduced.with(capability, true), BackendCapabilities::FULL);
+            assert!(BackendCapabilities::NONE
+                .with(capability, true)
+                .require(capability)
+                .is_ok());
+        }
+        assert_eq!(
+            format!(
+                "{:?}",
+                BackendCapabilities::NONE.with(BackendCapability::Grab, true)
+            ),
+            "{Grab}"
+        );
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn bus_state_derives_stereo_capability_from_ordered_channel_count() {

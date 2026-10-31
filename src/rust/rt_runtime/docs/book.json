@@ -1,0 +1,43 @@
+{
+  "pending_chapters": [],
+  "examples": [
+    {"name": "gain_graph", "args": []},
+    {"name": "planned_gain", "args": []},
+    {"name": "bounded_runtime", "args": ["--iterations", "1024"]},
+    {"name": "first_graph", "args": []},
+    {"name": "prepared_processor", "args": []},
+    {"name": "callback_adapter", "args": []},
+    {"name": "owning_commands", "args": []},
+    {"name": "live_routing", "args": []},
+    {"name": "midi_packets", "args": []},
+    {"name": "stored_audio", "args": []},
+    {"name": "recording_prefixes", "args": []},
+    {"name": "midi_seeking", "args": []},
+    {"name": "planned_pair", "args": []},
+    {"name": "pending_operations", "args": []},
+    {"name": "staged_routes", "args": []},
+    {"name": "coordinated_capture", "args": []},
+    {"name": "prepared_writes", "args": []},
+    {"name": "shutdown_owners", "args": []}
+  ],
+  "chapter_examples": {
+    "2": ["first_graph"],
+    "3": ["first_graph", "prepared_processor"],
+    "4": ["callback_adapter"],
+    "5": ["owning_commands"],
+    "6": ["live_routing"],
+    "7": ["gain_graph"],
+    "8": ["midi_packets"],
+    "9": ["stored_audio"],
+    "10": ["recording_prefixes"],
+    "11": ["midi_seeking", "stored_audio"],
+    "12": ["midi_seeking"],
+    "13": ["planned_gain", "planned_pair"],
+    "14": ["pending_operations"],
+    "15": ["staged_routes"],
+    "16": ["coordinated_capture"],
+    "17": ["bounded_runtime", "coordinated_capture", "stored_audio"],
+    "18": ["prepared_writes"],
+    "19": ["shutdown_owners"]
+  }
+}

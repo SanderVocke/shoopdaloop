@@ -9,6 +9,7 @@ browser-feature = "wasm-test-browser"
 
 [features]
 default = []
+contracts = []
 native-drivers = ["shoop_engine/app_backend"]
 cpal = ["native-drivers", "shoop_engine/cpal"]
 native-fx = ["native-drivers", "shoop_engine/carla", "dep:shoop_plugin_protocol"]

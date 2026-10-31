@@ -1,6 +1,6 @@
 use crate::{
-    colors, AppIntent, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId, LoopId,
-    LoopMode, TrackId,
+    colors, AppIntent, BackendCapability, CompositeDetailsState, CompositeEventDetailsState,
+    CompositeEventId, LoopId, LoopMode, TrackId,
 };
 use egui_material_icons::icons::ICON_LOCK_CLOCK;
 use std::collections::{BTreeMap, BTreeSet};
@@ -551,7 +551,29 @@ impl CompositeLoopWidget {
                                         for (mode, label) in SCRIPT_EVENT_MODES {
                                             let selected = event.mode.as_deref()
                                                 == Some(script_mode_key(mode));
-                                            let response = ui.selectable_label(selected, label);
+                                            let capability = match mode {
+                                                LoopMode::Replacing => {
+                                                    Some(BackendCapability::ReplacingMode)
+                                                }
+                                                LoopMode::PlayingDryThroughWet
+                                                | LoopMode::RecordingDryIntoWet => {
+                                                    Some(BackendCapability::DryWetModes)
+                                                }
+                                                _ => None,
+                                            }
+                                            .filter(|capability| {
+                                                !crate::supports(ui.ctx(), *capability)
+                                            });
+                                            let response = ui
+                                                .add_enabled(
+                                                    capability.is_none(),
+                                                    egui::Button::selectable(selected, label),
+                                                )
+                                                .on_disabled_hover_text(
+                                                    capability.map_or("", |capability| {
+                                                        capability.unavailable_reason()
+                                                    }),
+                                                );
                                             #[cfg(test)]
                                             self.mode_menu_rects.push((mode, response.rect));
                                             if response.clicked() {

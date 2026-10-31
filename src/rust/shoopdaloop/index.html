@@ -10,6 +10,7 @@
     <link data-trunk rel="copy-file" href="../../../resources/iconset/icon.png" />
     <link data-trunk rel="copy-file" href="raw_wasm_host.js" />
     <link data-trunk rel="copy-file" href="audio_worklet.js" />
+    <link data-trunk rel="copy-file" href="rt_audio_worklet.js" />
     <link data-trunk rel="copy-file" href="audio_worker.js" />
     <link data-trunk rel="copy-file" href="worker_fixture_contract.js" />
     <link data-trunk rel="copy-dir" href="generated" />
@@ -98,6 +99,10 @@
         color: #bbb;
       }
 
+      #new_engine_permission_hint[hidden] {
+        display: none;
+      }
+
       .browser_permission_row {
         display: grid;
         grid-template-columns: minmax(150px, 1fr) minmax(120px, auto);
@@ -183,6 +188,10 @@
         <p>
           Enable the browser capabilities you want to use. You can open this dialog again from
           Settings → Audio.
+        </p>
+        <p id="new_engine_permission_hint" hidden>
+          The new engine backend starts with the audio and MIDI ports available when audio is
+          enabled: enable Web MIDI first. MIDI ports allowed or connected later need a reload.
         </p>
         <div class="browser_permission_row">
           <span class="browser_permission_name">Audio output</span>

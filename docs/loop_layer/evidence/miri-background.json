@@ -1,0 +1,445 @@
+{
+  "base_commit": "d89f96a7c2b0d503a0a3a249d51c1ae11da4b612",
+  "scope": "Background Miri infrastructure only; no new Miri interpreter run or stage-completion claim.",
+  "source_sha256": {
+    "scripts/run_rt_runtime_miri.py": "97c20c53d3c1343a75d03a3174f16c312406ae325c23507e3044e59fa388ee68",
+    "scripts/run_rt_runtime_miri_jobs.py": "0c3e6ee317df732209ecac0fda2b935973a94f580fb5c392027e4fd32e681160",
+    "scripts/tests/test_rt_runtime_miri.py": "481bcae9a27b9ad74c848fe74ba8b8d2088a44b71640a02ccaad1088b75d743b",
+    "scripts/tests/test_rt_runtime_miri_jobs.py": "7c5506bd07f5c168fe453c82cc98ecad770188189102c4beb9c800cff3979f12"
+  },
+  "python_tests": 14,
+  "command": "nix develop --command python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs",
+  "logs": {
+    "target/loop-layer-miri-background/python-first.log": "c4ae5437c5fef7498851bce94855c6f0d53cb27b973622474c56f1cd0c0aa44f",
+    "target/loop-layer-miri-background/python-cleanup.log": "41206fb3247bad4adb4aa847c3dfb83f551bb7ed74040c3ca97ee49d73b76c99",
+    "target/loop-layer-miri-background/checks.log": "8723a44346aa11482f8242f2ea541e789eb888a46f6f24fcc7a4fea689f6b20f"
+  },
+  "pinned_toolchain": "nightly-2026-05-04",
+  "selected_inventory": [
+    [
+      "rt_runtime",
+      "contracts",
+      [],
+      12,
+      0
+    ],
+    [
+      "rt_runtime",
+      "planning_graph",
+      [],
+      8,
+      0
+    ],
+    [
+      "rt_runtime",
+      "planner_execution",
+      [],
+      9,
+      0
+    ],
+    [
+      "rt_runtime",
+      "initial_graph",
+      [],
+      3,
+      0
+    ],
+    [
+      "rt_runtime",
+      "resource_render",
+      [],
+      4,
+      0
+    ],
+    [
+      "rt_runtime",
+      "resource_index",
+      [],
+      5,
+      0
+    ],
+    [
+      "rt_runtime",
+      "midi_state",
+      [],
+      6,
+      0
+    ],
+    [
+      "rt_runtime",
+      "midi_restore_state",
+      [],
+      2,
+      0
+    ],
+    [
+      "rt_runtime",
+      "midi_index",
+      [],
+      8,
+      0
+    ],
+    [
+      "rt_runtime",
+      "typed_schedule",
+      [],
+      7,
+      0
+    ],
+    [
+      "rt_runtime",
+      "typed_execution",
+      [],
+      12,
+      0
+    ],
+    [
+      "rt_runtime",
+      "wire_properties",
+      [],
+      3,
+      0
+    ],
+    [
+      "rt_runtime",
+      "resource_properties",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "mixed_stress",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture",
+      [],
+      7,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_groups",
+      [],
+      5,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_group_intervals",
+      [],
+      5,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_prepared_interval",
+      [],
+      3,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_group_planner",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_boundary",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_group_model",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "capture_group_disconnect",
+      [],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "host_processor",
+      [],
+      2,
+      0
+    ],
+    [
+      "rt_runtime",
+      "lifecycle",
+      [
+        "--",
+        "--skip",
+        "deterministic_admission_model",
+        "--skip",
+        "cancellation_flag_model"
+      ],
+      9,
+      0
+    ],
+    [
+      "rt_runtime",
+      "resource_execution",
+      [
+        "resource_payloads_survive_saturation_refusal_cancellation_recovery_and_disconnect"
+      ],
+      1,
+      0
+    ],
+    [
+      "rt_runtime",
+      "lifecycle",
+      [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      1,
+      1
+    ],
+    [
+      "rt_runtime",
+      "lifecycle",
+      [
+        "two_thread_stress_keeps_completion_and_state_publication_coherent"
+      ],
+      1,
+      2
+    ],
+    [
+      "shoop_loop_engine",
+      "audio",
+      [],
+      6,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "audio_ports",
+      [],
+      2,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "lib",
+      [],
+      2,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "topology_staging",
+      [],
+      7,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime_topology",
+      [],
+      6,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "media",
+      [],
+      4,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "media_decisions",
+      [],
+      4,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "capture_decisions",
+      [],
+      4,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "midi_restore",
+      [],
+      4,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "midi",
+      [],
+      6,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "coordinated_stereo_midi_record_play_seek_export_and_repeated_capture_match_independent_oracles",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::stopped_input_initial_state_and_half_open_prefix_export_survive_immediate_play",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::running_capture_exhaustion_preserves_independently_predicted_common_prefix_and_live_audio",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::dense_one_sample_media_keeps_all_128_boundaries_with_unread_external_results",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::facade_role_validation_invalid_operations_and_imported_revision_exhaustion_are_checked",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "runtime",
+      [
+        "scenarios::integrated_restart_smoothing_and_gain_follow_decisions_not_host_cuts",
+        "--",
+        "--exact"
+      ],
+      1,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "topology_views",
+      [],
+      3,
+      0
+    ],
+    [
+      "shoop_loop_engine",
+      "interloop",
+      [],
+      1,
+      0
+    ]
+  ],
+  "registered_executions": 178,
+  "unchanged_rust_source_files": 104,
+  "verification": [
+    "Immutable committed export remains independent of later development edits/commits; .pi and uncommitted files excluded.",
+    "Detached supervisor validates complete exact package/target/filter/seed/count inventory, per-case summaries, source/supervisor and result/log hashes.",
+    "Zero exit without result, missing inventory, log/count/source tampering and lost supervision cannot pass collection.",
+    "Linux PID identity includes boot identity and process start ticks; known orphan runner is detected and cancellable.",
+    "Synthetic cancellation and actual runner SIGTERM paths reap synthetic case descendants and preserve partial output; unchanged900-second watchdog and timeout/exit-race cleanup.",
+    "Single active job admission and external report/progress paths tested."
+  ],
+  "retained_failure": "python-first.log: synthetic fixture signal handler attempted reentrant child.wait and timed out; fixture now raises before reaping. No test watchdog was raised. Detached Popen handles are retained/reaped rather than discarded with ResourceWarnings.",
+  "real_snapshot_smoke": {
+    "scope": "Real repository immutable export and Nix/Cargo metadata only; no Miri interpreter launched.",
+    "commit": "aa41a9b3633c3756be1997269fee23b80f4e30c0",
+    "source_files": 604,
+    "inventory_executions": 178,
+    "seconds": 1.7076787529804278,
+    "command": "nix develop --no-update-lock-file path:<immutable-source> --command cargo metadata --locked --no-deps --format-version 1",
+    "artifact": "target/loop-layer-miri-background/snapshot-smoke.json",
+    "metadata_log": "target/loop-layer-miri-background/snapshot-metadata.log",
+    "metadata_log_sha256": "ee801bc9c76876274d18fea655c613047781e663afbad6c840daeba1c77615a6",
+    "source_unchanged": true,
+    "exit_code": 0
+  },
+  "limitations": [
+    "Linux-only local background wrapper; foreground runner remains portable.",
+    "Synthetic Python fixtures and Nix shim are not actual Miri evidence.",
+    "First real interpreter use remains the next applicable consolidated stage run.",
+    "No whole-job wall time or callback deadline claim follows from helper-test duration."
+  ]
+}

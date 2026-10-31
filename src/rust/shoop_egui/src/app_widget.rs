@@ -124,6 +124,13 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
     SettingKey::new("audio.cpal.capture_ring_frames");
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
+pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const NEW_ENGINE_TRACKS: SettingKey<u32> = SettingKey::new("audio.new_engine.tracks");
+pub const NEW_ENGINE_LOOPS: SettingKey<u32> = SettingKey::new("audio.new_engine.loops");
+pub const NEW_ENGINE_CHANNELS: SettingKey<u32> = SettingKey::new("audio.new_engine.channels");
+pub const NEW_ENGINE_LOOP_MEMORY_MB: SettingKey<u32> =
+    SettingKey::new("audio.new_engine.loop_memory_mb");
+pub(crate) const NEW_ENGINE_SETTINGS_PREFIX: &str = "audio.new_engine.";
 
 const TRACK_MODE_CHOICES: &[(&str, &str)] = &[
     ("regular", "Regular"),
@@ -628,6 +635,155 @@ pub fn carla_hosting_mode_from_snapshot(
         .map_err(|error| error.to_string())?
         .parse()
         .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
+}
+
+/// The audio backend the application starts with.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AudioBackendKind {
+    #[default]
+    Legacy,
+    /// The new engine backend, which supports the core looping workflow.
+    NewEngine,
+}
+
+impl AudioBackendKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::NewEngine => "new_engine",
+        }
+    }
+}
+
+impl std::str::FromStr for AudioBackendKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "legacy" => Ok(Self::Legacy),
+            "new_engine" => Ok(Self::NewEngine),
+            _ => Err(format!(
+                "unknown audio backend {value:?}; expected legacy or new_engine"
+            )),
+        }
+    }
+}
+
+const AUDIO_BACKEND_CHOICES: &[(&str, &str)] = &[
+    ("legacy", "Legacy engine"),
+    ("new_engine", "New engine (core looping only)"),
+];
+
+/// Capacities the new engine backend prepares at startup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NewEnginePools {
+    /// Tracks, including the sync track.
+    pub tracks: u32,
+    /// Loop slots shared by all tracks.
+    pub loops: u32,
+    /// Audio channels per track direction.
+    pub channels: u32,
+    pub loop_memory_mb: u32,
+}
+
+impl Default for NewEnginePools {
+    fn default() -> Self {
+        Self {
+            tracks: 16,
+            loops: 128,
+            channels: 2,
+            loop_memory_mb: 256,
+        }
+    }
+}
+
+pub fn register_audio_backend_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    let defaults = NewEnginePools::default();
+    builder.register(
+        SettingDefinition::new(
+            AUDIO_BACKEND,
+            AudioBackendKind::Legacy.id().to_owned(),
+            "Audio",
+            "Audio backend",
+            "The legacy engine supports every feature. The new engine backend supports the core looping workflow only: no saving or loading of loop content, FX, composite loops, grab, dry/wet tracks or buses besides Master. Natively it uses the preferred audio driver's settings, with CPAL in place of JACK.",
+        )
+        .category_order(5)
+        .setting_order(50)
+        .effect(SettingEffect::RestartRequired)
+        .editor(SettingEditor::StringChoice {
+            choices: AUDIO_BACKEND_CHOICES,
+        }),
+    )?;
+    for (order, key, default, label, help, min, max) in [
+        (
+            51,
+            NEW_ENGINE_TRACKS,
+            defaults.tracks,
+            "New engine tracks",
+            "Tracks the new engine backend prepares, including the sync track.",
+            2,
+            256,
+        ),
+        (
+            52,
+            NEW_ENGINE_LOOPS,
+            defaults.loops,
+            "New engine loops",
+            "Loop slots the new engine backend prepares, shared by all tracks. Each track takes one per loop, usually eight.",
+            1,
+            4096,
+        ),
+        (
+            53,
+            NEW_ENGINE_CHANNELS,
+            defaults.channels,
+            "New engine track channels",
+            "Most audio channels of a track input or output in the new engine backend.",
+            1,
+            8,
+        ),
+        (
+            54,
+            NEW_ENGINE_LOOP_MEMORY_MB,
+            defaults.loop_memory_mb,
+            "New engine loop memory",
+            "Memory in MiB the new engine backend reserves for loop content; 256 MiB hold about 23 minutes of mono audio at 48 kHz.",
+            16,
+            2047,
+        ),
+    ] {
+        builder.register(
+            SettingDefinition::new(key, default, "Audio", label, help)
+                .category_order(5)
+                .setting_order(order)
+                .effect(SettingEffect::RestartRequired)
+                .editor(SettingEditor::UnsignedInteger { min, max }),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn audio_backend_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<AudioBackendKind, String> {
+    snapshot
+        .get(AUDIO_BACKEND)
+        .map_err(|error| error.to_string())?
+        .parse()
+}
+
+pub fn new_engine_pools_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<NewEnginePools, String> {
+    let get = |key| snapshot.get(key).map_err(|error| error.to_string());
+    Ok(NewEnginePools {
+        tracks: get(NEW_ENGINE_TRACKS)?,
+        loops: get(NEW_ENGINE_LOOPS)?,
+        channels: get(NEW_ENGINE_CHANNELS)?,
+        loop_memory_mb: get(NEW_ENGINE_LOOP_MEMORY_MB)?,
+    })
 }
 
 pub fn loop_edge_smoothing_ms(snapshot: &SettingsSnapshot) -> Result<u32, String> {
@@ -1144,6 +1300,8 @@ pub struct AppWidget {
     bus_area_rect: Option<egui::Rect>,
     #[cfg(test)]
     empty_tracks_welcome_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    notification_dismiss_rects: Vec<(u64, egui::Rect)>,
 }
 
 impl Default for AppWidget {
@@ -1245,6 +1403,8 @@ impl AppWidget {
             bus_area_rect: None,
             #[cfg(test)]
             empty_tracks_welcome_rect: None,
+            #[cfg(test)]
+            notification_dismiss_rects: Vec::new(),
         }
     }
 
@@ -1334,6 +1494,7 @@ impl AppWidget {
         let mut about_requested = false;
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
         crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
+        crate::set_backend_capabilities(ui.ctx(), state.capabilities);
 
         egui::Panel::top("global_controls")
             .frame(
@@ -1493,9 +1654,21 @@ impl AppWidget {
                             .inner_margin(egui::Margin::same(6)),
                     )
                     .show(ui, |ui| {
+                        let injection_supported =
+                            crate::supports(ui.ctx(), crate::BackendCapability::MidiInjection);
+                        if !injection_supported {
+                            ui.colored_label(
+                                colors::WARNING,
+                                crate::BackendCapability::MidiInjection.unavailable_reason(),
+                            );
+                        }
                         actions.extend(
                             self.piano
-                                .show(ui, !destination_ids.is_empty(), &destination_centers)
+                                .show(
+                                    ui,
+                                    injection_supported && !destination_ids.is_empty(),
+                                    &destination_centers,
+                                )
                                 .into_iter()
                                 .map(AppAction::Piano),
                         );
@@ -1591,6 +1764,7 @@ impl AppWidget {
         self.show_add_bus_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
+        self.show_notifications(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
         actions.extend(self.script_dialogs.show_windows(
             ui.ctx(),
@@ -1643,7 +1817,11 @@ impl AppWidget {
     ) {
         ui.horizontal(|ui| {
             ui.heading("Buses");
-            let add_bus = ui.button("+ Add bus");
+            let add_bus = crate::add_with_capability(
+                ui,
+                crate::BackendCapability::BusManagement,
+                egui::Button::new("+ Add bus"),
+            );
             #[cfg(test)]
             {
                 self.add_bus_open_rect = Some(add_bus.rect);
@@ -1905,37 +2083,48 @@ impl AppWidget {
                         );
                         ui.end_row();
                         ui.label("Effect");
+                        let bus_fx_supported =
+                            crate::supports(ui.ctx(), crate::BackendCapability::BusFx);
                         let mut selected = self
                             .add_bus_processor
                             .as_ref()
+                            .filter(|_| bus_fx_supported)
                             .map(|processor| processor.as_str().to_owned())
                             .unwrap_or_else(|| "none".to_owned());
-                        egui::ComboBox::from_id_salt("add_bus_processor")
-                            .selected_text(
-                                selected
-                                    .as_str()
-                                    .eq("none")
-                                    .then_some("None")
-                                    .unwrap_or_else(|| {
-                                        state
-                                            .bus_processors
-                                            .iter()
-                                            .find(|processor| processor.id.as_str() == selected)
-                                            .map(|processor| processor.label.as_str())
-                                            .unwrap_or(&selected)
-                                    }),
-                            )
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut selected, "none".to_owned(), "None");
-                                for processor in state.bus_processors.iter().filter(|p| p.available)
-                                {
-                                    ui.selectable_value(
-                                        &mut selected,
-                                        processor.id.as_str().to_owned(),
-                                        &processor.label,
-                                    );
-                                }
-                            });
+                        ui.add_enabled_ui(bus_fx_supported, |ui| {
+                            egui::ComboBox::from_id_salt("add_bus_processor")
+                                .selected_text(
+                                    selected
+                                        .as_str()
+                                        .eq("none")
+                                        .then_some("None")
+                                        .unwrap_or_else(|| {
+                                            state
+                                                .bus_processors
+                                                .iter()
+                                                .find(|processor| processor.id.as_str() == selected)
+                                                .map(|processor| processor.label.as_str())
+                                                .unwrap_or(&selected)
+                                        }),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut selected, "none".to_owned(), "None");
+                                    for processor in
+                                        state.bus_processors.iter().filter(|p| p.available)
+                                    {
+                                        ui.selectable_value(
+                                            &mut selected,
+                                            processor.id.as_str().to_owned(),
+                                            &processor.label,
+                                        );
+                                    }
+                                })
+                                .response
+                        })
+                        .inner
+                        .on_disabled_hover_text(
+                            crate::BackendCapability::BusFx.unavailable_reason(),
+                        );
                         self.add_bus_processor =
                             (selected != "none").then(|| TrackProcessorTypeId::new(selected));
                         ui.end_row();
@@ -2117,6 +2306,52 @@ impl AppWidget {
         };
         self.click_track.open(loop_state, &state.click_track);
         true
+    }
+
+    fn show_notifications(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        #[cfg(test)]
+        self.notification_dismiss_rects.clear();
+        if state.notifications.is_empty() {
+            return;
+        }
+        egui::Area::new(egui::Id::new("app_notifications"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-8.0, -32.0))
+            .show(context, |ui| {
+                ui.set_max_width(380.0);
+                for notification in state.notifications.iter() {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let dismiss = ui
+                                .small_button(egui_material_icons::icons::ICON_CLOSE.rich_text())
+                                .on_hover_text("Dismiss");
+                            #[cfg(test)]
+                            self.notification_dismiss_rects
+                                .push((notification.id, dismiss.rect));
+                            if dismiss.clicked() {
+                                actions.push(AppAction::DismissNotification {
+                                    id: notification.id,
+                                });
+                            }
+                            let color = match notification.level {
+                                crate::NotificationLevel::Warning => colors::WARNING,
+                                crate::NotificationLevel::Error => colors::ERROR,
+                            };
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&notification.message).color(color),
+                                )
+                                .wrap(),
+                            );
+                        });
+                    });
+                }
+            });
     }
 
     fn show_io_task_dialog(
@@ -2315,6 +2550,7 @@ impl AppWidget {
         if !self.add_track_open {
             return;
         }
+        self.reset_unsupported_add_track_choices(crate::backend_capabilities(context));
         let mut open = self.add_track_open;
         let mut accepted = false;
         let mut cancelled = false;
@@ -2397,10 +2633,16 @@ impl AppWidget {
                     };
                     ui.colored_label(egui::Color32::LIGHT_RED, message);
                 }
+                let missing_capability = spec.as_ref().and_then(|spec| {
+                    track_spec_missing_capability(crate::backend_capabilities(ui.ctx()), spec)
+                });
+                if let Some(capability) = missing_capability {
+                    ui.colored_label(egui::Color32::LIGHT_RED, capability.unavailable_reason());
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(
-                        validation.is_ok(),
+                        validation.is_ok() && missing_capability.is_none(),
                         egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
                     );
                     #[cfg(test)]
@@ -2434,6 +2676,25 @@ impl AppWidget {
             open = false;
         }
         self.add_track_open = open;
+    }
+
+    /// Saved new-track defaults may need features the backend lacks, whose controls are disabled.
+    fn reset_unsupported_add_track_choices(&mut self, capabilities: crate::BackendCapabilities) {
+        if !capabilities.supports(crate::BackendCapability::DryWetTracks)
+            && self.add_track_mode == AddTrackMode::DryWet
+        {
+            self.add_track_mode = AddTrackMode::Regular;
+        }
+        if !capabilities.supports(crate::BackendCapability::DryWetModes) {
+            self.add_track_default_playback_mode = DefaultPlaybackMode::Regular;
+        }
+        if !capabilities.supports(crate::BackendCapability::LatencyCompensation) {
+            let latency = TrackLatencySpec::default();
+            self.add_track_recording_adjustment = latency.adjustment;
+            self.add_track_recording_frames = latency.manual_frames;
+            self.add_track_processor_adjustment = latency.processor_adjustment;
+            self.add_track_processor_frames = latency.processor_manual_frames;
+        }
     }
 
     fn add_track_spec(&self) -> Option<TrackSpec> {
@@ -2954,7 +3215,20 @@ pub fn show_new_track_configuration(
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut configuration.mode, AddTrackMode::Regular, "Regular");
                     ui.selectable_value(&mut configuration.mode, AddTrackMode::Trigger, "Trigger");
-                    ui.selectable_value(&mut configuration.mode, AddTrackMode::DryWet, "Dry + Wet");
+                    ui.add_enabled_ui(
+                        crate::supports(ui.ctx(), crate::BackendCapability::DryWetTracks),
+                        |ui| {
+                            ui.selectable_value(
+                                &mut configuration.mode,
+                                AddTrackMode::DryWet,
+                                "Dry + Wet",
+                            )
+                        },
+                    )
+                    .inner
+                    .on_disabled_hover_text(
+                        crate::BackendCapability::DryWetTracks.unavailable_reason(),
+                    );
                 });
                 ui.end_row();
 
@@ -2977,10 +3251,19 @@ pub fn show_new_track_configuration(
                                 DefaultPlaybackMode::Regular,
                                 "Regular",
                             );
-                            ui.selectable_value(
-                                &mut displayed_playback,
-                                DefaultPlaybackMode::DryThroughWet,
-                                "Dry through wet",
+                            ui.add_enabled_ui(
+                                crate::supports(ui.ctx(), crate::BackendCapability::DryWetModes),
+                                |ui| {
+                                    ui.selectable_value(
+                                        &mut displayed_playback,
+                                        DefaultPlaybackMode::DryThroughWet,
+                                        "Dry through wet",
+                                    )
+                                },
+                            )
+                            .inner
+                            .on_disabled_hover_text(
+                                crate::BackendCapability::DryWetModes.unavailable_reason(),
                             );
                         });
                 });
@@ -3064,6 +3347,15 @@ pub fn show_new_track_configuration(
                 });
                 ui.end_row();
 
+                if !crate::supports(ui.ctx(), crate::BackendCapability::LatencyCompensation) {
+                    ui.label("");
+                    ui.colored_label(
+                        colors::WARNING,
+                        crate::BackendCapability::LatencyCompensation.unavailable_reason(),
+                    );
+                    ui.end_row();
+                    ui.disable();
+                }
                 ui.label("Recording alignment:");
                 egui::ComboBox::from_id_salt("recording_adjustment")
                     .selected_text(recording_adjustment_label(
@@ -3158,6 +3450,29 @@ pub fn show_new_track_configuration(
             });
     });
     response
+}
+
+fn track_spec_missing_capability(
+    capabilities: crate::BackendCapabilities,
+    spec: &TrackSpec,
+) -> Option<crate::BackendCapability> {
+    let mut needed = Vec::new();
+    if let TrackSpecTopology::DryWet {
+        default_playback_mode,
+        ..
+    } = &spec.topology
+    {
+        needed.push(crate::BackendCapability::DryWetTracks);
+        if *default_playback_mode == DefaultPlaybackMode::DryThroughWet {
+            needed.push(crate::BackendCapability::DryWetModes);
+        }
+    }
+    if spec.latency != TrackLatencySpec::default() {
+        needed.push(crate::BackendCapability::LatencyCompensation);
+    }
+    needed
+        .into_iter()
+        .find(|capability| !capabilities.supports(*capability))
 }
 
 fn settings_bus_options(state: &AppState) -> Vec<BusOption> {
@@ -3480,6 +3795,70 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn audio_backend_settings_default_to_legacy_and_require_a_restart() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_audio_backend_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(
+            audio_backend_from_snapshot(&defaults).unwrap(),
+            AudioBackendKind::Legacy
+        );
+        assert_eq!(
+            new_engine_pools_from_snapshot(&defaults).unwrap(),
+            NewEnginePools::default()
+        );
+        for key in [
+            AUDIO_BACKEND.id(),
+            NEW_ENGINE_TRACKS.id(),
+            NEW_ENGINE_LOOPS.id(),
+            NEW_ENGINE_CHANNELS.id(),
+            NEW_ENGINE_LOOP_MEMORY_MB.id(),
+        ] {
+            assert_eq!(
+                registry.definition(key).unwrap().effect(),
+                SettingEffect::RestartRequired,
+                "{key}"
+            );
+        }
+
+        let mut draft = SettingsDraft::from_snapshot(&defaults);
+        draft.set(AUDIO_BACKEND, "new_engine".to_owned());
+        draft.set(NEW_ENGINE_TRACKS, 4);
+        draft.set(NEW_ENGINE_LOOPS, 33);
+        draft.set(NEW_ENGINE_CHANNELS, 1);
+        draft.set(NEW_ENGINE_LOOP_MEMORY_MB, 32);
+        let empty = shoop_settings::SettingsDocument::empty("test");
+        let document = registry
+            .document_from_draft(&empty, &draft, "test")
+            .unwrap();
+        let resolved = registry.resolve(&document, 2).snapshot;
+        assert_eq!(
+            audio_backend_from_snapshot(&resolved).unwrap(),
+            AudioBackendKind::NewEngine
+        );
+        assert_eq!(
+            new_engine_pools_from_snapshot(&resolved).unwrap(),
+            NewEnginePools {
+                tracks: 4,
+                loops: 33,
+                channels: 1,
+                loop_memory_mb: 32,
+            }
+        );
+
+        draft.set(AUDIO_BACKEND, "remote".to_owned());
+        assert!(registry.validate_draft(&draft).is_err());
+        draft.set(AUDIO_BACKEND, "legacy".to_owned());
+        draft.set(NEW_ENGINE_CHANNELS, 9);
+        assert!(registry.validate_draft(&draft).is_err());
+        for kind in [AudioBackendKind::Legacy, AudioBackendKind::NewEngine] {
+            assert_eq!(kind.id().parse::<AudioBackendKind>().unwrap(), kind);
+        }
+        assert!("engine".parse::<AudioBackendKind>().is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
         let mut builder = SettingsRegistryBuilder::default();
         register_carla_settings(&mut builder).unwrap();
@@ -3716,6 +4095,97 @@ mod tests {
         assert_eq!(
             click(&context, &mut widget, &state, reset),
             vec![AppAction::ResetXruns]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn notifications_are_shown_until_dismissed() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            notifications: Arc::from([crate::AppNotification {
+                id: 4,
+                level: crate::NotificationLevel::Warning,
+                message: "refused".to_owned(),
+            }]),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        frame(&context, &mut widget, &state, Vec::new());
+        let [(id, dismiss)] = widget.notification_dismiss_rects[..] else {
+            panic!("expected one notification");
+        };
+        assert_eq!(id, 4);
+        assert_eq!(
+            click(&context, &mut widget, &state, dismiss.center()),
+            vec![AppAction::DismissNotification { id: 4 }]
+        );
+        frame(&context, &mut widget, &AppState::default(), Vec::new());
+        assert!(widget.notification_dismiss_rects.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unsupported_bus_and_track_features_cannot_be_requested() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            capabilities: crate::BackendCapabilities::NONE,
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let buses = widget.buses_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, buses);
+        let open = widget.add_bus_open_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, open).is_empty());
+        assert!(!widget.add_bus_open);
+
+        let spec = TrackSpec {
+            name: "Dry/wet".to_owned(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 1,
+                dry_midi: false,
+                processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+            },
+            latency: TrackLatencySpec {
+                manual_frames: 3,
+                ..Default::default()
+            },
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        };
+        let full = crate::BackendCapabilities::FULL;
+        assert_eq!(track_spec_missing_capability(full, &spec), None);
+        for capability in [
+            crate::BackendCapability::DryWetTracks,
+            crate::BackendCapability::DryWetModes,
+            crate::BackendCapability::LatencyCompensation,
+        ] {
+            assert_eq!(
+                track_spec_missing_capability(full.with(capability, false), &spec),
+                Some(capability)
+            );
+        }
+
+        widget.add_track_open = true;
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_default_playback_mode = DefaultPlaybackMode::DryThroughWet;
+        widget.add_track_recording_adjustment = RecordingOffsetAdjustmentState::ManualOverride;
+        widget.add_track_recording_frames = 3;
+        frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.add_track_mode, AddTrackMode::Regular);
+        assert_eq!(
+            widget.add_track_default_playback_mode,
+            DefaultPlaybackMode::Regular
+        );
+        let spec = widget.add_track_spec().unwrap();
+        assert_eq!(spec.latency, TrackLatencySpec::default());
+        assert_eq!(
+            track_spec_missing_capability(state.capabilities, &spec),
+            None
         );
     }
 

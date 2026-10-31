@@ -1,0 +1,41 @@
+{
+  "stage": 6,
+  "verified_complete": true,
+  "implementation_snapshot": "faec78df0a990d28b4fefb2f75e43ea0ace7f1ea",
+  "native_tests_per_profile": {
+    "shoop_loop_engine": 153
+  },
+  "wasm_tests_per_runtime": 153,
+  "workspace_passed": 2141,
+  "workspace_existing_skips": 4,
+  "scoped_command_logs_reverified": 19,
+  "positive_prototypes": 8,
+  "expected_compile_failures": 23,
+  "prototype_sources_sha256": {
+    "docs/loop_layer/prototypes/interval_lifecycle.rs": "2ab3aba545a8ee0fb219472f682a2ad5a5c3562998dcb4b6017f490547e87af5",
+    "docs/loop_layer/prototypes/runtime_view_lifetime.rs": "6432340584e073b93cb6773ecebba15167dd16ff9d02574e5252b92a617eca83",
+    "docs/loop_layer/prototypes/capture_authority.rs": "71392463238e3141ae65a48811e788c9de8cb09348e17c17b85a7a8a51ee9b01",
+    "docs/loop_layer/prototypes/topology_view_lifetime.rs": "822a8fd9931a3d9a6edd9239f2bdc31834896cf694081f0fbd452fb4f03d497e",
+    "docs/loop_layer/prototypes/topology_staging_lifetime.rs": "c257ce7be6c11983c60e9df4f460cd3b9a8d98c7920c0a2cfb6daad0f51684ab",
+    "docs/loop_layer/prototypes/program_probe_lifetime.rs": "3b20e3292b1da3375b35c17c03ea46aa9906bfc196657e69c984e034e7324c47",
+    "docs/loop_layer/prototypes/program_change_lifetime.rs": "2c510c7ab323fcb0d148edd3787a6517e5f89f5586d9a82a7e7b93ed4e97cfc1",
+    "docs/loop_layer/prototypes/graph_activation_lifetime.rs": "c19f22e6fda4f581ad71c2f07ed86e8a92922a913aaf6f2deef6b5a1d665d1e4",
+    "docs/loop_layer/prototypes/media_owner_activation_lifetime.rs": "e2f5e8cf91e2b8962e93dafa34a1be61f66c7cffa2a6fe3aa65f2ccaee7664c5"
+  },
+  "miri_executions": 228,
+  "miri_commands": 81,
+  "evidence_sha256": {
+    "docs/loop_layer/evidence/nested-lifecycle-stage6.json": "af25fa1f3e40070e3dd22ecd4cc903fed7c0302a7b37c2520dd7ed0bf3fcd67b",
+    "docs/loop_layer/evidence/nested-lifecycle-stage6-provenance.json": "9430cbaeea71288420ee3c141082dd406f45b868be0061819a3f1c65407a0dd4",
+    "docs/loop_layer/evidence/miri-stage6.json": "d4c8fa7b5e0caf610783a56d178ae4343288b413f63e2841184847ae15df3ae0",
+    "docs/loop_layer/evidence/miri-stage6-collected.json": "1feabd79f82b0616524811db9a5a7769315c69fbae1a15feaca255f0081eaeff",
+    "docs/loop_layer/evidence/miri-stage6-provenance.json": "33767587c0d07029e0fe67909b6eb59c12e79c62d2c921ae8eb3defb56968557",
+    "docs/loop_layer/evidence/miri-stage6-logs.tar.gz": "cf84b6c107e5592fc8b02a5c1800401bcd8283e5ecee04a52b909accb648f29a"
+  },
+  "verification_note": "An initial inline check incorrectly expected native_tests_per_profile to be a scalar rather than the package-keyed object. The corrected field check passed; all log/source/report checks already passed. No tests were rerun or changed. The separate Miri manifest-driver shape mistake is retained in miri-stage6-provenance.json.",
+  "limitations": [
+    "Source-matched prior native/Wasm/prototype evidence reverified, not freshly rerun.",
+    "Stage6 only; Stages7-10 and final LL-A acceptance remain pending.",
+    "User explicitly requires pause after completion commit; Stage7 has not started."
+  ]
+}

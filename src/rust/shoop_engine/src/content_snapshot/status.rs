@@ -26,7 +26,7 @@ impl SessionContentEpoch {
     fn bump_epoch(&self) {
         let previous = self
             .epoch
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                 Some(current.saturating_add(1))
             })
             .expect("epoch update closure always succeeds");
@@ -93,7 +93,7 @@ impl ContentStatus {
     pub fn next_revision(&self) -> ContentRevision {
         let revision = self
             .next_revision
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 Some(current.saturating_add(1))
             })
             .expect("revision update closure always succeeds");

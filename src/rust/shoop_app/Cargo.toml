@@ -22,6 +22,8 @@ shoop_script_resources = { path = "../shoop_script_resources" }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

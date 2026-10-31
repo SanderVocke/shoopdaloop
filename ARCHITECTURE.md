@@ -1,0 +1,824 @@
+<a id="architecture-overview"></a>
+
+# ShoopDaLoop architecture and decisions
+
+[Workstreams and acceptance](PLAN.md) · [Verification and evidence](VALIDATION.md) · [Historical rationale](docs/history/README.md)
+
+<a id="purpose-and-scope"></a>
+<a id="stack-and-communication-structure"></a>
+<a id="other-processing-components"></a>
+<a id="implementation-status-and-architectural-continuity"></a>
+
+## Scope and implementation map
+
+This is the maintained architecture/design entry point for all workstreams in
+[PLAN.md](PLAN.md). It separates implemented mechanisms, accepted constraints and
+proposals. It does not claim production migration, feature parity or final loop
+acceptance. The pre-consolidation proposals, contracts, critique and experiments
+are preserved in the [historical snapshot](docs/history/README.md); obsolete
+snapshot-status paragraphs there do not describe the current tree.
+
+| Layer | Implemented responsibility | Boundary |
+| --- | --- | --- |
+| `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
+| `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
+| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests, benchmarks and test hosts | Not used by production crates; not part of the loop library's API |
+| `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
+| `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
+| Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
+| `shoop_rt_engine` | The [new engine backend](#new-engine-backend)'s real-time composition: node enum over the loop parts and its strip/Master processors, segmented prepared pools, structural transactions, the bounded control endpoint and the render owner | Engine terms only; no application, legacy-engine or host dependency (boundary script); compiled once for every environment |
+| `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor, connection lifecycle, credited lanes, the in-process carrier and the binary record carrier | No semantics; no application or engine dependency |
+| `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices and pump audio/MIDI/messages: dummy and CPAL/midir natively; an import-free AudioWorklet module serving the record carrier | No engine or application semantics; no application dependency |
+| `shoop_rt_backend` | The application's `Backend` trait over a protocol client: ID mapping, state mirror, capability descriptor, structure-only session documents | Depends on the application API and the protocol, not on the engine or a host |
+| Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Legacy backends remain the default; only the opt-in new engine backend runs its core looping set on this stack |
+| Common modular protocol, service browser/IPC/network deployment | Proposed; the new engine backend's protocol is its first concrete instance | Not implemented merely because test-host codecs, Wasm libraries or that one protocol exist |
+
+The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
+[task guides](src/rust/shoop_loops/README.md), DSP
+[README](src/rust/shoop_example_dsp/README.md), service
+[README](src/rust/shoop_engine_service/README.md), and host
+[READMEs](tests/loops_host/README.md) are the public usage paths. They remain
+separate from planning and evidence, and are not rewritten by consolidation.
+The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
+[adapter](src/rust/shoop_rt_backend/README.md),
+[native host](src/rust/shoop_rt_host_native/README.md) and
+[worklet host](src/rust/shoop_rt_host_worklet/README.md) READMEs and the protocol's
+[crate documentation](src/rust/shoop_rt_protocol/src/lib.rs) are its usage paths.
+
+<a id="generic-rt-runtime"></a>
+
+## Accepted architectural constraints
+
+### Responsibilities and timing authority
+
+The generic runtime owns authoritative engine frames and execution mechanics.
+One render-owned resolver owns logical loop modes, positions, synchronization,
+composite cursors and request precedence. Playback/capture processors consume
+borrowed immutable decisions and return observations; they do not discover timing
+by reading mutable peer state or running another musical clock.
+
+Timing relations (sync, state-changing actions and composite containment), signal
+routes and generic planner/consumer bindings are distinct structures. Do not use
+dummy audio/MIDI edges to impose planning order. One logical loop may have separate
+playback and capture nodes with intervening effects:
+
+```text
+host input + retained loop playback -> independent DSP -> output + loop capture
+```
+
+The application owns the `GraphRuntime`, its resource store, its node type, the
+control endpoint and the lifecycle; it installs the loop library's planner and nodes
+next to its other processors. The loop planner still coordinates everything loop
+timing and media depend on, and the runtime asks it to admit generic graph commits
+and processor install/remove, so these cannot drop or replace its nodes or bindings.
+One runtime has one planner. Independently planning domains need explicit
+composition, not installation of competing clocks or nested engines.
+
+### Callback safety, finite storage and musical cost
+
+Prepare, validate, allocate and pre-touch storage before rendering. Callback paths
+must not allocate/reallocate/deallocate, block, lock/wait, perform external I/O,
+compile arbitrary owners or chase producer progress. Owning returns, retirement,
+refusal and fault quarantine must preserve owners until non-RT disposal. Production
+libraries retain safe Rust and `forbid(unsafe_code)`; allocator instrumentation is
+dev-only. Arbitrary downstream processors/hosts must honor the same contract.
+
+Keep four things distinct:
+
+- **Prepared storage/admission:** finite nodes, media/pages/indexes, operations,
+  results, observations, descriptors and retirement credits.
+- **Callback-wide optional work:** bounded ingress, upload/export, validation,
+  reclamation, telemetry and recovery snapshots.
+- **Required work:** admitted rendering, indexed data access, lifecycle cuts,
+  finite musical transitions and cascades. Optional work budgets cannot truncate it.
+- **Diagnostics:** saturating counts with overflow indication, not musical quotas.
+  Semantic frames, generations, revisions and sequences use checked exhaustion.
+
+The engine owns correctness and termination; the application owns musical cost.
+An expensive valid workload may xrun. Do not impose an interaction quantum,
+mandatory block/per-hop delay, wrap/subdivision limit or propagation-wave counter
+to hide that cost. Finite storage and safe Rust do not certify arbitrary user
+planner termination, browser scheduling or callback deadlines.
+
+### One callback envelope and borrowed authority
+
+`GraphRuntime<P, L, Q>` defaults to `NoPlanner` and no processor operations.
+Planner operations (`Planner::Operation`) and processor operations (the `Q` of
+`Processor<L, Q>`) are typed independently, so a DSP crate defines its own family
+and depends only on `rt_runtime`. `Planner`/`PlannerSpec`,
+`DecisionBinding`, `ConsumerAccess` and prepared associated `Copy` types give one
+planner decision storage and independently reserved producer observation slots.
+Validate generations, binding completeness/order and observation capacity before
+activation. Consumers cannot retain decision/context/resource borrows across
+planner mutation, finish or graph publication.
+
+For one host callback: validate the block/clock; snapshot admission/recycling and
+background/recovery allowances once; deliver due actions and settle a boundary;
+select a positive interval up to the external ceiling; render the signal DAG;
+finish observations/capture and advance. Repeat internal intervals without
+refreshing any callback allowance or polling producers. `callback_start` remains
+the enclosing callback origin; `graph_epoch` is context-entry identity.
+
+Intervals are half-open `[F,E)`: changes at F affect sample/event F. Callback-end
+settlement belongs to the next nonempty callback. Zero callbacks do nothing.
+Finish reports observations/advances positions but does not settle the next
+boundary. Final position may equal length with a wrap pending. Public State/Export
+cuts are post-settlement, pre-render; `AfterInterval` is conceptual, not a public
+Cut phase. Sample-rate changes require stopping and re-preparing; no implicit
+resampling exists.
+
+### Admission, scheduling, cancellation and results
+
+Queue admission, owning completion, scheduled delivery, domain terminal outcome
+and publication are distinct. Preserve requested, effective, delivered and terminal
+frames; pending-domain wait is not transport lateness. Runtime success can contain
+a domain refusal. Reserve reliable outcome/return storage before promises; unread
+results retain credits but cannot halt admitted autonomous music.
+
+Normal external event capacity is `min(scheduled_events, budgets.events)`, plus
+independent declared recovery capacity; legacy `budgets.subranges` does not limit
+internal musical intervals. Scheduler order is effective frame, target/category/
+subkey, sequence. Planner targets precede processor actions; per processor,
+parameters precede MIDI then typed operations. Recovery priority at transport
+admission does not rewrite that scheduler order.
+
+Eligible callback-snapshotted recovery can park one held normal owner inline,
+preserving validation progress, original dequeue/cancellation observation and FIFO
+resumption before later normal work. It does not create another credit/dequeue or
+cancellation opportunity. Finite service/publication limits and cancelled-recovery
+costs still apply; continuous recovery need not guarantee normal fairness.
+
+Ticket cancellation before dequeue, queued typed cancellation and delivered-domain
+cancellation are different cuts. Standalone `RequestId` requires correct caller
+routing; the loop planner cancels by originating runtime `Sequence`. Its exact
+payload-free recovery-safe set is Cancel, TopologyCancel, NodePairCancel,
+NodePairSourceRelease and nonfuture `Timing::At` Stop. Recovery terminates during
+planning at its delivery frame before positive samples. Queries, validation,
+exports and activation remain normal work; recovery cannot activate graphs.
+Undelivered parameter, MIDI and processor actions have no planner: the generic
+`Command::Cancel` terminates them with `Cancelled`, on either lane.
+
+<a id="loop-execution-layer"></a>
+
+## Loop semantics
+
+### Primitive operations and media identity
+
+A primitive starts Stopped at position/cycle zero, with zero length if no prepared
+content exists. Its checked logical identity is not its runtime physical node ID,
+resource revision, media/take revision, graph/topology epoch or stage generation.
+Raw IDs have correct-store/caller-routing preconditions; copied IDs acquire no
+lease. Scoped access/staging/export handles add their own validation.
+
+| Operation | Winning boundary behavior |
+| --- | --- |
+| Play | Select valid prepared content/position; already-playing non-retrigger Play is idempotent, without reset/start pulse |
+| Retrigger | Restart at a valid position and emit a start edge; reset playback cycle count |
+| Stop | Freeze capture at the common prefix if needed, stop media, reset position and cancel older pending target transitions |
+| Record | Activate a prepared distinct revision; retain old playable content. Optional `monitor_previous` publishes separate authoritative playback/capture positions |
+| Finish/play | Freeze `[start,F)` and make indexed new media playable before sample/event F; no extra silent block |
+| Seek | Playing-only valid offset; retain mode/content, cleanup/restore MIDI and apply audio discontinuity policy. No pulse unless retriggering |
+| Select prepared content | Validate a complete resident revision, reset/preserve position as requested, retain old leases; stale/refused candidates change nothing |
+
+Zero-length Play yields `EmptyContent` rather than a zero-duration wrap loop.
+Empty record-to-play refuses transactionally and leaves capture running; explicit
+Stop can finish an empty take. An empty composite is a successful stopped no-op.
+Fresh capture grows only through successfully committed duration; no padding/gap
+reconstruction or reuse of a previously reached take serial. Repeated Record is
+a new take, not in-place replacing/overdub.
+
+Playback wraps at its own length; sync clocks do not stretch media or reset a
+running playhead. Start/retrigger resets cycle count; ordinary wrap increments it
+once; forwarded pulses do neither. Fresh Record emits a start edge but recording
+alone creates no periodic wrap clock. Monitored old playback keeps its own supplied
+position and edges while a distinct take captures; exhaustion retains old playback
+if monitoring, otherwise stops, and reports an incomplete new prefix.
+
+`Timing::At` uses the separately supplied requested frame. `AfterTicks { source,
+skip }` arms at its effective frame and applies on the `(skip+1)`th source edge at
+or after it. Source must match the target's prepared sync relation. A valid idle
+source leaves work pending; stale/missing identity fails explicitly. No UI timeout,
+nominal duration or unsynchronized fallback invents a pulse. Revalidate pending
+work on topology changes. The planner's Select pins validated media; raw
+`Transition::Replace`/`Program` tags are not direct owning planner operations.
+
+External terminal results are exactly Applied, Superseded, Cancelled or Failed at
+an actual frame. Automatic edges/actions use prepared state/journals, not external
+receipt slots. An already terminal action cannot be undone by cancellation.
+
+### Coincident decisions, pulses and termination
+
+Desired-state intents do not require intermediate zero-duration audio. Settle
+already-eligible decisions, then those made eligible by the resulting clock edge;
+choose one complete winning transition per target in each phase. Losing external
+contenders receive Superseded. A reactive transition may follow an earlier applied
+one at F, but cannot retract its pulse or rewrite an earlier terminal result.
+Carry protected earlier precedence into the reactive phase.
+
+Total precedence:
+
+1. Direct external intents, including armed eligible requests: highest accepted sequence.
+2. Explicit-mode composite/trigger actions.
+3. Regular-composite inherited playback.
+4. Natural continuation/wrap.
+
+Within a non-direct class, lower stable source identity (including generation),
+then higher compiled action ordinal wins. Duplicate source ordinals are invalid;
+canonicalize contiguous same-target/mode continuation without redundant restart.
+Results must not depend on declaration or signal traversal order.
+
+A pre-clock winning Stop masks coincident natural/start pulses and forwarding.
+A winning restart replaces the old wrap. A Stop made eligible *by* a pulse cannot
+retract that already delivered edge. Stopped loops may otherwise relay source
+edges without starting media. Edge identity is `(absolute_frame, logical_loop_id)`:
+at most one edge per loop/sample, whether start, wrap or forwarding. This is
+semantic coalescing, not a CPU cap; requests still arbitrate and MIDI is not coalesced.
+
+Prepared relations distinguish Sync, state-changing OnPulse, composite parent/child
+actions, and separate signal/binding edges. Compute strong components of sync/
+action relations. A cyclic component is valid only if **all internal edges are
+Sync**; reject self-action/instantaneous state-changing cycles and recursive
+program containment before activation. This is a constrained language, not a
+termination test for arbitrary stateful callbacks.
+
+Collapse pure-sync components to a stable DAG. At F:
+
+1. Take the finite admitted operations/cancellations/prior observations, without resampling producers.
+2. Walk components in topological order; upstream incoming actions/edges are now known.
+3. Resolve pre-clock intents and surviving natural/start seeds; propagate through Sync with one visited mark/member, respecting Stop masks.
+4. Make due requests eligible once per source edge, arbitrate reactive winners and propagate newly seeded members. A higher-priority reactive start may lift a mask; a reactive Stop cannot retract delivery. Idle cyclic waiting cannot create its own first seed.
+5. Advance composite tick cursors once per actual edge and stream due actions downstream. Start/seek iteration-zero authority must not also advance on its own start edge.
+6. Keep results/state unpublished, preflight the whole boundary, then commit once.
+
+Finite prepared components/edges/program actions/requests and once-only edge
+visits establish same-frame termination. Positive intervals advance toward a finite
+host end; one-sample loops may process every sample. Preflight retries start from
+unchanged committed state and must latch an additional previously unlatched finite
+capture/activation failure. No pulse, receipt, revision or generation publishes
+twice. There is no wave/retry/subdivision allowance changing musical results.
+
+For an authoritative request family, `Refused` atomically rejects the family.
+Autonomous failed capture start/restart uses `CaptureUnavailable`, preserving prior
+state/content and not stopping siblings; existing append failure uses
+`CaptureExhausted`. Both may coexist after a refused restart falls back to an
+exhausted old take. Family refusal takes precedence independently of observation
+order. Timing-relevant failure reaches the resolver before dependent samples, not
+as retroactive rollback after rendering.
+
+### Prepared composites
+
+Programs have stable targets, positive nominal units, sequential sections with
+parallel entries, nonnegative delays and positive durations/repetitions. Check all
+arithmetic, descriptor capacities and targets. Reject zero-duration entries,
+unsupported/mixed implicit-explicit modes, stale identities and recursive nesting.
+
+Regular programs inherit Playing and repeat a finite pass; empty children reserve
+time but do not implicitly record. Explicit-mode programs use supported modes and
+end after one finite pass; recording still needs prepared storage. Nested iteration-
+zero actions execute at the parent's activation frame without propagation delay.
+Only actual sync edges advance iteration. A no-sync composite remains at its
+selected iteration; nominal units supply derived durations/seek offsets, not a
+fallback clock. Derived duration is `max(1, ceil(child_length/nominal_unit))` unless
+explicitly overridden.
+
+Start/seek supplies an authoritative desired-state snapshot: stop no-longer-desired
+descendants, then arbitrate selected states. Prepared sparse lookup avoids replay
+from iteration zero. PlayIteration starts/retriggers; SeekIteration requires Playing
+and retains passes unless retriggering. Non-retrigger seek repositions continuing
+children without new edges; newly entered playback/recording retains normal start
+semantics. Playback offsets derive from elapsed nominal units modulo nonzero length.
+Seeking into Record creates a new prepared take at the seek frame, never history;
+missing preparation refuses the whole family.
+
+Stopped program changes can activate at the requested boundary. A running change
+waits for a true next iteration-zero/stopped entry. Probe the old unpublished cut
+without executing old zero actions, then select the new candidate for real preview.
+Same-frame Stop/seek/restart and clock/refusal precedence still apply. Preserve
+contiguous continuations; stop removed descendants, including after component
+reordering. Installing a candidate is not another Play: an ended explicit program
+stays stopped absent a winning restart. Recheck identities and preserve displaced/
+rejected owners. A cached informational probe alone authorizes no publication.
+
+## Resources, capture and media
+
+### Resource ownership and indexed access
+
+One generic resource store owns prepared page/version/lease pools; the loop ledger
+is not another store. Fixed media metadata retains each underlying snapshot lease
+once, with separate playback/latest, pending pin and export references. Reserve
+currently free metadata before new promises; anticipated retirement is not credit.
+Imported resources remain caller-owned. Validate common channel duration, format,
+scope and indexed MIDI off-render. Any short-channel audio padding/MIDI trailing
+duration must be explicitly materialized by the caller; no implicit render padding.
+
+Uploads are page-bounded contiguous chunks, with Finish distinct from expected-
+revision Commit. Validate parser/checkpoint needs before changing the accepted
+prefix. Old leases remain immutable/readable through append, replacement/removal
+and partial-tail snapshots. Snapshot refusal is not publication. Scoped cursors/
+event tokens own no lease; a too-small packet copy retries the same event token,
+not an already advanced iterator. Release/cancel/reclamation remain explicit.
+
+Page indexes are maintained as data arrives. MIDI opt-in indexed versions reserve
+C checkpoint rows including initial state and replay span K: capacity `C*K-1`
+packets; local seek replay `<K`, with page/state cost `O(log C + K log P)` plus
+fixed-shape state work. Every packet counts, including opaque SysEx. Select a
+checkpoint strictly before target F, reconstruct state before F, and leave all
+original F packets for playback. EOF includes final state; snapshot prefixes bound
+lookup. Row/page exhaustion refuses atomically, not an unbounded fallback scan.
+Stop/freeze/seek/wrap never rebuild whole history. Generational metadata recycles
+without clearing/scanning old owners; pages retire incrementally.
+
+### Coordinated capture
+
+Store-owned opt-in groups hold fixed member/staging rows and exclusive writer
+claims throughout their managed lifetime. Validate all resources/formats/duplicates
+before acquiring any claim. Legacy mutations that bypass the claim must refuse;
+read/snapshot access retains its lease/optional-work rules.
+
+Preparing a take reserves all version/index/initial-state/final-snapshot slots
+before success; pages remain finite interval reservations, not unlimited recording.
+Reserved final leases are unpublished and unavailable to ordinary snapshot callers.
+Checked take/transaction identities prevent cancelled tokens retargeting a later
+reuse. Cancellation returns promises without changing old active content.
+
+Reserve a new take's **first interval before activation** (`PreparedReserved`).
+Validate exact frame/window, audio shape, revision arithmetic and MIDI producer
+promise (`12*events + payload_bytes`, including possible recovery) across all
+members before changing global reservations. Conservative MIDI bounds may refuse
+earlier than exact future-output knowledge; this is storage admission, not a
+musical CPU cap. Activation at F retains its interval token and installs all new
+zero-duration versions together.
+
+Consumers stage complete contributions once per member in prepared storage.
+Publish nothing while collecting. Only after all are ready does an exclusive
+store commit append/index every member and publish the common duration, releasing
+unused promises. Over-bound, duplicate or missing staging is an interface/fault
+condition, not ordinary post-publication capacity refusal. Staging→fixed stack→
+pages is deliberately safe and accounts for three media copies including input→
+staging; it is not zero-copy. `free_pages` includes promises; immediate availability
+subtracts `reserved_pages`.
+
+Freeze requires the exact common next frame and no in-flight interval. It publishes
+reserved immutable leases for `[start,F)` without new acquisition/history build.
+Generic empty freeze is possible; empty loop record-to-play has its separate refusal.
+Failure preserves a truthful common incomplete prefix and changes timing before
+crossing affected samples. `PlannerResourceIo`/`CaptureBoundaryIo` lend stamped
+frame/ceiling lifecycle authority; consumers get restricted `RenderIo` staging/
+reads, not uploads, arbitrary leases, reclamation or budget resets.
+
+### Audio and MIDI policy
+
+Stored audio is interleaved little-endian f32; host ports are planar. Use prepared
+scratch/direct-port adapters, not callback vectors of borrows. Gain is per sample.
+Default smoothing is None. `LinearRestart { frames: N }` weights each new gained
+sample `(i+1)/N` from the last actual output, continues across callbacks and restarts
+from that output on another discontinuity. N=0 is None; Stop is immediate silence,
+not a release tail. Start/retrigger/seek/wrap/replacement discontinuity is an
+authoritative decision, independent of optional journals; losing/refused previews
+cannot leak a restart, and unchanged-position explicit seek is still discontinuous.
+
+MIDI stores complete original packets, equal-time order and trailing duration.
+Capture start takes strict-preboundary input state; connected input tracking
+continues while stopped. Note-on velocity zero tracks as release but keeps bytes.
+Cleanup → strict-pretarget projected restoration → original target-time events is
+the output order. Prepared state covers notes/velocities, pedal/controller/program/
+pitch/pressure, bank/program separation and supported RPN/NRPN selection. Preserve
+sostenuto's latched subset and do not restore pedal-released notes as held keys.
+Projection is not synth voice/vendor SysEx/parameter-history reconstruction;
+untracked histories are reported, not silently certified.
+
+Loop cleanup cannot distinguish unrelated owners on the same physical channel/key;
+hosts must route/channelize them. Runtime overflow reserves CC120 then CC123 on all
+16 channels (32 events/96 bytes), acknowledges delivery rather than dropping resets,
+and retries a full sink without restarting unfinished recovery. Logical processing
+and unrelated audio continue on refusal. Lossless comparisons require sufficient
+prepared output capacity; unlimited MIDI/recording is not promised.
+
+## Prepared publication and teardown
+
+| Operation | Implemented cut / scope |
+| --- | --- |
+| TopologyActivate | Delivery-time fixed IDs/kinds; changed programs already stopped; node pairs/media/routes unchanged |
+| ProgramActivate | One owning selected-program/nominal-length change at stopped/true zero; other timing/graph/node pairs fixed |
+| GraphActivate | Immediate compatible fixed node-pair route/binding change, including continued capture |
+| TopologyGraphActivate | Paired compatible immediate timing/routes; logical owners fixed, changed programs stopped |
+| ConfigurationActivate | Already-stopped logical generation/media edits with matching topology/routes over prepared physical node pairs |
+| ProgramGraphActivate | Pending selected program/routes at actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and physical node pairs fixed |
+
+LTP1 encodes flat prepared timing tables, ordered bounded chunks and scoped
+receiver-bank lifecycle, not Rust layouts/pointers or a whole control protocol.
+Staging validates complete canonical references, sparse metadata, dependency/SCC/
+recursion rules and checked aggregate capacities. No partial image is readable;
+receiver validation/materialization is callback-wide background work and cannot
+hold a call waiting for later input or allocate owners in a MessagePort handler.
+
+Generic `StageGraph` makes a validated owning candidate Ready, not active or locked.
+`GraphAccess` lends an exclusive permit that rechecks scoped generation, current/
+validated/expected epochs, next epoch, actual vector capacities, retirement space,
+bindings and pending MIDI. Complete every fallible domain/capture preflight before
+consuming it for infallible publication. An unused permit moves no graph owner and
+is not rollback of arbitrary domain mutation. Planning-time removal of a node with
+delivered unconsumed MIDI refuses Busy so old graph consumes it once; operation-time
+removal precedes injection and a later missing target refuses InvalidId.
+
+Generic structural graph validation cannot establish loop playback/capture pair,
+decision binding, input-tracking and media-shape correctness. The loop planner
+enforces these over prepared physical templates, for its own activations and, through
+the runtime's admission hooks, for generic commits and processor changes, not arbitrary processor construction/port
+resizing. A queued same-frame Stop has not settled and cannot satisfy an immediate
+already-stopped configuration precondition. Successful NodePairAppend consumes source
+IDs; rejection transfers none. Node pair/source, timing/program, graph retirement and
+external exports recycle independently; old-generation exports remain valid.
+
+`prepare_with_initial_graph` installs validated routes/bindings off-render at epoch
+one/frame zero, with no warm-up callback or ingress receipt. A post-publication
+fault may leave changed state/epochs and advanced time. Never replay samples,
+fake finish or infer rollback from cleared output. Stopped extraction must retain
+the planner ledger (`into_planner_and_resources`); `into_resources` alone drops it.
+Permanent quiescence cancels outstanding work, invalidates decisions, prevents
+future execution and permits real-owner cleanup after a fault. It is repeatable
+cleanup, not resumable Pause or device MIDI cleanup after callbacks have stopped.
+
+<a id="native-engine-service-slice"></a>
+
+## Native service composition
+
+The service owns **one runtime and render owner** holding the loop parts and an
+independent DSP. Its node type wraps the loop's nodes and the DSP; its one ordered
+control path forwards loop requests and DSP selections into the runtime. A DSP
+selection is the processor's own typed operation, which the runtime scheduler
+delivers immediately before its requested sample; the processor reports actual
+frame/revision in the execution's `processor_result`. No magic float IDs, private
+bridges, extra runtime calls, second scheduler or mutable access to the resolver is
+involved.
+
+Preset changes share the runtime's ordering with loop work at the same frame, but
+are not atomic transactions with arbitrary graph/loop changes.
+Peak-since-read atomics are independent telemetry, not a coherent cross-domain
+snapshot. Loop cuts are coherent resolver observations. Live exports retain exact
+immutable audio/MIDI prefixes while capture continues; owning reads must finish
+before release. Stop/cancel recovery must remain available with normal receipts
+full. The D=3 probe retains raw physical data and exposes absent dry history, wet
+postroll and independent logical playback windows rather than shifting media to
+fake latency parity.
+
+The native composition is implemented and its narrower consolidation is delivered.
+Service browser/IPC deployment and production UI/backend integration are not.
+Measurement regressions and validation limits belong in [VALIDATION.md](VALIDATION.md#integration-evidence),
+not architectural claims of performance parity.
+
+<a id="open-composability-decision"></a>
+
+## Composable loop boundary
+
+The [composable loop boundary](PLAN.md#composable-loop-boundary) work resolved the
+earlier composability question in favour of application-owned runtimes. The loop library offers parts,
+not an `Engine`: `LoopPlanner::prepare` borrows the application's resource store and
+returns the planner, its playback/capture nodes and a control-side client. The
+earlier critique's guarantees remain requirements, now enforced without owning the
+runtime:
+
+1. Required playback/capture consumers, decision bindings and input tracking on every
+   graph activation: the planner validates its own activations and admits generic
+   ones (`Planner::admit_graph`, `Planner::admit_processor_change`).
+2. Paired program/routing publication at the real cut after full preflight.
+3. Coherent logical-generation/media/physical node-pair reassignment and retained exports.
+4. Capture reservation/freeze and failure feedback before affected musical samples.
+5. Reliable receipts, bounded owners, cancellation and post-fault reclamation.
+
+Independent components no longer need private control bridges: processor
+operations are typed independently of the planner and scheduled by the runtime.
+A dev-only test-support crate assembles the parts for tests and test hosts; the
+loop library itself has no turnkey assembly.
+
+The boundary keeps these rules:
+
+- **Coordination stays, ownership goes.** `LoopPlanner` remains the single authority
+  for loop timing, the media ledger, the capture lifecycle, node-pair reassignment and
+  loop-coupled graph publication.
+- **The runtime enforces the guards.** It asks the planner to admit every generic
+  graph publication (`prepare_with_initial_graph` and generic `Commit`) and every
+  generic `Install`/`Remove`, per node. The default admits everything, so
+  planner-free users are unaffected. A planner's own activations are checked by that
+  planner, which holds the activation permit; the runtime cannot call back into a
+  planner mid-operation.
+- **The loop library never stores the `ResourceStore`.** Preparation and cleanup
+  borrow it; stopped extraction uses `GraphRuntime::into_planner_and_resources`.
+- **`LoopClient` owns no transport.** It builds typed commands and graph descriptions,
+  including the loop's decision bindings, for the application's control endpoint, and
+  decodes loop results.
+- **The callback contract is unchanged.** Render paths do not allocate, free, lock or
+  wait, and fixed capacities stay finite and checked.
+
+Still open, as future work: one runtime has one planner. A second planning domain
+(for example a transport/tempo or automation planner) needs an explicit, ordered
+composition of planners that share a boundary and a two-phase preflight/commit.
+Atomic transactions across domains (a DSP preset, a loop change and a route
+together) need that same composition.
+
+## Compatibility and integration direction
+
+The native slice is deliberately not full legacy parity. Current backend tests,
+`shoop_latency`, session/archive/media modules, UI waveform code and scripting
+are reference/reuse candidates, not dependencies to pull into the portable core.
+
+| Capability | Intended owner / reuse | Current scope and remaining gap |
+| --- | --- | --- |
+| Record/play/stop/wrap/seek/select | Existing resolver, ledger and loop planner parts; future session mapping | Included native slice; destructive editing/full legacy modes not established |
+| Sync/composites/countdowns | Existing resolver/programs | Implemented loop capability; M1's one-loop scenario is not inter-loop parity proof |
+| Replacing/overdub/dry-wet policy | Application/session routing plus required loop/media mechanisms | In-place modes/full policy excluded; no implied additive-overdub contract |
+| Prerecord/preplay/latency correction | Reuse checked `shoop_latency` math; explicit retained history/tail/windows needed | Probe findings identify gaps, not a completed mechanism |
+| Routes/processors/presets | Runtime validates signal DAG; loop coordinates node pairs; service/component owns DSP control | Prepared route/preset slice works; real plugin hosting/dynamic construction deferred |
+| Device/driver switching | Existing host/device layer adapted later | Not supplied by portable libraries/service |
+| State/meters/waveforms | Settled loop cuts, separate peak telemetry, off-render analysis over immutable media | Slice has state/peaks/live exports; full waveform publication/UI freshness deferred |
+| MIDI initial state and cleanup | Loop projection/capture plus runtime reset recovery | Supported projection/packets, not arbitrary synthesizer state |
+| Media import/replacement | Off-render preparation and explicit leases | Startup imports/retained selection; arbitrary service live adoption deferred |
+| Persistence/session replacement | Existing session format/archive/resampling, future service adapter | No new archive format or portability of old engine resource IDs assumed |
+| Undo/history | Future application policy over retained immutable revisions | Retained leases alone do not implement general undo |
+| Scripting/MIDI rules | Existing off-render app/Lua policy, future service adapter | Not loop planner execution |
+| Browser/remote service | Proposed domain/carrier adapters | Test hosts/Wasm compilation are not the full service deployment |
+
+Select an eventual old/new backend at a clear lifecycle boundary; do not silently
+route individual unsupported operations into another live engine. Start with a
+restricted real UI workflow after a credible composition/protocol slice, keep the
+old backend as fallback/reference, and let the parity map determine the next gaps.
+The [new engine backend](#new-engine-backend) is that restricted workflow.
+The complete session/device/plugin/persistence/undo/scripting/migration architecture
+remains undescribed at implementation depth.
+
+<a id="proposed-protocol-architecture"></a>
+
+## Proposed modular protocol
+
+Use common transport-neutral delivery infrastructure with separately selected
+domain schemas and adapters, rather than a protocol depending on every DSP crate:
+
+```text
+UI / component clients
+  -> selected loop / DSP / future application schemas
+  -> common framing, routing, correlation, flow control and lifecycle
+  -> typed native | browser inter-instance | IPC | network carrier
+  -> engine-side domain adapters
+  -> local component control APIs
+  -> one runtime / graph / render owner
+```
+
+The [new engine backend](#new-engine-backend) is the first concrete instance: one
+protocol crate whose domain schemas (strips and mixer, loops, telemetry, bulk) are
+modules, to be split only when a component needs its own schema without the engine.
+
+The in-memory runtime transport moves compatible typed Rust owners; it is not
+serialization between independent heaps. The LTP1 payload and test-host codecs
+are useful concrete examples, not the proposed universal framework. The existing
+application protocol may evolve; a parallel package hierarchy is not required.
+
+Common infrastructure would define versions/capabilities, bounded envelopes,
+connection/request/destination identity, routing, delivery/error categories and
+credit/transfer lifecycle. Domain schemas define portable requests/results and
+exact timing/completion/failure semantics; adapters validate/decode and retain
+mappings to local sequences, stage owners, receipts and leases. Static enums or
+routing tables are sufficient; no reflection, arbitrary Rust serialization,
+dynamic code loading or plugin discovery is implied.
+
+Keep reliable requests/results, disposable telemetry and chunked bulk transfer
+separate in retention/capacity semantics. Transport admission is not musical success.
+Reserve return/terminal capacity before admission, use prepared bounded decoding/
+materialization and explicit buffer recycling; transferred bytes are not Rust
+ownership credits. Carrier-specific backpressure, disconnect, cancellation,
+ordering, fragmentation/size limits, security and reconnection identity must be
+specified rather than inferred from local SPSC behavior. No render callback may
+block on an adapter/client or perform filesystem/network I/O.
+
+Native typed calls may avoid serialization. Actual AudioWorklets require prepared
+bounded receive/adapt/render work with independent ordinary memories; heavy
+preparation belongs off-render. IPC/network need framing and explicit lifecycle;
+network control is not audio streaming or a guarantee of deadline delivery.
+Authorization and endpoint policy belong to application composition. Optional
+atomic/shared telemetry is not a substitute for reliable results, and arbitrary
+cross-domain atomicity requires a local composition contract first.
+
+A future bounded milestone should run **one equivalent admitted musical scenario**
+natively, in an actual independent-memory worklet and over local native IPC, with
+samples/MIDI/outcomes, throughput/freshness, stalled clients and full ownership
+recovery compared. Start with one client/process and defined disconnect; general
+resumption, cross-machine deployment, production plugins and full session parity
+are separate work requiring approval. No such new deployment is claimed here.
+
+## New engine backend
+
+The new engine backend is an application `Backend` on this stack for the core
+looping set, natively and in the browser's AudioWorklet. It is opt-in: a
+restart-required setting and an application-argument override choose it at startup
+instead of the legacy backend, which stays the default. Its goals, criteria and
+stages are in its [plan](PLAN_RT_BACKEND.md); its status and parity gaps are in
+[PLAN.md](PLAN.md#new-engine-backend). The engine, protocol, adapter, native host and
+worklet module are implemented; the composition roots that select it and the
+browser's main-thread half are not complete.
+
+Here **Runtime** means `rt_runtime` only, **Engine** the application's real-time
+composition, **Host** environment glue (the worklet is one host) and **Backend** the
+application adapter.
+
+### Layers and transports
+
+```text
+Application side                            Engine side (same process or worklet; later another process or machine)
+shoop_egui / shoop_app
+  │ Backend trait
+shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
+  │ protocol client
+  ═══ T2: carrier (in-process call │ MessagePort records │ later IPC │ later network) ═══╗
+                                                                                       ║ carrier server
+                        shoop_rt_engine control endpoint (protocol → runtime commands, telemetry, bulk reads)
+                                │ T1: rt_runtime control/completion queues
+                        shoop_rt_engine render owner (one runtime process call per callback)
+                                │
+                        host: dummy, CPAL/midir │ AudioWorkletProcessor │ later a process main
+```
+
+| Layer | Crate | Responsibility |
+| --- | --- | --- |
+| Runtime | `rt_runtime` | Generic graph, scheduling, resources and the T1 queues |
+| Loop parts | `shoop_loops` | Musical timing, media and capture; the resolver keeps musical authority |
+| Engine | `shoop_rt_engine` | Node enum over the loop nodes and its own processors (gain, balance, mute, monitoring, meters, summing into Master), prepared pools, structural transactions, the control endpoint and the render owner |
+| Protocol | `shoop_rt_protocol` | Schema, capabilities and limits, connection lifecycle, lanes, carriers and the record codec. No semantics |
+| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` (later a process host) | Own the engine, open devices, pump audio, MIDI and messages. No semantics |
+| Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
+
+The composition root (the native binary or the browser bootstrap) chooses a host and
+a carrier and hands the adapter a protocol client; the adapter does not know which
+environment it talks to. The engine, the protocol and the adapter exist once; hosts
+and carriers differ per environment and contain no semantics. Application concepts
+end at the adapter: the engine speaks strips, loop slots, host ports, routes,
+operations and telemetry, and the engine-side crates depend on no application or
+legacy crate, which `scripts/check_rt_engine_boundary.py` enforces.
+
+**T1** lies inside the engine, between the control endpoint and the render owner:
+`rt_runtime`'s lock-free, owning control and completion queues in one memory. The
+render owner makes one runtime `process` call per callback with absolute frames. It,
+the control endpoint, the driver callbacks and the worklet's render path do not
+allocate, free, lock or wait; hosts count xruns into telemetry.
+
+**T2** is the carrier between the adapter and the control endpoint:
+
+- The **in-process** carrier passes typed protocol values by direct call, without
+  serialization, so native traffic uses the same protocol and there is no second
+  control path. The control endpoint then runs on the adapter's thread, concurrently
+  with rendering, so the native host prepares the engine with a control lead of at
+  least one buffer: structural changes are scheduled far enough ahead for their ramps
+  to start on time.
+- The **record** carrier exchanges bounded, length-prefixed binary records over a
+  record port. The worklet host serves it over its `MessagePort` and runs the control
+  endpoint on the audio thread between render quanta; this is why the endpoint is
+  bounded and allocation-free in every environment.
+- IPC and network carriers are additive later work. The host opens devices where the
+  engine runs, so no audio crosses a carrier, and synchronized commands are in
+  musical time, so carrier latency only delays immediate actions.
+
+Environment bridges belong to hosts: midir ports natively; Web MIDI exists only on
+the browser's main thread, whose half of the browser host forwards timestamped MIDI
+to the worklet on its own lane beside the protocol records.
+
+### Protocol
+
+- **Handshake.** `Hello` carries the protocol version; the engine answers `Welcome`
+  with its capabilities, current limits and driver status, or `Rejected`. Versions
+  must match exactly.
+- **Capabilities and limits as values.** Capabilities are engine flags such as MIDI
+  injection, bulk MIDI reads and growable limits. Limits (pool sizes, channel and
+  host port counts, the largest callback, the client's credits) are current values,
+  not handshake constants; `LimitsChanged` replaces them during a connection.
+- **Lanes with credits.** The reliable lane carries requests with correlation IDs,
+  results, lifecycle and state, and never drops. The telemetry lane carries latest
+  values; a newer record supersedes an undelivered older one. The bulk lane carries
+  chunked content reads. Unanswered reliable requests and bulk reads each have
+  credits, which the client enforces and the engine checks, refusing excess requests
+  as overloaded. Admission is not success: a request's result is its execution's
+  outcome.
+- **Resynchronization.** On request the engine streams its confirmed state as
+  reliable records between begin and end markers, including which generations are in
+  use. A connecting adapter rebuilds its mirror from it: the host port inventory,
+  Master's controls and connections, and removal of engine strips the application
+  does not know.
+- **Disconnect.** The client's `Goodbye` ends the connection: queued requests are
+  discarded, transactions in progress complete without results, and the engine keeps
+  its state and keeps rendering. A new `Hello` reconnects and resynchronizes. The
+  engine ends a connection with a reason: shutdown, a render fault (output silenced
+  after a MIDI reset) or a protocol error (malformed framing). The adapter then
+  reports the driver as failed and refuses later operations. A dropped control
+  endpoint silences rendering after a MIDI reset, so a host can stop cleanly.
+- **IDs with generations.** Strips and loops are named by slot and generation.
+  Reusing a slot raises its generation, so a stale ID never addresses the new
+  occupant, and IDs are not indices bounded by an initial capacity. Host ports are
+  numbered from the inventory; Master is a named bus. The adapter reserves IDs on its
+  side; the engine validates them against its confirmed state.
+
+Driver status and the host port inventory are protocol data. Device discovery and
+driver configuration are local to the native host and its composition root; an
+engine in another process needs them added to the protocol.
+
+### Capabilities
+
+Two descriptors meet at the adapter. The engine's protocol capabilities describe the
+engine to the adapter. The application's capability descriptor
+(`BackendCapabilities` in `shoop_app_api`, re-exported by `shoop_backend`) names every
+optional feature outside the core looping workflow; the legacy backends report the
+full set, and the new engine backend reports none except MIDI injection when the
+engine announces it.
+
+The application presents unsupported features as unavailable: the UI disables or
+hides each action with the capability's explanation, and refusals and capacity errors
+reach the user as notifications. Documents, session loads and script operations that
+need an unsupported capability are rejected whole before anything is applied,
+including composite documents on a backend without composites. The backend refuses
+any remaining unsupported call with the same explanation; nothing is routed to
+another engine. The supported and refused sets are in
+[PLAN.md](PLAN.md#new-engine-backend).
+
+### Capacities
+
+Capacities are per epoch and can grow where the host allows: the render path is
+bounded at every instant, not for the engine's lifetime.
+
+- Engine pools are lists of segments of strip and loop slots. Each segment owns a
+  contiguous range of runtime nodes, and slot indices count through the segments.
+  Every slot's processors are prepared up front, but only occupied slots are in the
+  active graph and only existing loops in the loop topology, so inactive slots cost
+  no rendering or resolver work. An exhausted pool is refused with a visible message.
+- Growth follows the existing handover pattern: prepare another segment off-render,
+  hand it over through T1, activate it at a boundary, return the displaced owners for
+  release off-render and announce the new limits. A new segment moves no existing
+  slot, and limits and IDs already allow it, so growth in the engine and the adapter
+  is additive.
+- Whether limits can grow is an engine capability that depends on the host. Native
+  hosts, including a later separate process, can grow; the browser worklet stays
+  bounded by its preallocated maximum.
+- This milestone prepares all segments at startup, from settings natively and from
+  the worklet's preparation record, and announces no growth. Growing `rt_runtime`'s
+  executor tables and resource store and `shoop_loops`' ledger and resolver state is
+  later work inside those crates.
+
+### Structural changes without interruption
+
+Graph, topology, node-pair and capacity changes never interrupt audio. The engine
+runs one structural transaction at a time and holds back later requests until its
+activation is confirmed:
+
+1. Prepare off-render without touching the music: node-pair edits, a validated LTP1
+   timing image of the new loop topology and a staged graph in a prepared plan.
+2. Activate at an exact frame within normal callbacks. An added strip or loop starts
+   there with reset processors; a removed one first fades its output or loop fader
+   over a prepared ramp and stops its loops.
+3. Switch connections and routes between two prepared banks per strip and for
+   Master: the new set goes to the silent bank and the banks cross-fade at the
+   activation frame, so unchanged destinations keep their signal, removed ones fade
+   out and added ones fade in. MIDI connections change at the activation frame.
+4. Return the displaced timing image, node-pair bank and graph plan to their prepared
+   slots, so slots are handed over indefinitely.
+
+A sync-source change activates a new timing topology; pending delayed transitions of
+that loop fail, as the loop planner revalidates them. Changing the audio device,
+sample rate or buffer size is the only operation that restarts audio: an explicit
+lifecycle operation that stops the host and prepares the engine again, never a side
+effect of editing tracks or loops. Switching drivers while running is refused;
+restart with other settings instead.
+
+### Asynchronous observation
+
+Natively as in the browser, every mutation returns at once. The adapter reserves IDs,
+queues requests within its credits and confirms changes in its mirror from results,
+telemetry and resynchronization; engine refusals become `mutation_failures`. `poll`
+assembles the snapshot from confirmed values and the latest telemetry and never waits
+on rendering. Telemetry fields are independent latest values, not one coherent cut.
+Waveform and MIDI detail reads are chunked bulk reads that return nothing until their
+content has arrived.
+
+Transitions keep the legacy semantics: `cycles_delay` maps onto sync-source pulses (a
+delay of `n` applies at the `(n+1)`-th pulse), a nearer planned transition supersedes
+later ones, a loop without a sync source counts its own wraps, and one that is not
+playing transitions at once. Shared backend contract tests with the legacy timing
+reference show equal transition frames, loop lengths and recorded content.
+
+**Known difference: one-callback observation lag.** The snapshot describes the state
+at the start of the last rendered callback, one callback behind legacy, which
+describes the next frame to render. The timing harness declares this lag. Because the
+application derives delays from `position / sync_length`, a request within one
+callback of a wrap can be scheduled one cycle later than on legacy. Reporting the
+state at the end frame would need the resolver to decide that boundary early; this is
+left for later work.
+
+## Planning and execution tools
+
+The reviewed direction is one authoritative Markdown plan, native execution state
+and an independent completion auditor. The plan owns outcomes, constraints,
+ordered checkboxes and verification/delivery obligations. The executor tracks
+human-selected focus, lifecycle, activity and evidence references; a parsed view
+is derived, not a second editable objective/task hierarchy.
+
+Checked, skipped, current activity, waiting and verified acceptance are different.
+Audit against approved criteria, current source/configuration, project rules,
+actual evidence and required CI/review; executor claims are untrusted. Report
+satisfied/unsatisfied/unverifiable criteria and reopen invalidated evidence rather
+than weakening goals. User-owned focus/pause/resume and exceptional approvals stay
+explicit. A new extension is only a reviewed proposal, not implemented by this
+migration; `.pi/` storage and native lifecycle remain untouched.

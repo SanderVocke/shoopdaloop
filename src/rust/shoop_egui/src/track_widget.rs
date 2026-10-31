@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    colors, composite_loop_widget::LoopDragPayload, AppIntent, DefaultPlaybackMode, FxLifecycle,
-    GlobalControlState, LoopId, LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, TrackControls, TrackFxState, TrackProcessorDescriptor,
-    TrackState, TrackWidgetAction,
+    add_with_capabilities, add_with_capability, colors, composite_loop_widget::LoopDragPayload,
+    AppIntent, BackendCapability, DefaultPlaybackMode, FxLifecycle, GlobalControlState, LoopId,
+    LoopWidget, LoopWidgetAction, ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState,
+    TrackControls, TrackFxState, TrackProcessorDescriptor, TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
@@ -570,9 +570,26 @@ impl TrackWidget {
             .open_memory(open.then_some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
-                let clone = source_is_in_track.then(|| ui.button("Clone into"));
-                let compose_end = ui.button("Compose (end)");
-                let compose_parallel = ui.button("Compose (parallel)");
+                let clone = source_is_in_track.then(|| {
+                    add_with_capabilities(
+                        ui,
+                        &[
+                            BackendCapability::SessionCapture,
+                            BackendCapability::LoopContentImport,
+                        ],
+                        egui::Button::new("Clone into"),
+                    )
+                });
+                let compose_end = add_with_capability(
+                    ui,
+                    BackendCapability::CompositeLoops,
+                    egui::Button::new("Compose (end)"),
+                );
+                let compose_parallel = add_with_capability(
+                    ui,
+                    BackendCapability::CompositeLoops,
+                    egui::Button::new("Compose (parallel)"),
+                );
                 let swap = source_is_in_track.then(|| ui.button("Swap"));
                 #[cfg(test)]
                 {
@@ -814,7 +831,14 @@ impl TrackWidget {
                         result.connections_requested = true;
                         ui.close();
                     }
-                    let latency = ui.button("Latency compensation");
+                    let latency_supported =
+                        crate::supports(ui.ctx(), BackendCapability::LatencyCompensation)
+                            || crate::supports(ui.ctx(), BackendCapability::TakeAlignment);
+                    let latency = ui
+                        .add_enabled(latency_supported, egui::Button::new("Latency compensation"))
+                        .on_disabled_hover_text(
+                            BackendCapability::LatencyCompensation.unavailable_reason(),
+                        );
                     #[cfg(test)]
                     {
                         self.test_latency_menu_rect = Some(latency.rect);
@@ -839,8 +863,19 @@ impl TrackWidget {
                                 (DefaultPlaybackMode::Regular, "Regular"),
                                 (DefaultPlaybackMode::DryThroughWet, "Dry through wet"),
                             ] {
-                                let choice =
-                                    ui.selectable_label(state.default_playback_mode == mode, label);
+                                let supported = mode == DefaultPlaybackMode::Regular
+                                    || crate::supports(ui.ctx(), BackendCapability::DryWetModes);
+                                let choice = ui
+                                    .add_enabled(
+                                        supported,
+                                        egui::Button::selectable(
+                                            state.default_playback_mode == mode,
+                                            label,
+                                        ),
+                                    )
+                                    .on_disabled_hover_text(
+                                        BackendCapability::DryWetModes.unavailable_reason(),
+                                    );
                                 #[cfg(test)]
                                 self.test_default_playback_rects.push((mode, choice.rect));
                                 if choice.clicked() {
@@ -878,9 +913,12 @@ impl TrackWidget {
                 menu.response.on_hover_text("Track options");
 
                 if state.is_sync {
-                    let click_track = ui
-                        .add(egui::Button::new(egui::RichText::new("C")))
-                        .on_hover_text("Generate a click track");
+                    let click_track = add_with_capability(
+                        ui,
+                        BackendCapability::LoopContentImport,
+                        egui::Button::new(egui::RichText::new("C")),
+                    )
+                    .on_hover_text("Generate a click track");
                     #[cfg(test)]
                     {
                         self.test_click_track_rect = Some(click_track.rect);
@@ -893,8 +931,9 @@ impl TrackWidget {
                     let color = fx_color(fx);
                     let controllable =
                         features.external_ui || features.embedded_ui || features.recovery;
+                    let track_fx_supported = crate::supports(ui.ctx(), BackendCapability::TrackFx);
                     let fx_button = ui
-                        .add_enabled_ui(controllable, |ui| {
+                        .add_enabled_ui(controllable && track_fx_supported, |ui| {
                             ui.add_sized(
                                 track_context_button_size,
                                 egui::Button::new(egui::RichText::new("FX").color(color)),
@@ -902,6 +941,12 @@ impl TrackWidget {
                         })
                         .inner
                         .on_hover_text(fx_hover_text(fx));
+                    let fx_button = if track_fx_supported {
+                        fx_button
+                    } else {
+                        fx_button
+                            .on_disabled_hover_text(BackendCapability::TrackFx.unavailable_reason())
+                    };
                     #[cfg(test)]
                     {
                         self.test_fx_rect = Some(fx_button.rect);
@@ -985,36 +1030,51 @@ impl TrackWidget {
             .min_width(320.0)
             .show(context, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    let latency_supported =
+                        crate::supports(ui.ctx(), BackendCapability::LatencyCompensation);
+                    let take_alignment_supported =
+                        crate::supports(ui.ctx(), BackendCapability::TakeAlignment);
+                    for (supported, capability) in [
+                        (latency_supported, BackendCapability::LatencyCompensation),
+                        (take_alignment_supported, BackendCapability::TakeAlignment),
+                    ] {
+                        if !supported {
+                            ui.colored_label(colors::WARNING, capability.unavailable_reason());
+                        }
+                    }
                     ui.heading("Recording alignment");
                     let mut adjustment = state.latency.adjustment;
-                    let adjustment_changed =
-                        egui::ComboBox::from_id_salt(("recording_offset_adjustment", state.id))
-                            .selected_text(match adjustment {
-                                RecordingOffsetAdjustmentState::Automatic => "Automatic",
-                                RecordingOffsetAdjustmentState::ManualOverride => "Manual",
-                                RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
-                                    "Automatic + trim"
-                                }
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::Automatic,
-                                    "Automatic",
-                                );
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::ManualOverride,
-                                    "Manual",
-                                );
-                                ui.selectable_value(
-                                    &mut adjustment,
-                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
-                                    "Automatic + trim",
-                                );
-                            })
-                            .response
-                            .changed();
+                    let adjustment_changed = ui
+                        .add_enabled_ui(latency_supported, |ui| {
+                            egui::ComboBox::from_id_salt(("recording_offset_adjustment", state.id))
+                                .selected_text(match adjustment {
+                                    RecordingOffsetAdjustmentState::Automatic => "Automatic",
+                                    RecordingOffsetAdjustmentState::ManualOverride => "Manual",
+                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
+                                        "Automatic + trim"
+                                    }
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut adjustment,
+                                        RecordingOffsetAdjustmentState::Automatic,
+                                        "Automatic",
+                                    );
+                                    ui.selectable_value(
+                                        &mut adjustment,
+                                        RecordingOffsetAdjustmentState::ManualOverride,
+                                        "Manual",
+                                    );
+                                    ui.selectable_value(
+                                        &mut adjustment,
+                                        RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                                        "Automatic + trim",
+                                    );
+                                })
+                                .response
+                        })
+                        .inner
+                        .changed();
                     let mut manual_frames = state.latency.manual_frames;
                     let manual_response = ui
                         .horizontal(|ui| {
@@ -1026,7 +1086,8 @@ impl TrackWidget {
                                 },
                             );
                             ui.add_enabled(
-                                adjustment != RecordingOffsetAdjustmentState::Automatic,
+                                latency_supported
+                                    && adjustment != RecordingOffsetAdjustmentState::Automatic,
                                 egui::DragValue::new(&mut manual_frames).suffix(" frames"),
                             )
                         })
@@ -1051,34 +1112,37 @@ impl TrackWidget {
                     ui.separator();
                     ui.heading("Processor latency");
                     let mut processor_adjustment = state.latency.processor_adjustment;
-                    let processor_adjustment_changed =
-                        egui::ComboBox::from_id_salt(("processor_latency_adjustment", state.id))
-                            .selected_text(match processor_adjustment {
-                                ProcessorLatencyAdjustmentState::Automatic => "Automatic",
-                                ProcessorLatencyAdjustmentState::ManualOverride => "Manual",
-                                ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
-                                    "Automatic + trim"
-                                }
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::Automatic,
-                                    "Automatic",
-                                );
-                                ui.selectable_value(
-                                    &mut processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::ManualOverride,
-                                    "Manual",
-                                );
-                                ui.selectable_value(
-                                    &mut processor_adjustment,
-                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
-                                    "Automatic + trim",
-                                );
-                            })
-                            .response
-                            .changed();
+                    let processor_adjustment_changed = ui
+                        .add_enabled_ui(latency_supported, |ui| {
+                            egui::ComboBox::from_id_salt(("processor_latency_adjustment", state.id))
+                                .selected_text(match processor_adjustment {
+                                    ProcessorLatencyAdjustmentState::Automatic => "Automatic",
+                                    ProcessorLatencyAdjustmentState::ManualOverride => "Manual",
+                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim => {
+                                        "Automatic + trim"
+                                    }
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut processor_adjustment,
+                                        ProcessorLatencyAdjustmentState::Automatic,
+                                        "Automatic",
+                                    );
+                                    ui.selectable_value(
+                                        &mut processor_adjustment,
+                                        ProcessorLatencyAdjustmentState::ManualOverride,
+                                        "Manual",
+                                    );
+                                    ui.selectable_value(
+                                        &mut processor_adjustment,
+                                        ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                                        "Automatic + trim",
+                                    );
+                                })
+                                .response
+                        })
+                        .inner
+                        .changed();
                     let mut processor_manual_frames = state.latency.processor_manual_frames;
                     let processor_changed = ui
                         .horizontal(|ui| {
@@ -1092,7 +1156,9 @@ impl TrackWidget {
                                 },
                             );
                             ui.add_enabled(
-                                processor_adjustment != ProcessorLatencyAdjustmentState::Automatic,
+                                latency_supported
+                                    && processor_adjustment
+                                        != ProcessorLatencyAdjustmentState::Automatic,
                                 egui::DragValue::new(&mut processor_manual_frames)
                                     .suffix(" frames"),
                             )
@@ -1139,7 +1205,10 @@ impl TrackWidget {
                         if ui
                             .horizontal(|ui| {
                                 ui.label(format!("{} alignment", loop_.name));
-                                ui.add(egui::DragValue::new(&mut alignment).suffix(" frames"))
+                                ui.add_enabled(
+                                    take_alignment_supported,
+                                    egui::DragValue::new(&mut alignment).suffix(" frames"),
+                                )
                             })
                             .inner
                             .changed()
@@ -1153,7 +1222,8 @@ impl TrackWidget {
                             let response = ui
                                 .horizontal(|ui| {
                                     ui.label(format!("{} processor", loop_.name));
-                                    ui.add(
+                                    ui.add_enabled(
+                                        take_alignment_supported,
                                         egui::DragValue::new(&mut processor_alignment)
                                             .suffix(" frames"),
                                     )
@@ -2424,5 +2494,55 @@ mod tests {
         let _ = click(&context, &mut direct_widget, &direct, options);
         let _ = frame(&context, &mut direct_widget, &direct, Vec::new());
         assert!(direct_widget.test_default_playback_menu_rect.is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unsupported_latency_and_dry_wet_options_are_disabled() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::FULL
+                .with(BackendCapability::LatencyCompensation, false)
+                .with(BackendCapability::TakeAlignment, false)
+                .with(BackendCapability::DryWetModes, false),
+        );
+        let state = TrackState {
+            id: TrackId::from_raw(2),
+            name: "Processed".to_owned(),
+            topology: crate::TrackTopology::DryWet {
+                dry_audio_channels: 1,
+                wet_audio_channels: 1,
+                dry_midi: false,
+                processor_type: crate::TrackProcessorTypeId::new("processor"),
+            },
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let options = widget.test_options_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, options);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let latency = widget.test_latency_menu_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, latency);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        assert!(!widget.latency_dialog_open);
+
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let options = widget.test_options_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, options);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let playback_menu = widget.test_default_playback_menu_rect.unwrap().center();
+        let _ = click(&context, &mut widget, &state, playback_menu);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let dry = widget
+            .test_default_playback_rects
+            .iter()
+            .find(|(mode, _)| *mode == DefaultPlaybackMode::DryThroughWet)
+            .unwrap()
+            .1
+            .center();
+        assert!(click(&context, &mut widget, &state, dry).actions.is_empty());
     }
 }

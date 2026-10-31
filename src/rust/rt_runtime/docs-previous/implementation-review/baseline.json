@@ -1,0 +1,172 @@
+{
+  "git_base": "95a42c09735d7b6169d01e2e55e260972df90253",
+  "scope": "Initial graph/recovery change-note slice, not complete Stage9 coverage or publication. Concurrent documentation drafts are read-only inputs.",
+  "documentation_baseline": {
+    "src/rust/rt_runtime/README.md": {
+      "sha256": "1b72b329f8c4b69177c818ab44e4d966f9bc68b554d4f2ec550fe51cf5ff04bc",
+      "bytes": 5800
+    },
+    "DOCS_REWRITE_PLAN.md": {
+      "sha256": "ec0d84e9293a4e233017bc2080571eb6c56fb944bb73a1de36fcdb629c54b5cb",
+      "bytes": 24221
+    },
+    "src/rust/rt_runtime/docs/README.md": {
+      "sha256": "409753f72d96cd2b2ff5327c98dd2fd043b20659287ac75d9d8f2515bbaef104",
+      "bytes": 2325
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/01-the-runtime-and-the-host.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/02-your-first-audio-graph.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/03-writing-processors.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-1-process-audio/04-connecting-an-audio-callback.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-2-control-a-running-graph/05-commands-completions-and-ownership.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-2-control-a-running-graph/06-routing-and-live-graph-edits.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-2-control-a-running-graph/07-changing-parameters-at-an-exact-sample.md": {
+      "sha256": "8eda1af503d2df6f98eb8605e4147bf0a6dabc4f8e03c566ab861b9e0bea25da",
+      "bytes": 7548
+    },
+    "src/rust/rt_runtime/docs/part-2-control-a-running-graph/08-processing-and-scheduling-midi.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-3-work-with-stored-media/09-loading-and-reading-resources.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-3-work-with-stored-media/10-recording-and-exporting.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/14-application-specific-operations.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-4-coordinate-processors-and-changes/16-recording-resources-together.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-5-configure-and-operate-the-runtime/18-submitting-without-allocation.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs/part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "src/rust/rt_runtime/docs-previous/capture-groups.md": {
+      "sha256": "4a3d0a92a0bbb4af62a9273afa439557f48aa6d93eb7512a579e5e490fbc08cd",
+      "bytes": 11360
+    },
+    "src/rust/rt_runtime/docs-previous/changing-parameters.md": {
+      "sha256": "846165cdaf5d1bc529a4ade1e3f299381f24a7f038aadd30f6ffccfa9162504c",
+      "bytes": 7338
+    },
+    "src/rust/rt_runtime/docs-previous/getting-started.md": {
+      "sha256": "345d55185aad26f83df3e5f0fabe03b0ed552eccf4ec08630f2fc4189a0a0c03",
+      "bytes": 5641
+    },
+    "src/rust/rt_runtime/docs-previous/graph-activation.md": {
+      "sha256": "ce4dc1d904655653bc209050cefddc6dd5c8449f1223d25b01fb6ce473d7db51",
+      "bytes": 10450
+    },
+    "src/rust/rt_runtime/docs-previous/integration.md": {
+      "sha256": "04fe16e96f4043d579f64a86625b2d52686010c16c2b343bc2dec3bdee9d84a5",
+      "bytes": 10001
+    },
+    "src/rust/rt_runtime/docs-previous/midi-indexing.md": {
+      "sha256": "8286fb884e585203239c2615755be0d8e408a9d1cd10c7e0885a7a7ebc72245d",
+      "bytes": 6008
+    },
+    "src/rust/rt_runtime/docs-previous/midi-state.md": {
+      "sha256": "b4c5e4c1c6874f28b0400bb1543f31e8b5090e2cd9bde6b82e3571dd9dcbf484",
+      "bytes": 5257
+    },
+    "src/rust/rt_runtime/docs-previous/performance.md": {
+      "sha256": "7a1fde8b8efdc24bcd51fedc43ea35aeeb31e48ee984e607ef37890ebdbdbc7f",
+      "bytes": 13130
+    },
+    "src/rust/rt_runtime/docs-previous/planning.md": {
+      "sha256": "6fc8f03f32702b6d1a6d94f4f4d37ad890d486775f982d630cdb1eb021b2cd11",
+      "bytes": 10890
+    },
+    "src/rust/rt_runtime/docs-previous/resources.md": {
+      "sha256": "5bc0e4fa234d417bba2298f5959b42ef7aa114f36a80337d8ac7ccd94fb68ef6",
+      "bytes": 15036
+    },
+    "src/rust/rt_runtime/docs-previous/scheduling-midi.md": {
+      "sha256": "2e1c3bea77a4ec10c7e87f223d46f2e85134d4f9ebc6bbee9427790953738cfd",
+      "bytes": 7493
+    }
+  },
+  "implementation_inputs": {
+    "src/rust/rt_runtime/src/executor.rs": {
+      "sha256": "7b05e3ad32d8edf271651c7a0f9d5b24765ae78e826478272ceee350cf8dd4ca",
+      "bytes": 52699
+    },
+    "src/rust/rt_runtime/src/graph.rs": {
+      "sha256": "6c652dd03bbf8fb47498dd7e6b103a812944f8f3b5e7d0bfa6c1a2265a77ec1e",
+      "bytes": 28992
+    },
+    "src/rust/rt_runtime/src/graph/activation.rs": {
+      "sha256": "321b21311d46f868f8e996c77801652e5e9f245d284b7ea278a82fd21cd0d3ba",
+      "bytes": 12735
+    },
+    "src/rust/rt_runtime/src/planner.rs": {
+      "sha256": "ee3648f69101c8bc8cf3ad4ad13fe04c86ba846f8d070c516ecd256c26442bab",
+      "bytes": 7465
+    },
+    "src/rust/rt_runtime/src/transport.rs": {
+      "sha256": "549d7beb7a36148e9ece8835b8f198984701d2d9cd34a577256dbf75333dbb1f",
+      "bytes": 17700
+    },
+    "src/rust/rt_runtime/tests/graph_activation.rs": {
+      "sha256": "82346bb27c47c1e77cdde7580948f4be778b20e8e86bf34bc923b182fd440f54",
+      "bytes": 39920
+    },
+    "src/rust/rt_runtime/tests/lifecycle.rs": {
+      "sha256": "85b9e7c389bc51da94c4fb13728e0cf607f51e857e294745dcbcdb3e0703ad85",
+      "bytes": 19155
+    }
+  },
+  "limitations": [
+    "Working-tree documentation includes user-owned uncommitted drafts; hashes identify reviewed inputs independently of git_base.",
+    "Re-read and reconcile any changed draft before applying notes. Empty chapters require earlier-stage backfill, not automatic no-change findings."
+  ]
+}

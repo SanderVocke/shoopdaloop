@@ -1,0 +1,77 @@
+//! Independent test-only loop host. Device/application adapters are not dependencies.
+//!
+//! Native scenario and bounded command bridge; AudioWorklet integration is separate.
+#[path = "../../../src/rust/shoop_wasm_test_support/src/heap.rs"]
+mod allocation_guard;
+#[path = "../../../src/rust/shoop_loops_test_support/src/lib.rs"]
+#[allow(dead_code)]
+mod assembly;
+#[global_allocator]
+static ALLOCATOR: allocation_guard::TrackingAllocator = allocation_guard::TrackingAllocator;
+
+mod bridge;
+#[cfg(test)]
+mod bridge_tests;
+mod browser;
+mod browser_export_client;
+mod browser_graph;
+mod browser_graph_client;
+mod browser_staging_client;
+mod client;
+mod export_bridge;
+mod staging_bridge;
+pub mod staging_wire;
+pub use browser_staging_client::BrowserStagingClient;
+pub mod export_wire;
+mod graph_bridge;
+pub mod graph_transfer;
+pub mod graph_wire;
+mod journal;
+mod native;
+mod planner_canary;
+mod scenario;
+#[cfg(not(target_arch = "wasm32"))]
+pub use planner_canary::report as planner_report;
+pub use planner_canary::BrowserPlannerCanary;
+pub mod wire;
+pub use bridge::Bridge;
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_dense::{run as run_dense, run_stalls, DenseReport};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_export::{run_exports, ExportReport};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_graph::{run_graph, run_graph_two_thread, GraphReport};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_media::{run as run_media, MediaReport};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::native_staging::{run as run_staging, StagingReport};
+pub use browser::{BrowserBridge, BrowserClient, HEAP_FAILURE};
+pub use browser_export_client::BrowserExportClient;
+pub use browser_graph::BrowserGraphReceiver;
+pub use browser_graph_client::BrowserGraphClient;
+pub use client::Client;
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::run_two_thread;
+pub use native::run_wire;
+pub use scenario::{run, Report};
+
+pub(crate) fn guarded<R>(run: impl FnOnce() -> R) -> R {
+    if allocation_guard::is_rendering() {
+        run()
+    } else {
+        allocation_guard::assert_no_heap(run)
+    }
+}
+
+/// Positive control for the shared allocator instrumentation, outside rendering.
+pub fn allocator_canaries() -> bool {
+    let (_, counts) = allocation_guard::measure(|| {
+        let mut bytes = Vec::with_capacity(1);
+        for index in 0..128 {
+            bytes.push(std::hint::black_box(index as u8));
+        }
+        std::hint::black_box(&bytes);
+        drop(bytes);
+    });
+    counts.allocations > 0 && counts.reallocations > 0 && counts.deallocations > 0
+}

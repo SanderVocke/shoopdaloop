@@ -35,6 +35,11 @@ const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
 const webMidiDenyFirst = process.env.WEB_MIDI_DENY_FIRST === '1';
 const webMidiOpenFail = process.env.WEB_MIDI_OPEN_FAIL === '1';
+// The core workflow on the new engine backend, with the fake microphone as capture.
+const newEngine = process.env.NEW_ENGINE === '1';
+if (newEngine && (outputOnly || workerEngine || settingsOnly || webMidi || denyFirst)) {
+  throw new Error('NEW_ENGINE runs only with the microphone and the default settings');
+}
 if ((webMidiDenyFirst || webMidiOpenFail) && !webMidi) {
   throw new Error('Web MIDI failure modes require WEB_MIDI=1');
 }
@@ -362,7 +367,12 @@ try {
     });
   }
   let entryUrl;
-  if (selfContained) {
+  const newEngineQuery = '?audio-backend=new_engine&new-engine-self-test=1';
+  if (newEngine) {
+    entryUrl = selfContained
+      ? `${pathToFileURL(selfContainedPath).href}${newEngineQuery}`
+      : `${origin}/${newEngineQuery}`;
+  } else if (selfContained) {
     const query = workerEngine
       ? '?worker=1&self-test=1'
       : settingsOnly
@@ -449,9 +459,37 @@ try {
     outputEnableGranted: document.getElementById('enable_output_audio')?.hasAttribute('data-permission-granted'),
     canvasWidth: document.getElementById('shoop_canvas')?.width,
     canvasHeight: document.getElementById('shoop_canvas')?.height,
+    newEngine: document.getElementById('runtime_status')?.getAttribute('data-new-engine'),
+    newEngineMicrophone: document.getElementById('runtime_status')?.getAttribute('data-new-engine-microphone'),
+    newEngineSelfTest: document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test'),
   })`;
 
-  if (settingsOnly && settingsUnavailable) {
+  if (newEngine) {
+    await waitFor(
+      candidate => candidate.driver === 'AwaitingGesture' && candidate.newEngine === 'AwaitingGesture',
+      'the new engine audio action was not presented',
+    );
+    await clickEnable('enable_audio');
+    let step;
+    const state = await waitFor(
+      candidate => {
+        if (candidate.newEngineSelfTest !== step) {
+          step = candidate.newEngineSelfTest;
+          console.log(`new engine self-test: ${step}`);
+        }
+        if (candidate.newEngineSelfTest?.startsWith('failed')) {
+          throw new Error(`new engine workflow failed: ${JSON.stringify({ candidate, failures })}`);
+        }
+        return candidate.newEngineSelfTest === 'passed';
+      },
+      'the new engine workflow did not finish',
+      300_000,
+    );
+    if (state.newEngine !== 'Running' || state.newEngineMicrophone !== 'Connected' || state.quantum !== 128) {
+      throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);
+    }
+    console.log(`${selfContained ? 'direct-file' : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
+  } else if (settingsOnly && settingsUnavailable) {
     const state = await waitFor(
       candidate => candidate.settingsTest === 'unavailable'
         && candidate.settingsRecovery === 'true'

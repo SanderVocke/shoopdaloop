@@ -1,0 +1,339 @@
+{
+  "passed": true,
+  "base_commit": "9f8c60f5d7896a155a45dff70da154434ddd9267",
+  "scope": "Stage 2 pure primitive/composite resolver. Runtime, resource, and host integration remain future stages.",
+  "source_sha256": {
+    "src/rust/shoop_loop_engine/src/command.rs": "339250f2ef1cdef6842d76c6c9bc2cbc96d2732f904fbfc95c690bb7a5d9b53b",
+    "src/rust/shoop_loop_engine/src/config.rs": "fbb07338ac7c3757a50c43a2770d76e4ab80634e2370ab23cbd921f7a3024e43",
+    "src/rust/shoop_loop_engine/src/decision.rs": "a0ac9283c0e0531068a6c1fe5159393f110de5879620cc8d0ef0284b64de73bb",
+    "src/rust/shoop_loop_engine/src/ids.rs": "7d8932f1dfa257b41ea7e748c59c462da8ff2c3b724515fa857f365828b62007",
+    "src/rust/shoop_loop_engine/src/lib.rs": "1a289b74dc5b1d3dfd9a8b8626621adebeb6de5934b503d08cb6f9219ddabc24",
+    "src/rust/shoop_loop_engine/src/program.rs": "8aac9fe15731351a63c8c84b27aec1d66a4f966f2674a4cb81b11d661e079c1d",
+    "src/rust/shoop_loop_engine/src/resolver.rs": "33b5460a94a5366c3b493c63619300de9fa5deb1af96cf2eabee965766872b9e",
+    "src/rust/shoop_loop_engine/src/state.rs": "0898d13e09479efbd30e77e8c43923e20c30682aae7ec1547ea5a53fa81bebfa",
+    "src/rust/shoop_loop_engine/src/topology.rs": "70d3e0c6d33aca4308a8caa20bc5ffcf1cda2a12549f1c6b183872bb701fb986",
+    "src/rust/shoop_loop_engine/tests/compiler.rs": "ae4303b55f17255a0daab325afac68b26add1bb6fc5a99768ba9d2aedfd11ece",
+    "src/rust/shoop_loop_engine/tests/composites.rs": "97d0d2b7d2a8e2e9d040116a4b93ed37a8b5dc538772d826bee175b2198da906",
+    "src/rust/shoop_loop_engine/tests/resolver.rs": "4c6e5fe81d9d4007cf4267e70b2cde460fdf23b8bdc7151f8f1503bd867de24e",
+    "src/rust/shoop_loop_engine/tests/support/composite_reference.rs": "261acb54aec7869c8a6bc1b43a3d9b1ef07f96d70e878a086af8ecd57eb60345",
+    "src/rust/shoop_loop_engine/tests/support/reference.rs": "08a62cc1d9c502fee72cae2e717a73cd936e4c59e8db2c4858090095a7498b6a"
+  },
+  "commands": [
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 1.355794588002027,
+      "log": "target/loop-layer-stage2/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 2.0382638900046004,
+      "log": "target/loop-layer-stage2/native-debug.log",
+      "sha256": "e6f500baced7743f833f25b350b3e5afbad1e305ff5422db1c66ad345e0cf342"
+    },
+    {
+      "name": "native-release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rt_runtime",
+        "-p",
+        "shoop_loop_engine",
+        "--release"
+      ],
+      "exit_code": 0,
+      "seconds": 2.6271141769975657,
+      "log": "target/loop-layer-stage2/native-release.log",
+      "sha256": "26f5fd4a68211c40bad9e7273ecca1bb04fcf94e58b52a995db28beec8c933c9"
+    },
+    {
+      "name": "workspace-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 2.705723253005999,
+      "log": "target/loop-layer-stage2/workspace-build.log",
+      "sha256": "b3771f888cb3881a0cce9ecfcf3fa75ddb580cbc27217880db59934741b7b178"
+    },
+    {
+      "name": "rustdoc",
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "-p",
+        "shoop_loop_engine",
+        "--no-deps"
+      ],
+      "exit_code": 0,
+      "seconds": 0.32091051700990647,
+      "log": "target/loop-layer-stage2/rustdoc.log",
+      "sha256": "d62420a8b5d58744d515af51a9a341bb6323232f5a61c2385e0c1f774304355a"
+    },
+    {
+      "name": "runtime-boundary",
+      "command": [
+        "python3",
+        "scripts/check_rt_runtime_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4242530949995853,
+      "log": "target/loop-layer-stage2/runtime-boundary.log",
+      "sha256": "95fff258fbfbb5302df71ca75a0206bdd8f984a6b3614e5b91c7bea8872e611a"
+    },
+    {
+      "name": "loop-boundary",
+      "command": [
+        "python3",
+        "scripts/check_loop_engine_boundary.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.38746347499545664,
+      "log": "target/loop-layer-stage2/loop-boundary.log",
+      "sha256": "f150d1cc802cf91ae2f59030cad02ccbbd3bf5fe55fed50315f343e33fb59617"
+    },
+    {
+      "name": "boundary-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.tests.test_rt_runtime_boundary",
+        "scripts.tests.test_loop_engine_boundary"
+      ],
+      "exit_code": 0,
+      "seconds": 0.03968986299878452,
+      "log": "target/loop-layer-stage2/boundary-tests.log",
+      "sha256": "888a0c0ed615e57d32cf72be501b0c355f33b8613c81dfdaa99db33d7959487e"
+    },
+    {
+      "name": "test-policy",
+      "command": [
+        "python3",
+        "scripts/check_shoop_test_usage.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.030491200988763012,
+      "log": "target/loop-layer-stage2/test-policy.log",
+      "sha256": "d08b067fdde9a2705e1e5b03465fcc999cfabf10f671ad651e6a1234e0f41975"
+    },
+    {
+      "name": "tracing-policy",
+      "command": [
+        "python3",
+        "scripts/check_tracing_coverage.py",
+        "--require-closed"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04699183600314427,
+      "log": "target/loop-layer-stage2/tracing-policy.log",
+      "sha256": "6f0f648f24b57a5dd4b95055014093ee07f6166018052e930df29df32cc8425d"
+    },
+    {
+      "name": "wasm-dependencies",
+      "command": [
+        "python3",
+        "scripts/check_wasm_test_dependencies.py",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 0.18629227198834997,
+      "log": "target/loop-layer-stage2/wasm-dependencies.log",
+      "sha256": "077ad4115bb6999f06ac6926c3a6f657925a3a589fafa1b457cc5fe74e2a4a59"
+    },
+    {
+      "name": "node",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "node",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 28.32384544100205,
+      "log": "target/loop-layer-stage2/node.log",
+      "sha256": "34077fe633475050ce227375666b1964ce84398658921f36d3d51b75bec3fa4c"
+    },
+    {
+      "name": "chrome",
+      "command": [
+        "python3",
+        "scripts/run_wasm_tests.py",
+        "--runtime",
+        "chrome",
+        "--package",
+        "shoop_loop_engine"
+      ],
+      "exit_code": 0,
+      "seconds": 17.61303476599278,
+      "log": "target/loop-layer-stage2/chrome.log",
+      "sha256": "55d284a3e64a8867ed55738cb65271c685d2f3a0d6190cfd453bf5b6084606df"
+    },
+    {
+      "name": "nextest-version",
+      "command": [
+        "cargo",
+        "nextest",
+        "--version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.01376928499666974,
+      "log": "target/loop-layer-stage2/nextest-version.log",
+      "sha256": "1fd8e369e986ceaa3163325c547244c65dfa43b89824ddd27afe3dd43b0cb188"
+    },
+    {
+      "name": "workspace-tests",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--features",
+        "shoop_engine/app_backend",
+        "--profile",
+        "ci"
+      ],
+      "exit_code": 0,
+      "seconds": 37.597324823000235,
+      "log": "target/loop-layer-stage2/workspace-tests.log",
+      "sha256": "9198ca0227f93e5912e2027eeb083c0fde284133f305b7932d619616235dce1d"
+    }
+  ],
+  "native": {
+    "loop_tests_per_profile": 53,
+    "runtime_tests_per_profile": 93,
+    "profiles": [
+      "debug",
+      "release"
+    ]
+  },
+  "wasm": [
+    {
+      "elapsed_seconds": 22.217482929001562,
+      "executed": 53,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.xml",
+      "listed": 53,
+      "log": "target/wasm-tests/dev/reports/node/shoop_loop_engine-node.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 53,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "node",
+      "success": true,
+      "tests": 53,
+      "traces": {}
+    },
+    {
+      "elapsed_seconds": 17.060502830005134,
+      "executed": 53,
+      "failed": 0,
+      "ignored": 0,
+      "junit": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.xml",
+      "listed": 53,
+      "log": "target/wasm-tests/dev/reports/chrome/shoop_loop_engine-chrome.log",
+      "malformed": [],
+      "package": "shoop_loop_engine",
+      "passed": 53,
+      "profile": "dev",
+      "returncode": 0,
+      "runtime": "chrome",
+      "success": true,
+      "tests": 53,
+      "traces": {}
+    }
+  ],
+  "reference": {
+    "seed": "0x481c49f287bdf1e3",
+    "primitive_scripts": 256,
+    "requests_per_script": 32,
+    "frames_per_script": 64,
+    "partitions": [
+      "single callback",
+      "single-sample callbacks with reversed admission order",
+      "seeded irregular callbacks"
+    ],
+    "comparisons": [
+      "absolute transition/pulse journals",
+      "per-sample logical playback/capture decisions",
+      "every retained terminal outcome",
+      "final logical state"
+    ]
+  },
+  "composite_reference": {
+    "seed": "0x85ad3180e5c7492b",
+    "scripts": 256,
+    "styles": [
+      "regular repeating",
+      "explicit one-pass"
+    ],
+    "frames_per_script": 64,
+    "partition_profiles": 3,
+    "compares": [
+      "full absolute-frame semantic journals",
+      "all per-sample logical media state",
+      "composite iteration/pass/entered-at state"
+    ],
+    "independence": "Interprets raw sections into dense desired-state tables, then simulates every sample; does not call production compile, lookup or resolver APIs."
+  },
+  "deep_nesting": {
+    "levels": 65,
+    "frames": 128,
+    "partitions": [
+      "128",
+      "1 x 128"
+    ],
+    "reversed_declarations": true
+  },
+  "guards": "Shared allocator counts allocation/reallocation/deallocation around submit, preview, commit, finish, cancellation, receipt recycling, and candidate replacement/refusal. Preparation and test oracle/journal collection are outside those scopes.",
+  "environment": {
+    "wrapper": "nix develop",
+    "paths": [
+      "/home/sander/.cache/rt-runtime-nextest-0.9.116",
+      "/nix/store/qbj1w0y8ilv183jhdv2ws6dfhzph680p-nodejs-22.22.2/bin",
+      "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin",
+      "/nix/store/s6vs54z82hiz6d8sc63g4ckavl6fax4z-chromedriver-unwrapped-147.0.7727.137/bin"
+    ],
+    "CHROME_BIN": "/nix/store/z902vg8lk7gqwafn7anq7blmrymf2r0s-chromium-147.0.7727.137/bin/chromium",
+    "RUSTFLAGS": "-D warnings",
+    "RUSTDOCFLAGS": "-D warnings",
+    "workspace_SHOOP_ALLOW_MISSING_BACKENDS": "1"
+  },
+  "limitations": [
+    "Logical recording observations do not prove media/resource transactions or actual audio/MIDI output.",
+    "Not an AudioWorklet fixture, runtime planner adapter, or admission/recovery lane integration.",
+    "Running program replacement is safely refused here; Stage 6 still must implement staging to iteration zero.",
+    "Native target dependency trees are metadata audits, not macOS/Windows execution.",
+    "Miri, integrated media/resource references, host evidence, and final CI remain pending."
+  ]
+}
