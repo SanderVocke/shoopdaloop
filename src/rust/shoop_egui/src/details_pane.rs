@@ -96,6 +96,7 @@ pub(crate) fn paint_timeline_regions(
         colors::WAVEFORM_PREPLAY_REGION,
     );
     paint_range(loop_start, loop_end, colors::WAVEFORM_LOOP_REGION);
+    paint_range(loop_end, i64::MAX / 4, colors::WAVEFORM_UNPLAYED_REGION);
 
     let Some(interval) = grid_interval(sync_loop_length, grid_divider) else {
         return;
