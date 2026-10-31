@@ -4551,6 +4551,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_transport_socket"
+version = "0.3.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "shoop_script_resources"
 version = "0.3.0"
 dependencies = [

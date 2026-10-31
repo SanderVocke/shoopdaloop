@@ -774,3 +774,22 @@ preserves admitted music.
 - Warnings-denied native build and worklet Wasm build/Node artifact contract:
   passed. New portable ownership/buffer/schema cases are registered additively
   for final Miri execution; the retained inventory is 168 commands/336 executions.
+
+
+### Stage 4: socket transport
+
+`shoop_rt_transport_socket` supplies authenticated loopback setup and a common
+record port with fixed prepared lane queues, incremental framing, retained
+partial writes, bounded I/O passes and explicit EOF/framing failures. It adds no
+engine semantics or timing changes. The feature-gated transport contract harness
+now has an independent-peer fixture/barrier so the existing assertions can run
+across real processes rather than assuming immediate delivery.
+
+- `cargo test -p shoop_rt_transport_socket`: six passed, including the complete
+  shared lifecycle/credit/bulk contract across a subprocess, fragmented/coalesced
+  records, idle versus EOF, invalid sizes, rejected authentication and saturation
+  with whole-record retry/order verification. The child authenticates through a
+  private stdin token and exits after socket closure. Fixture controls are test-only.
+- The first saturation test exposed a fixture mistake (reusing its pending retry
+  payload as the receive buffer); separate buffers corrected the test. The fixed
+  test passes with the original carrier implementation.

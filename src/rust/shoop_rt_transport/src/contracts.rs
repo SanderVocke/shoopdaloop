@@ -352,3 +352,108 @@ pub fn lifecycle<C: TestCarrier>(carrier: C) {
     assert_eq!(client.state(), ClientState::Disconnected);
     assert_eq!(client.resync(), Err(ClientError::NotConnected));
 }
+
+/// Deterministic fixture control for the same assertions over independent peers.
+pub struct ControlledEndpoint(pub TestEndpoint);
+impl Endpoint for ControlledEndpoint {
+    fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
+        if let ClientMessage::Request {
+            correlation: 0,
+            request: Request::SetSmoothing { frames },
+        } = message
+        {
+            self.0.defer = frames & 1 != 0;
+            self.0.release |= frames & 2 != 0;
+            self.0.telemetry |= frames & 4 != 0;
+            self.0.grow |= frames & 8 != 0;
+            self.0.poll(out);
+            out.push(EngineMessage::Rejected { version: 0 }).unwrap();
+        } else {
+            self.0.deliver(message, out);
+        }
+    }
+    fn poll(&mut self, out: &mut Outbox) {
+        self.0.poll(out);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub struct RemoteCarrier<P> {
+    client: RecordClient<P>,
+    shadow: TestEndpoint,
+    pending: VecDeque<EngineMessage>,
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl<P: RecordPort> RemoteCarrier<P> {
+    pub fn new(port: P) -> Self {
+        Self {
+            client: RecordClient::new(port),
+            shadow: TestEndpoint::default(),
+            pending: VecDeque::new(),
+        }
+    }
+    fn synchronize(&mut self) -> Result<(), CarrierError> {
+        let flags = u32::from(self.shadow.defer)
+            | (u32::from(self.shadow.release) << 1)
+            | (u32::from(self.shadow.telemetry) << 2)
+            | (u32::from(self.shadow.grow) << 3);
+        self.shadow.release = false;
+        self.shadow.telemetry = false;
+        self.shadow.grow = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let control = ClientMessage::Request {
+            correlation: 0,
+            request: Request::SetSmoothing { frames: flags },
+        };
+        loop {
+            match self.client.send(control) {
+                Ok(()) => break,
+                Err(CarrierError::Full) => {}
+                Err(error) => return Err(error),
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(CarrierError::Disconnected);
+            }
+            std::thread::yield_now();
+        }
+        loop {
+            match self.client.receive() {
+                Some(EngineMessage::Rejected { version: 0 }) => return Ok(()),
+                Some(message @ EngineMessage::Disconnected(_)) => {
+                    self.pending.push_back(message);
+                    return Err(CarrierError::Disconnected);
+                }
+                Some(message) => self.pending.push_back(message),
+                None => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(CarrierError::Disconnected);
+            }
+            std::thread::yield_now();
+        }
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl<P: RecordPort> Carrier for RemoteCarrier<P> {
+    fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
+        self.synchronize()?;
+        self.client.send(message)?;
+        if matches!(message, ClientMessage::Goodbye) {
+            return Ok(());
+        }
+        self.synchronize()
+    }
+    fn receive(&mut self) -> Option<EngineMessage> {
+        if let Some(message) = self.pending.pop_front() {
+            return Some(message);
+        }
+        let _ = self.synchronize();
+        self.pending.pop_front()
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl<P: RecordPort> TestCarrier for RemoteCarrier<P> {
+    fn endpoint(&mut self) -> &mut TestEndpoint {
+        &mut self.shadow
+    }
+}
