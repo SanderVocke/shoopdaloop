@@ -1,8 +1,8 @@
 # Incremental validation
 
-This is transport-extraction evidence only. It does not establish A1–A11 or a
-completed native-session-recovery milestone. Session service, app protocol/client,
-independent native roles and recovery UX remain pending in the plan.
+The [acceptance index](acceptance.md) records the current milestone status and
+evidence boundaries. Sections below are chronological checkpoints: their pending
+work and source-specific claims describe those checkpoints, not the final state.
 
 Baseline: `cb6410f0`, with the transport extraction changes in the following commit.
 Environment: managed Debian 13, x86_64, stable Rust 1.99.1 installed under
@@ -339,11 +339,11 @@ matrices and selected Miri remain the final-stage gates. No Miri has run early.
   scheduling, not hardware latency guarantees. The typed/encoded portable state
   contract also passed; whole-workflow wall time includes preparation/rendering and
   is not an isolated codec benchmark (1782-byte structural snapshot in that case).
-- Of 31 Node packages, 29 passed on the broad run; the service timing diagnostic used an unsupported Wasm clock and
+- On the first broad run, 29 of 31 Node packages passed; the service timing diagnostic used an unsupported Wasm clock and
   the frontend had a native-only test helper compiled for Wasm. After restricting
   only those diagnostics/helpers to native, their complete Node selections passed
-  (21 service tests and 21 frontend tests). Unchanged package evidence is retained;
-  final-head CI reruns the full Node selection.
+  (21 service tests and 21 frontend tests). A subsequent fresh full run passed
+  **2026 tests across all 31 packages**. Final-head CI reruns the full selection.
 - Development hosted Chromium core/burst/media and mock-MIDI workflows passed with
   zero xruns, no render memory growth and no command overflow. Browser settings
   save/reload/rejected/failing-save workflow passed after enabling output audio for

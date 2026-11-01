@@ -1,0 +1,11 @@
+    Blocking waiting for file lock on build directory
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_protocol)
+    Finished `test` profile [unoptimized] target(s) in 2.62s
+     Running tests/host.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/host-e1e509c02a87d210)
+
+running 2 tests
+test bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages ... ok
+test host_text_and_record_bounds_are_checked ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+

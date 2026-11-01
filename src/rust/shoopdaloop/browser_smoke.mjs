@@ -486,8 +486,12 @@ try {
     }
     await clickEnable(outputOnly ? 'enable_output_audio' : 'enable_audio');
     if (denyFirst) {
-      await waitFor(candidate => candidate.newEngineMicrophone === 'Denied', 'microphone denial was not visible');
-      await call('Browser.setPermission', { permission: { name: 'audioCapture' }, setting: 'granted', origin });
+      const denied = await waitFor(candidate => candidate.driver === 'Denied' || candidate.newEngineMicrophone === 'Denied', 'microphone denial was not visible');
+      if (denied.enableDisabled || denied.enableGranted) {
+        throw new Error('retry action was unavailable after denial');
+      }
+      await call('Browser.resetPermissions');
+      await call('Browser.grantPermissions', { permissions: ['audioCapture'], origin });
       await clickEnable('enable_audio');
     }
     let step;

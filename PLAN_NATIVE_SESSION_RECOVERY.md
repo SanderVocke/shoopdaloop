@@ -9,8 +9,9 @@ backend contracts, shared carriers, bounded app protocol/client projection, the
 authoritative service, UI/Lua clients with typed local composition, and independent
 native hosts with authenticated attachment, recovery controls and explicit shutdown.
 Production legacy retirement and the parity handoff are implemented.
-Final validation is in progress in Stage 7; native/Node/browser ordinary gates have
-passed with focused reruns after fixes. Selected Miri and final-head CI remain open.
+Final validation is in progress in Stage 7. Native, all 31 Node packages, browser
+ordinary gates and 35 selected Miri executions passed. Platform CI fixes and
+final-head CI remain open; see the [acceptance index](docs/native_session_recovery/acceptance.md).
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -30,11 +31,12 @@ Current checkpoint (2026-11-01):
   focused evidence is in the incremental validation document.
 - Stage 6: sole production stack, migrated settings/packages/CI and explicit parity
   ledger implemented. Focused validation is recorded; final gates remain Stage 7.
-- Stage 2–6 commits and the merge have not been pushed. The last verified green CI
-  is the earlier Stage 1 head `2ec1abec`, run
-  [41284581244](https://github.com/SanderVocke/shoopdaloop/actions/runs/41284581244);
-  it does not validate the current head or working tree. Final-head CI, review and
-  A1–A11 acceptance remain outstanding. Miri has not been run early.
+- Stages 2–7 through `d69dea15` and the no_std merge are pushed to origin.
+  PR [#899](https://github.com/SanderVocke/shoopdaloop/pull/899) targets
+  `feat/engine-ipc`. Candidate CI run
+  [41302375014](https://github.com/SanderVocke/shoopdaloop/actions/runs/41302375014)
+  exposed Windows packaging and web release smoke failures; these are not passes.
+  Selected Miri ran after the ordinary local integration gates and passed.
 - The user has resumed execution through completion, including push and final-head CI.
 
 Originally written under
@@ -481,7 +483,7 @@ Queue the complete retained-stack suites for the integration push, not every edi
   baseline and record workloads, capacities, hardware, results, and limitations.
 - [x] Exercise dummy and CPAL/midir mocks; add available virtual/physical facilities
   and document gaps. Harnesses explicitly clean up surviving hosts after assertions.
-- [ ] Run selected Miri checks **only now**, after ordinary integration checks are
+- [x] Run selected Miri checks **only now**, after ordinary integration checks are
   stable: affected portable ownership/queue/codec lifetimes and applicable existing
   runtime/transport cases. Preserve established seeds/workloads/watchdogs. After fixes,
   rerun affected checks; avoid repeating unrelated Miri batches.
@@ -489,7 +491,7 @@ Queue the complete retained-stack suites for the integration push, not every edi
   including package/performance/Miri results, remaining capabilities, and review status.
   Reconcile the parity ledger against final production behavior, reference suites and
   retired files/tests; link it from the acceptance index and user documentation.
-- [ ] Push the implementation branch and create/update the PR against `feat/engine-ipc`
+- [x] Push the implementation branch and create/update the PR against `feat/engine-ipc`
   while #897 is unmerged, or its merged successor. Use batched integration pushes;
   satisfy pre-push suite requirements and keep the PR focused on the final scope.
 - [ ] Work required CI to green on the final head. Check automated review and address

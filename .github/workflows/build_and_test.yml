@@ -814,7 +814,10 @@ jobs:
         run: |
           node --experimental-websocket browser_smoke.mjs
           if [ '${{ matrix.profile }}' = release ]; then
-            SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
+            SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
+              node --experimental-websocket browser_smoke.mjs
+          else
+            DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
           fi
 
       - name: Install Firefox browser

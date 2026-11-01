@@ -1,0 +1,26 @@
+    Blocking waiting for file lock on build directory
+   Compiling rustversion v1.0.23
+   Compiling libc v0.2.189
+   Compiling scoped-tls v1.0.1
+   Compiling generator v0.8.11
+   Compiling loom v0.7.2
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+    Finished `test` profile [unoptimized] target(s) in 2.88s
+     Running tests/contracts.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/contracts-c7251f3d22b4af7b)
+
+running 12 tests
+test allocation_reallocation_and_deallocation_canaries_are_active ... ok
+test allocation_scope_is_reset_on_unwind ... ok
+test configuration_rejects_zeros_overflows_and_indivisible_work ... ok
+test counters_and_generations_exhaust_without_wrapping ... ok
+test empty_graph_renders_variable_prefixes_without_heap_operations ... ok
+test event_storage_is_bounded_ordered_and_refusal_is_atomic ... ok
+test every_positive_capacity_and_budget_is_validated ... ok
+test guard_detects_a_real_collection_lifetime_and_destructor_location ... ok
+test heap_assertion_rejects_an_allocating_callback ... ok
+test invalid_host_shapes_clear_only_a_bounded_writable_prefix ... ok
+test prepared_processor_uses_borrowed_disjoint_views_without_heap_operations ... ok
+test zero_blocks_do_not_touch_buffers_validate_shapes_or_advance_clock ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 133.26s
+

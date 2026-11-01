@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "package_filter": "shoop_rt_protocol",
+  "toolchain": "nightly-2026-05-04",
+  "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+  "cases": [
+    {
+      "package": "shoop_rt_protocol",
+      "target": "protocol",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "00-protocol-seed0.log",
+      "seconds": 46.30564828599745,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_protocol",
+      "target": "host",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "01-host-seed0.log",
+      "seconds": 3.630412525002612,
+      "miri_flags": "-Zmiri-seed=0"
+    }
+  ],
+  "manifests": {
+    "shoop_rt_protocol": "Cargo.toml"
+  },
+  "shard": null,
+  "measureme": false,
+  "full_inventory_sha256": "ac4c25d110a9926447a2d006f6381e97b8927f33a9563a5fd913939f3e78f78f",
+  "source_commit": "d69dea15301e1ddfcc9b4c75a2d11e496ce39b8f",
+  "run_attempt": null,
+  "limitations": [
+    "Not a whole-workspace or whole-suite Miri claim.",
+    "Loom's generator/FFI model runs natively, not under Miri.",
+    "Long seeded loops and two-thread stress use explicitly smaller cfg(miri) counts; full counts run natively and applicable cases in Node/Chromium.",
+    "Standalone loop-host cases retain their full native workloads and allocator/destructor guards.",
+    "Browser/Web Audio/JavaScript and external C++ tracing are not interpreted; real-worklet and native tracing gates cover them separately."
+  ]
+}

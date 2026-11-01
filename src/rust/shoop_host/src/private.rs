@@ -119,7 +119,8 @@ foreach ($r in $a.GetAccessRules($true, $true, [System.Security.Principal.Securi
         .context("run session ACL adapter")?;
     ensure!(
         output.status.success(),
-        "session path ACL validation failed"
+        "session path ACL validation failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
     );
     Ok(())
 }

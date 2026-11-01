@@ -2,10 +2,28 @@
 
 [Workstreams, acceptance and remaining checks](PLAN.md) · [Architecture](ARCHITECTURE.md) · [Historical records](docs/history/README.md)
 
+## Native session recovery checkpoint
+
+The current session-service milestone is tracked by
+[PLAN_NATIVE_SESSION_RECOVERY.md](PLAN_NATIVE_SESSION_RECOVERY.md), its
+[A1–A11 acceptance index](docs/native_session_recovery/acceptance.md), and the
+[feature parity handoff](docs/native_session_recovery/feature-parity.md).
+Implementation through `d69dea15` is pushed in
+[PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899).
+
+Local gates pass: warning-denying workspace build, 2404 native tests, 2026 Node
+tests across 31 packages, 142 Python tests, browser core/burst/media/MIDI/settings
+workflows, packaged Linux companion workflows, policies and 35 selected Miri
+executions run after ordinary integration gates. The acceptance index records
+source provenance, workloads, timing/resource measurements and hardware limits.
+The 16 parity gaps remain OPEN with retained implementation/UI/tests and concrete
+completion criteria. Final platform CI is pending corrections to Windows packaging
+and the web release smoke; no final delivery or review approval is claimed yet.
+
 ## Evidence boundary
 
-This is the single maintained verification/status index for the workstreams in
-`PLAN.md`. It consolidates existing results; **no build, test, browser, Miri,
+The historical workstream record below is the maintained verification/status index
+for `PLAN.md`. Its documentation migration consolidated existing results; **no build, test, browser, Miri,
 benchmark or remote-CI campaign was run by the documentation migration**. Recorded
 passes prove their named source/configuration/inventory, not today's merged tree
 by implication. Implementation completion, local execution, remote acceptance,

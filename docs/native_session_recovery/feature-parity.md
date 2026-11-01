@@ -5,8 +5,8 @@ parity work. These are temporary implementation gaps, not decisions to remove
 features from ShoopDaLoop. Full parity is outside the recovery milestone; preserving
 this backlog and its evidence is part of that milestone.
 
-Status: implementation checkpoint after recovery UI commit `925db5b2`, with Stage 6
-retirement in progress. Recheck the production capability set and client/service
+Status: sole production stack and recovery implementation delivered through
+`d69dea15`; final platform CI is in progress. Recheck the production capability set and client/service
 handlers whenever implementation changes. A green recovery CI does not close these
 rows. Every row remains **OPEN** until its completion evidence is linked here.
 

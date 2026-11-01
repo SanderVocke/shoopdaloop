@@ -1,0 +1,10 @@
+    Blocking waiting for file lock on build directory
+   Compiling shoop_app_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_app_protocol)
+    Finished `test` profile [unoptimized] target(s) in 47.69s
+     Running tests/codec.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/codec-362df371e8f1f670)
+
+running 1 test
+test versions_protocol_discriminators_lengths_and_identity_are_checked ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.21s
+

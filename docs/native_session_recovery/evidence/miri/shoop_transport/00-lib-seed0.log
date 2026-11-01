@@ -1,0 +1,17 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling shoop_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_transport)
+    Finished `test` profile [unoptimized] target(s) in 43.93s
+     Running unittests src/lib.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/shoop_transport-8ea078ea5c101a91)
+
+running 5 tests
+test buffer::tests::batch_refuses_what_does_not_fit ... ok
+test buffer::tests::retain_keeps_selected_items_in_order_and_the_incomplete_tail ... ok
+test buffer::tests::stream_appends_consumes_and_compacts_without_allocating ... ok
+test framing::tests::rejects_lengths_outside_the_codec_bounds ... ok
+test framing::tests::splits_whole_records_and_waits_for_incomplete_ones ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
