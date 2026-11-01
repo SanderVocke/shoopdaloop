@@ -60,6 +60,7 @@ pub struct Client {
     media: Option<Result<Arc<LoopMedia>, Refusal>>,
     next_transfer: u64,
     persistence_replies: VecDeque<persistence::Reply>,
+    captured_image: Option<(persistence::Key, Arc<persistence_image::Image>)>,
 }
 
 impl Client {
@@ -87,6 +88,7 @@ impl Client {
             media: None,
             next_transfer: 1,
             persistence_replies: VecDeque::new(),
+            captured_image: None,
         })
     }
 
@@ -110,6 +112,47 @@ impl Client {
     }
     pub fn take_persistence_reply(&mut self) -> Option<persistence::Reply> {
         self.persistence_replies.pop_front()
+    }
+    pub fn take_captured_image(
+        &mut self,
+    ) -> Option<(persistence::Key, Arc<persistence_image::Image>)> {
+        self.captured_image.take()
+    }
+    pub fn capture_image(
+        &self,
+        key: persistence::Key,
+        target: persistence::Target,
+    ) -> Result<ClientMessage, Error> {
+        if self.state != State::Ready {
+            return Err(Error::NotReady);
+        }
+        if !key.valid() || !target.valid() {
+            return Err(Error::Protocol);
+        }
+        Ok(ClientMessage::CaptureImage {
+            authority: self.authority.ok_or(Error::NotReady)?,
+            key,
+            target,
+        })
+    }
+    pub fn stage_image(
+        &self,
+        key: persistence::Key,
+        target: persistence::Target,
+        image: Arc<persistence_image::Image>,
+    ) -> Result<ClientMessage, Error> {
+        if self.state != State::Ready {
+            return Err(Error::NotReady);
+        }
+        if !key.valid() || !target.valid() {
+            return Err(Error::Protocol);
+        }
+        Ok(ClientMessage::StageImage {
+            authority: self.authority.ok_or(Error::NotReady)?,
+            key,
+            target,
+            image,
+        })
     }
     pub fn refusal(&self) -> Option<Refusal> {
         self.refusal
@@ -138,6 +181,7 @@ impl Client {
         self.expected_media = None;
         self.media = None;
         self.persistence_replies.clear();
+        self.captured_image = None;
         self.pending.clear();
         self.submitted.clear();
         self.results.clear();
@@ -174,6 +218,11 @@ impl Client {
         self.submitted.insert(operation);
         Ok(ClientMessage::Submit {
             authority,
+            session_epoch: self
+                .snapshot
+                .as_ref()
+                .ok_or(Error::NotReady)?
+                .persistence_epoch,
             operation,
             expected_revision,
             command,
@@ -216,6 +265,7 @@ impl Client {
     }
 
     pub fn disconnect(&mut self) {
+        self.captured_image = None;
         self.persistence_replies.clear();
         self.state = State::Lost;
         self.authority = None;
@@ -286,6 +336,14 @@ impl Client {
 
     fn apply(&mut self, message: ServiceMessage) -> Result<(), Error> {
         match message {
+            ServiceMessage::CapturedImage {
+                authority,
+                key,
+                image,
+            } => {
+                self.check(authority)?;
+                self.captured_image = Some((key, image));
+            }
             ServiceMessage::Persistence { authority, reply } => {
                 self.check(authority)?;
                 if self.persistence_replies.len() == MAX_MESSAGES_PER_TURN {

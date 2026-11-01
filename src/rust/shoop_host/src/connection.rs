@@ -89,14 +89,66 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
             )
         }
     };
-    Ok(Connection { port })
+    Ok(Connection {
+        port,
+        upload: None,
+        upload_pending: None,
+    })
 }
 
 pub struct Connection {
     pub port: Port,
+    upload: Option<(
+        shoop_app_protocol::Authority,
+        shoop_app_protocol::persistence::Key,
+        shoop_app_protocol::persistence_transfer::UploadStream,
+    )>,
+    upload_pending: Option<ClientMessage>,
 }
 impl Connection {
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
+        match message {
+            ClientMessage::StageImage {
+                authority,
+                key,
+                target,
+                image,
+            } => {
+                if self.upload.is_some() {
+                    return Err(ClientError::Full);
+                }
+                let stream =
+                    shoop_app_protocol::persistence_transfer::UploadStream::new(image, key, target)
+                        .map_err(|_| ClientError::Protocol)?;
+                self.upload = Some((authority, key, stream));
+                return Ok(());
+            }
+            ClientMessage::CaptureImage {
+                authority,
+                key,
+                target,
+            } => {
+                return self.send_wire(ClientMessage::Persistence {
+                    authority,
+                    request: shoop_app_protocol::persistence::Request::Capture { key, target },
+                })
+            }
+            ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key)) =>
+            {
+                self.upload = None;
+                self.upload_pending = None;
+            }
+            ClientMessage::Detach { .. }
+            | ClientMessage::Shutdown { .. }
+            | ClientMessage::Attach { .. } => {
+                self.upload = None;
+                self.upload_pending = None;
+            }
+            _ => {}
+        }
+        self.send_wire(message)
+    }
+    fn send_wire(&mut self, message: ClientMessage) -> Result<(), ClientError> {
         let mut bytes = [0; MAX_RECORD_BYTES];
         let length = codec::encode(&WireMessage::Client(message), &mut bytes)
             .map_err(|_| ClientError::Protocol)?;
@@ -108,6 +160,35 @@ impl Connection {
             })
     }
     pub fn poll(&mut self, client: &mut Client) -> Result<usize, ClientError> {
+        for _ in 0..shoop_app_protocol::MAX_COMMANDS_PER_TURN {
+            if self.upload_pending.is_none() {
+                let Some((authority, _, stream)) = self.upload.as_mut() else {
+                    break;
+                };
+                match stream.next_request().map_err(|_| ClientError::Protocol)? {
+                    Some(request) => {
+                        self.upload_pending = Some(ClientMessage::Persistence {
+                            authority: *authority,
+                            request,
+                        })
+                    }
+                    None => {
+                        self.upload = None;
+                        break;
+                    }
+                }
+            }
+            let message = self
+                .upload_pending
+                .as_ref()
+                .expect("pending upload record")
+                .clone();
+            match self.send_wire(message) {
+                Ok(()) => self.upload_pending = None,
+                Err(ClientError::Full) => break,
+                Err(error) => return Err(error),
+            }
+        }
         let mut count = 0;
         let mut bytes = [0; MAX_RECORD_BYTES];
         for _ in 0..MAX_MESSAGES_PER_TURN {

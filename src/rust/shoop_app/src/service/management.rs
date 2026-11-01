@@ -96,7 +96,7 @@ impl Service {
                 }
                 let submit = matches!(request, ManagementRequest::Shutdown { .. });
                 if submit {
-                    if let Err(reason) = self.admit(authority, operation, None, None) {
+                    if let Err(reason) = self.admit(authority, operation, None, None, None) {
                         return ManagementReply::Refused(reason);
                     }
                 }

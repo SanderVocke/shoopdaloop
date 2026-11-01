@@ -16,6 +16,7 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        persistence_epoch: 1,
         revision: Revision(revision),
         tracks: vec![TrackState {
             id: TrackId::from_raw(1),
@@ -685,4 +686,55 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
         Err(Error::Protocol)
     );
     assert!(client.media().is_none());
+}
+
+#[shoop_test]
+fn commands_carry_the_latest_session_epoch_and_images_keep_typed_ownership() {
+    use shoop_app_protocol::persistence_image::{Image, Manifest};
+    let mut client = ready();
+    let mut state = (*snapshot(6)).clone();
+    state.persistence_epoch = 9;
+    client
+        .receive(ServiceMessage::Snapshot {
+            authority: AUTHORITY,
+            state: Arc::new(state),
+        })
+        .unwrap();
+    let ClientMessage::Submit { session_epoch, .. } =
+        client.command(Command::ResetXruns, None).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(session_epoch, 9);
+    let image = Arc::new(Image {
+        manifest: Manifest::Update {
+            sample_rate: 48000,
+            frames: Some(0),
+            audio: vec![],
+            midi: vec![],
+        },
+        payloads: vec![],
+    });
+    let key = persistence::Key {
+        transfer: TransferId(8),
+        epoch: 9,
+    };
+    client
+        .receive(ServiceMessage::CapturedImage {
+            authority: AUTHORITY,
+            key,
+            image: Arc::clone(&image),
+        })
+        .unwrap();
+    let (_, received) = client.take_captured_image().unwrap();
+    assert!(Arc::ptr_eq(&image, &received));
+    client
+        .receive(ServiceMessage::CapturedImage {
+            authority: AUTHORITY,
+            key,
+            image,
+        })
+        .unwrap();
+    client.disconnect();
+    assert!(client.take_captured_image().is_none());
 }

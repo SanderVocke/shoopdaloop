@@ -634,7 +634,7 @@ pub enum CompositeKind {
     Script,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalControlState {
     pub default_recording_action: DefaultRecordingAction,
@@ -1320,7 +1320,7 @@ impl Default for WaveformChannelState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MidiEventState {
     pub frame: u32,

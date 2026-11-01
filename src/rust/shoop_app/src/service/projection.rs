@@ -60,6 +60,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            persistence_epoch: self.persistence_epoch,
             revision: self.revision,
             tracks,
             buses,

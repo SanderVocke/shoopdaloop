@@ -332,6 +332,22 @@ boundaries, Rust test policy, formatting and whitespace checks pass. The carrier
 tests require socket permission in this sandbox; their initial permission-denied
 run was rerun successfully with network/socket access. Miri and final CI are pending.
 
+Application-image milestone in progress: protocol v8 defines engine/file-independent
+core metadata and immutable audio/MIDI payloads. Typed local messages share these
+owners; native wire connections expand them into existing bounded persistence
+records. A bounded source supports indexed MIDI byte ranges without rescanning a
+whole event stream per chunk. Snapshot and ordinary-command epochs fence global
+and fixed-Master actions as well as object-specific commands. Local-only variants
+cannot enter ordinary wire records. The service workflow still refuses these
+operations until its ownership/admission implementation is complete.
+
+Image validation: all 46 protocol/client/service tests pass in native and Node/Wasm,
+including exact typed/wire reconstruction, random MIDI byte ranges, the >32 MiB
+image, refusal reconciliation for stale epochs and immutable local ownership.
+Warning-denying protocol/client/service/host builds, dependency boundaries,
+formatting, Rust test policy and whitespace checks pass. These are transport and
+fencing checks; they do not claim restored file menus or service persistence yet.
+
 ### Stage 3 — service-owned coherent session capture and exports
 
 - [ ] Add service capture jobs that settle prior admitted work, capture matching

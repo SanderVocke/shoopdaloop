@@ -421,6 +421,7 @@ fn accepted_creation_and_lost_replies_remain_owned_until_confirmation_without_re
         .handle(
             ConnectionId(3),
             ClientMessage::Submit {
+                session_epoch: 1,
                 authority,
                 operation: id,
                 expected_revision: None,
@@ -709,6 +710,7 @@ fn a_slow_client_is_reclaimed_while_accepted_work_and_outcomes_remain_bounded() 
             .handle(
                 ConnectionId(1),
                 ClientMessage::Submit {
+                    session_epoch: 1,
                     authority,
                     operation: OperationId {
                         client: authority.client,
@@ -1602,4 +1604,46 @@ fn lua_midi_ports_and_callbacks_live_in_the_client_and_release_on_detach() {
     f.service.pump_local(ConnectionId(99), &port, STEP);
     assert!(f.service.is_ready());
     assert_eq!(f.service.snapshot().tracks.len(), 1);
+}
+
+#[shoop_test]
+fn another_session_epoch_cannot_apply_even_global_commands_and_refusal_is_reconciled() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 900, ConnectionId(1), false);
+    let mut message = client
+        .command(Command::SetMasterAutoConnect(true), None)
+        .unwrap();
+    let ClientMessage::Submit {
+        operation,
+        session_epoch,
+        ..
+    } = &mut message
+    else {
+        panic!()
+    };
+    let operation = *operation;
+    *session_epoch += 1;
+    let before = f.service.snapshot();
+    f.service.handle(ConnectionId(1), message.clone()).unwrap();
+    let result = complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    assert!(matches!(
+        result,
+        Outcome::Refused {
+            reason: Refusal::Identity,
+            ..
+        }
+    ));
+    assert_eq!(
+        f.service.snapshot().master_auto_connect,
+        before.master_auto_connect
+    );
+    f.service.handle(ConnectionId(1), message).unwrap();
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert_eq!(client.results()[&operation], result);
 }

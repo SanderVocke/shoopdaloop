@@ -115,6 +115,10 @@ pub enum Request {
         object: u32,
         offset: u64,
     },
+    Describe {
+        key: Key,
+        object: u32,
+    },
 }
 impl Request {
     pub fn key(&self) -> Key {
@@ -127,6 +131,7 @@ impl Request {
             | Self::Cancel { key }
             | Self::Capture { key, .. }
             | Self::Read { key, .. } => *key,
+            Self::Describe { key, .. } => *key,
         }
     }
     pub fn valid(&self) -> bool {
@@ -147,7 +152,9 @@ impl Request {
                             .checked_add(bytes.len() as u64)
                             .is_some_and(|end| end <= MAX_SESSION_MEDIA_BYTES)
                 }
-                Self::FinishObject { object, .. } | Self::Read { object, .. } => {
+                Self::FinishObject { object, .. }
+                | Self::Read { object, .. }
+                | Self::Describe { object, .. } => {
                     *object < MAX_SESSION_OBJECTS
                         && !matches!(self, Self::Read { offset, .. } if *offset > MAX_SESSION_MEDIA_BYTES)
                 }
@@ -267,6 +274,12 @@ impl Receiver {
     }
     pub fn objects(&self) -> &[Object] {
         &self.objects
+    }
+    pub fn into_objects(self) -> Result<Vec<Object>, Refusal> {
+        if !self.ready {
+            return Err(Refusal::NotReady);
+        }
+        Ok(self.objects)
     }
     pub fn ready(&self) -> bool {
         self.ready

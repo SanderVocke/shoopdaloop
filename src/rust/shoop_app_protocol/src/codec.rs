@@ -141,3 +141,28 @@ pub fn decode_media(bytes: &[u8]) -> Result<crate::LoopMedia, CodecError> {
     }
     Ok(data)
 }
+
+pub fn encode_manifest(value: &crate::persistence_image::Manifest) -> Result<Vec<u8>, CodecError> {
+    let mut output = BoundedWriter::<MAX_SNAPSHOT_BYTES>(Vec::new());
+    bincode::serde::encode_into_writer(
+        value,
+        &mut output,
+        bincode::config::standard().with_limit::<MAX_SNAPSHOT_BYTES>(),
+    )
+    .map_err(|_| CodecError::Overflow)?;
+    Ok(output.0)
+}
+pub fn decode_manifest(bytes: &[u8]) -> Result<crate::persistence_image::Manifest, CodecError> {
+    if bytes.is_empty() || bytes.len() > MAX_SNAPSHOT_BYTES {
+        return Err(CodecError::Invalid);
+    }
+    let (value, used) = bincode::serde::decode_from_slice(
+        bytes,
+        bincode::config::standard().with_limit::<MAX_SNAPSHOT_BYTES>(),
+    )
+    .map_err(|_| CodecError::Invalid)?;
+    if used != bytes.len() {
+        return Err(CodecError::Trailing);
+    }
+    Ok(value)
+}

@@ -142,6 +142,7 @@ pub struct Service {
     active_effect: Effect,
     media_loop: Option<LoopId>,
     media_pending: Option<(TransferId, LoopId)>,
+    persistence_epoch: u64,
 }
 
 impl Service {
@@ -188,6 +189,7 @@ impl Service {
             active_effect: Effect::None,
             media_loop: None,
             media_pending: None,
+            persistence_epoch: 1,
         };
         service.register_master()?;
         let created = service.backend.create_direct_track(DirectTrackRequest {
@@ -241,6 +243,9 @@ impl Service {
         let _span =
             tracing::trace_span!("app.service.receive", connection = connection.0).entered();
         match message {
+            ClientMessage::StageImage { .. } | ClientMessage::CaptureImage { .. } => {
+                return Err(Refusal::Unsupported)
+            }
             ClientMessage::Persistence { authority, request } => {
                 self.check(connection, authority)?;
                 if !request.valid() {
@@ -336,19 +341,25 @@ impl Service {
             }
             ClientMessage::Submit {
                 authority,
+                session_epoch,
                 operation,
                 expected_revision,
                 command,
             } => {
                 self.check(connection, authority)?;
-                self.submit(operation, expected_revision, Some(command))?;
+                self.submit(
+                    operation,
+                    expected_revision,
+                    Some(command),
+                    Some(session_epoch),
+                )?;
             }
             ClientMessage::Shutdown {
                 authority,
                 operation,
             } => {
                 self.check(connection, authority)?;
-                self.submit(operation, None, None)?;
+                self.submit(operation, None, None, None)?;
             }
         }
         Ok(())
@@ -421,12 +432,13 @@ impl Service {
         id: OperationId,
         expected: Option<Revision>,
         command: Option<Command>,
+        epoch: Option<u64>,
     ) -> Result<(), Refusal> {
         let lease = self.lease.as_ref().ok_or(Refusal::StaleAuthority)?;
         if !lease.ready {
             return Err(Refusal::NotReady);
         }
-        self.admit(lease.authority, id, expected, command)
+        self.admit(lease.authority, id, expected, command, epoch)
     }
 
     fn admit(
@@ -435,6 +447,7 @@ impl Service {
         id: OperationId,
         expected: Option<Revision>,
         command: Option<Command>,
+        epoch: Option<u64>,
     ) -> Result<(), Refusal> {
         if id.client != authority.client || id.sequence == 0 {
             return Err(Refusal::Identity);
@@ -471,6 +484,8 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
+            Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
             Some((Refusal::RevisionConflict, "the shared state changed"))
         } else if command.as_ref().is_some_and(|command| !command.bounded()) {
