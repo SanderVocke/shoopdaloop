@@ -730,7 +730,7 @@ fn resize_lane(ui: &mut egui::Ui, lane_rect: egui::Rect, height: f32) -> f32 {
     let response = ui
         .interact(
             handle_rect,
-            ui.id().with(("lane_resize", lane_rect.top().to_bits())),
+            ui.make_persistent_id(("lane_resize", lane_rect.top().to_bits())),
             egui::Sense::drag(),
         )
         .on_hover_cursor(egui::CursorIcon::ResizeVertical);
