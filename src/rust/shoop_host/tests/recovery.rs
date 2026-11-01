@@ -527,6 +527,152 @@ fn bad_credentials_versions_and_early_disconnects_leave_the_session_healthy() {
 }
 
 #[shoop_test]
+fn authenticated_management_can_close_a_shared_host_after_its_only_data_connection_is_lost() {
+    let mut host = host(AppTransport::SharedMemory);
+    let (_client, connection) = attach(&host.entry, 900);
+    assert!(connection::shutdown_ownerless(&host.entry, Duration::from_secs(2)).is_err());
+    drop(connection);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let reply = connection::management(
+            &host.entry,
+            ManagementRequest::Status {
+                version: VERSION,
+                host: host.entry.host,
+                session: host.entry.session,
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        if matches!(reply, ManagementReply::Status { busy: false, .. }) {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(connection::connect(&host.entry, Duration::from_secs(2)).is_err());
+    connection::shutdown_ownerless(&host.entry, Duration::from_secs(5)).unwrap();
+    while host.child.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline + Duration::from_secs(5));
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!host.path.exists());
+}
+
+#[shoop_test]
+fn bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections() {
+    let mut host = host(AppTransport::Socket);
+    let (mut client, mut connection) = attach(&host.entry, 1000);
+    command(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let Outcome::TrackCreated { track, loops, .. } = command(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::AddTrack(TrackSpec {
+            name: "Stress recording".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    ) else {
+        unreachable!()
+    };
+    command(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        },
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while client.snapshot().unwrap().tracks[1].loops[0].mode != LoopMode::Recording {
+        connection.poll(&mut client).unwrap();
+        assert!(Instant::now() < deadline, "recording did not execute");
+        thread::sleep(Duration::from_millis(2));
+    }
+    let mut frames = client.snapshot().unwrap().status.processed_frames;
+    let descriptor_count = || {
+        std::fs::read_dir(format!("/proc/{}/fd", host.child.id()))
+            .ok()
+            .map(|entries| entries.count())
+    };
+    let descriptors_before = descriptor_count();
+    let mut attach_ms = Vec::new();
+    let mut control_ms = Vec::new();
+    for index in 0..32 {
+        drop(connection);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let status = connection::management(
+                &host.entry,
+                ManagementRequest::Status {
+                    version: VERSION,
+                    host: host.entry.host,
+                    session: host.entry.session,
+                },
+                Duration::from_secs(2),
+            )
+            .unwrap();
+            if matches!(status, ManagementReply::Status { busy: false, .. }) {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        let started = Instant::now();
+        (client, connection) = attach(&host.entry, 1001 + index);
+        attach_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while client.snapshot().unwrap().status.processed_frames <= frames {
+            connection.poll(&mut client).unwrap();
+            assert!(Instant::now() < deadline, "audio frames stopped advancing");
+            thread::sleep(Duration::from_millis(2));
+        }
+        let state = client.snapshot().unwrap();
+        assert_eq!(state.tracks[1].id, track);
+        assert_eq!(state.tracks[1].loops[0].id, loops[0]);
+        assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+        assert!(state.status.processed_frames > frames);
+        frames = state.status.processed_frames;
+        let started = Instant::now();
+        command(
+            &mut client,
+            &mut connection,
+            shoop_app_protocol::Command::Track {
+                track,
+                action: TrackAction::OutputGainChanged(-6.0 + (index % 4) as f32),
+            },
+        );
+        control_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert!(client.snapshot().unwrap().pending.len() <= MAX_PENDING_OPERATIONS);
+        assert!(client.snapshot().unwrap().results.len() <= MAX_RETAINED_RESULTS);
+    }
+    let descriptors_after = descriptor_count();
+    if let (Some(before), Some(after)) = (descriptors_before, descriptors_after) {
+        assert!(
+            after <= before + 4,
+            "departed connections leaked descriptors: {before} -> {after}"
+        );
+    }
+    attach_ms.sort_by(f64::total_cmp);
+    control_ms.sort_by(f64::total_cmp);
+    eprintln!(
+        "recovery stress: {}",
+        serde_json::json!({"cycles":32, "attach_ms_p50":attach_ms[16], "attach_ms_p95":attach_ms[30], "control_ms_p50":control_ms[16], "control_ms_p95":control_ms[30], "host_fds_before":descriptors_before, "host_fds_after":descriptors_after, "frames":frames})
+    );
+    shutdown(&mut host, &mut client);
+}
+
+#[shoop_test]
 fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
     let root = tempfile::tempdir().unwrap();
     let config_path = root.path().join("invalid.json");

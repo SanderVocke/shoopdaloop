@@ -213,6 +213,8 @@ fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
 #[shoop_test]
 fn shared_state_and_ordered_selection_survive_attachment_in_typed_and_encoded_delivery() {
     for encoded in [false, true] {
+        #[cfg(not(target_arch = "wasm32"))]
+        let started = std::time::Instant::now();
         let mut f = fixture();
         let connection = ConnectionId(1);
         let mut a = attach(&mut f.service, 10, connection, encoded);
@@ -303,6 +305,56 @@ fn shared_state_and_ordered_selection_survive_attachment_in_typed_and_encoded_de
         assert_eq!(before.tracks[2].loops[0].id, after.tracks[2].loops[0].id);
         assert_eq!(after.tracks.iter().filter(|track| track.is_sync).count(), 1);
         assert_eq!(f.waits.get(), f.initial_waits);
+        #[cfg(not(target_arch = "wasm32"))]
+        eprintln!(
+            "portable app contract: encoded={encoded}, elapsed_us={}, snapshot_bytes={}",
+            started.elapsed().as_micros(),
+            codec::encode_snapshot(after).unwrap().len()
+        );
+        #[cfg(not(target_arch = "wasm32"))]
+        if !encoded && std::env::var_os("SHOOP_MEASURE_SESSION_SNAPSHOTS").is_some() {
+            measure_snapshots(after, b.authority().unwrap());
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn measure_snapshots(snapshot: &std::sync::Arc<SessionSnapshot>, authority: Authority) {
+    use std::{hint::black_box, sync::Arc, time::Instant};
+    let mut expanded = snapshot.as_ref().clone();
+    expanded.tracks = (0..64)
+        .map(|index| {
+            let mut track = snapshot.tracks[1].clone();
+            track.id = TrackId::from_raw(index + 1);
+            track.is_sync = index == 0;
+            track.loops.truncate(4);
+            for (slot, state) in track.loops.iter_mut().enumerate() {
+                state.id = LoopId::from_raw(index * 4 + slot as u64 + 1);
+            }
+            track
+        })
+        .collect();
+    for state in [Arc::clone(snapshot), Arc::new(expanded)] {
+        let (client, service) = local::channel();
+        let started = Instant::now();
+        for _ in 0..128 {
+            service
+                .updates
+                .try_send(ServiceMessage::Snapshot {
+                    authority,
+                    state: Arc::clone(&state),
+                })
+                .unwrap();
+            black_box(client.updates.try_recv().unwrap());
+        }
+        let typed_us = started.elapsed().as_micros();
+        let bytes = codec::encode_snapshot(&state).unwrap().len();
+        let started = Instant::now();
+        for _ in 0..128 {
+            let encoded = codec::encode_snapshot(&state).unwrap();
+            black_box(codec::decode_snapshot(&encoded).unwrap());
+        }
+        eprintln!("snapshot measurement: tracks={}, loops={}, bytes={bytes}, iterations=128, typed_queue_us={typed_us}, codec_roundtrip_us={}", state.tracks.len(), state.tracks.iter().map(|track| track.loops.len()).sum::<usize>(), started.elapsed().as_micros());
     }
 }
 
@@ -1171,6 +1223,54 @@ fn management_shutdown_survives_data_loss_and_a_replacement_fences_it() {
         ManagementReply::Refused(Refusal::StaleAuthority)
     );
     assert!(f.service.is_ready());
+}
+
+#[shoop_test]
+fn explicit_ownerless_shutdown_cannot_evict_a_live_ui_and_fences_previous_owners() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 500, ConnectionId(1), false);
+    let authority = client.authority().unwrap();
+    let operation = OperationId {
+        client: ClientId(501),
+        sequence: 1,
+    };
+    let claim = ManagementRequest::ClaimShutdown {
+        version: VERSION,
+        host: HOST,
+        session: SESSION,
+        operation,
+    };
+    assert_eq!(
+        f.service.management(claim.clone()),
+        ManagementReply::Refused(Refusal::Busy)
+    );
+    f.service
+        .handle(ConnectionId(1), client.detach().unwrap())
+        .unwrap();
+    let reply = f.service.management(claim.clone());
+    let ManagementReply::Accepted {
+        authority: shutdown_authority,
+        ..
+    } = reply
+    else {
+        panic!("{reply:?}")
+    };
+    assert_ne!(shutdown_authority, authority);
+    assert_eq!(f.service.management(claim), reply);
+    assert_eq!(
+        f.service.management(ManagementRequest::Result {
+            authority,
+            operation
+        }),
+        ManagementReply::Refused(Refusal::StaleAuthority)
+    );
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
 }
 
 #[shoop_test]

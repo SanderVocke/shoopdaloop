@@ -8,7 +8,8 @@ launch adapters. No UI or Lua runtime is linked into the host.
 See [roles and CLI examples](../shoopdaloop/README.md). Socket clients can replace a
 departed controlling lease without recreating the engine. Shared memory supports one
 attachment only. Host shutdown requires current authority and reports MIDI reset,
-render stop and resource cleanup; UI/launcher exit does not imply host shutdown.
+render stop and resource cleanup; UI/launcher exit does not imply host shutdown. Explicit ownerless shutdown can
+acquire a new fenced generation only when no live UI owns the session.
 
 `cargo test -p shoop_host --features testing` runs private-path and real subprocess
 recovery/launch tests. The testing feature's deterministic dummy input is confined

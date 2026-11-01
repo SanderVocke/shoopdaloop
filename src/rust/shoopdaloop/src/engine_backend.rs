@@ -119,7 +119,7 @@ fn start_failure(error: StartError) -> anyhow::Error {
 }
 
 #[cfg(all(test, feature = "cpal"))]
-use shoop_host::engine::{cpal_config, DEVICE_MAX_FRAMES};
+use shoop_host::engine::DEVICE_MAX_FRAMES;
 use shoop_host::engine::{dummy_config, engine_description, inventory, stop_problems};
 fn native_config(
     driver: &AudioDriverConfig,

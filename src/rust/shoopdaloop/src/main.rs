@@ -60,6 +60,8 @@ mod browser_rt_self_test;
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod native_recovery_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod recovery;
 #[cfg(not(target_arch = "wasm32"))]
@@ -1264,7 +1266,13 @@ impl UnifiedApp {
                 self.exit.intercept_close(ui.ctx());
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
-                        if ui.button("Choose a running host…").clicked() {
+                        if ui
+                            .add_enabled(
+                                !self.exit.open && !self.exit.is_pending(),
+                                egui::Button::new("Choose a running host…"),
+                            )
+                            .clicked()
+                        {
                             let result =
                                 shoop_host::registry::Registry::default_path().and_then(|path| {
                                     let registry = shoop_host::registry::Registry::open(&path)?;
@@ -1292,9 +1300,9 @@ impl UnifiedApp {
                     egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
                         if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
                         for (path, candidate) in choices {
-                            if ui.button(format!("{} — {}", candidate.name, path.display())).clicked() {
+                            if ui.add_enabled(!self.exit.open && !self.exit.is_pending(), egui::Button::new(format!("{} — {}", candidate.name, path.display()))).clicked() {
                                 match Runtime::attach(&self.settings.active(), candidate) {
-                                    Ok(runtime) => {self.runtime = runtime; self.host_choices = None;},
+                                    Ok(runtime) => {self.runtime = runtime; self.host_choices = None; self.exit = Default::default();},
                                     Err(error) => self.settings.report_action_error(error.to_string()),
                                 }
                             }
@@ -1309,10 +1317,18 @@ impl UnifiedApp {
                         ui.heading("Session connection lost");
                         ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Reattach to check its current state."));
                         if entry.transport == shoop_host::registry::AppTransport::Socket
-                            && ui.button("Reattach to this host").clicked()
+                            && ui
+                                .add_enabled(
+                                    !self.exit.is_pending(),
+                                    egui::Button::new("Reattach to this host"),
+                                )
+                                .clicked()
                         {
                             match Runtime::attach(&self.settings.active(), entry) {
-                                Ok(runtime) => self.runtime = runtime,
+                                Ok(runtime) => {
+                                    self.runtime = runtime;
+                                    self.exit = Default::default();
+                                }
                                 Err(error) => self.settings.report_action_error(error.to_string()),
                             }
                         }
@@ -1395,9 +1411,16 @@ impl UnifiedApp {
         let script_paths = Some(self.runtime.script_paths());
         #[cfg(target_arch = "wasm32")]
         let script_paths = None;
-        let response = self
-            .widget
-            .show(ui, &snapshot, &settings_state, script_paths);
+        #[cfg(not(target_arch = "wasm32"))]
+        let controls_enabled = !self.exit.is_pending();
+        #[cfg(target_arch = "wasm32")]
+        let controls_enabled = true;
+        let response = ui
+            .add_enabled_ui(controls_enabled, |ui| {
+                self.widget
+                    .show(ui, &snapshot, &settings_state, script_paths)
+            })
+            .inner;
         self.about_open |= response.about_requested;
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
@@ -1953,6 +1976,19 @@ fn script_kind_has_file_identity(kind: ScriptKind) -> bool {
     )
 }
 
+fn builtin_script_settings(
+    settings: &shoop_settings::SettingsSnapshot,
+) -> (String, shoop_settings::StringToggleList) {
+    (
+        settings
+            .get(shoop_egui::BUILTINS_LOCATION)
+            .unwrap_or_default(),
+        settings
+            .get(shoop_egui::BUILTIN_SCRIPTS)
+            .unwrap_or_default(),
+    )
+}
+
 fn reconcile_loop_smoothing_settings(
     settings: &shoop_settings::SettingsSnapshot,
     applied_revision: &mut u64,
@@ -2001,6 +2037,7 @@ struct Runtime {
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
+    applied_builtin_settings: (String, shoop_settings::StringToggleList),
     applied_user_scripts: shoop_settings::StringToggleList,
     applied_audio_preferences: (u32, bool),
     /// The new engine backend's host. It is declared after the application runtime so that
@@ -2105,6 +2142,7 @@ impl Runtime {
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            applied_builtin_settings: builtin_script_settings(settings),
             applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
             applied_audio_preferences: (
                 shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
@@ -2153,6 +2191,7 @@ impl Runtime {
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            applied_builtin_settings: builtin_script_settings(settings),
             applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
             applied_audio_preferences: (
                 shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
@@ -2273,7 +2312,11 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        self.request_builtin_rescan(settings);
+        let builtins = builtin_script_settings(settings);
+        if builtins != self.applied_builtin_settings {
+            self.request_builtin_rescan(settings);
+            self.applied_builtin_settings = builtins;
+        }
         let user_scripts = settings.get(shoop_egui::USER_SCRIPTS)?;
         if user_scripts == self.applied_user_scripts {
             self.applied_settings_revision = settings.revision();
@@ -2727,6 +2770,7 @@ struct Runtime {
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
+    applied_builtin_settings: (String, shoop_settings::StringToggleList),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2803,6 +2847,7 @@ impl Runtime {
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            applied_builtin_settings: builtin_script_settings(settings),
         };
         runtime.update_waiting_snapshot();
         runtime.request_builtin_rescan(settings);
@@ -3013,7 +3058,11 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        self.request_builtin_rescan(settings);
+        let builtins = builtin_script_settings(settings);
+        if builtins != self.applied_builtin_settings {
+            self.request_builtin_rescan(settings);
+            self.applied_builtin_settings = builtins;
+        }
         self.applied_settings_revision = settings.revision();
         Ok(())
     }
@@ -3155,6 +3204,12 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         registry::{AppTransport, Registry},
         serve::StartOptions,
     };
+    if args.shutdown_host {
+        let entry = shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?;
+        shoop_host::connection::shutdown_ownerless(&entry, Duration::from_secs(15))?;
+        println!("Host cleanup confirmed");
+        return Ok(true);
+    }
     if args.ui_only || args.host_file.is_some() {
         return Ok(false);
     }
@@ -3598,7 +3653,7 @@ fn click_request_was_rejected(
         })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
     let lifecycle = if script.name == "lua-api-unannounced.lua" {
         shoop_egui::ScriptLifecycle::Error

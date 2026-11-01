@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 use std::sync::Arc;
 
-pub const VERSION: u16 = 5;
+pub const VERSION: u16 = 6;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -587,11 +587,23 @@ pub enum ManagementRequest {
         authority: Authority,
         operation: OperationId,
     },
+    ClaimShutdown {
+        version: u16,
+        host: HostId,
+        session: SessionId,
+        operation: OperationId,
+    },
 }
 impl ManagementRequest {
     pub fn valid(&self) -> bool {
         match self {
             Self::Status { host, session, .. } => host.0 != 0 && session.0 != 0,
+            Self::ClaimShutdown {
+                host,
+                session,
+                operation,
+                ..
+            } => host.0 != 0 && session.0 != 0 && operation_valid(*operation),
             Self::Shutdown {
                 authority,
                 operation,

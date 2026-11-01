@@ -3,6 +3,60 @@ use super::*;
 impl Service {
     pub fn management(&mut self, request: ManagementRequest) -> ManagementReply {
         match request {
+            ManagementRequest::ClaimShutdown {
+                version,
+                host,
+                session,
+                operation,
+            } => {
+                if version != VERSION {
+                    return ManagementReply::Refused(Refusal::Version);
+                }
+                if host != self.options.host || session != self.options.session || !request.valid()
+                {
+                    return ManagementReply::Refused(Refusal::Identity);
+                }
+                if self.lease.is_some() {
+                    return ManagementReply::Refused(Refusal::Busy);
+                }
+                if let Some(authority) = self
+                    .last_authority
+                    .filter(|authority| authority.client == operation.client)
+                {
+                    if self.pending.contains_key(&operation)
+                        || self.results.iter().any(|result| result.id == operation)
+                    {
+                        return self.management(ManagementRequest::Result {
+                            authority,
+                            operation,
+                        });
+                    }
+                }
+                if self.closed
+                    || self.shutdown.is_some()
+                    || (!self.is_ready() && !self.engine_closed)
+                {
+                    return ManagementReply::Refused(Refusal::NotReady);
+                }
+                if self.actors.contains_key(&operation.client) || self.actors.len() == MAX_ACTORS {
+                    return ManagementReply::Refused(Refusal::Duplicate);
+                }
+                let Some(generation) = self.generation.checked_add(1) else {
+                    return ManagementReply::Refused(Refusal::Overloaded);
+                };
+                self.generation = generation;
+                let authority = Authority {
+                    session,
+                    client: operation.client,
+                    generation: ConnectionGeneration(generation),
+                };
+                self.actors.insert(operation.client, 0);
+                self.last_authority = Some(authority);
+                self.management(ManagementRequest::Shutdown {
+                    authority,
+                    operation,
+                })
+            }
             ManagementRequest::Status {
                 version,
                 host,

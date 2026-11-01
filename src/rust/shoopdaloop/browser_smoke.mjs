@@ -591,9 +591,7 @@ try {
     );
 
     await evaluate(`localStorage.removeItem('${settingsKey}')`);
-    await call('Page.navigate', {
-      url: `${baseUrl}?settings-test=save-failure&settings-save-failure=1`,
-    });
+    await navigateWithAudio(`${baseUrl}?settings-test=save-failure&settings-save-failure=1`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'save-failed'
         && candidate.settingsChannels === 2

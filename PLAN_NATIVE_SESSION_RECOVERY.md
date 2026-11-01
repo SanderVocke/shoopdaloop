@@ -9,7 +9,8 @@ backend contracts, shared carriers, bounded app protocol/client projection, the
 authoritative service, UI/Lua clients with typed local composition, and independent
 native hosts with authenticated attachment, recovery controls and explicit shutdown.
 Production legacy retirement and the parity handoff are implemented.
-Final validation remains incomplete in Stage 7.
+Final validation is in progress in Stage 7; native/Node/browser ordinary gates have
+passed with focused reruns after fixes. Selected Miri and final-head CI remain open.
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -466,19 +467,19 @@ Queue the complete retained-stack suites for the integration push, not every edi
   native and Node suites, required browser/AudioWorklet workflows, dependency/tracing/
   test-usage policies, and updated Linux/macOS/Windows debug/release package matrices.
   Adapt obsolete feature flags without weakening coverage for surviving behavior.
-- [ ] Validate packaged host-only/UI-only and sibling-launch workflows: create/name/
+- [x] Validate packaged host-only/UI-only and sibling-launch workflows: create/name/
   reorder/select/target tracks/loops, set controls/routes, record audio/MIDI, start
   playback and another recording, kill UI, confirm output/capture progression, reattach,
   and continue editing. Repeat detach/reattach and both close actions, with launcher loss.
-- [ ] Inject disconnects at service acceptance, engine submission/confirmation,
+- [x] Inject disconnects at service acceptance, engine submission/confirmation,
   publication, snapshot transfer, and acknowledgment delivery. Verify stable media/IDs,
   pending operation outcomes, no replay/duplicate startup, and stale-client fencing.
   Run a bounded repeated-recovery stress suite and check resource reclamation.
-- [ ] Measure typed local versus encoded behavior, native IPC control responsiveness,
+- [x] Measure typed local versus encoded behavior, native IPC control responsiveness,
   browser main-thread responsiveness under command/state/media bursts, snapshot cost,
   and worklet callback/overrun and heap/memory-growth invariants. Compare with the
   baseline and record workloads, capacities, hardware, results, and limitations.
-- [ ] Exercise dummy and CPAL/midir mocks; add available virtual/physical facilities
+- [x] Exercise dummy and CPAL/midir mocks; add available virtual/physical facilities
   and document gaps. Harnesses explicitly clean up surviving hosts after assertions.
 - [ ] Run selected Miri checks **only now**, after ordinary integration checks are
   stable: affected portable ownership/queue/codec lifetimes and applicable existing

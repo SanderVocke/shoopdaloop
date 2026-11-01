@@ -63,6 +63,11 @@ For an external host, the Session menu and window/platform close offer:
 After data loss, shutdown uses a separate authenticated management connection with
 the last owner's generation. A replacement UI fences that authority. Failure is
 reported with retry and UI-only options; an uncertain retry checks the same operation.
+A host with no live UI owner can be closed explicitly with
+`shoopdaloop --shutdown-host --host-file PATH`. This authenticates and acquires a new
+shutdown generation; a live owner refuses it. It also manages a shared-memory host
+after its single data connection is lost, without enabling shared-memory reattachment.
+The UI never uses this claim as a fallback for stale-owner shutdown.
 Product shutdown does not kill a PID. In-process mode ends with its process; browser
 mode ends with its page. Shared-memory mode cannot reattach after UI exit.
 

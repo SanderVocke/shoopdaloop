@@ -6,6 +6,7 @@ edition = "2021"
 [package.metadata.shoop-wasm-test]
 enabled = true
 browser-feature = "wasm-test-browser"
+features = ["legacy"]
 
 [features]
 default = []

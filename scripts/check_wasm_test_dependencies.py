@@ -67,6 +67,9 @@ def main() -> int:
         ]
         if metadata.get(package, {}).get("no-default-features", False):
             command.append("--no-default-features")
+        features = metadata.get(package, {}).get("features", [])
+        if features:
+            command += ["--features", ",".join(features)]
         result = subprocess.run(command, check=False, text=True, capture_output=True)
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)

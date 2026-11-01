@@ -24,6 +24,9 @@ pub struct ExitController {
     error: Option<String>,
 }
 impl ExitController {
+    pub fn is_pending(&self) -> bool {
+        self.receiver.is_some()
+    }
     pub fn intercept_close(&mut self, context: &egui::Context) {
         if !self.authorized && context.input(|input| input.viewport().close_requested()) {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -34,7 +37,7 @@ impl ExitController {
         self.authorized = true;
         context.send_viewport_cmd(egui::ViewportCommand::Close);
     }
-    fn start(&mut self, entry: HostEntry, handle: ApplicationHandle) {
+    pub(crate) fn start(&mut self, entry: HostEntry, handle: ApplicationHandle) {
         self.error = None;
         let ticket = self.ticket.clone();
         let (sender, receiver) = mpsc::channel();

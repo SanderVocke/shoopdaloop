@@ -37,6 +37,10 @@ pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_file")]
     pub ui_only: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Shut down the selected ownerless host using authenticated management authority.
+    #[arg(long, requires = "host_file", conflicts_with = "ui_only")]
+    pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
     pub session: Option<String>,

@@ -163,3 +163,43 @@ pub fn management(
         std::thread::sleep(Duration::from_millis(1));
     }
 }
+
+/// Explicitly acquire shutdown authority for an ownerless host. Never evicts a live UI.
+pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
+    use shoop_app_protocol::{ClientId, OperationId, Outcome, VERSION};
+    let operation = OperationId {
+        client: ClientId(crate::registry::identity()?),
+        sequence: 1,
+    };
+    let mut request = ManagementRequest::ClaimShutdown {
+        version: VERSION,
+        host: entry.host,
+        session: entry.session,
+        operation,
+    };
+    let deadline = Instant::now() + timeout;
+    loop {
+        match management(entry, request, Duration::from_secs(2))? {
+            ManagementReply::Accepted {
+                authority,
+                operation: pending,
+            } if pending.id == operation => {
+                request = ManagementRequest::Result {
+                    authority,
+                    operation,
+                }
+            }
+            ManagementReply::Finished { result, .. } if result.id == operation => {
+                return match result.outcome {
+                    Outcome::Confirmed { .. } => Ok(()),
+                    outcome => Err(anyhow!("host cleanup failed: {outcome:?}")),
+                };
+            }
+            reply => return Err(anyhow!("ownerless shutdown refused: {reply:?}")),
+        }
+        if Instant::now() >= deadline {
+            return Err(anyhow!("host cleanup has not completed"));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}

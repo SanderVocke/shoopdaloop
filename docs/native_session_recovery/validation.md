@@ -289,7 +289,7 @@ passed. Final packaged GUI workflows and other platforms remain Stage 7 gates.
 
 Production frontend/host graphs no longer select or link the old engine, old app
 model, engine-only process supervisor or legacy browser worker/worklet clients.
-The old model and its 114 behavioral tests plus two RT adapter contracts now live in
+The old model and its 134 native behavioral tests plus two RT adapter contracts now live in
 `shoop_app_reference`, still executable natively and discoverable by the Node runner.
 Old frontend/browser acceptance scenarios and user behavior are preserved under
 `reference/`; these frozen scenarios are restoration evidence, not passing product
@@ -298,8 +298,8 @@ completion requirement; its capability coverage policy fails on untracked flags.
 
 Native and browser entry-point warning-denying builds passed, including default
 CPAL and dummy-only native builds. Focused service/client tests (20), frontend tests
-(55), egui tests (223), reference model/RT contracts (116), 142 Python script tests
-plus three parity-policy tests, tracing/test-usage policies and four-target
+(55), egui tests (223), reference model/RT contracts (136), 142 Python script tests
+(including three parity-policy tests), tracing/test-usage policies and four-target
 production dependency audits passed. Capacity refusals now retain error severity.
 Settings migration diagnoses retired backend/transport preferences and preserves
 unrelated values. Existing editors, document fields, processor code and build recipes
@@ -314,3 +314,48 @@ no render-time memory growth/command overflow; the mock-Web-MIDI variant also pa
 with zero xruns. Script catalog delivery now waits for client readiness instead of
 losing the initial catalog. Full retained-stack suites, final packaged/platform
 matrices and selected Miri remain the final-stage gates. No Miri has run early.
+
+## Final candidate ordinary checks (before selected Miri)
+
+- Full warning-denying workspace build passed. Full native nextest 0.9.116 with
+  independent legacy-native reference features passed **2404 tests**, with four
+  explicit ignored canaries. The additional engine/backend reference selection also
+  passed 1182 tests (a subset, not additional unique coverage).
+- The real frontend test binary was used as separate host/UI processes. Killing the
+  UI during recording preserved IDs/names/media; four replacements painted the
+  application, UI-only exits kept the host alive, and the final UI edited/read the
+  nonzero capture and confirmed close-both before exiting. All 63 frontend tests
+  passed after the final script-preference reconciliation fix. Appearance-only
+  settings changes no longer rescan/reconfigure running scripts.
+- A 32-cycle real socket recovery workload kept recording and reclaimed departed
+  descriptors: host descriptors 6 before/6 after. With low-latency TCP sends, attach
+  p50/p95 was 6.79/8.65 ms and confirmed control p50/p95 was 11.81/14.11 ms in the
+  focused development run. Earlier batching yielded about 52/56 and 46/51 ms.
+  Scheduling and telemetry are asynchronous; fixtures now wait for observed mode
+  and frame progress instead of assuming admission or attachment implies a new frame.
+- Environment: x86_64 Linux 6.18.57/glibc 2.41, 5 affinity CPUs with a 4-CPU cgroup
+  quota and 16 GiB memory limit. Timings include host/client control pumps and real
+  dummy callbacks. They are development-build measurements under shared/container
+  scheduling, not hardware latency guarantees. The typed/encoded portable state
+  contract also passed; whole-workflow wall time includes preparation/rendering and
+  is not an isolated codec benchmark (1782-byte structural snapshot in that case).
+- Of 31 Node packages, 29 passed on the broad run; the service timing diagnostic used an unsupported Wasm clock and
+  the frontend had a native-only test helper compiled for Wasm. After restricting
+  only those diagnostics/helpers to native, their complete Node selections passed
+  (21 service tests and 21 frontend tests). Unchanged package evidence is retained;
+  final-head CI reruns the full Node selection.
+- Development hosted Chromium core/burst/media and mock-MIDI workflows passed with
+  zero xruns, no render memory growth and no command overflow. Browser settings
+  save/reload/rejected/failing-save workflow passed after enabling output audio for
+  each newly loaded page. The bare-metal runtime/loop libraries built with warnings
+  denied after the no_std merge.
+- Authenticated explicit ownerless shutdown now closes a shared-memory host after
+  its sole data connection is lost; it refuses live owners and allocates a new
+  generation. Stale UIs never invoke that claim as an automatic fallback. Service
+  and subprocess fencing/cleanup tests passed. This adds management, not shared-memory
+  UI reattachment. App protocol version is 6.
+
+Final production packages/platform matrices, selected Miri and final-head CI/review
+are still required. Physical audio/MIDI devices are absent here; deterministic dummy,
+CPAL/midir mock and browser fake-capture tests ran. Optional hardware tests are not
+claimed as exercised. The parity ledger remains OPEN and is a required handoff.

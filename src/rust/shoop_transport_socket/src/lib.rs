@@ -50,6 +50,7 @@ impl Port {
         if config.reliable == 0 || config.bulk == 0 {
             return Err(io::Error::other("zero reliable/bulk capacity"));
         }
+        stream.set_nodelay(true)?;
         stream.set_nonblocking(true)?;
         let capacities = [config.reliable, config.telemetry, config.bulk];
         Ok(Self {
