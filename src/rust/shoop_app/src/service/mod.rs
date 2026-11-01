@@ -241,6 +241,19 @@ impl Service {
         let _span =
             tracing::trace_span!("app.service.receive", connection = connection.0).entered();
         match message {
+            ClientMessage::Persistence { authority, request } => {
+                self.check(connection, authority)?;
+                if !request.valid() {
+                    return Err(Refusal::Invalid);
+                }
+                self.emit(ServiceMessage::Persistence {
+                    authority,
+                    reply: persistence::Reply::Refused {
+                        key: request.key(),
+                        reason: Refusal::Unsupported,
+                    },
+                });
+            }
             ClientMessage::ReadMedia {
                 authority,
                 transfer,

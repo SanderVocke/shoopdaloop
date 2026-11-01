@@ -2,7 +2,8 @@
 
 ## Status and delivery
 
-Planning only; implementation has not started. Written under
+Implementation in progress; Stage 1's app transfer foundation is implemented.
+Engine staging and public persistence workflows remain pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
 P11 in the [feature parity ledger](docs/native_session_recovery/feature-parity.md).
@@ -172,22 +173,38 @@ no implementation, runtime validation or new PR is claimed by this checkpoint.
 
 ### Stage 1 — persistence contract and operation/transfer protocol
 
-- [ ] Write a field/capability matrix against session documents and reference
+- [x] Write a field/capability matrix against session documents and reference
   behavior: core fields, unsupported fields, client-local fields and ID remapping.
   Cover stopped-load semantics, busy recording policy, external connections,
   import offsets/length and every existing file-task completion/cancel transition.
-- [ ] Define finite budgets for session metadata, audio/MIDI bytes/events, archive
+- [x] Define finite budgets for session metadata, audio/MIDI bytes/events, archive
   entries/expansion, transfer chunks, concurrent stages/captures and retained results.
   Include full-session media larger than 32 MiB and old-plus-new peak memory.
 - [ ] Add neutral capture/stage/commit/result contracts and bounded app/engine
   messages as needed. Fence by authority, session/target generation, transfer/job
   identity and expected revision; version codecs and reject incompatible peers.
-- [ ] Define command ordering/capture barriers, chunk acknowledgments, cancellation,
+- [x] Define command ordering/capture barriers, chunk acknowledgments, cancellation,
   duplicate handling, disconnect cleanup, commit point and late-result reconciliation.
 
 Verification: focused domain/protocol/codec tests for typed and wire equivalence,
 hostile sizes, overflow, missing/repeated/reordered chunks, stale scopes and bounded
 backpressure. Check native/Wasm and engine dependency boundaries.
+
+Current milestone: [persistence-contract.md](docs/native_session_recovery/persistence-contract.md)
+records the field matrix, budgets and lifecycle. App protocol v7 adds bounded
+upload/capture messages, commit identity and a fenced ingress receiver; client/local
+and wire envelopes share validation. Production service operations still explicitly
+refuse persistence until the engine/service stages are implemented. Engine protocol
+extensions and integrated admission/lifetime checks remain unchecked above.
+
+Foundation validation: warning-denying builds of `shoop_app`, `shoop_app_client`
+and `shoop_app_protocol` pass; 20 protocol/client and 21 production service native
+tests pass. The same 20 protocol/client tests pass in Node/Wasm, including the
+>32 MiB transfer and bounded/fenced reply queue. Engine/runtime/loop dependency
+boundaries, Rust test-attribute policy, parity inventory and whitespace checks pass.
+The local runners require the prepared sysroot's pkg-config paths and a writable
+`WASM_PACK_CACHE`/`XDG_CACHE_HOME`; initial missing-path/cache errors were corrected,
+not counted as test passes. Miri remains reserved for the final stage.
 
 ### Stage 2 — prepared RT capture and content/session activation
 

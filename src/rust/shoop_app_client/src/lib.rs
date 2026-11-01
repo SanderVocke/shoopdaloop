@@ -9,7 +9,7 @@ pub mod runtime;
 
 use shoop_app_protocol::*;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
@@ -59,6 +59,7 @@ pub struct Client {
     expected_media: Option<(TransferId, shoop_app_api::LoopId)>,
     media: Option<Result<Arc<LoopMedia>, Refusal>>,
     next_transfer: u64,
+    persistence_replies: VecDeque<persistence::Reply>,
 }
 
 impl Client {
@@ -85,6 +86,7 @@ impl Client {
             expected_media: None,
             media: None,
             next_transfer: 1,
+            persistence_replies: VecDeque::new(),
         })
     }
 
@@ -93,6 +95,21 @@ impl Client {
     }
     pub fn authority(&self) -> Option<Authority> {
         self.authority
+    }
+    pub fn persistence(&self, request: persistence::Request) -> Result<ClientMessage, Error> {
+        if self.state != State::Ready {
+            return Err(Error::NotReady);
+        }
+        if !request.valid() {
+            return Err(Error::Protocol);
+        }
+        Ok(ClientMessage::Persistence {
+            authority: self.authority.ok_or(Error::NotReady)?,
+            request,
+        })
+    }
+    pub fn take_persistence_reply(&mut self) -> Option<persistence::Reply> {
+        self.persistence_replies.pop_front()
     }
     pub fn refusal(&self) -> Option<Refusal> {
         self.refusal
@@ -120,6 +137,7 @@ impl Client {
         self.media_transfer = None;
         self.expected_media = None;
         self.media = None;
+        self.persistence_replies.clear();
         self.pending.clear();
         self.submitted.clear();
         self.results.clear();
@@ -198,6 +216,7 @@ impl Client {
     }
 
     pub fn disconnect(&mut self) {
+        self.persistence_replies.clear();
         self.state = State::Lost;
         self.authority = None;
         self.transfer = None;
@@ -267,6 +286,13 @@ impl Client {
 
     fn apply(&mut self, message: ServiceMessage) -> Result<(), Error> {
         match message {
+            ServiceMessage::Persistence { authority, reply } => {
+                self.check(authority)?;
+                if self.persistence_replies.len() == MAX_MESSAGES_PER_TURN {
+                    return Err(Error::Full);
+                }
+                self.persistence_replies.push_back(reply);
+            }
             ServiceMessage::Media {
                 authority,
                 transfer,
@@ -470,6 +496,9 @@ impl Client {
             return Err(Error::Protocol);
         }
         match message {
+            WireMessage::Persistence { authority, reply } => {
+                self.receive(ServiceMessage::Persistence { authority, reply })
+            }
             WireMessage::CarrierReady { .. }
             | WireMessage::ManagementRequest(_)
             | WireMessage::ManagementReply(_) => Err(Error::Protocol),

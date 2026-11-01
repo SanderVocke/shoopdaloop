@@ -7,6 +7,9 @@ type CommandResult = std::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::CommitPersistence(_) => Err(CommandError::unsupported(
+                BackendCapability::SessionContentLoad,
+            )),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {
                 if self.loops.len() == MAX_LOOPS {

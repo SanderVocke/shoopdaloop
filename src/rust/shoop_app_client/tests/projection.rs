@@ -61,6 +61,77 @@ fn ready() -> Client {
     client
 }
 
+#[shoop_test]
+fn persistence_replies_are_fenced_bounded_and_discarded_on_loss() {
+    let key = persistence::Key {
+        transfer: TransferId(8),
+        epoch: 1,
+    };
+    let request = persistence::Request::Cancel { key };
+    assert_eq!(
+        attaching().persistence(request.clone()),
+        Err(Error::NotReady)
+    );
+    for encoded in [false, true] {
+        let mut client = ready();
+        assert_eq!(
+            client.persistence(request.clone()),
+            Ok(ClientMessage::Persistence {
+                authority: AUTHORITY,
+                request: request.clone(),
+            })
+        );
+        let reply = persistence::Reply::Closed { key };
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            if encoded {
+                wire(
+                    &mut client,
+                    WireMessage::Persistence {
+                        authority: AUTHORITY,
+                        reply: reply.clone(),
+                    },
+                )
+                .unwrap();
+            } else {
+                client
+                    .receive(ServiceMessage::Persistence {
+                        authority: AUTHORITY,
+                        reply: reply.clone(),
+                    })
+                    .unwrap();
+            }
+        }
+        assert_eq!(client.take_persistence_reply(), Some(reply.clone()));
+        client
+            .receive(ServiceMessage::Persistence {
+                authority: AUTHORITY,
+                reply: reply.clone(),
+            })
+            .unwrap();
+        assert_eq!(
+            client.receive(ServiceMessage::Persistence {
+                authority: AUTHORITY,
+                reply: reply.clone()
+            }),
+            Err(Error::Full)
+        );
+        assert_eq!(client.state(), State::Lost);
+        assert_eq!(client.take_persistence_reply(), None);
+        let mut client = ready();
+        let stale = Authority {
+            generation: ConnectionGeneration(99),
+            ..AUTHORITY
+        };
+        assert!(client
+            .receive(ServiceMessage::Persistence {
+                authority: stale,
+                reply
+            })
+            .is_err());
+        assert_eq!(client.take_persistence_reply(), None);
+    }
+}
+
 fn wire(client: &mut Client, message: WireMessage) -> Result<(), Error> {
     let mut bytes = [0; MAX_RECORD_BYTES];
     let used = codec::encode(&message, &mut bytes).unwrap();
