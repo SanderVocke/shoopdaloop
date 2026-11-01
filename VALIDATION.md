@@ -983,3 +983,14 @@ the interrupted render-fault case and two remaining structure cases are rerun as
 the unchanged runner's disjoint 9/11, 10/11 and 11/11 engine shards, each retaining
 its exact workload, seed and 900 s watchdog. This is not a claim of an uninterrupted
 whole-engine batch or whole-workspace Miri coverage.
+
+
+macOS then exposed a separate bootstrap mode issue in run `41263243058`:
+accepted sockets can inherit a nonblocking listener's mode. A token read could
+therefore return WouldBlock immediately and reset the launched peer, bypassing
+its configured blocking deadline. Bootstrap now explicitly selects blocking mode
+on both ends for bounded authentication; `Port::from_stream` restores nonblocking
+mode for ordinary record traffic. The delayed-token regression and all seven
+socket tests pass, as does the warnings-denied socket build. The initial 100 ms
+cap was independently reproduced and fixed; neither correction adds reconnection
+or alters render timing.

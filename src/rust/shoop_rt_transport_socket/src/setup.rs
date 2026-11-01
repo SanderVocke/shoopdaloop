@@ -32,6 +32,7 @@ impl Listener {
                     if !peer.ip().is_loopback() {
                         continue;
                     }
+                    stream.set_nonblocking(false)?;
                     let remaining = deadline.saturating_duration_since(Instant::now());
                     stream.set_read_timeout(Some(remaining.max(Duration::from_millis(1))))?;
                     stream.set_write_timeout(Some(remaining.max(Duration::from_millis(1))))?;
@@ -66,6 +67,7 @@ pub fn connect(
         return Err(io::Error::other("only loopback endpoints are supported"));
     }
     let mut stream = TcpStream::connect_timeout(&address, timeout)?;
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
     stream.write_all(token)?;
