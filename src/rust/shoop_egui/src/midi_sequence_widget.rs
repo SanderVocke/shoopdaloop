@@ -1,6 +1,6 @@
 use crate::{
     colors,
-    details_pane::{paint_timeline_regions, MediaWidgetResponse},
+    details_pane::{media_response, paint_lane_label, paint_timeline_regions, MediaWidgetResponse},
     MediaView, MidiEventState, MidiSequenceChannelState,
 };
 use std::collections::{BTreeMap, VecDeque};
@@ -91,31 +91,14 @@ impl MidiSequenceWidget {
         view: MediaView,
         sync_loop_length: u64,
         grid_divider: Option<u32>,
+        grid_origin: i64,
         editing: bool,
         height: f32,
     ) -> MediaWidgetResponse {
         self.update_notes(channel);
         let desired = egui::vec2(ui.available_width(), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
-        let pan_frames = if response.dragged_by(egui::PointerButton::Middle)
-            || response.dragged_by(egui::PointerButton::Secondary)
-        {
-            let mut panned_view = view;
-            panned_view.pan(response.drag_delta().x, rect.width());
-            panned_view.start_frame - view.start_frame
-        } else {
-            0.0
-        };
-        let (scroll_pan, zoom_delta) = if response.hovered() {
-            let input = ui
-                .ctx()
-                .input(|input| (input.smooth_scroll_delta().x, input.zoom_delta()));
-            (input.0, input.1)
-        } else {
-            (0.0, 1.0)
-        };
-        let pan_frames = pan_frames
-            - f64::from(scroll_pan) * view.visible_frames() / f64::from(rect.width().max(1.0));
+        let result = media_response(ui, rect, &response, view, editing);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
@@ -132,15 +115,10 @@ impl MidiSequenceWidget {
             channel.start_offset,
             channel.preplay_samples,
             channel.loop_length,
-            channel
-                .events
-                .iter()
-                .map(|event| u64::from(event.frame))
-                .max()
-                .map(|end| end.saturating_sub(channel.start_offset.max(0) as u64))
-                .unwrap_or(0),
+            channel.data_length,
             sync_loop_length,
             grid_divider,
+            grid_origin,
         );
 
         if self.notes.is_empty() {
@@ -186,28 +164,12 @@ impl MidiSequenceWidget {
                 );
             }
         }
-        let label_rect = egui::Rect::from_min_max(
-            rect.left_top() + egui::vec2(6.0, 3.0),
-            rect.right_top() + egui::vec2(-6.0, 22.0),
-        );
-        ui.place(label_rect, egui::Label::new(&channel.label).truncate());
-        MediaWidgetResponse {
-            rect,
-            pan_frames,
-            zoom_delta,
-            clicked_frame: editing
-                .then(|| response.interact_pointer_pos())
-                .flatten()
-                .filter(|_| response.clicked())
-                .map(|position| view.x_to_frame(position.x, rect).round() as i64),
-        }
+        paint_lane_label(ui, rect, &channel.label);
+        result
     }
 
     fn update_notes(&mut self, channel: &MidiSequenceChannelState) {
-        let timeline_end = channel
-            .start_offset
-            .saturating_add_unsigned(channel.loop_length)
-            .clamp(0, i64::from(u32::MAX)) as u32;
+        let timeline_end = channel.data_length.min(u64::from(u32::MAX)) as u32;
         if self
             .source
             .as_ref()
@@ -311,6 +273,7 @@ mod tests {
                 },
                 4,
                 Some(8),
+                0,
                 false,
                 96.0,
             );
@@ -342,6 +305,7 @@ mod tests {
                     },
                     4,
                     Some(8),
+                    0,
                     false,
                     96.0,
                 );

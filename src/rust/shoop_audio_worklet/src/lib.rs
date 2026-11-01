@@ -727,6 +727,21 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetLoopChannelTimings { loop_id, updates } => {
+                let updates = updates
+                    .into_iter()
+                    .map(|update| shoop_backend::BackendChannelTimingUpdate {
+                        channel: update.channel,
+                        is_midi: update.is_midi,
+                        start_offset: update.start_offset,
+                        preplay: update.preplay,
+                    })
+                    .collect::<Vec<_>>();
+                self.backend
+                    .set_loop_channel_timings(BackendLoopId::from_raw(loop_id), &updates)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::BeginLoopContentReplace {
                 generation,
                 loop_id,
@@ -2049,6 +2064,59 @@ mod tests {
     fn command(host: &mut WorkletHost, sequence: u64, command: Command) -> EventEnvelope {
         let json = serde_json::to_vec(&CommandEnvelope::new(sequence, command)).unwrap();
         serde_json::from_str(host.handle_json(&json)).unwrap()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn channel_timing_command_round_trips_and_rejects_invalid_batches_without_mutation() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let created = host
+            .backend
+            .create_direct_track(shoop_backend::DirectTrackRequest {
+                port_name_base: "targeted-timing".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        let update = shoop_audio_protocol::WireChannelTimingUpdate {
+            channel: 1,
+            is_midi: false,
+            start_offset: Some(9),
+            preplay: Some(4),
+        };
+        let response = command(
+            &mut host,
+            1,
+            Command::SetLoopChannelTimings {
+                loop_id: loop_id.raw(),
+                updates: vec![update.clone()],
+            },
+        );
+        assert!(matches!(response.event, Event::Ack));
+        let before = host.backend.capture_session().unwrap();
+        assert_eq!(before.tracks[0].loops[0].audio[0].start_offset, 0);
+        assert_eq!(before.tracks[0].loops[0].audio[1].start_offset, 9);
+        assert_eq!(before.tracks[0].loops[0].audio[1].preplay, 4);
+        let response = command(
+            &mut host,
+            2,
+            Command::SetLoopChannelTimings {
+                loop_id: loop_id.raw(),
+                updates: vec![
+                    shoop_audio_protocol::WireChannelTimingUpdate {
+                        start_offset: Some(99),
+                        ..update.clone()
+                    },
+                    shoop_audio_protocol::WireChannelTimingUpdate {
+                        channel: 99,
+                        ..update
+                    },
+                ],
+            },
+        );
+        assert!(matches!(response.event, Event::Error { .. }));
+        assert_eq!(host.backend.capture_session().unwrap(), before);
     }
 
     fn connect_track_outputs(host: &mut WorkletHost, _track_id: BackendTrackId) {
