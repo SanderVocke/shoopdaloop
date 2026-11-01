@@ -23,6 +23,8 @@ use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod render;
 mod request;
+#[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
+mod shared_pages;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 use render::WorkClass;
 pub use render::{RenderIo, RenderWork};
