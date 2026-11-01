@@ -4,13 +4,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, BackendCapabilities, BackendCapability,
     BusAction, BusSpec, ConfirmedConnectionState, DirectTrackSpec, GlobalControlAction, HostPortId,
     IoTaskStatus, LoopAction, LoopMode, MidiNote, MixerRouteState, NotificationLevel, PianoAction,
     PortId, PortRole, SelectionModifiers, StructuralState, TrackAction, TrackId, TrackState,
 };
+use shoop_app_reference::CooperativeApplicationRuntime;
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::testing::OfflineRender;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment};

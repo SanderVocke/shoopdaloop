@@ -31,7 +31,7 @@ mod waveform;
 mod waveform_widget;
 
 pub use app_widget::{
-    audio_backend_from_snapshot, audio_driver_config_from_draft, audio_driver_config_from_snapshot,
+    audio_driver_config_from_draft, audio_driver_config_from_snapshot,
     carla_hosting_mode_from_snapshot, default_builtins_location, engine_transport_from_snapshot,
     format_output_bus_names, loop_edge_smoothing_ms, master_auto_connect,
     new_engine_pools_from_snapshot, parse_output_bus_names, register_audio_backend_settings,

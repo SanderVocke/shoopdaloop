@@ -124,7 +124,7 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
     SettingKey::new("audio.cpal.capture_ring_frames");
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
-pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.engine_transport");
+pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
 pub const NEW_ENGINE_TRACKS: SettingKey<u32> = SettingKey::new("audio.new_engine.tracks");
 pub const NEW_ENGINE_LOOPS: SettingKey<u32> = SettingKey::new("audio.new_engine.loops");
@@ -641,16 +641,14 @@ pub fn carla_hosting_mode_from_snapshot(
 /// The audio backend the application starts with.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AudioBackendKind {
+    /// The engine supports the core looping workflow.
     #[default]
-    Legacy,
-    /// The new engine backend, which supports the core looping workflow.
     NewEngine,
 }
 
 impl AudioBackendKind {
     pub const fn id(self) -> &'static str {
         match self {
-            Self::Legacy => "legacy",
             Self::NewEngine => "new_engine",
         }
     }
@@ -661,10 +659,9 @@ impl std::str::FromStr for AudioBackendKind {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "legacy" => Ok(Self::Legacy),
             "new_engine" => Ok(Self::NewEngine),
             _ => Err(format!(
-                "unknown audio backend {value:?}; expected legacy or new_engine"
+                "unknown audio backend {value:?}; expected new_engine"
             )),
         }
     }
@@ -709,11 +706,6 @@ pub fn engine_transport_from_snapshot(
         .parse()
 }
 
-const AUDIO_BACKEND_CHOICES: &[(&str, &str)] = &[
-    ("legacy", "Legacy engine"),
-    ("new_engine", "New engine (core looping only)"),
-];
-
 pub use shoop_app_api::NewEnginePools;
 
 pub fn register_audio_backend_settings(
@@ -722,31 +714,16 @@ pub fn register_audio_backend_settings(
     let defaults = NewEnginePools::default();
     builder.register(
         SettingDefinition::new(
-            AUDIO_BACKEND,
-            AudioBackendKind::Legacy.id().to_owned(),
-            "Audio",
-            "Audio backend",
-            "The legacy engine supports every feature. The new engine backend supports the core looping workflow only: no saving or loading of loop content, FX, composite loops, grab, dry/wet tracks or buses besides Master. Natively it uses the preferred audio driver's settings, with CPAL in place of JACK.",
-        )
-        .category_order(5)
-        .setting_order(50)
-        .effect(SettingEffect::RestartRequired)
-        .editor(SettingEditor::StringChoice {
-            choices: AUDIO_BACKEND_CHOICES,
-        }),
-    )?;
-    builder.register(
-        SettingDefinition::new(
             ENGINE_TRANSPORT, EngineTransportKind::InProcess.id().to_owned(),
-            "Audio", "Engine transport",
-            "Native new engine only. Socket and shared memory run the engine in a separate process. A lost connection is fatal for this app run; the engine keeps running until you close the app. After an app crash, terminate the surviving engine externally.",
+            "Audio", "Session delivery",
+            "Native session host placement. Socket keeps playback and recording running when the UI exits and supports reattachment. Shared memory uses an independent host but cannot reattach. In-process and browser sessions end with their UI process or page.",
         )
         .category_order(5).setting_order(55)
         .effect(SettingEffect::RestartRequired)
         .editor(SettingEditor::StringChoice { choices: &[
             ("in_process", "In application process"),
-            ("socket", "Separate process: socket"),
-            ("shared_memory", "Separate process: shared memory"),
+            ("socket", "Independent host: socket (recoverable)"),
+            ("shared_memory", "Independent host: shared memory"),
         ] }),
     )?;
     for (order, key, default, label, help, min, max) in [
@@ -754,25 +731,25 @@ pub fn register_audio_backend_settings(
             51,
             NEW_ENGINE_TRACKS,
             defaults.tracks,
-            "New engine tracks",
+            "Session tracks",
             "Tracks the new engine backend prepares, including the sync track.",
             2,
-            256,
+            64,
         ),
         (
             52,
             NEW_ENGINE_LOOPS,
             defaults.loops,
-            "New engine loops",
+            "Session loops",
             "Loop slots the new engine backend prepares, shared by all tracks. Each track takes one per loop, usually eight.",
             1,
-            4096,
+            256,
         ),
         (
             53,
             NEW_ENGINE_CHANNELS,
             defaults.channels,
-            "New engine track channels",
+            "Track channels",
             "Most audio channels of a track input or output in the new engine backend.",
             1,
             8,
@@ -781,10 +758,10 @@ pub fn register_audio_backend_settings(
             54,
             NEW_ENGINE_LOOP_MEMORY_MB,
             defaults.loop_memory_mb,
-            "New engine loop memory",
+            "Loop memory",
             "Memory in MiB the new engine backend reserves for loop content; 256 MiB hold about 23 minutes of mono audio at 48 kHz.",
             16,
-            2047,
+            1024,
         ),
     ] {
         builder.register(
@@ -796,15 +773,6 @@ pub fn register_audio_backend_settings(
         )?;
     }
     Ok(())
-}
-
-pub fn audio_backend_from_snapshot(
-    snapshot: &SettingsSnapshot,
-) -> Result<AudioBackendKind, String> {
-    snapshot
-        .get(AUDIO_BACKEND)
-        .map_err(|error| error.to_string())?
-        .parse()
 }
 
 pub fn new_engine_pools_from_snapshot(
@@ -3833,16 +3801,12 @@ mod tests {
         register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let defaults = registry.defaults(1);
-        assert_eq!(
-            audio_backend_from_snapshot(&defaults).unwrap(),
-            AudioBackendKind::Legacy
-        );
+        assert!(registry.definition(AUDIO_BACKEND.id()).is_none());
         assert_eq!(
             new_engine_pools_from_snapshot(&defaults).unwrap(),
             NewEnginePools::default()
         );
         for key in [
-            AUDIO_BACKEND.id(),
             ENGINE_TRANSPORT.id(),
             NEW_ENGINE_TRACKS.id(),
             NEW_ENGINE_LOOPS.id(),
@@ -3869,7 +3833,6 @@ mod tests {
         }
         assert!("ipc".parse::<EngineTransportKind>().is_err());
         let mut draft = SettingsDraft::from_snapshot(&defaults);
-        draft.set(AUDIO_BACKEND, "new_engine".to_owned());
         draft.set(ENGINE_TRANSPORT, "shared_memory".to_owned());
         draft.set(NEW_ENGINE_TRACKS, 4);
         draft.set(NEW_ENGINE_LOOPS, 33);
@@ -3885,10 +3848,6 @@ mod tests {
             EngineTransportKind::SharedMemory
         );
         assert_eq!(
-            audio_backend_from_snapshot(&resolved).unwrap(),
-            AudioBackendKind::NewEngine
-        );
-        assert_eq!(
             new_engine_pools_from_snapshot(&resolved).unwrap(),
             NewEnginePools {
                 tracks: 4,
@@ -3898,12 +3857,9 @@ mod tests {
             }
         );
 
-        draft.set(AUDIO_BACKEND, "remote".to_owned());
-        assert!(registry.validate_draft(&draft).is_err());
-        draft.set(AUDIO_BACKEND, "legacy".to_owned());
         draft.set(NEW_ENGINE_CHANNELS, 9);
         assert!(registry.validate_draft(&draft).is_err());
-        for kind in [AudioBackendKind::Legacy, AudioBackendKind::NewEngine] {
+        for kind in [AudioBackendKind::NewEngine] {
             assert_eq!(kind.id().parse::<AudioBackendKind>().unwrap(), kind);
         }
         assert!("engine".parse::<AudioBackendKind>().is_err());

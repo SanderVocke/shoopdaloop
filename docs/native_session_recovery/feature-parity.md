@@ -45,7 +45,7 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 | P13 OPEN | Additional buses, their lifecycle/order, and non-Master routing shapes are unavailable. Master and supported routes are available. | `shoop_egui/{bus_controls,connection_dialog,app_widget}`; reference tests `bus_lifecycle_and_visual_order_use_stable_identity_without_backend_reorder`, `bus_structure_rejection_and_timeout_reconcile_without_false_state`, `bus_controls_reconcile_confirmation_failure_timeout_stale_ids_and_peaks`, `new_tracks_route_to_named_bus_with_equal_channels_and_mono_fanout`. | Service/protocol bus structures and identities, prepared engine graph capacity/lifecycle, route confirmation, controls/meters and capture/load. Preserve rejected/partial-operation recovery. |
 | P14 OPEN | Live audio-driver switching is refused. Saved preferences apply on the next host start; JACK preferences map to CPAL with a diagnostic. | Audio profiles and confirmation/settings UI; independent driver/device code; reference tests `audio_driver_switch_requires_confirmation_and_resamples_transactionally`, `failed_audio_driver_switch_restores_prior_runtime_and_reports_failure`, `recording_blocks_confirmed_audio_driver_switch_without_stopping_recording`, `persistence_failure_keeps_new_driver_active_and_enables_save_retry`. | Host-managed device/engine transition with service-owned capture/restore, preflight/confirmation, resampling and rollback. Keep preference persistence and its retry separate from actual driver-switch success. Track native driver/backend equivalence explicitly. |
 | P15 OPEN | System/Master click preview and click generation UI-local workflow are currently unavailable; preview state/assets are not populated by the new client. | `shoop_egui/click_track_dialog`; `shoopdaloop/{src/native_preview.rs,src/browser_preview.rs}`; click DSP/assets and reference tests named in P11. Original frontend preview canaries are retained in Git provenance below. | Restore local generation/cancel/stale-result handling and system output; use explicit service operations for Master playback/content insertion. A useful client-only preview can be restored independently of P11. |
-| P16 OPEN | Lua script source export, session/filesystem ownership conversion and related session resource workflows are unavailable. Fresh scripts, local dialogs, timers, controller MIDI and explicit starts are available. | `shoop_scripting`, `shoop_script_resources`, `shoop_egui/script_dialogs`; reference tests `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. | Restore client-local file/resource workflows and explicit session-owned script data through service commands, without moving VM execution to the host. Respect the recovery no-auto-restart rule. |
+| P16 OPEN | Session/filesystem script ownership conversion and related session resource workflows are unavailable. Script source export, fresh scripts, local dialogs, timers, controller MIDI and explicit starts are available. | `shoop_scripting`, `shoop_script_resources`, `shoop_egui/script_dialogs`; reference tests `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. | Restore client-local file/resource workflows and explicit session-owned script data through service commands, without moving VM execution to the host. Respect the recovery no-auto-restart rule. |
 
 ## Preserved evidence and retirement record
 
@@ -56,6 +56,11 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 - `reference/legacy_browser/` retains the old browser host JS/Rust glue and integrated
   acceptance scenario as migration evidence. These sources are not shipped or
   compiled into the product. Independent worklet/client/codec tests remain runnable.
+- `reference/legacy_application_readme.md` preserves detailed old-stack user behavior,
+  processor/driver configuration and platform descriptions for restoration.
+- `reference/legacy_frontend_acceptance.rs` preserves the original driver-switch,
+  preview and broad dummy UI scenarios that currently require unsupported features.
+  Their runnable model-level counterparts remain in `shoop_app_reference`.
 - Complete source provenance before this retirement is commit `925db5b2`:
   `src/rust/shoop_app/src/legacy.rs` and `src/rust/shoopdaloop/src/main.rs`.
   The latter preserves original frontend canaries, notably
@@ -93,3 +98,28 @@ reattachment, host-crash recovery/disk durability, browser-page crash recovery,
 simultaneous controlling clients, remote deployment, and shared-memory reattachment.
 Changing those limits is a separate scope decision. Planned parity may restore old
 features without changing these recovery rules.
+
+## Capability coverage
+
+Every capability flag must point to an open restoration item or current production
+support. Client-only gaps P15/P16 remain tracked separately. The coverage check
+fails when a capability is added or removed without reconciling this table.
+
+| Capability | Ledger status |
+| --- | --- |
+| `SessionCapture` | P01 |
+| `SessionContentLoad` | P02 |
+| `CompositeLoops` | P03 |
+| `Grab` | P04 |
+| `ReplacingMode` | P05 |
+| `DryWetModes` | P06 |
+| `DryWetTracks` | P06 |
+| `TrackFx` | P07 |
+| `BusFx` | P08 |
+| `LatencyCompensation` | P09 |
+| `TakeAlignment` | P10 |
+| `LoopContentImport` | P11 |
+| `LoopTimingEdits` | P12 |
+| `BusManagement` | P13 |
+| `AudioDriverSwitching` | P14 |
+| `MidiInjection` | AVAILABLE |

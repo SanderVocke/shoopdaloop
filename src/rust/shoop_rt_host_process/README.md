@@ -1,3 +1,8 @@
+> Development/reference engine-only process fixture. The production application
+> launches `shoop_host`, which owns the app service and engine together. This crate
+> remains for independent carrier/engine behavior tests and is forbidden in the
+> production frontend graph. See the feature parity ledger for restoration evidence.
+
 # Native engine process host
 
 `shoop_rt_host_process` supplies a headless companion executable and parent launch/

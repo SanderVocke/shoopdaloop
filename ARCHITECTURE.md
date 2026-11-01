@@ -9,6 +9,22 @@
 <a id="other-processing-components"></a>
 <a id="implementation-status-and-architectural-continuity"></a>
 
+## Current application composition
+
+The [session recovery plan](PLAN_NATIVE_SESSION_RECOVERY.md) introduces the production
+application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns session
+state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
+components and a native RT host independently of external UIs. Typed local delivery
+uses the same contract. In the browser, client/service/Lua stay on the main thread
+and the RT engine stays in the AudioWorklet. Generic `shoop_transport*` carriers are
+shared below application and engine protocol lifecycles.
+
+The RT engine is the sole production stack. Old application/engine/worklet code is
+isolated as development/reference evidence. Temporary feature gaps and their retained
+UI/code/tests are maintained in the [parity ledger](docs/native_session_recovery/feature-parity.md).
+The lower-layer history and contracts below remain useful; statements about the old
+application being the default are superseded by this composition.
+
 ## Scope and implementation map
 
 This is the maintained architecture/design entry point for all workstreams in
@@ -32,7 +48,7 @@ snapshot-status paragraphs there do not describe the current tree.
 | `shoop_rt_transport_message_port` | Both ends of browser record batching/delivery | No engine/application dependency; browser bindings are optional |
 | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices and pump audio/MIDI/messages: dummy and CPAL/midir natively; an import-free AudioWorklet module serving the record carrier | No engine or application semantics; no application dependency |
 | `shoop_rt_backend` | The application's `Backend` trait over a protocol client: ID mapping, state mirror, capability descriptor, structure-only session documents | Depends on the application API and the protocol, not on the engine or a host |
-| Existing application | Existing backends, devices, sessions, UI, scripting, files and production browser hosting | Legacy backends remain the default; only the opt-in new engine backend runs its core looping set on this stack |
+| Application session service | `shoop_app`, `shoop_app_client`, portable app protocol and native `shoop_host` | Sole RT production stack; legacy model is an isolated reference fixture |
 | Common modular protocol, service browser/IPC/network deployment | Proposed; the new engine backend's protocol is its first concrete instance | Not implemented merely because test-host codecs, Wasm libraries or that one protocol exist |
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop

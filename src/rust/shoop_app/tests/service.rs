@@ -1099,6 +1099,50 @@ fn recovered_clients_do_not_execute_catalog_scripts_until_explicit_user_start() 
 }
 
 #[shoop_test]
+fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_the_session() {
+    use shoop_app_client::runtime::Startup;
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(&mut f.service, Startup::Recovered);
+    let before = f.service.snapshot();
+    let prior_notifications = runtime.snapshot().notifications.len();
+    for intent in [
+        AppIntent::RequestSaveSession,
+        AppIntent::LoadSessionBytes {
+            name: "unavailable.shoop".into(),
+            bytes: std::sync::Arc::from([]),
+        },
+        AppIntent::PreviewClickTrack {
+            output: ClickTrackPreviewOutput::System,
+            loop_id: before.tracks[0].loops[0].id,
+            request: Default::default(),
+        },
+        AppIntent::RequestAudioDriverSwitch {
+            config: AudioDriverConfig::Dummy(Default::default()),
+        },
+    ] {
+        runtime.dispatch(intent).unwrap();
+    }
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime.snapshot();
+    assert_eq!(state.notifications.len(), prior_notifications + 4);
+    for capability in BackendCapability::ALL {
+        assert_eq!(
+            state.capabilities.supports(capability),
+            capability == BackendCapability::MidiInjection
+        );
+    }
+    assert!(runtime.take_file_output().is_none());
+    assert_eq!(
+        state.click_track.preview_status,
+        ClickTrackPreviewStatus::Idle
+    );
+    let after = f.service.snapshot();
+    assert_eq!(after.tracks[0].id, before.tracks[0].id);
+    assert_eq!(after.tracks[0].loops[0].id, before.tracks[0].loops[0].id);
+    assert!(after.pending.is_empty());
+}
+
+#[shoop_test]
 fn management_shutdown_survives_data_loss_and_a_replacement_fences_it() {
     let mut f = fixture();
     let (mut runtime, port) = runtime(

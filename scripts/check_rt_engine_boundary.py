@@ -18,7 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
-    "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
+    "shoopdaloop", "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
@@ -33,8 +33,10 @@ FORBIDDEN = {
 
 def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
+    if package == "shoopdaloop":
+        return sorted(names & {"shoop_engine", "shoop_app_reference", "shoop_rt_host_process", "shoop_worklet_client", "shoop_audio_worklet", "shoop_audio_protocol"})
     if package == "shoop_host":
-        return sorted(names & {"shoop_engine", "shoop_egui", "shoopdaloop", "shoop_scripting",
+        return sorted(names & {"shoop_engine", "shoop_app_reference", "shoop_egui", "shoopdaloop", "shoop_scripting",
                                "shoop_session", "shoop_worklet_client", "shoop_audio_worklet", "shoop_audio_protocol"})
     if package == "shoop_app_client_runtime":
         forbidden = {"shoop_host", "shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop", "shoop_engine",
@@ -42,7 +44,7 @@ def violations(tree: str, package: str | None = None) -> list[str]:
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_", "shoop_transport_")))
     if package == "shoop_app":
-        forbidden = {"shoop_host", "shoop_engine", "shoop_egui", "shoopdaloop", "shoop_scripting",
+        forbidden = {"shoop_host", "shoop_engine", "shoop_app_reference", "shoop_egui", "shoopdaloop", "shoop_scripting",
                      "shoop_session", "rt_runtime", "shoop_rt_engine", "cpal", "midir",
                      "web-sys", "js-sys", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(

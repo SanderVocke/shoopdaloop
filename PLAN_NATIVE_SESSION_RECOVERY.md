@@ -4,11 +4,12 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stages 0–5 are implemented: ownership/contract inventory, neutral
+Stages 0–6 are implemented: ownership/contract inventory, neutral
 backend contracts, shared carriers, bounded app protocol/client projection, the
 authoritative service, UI/Lua clients with typed local composition, and independent
 native hosts with authenticated attachment, recovery controls and explicit shutdown.
-Legacy retirement and final validation remain incomplete in Stages 6–7.
+Production legacy retirement and the parity handoff are implemented.
+Final validation remains incomplete in Stage 7.
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -26,7 +27,9 @@ Current checkpoint (2026-11-01):
 - Stage 4: `3f9ab204` — independent authenticated app/engine host and sibling launcher.
 - Stage 5: attachment/recovery UI and explicit authenticated shutdown implemented;
   focused evidence is in the incremental validation document.
-- Stage 2–5 commits and the merge have not been pushed. The last verified green CI
+- Stage 6: sole production stack, migrated settings/packages/CI and explicit parity
+  ledger implemented. Focused validation is recorded; final gates remain Stage 7.
+- Stage 2–6 commits and the merge have not been pushed. The last verified green CI
   is the earlier Stage 1 head `2ec1abec`, run
   [41284581244](https://github.com/SanderVocke/shoopdaloop/actions/runs/41284581244);
   it does not validate the current head or working tree. Final-head CI, review and
@@ -434,19 +437,19 @@ UI-kill, reattach, UI-only-close, reattach, close-both workflow with actual serv
 
 ### Stage 6 — sole new-engine production stack and documentation (after 5)
 
-- [ ] Remove legacy backend selector/fallback, native/browser launch paths, obsolete
+- [x] Remove legacy backend selector/fallback, native/browser launch paths, obsolete
   worklet/worker artifacts, and unused feature/dependency/package wiring. Keep useful
   independent code and dev-only reference fixtures explicitly separated.
-- [ ] Make the new engine the sole production backend for every deployment; migrate
+- [x] Make the new engine the sole production backend for every deployment; migrate
   persisted backend settings deliberately with diagnostics instead of silent fallback.
   Update transport setting names/help to reflect the app versus engine boundaries.
-- [ ] Maintain the parity ledger with current gaps, missing architectural layers,
+- [x] Maintain the parity ledger with current gaps, missing architectural layers,
   retained UI/code/assets, named reference tests/provenance and completion criteria.
   Audit retirement changes against it; retain feature UI/configuration and meaningful
   behavioral fixtures for subsequent full parity work.
-- [ ] Keep temporarily unavailable features explicitly disabled/refused; update user docs,
+- [x] Keep temporarily unavailable features explicitly disabled/refused; update user docs,
   architecture, crate READMEs, CLI examples, tracing inventory, and agent test guidance.
-- [ ] Update CI coverage/build commands, package manifests/probes and Miri targets
+- [x] Update CI coverage/build commands, package manifests/probes and Miri targets
   for the new names/dependencies. Remove obsolete legacy-only gates while preserving
   relevant behavioral coverage and failure canaries for the surviving stack.
 

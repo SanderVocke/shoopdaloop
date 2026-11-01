@@ -13,17 +13,16 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 
 ## Current features
 
-- Run on any major OS and in the browser. Browser distributions use the hosted bundle so the external built-ins catalog and resource tree remain available.
-- Audio and MIDI loops grouped in track columns which share input/output ports.
-- A sync loop controls synchronization. Others are multiples of its length.
-- Record/play MIDI and/or audio live, through FX/synth racks if desired.
-- For tracks with FX/synth racks, you can re-play recorded content through the synth/FX live and e.g. adjust parameters or switch instruments on-the-fly.
-- FX/synth options include built-in Carla plugin host integration, externally routed (e.g. external JACK apps/equipment), or a built-in demonstration mini-suite of (bad) synths and effects.
-- Audio drivers on desktop are multi-platform based on CPAL + midir, or a dedicated JACK driver for advanced port routing.
-- Web Audio/AudioWorklet and Web MIDI in supported browsers.
-- Session load/save plus loop audio/MIDI import and export.
-- Generated audio or MIDI click tracks.
-- Sandboxed Lua scripting for control, with externally packaged keyboard and APC Mini built-ins plus self-contained session-script bundles.
+The RT session engine is now the sole production stack. It supports core audio/MIDI
+looping, sync, tracks, routes, musical selection/targeting, controls and client-side
+Lua. Native socket hosts keep playback and recording running when a UI exits or
+crashes; a replacement UI can attach to the live session.
+
+Full feature parity is the next workstream. Session content save/load, FX/synths,
+composites, grab, dry/wet processing and other temporary gaps are explicitly tracked
+in the [feature parity ledger](docs/native_session_recovery/feature-parity.md), with
+preserved UI/code, reference tests and completion criteria. Existing feature UI and
+configuration are retained for restoration; unavailable operations are refused.
 
 ## Screenshot
 
@@ -32,10 +31,11 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 ## Run from source
 
 ```sh
-# Native application with native FX support.
+# Native application with CPAL+midir.
+cargo build -p shoopdaloop -p shoop_host
 cargo run -p shoopdaloop
 
-# Native application without Carla hosting.
+# Dummy-driver build without CPAL or Rodio.
 cargo run -p shoopdaloop --no-default-features
 ```
 
@@ -52,7 +52,7 @@ See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The applica
 
 ## Builds and platforms
 
-The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a core-only single HTML file that explicitly omits the external built-ins tree. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
+The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a self-contained HTML file with embedded built-ins and RT worklet. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
 
 ## Development planning and architecture
 

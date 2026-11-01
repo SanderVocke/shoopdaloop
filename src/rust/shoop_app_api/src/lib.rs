@@ -1812,30 +1812,30 @@ impl BackendCapability {
 
     pub const fn unavailable_reason(self) -> &'static str {
         match self {
-            Self::SessionCapture => "This audio backend cannot save sessions.",
+            Self::SessionCapture => "The session engine cannot currently save sessions.",
             Self::SessionContentLoad => {
-                "This audio backend cannot load sessions with loop content."
+                "The session engine cannot currently load sessions with loop content."
             }
-            Self::CompositeLoops => "This audio backend does not support composite loops.",
-            Self::Grab => "This audio backend does not support grabbing.",
-            Self::ReplacingMode => "This audio backend does not support replacing.",
-            Self::DryWetModes => "This audio backend does not support the dry/wet loop modes.",
-            Self::DryWetTracks => "This audio backend does not support dry/wet tracks.",
-            Self::TrackFx => "This audio backend does not support track FX.",
-            Self::BusFx => "This audio backend does not support bus FX.",
+            Self::CompositeLoops => "The session engine does not yet support composite loops.",
+            Self::Grab => "The session engine does not yet support grabbing.",
+            Self::ReplacingMode => "The session engine does not yet support replacing.",
+            Self::DryWetModes => "The session engine does not yet support the dry/wet loop modes.",
+            Self::DryWetTracks => "The session engine does not yet support dry/wet tracks.",
+            Self::TrackFx => "The session engine does not yet support track FX.",
+            Self::BusFx => "The session engine does not yet support bus FX.",
             Self::LatencyCompensation => {
-                "This audio backend does not support latency compensation."
+                "The session engine does not yet support latency compensation."
             }
-            Self::TakeAlignment => "This audio backend does not support take alignment.",
-            Self::LoopContentImport => "This audio backend cannot replace loop content.",
+            Self::TakeAlignment => "The session engine does not yet support take alignment.",
+            Self::LoopContentImport => "The session engine cannot currently replace loop content.",
             Self::LoopTimingEdits => {
-                "This audio backend does not support editing loop length or timing."
+                "The session engine does not yet support editing loop length or timing."
             }
-            Self::BusManagement => "This audio backend supports only the Master bus.",
+            Self::BusManagement => "Additional buses are temporarily unavailable in the session engine.",
             Self::AudioDriverSwitching => {
-                "This audio backend cannot switch audio drivers at runtime; restart with other settings instead."
+                "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
-            Self::MidiInjection => "This audio backend does not support MIDI input injection.",
+            Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
         }
     }
 }

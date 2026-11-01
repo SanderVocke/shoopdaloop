@@ -318,7 +318,9 @@ fn resolve_loaded(
         Ok(Some(contents)) => match decode_settings(&contents) {
             Ok(mut document) => {
                 migrate_legacy_script_settings(&mut document);
-                let resolved = registry.resolve(&document, 1);
+                let migration = migrate_session_settings(&mut document);
+                let mut resolved = registry.resolve(&document, 1);
+                resolved.diagnostics.extend(migration);
                 (
                     document,
                     Arc::new(resolved.snapshot),
@@ -358,6 +360,21 @@ fn resolve_loaded(
             )
         }
     }
+}
+
+fn migrate_session_settings(document: &mut SettingsDocument) -> Vec<SettingsDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if document.values.remove("audio.backend").is_some() {
+        diagnostics.push(SettingsDiagnostic { key: Some("audio.backend".into()), message: "The saved backend choice was retired. The RT session engine is now used everywhere. Content save/load, FX, composite loops, grab and live driver switching are unavailable.".into() });
+    }
+    if let Some(value) = document.values.remove("audio.engine_transport") {
+        document
+            .values
+            .entry("audio.session_transport".into())
+            .or_insert(value);
+        diagnostics.push(SettingsDiagnostic { key: Some("audio.session_transport".into()), message: "Engine transport migrated to session delivery. Socket hosts support UI recovery; shared-memory hosts cannot reattach.".into() });
+    }
+    diagnostics
 }
 
 fn migrate_legacy_script_settings(document: &mut SettingsDocument) {
@@ -575,6 +592,47 @@ mod tests {
         let migrated = document.values.clone();
         migrate_legacy_script_settings(&mut document);
         assert_eq!(document.values, migrated);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn retired_backend_preferences_migrate_visibly_and_preserve_other_values() {
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let original = SettingsDocument {
+            writer_version: "old".into(),
+            values: std::collections::BTreeMap::from([
+                ("audio.backend".into(), serde_json::json!("legacy")),
+                ("audio.engine_transport".into(), serde_json::json!("socket")),
+                (
+                    "future.opaque".into(),
+                    serde_json::json!({"preserved": [1, 2]}),
+                ),
+            ]),
+        };
+        let (document, active, diagnostics, rejected) = resolve_loaded(
+            &registry,
+            "new",
+            Ok(Some(encode_settings(&original).unwrap())),
+        );
+        assert!(!rejected);
+        assert!(!document.values.contains_key("audio.backend"));
+        assert!(!document.values.contains_key("audio.engine_transport"));
+        assert_eq!(
+            document.values["future.opaque"],
+            original.values["future.opaque"]
+        );
+        assert_eq!(active.get(shoop_egui::ENGINE_TRANSPORT).unwrap(), "socket");
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("backend choice was retired")));
+        let (_, _, diagnostics, rejected) = resolve_loaded(
+            &registry,
+            "new",
+            Ok(Some(encode_settings(&document).unwrap())),
+        );
+        assert!(!rejected);
+        assert!(diagnostics.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

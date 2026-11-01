@@ -238,6 +238,7 @@ impl BrowserMidiCore {
             .unwrap_or(0)
     }
 
+    #[cfg(test)]
     pub fn drain_track_messages(&mut self, max_messages: usize) -> Vec<TrackMidiInput> {
         let count = max_messages.min(self.track_messages.len());
         self.track_messages.drain(..count).collect()
@@ -592,13 +593,6 @@ mod platform {
             state.track_forwarder = Some(forwarder);
         }
 
-        pub fn drain_track_messages(&self, max_messages: usize) -> Vec<TrackMidiInput> {
-            self.inner
-                .borrow_mut()
-                .core
-                .drain_track_messages(max_messages)
-        }
-
         pub fn diagnostics(&self) -> (u32, u32, u32) {
             let state = self.inner.borrow();
             (
@@ -759,47 +753,6 @@ mod platform {
                 self.inner.borrow_mut().core.report_error(error.to_string());
             }
             result
-        }
-    }
-
-    impl shoop_worklet_client::HostMidiBridge for BrowserMidiHub {
-        fn revision(&self) -> u64 {
-            self.endpoint_snapshot().revision
-        }
-
-        fn endpoints(&self) -> Vec<shoop_worklet_client::HostMidiEndpoint> {
-            BrowserMidiHub::endpoints(self)
-                .into_iter()
-                .map(|endpoint| shoop_worklet_client::HostMidiEndpoint {
-                    id: endpoint.id,
-                    name: endpoint.name,
-                    direction: match endpoint.direction {
-                        MidiEndpointDirection::Input => {
-                            shoop_worklet_client::HostMidiDirection::Input
-                        }
-                        MidiEndpointDirection::Output => {
-                            shoop_worklet_client::HostMidiDirection::Output
-                        }
-                    },
-                })
-                .collect()
-        }
-
-        fn drain_track_messages(
-            &mut self,
-            max_messages: usize,
-        ) -> Vec<shoop_worklet_client::HostMidiInput> {
-            BrowserMidiHub::drain_track_messages(self, max_messages)
-                .into_iter()
-                .map(|input| shoop_worklet_client::HostMidiInput {
-                    endpoint_id: input.endpoint_id,
-                    data: input.data,
-                })
-                .collect()
-        }
-
-        fn send(&mut self, endpoint_id: &str, message: &[u8]) -> anyhow::Result<()> {
-            BrowserMidiHub::send(self, endpoint_id, message)
         }
     }
 

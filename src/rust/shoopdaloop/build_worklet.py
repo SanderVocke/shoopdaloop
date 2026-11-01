@@ -32,8 +32,9 @@ if linker_key not in environment and shutil.which("lld") is None:
 
 output_dir = args.output_dir.resolve()
 output_dir.mkdir(parents=True, exist_ok=True)
+(output_dir / "shoop_audio_worklet.wasm").unlink(missing_ok=True)
 # One Cargo invocation per module, so their dependency features resolve separately.
-for package in ("shoop_audio_worklet", "shoop_rt_host_worklet"):
+for package in ("shoop_rt_host_worklet",):
     command = [
         "cargo",
         "build",

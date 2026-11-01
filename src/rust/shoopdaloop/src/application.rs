@@ -71,21 +71,6 @@ pub struct CooperativeApplicationRuntime {
     initialized: bool,
 }
 impl CooperativeApplicationRuntime {
-    #[cfg(test)]
-    pub fn start(backend: Box<dyn Backend>) -> Result<Self> {
-        Self::start_with_options(backend, ApplicationStartOptions::default())
-    }
-    #[cfg(test)]
-    pub fn start_with_options(
-        backend: Box<dyn Backend>,
-        options: ApplicationStartOptions,
-    ) -> Result<Self> {
-        Self::start_with_options_and_midi(
-            backend,
-            options,
-            Box::new(shoop_scripting::NullMidiService),
-        )
-    }
     pub fn start_with_options_and_midi(
         backend: Box<dyn Backend>,
         options: ApplicationStartOptions,
@@ -123,11 +108,15 @@ impl CooperativeApplicationRuntime {
             initialized: false,
         })
     }
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(target_arch = "wasm32")]
+    pub fn is_ready(&self) -> bool {
+        self.client.state() == shoop_app_client::State::Ready
+    }
+    #[cfg(target_arch = "wasm32")]
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
         self.client.dispatch(intent).map_err(Into::into)
     }
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(target_arch = "wasm32")]
     pub fn snapshot(&self) -> Arc<AppSnapshot> {
         self.client.snapshot()
     }
@@ -156,7 +145,7 @@ impl CooperativeApplicationRuntime {
             outputs.push_back(output);
         }
     }
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(target_arch = "wasm32")]
     pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
         self.outputs
             .lock()
@@ -310,10 +299,6 @@ mod native {
         startup_ids: Vec<Option<ScriptId>>,
     }
     impl ApplicationRuntime {
-        #[cfg(test)]
-        pub fn start(backend: Box<dyn Backend + Send>) -> Result<Self> {
-            Self::start_with_options(backend, ApplicationStartOptions::default())
-        }
         pub fn start_with_options(
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
@@ -395,6 +380,7 @@ mod native {
                     runtime.set_outputs(outputs);
                     let mut ready_tx = Some(ready_tx);
                     let mut last = Instant::now();
+                    let started = last;
                     loop {
                         for _ in 0..shoop_app_protocol::MAX_MESSAGES_PER_TURN {
                             match receiver.try_recv() {
@@ -423,6 +409,19 @@ mod native {
                         let now = Instant::now();
                         runtime.tick(now.duration_since(last));
                         last = now;
+                        if !wait_ready
+                            && started.elapsed() > Duration::from_secs(15)
+                            && matches!(
+                                runtime.client().state(),
+                                shoop_app_client::State::Attaching
+                                    | shoop_app_client::State::Synchronizing
+                            )
+                        {
+                            runtime.client_mut().fail(
+                                "Session attachment timed out. Reattach explicitly to retry."
+                                    .into(),
+                            );
+                        }
                         *snapshot.write().unwrap_or_else(|error| error.into_inner()) =
                             runtime.snapshot();
                         status

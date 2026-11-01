@@ -54,7 +54,7 @@ src/rust/shoop_loops/src/topology.rs,portable_loop_library,excluded,Prepared tim
 src/rust/shoop_loops/src/topology/staging.rs,portable_loop_library,excluded,Guarded metadata ingestion and owning recycling expose scoped status and progress without application tracing.
 src/rust/shoop_loops/src/topology/staging/codec.rs,portable_loop_library,excluded,Bounded canonical metadata encoding and decoding use explicit results without application tracing.
 src/rust/shoop_loops/src/topology/staging/validate.rs,portable_loop_library,excluded,Incremental fixed-storage validation exposes bounded step progress and explicit semantic refusals.
-src/rust/shoop_app/src/legacy.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoop_app_reference/src/lib.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_worklet/src/lib.rs,mixed_realtime_and_control,instrumented_direct,"Owns the raw producer lifecycle, timestamp updates, drain ABI, and static metadata exports around engine processing."
@@ -209,13 +209,10 @@ src/rust/shoop_worklet_client/src/lib.rs,application_ui_and_control,instrumented
 src/rust/shoop_worklet_client/src/transport.rs,application_ui_and_control,instrumented_indirect,Runs within traced application polling and driver callbacks; a separate span would duplicate its owning boundary.
 src/rust/shoopdaloop/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoopdaloop/src/app_args.rs,application_ui_and_control,excluded,Parses startup inputs before runtime tracing boundaries are established.
-src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_direct,"Owns AudioWorklet trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/browser_midi.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_rt_audio.rs,application_ui_and_control,instrumented_direct,"Traces the new engine's browser preparation, connection and failures and its microphone, MIDI and posting problems."
 src/rust/shoopdaloop/src/browser_rt_self_test.rs,application_ui_and_control,instrumented_direct,Traces the steps and failure of the browser self-test of the new engine backend.
-src/rust/shoopdaloop/src/browser_trace.rs,application_ui_and_control,instrumented_direct,"Owns browser realm ring setup, metadata, calibration, draining, and health conversion."
-src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrumented_direct,"Owns Engine Worker trace ring attachment, producer stop, and realm publication."
 src/rust/shoopdaloop/src/engine_backend.rs,application_ui_and_control,instrumented_direct,"Traces the new engine backend's start and the problems of its host's stop report; settings mapping runs within the traced start."
 src/rust/shoopdaloop/src/main.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoopdaloop/src/native_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -315,3 +312,4 @@ src/rust/shoop_host/src/serve.rs,app_session,instrumented_direct,Independent hos
 src/rust/shoop_host/src/connection.rs,app_session,instrumented_indirect,Connection delivery executes under client and host session boundaries.
 src/rust/shoop_host/src/launch.rs,app_session,excluded,Bounded sibling process launch and readiness orchestration.
 src/rust/shoopdaloop/src/recovery.rs,native_ui,instrumented_indirect,Authenticated shutdown runs through instrumented session management; client status and bounded outcome errors expose exit progress.
+src/rust/shoopdaloop/src/session_probe.rs,native_package_probe,instrumented_indirect,Public app client and instrumented session host exercise authenticated recovery and confirmed cleanup.

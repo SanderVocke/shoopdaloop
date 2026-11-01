@@ -125,7 +125,7 @@ impl ExitController {
     }
 }
 
-fn shutdown(entry: &HostEntry, ticket: ClientMessage) -> (Result<(), String>, bool) {
+pub(crate) fn shutdown(entry: &HostEntry, ticket: ClientMessage) -> (Result<(), String>, bool) {
     let ClientMessage::Shutdown {
         authority,
         operation,

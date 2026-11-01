@@ -9,10 +9,8 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
-default = ["native-fx", "cpal"]
-cpal = ["shoop_backend/cpal", "dep:rodio", "shoop_rt_host_native/cpal", "shoop_rt_host_process/cpal", "shoop_host/cpal"]
-native-fx = ["shoop_backend/native-fx"]
-carla-system-tests = ["native-fx", "shoop_engine/carla-system-tests"]
+default = ["cpal"]
+cpal = ["dep:rodio", "shoop_rt_host_native/cpal", "shoop_host/cpal"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
@@ -24,7 +22,7 @@ eframe = { workspace = true }
 shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
-shoop_backend = { path = "../shoop_backend" }
+shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }
 shoop_script_resources = { path = "../shoop_script_resources" }
@@ -36,11 +34,10 @@ ehttp = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_host = { path = "../shoop_host", default-features = false }
 shoop_common = { path = "../shoop_common" }
-shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
+tempfile = { workspace = true }
 shoop_rt_backend = { path = "../shoop_rt_backend" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
-shoop_rt_host_process = { path = "../shoop_rt_host_process", default-features = false }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
 rodio = { workspace = true, optional = true }
@@ -50,15 +47,12 @@ shoop_settings = { path = "../shoop_settings" }
 rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
 js-sys = "0.3"
 log = { workspace = true }
-shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_rt_backend = { path = "../shoop_rt_backend" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 # Without its exports, so the worklet module's entry points stay out of the application.
 shoop_rt_host_worklet = { path = "../shoop_rt_host_worklet", default-features = false }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
-shoop_session = { path = "../shoop_session" }
 shoop_tracing = { workspace = true, features = ["ordinary-web"] }
-shoop_worklet_client = { path = "../shoop_worklet_client" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-time = "1.1"
@@ -118,14 +112,13 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
 serde_json = { workspace = true }
 shoop_session = { path = "../shoop_session" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-shoop_rt_host_process = { path = "../shoop_rt_host_process", default-features = false, features = ["testing"] }
-shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_rt_host_worklet = { path = "../shoop_rt_host_worklet", default-features = false }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }

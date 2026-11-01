@@ -8,11 +8,10 @@ The dependency policy checks this contract and the adapter's full production tre
 on Linux, Windows, macOS and Wasm.
 
 Existing concrete implementations, conversion helpers and fake/reference tests
-are grouped behind the `legacy` feature. During migration that feature remains a
-default so existing application entry points keep working. `native-drivers` and
-`native-fx` require it; `contracts` enables it for existing development fixtures.
-This separation is not completion of production legacy retirement: removing the
-old entry points/default selection is still Stage 6 of the recovery plan.
+are grouped behind the opt-in `legacy` feature. Default features are empty.
+`native-drivers`, `native-fx` and `contracts` enable development/reference evidence;
+production UI and session hosts do not enable or depend on these implementations.
+See the feature parity ledger for the restoration backlog and preserved behavior.
 
 Checks for the portable boundary:
 
@@ -20,4 +19,4 @@ Checks for the portable boundary:
     cargo build -p shoop_backend -p shoop_rt_backend --no-default-features --target wasm32-unknown-unknown
     python3 scripts/check_rt_engine_boundary.py
 
-Retained reference behavior: `cargo test -p shoop_backend --lib`.
+Retained reference behavior: `cargo test -p shoop_backend --features legacy --lib`.

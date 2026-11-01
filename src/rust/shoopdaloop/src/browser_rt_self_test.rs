@@ -40,6 +40,7 @@ enum Step {
     ImmediateMidiPlayback,
     Controls,
     Progress,
+    Burst,
     Waveform,
     MidiDetail,
     ImmediateStop,
@@ -57,6 +58,7 @@ struct Ids {
 }
 
 pub struct NewEngineSelfTest {
+    stress: bool,
     step: Step,
     since: Instant,
     ids: Ids,
@@ -67,7 +69,7 @@ pub struct NewEngineSelfTest {
 }
 
 impl NewEngineSelfTest {
-    pub fn new(enabled: bool) -> Self {
+    pub fn new(enabled: bool, stress: bool) -> Self {
         let step = if enabled {
             Step::Startup
         } else {
@@ -75,6 +77,7 @@ impl NewEngineSelfTest {
         };
         report(&format!("{step:?}"));
         Self {
+            stress,
             step,
             since: Instant::now(),
             ids: Ids::default(),
@@ -389,6 +392,39 @@ impl NewEngineSelfTest {
                 let position = first_loop(snapshot, ids.audio)?.position;
                 if Some(position) == self.position {
                     return Ok(None);
+                }
+                if self.stress {
+                    for index in 0..64 {
+                        let gain = if index == 63 {
+                            -7.25
+                        } else if index % 2 == 0 {
+                            -9.0
+                        } else {
+                            -6.5
+                        };
+                        send(track_intent(
+                            ids.audio,
+                            TrackAction::OutputGainChanged(gain),
+                        )?)?;
+                    }
+                    return Ok(Some(Step::Burst));
+                }
+                send(loop_intent(
+                    ids.audio,
+                    LoopAction::IconClicked(SelectionModifiers::default()),
+                )?)?;
+                Step::Waveform
+            }
+            Step::Burst => {
+                if track(snapshot, ids.audio)?.controls.output_gain_db != -7.25 {
+                    return Ok(None);
+                }
+                if let Some(element) = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.get_element_by_id("runtime_status"))
+                {
+                    let _ = element
+                        .set_attribute("data-control-burst-ms", &waiting.as_millis().to_string());
                 }
                 send(loop_intent(
                     ids.audio,

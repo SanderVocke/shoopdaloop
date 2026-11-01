@@ -51,34 +51,26 @@ pub struct AppArgs {
     pub tracing_engine_detail: bool,
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
-    /// Start with this audio backend instead of the saved setting: legacy or new_engine.
+    /// Compatibility option: new_engine is the sole application backend.
     #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
     pub audio_backend: Option<shoop_egui::AudioBackendKind>,
-    /// Native new-engine transport: in_process, socket or shared_memory (restart required).
-    #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
+    /// Session delivery: in_process, socket (recoverable) or shared_memory (restart required).
+    #[arg(long = "session-transport", visible_alias = "engine-transport", value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
     pub engine_transport: Option<shoop_egui::EngineTransportKind>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Validate packaged external built-in scripts and exit.
     #[arg(long)]
     pub probe_builtins: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    /// Exercise the selected engine companion on a dummy driver without opening a window.
+    /// Exercise session attachment, recovery, media and host shutdown without a window.
     #[arg(long, requires = "engine_transport")]
     pub probe_engine_transport: bool,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-    /// Validate the bundled Carla runtime and exit without opening the GUI.
-    #[arg(long)]
-    pub probe_carla_native: bool,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-    /// Open, idle, hide, and reopen every bundled Carla external UI, then exit.
-    #[arg(long)]
-    pub probe_carla_native_ui: bool,
     #[cfg(target_arch = "wasm32")]
-    /// Use the worker audio backend without requesting browser audio access.
+    /// Disable browser audio (the session remains unavailable).
     #[arg(long)]
     pub offline: bool,
     #[cfg(target_arch = "wasm32")]
-    /// Use the worker audio backend.
+    /// Retired worker mode: rejected with a diagnostic.
     #[arg(long)]
     pub worker: bool,
     #[cfg(target_arch = "wasm32")]
@@ -111,17 +103,9 @@ impl AppArgs {
     pub fn selected_engine_transport(
         &self,
         settings: &shoop_settings::SettingsSnapshot,
-        backend: shoop_egui::AudioBackendKind,
     ) -> anyhow::Result<shoop_egui::EngineTransportKind> {
-        use shoop_egui::{AudioBackendKind, EngineTransportKind};
-        if backend == AudioBackendKind::Legacy {
-            anyhow::ensure!(
-                self.engine_transport
-                    .is_none_or(|kind| kind == EngineTransportKind::InProcess),
-                "--engine-transport requires --audio-backend new_engine"
-            );
-            return Ok(EngineTransportKind::InProcess);
-        }
+        #[cfg(target_arch = "wasm32")]
+        use shoop_egui::EngineTransportKind;
         let kind = self
             .engine_transport
             .map(Ok)
@@ -148,10 +132,12 @@ pub fn parse_web_query(query: &str) -> Result<AppArgs, clap::Error> {
     {
         let (raw_name, raw_value) = pair.split_once('=').unwrap_or((pair, ""));
         let name = decode_query_component(raw_name).map_err(clap::Error::new)?;
-        let Some(argument) = command
-            .get_arguments()
-            .find(|argument| argument.get_long() == Some(name.as_str()))
-        else {
+        let Some(argument) = command.get_arguments().find(|argument| {
+            argument.get_long() == Some(name.as_str())
+                || argument
+                    .get_all_aliases()
+                    .is_some_and(|aliases| aliases.contains(&name.as_str()))
+        }) else {
             continue;
         };
         let value = decode_query_component(raw_value).map_err(clap::Error::new)?;
@@ -225,8 +211,8 @@ mod native_tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn transport_cli_overrides_saved_selection_and_rejects_legacy_ipc() {
-        use shoop_egui::{AudioBackendKind as B, EngineTransportKind as T};
+    fn session_transport_cli_overrides_saved_selection() {
+        use shoop_egui::EngineTransportKind as T;
         let mut builder = shoop_settings::SettingsRegistryBuilder::default();
         shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
@@ -242,29 +228,14 @@ mod native_tests {
         let settings = registry.resolve(&document, 2).snapshot;
         assert_eq!(
             AppArgs::default()
-                .selected_engine_transport(&settings, B::NewEngine)
+                .selected_engine_transport(&settings)
                 .unwrap(),
             T::SharedMemory
-        );
-        assert_eq!(
-            AppArgs::default()
-                .selected_engine_transport(&settings, B::Legacy)
-                .unwrap(),
-            T::InProcess
         );
         for kind in [T::InProcess, T::Socket, T::SharedMemory] {
             let args =
                 AppArgs::try_parse_from(["shoopdaloop", "--engine-transport", kind.id()]).unwrap();
-            assert_eq!(
-                args.selected_engine_transport(&settings, B::NewEngine)
-                    .unwrap(),
-                kind
-            );
-            assert_eq!(
-                args.selected_engine_transport(&settings, B::Legacy)
-                    .is_err(),
-                kind != T::InProcess
-            );
+            assert_eq!(args.selected_engine_transport(&settings).unwrap(), kind);
         }
         assert!(AppArgs::try_parse_from(["shoopdaloop", "--engine-transport=ipc"]).is_err());
     }
@@ -278,15 +249,12 @@ mod native_tests {
                 .audio_backend,
             None
         );
-        for (value, kind) in [
-            ("legacy", AudioBackendKind::Legacy),
-            ("new_engine", AudioBackendKind::NewEngine),
-        ] {
+        for (value, kind) in [("new_engine", AudioBackendKind::NewEngine)] {
             let args = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend", value]).unwrap();
             assert_eq!(args.audio_backend, Some(kind));
         }
         let error = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend=engine"]).unwrap_err();
-        assert!(error.to_string().contains("expected legacy or new_engine"));
+        assert!(error.to_string().contains("expected new_engine"));
     }
 }
 
@@ -322,7 +290,7 @@ mod tests {
             ))
             .unwrap();
             assert!(args
-                .selected_engine_transport(&settings, shoop_egui::AudioBackendKind::NewEngine)
+                .selected_engine_transport(&settings)
                 .unwrap_err()
                 .to_string()
                 .contains("browser"));
@@ -336,12 +304,7 @@ mod tests {
         let args = parse_web_query("?audio-backend=new_engine&new-engine-self-test=1").unwrap();
         assert_eq!(args.audio_backend, Some(AudioBackendKind::NewEngine));
         assert!(args.new_engine_self_test);
-        assert_eq!(
-            parse_web_query("?audio-backend=legacy")
-                .unwrap()
-                .audio_backend,
-            Some(AudioBackendKind::Legacy)
-        );
+        assert!(parse_web_query("?audio-backend=legacy").is_err());
         assert!(parse_web_query("?audio-backend=engine").is_err());
     }
 

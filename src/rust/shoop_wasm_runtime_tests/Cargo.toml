@@ -14,7 +14,7 @@ wasm-test-browser = []
 
 [dependencies]
 anyhow = { workspace = true }
-shoop_app = { path = "../shoop_app" }
+shoop_app_reference = { path = "../shoop_app_reference" }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_backend = { path = "../shoop_backend" }

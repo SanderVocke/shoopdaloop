@@ -81,7 +81,7 @@ def new_engine_workflow(driver) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("legacy", "new_engine"), default="legacy")
+    parser.add_argument("--backend", choices=("new_engine",), default="new_engine")
     args = parser.parse_args()
     server = subprocess.Popen(
         ["python3", "-m", "http.server", str(PORT), "--bind", HOST],
@@ -110,69 +110,6 @@ def main() -> None:
         if args.backend == "new_engine":
             new_engine_workflow(driver)
             return
-        driver.get(f"http://{HOST}:{PORT}/")
-
-        deadline = time.monotonic() + 20
-        initial_state = {}
-        while time.monotonic() < deadline:
-            status = driver.find_element(By.ID, "runtime_status")
-            initial_state = {
-                "driver": status.get_attribute("data-driver-state"),
-                "revision": int(
-                    status.get_attribute("data-engine-revision") or 0
-                ),
-                "status": status.text,
-                "body": driver.find_element(By.TAG_NAME, "body").text[:300],
-            }
-            if initial_state["driver"] == "AwaitingGesture" and initial_state["revision"] > 0:
-                break
-            time.sleep(0.1)
-        else:
-            raise RuntimeError(
-                f"Firefox did not present the output-audio action: {initial_state}"
-            )
-
-        driver.find_element(By.ID, "enable_output_audio").click()
-        deadline = time.monotonic() + 120
-        state = {}
-        while time.monotonic() < deadline:
-            status = driver.find_element(By.ID, "runtime_status")
-            state = {
-                "driver": status.get_attribute("data-driver-state"),
-                "callbacks": int(status.get_attribute("data-callback-count") or 0),
-                "frames": int(status.get_attribute("data-processed-frames") or 0),
-                "quantum": int(status.get_attribute("data-render-quantum") or 0),
-                "overflows": int(
-                    status.get_attribute("data-command-overflows") or 0
-                ),
-                "owned_media_tracks": int(
-                    status.get_attribute("data-owned-media-tracks") or 0
-                ),
-            }
-            if state["driver"] == "Running" and state["callbacks"] > 0:
-                break
-            if state["driver"] in {"Denied", "Failed"}:
-                raise RuntimeError(f"Firefox browser audio failed: {state}")
-            time.sleep(0.1)
-        else:
-            raise RuntimeError(f"Firefox browser audio timed out: {state}")
-
-        microphone_button = driver.find_element(By.ID, "enable_audio")
-        output_button = driver.find_element(By.ID, "enable_output_audio")
-        if not (
-            state["frames"] >= state["callbacks"] * 128
-            and state["quantum"] == 128
-            and state["overflows"] == 0
-            and state["owned_media_tracks"] == 0
-            and microphone_button.is_displayed()
-            and microphone_button.is_enabled()
-            and not microphone_button.get_attribute("data-permission-granted")
-            and output_button.is_displayed()
-            and not output_button.is_enabled()
-            and output_button.get_attribute("data-permission-granted") is not None
-        ):
-            raise RuntimeError(f"Firefox AudioWorklet evidence is incomplete: {state}")
-        print(f"Firefox AudioWorklet smoke passed: {state}")
     finally:
         if driver is not None:
             with contextlib.suppress(Exception):

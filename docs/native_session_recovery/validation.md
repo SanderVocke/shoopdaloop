@@ -284,3 +284,33 @@ cancellation); the headless egui platform-close/Cancel/authorized-exit test pass
 All seven subprocess socket/shared-memory/launcher recovery tests passed. The
 warning-denying native UI build, formatting, test-attribute and closed tracing policies
 passed. Final packaged GUI workflows and other platforms remain Stage 7 gates.
+
+## Stage 6 — sole production stack and parity handoff
+
+Production frontend/host graphs no longer select or link the old engine, old app
+model, engine-only process supervisor or legacy browser worker/worklet clients.
+The old model and its 114 behavioral tests plus two RT adapter contracts now live in
+`shoop_app_reference`, still executable natively and discoverable by the Node runner.
+Old frontend/browser acceptance scenarios and user behavior are preserved under
+`reference/`; these frozen scenarios are restoration evidence, not passing product
+coverage. The feature parity ledger links each gap, retained UI/code/test and
+completion requirement; its capability coverage policy fails on untracked flags.
+
+Native and browser entry-point warning-denying builds passed, including default
+CPAL and dummy-only native builds. Focused service/client tests (20), frontend tests
+(55), egui tests (223), reference model/RT contracts (116), 142 Python script tests
+plus three parity-policy tests, tracing/test-usage policies and four-target
+production dependency audits passed. Capacity refusals now retain error severity.
+Settings migration diagnoses retired backend/transport preferences and preserves
+unrelated values. Existing editors, document fields, processor code and build recipes
+remain available for parity restoration.
+
+The packaged development companion probe passed socket and shared-memory app
+record/play/media/confirmed shutdown; socket also verifies recording and identities
+through client replacement. Development hosted web packaging and the RT worklet JS
+contract passed. Chromium completed the actual main-thread client/service and
+worklet workflow with a 64-command control burst and media reads, zero xruns and
+no render-time memory growth/command overflow; the mock-Web-MIDI variant also passed
+with zero xruns. Script catalog delivery now waits for client readiness instead of
+losing the initial catalog. Full retained-stack suites, final packaged/platform
+matrices and selected Miri remain the final-stage gates. No Miri has run early.

@@ -210,8 +210,8 @@ def asset_input_hash() -> str:
     paths.extend(
         [
             ROOT / "src/rust/shoopdaloop/build_worklet.py",
-            ROOT / "src/rust/shoopdaloop/raw_wasm_host.js",
-            ROOT / "src/rust/shoopdaloop/audio_worker.js",
+            ROOT / "reference/legacy_browser/raw_wasm_host.js",
+            ROOT / "reference/legacy_browser/audio_worker.js",
             ROOT / "tests/wasm/node_worker_bootstrap.mjs",
         ]
     )
@@ -262,9 +262,15 @@ def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]
         ],
         env=env,
     )
+    # Keep executable legacy behavior in test assets, outside the production web bundle.
+    reference_command = ["cargo", "build", "--locked", "--target", "wasm32-unknown-unknown", "-p", "shoop_audio_worklet"]
+    if cargo_profile == "release":
+        reference_command.append("--release")
+    run_checked(reference_command, env=env)
+    shutil.copy2(ROOT / "target" / "wasm32-unknown-unknown" / cargo_profile / "shoop_audio_worklet.wasm", directory / "shoop_audio_worklet.wasm")
     sources = {
-        "raw_wasm_host.js": ROOT / "src/rust/shoopdaloop/raw_wasm_host.js",
-        "audio_worker.js": ROOT / "src/rust/shoopdaloop/audio_worker.js",
+        "raw_wasm_host.js": ROOT / "reference/legacy_browser/raw_wasm_host.js",
+        "audio_worker.js": ROOT / "reference/legacy_browser/audio_worker.js",
         "node_worker_bootstrap.mjs": ROOT / "tests/wasm/node_worker_bootstrap.mjs",
     }
     for name, source in sources.items():

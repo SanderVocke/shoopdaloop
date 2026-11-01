@@ -36,10 +36,8 @@ const webMidi = process.env.WEB_MIDI === '1';
 const webMidiDenyFirst = process.env.WEB_MIDI_DENY_FIRST === '1';
 const webMidiOpenFail = process.env.WEB_MIDI_OPEN_FAIL === '1';
 // The core workflow on the new engine backend, with the fake microphone as capture.
-const newEngine = process.env.NEW_ENGINE === '1';
-if (newEngine && (outputOnly || workerEngine || settingsOnly || webMidi || denyFirst)) {
-  throw new Error('NEW_ENGINE runs only with the microphone and the default settings');
-}
+const newEngine = !settingsOnly;
+if (workerEngine) throw new Error('Worker mode was retired; its canaries are preserved under reference/');
 if ((webMidiDenyFirst || webMidiOpenFail) && !webMidi) {
   throw new Error('Web MIDI failure modes require WEB_MIDI=1');
 }
@@ -367,7 +365,7 @@ try {
     });
   }
   let entryUrl;
-  const newEngineQuery = '?audio-backend=new_engine&new-engine-self-test=1';
+  const newEngineQuery = `?new-engine-self-test=1${stress ? '&stress=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
       ? `${pathToFileURL(selfContainedPath).href}${newEngineQuery}`
@@ -377,8 +375,8 @@ try {
       ? '?worker=1&self-test=1'
       : settingsOnly
         ? settingsUnavailable
-        ? '?offline=1&settings-test=unavailable'
-        : '?offline=1&settings-test=write'
+        ? '?settings-test=unavailable'
+        : '?settings-test=write'
       : webMidi
         ? '?web-midi-test=1'
         : directFileMicrophone
@@ -390,8 +388,8 @@ try {
   } else {
     entryUrl = settingsOnly
       ? settingsUnavailable
-        ? `${origin}/?offline=1&settings-test=unavailable`
-        : `${origin}/?offline=1&settings-test=write`
+        ? `${origin}/?settings-test=unavailable`
+        : `${origin}/?settings-test=write`
       : workerEngine
         ? `${origin}/?worker=1&self-test=1`
         : outputOnly
@@ -464,12 +462,34 @@ try {
     newEngineSelfTest: document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test'),
   })`;
 
+  async function navigateWithAudio(url) {
+    await call('Page.navigate', { url });
+    await waitFor(candidate => candidate.driver === 'AwaitingGesture', 'audio enable action was not presented');
+    await clickEnable('enable_output_audio');
+  }
+  if (settingsOnly) {
+    await waitFor(candidate => candidate.driver === 'AwaitingGesture', 'settings audio enable action was not presented');
+    await clickEnable('enable_output_audio');
+  }
   if (newEngine) {
     await waitFor(
       candidate => candidate.driver === 'AwaitingGesture' && candidate.newEngine === 'AwaitingGesture',
       'the new engine audio action was not presented',
     );
-    await clickEnable('enable_audio');
+    if (webMidi) {
+      await clickEnable('enable_midi');
+      if (webMidiDenyFirst) {
+        await waitFor(candidate => candidate.webMidi === 'Denied', 'Web MIDI denial was not visible');
+        await clickEnable('enable_midi');
+      }
+      await waitFor(candidate => candidate.webMidiEndpoints === 2, 'mock Web MIDI endpoints were not discovered');
+    }
+    await clickEnable(outputOnly ? 'enable_output_audio' : 'enable_audio');
+    if (denyFirst) {
+      await waitFor(candidate => candidate.newEngineMicrophone === 'Denied', 'microphone denial was not visible');
+      await call('Browser.setPermission', { permission: { name: 'audioCapture' }, setting: 'granted', origin });
+      await clickEnable('enable_audio');
+    }
     let step;
     const state = await waitFor(
       candidate => {
@@ -485,9 +505,11 @@ try {
       'the new engine workflow did not finish',
       300_000,
     );
-    if (state.newEngine !== 'Running' || state.newEngineMicrophone !== 'Connected' || state.quantum !== 128) {
+    if (state.newEngine !== 'Running' || (!outputOnly && state.newEngineMicrophone !== 'Connected') || state.quantum !== 128) {
       throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);
     }
+    if (state.renderMemoryGrowths !== 0 || state.overflows !== 0) throw new Error(`render boundary invariant failed: ${JSON.stringify(state)}`);
+    if (webMidi && (state.webMidiTrackDrops !== 0 || state.webMidiTrackRefusals !== 0 || !state.webMidiInputHandler)) throw new Error(`Web MIDI bridge evidence failed: ${JSON.stringify(state)}`);
     console.log(`${selfContained ? 'direct-file' : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
   } else if (settingsOnly && settingsUnavailable) {
     const state = await waitFor(
@@ -513,7 +535,7 @@ try {
       throw new Error(`browser settings text was not persisted: ${stored}`);
     }
     const baseUrl = entryUrl.split('?')[0];
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=verify` });
+    await navigateWithAudio(`${baseUrl}?settings-test=verify`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'passed'
         && candidate.settingsChannels === 6
@@ -531,7 +553,7 @@ try {
       values: { 'tracks.new.default_audio_channels': 9 },
     });
     await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(rejectedDocument)})`);
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=rejected` });
+    await navigateWithAudio(`${baseUrl}?settings-test=rejected`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'rejected'
         && candidate.settingsRecovery === 'true'
@@ -557,7 +579,7 @@ try {
       },
     });
     await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(invalidDocument)})`);
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=invalid` });
+    await navigateWithAudio(`${baseUrl}?settings-test=invalid`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'invalid'
         && candidate.settingsRecovery === 'false'
@@ -570,7 +592,7 @@ try {
 
     await evaluate(`localStorage.removeItem('${settingsKey}')`);
     await call('Page.navigate', {
-      url: `${baseUrl}?offline=1&settings-test=save-failure&settings-save-failure=1`,
+      url: `${baseUrl}?settings-test=save-failure&settings-save-failure=1`,
     });
     state = await waitFor(
       candidate => candidate.settingsTest === 'save-failed'

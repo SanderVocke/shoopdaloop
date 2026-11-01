@@ -8,7 +8,7 @@ enabled = true
 browser-feature = "wasm-test-browser"
 
 [features]
-default = ["legacy"]
+default = []
 legacy = ["dep:shoop_engine", "dep:shoop_settings", "dep:shoop_tracing"]
 contracts = ["legacy"]
 native-drivers = ["legacy", "shoop_engine/app_backend"]

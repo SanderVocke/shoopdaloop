@@ -898,21 +898,9 @@ impl SettingsDialog {
     }
 
     fn show_audio_backend(&mut self, ui: &mut egui::Ui) {
-        let Some(backend) = self.registry.definition(crate::AUDIO_BACKEND.id()).cloned() else {
-            return;
-        };
-        ui.heading("Audio backend");
-        ui.colored_label(
-            colors::WARNING,
-            "The audio backend and its capacities are chosen at startup: restart ShoopDaLoop to apply changes.",
-        );
-        self.show_definition_cards(ui, vec![backend], None);
-        let new_engine = self
-            .draft
-            .as_ref()
-            .and_then(|draft| draft.get(crate::AUDIO_BACKEND).ok())
-            .is_some_and(|id| id == crate::AudioBackendKind::NewEngine.id());
-        if new_engine {
+        ui.heading("Session engine");
+        ui.colored_label(colors::WARNING, "Host placement and engine capacities apply at startup. Core looping is available; content save/load, FX, composite loops, grab and live driver switching are unavailable.");
+        {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(transport) = self
                 .registry
@@ -2161,14 +2149,7 @@ mod tests {
         dialog.open(&state);
         let context = egui::Context::default();
         let mut cards = Vec::new();
-        for backend in [
-            crate::AudioBackendKind::Legacy,
-            crate::AudioBackendKind::NewEngine,
-        ] {
-            dialog
-                .draft_mut()
-                .unwrap()
-                .set(crate::AUDIO_BACKEND, backend.id().to_owned());
+        for _ in 0..2 {
             let mut response = SettingsDialogResponse::default();
             let mut output = context.run_ui(Default::default(), |ui| {
                 dialog.show_audio(ui, &AudioDriverRuntimeState::default(), &mut response);
@@ -2179,9 +2160,9 @@ mod tests {
         assert_eq!(
             cards,
             if cfg!(target_arch = "wasm32") {
-                [3, 7]
+                [6, 6]
             } else {
-                [3, 8]
+                [7, 7]
             }
         );
     }

@@ -450,6 +450,9 @@ impl Runtime {
             }
             if let Outcome::Refused { message, .. } = outcome {
                 self.notify(message);
+                if let Some(notice) = self.notifications.back_mut() {
+                    notice.level = NotificationLevel::Error;
+                }
             }
         }
         self.seen_results
