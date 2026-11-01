@@ -101,10 +101,10 @@ impl MidiPool {
         let mut versions = vec![MidiVersion::default(); config.versions];
         let mut checkpoints = vec![Checkpoint::default(); count];
         for row in &mut versions {
-            *std::hint::black_box(row) = MidiVersion::default();
+            *core::hint::black_box(row) = MidiVersion::default();
         }
         for checkpoint in &mut checkpoints {
-            *std::hint::black_box(checkpoint) = Checkpoint::default();
+            *core::hint::black_box(checkpoint) = Checkpoint::default();
         }
         Ok(Self {
             config: Some(config),

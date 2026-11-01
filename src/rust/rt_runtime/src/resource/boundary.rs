@@ -1,7 +1,7 @@
 //! Planner-only prepared capture boundary authority.
 use super::*;
 use crate::{buffer::MidiBuffer, midi_state::MidiState};
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 pub struct PlannerResourceIo<'a> {
     resources: ResourceIo<'a>,

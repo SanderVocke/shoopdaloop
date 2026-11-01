@@ -1,7 +1,7 @@
 //! Append-maintained page index. Every index node lives in its data-page slot.
 use super::*;
-use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicU32, Ordering};
+use core::num::NonZeroU32;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 static NEXT_STORE: AtomicU32 = AtomicU32::new(1);
 pub(super) fn new_scope() -> Result<u32, Error> {
@@ -187,9 +187,9 @@ impl ResourceStore {
             let page = position(current);
             let tree = self.pages[page].index;
             match ordinal.cmp(&tree.ordinal) {
-                std::cmp::Ordering::Less => node = tree.left,
-                std::cmp::Ordering::Greater => node = tree.right,
-                std::cmp::Ordering::Equal => {
+                core::cmp::Ordering::Less => node = tree.left,
+                core::cmp::Ordering::Greater => node = tree.right,
+                core::cmp::Ordering::Equal => {
                     cursor.page = Some(page);
                     return Ok(cursor);
                 }

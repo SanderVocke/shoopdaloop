@@ -1,6 +1,7 @@
 //! Borrowed audio blocks and caller-owned bounded event storage.
 
 use crate::{Error, Frame};
+use alloc::{boxed::Box, vec, vec::Vec};
 
 /// Byte range in its containing event buffer. Construction is validated when a
 /// packet enters the buffer; callers cannot inject arbitrary ranges.
@@ -217,10 +218,10 @@ impl MidiBuffer {
             byte_capacity: bytes,
             recovering: false,
         };
-        for chunk in std::hint::black_box(&mut *buffer.events).chunks_mut(initial.len()) {
+        for chunk in core::hint::black_box(&mut *buffer.events).chunks_mut(initial.len()) {
             chunk.copy_from_slice(&initial[..chunk.len()]);
         }
-        std::hint::black_box(&mut *buffer.bytes).fill(0);
+        core::hint::black_box(&mut *buffer.bytes).fill(0);
         Ok(buffer)
     }
     pub fn len(&self) -> usize {
@@ -468,10 +469,10 @@ mod tests {
     #[shoop_test]
     fn bulk_preparation_and_window_merges_match_scalar_packets_through_refusal_reset_and_reuse() {
         let (_, counts) = shoop_wasm_test_support::heap::measure(|| {
-            let mut data = std::hint::black_box(Vec::with_capacity(1));
+            let mut data = core::hint::black_box(Vec::with_capacity(1));
             data.push(1_u8);
             data.reserve_exact(128);
-            std::hint::black_box(&data);
+            core::hint::black_box(&data);
             drop(data);
         });
         assert!(counts.allocations > 0 && counts.reallocations > 0 && counts.deallocations > 0);

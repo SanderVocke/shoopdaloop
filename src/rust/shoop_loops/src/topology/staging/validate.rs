@@ -1,5 +1,6 @@
 use super::*;
 use crate::program::ProgramKind;
+use alloc::boxed::Box;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Relation {

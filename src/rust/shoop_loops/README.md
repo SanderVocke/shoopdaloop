@@ -1,5 +1,11 @@
 # shoop_loops
 
+This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
+It works in ordinary `std` applications using their allocator and panic handling.
+Bare-metal hosts must provide both and support pointer-width and 32-bit atomics.
+Preparation still allocates; rendering retains its prepared-storage contract.
+
+
 Portable loop timing and audio/MIDI execution on `rt_runtime`. A single render-owned
 resolver supplies musical decisions; prepared playback/capture consumers execute
 those decisions in the signal graph. The loop planner coordinates media ownership,

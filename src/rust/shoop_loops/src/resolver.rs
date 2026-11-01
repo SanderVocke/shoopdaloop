@@ -3,6 +3,7 @@
 use crate::command::Record;
 use crate::config::checked_storage;
 use crate::*;
+use alloc::{vec, vec::Vec};
 
 mod program_change;
 pub use program_change::ProgramChangeResult;
@@ -581,13 +582,13 @@ impl Resolver {
                 .program_change
                 .as_mut()
                 .expect("selected owner retained");
-            std::mem::swap(&mut self.topology, &mut change.candidate);
+            core::mem::swap(&mut self.topology, &mut change.candidate);
             change.activated_epoch = Some(epoch);
             self.epoch = epoch;
         }
-        std::mem::swap(&mut self.states, &mut self.scratch.states);
-        std::mem::swap(&mut self.records, &mut self.scratch.records);
-        std::mem::swap(&mut self.events, &mut self.scratch.events);
+        core::mem::swap(&mut self.states, &mut self.scratch.states);
+        core::mem::swap(&mut self.records, &mut self.scratch.records);
+        core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
         self.committed = true;
         Ok(interval)
@@ -713,7 +714,7 @@ impl Resolver {
         }
         self.preview = None;
         self.epoch = next;
-        Ok(std::mem::replace(&mut self.topology, candidate))
+        Ok(core::mem::replace(&mut self.topology, candidate))
     }
 }
 
@@ -1272,7 +1273,7 @@ fn composite_transition(
 fn prepared<T: Copy>(count: usize, value: T) -> Vec<T> {
     let mut storage = vec![value; count];
     for slot in &mut storage {
-        *slot = std::hint::black_box(value);
+        *slot = core::hint::black_box(value);
     }
     storage
 }

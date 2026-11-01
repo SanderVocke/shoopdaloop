@@ -30,6 +30,7 @@ pub use request::{Reply, Request, ResourceCommand, ResourceIo};
 #[cfg(test)]
 mod tests;
 use crate::{Error, Frame, PreparedConfig, ResourceId, Revision};
+use alloc::{boxed::Box, vec, vec::Vec};
 use format::Parser;
 pub use format::{encode_midi_record, Description, Format};
 
@@ -165,7 +166,7 @@ pub struct ResourceStore {
 fn retirement_stack(count: usize) -> Vec<usize> {
     let mut stack = vec![0; count];
     for index in &mut stack {
-        *std::hint::black_box(index) = 0;
+        *core::hint::black_box(index) = 0;
     }
     stack.clear();
     stack
@@ -211,11 +212,11 @@ impl ResourceStore {
         let scope = index::new_scope()?;
         let mut data = vec![0u8; config.resource_bytes()].into_boxed_slice();
         for byte in &mut data {
-            *std::hint::black_box(byte) = 0;
+            *core::hint::black_box(byte) = 0;
         }
         let mut pages = vec![Page::default(); limits.resource_pages];
         for page in &mut pages {
-            *std::hint::black_box(page) = Page::default();
+            *core::hint::black_box(page) = Page::default();
         }
         Ok(Self {
             scope,

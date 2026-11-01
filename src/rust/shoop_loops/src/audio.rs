@@ -1,6 +1,7 @@
 //! Prepared audio conversion and DSP. Positions and discontinuities come from
 //! the authoritative interval decision; these renderers never advance a clock.
 
+use alloc::{boxed::Box, vec};
 use rt_runtime::buffer::AudioPorts;
 use rt_runtime::resource::{CaptureIntervalId, Format, ReadIndex, RenderIo};
 use rt_runtime::Error;
@@ -48,7 +49,7 @@ fn samples(channels: usize, max_frames: usize) -> Result<usize, Error> {
 fn buffer<T: Default + Copy>(len: usize) -> Box<[T]> {
     let mut values = vec![T::default(); len].into_boxed_slice();
     for value in &mut values {
-        *std::hint::black_box(value) = T::default();
+        *core::hint::black_box(value) = T::default();
     }
     values
 }

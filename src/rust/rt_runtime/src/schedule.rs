@@ -3,8 +3,9 @@
 use crate::midi::Message;
 use crate::transport::Lane;
 use crate::{Error, Frame, NodeId, PlannerId, PreparedConfig, Sequence};
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::sync::atomic::{AtomicU32, Ordering};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 
@@ -443,15 +444,15 @@ pub fn typed_scheduler<O: Copy, R: Copy, Q: Copy, S: Copy>(
         .map_err(|_| Error::Exhausted)?;
     let mut payload = vec![0; total * payload_stride].into_boxed_slice();
     for byte in &mut payload {
-        *std::hint::black_box(byte) = 0;
+        *core::hint::black_box(byte) = 0;
     }
     let mut events = vec![None; total];
     for event in &mut events {
-        *std::hint::black_box(event) = None;
+        *core::hint::black_box(event) = None;
     }
     let mut pending = vec![0; total];
     for index in &mut pending {
-        *std::hint::black_box(index) = 0;
+        *core::hint::black_box(index) = 0;
     }
     pending.clear();
     let (completed, reader) = RingBuffer::new(total);

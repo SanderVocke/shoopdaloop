@@ -148,7 +148,7 @@ impl LoopPlanner {
             match io.capture().prepare(
                 group,
                 if row.binding.midi {
-                    std::slice::from_ref(&self.inputs[slot])
+                    core::slice::from_ref(&self.inputs[slot])
                 } else {
                     &[]
                 },

@@ -34,12 +34,12 @@ macro_rules! identity {
         #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name {
             slot: u32,
-            generation: std::num::NonZeroU32,
+            generation: core::num::NonZeroU32,
         }
 
         impl $name {
             pub fn from_parts(slot: u32, generation: u32) -> Result<Self, Error> {
-                let generation = std::num::NonZeroU32::new(generation).ok_or(Error::InvalidId)?;
+                let generation = core::num::NonZeroU32::new(generation).ok_or(Error::InvalidId)?;
                 Ok(Self { slot, generation })
             }
 

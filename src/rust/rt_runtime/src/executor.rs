@@ -16,7 +16,8 @@ use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
 use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence};
-use std::marker::PhantomData;
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::marker::PhantomData;
 
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
@@ -212,7 +213,7 @@ impl Buffers {
             injected: midi(ports.midi_inputs)?,
         };
         for sample in buffers.input.iter_mut().chain(&mut buffers.output) {
-            *std::hint::black_box(sample) = 0.0;
+            *core::hint::black_box(sample) = 0.0;
         }
         Ok(buffers)
     }

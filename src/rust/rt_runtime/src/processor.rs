@@ -4,6 +4,7 @@ use crate::buffer::{AudioPorts, MidiBuffer};
 use crate::graph::PortCounts;
 use crate::planner::{ConsumerAccess, DecisionView, NoPlanner, ObservationWriter, Planner};
 use crate::{Error, Frame, PreparedConfig};
+use alloc::boxed::Box;
 
 /// Construction and disposal of processors belong to non-render contexts.
 /// Implementations must preallocate and pre-touch their working storage here.

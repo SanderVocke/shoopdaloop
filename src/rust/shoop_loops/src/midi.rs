@@ -1,6 +1,7 @@
 //! Prepared indexed MIDI operations. Caller decisions own time and mode; cached
 //! cursor positions only validate contiguous use of an immutable media prefix.
 use crate::midi_restore::{self, Emission};
+use alloc::{boxed::Box, vec};
 use rt_runtime::{
     buffer::MidiBuffer,
     midi::{Message, ResetState},
@@ -55,7 +56,7 @@ pub struct MidiRenderer {
 }
 fn prepared_state() -> Box<MidiState> {
     let mut state = Box::new(MidiState::default());
-    *std::hint::black_box(&mut *state) = MidiState::default();
+    *core::hint::black_box(&mut *state) = MidiState::default();
     state
 }
 fn dimensions(max_frames: usize, max_bytes: usize) -> Result<(), Error> {
@@ -72,13 +73,13 @@ impl MidiRenderer {
     pub fn prepare(max_frames: usize, max_packet_bytes: usize) -> Result<Self, Error> {
         dimensions(max_frames, max_packet_bytes)?;
         max_packet_bytes
-            .checked_add(std::mem::size_of::<Self>())
-            .and_then(|n| n.checked_add(std::mem::size_of::<MidiState>()))
+            .checked_add(core::mem::size_of::<Self>())
+            .and_then(|n| n.checked_add(core::mem::size_of::<MidiState>()))
             .filter(|n| *n <= i32::MAX as usize)
             .ok_or(Error::InvalidConfig)?;
         let mut packet = vec![0; max_packet_bytes].into_boxed_slice();
         for byte in &mut packet {
-            *std::hint::black_box(byte) = 0;
+            *core::hint::black_box(byte) = 0;
         }
         Ok(Self {
             max_frames,
