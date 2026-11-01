@@ -108,7 +108,7 @@ pub enum Manifest {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Payload {
     Audio(Arc<Vec<f32>>),
-    Midi(Arc<[MidiEventState]>),
+    Midi(Arc<Vec<MidiEventState>>),
 }
 impl Payload {
     pub fn bytes(&self) -> Option<u64> {

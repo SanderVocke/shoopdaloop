@@ -523,6 +523,25 @@ formatting and whitespace checks pass.
 
 ### Stage 5 — transactional core session load
 
+MIDI-ownership milestone: backend events now reuse the neutral application event
+type and immutable packet ownership. Backend content/read/update lists and typed
+persistence payloads retain `Arc<Vec<_>>`; service mapping and capture share the
+same event vector instead of converting an entire list in one turn. Completing
+MIDI assembly also keeps its vector allocation. Legacy conversion/view boundaries
+remain explicit, with the existing view limit. The typed load -> accepted UI loss
+-> capture regression now checks PCM and MIDI pointer identity as well as bytes.
+Backend serde enables the API's serde feature explicitly for standalone builds.
+Adapter validation and recorded-content assembly still need bounded progression.
+
+Validation: 364 affected native tests pass across service, protocol, adapter,
+backend and retained reference/worklet suites. Node passes all 369 affected tests
+across those packages and the frontend. Native all-target workspace and affected
+browser-target checks pass, as do the warning-denying workspace build, production
+dependency boundaries, Rust test policy, formatting and whitespace checks. The
+reference RT fixture now checks the adapter's four implemented capabilities
+exactly; public service admission remains pending.
+All five production file cases also pass in actual Chrome with the codec worker.
+
 Portable codec-worker foundation: document conversion and existing codec calls now
 live in `shoop_persistence_codec`, with no backend/engine/device dependency. Its
 bounded worker protocol retains decoded input across dialogs, fences handles,

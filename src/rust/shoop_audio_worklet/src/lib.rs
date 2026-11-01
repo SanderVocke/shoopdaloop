@@ -352,8 +352,8 @@ impl WorkletHost {
                 let events = events
                     .into_iter()
                     .map(|event| BackendMidiEvent {
-                        time: event.frame,
-                        data: event.data,
+                        frame: event.frame,
+                        data: event.data.into(),
                     })
                     .collect::<Vec<_>>();
                 self.backend
@@ -904,8 +904,8 @@ impl WorkletHost {
                     events: channel_data.events[offset..end]
                         .iter()
                         .map(|event| shoop_audio_protocol::WireMidiEvent {
-                            frame: event.time,
-                            data: event.data.clone(),
+                            frame: event.frame,
+                            data: event.data.to_vec(),
                         })
                         .collect(),
                 }))
@@ -2576,8 +2576,8 @@ mod tests {
         ));
         let events = (0..200)
             .map(|index| BackendMidiEvent {
-                time: index,
-                data: vec![0x90, (index % 128) as u8, 100],
+                frame: index,
+                data: vec![0x90, (index % 128) as u8, 100].into(),
             })
             .collect::<Vec<_>>();
         host.backend
@@ -2588,7 +2588,7 @@ mod tests {
                         channel: 0,
                         length: 256,
                         start_state: Vec::new(),
-                        events,
+                        events: events.into(),
                         start_offset: Some(-2),
                         capture_alignment_frames: None,
                         preplay: Some(3),
@@ -3879,7 +3879,7 @@ mod tests {
         let session = host.backend.capture_session().unwrap();
         assert_eq!(
             session.tracks[0].loops[0].midi[0].events[0].data,
-            [0x90, 60, 100]
+            [0x90, 60, 100].into()
         );
         assert!(matches!(
             command(
@@ -4220,7 +4220,7 @@ mod tests {
             session.tracks[0].loops[0].midi[0]
                 .events
                 .iter()
-                .filter(|event| event.data == [0xb0, 7, 101])
+                .filter(|event| event.data == [0xb0, 7, 101].into())
                 .count(),
             1
         );
@@ -4548,9 +4548,10 @@ mod tests {
             length: 4,
             start_state: vec![vec![0xB0, 7, 100]],
             events: vec![shoop_backend::BackendMidiEvent {
-                time: 2,
-                data: vec![0x90, 60, 100],
-            }],
+                frame: 2,
+                data: vec![0x90, 60, 100].into(),
+            }]
+            .into(),
             start_offset: 0,
             capture_alignment_frames: 0,
             preplay: 0,
@@ -4679,9 +4680,10 @@ mod tests {
                 length: 8_192,
                 start_state: vec![vec![0xB0, 7, 99]],
                 events: vec![BackendMidiEvent {
-                    time: 512,
-                    data: vec![0x90, 64, 127],
-                }],
+                    frame: 512,
+                    data: vec![0x90, 64, 127].into(),
+                }]
+                .into(),
                 start_offset: Some(-3),
                 capture_alignment_frames: None,
                 preplay: Some(4),
@@ -4771,7 +4773,7 @@ mod tests {
             captured.tracks[0].loops[0].audio[1].samples,
             vec![0.5; 8_192].into()
         );
-        assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].time, 512);
+        assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].frame, 512);
         assert!(matches!(
             command(
                 &mut host,

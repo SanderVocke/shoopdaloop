@@ -43,11 +43,11 @@ pub(crate) fn canonical_bytes(content: &BackendLoopContent) -> Result<u64> {
             bail!("MIDI requires unsupported channel mode, preplay or event count");
         }
         let mut previous = 0;
-        for event in &midi.events {
-            if event.time < previous || event.time >= midi.length || event.data.is_empty() {
+        for event in midi.events.iter() {
+            if event.frame < previous || event.frame >= midi.length || event.data.is_empty() {
                 bail!("invalid MIDI event order, position or packet");
             }
-            previous = event.time;
+            previous = event.frame;
             bytes = bytes
                 .checked_add(event.data.len() as u64 + 12)
                 .ok_or_else(|| anyhow!("media size overflow"))?;
@@ -80,7 +80,7 @@ fn validate_initial_parameters(channel: &BackendMidiContent) -> Result<()> {
     let origin = i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
     let prefix = channel
         .events
-        .partition_point(|event| i64::from(event.time) < origin);
+        .partition_point(|event| i64::from(event.frame) < origin);
     if channel.start_state.len() + prefix > 16_384 {
         bail!("MIDI initial/preroll state exceeds its bounded packet count");
     }
@@ -88,7 +88,7 @@ fn validate_initial_parameters(channel: &BackendMidiContent) -> Result<()> {
     for packet in channel.start_state.iter().map(Vec::as_slice).chain(
         channel.events[..prefix]
             .iter()
-            .map(|event| event.data.as_slice()),
+            .map(|event| event.data.as_ref()),
     ) {
         initial_message(packet)?;
         if packet == [0xff] {
@@ -116,10 +116,10 @@ impl Upload {
                     i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
                 event = channel
                     .events
-                    .partition_point(|event| i64::from(event.time) < origin);
+                    .partition_point(|event| i64::from(event.frame) < origin);
                 initial_end = event;
                 event_end = channel.events.partition_point(|event| {
-                    i64::from(event.time) < origin + i64::from(content.length)
+                    i64::from(event.frame) < origin + i64::from(content.length)
                 });
                 validate_initial_parameters(channel)?;
                 channel.events[event..event_end]
@@ -170,7 +170,7 @@ impl Upload {
                 .events
                 .get(self.initial - channel.start_state.len())
                 .filter(|_| self.initial - channel.start_state.len() < self.initial_end)
-                .map(|event| event.data.as_slice())
+                .map(|event| event.data.as_ref())
         };
         match packet {
             Some(packet) => {
@@ -193,7 +193,7 @@ impl Upload {
                 i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
             for byte in &mut bytes[..count] {
                 let event = &channel.events[self.event];
-                let frame = (i64::from(event.time) - origin) as u64;
+                let frame = (i64::from(event.frame) - origin) as u64;
                 *byte = match self.event_byte {
                     0..=7 => frame.to_le_bytes()[self.event_byte],
                     8..=11 => (event.data.len() as u32).to_le_bytes()[self.event_byte - 8],

@@ -197,8 +197,8 @@ fn loop_content_is_read_asynchronously() {
         .inject_midi_input(
             track_id,
             &[BackendMidiEvent {
-                time: 0,
-                data: vec![0x90, 60, 100],
+                frame: 0,
+                data: vec![0x90, 60, 100].into(),
             }],
         )
         .unwrap();
@@ -222,7 +222,7 @@ fn loop_content_is_read_asynchronously() {
     assert_eq!(midi.channels[0].length as usize, length);
     let events = &midi.channels[0].events;
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].data, [0x90, 60, 100]);
+    assert_eq!(events[0].data, [0x90, 60, 100].into());
 
     backend.clear_loop(loop_id).unwrap();
     backend.wait_idle();

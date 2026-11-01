@@ -1728,10 +1728,11 @@ impl NativeRuntime {
                                 .iter()
                                 .filter(|event| event.time >= 0)
                                 .map(|event| BackendMidiEvent {
-                                    time: event.time as u32,
-                                    data: event.data.clone(),
+                                    frame: event.time as u32,
+                                    data: event.data.clone().into(),
                                 })
-                                .collect(),
+                                .collect::<Vec<_>>()
+                                .into(),
                             start_offset: state.start_offset,
                             capture_alignment_frames: state.capture_alignment_frames,
                             preplay: state.n_preplay_samples,
@@ -2190,8 +2191,8 @@ impl NativeRuntime {
                         })
                         .collect::<Vec<_>>();
                     events.extend(content.events.iter().map(|event| MidiEvent {
-                        time: event.time as i32,
-                        data: event.data.clone(),
+                        time: event.frame as i32,
+                        data: event.data.to_vec(),
                     }));
                     channel.load_midi_data(&events, content.length)?;
                     channel.set_start_offset(content.start_offset)?;
@@ -4233,7 +4234,7 @@ impl Backend for NativeBackend {
             .queue_incoming_msgs(
                 events
                     .iter()
-                    .map(|event| MidiEvent::new(event.time as i32, event.data.clone()))
+                    .map(|event| MidiEvent::new(event.frame as i32, event.data.to_vec()))
                     .collect(),
             )
             .map(|_| ())
@@ -4396,10 +4397,11 @@ impl Backend for NativeBackend {
                         .into_iter()
                         .filter(|event| event.time >= 0)
                         .map(|event| BackendMidiEvent {
-                            time: event.time as u32,
-                            data: event.data,
+                            frame: event.time as u32,
+                            data: event.data.into(),
                         })
-                        .collect(),
+                        .collect::<Vec<_>>()
+                        .into(),
                     start_offset: state.start_offset,
                     capture_alignment_frames: state.capture_alignment_frames,
                     preplay: state.n_preplay_samples,
@@ -4618,11 +4620,11 @@ impl Backend for NativeBackend {
                         data: data.clone(),
                     })
                     .collect::<Vec<_>>();
-                for event in &item.events {
+                for event in item.events.iter() {
                     messages.push(MidiEvent {
-                        time: i32::try_from(event.time)
+                        time: i32::try_from(event.frame)
                             .map_err(|_| anyhow!("MIDI event time exceeds native range"))?,
-                        data: event.data.clone(),
+                        data: event.data.to_vec(),
                     });
                 }
                 Ok(messages)
@@ -5972,8 +5974,8 @@ mod tests {
             .inject_midi_input(
                 created.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, note, 100],
+                    frame: 0,
+                    data: vec![0x90, note, 100].into(),
                 }],
             )
             .unwrap();
@@ -6544,7 +6546,7 @@ mod tests {
                         channel: 0,
                         length: 7,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: Some(3),
                         capture_alignment_frames: Some(0),
                         preplay: None,
@@ -6769,9 +6771,10 @@ mod tests {
             length: 512,
             start_state: vec![vec![0xB0, 7, 99]],
             events: vec![BackendMidiEvent {
-                time: 100,
-                data: vec![0x90, 60, 100],
-            }],
+                frame: 100,
+                data: vec![0x90, 60, 100].into(),
+            }]
+            .into(),
             start_offset: -4,
             capture_alignment_frames: 0,
             preplay: 8,
@@ -6807,7 +6810,7 @@ mod tests {
             vec![0.25, -0.5, 0.75].into()
         );
         assert_eq!(restored.tracks[0].loops[0].midi[0].length, 512);
-        assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].time, 100);
+        assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].frame, 100);
         assert_eq!(restored.tracks[0].loops[0].midi[0].start_offset, -4);
         assert_eq!(
             restored.global_ports[0].external_connections,
@@ -6895,7 +6898,7 @@ mod tests {
                         channel: 0,
                         length: 20,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: Some(0),
                         capture_alignment_frames: Some(2),
                         preplay: None,
@@ -7110,8 +7113,8 @@ mod tests {
             .inject_midi_input(
                 created.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0xb2, 17, 127],
+                    frame: 0,
+                    data: vec![0xb2, 17, 127].into(),
                 }],
             )
             .unwrap();
@@ -7346,8 +7349,8 @@ mod tests {
             .inject_midi_input(
                 created.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0xb3, 74, 127],
+                    frame: 0,
+                    data: vec![0xb3, 74, 127].into(),
                 }],
             )
             .unwrap();
@@ -7489,9 +7492,10 @@ mod tests {
                         length: 4,
                         start_state: vec![vec![0xB0, 7, 100]],
                         events: vec![BackendMidiEvent {
-                            time: 1,
-                            data: vec![0x90, 64, 127],
-                        }],
+                            frame: 1,
+                            data: vec![0x90, 64, 127].into(),
+                        }]
+                        .into(),
                         start_offset: Some(-3),
                         capture_alignment_frames: None,
                         preplay: Some(4),
@@ -7538,7 +7542,10 @@ mod tests {
         assert_eq!(midi_details.channels.len(), 1);
         assert_eq!(midi_details.channels[0].start_offset, -3);
         assert_eq!(midi_details.channels[0].preplay, 4);
-        assert_eq!(midi_details.channels[0].events[0].data, [0x90, 64, 127]);
+        assert_eq!(
+            midi_details.channels[0].events[0].data,
+            [0x90, 64, 127].into()
+        );
         assert!(midi_details.channels[0].content_revision > 0);
 
         let audio_details = backend
@@ -7620,10 +7627,11 @@ mod tests {
                             start_state: vec![vec![0xB0, 7, generation]],
                             events: (0..1_024)
                                 .map(|index| BackendMidiEvent {
-                                    time: index * 8,
-                                    data: vec![0x90, 64, generation],
+                                    frame: index * 8,
+                                    data: vec![0x90, 64, generation].into(),
                                 })
-                                .collect(),
+                                .collect::<Vec<_>>()
+                                .into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
@@ -8095,14 +8103,15 @@ mod tests {
             target_loop.midi[0].events,
             vec![
                 BackendMidiEvent {
-                    time: NOTE_FRAME as u32,
-                    data: vec![0x90, 64, NOTE_VELOCITY],
+                    frame: NOTE_FRAME as u32,
+                    data: vec![0x90, 64, NOTE_VELOCITY].into(),
                 },
                 BackendMidiEvent {
-                    time: 64,
-                    data: vec![0x80, 64, 0],
+                    frame: 64,
+                    data: vec![0x80, 64, 0].into(),
                 },
             ]
+            .into()
         );
 
         let mut expected_left = vec![0.125; FRAMES as usize];

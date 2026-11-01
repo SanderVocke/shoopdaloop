@@ -46,14 +46,15 @@ fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media()
     content.midi[0].start_state = vec![vec![0xb0, 7, 99]];
     content.midi[0].events = vec![
         BackendMidiEvent {
-            time: 2,
-            data: vec![0x90, 60, 100],
+            frame: 2,
+            data: vec![0x90, 60, 100].into(),
         },
         BackendMidiEvent {
-            time: 5,
-            data: vec![0x80, 60, 0],
+            frame: 5,
+            data: vec![0x80, 60, 0].into(),
         },
-    ];
+    ]
+    .into();
     let mut expected = content.clone();
     let mapping = loaded(&mut backend, &session).unwrap();
     let new = mapping.loops[&old.loops[0].raw()];
@@ -168,14 +169,15 @@ fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
     content.midi[0].length = 6;
     content.midi[0].events = vec![
         BackendMidiEvent {
-            time: 0,
-            data: vec![0x90, 60, 99],
+            frame: 0,
+            data: vec![0x90, 60, 99].into(),
         },
         BackendMidiEvent {
-            time: 3,
-            data: vec![0x80, 60, 0],
+            frame: 3,
+            data: vec![0x80, 60, 0].into(),
         },
-    ];
+    ]
+    .into();
     let original_midi = content.midi.clone();
     let mapping = loaded(&mut backend, &session).unwrap();
     let id = mapping.loops[&track.loops[0].raw()];
@@ -215,9 +217,10 @@ fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
                 length: 8,
                 start_state: vec![vec![0xb0, 7, 12], vec![0xb0, 7, 99]],
                 events: vec![BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 64, 87],
-                }],
+                    frame: 0,
+                    data: vec![0x90, 64, 87].into(),
+                }]
+                .into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(0),
                 preplay: None,
@@ -343,9 +346,10 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
     content.audio[0].start_offset = 1;
     content.midi[0].length = 8;
     content.midi[0].events = vec![BackendMidiEvent {
-        time: 5,
-        data: vec![0x90, 60, 100],
-    }];
+        frame: 5,
+        data: vec![0x90, 60, 100].into(),
+    }]
+    .into();
     let mapping = loaded(&mut backend, &session).unwrap();
     let selected = mapping.loops[&track.loops[0].raw()];
     let other = backend
@@ -377,7 +381,7 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
     assert_eq!(chunk.start_offset, 1);
     assert_eq!(chunk.total_samples, 6);
     assert_eq!(
-        backend.loop_midi_data(selected).unwrap().unwrap().channels[0].events[0].time,
+        backend.loop_midi_data(selected).unwrap().unwrap().channels[0].events[0].frame,
         5
     );
     assert_eq!(

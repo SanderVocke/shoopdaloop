@@ -385,7 +385,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let messages = events
             .iter()
             .map(|event| {
-                (event.time == 0 && event.data.len() <= 4)
+                (event.frame == 0 && event.data.len() <= 4)
                     .then(|| MidiMessage::new(&event.data))
                     .flatten()
                     .ok_or_else(|| anyhow!("invalid MIDI input injection event"))
@@ -525,7 +525,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             let bytes = content
                 .midi
                 .iter()
-                .flat_map(|channel| &channel.events)
+                .flat_map(|channel| channel.events.iter())
                 .map(|event| 12 + event.data.len() as u64)
                 .sum::<u64>();
             if bytes > 32 * 1024 * 1024 {

@@ -707,8 +707,8 @@ impl Service {
                     .inject_midi_input(
                         track.backend,
                         &[BackendMidiEvent {
-                            time: 0,
-                            data: vec![0x80, note, 0],
+                            frame: 0,
+                            data: vec![0x80, note, 0].into(),
                         }],
                     )
                     .is_err()

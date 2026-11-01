@@ -54,7 +54,7 @@ fn image(samples: usize) -> Arc<Image> {
         },
         payloads: vec![
             Payload::Audio(vec![0.25; samples].into()),
-            Payload::Midi(Arc::from([
+            Payload::Midi(Arc::new(vec![
                 MidiEventState {
                     frame: 0,
                     data: Arc::from([0x90, 60, 99]),

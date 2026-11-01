@@ -66,21 +66,19 @@ fn audio_samples(image: &image::Image, channel: &image::Channel) -> Result<Arc<V
         None => Ok(Arc::new(Vec::new())),
     }
 }
-fn midi_events(image: &image::Image, channel: &image::Channel) -> Result<Vec<BackendMidiEvent>> {
+fn midi_events(
+    image: &image::Image,
+    channel: &image::Channel,
+) -> Result<Arc<Vec<BackendMidiEvent>>> {
     match channel.object {
         Some(object) => match image.payloads.get(object as usize - 1) {
-            Some(image::Payload::Midi(events)) => Ok(events
-                .iter()
-                .map(|event| BackendMidiEvent {
-                    time: event.frame,
-                    data: event.data.to_vec(),
-                })
-                .collect()),
+            Some(image::Payload::Midi(events)) => Ok(Arc::clone(events)),
             _ => Err(anyhow!("missing MIDI payload")),
         },
-        None => Ok(Vec::new()),
+        None => Ok(Arc::new(Vec::new())),
     }
 }
+
 fn backend_loop(image: &image::Image, content: &image::Loop) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
         source_id: content.id.raw(),

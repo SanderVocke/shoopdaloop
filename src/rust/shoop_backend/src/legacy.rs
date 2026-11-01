@@ -61,7 +61,7 @@ fn validate_midi_input_events(events: &[BackendMidiEvent]) -> Result<()> {
     }
     if events
         .iter()
-        .any(|event| event.time != 0 || event.data.is_empty() || event.data.len() > 4)
+        .any(|event| event.frame != 0 || event.data.is_empty() || event.data.len() > 4)
     {
         return Err(anyhow!("invalid MIDI input injection event"));
     }
@@ -3251,10 +3251,11 @@ impl EngineBackend {
                                 .contents()
                                 .into_iter()
                                 .map(|event| BackendMidiEvent {
-                                    time: event.time,
-                                    data: event.data().to_vec(),
+                                    frame: event.time,
+                                    data: event.data().to_vec().into(),
                                 })
-                                .collect(),
+                                .collect::<Vec<_>>()
+                                .into(),
                             start_offset: channel.start_offset(),
                             capture_alignment_frames: channel.capture_alignment_frames(),
                             preplay: channel.pre_play_samples(),
@@ -3719,7 +3720,7 @@ impl EngineBackend {
                         .events
                         .iter()
                         .map(|event| {
-                            shoop_engine::MidiStorageElem::new(event.time, &event.data)
+                            shoop_engine::MidiStorageElem::new(event.frame, &event.data)
                                 .ok_or_else(|| anyhow!("invalid MIDI event"))
                         })
                         .collect::<Result<Vec<_>>>()?;
@@ -5623,10 +5624,11 @@ impl Backend for EngineBackend {
                         .contents()
                         .into_iter()
                         .map(|event| BackendMidiEvent {
-                            time: event.time,
-                            data: event.data().to_vec(),
+                            frame: event.time,
+                            data: event.data().to_vec().into(),
                         })
-                        .collect(),
+                        .collect::<Vec<_>>()
+                        .into(),
                     start_offset: channel.start_offset(),
                     capture_alignment_frames: channel.capture_alignment_frames(),
                     preplay: channel.pre_play_samples(),
@@ -5819,7 +5821,7 @@ impl Backend for EngineBackend {
                 item.events
                     .iter()
                     .map(|event| {
-                        shoop_engine::MidiStorageElem::new(event.time, &event.data)
+                        shoop_engine::MidiStorageElem::new(event.frame, &event.data)
                             .ok_or_else(|| anyhow!("invalid MIDI event"))
                     })
                     .collect::<Result<Vec<_>>>()
@@ -7082,7 +7084,7 @@ fn empty_midi_content(mode: BackendChannelMode) -> BackendMidiContent {
         mode,
         length: 0,
         start_state: Vec::new(),
-        events: Vec::new(),
+        events: Vec::new().into(),
         start_offset: 0,
         capture_alignment_frames: 0,
         preplay: 0,
@@ -9054,7 +9056,7 @@ impl Backend for FakeBackend {
             for channel in &mut content.midi {
                 channel.length = 0;
                 channel.start_state.clear();
-                channel.events.clear();
+                channel.events = Arc::new(Vec::new());
                 channel.capture_alignment_frames = 0;
             }
         }
@@ -9133,8 +9135,8 @@ impl Backend for FakeBackend {
         if update
             .midi
             .iter()
-            .flat_map(|item| &item.events)
-            .any(|event| shoop_engine::MidiStorageElem::new(event.time, &event.data).is_none())
+            .flat_map(|item| item.events.iter())
+            .any(|event| shoop_engine::MidiStorageElem::new(event.frame, &event.data).is_none())
         {
             return Err(anyhow!("invalid MIDI event"));
         }
@@ -12090,7 +12092,7 @@ mod tests {
                         channel: 0,
                         length: 6,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: None,
                         capture_alignment_frames: Some(2),
                         preplay: None,
@@ -12267,9 +12269,10 @@ mod tests {
                         length: 3,
                         start_state: vec![vec![0xB0, 7, 99]],
                         events: vec![BackendMidiEvent {
-                            time: 2,
-                            data: vec![0x90, 64, 127],
-                        }],
+                            frame: 2,
+                            data: vec![0x90, 64, 127].into(),
+                        }]
+                        .into(),
                         start_offset: Some(-3),
                         capture_alignment_frames: None,
                         preplay: Some(6),
@@ -12302,7 +12305,7 @@ mod tests {
         );
         assert_eq!(target_content.audio[0].start_offset, -1);
         assert_eq!(target_content.audio[1].preplay, 5);
-        assert_eq!(target_content.midi[0].events[0].time, 2);
+        assert_eq!(target_content.midi[0].events[0].frame, 2);
         assert!(target_content.midi[0]
             .start_state
             .iter()
@@ -12343,7 +12346,7 @@ mod tests {
         assert_eq!(retained_content.audio[0].preplay, 4);
         assert_eq!(retained_content.audio[1].start_offset, -2);
         assert_eq!(retained_content.audio[1].preplay, 5);
-        assert_eq!(retained_content.midi[0].events[0].time, 2);
+        assert_eq!(retained_content.midi[0].events[0].frame, 2);
 
         backend
             .set_loop_timing(target, Some(-7), Some(12), Some(9))
@@ -12607,7 +12610,7 @@ mod tests {
                         channel: 0,
                         length: 8,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: Some(0),
                         capture_alignment_frames: Some(0),
                         preplay: None,
@@ -12672,7 +12675,7 @@ mod tests {
                         channel: 0,
                         length: 6,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: Some(1),
                         capture_alignment_frames: None,
                         preplay: None,
@@ -12835,9 +12838,10 @@ mod tests {
             length: 4,
             start_state: vec![vec![0xB0, 7, 99]],
             events: vec![BackendMidiEvent {
-                time: 2,
-                data: vec![0x90, 60, 100],
-            }],
+                frame: 2,
+                data: vec![0x90, 60, 100].into(),
+            }]
+            .into(),
             start_offset: -1,
             capture_alignment_frames: 0,
             preplay: 2,
@@ -12883,7 +12887,7 @@ mod tests {
         assert_eq!(loop_.audio[0].samples, vec![0.25, -0.5, 0.75, -1.0].into());
         assert_eq!(loop_.audio[0].start_offset, -2);
         assert_eq!(loop_.audio[0].preplay, 3);
-        assert_eq!(loop_.midi[0].events[0].time, 2);
+        assert_eq!(loop_.midi[0].events[0].frame, 2);
         assert!(loop_.midi[0]
             .start_state
             .iter()
@@ -13161,7 +13165,7 @@ mod tests {
                 channel: 0,
                 length: 24,
                 start_state: Vec::new(),
-                events: Vec::new(),
+                events: Vec::new().into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(2),
                 preplay: None,
@@ -13534,7 +13538,7 @@ mod tests {
                         channel: 0,
                         length: 8,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: Some(0),
                         capture_alignment_frames: Some(2),
                         preplay: None,
@@ -13930,8 +13934,8 @@ mod tests {
             .inject_midi_input(
                 midi_track.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 60, 100],
+                    frame: 0,
+                    data: vec![0x90, 60, 100].into(),
                 }],
             )
             .unwrap();
@@ -13942,8 +13946,8 @@ mod tests {
             .inject_midi_input(
                 midi_track.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x80, 60, 0],
+                    frame: 0,
+                    data: vec![0x80, 60, 0].into(),
                 }],
             )
             .unwrap();
@@ -13955,15 +13959,15 @@ mod tests {
             .unwrap();
         let events = &backend.capture_session().unwrap().tracks[0].loops[0].midi[0].events;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].data, [0x90, 60, 100]);
-        assert_eq!(events[1].data, [0x80, 60, 0]);
-        assert!(events[1].time >= events[0].time);
+        assert_eq!(events[0].data, [0x90, 60, 100].into());
+        assert_eq!(events[1].data, [0x80, 60, 0].into());
+        assert!(events[1].frame >= events[0].frame);
         assert!(backend
             .inject_midi_input(
                 audio_track.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 61, 100],
+                    frame: 0,
+                    data: vec![0x90, 61, 100].into(),
                 }],
             )
             .is_err());
@@ -13971,8 +13975,8 @@ mod tests {
             .inject_midi_input(
                 midi_track.track_id,
                 &[BackendMidiEvent {
-                    time: 1,
-                    data: vec![0x90, 61, 100],
+                    frame: 1,
+                    data: vec![0x90, 61, 100].into(),
                 }],
             )
             .is_err());
@@ -14052,7 +14056,7 @@ mod tests {
         assert!(session.tracks[0].loops[0].midi[0]
             .events
             .iter()
-            .any(|event| event.data == [0x90, 60, 100]));
+            .any(|event| event.data == [0x90, 60, 100].into()));
 
         backend
             .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(false))
@@ -14212,7 +14216,7 @@ mod tests {
             captured.tracks[0].loops[0].midi[0]
                 .events
                 .iter()
-                .filter(|event| event.data == [0xb0, 7, 99])
+                .filter(|event| event.data == [0xb0, 7, 99].into())
                 .count(),
             1
         );
@@ -14326,7 +14330,7 @@ mod tests {
                 track.loops[0].midi[0]
                     .events
                     .iter()
-                    .filter(|event| event.data == [0x90, 65, 100])
+                    .filter(|event| event.data == [0x90, 65, 100].into())
                     .count(),
                 1
             );
@@ -14671,8 +14675,8 @@ mod tests {
             .inject_midi_input(
                 created.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0xb2, 17, 127],
+                    frame: 0,
+                    data: vec![0xb2, 17, 127].into(),
                 }],
             )
             .unwrap();
@@ -14850,8 +14854,8 @@ mod tests {
             .inject_midi_input(
                 created.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x9f, 60, 100],
+                    frame: 0,
+                    data: vec![0x9f, 60, 100].into(),
                 }],
             )
             .unwrap();
@@ -14868,16 +14872,16 @@ mod tests {
                 created.track_id,
                 &[
                     BackendMidiEvent {
-                        time: 0,
-                        data: vec![0xcf, 40],
+                        frame: 0,
+                        data: vec![0xcf, 40].into(),
                     },
                     BackendMidiEvent {
-                        time: 0,
-                        data: vec![0xbf, 0, 1],
+                        frame: 0,
+                        data: vec![0xbf, 0, 1].into(),
                     },
                     BackendMidiEvent {
-                        time: 0,
-                        data: vec![0xbf, 32, 1],
+                        frame: 0,
+                        data: vec![0xbf, 32, 1].into(),
                     },
                 ],
             )
@@ -14948,20 +14952,20 @@ mod tests {
         assert_eq!(state, "shoop-oxisynth:2:timgm6mb:0:40:3e800000:3f000000");
         let preserved_midi = vec![
             BackendMidiEvent {
-                time: 0,
-                data: vec![0xcf, 41],
+                frame: 0,
+                data: vec![0xcf, 41].into(),
             },
             BackendMidiEvent {
-                time: 1,
-                data: vec![0xbf, 0, 1],
+                frame: 1,
+                data: vec![0xbf, 0, 1].into(),
             },
             BackendMidiEvent {
-                time: 2,
-                data: vec![0xbf, 32, 2],
+                frame: 2,
+                data: vec![0xbf, 32, 2].into(),
             },
             BackendMidiEvent {
-                time: 3,
-                data: vec![0x9f, 64, 100],
+                frame: 3,
+                data: vec![0x9f, 64, 100].into(),
             },
         ];
         backend
@@ -14972,7 +14976,7 @@ mod tests {
                         channel: 0,
                         length: 128,
                         start_state: vec![vec![0xbf, 0, 3], vec![0xcf, 42]],
-                        events: preserved_midi.clone(),
+                        events: preserved_midi.clone().into(),
                         start_offset: None,
                         capture_alignment_frames: None,
                         preplay: None,
@@ -14994,7 +14998,7 @@ mod tests {
             .process_audio_quantum(&[], 0, &mut output, 2, 128)
             .unwrap();
         let midi = backend.loop_midi_data(created.loops[0]).unwrap().unwrap();
-        assert_eq!(midi.channels[0].events, preserved_midi);
+        assert_eq!(midi.channels[0].events.as_ref(), &preserved_midi);
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].processor_state.as_deref(),
@@ -15006,7 +15010,10 @@ mod tests {
         assert!(captured.tracks[0].loops[0].midi[0]
             .start_state
             .contains(&vec![0xcf, 42]));
-        assert_eq!(captured.tracks[0].loops[0].midi[0].events, preserved_midi);
+        assert_eq!(
+            captured.tracks[0].loops[0].midi[0].events.as_ref(),
+            &preserved_midi
+        );
         assert_eq!(
             captured.tracks[0].oxisynth_midi_cc_assignments,
             [BackendOxiSynthMidiCcAssignment {
@@ -15423,8 +15430,8 @@ mod tests {
                 .iter()
                 .flat_map(|track| &track.loops)
                 .flat_map(|loop_| &loop_.midi)
-                .flat_map(|channel| &channel.events)
-                .any(|event| event.data == [0x90, 64, 100]),
+                .flat_map(|channel| channel.events.iter())
+                .any(|event| event.data.as_ref() == [0x90, 64, 100]),
             "ring times: {:?}",
             midi_ringbuffer
                 .iter()
@@ -15492,14 +15499,15 @@ mod tests {
                         start_state: Vec::new(),
                         events: vec![
                             BackendMidiEvent {
-                                time: 3,
-                                data: vec![0x90, 64, 100],
+                                frame: 3,
+                                data: vec![0x90, 64, 100].into(),
                             },
                             BackendMidiEvent {
-                                time: 19,
-                                data: vec![0x80, 64, 0],
+                                frame: 19,
+                                data: vec![0x80, 64, 0].into(),
                             },
-                        ],
+                        ]
+                        .into(),
                         start_offset: Some(-4),
                         capture_alignment_frames: None,
                         preplay: Some(7),
@@ -15516,8 +15524,8 @@ mod tests {
         assert_eq!(channel.length, 32);
         assert_eq!(channel.start_offset, -4);
         assert_eq!(channel.preplay, 7);
-        assert_eq!(channel.events[0].data, [0x90, 64, 100]);
-        assert_eq!(channel.events[1].time, 19);
+        assert_eq!(channel.events[0].data, [0x90, 64, 100].into());
+        assert_eq!(channel.events[1].frame, 19);
         assert!(channel.content_revision > 0);
         assert_eq!(backend.capture_session().unwrap(), before);
     }

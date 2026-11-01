@@ -842,18 +842,14 @@ pub enum BackendOxiSynthParameter {
     ChorusSend,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct BackendMidiEvent {
-    pub time: u32,
-    pub data: Vec<u8>,
-}
+pub use shoop_app_api::MidiEventState as BackendMidiEvent;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendMidiContent {
     pub mode: BackendChannelMode,
     pub length: u32,
     pub start_state: Vec<Vec<u8>>,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: i32,
     #[serde(default)]
     pub capture_alignment_frames: i32,
@@ -865,7 +861,7 @@ pub struct BackendMidiChannelData {
     pub content_revision: u64,
     pub mode: BackendChannelMode,
     pub length: u32,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
     pub preplay: u32,
@@ -901,7 +897,7 @@ pub struct BackendMidiChannelUpdate {
     pub channel: usize,
     pub length: u32,
     pub start_state: Vec<Vec<u8>>,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: Option<i32>,
     #[serde(default)]
     pub capture_alignment_frames: Option<i32>,

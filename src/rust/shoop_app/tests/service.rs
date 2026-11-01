@@ -592,11 +592,11 @@ fn active_audio_and_midi_recording_continues_through_client_loss_and_media_is_no
     assert!(midi.channels[0]
         .events
         .iter()
-        .any(|event| event.data == [0x90, 60, 100]));
+        .any(|event| event.data == [0x90, 60, 100].into()));
     assert!(midi.channels[0]
         .events
         .iter()
-        .any(|event| event.data == [0x80, 60, 0]));
+        .any(|event| event.data == [0x80, 60, 0].into()));
     assert_eq!(f.waits.get(), f.initial_waits);
 }
 
@@ -1557,8 +1557,8 @@ fn losing_the_client_releases_only_held_piano_notes_while_recording_continues() 
         2,
         "detach sends a held note-off without a channel panic or capture reset"
     );
-    assert_eq!(midi.channels[0].events[0].data, [0x90, 60, 100]);
-    assert_eq!(midi.channels[0].events[1].data, [0x80, 60, 0]);
+    assert_eq!(midi.channels[0].events[0].data, [0x90, 60, 100].into());
+    assert_eq!(midi.channels[0].events[1].data, [0x80, 60, 0].into());
 }
 
 #[shoop_test]
@@ -1907,7 +1907,7 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
     content.midi[0].initial = vec![vec![0xb0, 7, 12], vec![0xb0, 7, 99]];
     image.payloads = vec![
         persistence_image::Payload::Audio(Arc::new(vec![0., 0.25, 0.5, 0.75, 1., 0.125])),
-        persistence_image::Payload::Midi(Arc::from([
+        persistence_image::Payload::Midi(Arc::new(vec![
             MidiEventState {
                 frame: 0,
                 data: Arc::from([0x90, 60, 100]),
@@ -2009,6 +2009,17 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
         })
         .expect("capture completion");
     assert_eq!(captured.payloads, expected);
+    for (captured, expected) in captured.payloads.iter().zip(&expected) {
+        match (captured, expected) {
+            (persistence_image::Payload::Audio(a), persistence_image::Payload::Audio(b)) => {
+                assert!(Arc::ptr_eq(a, b))
+            }
+            (persistence_image::Payload::Midi(a), persistence_image::Payload::Midi(b)) => {
+                assert!(Arc::ptr_eq(a, b))
+            }
+            _ => panic!("capture changed media types"),
+        }
+    }
     let persistence_image::Manifest::Session(session) = &captured.manifest else {
         panic!()
     };

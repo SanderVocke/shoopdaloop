@@ -465,8 +465,8 @@ fn midi_data(bytes: &[u8], version: u64, length: u32) -> Result<BackendMidiData,
         let end = 12 + len as usize;
         let data = rest.get(12..end).ok_or_else(malformed)?.to_vec();
         events.push(BackendMidiEvent {
-            time: u32::try_from(frame).map_err(|_| malformed())?,
-            data,
+            frame: u32::try_from(frame).map_err(|_| malformed())?,
+            data: data.into(),
         });
         rest = &rest[end..];
     }
@@ -475,7 +475,7 @@ fn midi_data(bytes: &[u8], version: u64, length: u32) -> Result<BackendMidiData,
             content_revision: version,
             mode: BackendChannelMode::Direct,
             length,
-            events,
+            events: events.into(),
             start_offset: 0,
             capture_alignment_frames: 0,
             preplay: 0,
@@ -497,7 +497,7 @@ pub(crate) fn empty_midi(version: u64, midi: bool) -> BackendMidiData {
                 content_revision: version,
                 mode: BackendChannelMode::Direct,
                 length: 0,
-                events: Vec::new(),
+                events: Vec::new().into(),
                 start_offset: 0,
                 capture_alignment_frames: 0,
                 preplay: 0,

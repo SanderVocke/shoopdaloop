@@ -648,8 +648,8 @@ impl Service {
                     self.backend.inject_midi_input(
                         self.tracks[id].backend,
                         &[BackendMidiEvent {
-                            time: 0,
-                            data: vec![0x90, note.value(), 100],
+                            frame: 0,
+                            data: vec![0x90, note.value(), 100].into(),
                         }],
                     )?;
                     self.piano_notes
@@ -665,8 +665,8 @@ impl Service {
                             self.backend.inject_midi_input(
                                 track.backend,
                                 &[BackendMidiEvent {
-                                    time: 0,
-                                    data: vec![0x80, note.value(), 0],
+                                    frame: 0,
+                                    data: vec![0x80, note.value(), 0].into(),
                                 }],
                             )?;
                         }
@@ -710,8 +710,8 @@ impl Service {
             .collect();
         let events: Vec<_> = (0..16)
             .map(|channel| BackendMidiEvent {
-                time: 0,
-                data: vec![0xb0 | channel, 120, 0],
+                frame: 0,
+                data: vec![0xb0 | channel, 120, 0].into(),
             })
             .collect();
         for track in tracks {

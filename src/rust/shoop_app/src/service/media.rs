@@ -63,9 +63,10 @@ impl Service {
                     .map(|channel| MidiMediaChannel {
                         events: channel
                             .events
-                            .into_iter()
+                            .iter()
+                            .cloned()
                             .map(|event| MidiMediaEvent {
-                                frame: event.time,
+                                frame: event.frame,
                                 data: event.data.into(),
                             })
                             .collect::<Vec<_>>()

@@ -118,17 +118,7 @@ impl Cut {
             let object = if channel.events.is_empty() {
                 None
             } else {
-                payloads.push(image::Payload::Midi(
-                    channel
-                        .events
-                        .into_iter()
-                        .map(|event| MidiEventState {
-                            frame: event.time,
-                            data: event.data.into(),
-                        })
-                        .collect::<Vec<_>>()
-                        .into(),
-                ));
+                payloads.push(image::Payload::Midi(channel.events));
                 Some(payloads.len() as u32)
             };
             midi.push(image::MidiChannel {

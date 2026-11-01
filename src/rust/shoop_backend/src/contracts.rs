@@ -179,8 +179,8 @@ pub fn direct_track_contract(backend: &mut dyn Backend) {
     let injected = backend.inject_midi_input(
         created.track_id,
         &[BackendMidiEvent {
-            time: 0,
-            data: vec![0x90, 60, 100],
+            frame: 0,
+            data: vec![0x90, 60, 100].into(),
         }],
     );
     if backend
@@ -418,8 +418,8 @@ pub(crate) fn attempt_capability(
         BackendCapability::MidiInjection => backend.inject_midi_input(
             track_id,
             &[BackendMidiEvent {
-                time: 0,
-                data: vec![0x90, 60, 100],
+                frame: 0,
+                data: vec![0x90, 60, 100].into(),
             }],
         ),
     }
@@ -719,7 +719,7 @@ fn session_track(
                     mode: BackendChannelMode::Direct,
                     length: 0,
                     start_state: Vec::new(),
-                    events: Vec::new(),
+                    events: Vec::new().into(),
                     start_offset: 0,
                     capture_alignment_frames: 0,
                     preplay: 0,
