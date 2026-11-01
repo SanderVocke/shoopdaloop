@@ -492,10 +492,10 @@ produce a clear startup error. Both carrier jobs are required, not optional skip
       shared contracts for in-process, MessagePort, socket and shared-memory
       carriers, both IPC backend/subprocess failure suites, release
       host/endpoint heap guards, and affected ownership/model Miri cases.
-- [ ] Exercise the real app's full core workflow over both carriers on dummy and
+- [x] Exercise the real app's full core workflow over both carriers on dummy and
       a real Linux CPAL device; exercise MIDI routing/cleanup with mock ports and
       real hardware where available. Record hardware gaps explicitly.
-- [ ] For both carriers demonstrate fatal app disconnect without app exit, continued
+- [x] For both carriers demonstrate fatal app disconnect without app exit, continued
       healthy engine playback/recording after connection loss and app crash, no
       reconnection/control, and graceful explicit shutdown of the failed app's engine.
 - [ ] Run existing Node/worklet and application browser regression gates, including
@@ -506,7 +506,7 @@ produce a clear startup error. Both carrier jobs are required, not optional skip
       protocol/connection machinery. Map I1–I9 to evidence in `VALIDATION.md`, with
       failures, skips and unavailable environments stated. Do not mark an unmet
       criterion complete.
-- [ ] Commit meaningful milestones, push `feat/engine-ipc`, and open/update a PR
+- [x] Commit meaningful milestones, push `feat/engine-ipc`, and open/update a PR
       against `feat/loop-execution-layer` (or the default branch if that base has
       merged). Describe the final scope, validation and remaining limitations.
 - [ ] Work required CI to green on the final PR head and inspect representative

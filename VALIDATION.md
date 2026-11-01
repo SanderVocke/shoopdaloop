@@ -932,3 +932,34 @@ failure. A regression test covers clean EOF and trailing data followed by EOF,
 including latched send/receive refusal. All seven shared-memory carrier tests and
 the warnings-denied carrier build pass; this native-only correction does not
 change the protocol, engine, portable transport, worklet or timing.
+
+
+### Stage 9: platform and device checkpoint
+
+PR #897's initial validation head `494c79215632f885ecb5b54b7ae05f83a441228c`
+passed all required checks: build/test run
+[41259254391](https://github.com/SanderVocke/shoopdaloop/actions/runs/41259254391),
+Docs and CodeQL. All six native debug/release variants (Linux, macOS arm64 and
+Windows x86_64), Rust coverage and both web variants succeeded. Both carriers'
+subprocess suites and staged/extracted package probes ran on every native
+platform; macOS debug's main native suite passed 1765 tests with zero skipped.
+Native release variants also exercise the engine/host callback heap guards.
+The independent liveness edge-case correction is being validated on the next head.
+
+The local real CPAL integration workflow passed in all three modes (`in_process`,
+`socket`, `shared_memory`), using JACK 1.9.22's paced virtual dummy device at
+48 kHz/256 frames: 3 tests passed in 15.122 s, peak RSS 2161.3 MiB. Each exercised
+structure-only New Session, audio routing, sync recording/playback, control changes,
+waveform reads, stop/clear and graceful teardown. The measured one-second windows
+advanced 48128 frames with zero app-reported xruns in the IPC runs; the JACK server
+reported startup xruns separately. This uses real CPAL/JACK APIs and a virtual
+device, not physical audio hardware or the CPAL mock. Physical audio/MIDI hardware
+is unavailable; mock MIDI routing and reset coverage is reported separately.
+
+Protocol and portable-transport Miri selections passed 4 and 10 executions.
+The selected engine Miri run is still in progress with the unchanged workload,
+seed and 900 s per-command watchdog. A local Node run was interrupted after an
+unintentional overlap with Miri; it is not claimed as a complete local pass.
+The complete Node suite subsequently passed in CI. Remaining heavy local checks
+run sequentially; the overlapping processes remained below the session RAM cap.
+Final source/evidence mapping and the manual Chrome check remain open.
