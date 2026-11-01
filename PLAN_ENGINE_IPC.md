@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–4 are verified locally;
-Shared-memory transport is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–5 are verified locally;
+Process hosting and supervision are next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -402,10 +402,10 @@ existing discard semantics. No worker or buffer remains after fixture teardown.
 
 ### Stage 5 — Shared-memory transport
 
-- [ ] Create `shoop_rt_transport_shared_memory` with both client/server ends;
+- [x] Create `shoop_rt_transport_shared_memory` with both client/server ends;
       implement fresh mapping setup, validated initialization, queue publication
       and recycling, notifications and cleanup through the selected safe dependency.
-- [ ] Wire the same record client/server and subprocess fixture to shared memory;
+- [x] Wire the same record client/server and subprocess fixture to shared memory;
       retain the control channel for startup, liveness and shutdown only.
 
 **Verify:** the same protocol suite over actual shared mappings; address-independent

@@ -793,3 +793,32 @@ across real processes rather than assuming immediate delivery.
 - The first saturation test exposed a fixture mistake (reusing its pending retry
   payload as the receive buffer); separate buffers corrected the test. The fixed
   test passes with the original carrier implementation.
+
+
+### Stage 5: shared-memory transport
+
+`shoop_rt_transport_shared_memory` pins iceoryx2 0.10.0's safe threadsafe IPC API.
+Six fixed-payload queues cover both directions and all lanes. Private descriptors
+validate version, record width and exact capacities before access. Library-owned
+relocatable mappings, sample publication/reclamation and overflow semantics are
+used directly; no second raw-memory queue algorithm was introduced. Reliable and
+bulk lanes disable overflow; telemetry enables the library's safe oldest-drop.
+A per-session resource prefix scopes dead-peer cleanup; optional private socket
+liveness distinguishes a departed peer from empty queues.
+
+- Warnings-denied check and `cargo test --locked -p shoop_rt_transport_shared_memory`:
+  six passed, peak build RSS 635.0 MiB.
+- Bounded observable models: 1000 FIFO capacity/refusal/retry/recycle rounds and
+  latest-value replacement agree with expected contents. Corrupt descriptor
+  version/record width/reserved fields, truncated layout and mismatched negotiated
+  capacity are rejected. The resulting port satisfies `Send` without application
+  unsafe code.
+- The same shared lifecycle/credit/bulk contract passes across a real subprocess.
+  Its separate socket carries only authentication/readiness, with no engine records.
+- Concurrent subprocess producer: all 10,000 full-width records have coherent,
+  ordered sequence/payload bytes. Killing the producer during publication gives
+  terminal EOF, and explicit dead-node cleanup reports successful reclamation.
+  These are native process tests, not an assertion that Miri models OS mappings.
+- Publication ordering, alignment and counter wrap are delegated to the pinned
+  dependency's queue primitives; project-level queue/record ownership remains in
+  the common transport. macOS/Windows execution and device hosting remain later gates.

@@ -20,7 +20,7 @@ SPEC.loader.exec_module(RUNTIME)
 PACKAGES = (
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
-    "shoop_rt_transport_socket",
+    "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory",
 )
 FORBIDDEN = {
     "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",

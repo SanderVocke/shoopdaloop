@@ -279,3 +279,4 @@ src/rust/shoop_rt_protocol/src/host.rs,engine_protocol,excluded,Plain portable h
 src/rust/shoop_rt_protocol/src/codec/host.rs,engine_protocol,excluded,Canonical bounded host message encoding and decoding without I/O.
 src/rust/shoop_rt_transport_socket/src/lib.rs,engine_transport,excluded,Bounded socket record carrier; its host traces connection lifecycle and errors.
 src/rust/shoop_rt_transport_socket/src/setup.rs,engine_transport,excluded,Private authenticated local endpoint setup; its host reports startup results.
+src/rust/shoop_rt_transport_shared_memory/src/lib.rs,engine_transport,excluded,Safe shared record queues and liveness; host reports startup and terminal transport failures.
