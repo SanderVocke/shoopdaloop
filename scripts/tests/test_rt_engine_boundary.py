@@ -52,6 +52,14 @@ class EngineBoundaryTests(unittest.TestCase):
                          ["shoop_transport_socket"])
         self.assertEqual(MODULE.violations("shoop_transport v0.3.0\n", "shoop_rt_protocol"), [])
 
+    def test_app_contracts_and_client_stay_portable_without_a_runtime_or_carrier(self):
+        for package in ("shoop_app_protocol", "shoop_app_client"):
+            self.assertIn(package, MODULE.PACKAGES)
+            allowed = "shoop_app_api v0.3.0\nshoop_app_protocol v0.3.0\nshoop_transport v0.3.0\n"
+            self.assertEqual(MODULE.violations(allowed, package), [])
+            for dependency in ("shoop_app", "shoop_backend", "shoop_scripting", "shoop_rt_protocol", "shoop_transport_socket", "cpal"):
+                self.assertEqual(MODULE.violations(dependency + " v0.3.0\n", package), [dependency])
+
     def test_adapter_uses_only_portable_engine_connections(self):
         tree = "shoop_rt_backend v0.3.0\nshoop_backend v0.3.0\nshoop_rt_protocol v0.3.0\nshoop_rt_transport v0.3.0\n"
         self.assertEqual(MODULE.violations(tree, "shoop_rt_backend"), [])

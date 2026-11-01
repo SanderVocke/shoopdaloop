@@ -4608,8 +4608,32 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "serde",
  "shoop_latency",
  "shoop_script_resources",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_app_client"
+version = "0.3.0"
+dependencies = [
+ "shoop_app_api",
+ "shoop_app_protocol",
+ "shoop_transport",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_app_protocol"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "shoop_app_api",
+ "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]

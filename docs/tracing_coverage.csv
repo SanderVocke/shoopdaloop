@@ -290,3 +290,7 @@ src/rust/shoop_transport/src/buffer.rs,session_transport,excluded,Fixed-capacity
 src/rust/shoop_transport/src/framing.rs,session_transport,excluded,Allocation-free record framing; the connection owner handles framing errors.
 src/rust/shoop_transport_socket/src/lib.rs,session_transport,excluded,Bounded socket record carrier; its host traces connection lifecycle and errors.
 src/rust/shoop_transport_shared_memory/src/lib.rs,session_transport,excluded,Safe shared record queues and liveness; its host reports startup and terminal transport failures.
+src/rust/shoop_app_protocol/src/lib.rs,app_session,excluded,App message identities and shared state DTOs; no execution boundary to instrument.
+src/rust/shoop_app_protocol/src/codec.rs,app_session,excluded,Bounded app wire codec; the delivery owner handles encode and decode failures.
+src/rust/shoop_app_protocol/src/local.rs,app_session,excluded,Typed bounded channel construction; no execution boundary to instrument.
+src/rust/shoop_app_client/src/lib.rs,app_session,excluded,Portable projection and attachment state machine; the UI delivery owner reports state and transport failures.

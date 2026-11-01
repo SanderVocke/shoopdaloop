@@ -7,6 +7,7 @@ use std::sync::Arc;
 macro_rules! entity_id {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name(u64);
 
         impl $name {
@@ -45,6 +46,7 @@ entity_id!(ScriptDialogId);
 entity_id!(ScriptDialogButtonId);
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostPortId(String);
 
 impl HostPortId {
@@ -64,6 +66,7 @@ impl fmt::Display for HostPortId {
 }
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorTypeId(String);
 
 impl TrackProcessorTypeId {
@@ -90,6 +93,7 @@ impl fmt::Display for TrackProcessorTypeId {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorFeatures {
     pub state: bool,
     pub external_ui: bool,
@@ -99,6 +103,7 @@ pub struct TrackProcessorFeatures {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorMidiPolicy {
     #[default]
     Unsupported,
@@ -107,6 +112,7 @@ pub enum TrackProcessorMidiPolicy {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorConstraints {
     pub min_dry_audio_channels: Option<u32>,
     pub max_dry_audio_channels: Option<u32>,
@@ -139,12 +145,14 @@ impl TrackProcessorConstraints {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorPresetDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorEditorDescriptor {
     BuiltInFx,
     OxiSynth {
@@ -153,6 +161,7 @@ pub enum TrackProcessorEditorDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorDescriptor {
     pub id: TrackProcessorTypeId,
     pub label: String,
@@ -164,6 +173,7 @@ pub struct TrackProcessorDescriptor {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FxLifecycle {
     #[default]
     Unavailable,
@@ -176,6 +186,7 @@ pub enum FxLifecycle {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FxGenerationLogState {
     pub generation: u64,
     pub stdout: Arc<str>,
@@ -188,6 +199,21 @@ pub struct FxGenerationLogState {
 pub struct LatestMidiMessage {
     pub bytes: [u8; 4],
     pub len: u8,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LatestMidiMessage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&(self.bytes, self.len), serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for LatestMidiMessage {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (bytes, len) = <([u8; 4], u8) as serde::Deserialize>::deserialize(deserializer)?;
+        Self::new(bytes, len).ok_or_else(|| serde::de::Error::custom("invalid MIDI message length"))
+    }
 }
 
 impl LatestMidiMessage {
@@ -217,6 +243,7 @@ impl LatestMidiMessage {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OxiSynthParameter {
     ReverbSend,
     ChorusSend,
@@ -234,6 +261,7 @@ impl OxiSynthParameter {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OxiSynthMidiCcAssignment {
     pub parameter: OxiSynthParameter,
     pub channel: u8,
@@ -241,6 +269,7 @@ pub struct OxiSynthMidiCcAssignment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OxiSynthState {
     pub selected_preset_id: String,
     pub reverb_send: f32,
@@ -249,6 +278,7 @@ pub struct OxiSynthState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxStage {
     Compressor,
     Drive,
@@ -259,6 +289,7 @@ pub enum BuiltInFxStage {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxDriveType {
     #[default]
     Saturation,
@@ -268,6 +299,7 @@ pub enum BuiltInFxDriveType {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxModulationType {
     #[default]
     Tremolo,
@@ -276,6 +308,7 @@ pub enum BuiltInFxModulationType {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxReverbType {
     #[default]
     Room,
@@ -284,6 +317,7 @@ pub enum BuiltInFxReverbType {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxParameter {
     CompressorThreshold,
     CompressorRatio,
@@ -397,6 +431,7 @@ impl BuiltInFxParameter {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BuiltInFxMidiCcAssignment {
     pub parameter: BuiltInFxParameter,
     pub channel: u8,
@@ -404,6 +439,7 @@ pub struct BuiltInFxMidiCcAssignment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BuiltInFxState {
     pub compressor_enabled: bool,
     pub compressor_threshold_db: f32,
@@ -481,12 +517,14 @@ impl Default for BuiltInFxState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorEditorState {
     BuiltInFx(BuiltInFxState),
     OxiSynth(OxiSynthState),
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackFxState {
     pub processor_type: TrackProcessorTypeId,
     pub active: bool,
@@ -509,6 +547,7 @@ pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecordingOffsetAdjustmentState {
     Automatic,
     #[default]
@@ -517,6 +556,7 @@ pub enum RecordingOffsetAdjustmentState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProcessorLatencyAdjustmentState {
     Automatic,
     #[default]
@@ -525,6 +565,7 @@ pub enum ProcessorLatencyAdjustmentState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackLatencyState {
     pub automatic_offset_frames: Option<i32>,
     pub adjustment: RecordingOffsetAdjustmentState,
@@ -556,6 +597,7 @@ impl Default for TrackLatencyState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DefaultRecordingAction {
     #[default]
     Record,
@@ -563,6 +605,7 @@ pub enum DefaultRecordingAction {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DefaultPlaybackMode {
     #[default]
     Regular,
@@ -570,6 +613,7 @@ pub enum DefaultPlaybackMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopMode {
     #[default]
     Unknown,
@@ -582,6 +626,7 @@ pub enum LoopMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompositeKind {
     #[default]
     None,
@@ -590,6 +635,7 @@ pub enum CompositeKind {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalControlState {
     pub default_recording_action: DefaultRecordingAction,
     pub play_after_record: bool,
@@ -615,6 +661,7 @@ impl Default for GlobalControlState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverState {
     #[default]
     Dummy,
@@ -630,6 +677,7 @@ pub enum AudioDriverState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverKind {
     #[default]
     Dummy,
@@ -659,6 +707,7 @@ impl AudioDriverKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DummyAudioDriverConfig {
     pub sample_rate: u32,
     pub buffer_size: u32,
@@ -674,6 +723,7 @@ impl Default for DummyAudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
 }
@@ -687,6 +737,7 @@ impl Default for JackAudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CpalAudioDriverConfig {
     pub client_name: String,
     pub host: String,
@@ -720,6 +771,7 @@ impl Default for CpalAudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverConfig {
     Dummy(DummyAudioDriverConfig),
     Jack(JackAudioDriverConfig),
@@ -745,6 +797,7 @@ impl Default for AudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverDescriptor {
     pub kind: AudioDriverKind,
     pub available: bool,
@@ -757,6 +810,7 @@ pub struct AudioDriverDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResolvedAudioDriverConfig {
     pub configured: AudioDriverConfig,
     pub sample_rate: u32,
@@ -765,6 +819,7 @@ pub struct ResolvedAudioDriverConfig {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverSwitchStatus {
     #[default]
     Idle,
@@ -779,6 +834,7 @@ pub enum AudioDriverSwitchStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverSwitchState {
     pub request_id: u64,
     pub status: AudioDriverSwitchStatus,
@@ -789,6 +845,7 @@ pub struct AudioDriverSwitchState {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverRuntimeState {
     pub supported: bool,
     pub catalog: Arc<[AudioDriverDescriptor]>,
@@ -797,6 +854,7 @@ pub struct AudioDriverRuntimeState {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
     pub version: String,
     pub dsp_load_percent: f32,
@@ -823,6 +881,7 @@ impl StatusState {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackControlState {
     pub has_output: bool,
     pub has_output_audio: bool,
@@ -885,6 +944,7 @@ impl TrackControlState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StructuralState {
     #[default]
     Confirmed,
@@ -893,6 +953,7 @@ pub enum StructuralState {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
     pub id: LoopId,
     pub name: String,
@@ -964,18 +1025,21 @@ impl Default for LoopState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortDataType {
     Audio,
     Midi,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortDirection {
     Input,
     Output,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1011,12 +1075,14 @@ impl PortRole {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackPortOwnerKind {
     Sync,
     Main,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ApplicationPortOwner {
     GlobalFxControl,
     Bus {
@@ -1033,12 +1099,14 @@ pub enum ApplicationPortOwner {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectionPolicy {
     UserManaged,
     OwnerManaged,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
     pub id: PortId,
     pub owner: ApplicationPortOwner,
@@ -1050,6 +1118,7 @@ pub struct ApplicationPortState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostPortState {
     pub id: HostPortId,
     pub name: String,
@@ -1065,6 +1134,7 @@ pub const MAX_MIXER_ROUTES: usize = 4_096;
 pub const MAX_BUS_HOST_LINKS: usize = 4_096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusChannelState {
     pub id: BusChannelId,
     pub label: String,
@@ -1072,6 +1142,7 @@ pub struct BusChannelState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusState {
     pub id: BusId,
     pub name: String,
@@ -1094,30 +1165,35 @@ impl BusState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MixerRouteState {
     pub source_port_id: PortId,
     pub destination_channel_id: BusChannelId,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PendingMixerRouteState {
     pub route: MixerRouteState,
     pub desired_connected: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MixerRouteErrorState {
     pub route: MixerRouteState,
     pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConfirmedConnectionState {
     pub application_port_id: PortId,
     pub host_port_id: HostPortId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PendingConnectionState {
     pub application_port_id: PortId,
     pub host_port_id: HostPortId,
@@ -1125,6 +1201,7 @@ pub struct PendingConnectionState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectionErrorKind {
     StaleLocalPort,
     EndpointUnavailable,
@@ -1136,6 +1213,7 @@ pub enum ConnectionErrorKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConnectionErrorState {
     pub port_id: Option<PortId>,
     pub external_port: Option<String>,
@@ -1144,6 +1222,7 @@ pub struct ConnectionErrorState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConnectionViewState {
     pub revision: u64,
     pub loading: bool,
@@ -1186,6 +1265,7 @@ pub enum TrackChannelRole {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackTopology {
     #[default]
     Direct,
@@ -1198,6 +1278,7 @@ pub enum TrackTopology {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackState {
     pub id: TrackId,
     pub name: String,
@@ -1646,18 +1727,21 @@ pub struct ClickTrackState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackCreationResult {
     pub request_id: u64,
     pub success: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusCreationResult {
     pub request_id: u64,
     pub success: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusSpec {
     pub name: String,
     pub channel_count: u32,
@@ -1666,6 +1750,7 @@ pub struct BusSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusFxSpec {
     pub processor_type: TrackProcessorTypeId,
 }
@@ -1755,6 +1840,7 @@ impl BackendCapability {
 /// The set of optional features a backend supports. The application presents the others as
 /// unavailable, refuses them and rejects documents that need them. Defaults to every feature.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BackendCapabilities {
     supported: u32,
 }
@@ -1860,6 +1946,7 @@ pub type AppState = AppSnapshot;
 pub const MAX_TRACK_LATENCY_FRAMES: i32 = shoop_latency::MAX_COMPENSATION_FRAMES as i32;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackLatencySpec {
     pub adjustment: RecordingOffsetAdjustmentState,
     pub manual_frames: i32,
@@ -1868,6 +1955,7 @@ pub struct TrackLatencySpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackSpec {
     pub name: String,
     pub topology: TrackSpecTopology,
@@ -1877,6 +1965,7 @@ pub struct TrackSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackSpecTopology {
     Direct {
         audio_channels: u32,
@@ -1990,6 +2079,7 @@ pub enum TrackSpecError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DirectTrackSpec {
     pub name: String,
     pub audio_channels: u32,
@@ -2026,6 +2116,7 @@ pub enum DirectTrackSpecError {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SelectionModifiers {
     pub additive: bool,
 }
@@ -2073,6 +2164,7 @@ impl Default for ClickTrackRequest {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopAction {
     NameChanged(String),
     IconClicked(SelectionModifiers),
@@ -2099,6 +2191,7 @@ pub enum LoopAction {
 pub type LoopWidgetAction = LoopAction;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxControl {
     SetStageEnabled(BuiltInFxStage, bool),
     SetDriveType(BuiltInFxDriveType),
@@ -2112,6 +2205,7 @@ pub enum BuiltInFxControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OxiSynthControl {
     SelectPreset(String),
     SetReverbSend(f32),
@@ -2123,6 +2217,7 @@ pub enum OxiSynthControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackAction {
     Remove,
     MoveBefore(Option<TrackId>),
@@ -2149,6 +2244,7 @@ pub enum TrackAction {
 pub type TrackWidgetAction = TrackAction;
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BusAction {
     Remove,
     MoveBefore(Option<BusId>),
@@ -2165,6 +2261,7 @@ pub enum BusAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GlobalControlAction {
     StopAll,
     MidiPanic,
@@ -2183,6 +2280,21 @@ pub enum GlobalControlAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiNote(u8);
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for MidiNote {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u8(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MidiNote {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <u8 as serde::Deserialize>::deserialize(deserializer)?;
+        Self::new(value).ok_or_else(|| serde::de::Error::custom("invalid MIDI note"))
+    }
+}
+
 impl MidiNote {
     pub const fn new(value: u8) -> Option<Self> {
         if value <= 127 {
@@ -2198,6 +2310,7 @@ impl MidiNote {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PianoAction {
     Press(MidiNote),
     Release(MidiNote),

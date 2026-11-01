@@ -4,8 +4,9 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stage 1 transport extraction is complete; other Stage 1 work and Stages 2–7
-remain pending. Originally written under
+Stage 1 transport extraction and initial app protocol/client contracts are implemented.
+Engine-independent backend extraction and production integration remain pending, as do
+Stages 2–7. See [incremental validation](docs/native_session_recovery/validation.md). Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,
 based on PR [#897](https://github.com/SanderVocke/shoopdaloop/pull/897) head
 `e369fc257abde71a32a968aa5f922da23bed0c2a` (`feat/engine-ipc`).
@@ -300,7 +301,7 @@ checks. Inventory existing performance evidence; avoid a full baseline matrix ru
 
 - [ ] Extract engine-independent `shoop_backend` contracts/shared types from legacy
   imports; establish `shoop_app_protocol` and `shoop_app_client` boundaries.
-- [ ] Add versioned app messages/codec, stable identities, results and revisioned
+- [x] Add versioned app messages/codec, stable identities, results and revisioned
   state updates, bounded transfer, and typed local delivery interfaces.
 - [x] Extract shared record primitives/carriers to `shoop_transport*` as needed;
   keep engine-specific protocol/credit semantics separate and reuse carrier code.

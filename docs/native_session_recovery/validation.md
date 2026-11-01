@@ -34,3 +34,23 @@ execution is deferred to the final stage as requested.
 Full retained-workspace native/Node/browser gates, hardware smokes, three-platform
 packages, app attachment tests, performance measurements and final-head CI/review
 are not covered by this checkpoint.
+
+## Initial app protocol/client contracts
+
+Candidate based on `b826242d`, before the following stage commit. This is portable
+contract/client evidence only. No production UI or Lua path has been migrated to
+the new crates, and no authoritative session service or independent app host exists
+yet. Therefore no A1–A11 completion is claimed.
+
+- `cargo test -p shoop_app_protocol -p shoop_app_client -p shoop_app_api --features shoop_app_api/serde`: 24 existing API tests plus 13 new protocol/client tests pass. Cases cover typed/encoded projections, malformed/truncated/version/oversize records, MIDI domain invariants, hostile lengths, partial snapshot rejection, lost reply reconciliation, bounded cooperative local queues, Ready ordering and correlated shutdown refusal/retry.
+- `RUSTFLAGS='-D warnings' cargo build --locked -p shoop_app_protocol -p shoop_app_client`: passed; the same packages also build for `wasm32-unknown-unknown` with warnings denied.
+- `RUSTFLAGS='-D warnings' cargo build --locked --target wasm32-unknown-unknown -p shoop_app -p shoop_rt_backend`: passed for the existing application/adapter consumers.
+- Four-target dependency audit includes both new crates and forbids engine/runtime/device/UI/concrete-carrier dependencies.
+- Python boundary/Miri-runner tests pass (44 tests). The Miri inventory adds four exact portable codec/client cases; original workloads/seeds remain intact. New total: 172 commands / 340 interpreted executions. Miri itself has not run.
+- Formatting, test-attribute and closed tracing inventories are checked before the stage commit. Browser/Node execution and production service integration are not established by Wasm compilation.
+
+The preceding transport commit's full workflow was dispatched as run
+[41281596959](https://github.com/SanderVocke/shoopdaloop/actions/runs/41281596959).
+The Rust coverage job failed with exit 100; its diagnostic log/artifact downloads
+returned Forbidden in this environment. That failure is unresolved, not a pass.
+The newer protocol/client candidate needs its own final-head CI evidence.

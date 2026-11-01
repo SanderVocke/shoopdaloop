@@ -17,7 +17,7 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 336)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 340)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 4)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 5)
@@ -35,6 +35,8 @@ class MiriRunnerTests(unittest.TestCase):
 
     def test_extracted_shared_buffer_workload_is_retained(self):
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_transport")), 5)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_app_protocol")), 2)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_app_client")), 2)
 
     def test_full_length_stage8_models_have_four_additive_exact_commands(self):
         expected = (
@@ -45,7 +47,7 @@ class MiriRunnerTests(unittest.TestCase):
         )
         cases = runner.selected_cases()
         self.assertEqual(runner.STAGE8_MODELS, expected)
-        self.assertEqual(len(cases), 168)
+        self.assertEqual(len(cases), 172)
         self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
                                     for owner, target, name in expected])
         self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])

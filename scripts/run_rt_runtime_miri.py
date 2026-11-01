@@ -60,6 +60,10 @@ STAGE8_MODELS = (
 # New engine backend: the protocol codec and carriers, the control endpoint's
 # materialization of runtime commands and the engine's pool handover.
 ENGINE_CASES = (
+    ("shoop_app_protocol", "codec", ["versions_protocol_discriminators_lengths_and_identity_are_checked", "--", "--exact"], 1),
+    ("shoop_app_protocol", "codec", ["hostile_container_lengths_and_midi_message_lengths_are_refused", "--", "--exact"], 1),
+    ("shoop_app_client", "projection", ["local_delivery_is_bounded_and_ready_ack_precedes_commands", "--", "--exact"], 1),
+    ("shoop_app_client", "projection", ["interrupted_out_of_order_and_oversized_transfers_never_publish_partial_state", "--", "--exact"], 1),
     ("shoop_rt_protocol", "protocol", [], 2),
     ("shoop_rt_transport", "carriers", [], 3),
     ("shoop_rt_protocol", "host", [], 2),
@@ -395,7 +399,7 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", "shoop_rt_protocol", "shoop_rt_transport", "shoop_transport", "shoop_rt_engine", HOST_PACKAGE), help="Run one package's selected cases")
+    parser.add_argument("--package", choices=("rt_runtime", "shoop_loops", "shoop_app_protocol", "shoop_app_client", "shoop_rt_protocol", "shoop_rt_transport", "shoop_transport", "shoop_rt_engine", HOST_PACKAGE), help="Run one package's selected cases")
     parser.add_argument("--report-dir", type=Path, help="Isolated output directory; overrides the default package directory")
     parser.add_argument("--list", action="store_true", help="Print the exact selected inventory without running Miri")
     parser.add_argument("--shard", type=shard_spec, help="Disjoint CI batch INDEX/TOTAL; keeps whole commands and workloads")
