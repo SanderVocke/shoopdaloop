@@ -10,6 +10,15 @@ full platform matrix and all 16 parity gaps still OPEN. Recheck the production c
 handlers whenever implementation changes. A green recovery CI does not close these
 rows. Every row remains **OPEN** until its completion evidence is linked here.
 
+The first planned parity slice is
+[core session persistence and media I/O](../../PLAN_SESSION_PERSISTENCE_MEDIA_IO.md),
+on `feat/session-persistence-media-io`, targeting `feat/backend-replacement`.
+It covers current-core save/load/export (P01/P02) and standalone audio/MIDI
+import/replacement (part of P11). Implementation has not started. FX, composites,
+session scripts and other unavailable document features remain their existing
+dependencies; content duplication and generated click insertion remain open in P11,
+with click generation/preview also tracked by P15. This plan does not close any row.
+
 ## What is already available
 
 The service supports direct audio/MIDI/trigger tracks, primitive loop creation and
