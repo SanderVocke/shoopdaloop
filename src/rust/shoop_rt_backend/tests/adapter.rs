@@ -28,11 +28,15 @@ fn track(audio_channels: u32, midi: bool, initial_loops: usize) -> DirectTrackRe
 }
 
 #[shoop_test]
-fn only_midi_injection_is_reported_and_the_rest_is_refused_with_its_reason() {
+fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_their_reason() {
     let mut backend = stack(&description());
     assert_eq!(
         backend.capabilities(),
-        BackendCapabilities::NONE.with(BackendCapability::MidiInjection, true)
+        BackendCapabilities::NONE
+            .with(BackendCapability::MidiInjection, true)
+            .with(BackendCapability::SessionCapture, true)
+            .with(BackendCapability::SessionContentLoad, true)
+            .with(BackendCapability::LoopContentImport, true)
     );
     let created = backend.create_direct_track(track(1, false, 1)).unwrap();
     let loop_id = created.loops[0];
@@ -46,10 +50,6 @@ fn only_midi_injection_is_reported_and_the_rest_is_refused_with_its_reason() {
                     fx: None,
                 })
                 .err(),
-        ),
-        (
-            BackendCapability::SessionCapture,
-            backend.capture_session().err(),
         ),
         (
             BackendCapability::ReplacingMode,

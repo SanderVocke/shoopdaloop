@@ -850,6 +850,19 @@ fn session_structure(backend: &mut dyn Backend) -> SessionStructure {
 /// Replacing the session with a structure-only document of the core set yields exactly that
 /// session. Documents the backend cannot apply are rejected whole.
 pub fn new_session_contract(backend: &mut dyn Backend, profile: &ContractProfile) {
+    for id in backend
+        .poll()
+        .unwrap()
+        .loops
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
+    {
+        backend
+            .transition_loop(id, BackendLoopMode::Stopped, None)
+            .unwrap();
+    }
+    backend.wait_idle();
     let previous = create_track(backend, "contract_session_previous", 1, false, 1);
     let input = port_with_role(&previous, BackendPortRole::AudioInput).id;
     backend

@@ -91,7 +91,7 @@ normal service work or silently restart against newer content.
 
 ## Engine integration boundary
 
-The current adapter's remove-then-create helper cannot satisfy atomic load. Reuse
+The adapter stages a private mirror instead of removing live tracks. It uses
 prepared loop node-pair sources, immutable exports and configuration transactions,
 but first establish an engine transaction that preflights complete content, graph,
 timing and retirement ownership. The existing `ConfigurationActivate` requires
@@ -101,8 +101,9 @@ media/graph/epoch preflight precedes publication, old playback may retire and MI
 cleanup is requested atomically. Active/prepared recording is refused unchanged.
 Engine node presets are prepared under a token/next epoch and become active during
 processing only after that epoch is published; cancellation must discard presets
-before another graph can publish. The wire/service replacement workflow remains
-pending. No rejected preparation may leave old playback faded/stopped or mappings
+before another graph can publish. The engine wire job and adapter replacement are
+implemented; the service workflow remains pending. No rejected preparation may
+leave old playback faded/stopped or mappings
 partially replaced.
 
 Validation evidence is recorded in the plan as milestones complete. Protocol tests

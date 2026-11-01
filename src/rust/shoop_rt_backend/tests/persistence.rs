@@ -1,0 +1,331 @@
+mod support;
+use shoop_backend::*;
+use shoop_wasm_test_support::shoop_test;
+use support::*;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+fn loaded(
+    backend: &mut Stack,
+    data: &BackendSessionData,
+) -> anyhow::Result<BackendSessionReplacement> {
+    for _ in 0..2000 {
+        match backend.replace_session_async(data)? {
+            BackendAsyncResult::Ready(mapping) => return Ok(mapping),
+            BackendAsyncResult::Pending(_) => backend.clock_mut().render(1),
+        }
+    }
+    panic!("replacement did not settle");
+}
+fn fixture() -> (Stack, BackendTrackCreation, BackendSessionData) {
+    let mut backend = stack(&description());
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "music".to_owned(),
+            audio_channels: 1,
+            midi: true,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let session = backend.capture_session().unwrap();
+    (backend, track, session)
+}
+#[shoop_test]
+fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media() {
+    let (mut backend, old, mut session) = fixture();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 4;
+    content.gain = 0.75;
+    content.balance = -0.5;
+    content.audio[0].samples = vec![0., 0.25, 0.5, 0.75, 1., 0.125];
+    content.audio[0].start_offset = 1;
+    content.audio[0].gain = 0.5;
+    content.midi[0].length = 8;
+    content.midi[0].start_offset = 1;
+    content.midi[0].start_state = vec![vec![0xb0, 7, 99]];
+    content.midi[0].events = vec![
+        BackendMidiEvent {
+            time: 2,
+            data: vec![0x90, 60, 100],
+        },
+        BackendMidiEvent {
+            time: 5,
+            data: vec![0x80, 60, 0],
+        },
+    ];
+    let mut expected = content.clone();
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let new = mapping.loops[&old.loops[0].raw()];
+    assert_ne!(new, old.loops[0]);
+    let snapshot = backend.poll().unwrap();
+    assert!(!snapshot.loops.contains_key(&old.loops[0]));
+    assert_eq!(snapshot.loops[&new].mode, BackendLoopMode::Stopped);
+    assert_eq!(snapshot.loops[&new].length, 4);
+    expected.source_id = new.raw();
+    let saved = backend.capture_session().unwrap();
+    assert_eq!(saved.tracks[0].loops[0], expected);
+    assert_eq!(saved.tracks[0].port_name_base, "music");
+}
+#[shoop_test]
+fn cancelled_or_invalid_replacement_preserves_all_live_identities_and_media() {
+    let (mut backend, old, mut session) = fixture();
+    let before = backend.capture_session().unwrap();
+    session.tracks[0].loops[0].length = 4;
+    session.tracks[0].loops[0].audio[0].samples = vec![1.; 4];
+    assert!(matches!(
+        backend.replace_session_async(&session).unwrap(),
+        BackendAsyncResult::Pending(_)
+    ));
+    backend.cancel_session_replacement().unwrap();
+    assert!(loaded(&mut backend, &session)
+        .unwrap_err()
+        .to_string()
+        .contains("cancelled"));
+    assert!(backend.poll().unwrap().loops.contains_key(&old.loops[0]));
+    assert_eq!(backend.capture_session().unwrap(), before);
+    session.tracks[0].loops[0].audio[0].preplay = 1;
+    assert!(backend.replace_session_async(&session).is_err());
+    assert_eq!(backend.capture_session().unwrap(), before);
+}
+#[shoop_test]
+fn captured_recorded_samples_remain_exact_and_active_capture_is_refused() {
+    let (mut backend, track, initial) = fixture();
+    let input = track
+        .ports
+        .iter()
+        .find(|port| port.role == BackendPortRole::AudioInput)
+        .unwrap()
+        .id;
+    backend
+        .set_port_connected(input, "audio_in_1", true)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().capture = |_| 0.25;
+    backend
+        .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(8);
+    assert!(backend
+        .capture_session()
+        .unwrap_err()
+        .to_string()
+        .contains("recording"));
+    assert!(backend
+        .replace_session_async(&initial)
+        .unwrap_err()
+        .to_string()
+        .contains("recording"));
+    assert_eq!(
+        backend.poll().unwrap().loops[&track.loops[0]].mode,
+        BackendLoopMode::Recording
+    );
+    backend
+        .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    let saved = backend.capture_session().unwrap();
+    let content = &saved.tracks[0].loops[0];
+    assert!(!content.audio[0].samples.is_empty());
+    assert!(content.audio[0]
+        .samples
+        .iter()
+        .all(|sample| *sample == 0.25));
+    let expected = content.audio[0].samples.clone();
+    loaded(&mut backend, &saved).unwrap();
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops[0].audio[0].samples,
+        expected
+    );
+}
+
+fn imported(
+    backend: &mut Stack,
+    id: BackendLoopId,
+    update: &BackendLoopContentUpdate,
+) -> anyhow::Result<()> {
+    for _ in 0..2000 {
+        match backend.replace_loop_content_async(id, update)? {
+            BackendAsyncResult::Ready(()) => return Ok(()),
+            BackendAsyncResult::Pending(_) => backend.clock_mut().render(1),
+        }
+    }
+    panic!("content update did not settle");
+}
+#[shoop_test]
+fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
+    let (mut backend, track, mut session) = fixture();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 4;
+    content.audio[0].samples = vec![0.25; 6];
+    content.audio[0].start_offset = 1;
+    content.audio[0].gain = 0.75;
+    content.midi[0].length = 6;
+    content.midi[0].events = vec![
+        BackendMidiEvent {
+            time: 0,
+            data: vec![0x90, 60, 99],
+        },
+        BackendMidiEvent {
+            time: 3,
+            data: vec![0x80, 60, 0],
+        },
+    ];
+    let original_midi = content.midi.clone();
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let id = mapping.loops[&track.loops[0].raw()];
+    backend
+        .transition_loop(id, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    imported(
+        &mut backend,
+        id,
+        &BackendLoopContentUpdate {
+            audio: vec![BackendAudioChannelUpdate {
+                channel: 0,
+                samples: vec![0.5; 8],
+                start_offset: Some(0),
+                capture_alignment_frames: Some(0),
+                preplay: None,
+            }],
+            length: Some(8),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        backend.poll().unwrap().loops[&id].mode,
+        BackendLoopMode::Playing
+    );
+    let captured = backend.capture_session().unwrap();
+    assert_eq!(captured.tracks[0].loops[0].midi, original_midi);
+    let audio = captured.tracks[0].loops[0].audio.clone();
+    imported(
+        &mut backend,
+        id,
+        &BackendLoopContentUpdate {
+            midi: vec![BackendMidiChannelUpdate {
+                channel: 0,
+                length: 8,
+                start_state: vec![vec![0xb0, 7, 12], vec![0xb0, 7, 99]],
+                events: vec![BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 64, 87],
+                }],
+                start_offset: Some(0),
+                capture_alignment_frames: Some(0),
+                preplay: None,
+            }],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let captured = backend.capture_session().unwrap();
+    assert_eq!(captured.tracks[0].loops[0].audio, audio);
+    assert_eq!(
+        captured.tracks[0].loops[0].midi[0].start_state,
+        [vec![0xb0, 7, 12], vec![0xb0, 7, 99]]
+    );
+    assert_eq!(captured.tracks[0].loops[0].source_id, id.raw());
+}
+#[shoop_test]
+fn missing_external_connection_intent_survives_load_and_save_with_a_diagnostic() {
+    let (mut backend, _, mut session) = fixture();
+    session.tracks[0].ports[0].external_connections = vec!["missing-device:input".to_owned()];
+    loaded(&mut backend, &session).unwrap();
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].ports[0].external_connections,
+        ["missing-device:input"]
+    );
+    assert!(backend
+        .poll()
+        .unwrap()
+        .connections
+        .failures
+        .iter()
+        .any(|failure| failure.external_port == "missing-device:input"));
+}
+
+#[shoop_test]
+fn sync_relationships_are_part_of_the_atomic_session_image() {
+    use std::collections::BTreeMap;
+    let (mut backend, _, mut session) = fixture();
+    let first = session.tracks[0].loops[0].source_id;
+    let mut second = session.tracks[0].loops[0].clone();
+    second.source_id = 999;
+    session.tracks[0].loops.push(second);
+    let sync = BTreeMap::from([(first, 999)]);
+    let mapping = (0..2000)
+        .find_map(|_| {
+            match backend
+                .replace_session_with_sync_async(&session, &sync)
+                .unwrap()
+            {
+                BackendAsyncResult::Ready(mapping) => Some(mapping),
+                BackendAsyncResult::Pending(_) => {
+                    backend.clock_mut().render(1);
+                    None
+                }
+            }
+        })
+        .expect("session replacement completion");
+    assert_eq!(
+        backend.loop_sync_source(mapping.loops[&first]),
+        Some(mapping.loops[&999])
+    );
+    let before = backend.capture_session().unwrap();
+    assert!(backend
+        .replace_session_with_sync_async(&session, &BTreeMap::from([(first, 999), (999, first)]))
+        .is_err());
+    assert_eq!(backend.capture_session().unwrap(), before);
+}
+
+#[shoop_test]
+fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_stages() {
+    let mut configured = description();
+    configured.resource_pages = 64;
+    let mut backend = stack(&configured);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "music".to_owned(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    session.tracks[0].loops[0].length = 1024;
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 1024];
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let old = mapping.loops[&track.loops[0].raw()];
+    backend
+        .transition_loop(old, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.capture_session().unwrap();
+    let mut oversized = before.clone();
+    oversized.tracks[0].loops[0].length = 1536;
+    oversized.tracks[0].loops[0].audio[0].samples = vec![0.5; 1536];
+    for _ in 0..8 {
+        assert!(loaded(&mut backend, &oversized)
+            .unwrap_err()
+            .to_string()
+            .contains("Capacity"));
+        assert_eq!(
+            backend.poll().unwrap().loops[&old].mode,
+            BackendLoopMode::Playing
+        );
+        assert_eq!(backend.capture_session().unwrap(), before);
+    }
+    let mut small = before;
+    small.tracks[0].loops[0].length = 16;
+    small.tracks[0].loops[0].audio[0].samples = vec![0.5; 16];
+    loaded(&mut backend, &small).unwrap();
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops[0].audio[0].samples,
+        [0.5; 16]
+    );
+}

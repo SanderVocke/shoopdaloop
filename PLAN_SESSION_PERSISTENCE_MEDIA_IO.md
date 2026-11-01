@@ -5,8 +5,9 @@
 Implementation in progress; the app transfer foundation and engine content-upload
 foundation are implemented, along with the underlying atomic full-owner replacement
 cut and deferred processor presets.
-The engine private replacement job is implemented; integrated capture, per-loop
-replacement and public persistence workflows remain pending. Written under
+Engine and adapter replacement, capture and per-loop content mechanisms are
+implemented; integrated service capture and public persistence workflows remain
+pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
 P11 in the [feature parity ledger](docs/native_session_recovery/feature-parity.md).
@@ -217,6 +218,8 @@ not counted as test passes. Miri remains reserved for the final stage.
   presets that leave live settings unchanged until graph publication.
 - [x] Expose a private engine replacement image with bounded edits, resource
   preparation, explicit commit/cancel and host-owned completion after disconnect.
+- [x] Stage a private adapter mirror, stream canonical media into prepared sources,
+  publish fresh mappings after engine success and retain exact original channel data.
 - [ ] Inventory existing export/import/configuration primitives and integrate the
   smallest missing engine operations. Acquire immutable media and metadata at a
   certified cut; retain them independently of future clears/removals/recordings.
@@ -299,6 +302,35 @@ live content replacements and initial-state activation/export. Warning-denying
 native and embedded builds, formatting and Rust test policy pass. The restored
 MIDI helper keeps its existing full attempted-event accounting on sink failure;
 the retained regression test caught and verified that detail during extraction.
+
+Adapter milestone: session and loop-content jobs send acknowledged bounded records
+and publish the candidate mirror only after successful engine commit. Cancellation,
+unsupported metadata, invalid references and old-plus-new pool exhaustion preserve
+the old image. Sync edges are prepared inside the complete image. Original audio
+and MIDI remain in immutable control-side ownership; playback uses a bounded
+normalized stream, so unequal channel/loop lengths, gains, offsets and alignment
+are retained exactly for subsequent capture. Nonzero preplay and unrepresentable
+MIDI initial packets refuse explicitly. Missing external ports retain intent with
+a diagnostic. Save/load/import refuse active or scheduled recording with an
+actionable message; service capture still must enforce the admission barrier.
+
+The shared structure-replacement contract now stops unrelated recordings left by
+earlier contract cases before testing structure replacement. Active-recording
+rejection remains independently covered without stopping or changing its take.
+This isolates the existing structural assertions; it does not remove capture tests.
+
+Adapter verification: seven production adapter persistence cases
+cover exact canonical round-trip, recording capture/refusal, cancellation and
+invalid input, opposite-medium preservation while playing, sync edges, missing
+ports and eight exhausted-headroom attempts followed by successful reuse. Public
+app capabilities remain masked until the complete service/client route is ready.
+All 25 native and 24 Node/Wasm adapter tests pass (the native thread-move check is
+platform-specific), along with 21 service and 14 socket/shared-memory regression
+tests. The expanded recording save/load refusal case also passes separately in
+native and Node/Wasm. Warning-denying adapter/backend/service builds, dependency
+boundaries, Rust test policy, formatting and whitespace checks pass. The carrier
+tests require socket permission in this sandbox; their initial permission-denied
+run was rerun successfully with network/socket access. Miri and final CI are pending.
 
 ### Stage 3 — service-owned coherent session capture and exports
 

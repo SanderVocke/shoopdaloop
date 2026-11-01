@@ -1434,6 +1434,16 @@ pub trait Backend {
     fn cancel_session_replacement(&mut self) -> Result<()> {
         Ok(())
     }
+    fn replace_session_with_sync_async(
+        &mut self,
+        session: &BackendSessionData,
+        sync: &BTreeMap<u64, u64>,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if !sync.is_empty() {
+            return Err(anyhow!("atomic session sync restoration is unavailable"));
+        }
+        self.replace_session_async(session)
+    }
     fn replace_loop_content_async(
         &mut self,
         loop_id: BackendLoopId,

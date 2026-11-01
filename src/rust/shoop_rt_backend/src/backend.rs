@@ -16,11 +16,10 @@ use shoop_backend::{
     BackendCompositeConfig, BackendCompositeId, BackendConnectionSnapshot,
     BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendLoopContentUpdate,
     BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendOperationKind, BackendOperationProgress, BackendPortId,
-    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
+    BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -159,10 +158,24 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn capabilities(&self) -> BackendCapabilities {
-        BackendCapabilities::NONE.with(
-            BackendCapability::MidiInjection,
-            self.capabilities.contains(Capabilities::MIDI_INJECTION),
-        )
+        BackendCapabilities::NONE
+            .with(
+                BackendCapability::MidiInjection,
+                self.capabilities.contains(Capabilities::MIDI_INJECTION),
+            )
+            .with(
+                BackendCapability::SessionCapture,
+                self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
+            .with(
+                BackendCapability::SessionContentLoad,
+                self.capabilities
+                    .contains(Capabilities::COMPLETE_REPLACEMENT),
+            )
+            .with(
+                BackendCapability::LoopContentImport,
+                self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -532,18 +545,28 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn replace_loop_content(
         &mut self,
-        _loop_id: BackendLoopId,
-        _update: &BackendLoopContentUpdate,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopContentImport))
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(()) = self.import_content(loop_id, update)? {
+                return Ok(());
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "content replacement is pending; use replace_loop_content_async"
+                ));
+            }
+        }
+        Err(anyhow!("content replacement did not settle"))
     }
 
     fn replace_loop_content_async(
         &mut self,
-        _loop_id: BackendLoopId,
-        _update: &BackendLoopContentUpdate,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
     ) -> Result<BackendAsyncResult<()>> {
-        Err(unavailable(BackendCapability::LoopContentImport))
+        self.import_content(loop_id, update)
     }
 
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
@@ -561,19 +584,38 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
-        Err(unavailable(BackendCapability::SessionCapture))
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(capture) = self.capture_core()? {
+                return Ok(capture);
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "session capture is pending; use capture_session_async"
+                ));
+            }
+        }
+        Err(anyhow!("session capture did not settle"))
     }
 
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
-        Err(unavailable(BackendCapability::SessionCapture))
+        self.capture_core()
     }
 
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
-        let mapping = self.start_replacement(session)?;
-        Ok(mapping)
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(mapping) = self.replace_session_async(session)? {
+                return Ok(mapping);
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "session replacement is pending; use replace_session_async"
+                ));
+            }
+        }
+        Err(anyhow!("session replacement did not settle"))
     }
 
     fn replace_session_async(
@@ -581,43 +623,26 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         session: &BackendSessionData,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
         if self.replacement.is_none() {
-            let first = self.requests.last_sequence() + 1;
-            let mapping = self.start_replacement(session)?;
-            self.replacement = Some(crate::Replacement {
-                mapping,
-                first,
-                last: self.requests.last_sequence(),
-                refused: Vec::new(),
-            });
+            self.start_replacement(session)?;
         }
-        self.pump();
-        let replacement = self.replacement.as_ref().expect("a replacement");
-        if !self.requests.answered_through(replacement.last) {
-            let total = (replacement.last + 1).saturating_sub(replacement.first) as usize;
-            let remaining = self
-                .requests
-                .outgoing
-                .iter()
-                .chain(self.requests.in_flight.values())
-                .filter(|pending| {
-                    (replacement.first..=replacement.last).contains(&pending.sequence)
-                })
-                .count();
-            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
-                key: replacement.first,
-                kind: BackendOperationKind::SessionReplacement,
-                completed: total - remaining,
-                total: Some(total),
-            }));
+        self.persistence_progress()
+    }
+
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        if let Some(replacement) = &mut self.replacement {
+            replacement.job.cancel()?;
         }
-        let replacement = self.replacement.take().expect("a replacement");
-        if !replacement.refused.is_empty() {
-            return Err(anyhow!(
-                "the engine refused part of the new session: {}",
-                replacement.refused.join("; ")
-            ));
+        Ok(())
+    }
+    fn replace_session_with_sync_async(
+        &mut self,
+        session: &BackendSessionData,
+        sync: &std::collections::BTreeMap<u64, u64>,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() {
+            self.start_replacement_with_sync(session, sync)?;
         }
-        Ok(BackendAsyncResult::Ready(replacement.mapping))
+        self.persistence_progress()
     }
 
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
