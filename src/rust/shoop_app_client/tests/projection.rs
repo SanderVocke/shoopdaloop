@@ -511,3 +511,107 @@ fn snapshot_storage_and_operation_inventory_are_bounded_in_both_delivery_modes()
         Err(Error::Protocol)
     );
 }
+
+#[shoop_test]
+fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_data() {
+    use shoop_app_api::LoopId;
+    for encoded in [false, true] {
+        let mut client = ready();
+        let request = client.read_media(LoopId::from_raw(2)).unwrap();
+        let ClientMessage::ReadMedia { transfer, .. } = request else {
+            unreachable!()
+        };
+        let data = Arc::new(LoopMedia {
+            loop_id: LoopId::from_raw(2),
+            content_revision: 7,
+            audio: vec![AudioMediaChannel {
+                samples: vec![0.25; 32768].into(),
+                start_offset: 0,
+                capture_alignment_frames: 0,
+                preplay: 0,
+            }],
+            midi: vec![],
+        });
+        let message = ServiceMessage::Media {
+            authority: AUTHORITY,
+            transfer,
+            data: Arc::clone(&data),
+        };
+        if encoded {
+            let mut stream = stream::StreamEncoder::new(message, TransferId(100)).unwrap();
+            while let Some(message) = stream.next_message() {
+                wire(&mut client, message).unwrap();
+            }
+        } else {
+            client.receive(message).unwrap();
+            assert!(Arc::ptr_eq(
+                client.media().unwrap().as_ref().unwrap(),
+                &data
+            ));
+        }
+        assert_eq!(
+            client.media().unwrap().as_ref().unwrap().audio[0]
+                .samples
+                .len(),
+            32768
+        );
+        client.cancel_media().unwrap();
+        assert!(client.media().is_none());
+        client
+            .receive(ServiceMessage::Media {
+                authority: AUTHORITY,
+                transfer,
+                data,
+            })
+            .unwrap();
+        assert!(
+            client.media().is_none(),
+            "late cancelled delivery must not restore its buffers"
+        );
+        assert_eq!(client.state(), State::Ready);
+    }
+    for bad_index in [1, 2] {
+        let mut client = ready();
+        let ClientMessage::ReadMedia { transfer, .. } =
+            client.read_media(LoopId::from_raw(2)).unwrap()
+        else {
+            unreachable!()
+        };
+        wire(
+            &mut client,
+            WireMessage::MediaBegin {
+                authority: AUTHORITY,
+                transfer,
+                bytes: 100,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            wire(
+                &mut client,
+                WireMessage::MediaChunk {
+                    transfer,
+                    index: bad_index,
+                    bytes: vec![0]
+                }
+            ),
+            Err(Error::Protocol)
+        );
+        assert!(client.media().is_none());
+        assert_eq!(client.state(), State::Lost);
+    }
+    let mut client = ready();
+    let ClientMessage::ReadMedia { transfer, .. } = client.read_media(LoopId::from_raw(2)).unwrap()
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        client.receive_wire(WireMessage::MediaBegin {
+            authority: AUTHORITY,
+            transfer,
+            bytes: MAX_MEDIA_BYTES as u32 + 1
+        }),
+        Err(Error::Protocol)
+    );
+    assert!(client.media().is_none());
+}

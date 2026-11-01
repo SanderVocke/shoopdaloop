@@ -4963,6 +4963,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    content_revision: 0,
                     mode: from_native_mode(state.mode),
                     length: state.length,
                     position: state.position,

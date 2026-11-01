@@ -58,20 +58,18 @@ pub fn decode(record: &[u8]) -> Result<WireMessage, CodecError> {
     Ok(message)
 }
 
-struct SnapshotWriter(Vec<u8>);
+struct BoundedWriter<const LIMIT: usize>(Vec<u8>);
 
-impl bincode::enc::write::Writer for SnapshotWriter {
+impl<const LIMIT: usize> bincode::enc::write::Writer for BoundedWriter<LIMIT> {
     fn write(&mut self, bytes: &[u8]) -> Result<(), bincode::error::EncodeError> {
         let end = self
             .0
             .len()
             .checked_add(bytes.len())
-            .filter(|end| *end <= MAX_SNAPSHOT_BYTES)
+            .filter(|end| *end <= LIMIT)
             .ok_or(bincode::error::EncodeError::UnexpectedEnd)?;
         if end > self.0.capacity() {
-            let capacity = end
-                .max(self.0.capacity().max(2048) * 2)
-                .min(MAX_SNAPSHOT_BYTES);
+            let capacity = end.max(self.0.capacity().max(2048) * 2).min(LIMIT);
             self.0
                 .try_reserve_exact(capacity - self.0.len())
                 .map_err(|_| bincode::error::EncodeError::Other("snapshot allocation failed"))?;
@@ -85,7 +83,7 @@ pub fn encode_snapshot(state: &SessionSnapshot) -> Result<Vec<u8>, CodecError> {
     if !state.valid() {
         return Err(CodecError::Invalid);
     }
-    let mut output = SnapshotWriter(Vec::new());
+    let mut output = BoundedWriter::<MAX_SNAPSHOT_BYTES>(Vec::new());
     bincode::serde::encode_into_writer(
         state,
         &mut output,
@@ -111,4 +109,35 @@ pub fn decode_snapshot(bytes: &[u8]) -> Result<SessionSnapshot, CodecError> {
         return Err(CodecError::Invalid);
     }
     Ok(state)
+}
+
+pub fn encode_media(data: &crate::LoopMedia) -> Result<Vec<u8>, CodecError> {
+    if !data.valid() {
+        return Err(CodecError::Invalid);
+    }
+    let mut output = BoundedWriter::<{ crate::MAX_MEDIA_BYTES }>(Vec::new());
+    bincode::serde::encode_into_writer(
+        data,
+        &mut output,
+        bincode::config::standard().with_limit::<{ crate::MAX_MEDIA_BYTES }>(),
+    )
+    .map_err(|_| CodecError::Overflow)?;
+    Ok(output.0)
+}
+pub fn decode_media(bytes: &[u8]) -> Result<crate::LoopMedia, CodecError> {
+    if bytes.is_empty() || bytes.len() > crate::MAX_MEDIA_BYTES {
+        return Err(CodecError::Invalid);
+    }
+    let (data, used): (crate::LoopMedia, usize) = bincode::serde::decode_from_slice(
+        bytes,
+        bincode::config::standard().with_limit::<{ crate::MAX_MEDIA_BYTES }>(),
+    )
+    .map_err(|_| CodecError::Invalid)?;
+    if used != bytes.len() {
+        return Err(CodecError::Trailing);
+    }
+    if !data.valid() {
+        return Err(CodecError::Invalid);
+    }
+    Ok(data)
 }

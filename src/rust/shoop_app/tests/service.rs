@@ -129,55 +129,12 @@ fn deliver(client: &mut Client, message: ServiceMessage, encoded: bool) {
         client.receive(message).unwrap();
         return;
     }
-    let wire = match message {
-        ServiceMessage::Attached { authority, host } => WireMessage::Attached { authority, host },
-        ServiceMessage::Rejected(reason) => WireMessage::Rejected(reason),
-        ServiceMessage::Accepted {
-            authority,
-            operation,
-        } => WireMessage::Accepted {
-            authority,
-            operation,
-        },
-        ServiceMessage::Finished { authority, result } => {
-            WireMessage::Finished { authority, result }
-        }
-        ServiceMessage::Detached { authority } => WireMessage::Detached { authority },
-        ServiceMessage::ShutdownComplete { authority, result } => {
-            WireMessage::ShutdownComplete { authority, result }
-        }
-        ServiceMessage::Snapshot { authority, state } => {
-            let bytes = codec::encode_snapshot(&state).unwrap();
-            wire_message(
-                client,
-                WireMessage::SnapshotBegin {
-                    authority,
-                    transfer: TransferId(1),
-                    revision: state.revision,
-                    bytes: bytes.len() as u32,
-                },
-            );
-            for (index, bytes) in bytes.chunks(CHUNK_BYTES).enumerate() {
-                wire_message(
-                    client,
-                    WireMessage::SnapshotChunk {
-                        transfer: TransferId(1),
-                        index: index as u32,
-                        bytes: bytes.to_vec(),
-                    },
-                );
-            }
-            wire_message(
-                client,
-                WireMessage::SnapshotEnd {
-                    transfer: TransferId(1),
-                },
-            );
-            return;
-        }
-    };
-    wire_message(client, wire);
+    let mut stream = stream::StreamEncoder::new(message, TransferId(1)).unwrap();
+    while let Some(message) = stream.next_message() {
+        wire_message(client, message);
+    }
 }
+
 fn drain(service: &mut Service, client: &mut Client, connection: ConnectionId, encoded: bool) {
     while let Some(message) = service.take_update(connection) {
         deliver(client, message, encoded);
@@ -989,5 +946,423 @@ fn revision_conflicts_and_evicted_results_cannot_replay_accepted_work() {
     assert!(
         matches!(reply, ServiceMessage::Finished {result: OperationResult {id, outcome: Outcome::Refused { reason: Refusal::Duplicate, .. }}, ..} if id == operation)
     );
+    assert_eq!(f.service.snapshot().tracks.len(), 1);
+}
+
+fn runtime(
+    service: &mut Service,
+    startup: shoop_app_client::runtime::Startup,
+) -> (shoop_app_client::runtime::Runtime, local::ServicePort) {
+    runtime_with_midi(service, startup, Box::new(shoop_scripting::NullMidiService))
+}
+fn runtime_with_midi(
+    service: &mut Service,
+    startup: shoop_app_client::runtime::Startup,
+    midi: Box<dyn shoop_scripting::MidiControlService>,
+) -> (shoop_app_client::runtime::Runtime, local::ServicePort) {
+    let (delivery, port) = local::channel();
+    let client = Client::new(ClientId(500), HOST, SESSION).unwrap();
+    let mut runtime =
+        shoop_app_client::runtime::Runtime::new(client, Box::new(delivery), midi, startup).unwrap();
+    for _ in 0..4 {
+        service.pump_local(ConnectionId(99), &port, STEP);
+        runtime.tick(STEP);
+    }
+    assert_eq!(runtime.state(), shoop_app_client::State::Ready);
+    (runtime, port)
+}
+
+fn pump_runtime(
+    service: &mut Service,
+    runtime: &mut shoop_app_client::runtime::Runtime,
+    port: &local::ServicePort,
+    count: usize,
+) {
+    for _ in 0..count {
+        service.pump_local(ConnectionId(99), port, STEP);
+        runtime.tick(STEP);
+    }
+}
+
+#[shoop_test]
+fn ui_and_lua_use_ordered_service_operations_and_lua_reads_confirmed_snapshots() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Lua".into(),
+            audio_channels: 1,
+            midi: false,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    assert_eq!(runtime.snapshot().tracks.len(), 2);
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::AddScriptSource {
+            name: "confirmed.lua".into(),
+            kind: ScriptKind::User,
+            enabled: true,
+            source: Arc::from(
+                r#"
+shoop_announce_api_version(1,0)
+local c = require('shoop_control')
+if c.loop_get_gain({0,0})[1] ~= 1 then error('unconfirmed read') end
+c.loop_set_gain({0,0}, 0.25)
+if c.loop_get_gain({0,0})[1] ~= 1 then error('unconfirmed read') end
+c.register_one_shot_timer_cb(100, function()
+    if c.loop_get_gain({0,0})[1] ~= 0.25 then error('confirmation missing') end
+    c.loop_select({0,0},true)
+    c.loop_trigger({0,0}, 3)
+    print('confirmed-read')
+end)
+c.register_loop_event_cb(function(event) print('loop-event') end)
+"#,
+            ),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 30);
+    let state = runtime.snapshot();
+    let script = &state.scripting.scripts[0];
+    assert!(script.latest_error.is_none(), "{:?}", script.latest_error);
+    assert!(script
+        .logs
+        .iter()
+        .any(|log| log.message.contains("confirmed-read")));
+    assert!(script
+        .logs
+        .iter()
+        .any(|log| log.message.contains("loop-event")));
+    assert_eq!(state.tracks[1].loops[0].gain, 0.25);
+    assert!(state.tracks[1].loops[0].selected);
+    assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+    runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 2);
+    assert!(runtime
+        .snapshot()
+        .notifications
+        .iter()
+        .any(|notice| notice.message == BackendCapability::SessionCapture.unavailable_reason()));
+    assert!(runtime.take_file_output().is_none());
+}
+
+#[shoop_test]
+fn recovered_clients_do_not_execute_catalog_scripts_until_explicit_user_start() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Recovered,
+    );
+    runtime
+        .dispatch(AppIntent::ReconcileCatalogScripts {
+            scripts: vec![CatalogScriptSource {
+                identity: "recovered-script".into(),
+                name: "recovered.lua".into(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1,0); require('shoop_control').set_solo(true)",
+                ),
+                source_path: None,
+                resource_bundle: None,
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }]
+            .into(),
+            preserve_identities: Arc::from([]),
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(!f.service.snapshot().global.solo);
+    let script = runtime.snapshot().scripting.scripts[0].clone();
+    assert!(!script.enabled);
+    assert_eq!(script.lifecycle, ScriptLifecycle::Inactive);
+    runtime
+        .dispatch(AppIntent::SetScriptEnabled {
+            script_id: script.id,
+            enabled: true,
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(f.service.snapshot().global.solo);
+}
+
+#[shoop_test]
+fn script_command_bursts_report_capacity_and_do_not_mutate_the_confirmed_read_view() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime.dispatch(AppIntent::AddScriptSource {name: "bounded.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); for i=1,129 do c.set_solo(true) end")}).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let script = runtime.snapshot().scripting.scripts[0].clone();
+    assert!(script.latest_error.unwrap().contains("queue is full"));
+    assert!(f.service.snapshot().global.solo);
+    assert!(f.service.snapshot().pending.len() <= MAX_PENDING_OPERATIONS);
+}
+
+#[shoop_test]
+fn waveform_and_midi_views_use_bounded_media_delivery_and_release_it_on_selection_change() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Media".into(),
+            audio_channels: 1,
+            midi: true,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let track = runtime.snapshot().tracks[1].id;
+    let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id,
+            action: LoopAction::IconClicked(SelectionModifiers::default()),
+        })
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Track {
+            track_id: track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        })
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Piano(PianoAction::Press(
+            MidiNote::new(60).unwrap(),
+        )))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Piano(PianoAction::Release(
+            MidiNote::new(60).unwrap(),
+        )))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id,
+            action: LoopAction::StopClicked,
+        })
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 100);
+    let details = runtime.snapshot().details.clone().unwrap();
+    assert!(!details.loading);
+    assert_eq!(details.channels.len(), 1);
+    assert!(details.channels[0]
+        .samples
+        .iter()
+        .any(|sample| *sample == 0.25));
+    assert!(details.midi_channels[0]
+        .events
+        .iter()
+        .any(|event| event.data.as_ref() == [0x90, 60, 100]));
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::DeselectAll))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(runtime.client().media().is_none());
+    assert!(runtime.snapshot().details.is_none());
+}
+
+#[shoop_test]
+fn ui_bursts_apply_in_order_without_disconnecting_a_pumping_client_and_reset_is_confirmed() {
+    let mut f = fixture();
+    let sync = f.service.snapshot().tracks[0].id;
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    for index in 0..QUEUE_CAPACITY {
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: sync,
+                action: TrackAction::NameChanged(format!("Sync {index}")),
+            })
+            .unwrap();
+    }
+    for _ in 0..100 {
+        pump_runtime(&mut f.service, &mut runtime, &port, 1);
+        assert_eq!(runtime.state(), shoop_app_client::State::Ready);
+        if runtime.snapshot().tracks[0].name == format!("Sync {}", QUEUE_CAPACITY - 1) {
+            break;
+        }
+    }
+    assert_eq!(
+        runtime.snapshot().tracks[0].name,
+        format!("Sync {}", QUEUE_CAPACITY - 1)
+    );
+    assert!(runtime.snapshot().notifications.is_empty());
+    f.advance.set(false);
+    runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(
+        runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Running
+    );
+    f.advance.set(true);
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    assert_eq!(
+        runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Completed
+    );
+    assert_eq!(runtime.snapshot().tracks[0].id, sync);
+    assert_eq!(runtime.snapshot().tracks[0].name, "Sync");
+}
+
+#[shoop_test]
+fn losing_the_client_releases_only_held_piano_notes_while_recording_continues() {
+    let mut f = fixture();
+    let mut a = attach(&mut f.service, 10, ConnectionId(1), false);
+    command(
+        &mut f.service,
+        &mut a,
+        ConnectionId(1),
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let (track, loops) = created(command(
+        &mut f.service,
+        &mut a,
+        ConnectionId(1),
+        new_track("Held MIDI", true),
+    ));
+    command(
+        &mut f.service,
+        &mut a,
+        ConnectionId(1),
+        Command::Track {
+            track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        },
+    );
+    command(
+        &mut f.service,
+        &mut a,
+        ConnectionId(1),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        },
+    );
+    command(
+        &mut f.service,
+        &mut a,
+        ConnectionId(1),
+        Command::Piano(PianoAction::Press(MidiNote::new(60).unwrap())),
+    );
+    let before = f.render.borrow().next_frame();
+    f.service.detach(ConnectionId(1));
+    for _ in 0..4 {
+        f.service.tick(STEP);
+    }
+    let mut b = attach(&mut f.service, 11, ConnectionId(2), true);
+    assert_eq!(
+        b.snapshot().unwrap().tracks[1].loops[0].mode,
+        LoopMode::Recording
+    );
+    assert!(f.render.borrow().next_frame() > before);
+    command(
+        &mut f.service,
+        &mut b,
+        ConnectionId(2),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::StopClicked,
+        },
+    );
+    let mut midi = None;
+    for _ in 0..100 {
+        midi = f
+            .service
+            .read_midi(ConnectionId(2), b.authority().unwrap(), loops[0])
+            .unwrap();
+        if midi.is_some() {
+            break;
+        }
+        f.service.tick(STEP);
+    }
+    let midi = midi.unwrap();
+    assert_eq!(
+        midi.channels[0].events.len(),
+        2,
+        "detach sends a held note-off without a channel panic or capture reset"
+    );
+    assert_eq!(midi.channels[0].events[0].data, [0x90, 60, 100]);
+    assert_eq!(midi.channels[0].events[1].data, [0x80, 60, 0]);
+}
+
+#[shoop_test]
+fn lua_midi_ports_and_callbacks_live_in_the_client_and_release_on_detach() {
+    use shoop_scripting::{FakeMidiService, MidiEndpoint, MidiEndpointDirection};
+    use std::sync::Arc;
+    let mut f = fixture();
+    let (midi, control) = FakeMidiService::new();
+    control.set_endpoints(vec![MidiEndpoint {
+        id: "control-source".into(),
+        name: "Controller".into(),
+        direction: MidiEndpointDirection::Output,
+    }]);
+    let (mut runtime, port) = runtime_with_midi(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+        Box::new(midi),
+    );
+    runtime.dispatch(AppIntent::AddScriptSource {name: "controller.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); c.auto_open_device_specific_midi_control_input('Controller',function() c.set_solo(true) end)")}).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(control.active_connections(), 1);
+    let snapshot = runtime.snapshot();
+    assert!(snapshot
+        .connections
+        .application_ports
+        .iter()
+        .any(
+            |port| matches!(port.owner, ApplicationPortOwner::LuaControl { .. })
+                && port.connection_policy == ConnectionPolicy::OwnerManaged
+        ));
+    assert!(!f
+        .service
+        .snapshot()
+        .connections
+        .application_ports
+        .iter()
+        .any(|port| matches!(port.owner, ApplicationPortOwner::LuaControl { .. })));
+    control.push_input("control-source", vec![0x90, 60, 100]);
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(f.service.snapshot().global.solo);
+    runtime.detach().unwrap();
+    assert_eq!(control.active_connections(), 0);
+    f.service.pump_local(ConnectionId(99), &port, STEP);
+    assert!(f.service.is_ready());
     assert_eq!(f.service.snapshot().tracks.len(), 1);
 }

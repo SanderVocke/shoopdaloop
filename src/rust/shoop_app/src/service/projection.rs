@@ -303,6 +303,7 @@ impl Service {
                 backend: created.track_id,
                 audio_channels,
                 midi,
+                monitoring_intent: None,
                 view: TrackState {
                     id,
                     name,
@@ -376,6 +377,7 @@ impl Service {
             if let Some(state) = observed.loops.get(&entry.backend) {
                 let view = &mut entry.view;
                 view.structural_state = StructuralState::Confirmed;
+                view.content_revision = state.content_revision;
                 view.mode = mode(state.mode);
                 view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
                 view.next_transition_delay = state.next_transition_delay;
@@ -406,6 +408,17 @@ impl Service {
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
         match effect {
+            Effect::SessionReset(tracks) => {
+                for id in tracks {
+                    if self
+                        .tracks
+                        .get(id)
+                        .is_some_and(|track| !self.observed.tracks.contains_key(&track.backend))
+                    {
+                        self.forget_track(*id);
+                    }
+                }
+            }
             Effect::TrackRemoved(id) => {
                 if success {
                     self.forget_track(*id);

@@ -4,6 +4,9 @@
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+#[cfg(feature = "runtime")]
+pub mod runtime;
+
 use shoop_app_protocol::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -50,6 +53,10 @@ pub struct Client {
     results: BTreeMap<OperationId, Outcome>,
     transfer: Option<Transfer>,
     ready_ack: Option<Revision>,
+    media_transfer: Option<Transfer>,
+    expected_media: Option<(TransferId, shoop_app_api::LoopId)>,
+    media: Option<Result<Arc<LoopMedia>, Refusal>>,
+    next_transfer: u64,
 }
 
 impl Client {
@@ -70,6 +77,10 @@ impl Client {
             results: BTreeMap::new(),
             transfer: None,
             ready_ack: None,
+            media_transfer: None,
+            expected_media: None,
+            media: None,
+            next_transfer: 1,
         })
     }
 
@@ -98,6 +109,9 @@ impl Client {
         self.snapshot = None;
         self.transfer = None;
         self.ready_ack = None;
+        self.media_transfer = None;
+        self.expected_media = None;
+        self.media = None;
         self.pending.clear();
         self.submitted.clear();
         self.results.clear();
@@ -178,6 +192,39 @@ impl Client {
         self.authority = None;
         self.transfer = None;
         self.ready_ack = None;
+        self.media_transfer = None;
+        self.expected_media = None;
+        self.media = None;
+    }
+
+    pub fn read_media(&mut self, loop_id: shoop_app_api::LoopId) -> Result<ClientMessage, Error> {
+        if self.state != State::Ready {
+            return Err(Error::NotReady);
+        }
+        if !loop_id.is_valid() {
+            return Err(Error::Identity);
+        }
+        let transfer = TransferId(self.next_transfer);
+        self.next_transfer = self.next_transfer.checked_add(1).ok_or(Error::Exhausted)?;
+        self.expected_media = Some((transfer, loop_id));
+        self.media_transfer = None;
+        self.media = None;
+        Ok(ClientMessage::ReadMedia {
+            authority: self.authority.ok_or(Error::NotReady)?,
+            transfer,
+            loop_id,
+        })
+    }
+    pub fn media(&self) -> Option<&Result<Arc<LoopMedia>, Refusal>> {
+        self.media.as_ref()
+    }
+    pub fn cancel_media(&mut self) -> Result<ClientMessage, Error> {
+        self.media_transfer = None;
+        self.expected_media = None;
+        self.media = None;
+        Ok(ClientMessage::CancelMedia {
+            authority: self.authority.ok_or(Error::NotReady)?,
+        })
     }
 
     pub fn ready_message(&self) -> Option<ClientMessage> {
@@ -210,6 +257,34 @@ impl Client {
 
     fn apply(&mut self, message: ServiceMessage) -> Result<(), Error> {
         match message {
+            ServiceMessage::Media {
+                authority,
+                transfer,
+                data,
+            } => {
+                self.check(authority)?;
+                if let Some((expected, loop_id)) = self.expected_media {
+                    if transfer == expected {
+                        if data.loop_id != loop_id {
+                            return Err(Error::Identity);
+                        }
+                        self.media = Some(Ok(data));
+                    }
+                }
+            }
+            ServiceMessage::MediaRefused {
+                authority,
+                transfer,
+                reason,
+            } => {
+                self.check(authority)?;
+                if self
+                    .expected_media
+                    .is_some_and(|(expected, _)| expected == transfer)
+                {
+                    self.media = Some(Err(reason));
+                }
+            }
             ServiceMessage::Attached { authority, host } => {
                 if self.state != State::Attaching
                     || host != self.host
@@ -383,6 +458,78 @@ impl Client {
             return Err(Error::Protocol);
         }
         match message {
+            WireMessage::MediaBegin {
+                authority,
+                transfer,
+                bytes,
+            } => {
+                self.check(authority)?;
+                if self
+                    .expected_media
+                    .is_some_and(|(expected, _)| expected == transfer)
+                {
+                    if self.media_transfer.is_some() {
+                        return Err(Error::Protocol);
+                    }
+                    self.media_transfer = Some(Transfer {
+                        id: transfer,
+                        revision: Revision(0),
+                        expected: bytes as usize,
+                        next: 0,
+                        bytes: Vec::with_capacity(bytes as usize),
+                    });
+                }
+                Ok(())
+            }
+            WireMessage::MediaChunk {
+                transfer,
+                index,
+                bytes,
+            } => {
+                if !self
+                    .expected_media
+                    .is_some_and(|(expected, _)| expected == transfer)
+                {
+                    return Ok(());
+                }
+                let active = self.media_transfer.as_mut().ok_or(Error::Protocol)?;
+                if active.id != transfer
+                    || active.next != index
+                    || bytes.len() > active.expected - active.bytes.len()
+                {
+                    return Err(Error::Protocol);
+                }
+                active.bytes.extend_from_slice(&bytes);
+                active.next += 1;
+                Ok(())
+            }
+            WireMessage::MediaEnd { transfer } => {
+                if !self
+                    .expected_media
+                    .is_some_and(|(expected, _)| expected == transfer)
+                {
+                    return Ok(());
+                }
+                let active = self.media_transfer.take().ok_or(Error::Protocol)?;
+                if active.id != transfer || active.bytes.len() != active.expected {
+                    return Err(Error::Protocol);
+                }
+                let data = codec::decode_media(&active.bytes).map_err(|_| Error::Protocol)?;
+                self.receive(ServiceMessage::Media {
+                    authority: self.authority.ok_or(Error::Identity)?,
+                    transfer,
+                    data: Arc::new(data),
+                })
+            }
+            WireMessage::MediaRefused {
+                authority,
+                transfer,
+                reason,
+            } => self.receive(ServiceMessage::MediaRefused {
+                authority,
+                transfer,
+                reason,
+            }),
             WireMessage::Client(_) => return Err(Error::Protocol),
             WireMessage::Attached { authority, host } => {
                 self.receive(ServiceMessage::Attached { authority, host })

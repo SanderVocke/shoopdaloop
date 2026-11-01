@@ -955,6 +955,7 @@ pub enum StructuralState {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    pub content_revision: u64,
     pub id: LoopId,
     pub name: String,
     pub structural_state: StructuralState,
@@ -990,6 +991,7 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            content_revision: 0,
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
             structural_state: StructuralState::Confirmed,
@@ -1319,6 +1321,7 @@ impl Default for WaveformChannelState {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MidiEventState {
     pub frame: u32,
     pub data: Arc<[u8]>,
@@ -3511,5 +3514,142 @@ mod tests {
         };
         assert_eq!(status.latency_ms(), Some(256.0 * 1000.0 / 48_000.0));
         assert_eq!(StatusState::default().latency_ms(), None);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ControlOperation {
+    Transition {
+        loops: Vec<LoopId>,
+        mode: LoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    },
+    Trigger {
+        loops: Vec<LoopId>,
+        mode: LoopMode,
+    },
+    TriggerDefaultPlayback {
+        loops: Vec<LoopId>,
+    },
+    Grab {
+        loops: Vec<LoopId>,
+    },
+    RecordN {
+        loops: Vec<LoopId>,
+        n_cycles: u32,
+        cycles_delay: u32,
+    },
+    RecordWithTargeted {
+        loops: Vec<LoopId>,
+    },
+    SetLoopGain {
+        loops: Vec<LoopId>,
+        gain: f32,
+    },
+    SetLoopBalance {
+        loops: Vec<LoopId>,
+        balance: f32,
+    },
+    SetLoopSelection {
+        loops: Vec<LoopId>,
+        selected: bool,
+        clear_others: bool,
+    },
+    SetTarget {
+        target: Option<LoopId>,
+    },
+    ClearLoops {
+        loops: Vec<LoopId>,
+    },
+    AdoptRingbuffers {
+        loops: Vec<LoopId>,
+        reverse_cycle_start: u32,
+        cycles_length: u32,
+        go_to_cycle: u32,
+        go_to_mode: LoopMode,
+    },
+    ComposeAddToEnd {
+        target: LoopId,
+        add: Vec<LoopId>,
+        parallel: bool,
+    },
+    SetRepeatSync {
+        loops: Vec<LoopId>,
+        active: bool,
+    },
+    SetTrackGain {
+        tracks: Vec<TrackId>,
+        gain_db: f32,
+    },
+    SetTrackBalance {
+        tracks: Vec<TrackId>,
+        balance: f32,
+    },
+    SetTrackMuted {
+        tracks: Vec<TrackId>,
+        muted: bool,
+    },
+    SetTrackInputGain {
+        tracks: Vec<TrackId>,
+        gain_db: f32,
+    },
+    SetTrackInputBalance {
+        tracks: Vec<TrackId>,
+        balance: f32,
+    },
+    SetTrackInputMuted {
+        tracks: Vec<TrackId>,
+        muted: bool,
+        respect_auto_mute: bool,
+    },
+    SetBusGain {
+        buses: Vec<BusId>,
+        gain_db: f32,
+    },
+    SetBusBalance {
+        buses: Vec<BusId>,
+        balance: f32,
+    },
+    SetBusMuted {
+        buses: Vec<BusId>,
+        muted: bool,
+    },
+    SetApplyNCycles(u32),
+    SetSolo(bool),
+    SetSyncActive(bool),
+    SetPlayAfterRecord(bool),
+    SetAutoMuteOtherTrackInputs(bool),
+    SetDefaultRecordingAction(DefaultRecordingAction),
+}
+
+impl ControlOperation {
+    pub fn bounded(&self) -> bool {
+        match self {
+            Self::Transition { loops, .. }
+            | Self::Trigger { loops, .. }
+            | Self::TriggerDefaultPlayback { loops }
+            | Self::Grab { loops }
+            | Self::RecordN { loops, .. }
+            | Self::RecordWithTargeted { loops }
+            | Self::SetLoopGain { loops, .. }
+            | Self::SetLoopBalance { loops, .. }
+            | Self::SetLoopSelection { loops, .. }
+            | Self::ClearLoops { loops }
+            | Self::AdoptRingbuffers { loops, .. }
+            | Self::SetRepeatSync { loops, .. } => loops.len() <= 128,
+            Self::ComposeAddToEnd { add, .. } => add.len() <= 128,
+            Self::SetTrackGain { tracks, .. }
+            | Self::SetTrackBalance { tracks, .. }
+            | Self::SetTrackMuted { tracks, .. }
+            | Self::SetTrackInputGain { tracks, .. }
+            | Self::SetTrackInputBalance { tracks, .. }
+            | Self::SetTrackInputMuted { tracks, .. } => tracks.len() <= 128,
+            Self::SetBusGain { buses, .. }
+            | Self::SetBusBalance { buses, .. }
+            | Self::SetBusMuted { buses, .. } => buses.len() <= 128,
+            _ => true,
+        }
     }
 }

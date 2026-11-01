@@ -24,11 +24,12 @@ shoop_script_resources = { path = "../shoop_script_resources", optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_scripting = { path = "../shoop_scripting" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_transport = { path = "../shoop_transport" }
 shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
-shoop_app_client = { path = "../shoop_app_client" }
+shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
 shoop_rt_backend = { path = "../shoop_rt_backend" }
 shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

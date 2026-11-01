@@ -479,7 +479,16 @@ impl ScriptManager {
     }
 
     pub fn set_control_snapshot(&mut self, snapshot: ControlSnapshot) {
-        self.control.borrow_mut().snapshot = snapshot;
+        let mut control = self.control.borrow_mut();
+        if control.confirmed.is_some() {
+            control.confirmed = Some(snapshot.clone());
+        }
+        control.snapshot = snapshot;
+    }
+
+    pub fn use_confirmed_control_reads(&mut self) {
+        let mut control = self.control.borrow_mut();
+        control.confirmed = Some(control.snapshot.clone());
     }
 
     pub fn take_control_operations(&mut self) -> Vec<ControlOperation> {
@@ -842,6 +851,7 @@ impl ScriptManager {
         let control = Rc::new(RefCell::new(ControlBridge {
             snapshot: self.control.borrow().snapshot.clone(),
             operations: Vec::new(),
+            confirmed: self.control.borrow().confirmed.clone(),
         }));
         let runtime = LuaRuntime::new_with_control(control)?;
         let provider = if let Some(bundle) = &script.resource_bundle {
@@ -1907,6 +1917,7 @@ d.open('Simple')
                 default_recording_action: shoop_app_api::DefaultRecordingAction::Record,
             },
             operations: Vec::new(),
+            confirmed: None,
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
@@ -2067,6 +2078,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
                 ..Default::default()
             },
             operations: Vec::new(),
+            confirmed: None,
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
@@ -2134,6 +2146,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
                 ..Default::default()
             },
             operations: Vec::new(),
+            confirmed: None,
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
@@ -2209,6 +2222,7 @@ c.track_set_muted(99, true)
                 ..Default::default()
             },
             operations: Vec::new(),
+            confirmed: None,
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
@@ -2312,6 +2326,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
                 ..Default::default()
             },
             operations: Vec::new(),
+            confirmed: None,
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime

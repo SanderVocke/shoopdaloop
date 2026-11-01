@@ -21,7 +21,9 @@ shoop_rt_transport = { path = "../shoop_rt_transport" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 eframe = { workspace = true }
-shoop_app = { path = "../shoop_app" }
+shoop_app = { path = "../shoop_app", default-features = false }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
 shoop_backend = { path = "../shoop_backend" }
 shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }

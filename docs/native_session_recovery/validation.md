@@ -157,3 +157,64 @@ The old application runtime remains behind a temporary `legacy` feature for dire
 consumer migration. Production UI/Lua wiring, independent hosts, recovery/exit UX,
 legacy retirement, final suites/Miri and final CI are still stages 3–7. This evidence
 is not final A1–A11 acceptance. Miri has not been run early.
+
+
+## Stage 3 — UI/Lua client and main-thread composition (2026-11-01)
+
+Native and browser UI runtimes now compose the portable service with
+`shoop_app_client::runtime::Runtime`. Local delivery passes typed messages and Arc
+media without a codec round trip. Lua VM, timers, controller MIDI, dialogs and
+resources stay in the client; portable control operations are app API data and are
+resolved by the service. The client uses coherent confirmed reads: a write becomes
+visible to a later callback after service confirmation, without waiting or recursive
+message dispatch. Legacy standalone scripting fixtures retain their reference mode;
+production clients opt into confirmed reads.
+
+Recovery starts catalog scripts disabled. Explicit user startup permits subsequent
+catalog reconciliation for that script. Detach/connection loss stops local scripts
+and closes controller MIDI; controller ports are a read-only client projection and
+never enter service state. Piano recipients follow ordered input-monitoring intent;
+detach sends only held note-offs, preserving capture and other MIDI activity.
+Held piano tracking is bounded at 512 voices. Shutdown additionally queues channel
+panic before the host's actual MIDI reset/cleanup path.
+
+Media views use a separate bounded transfer (32 MiB, 1024-byte chunks). Snapshot
+transfers remain capped at 8 MiB. Adapter reads reject excessive announced totals
+before allocating content, and cancellation discards client-owned read buffers.
+The service handles at most 16 local commands and sends at most 64 updates per turn;
+this leaves delivery capacity for acceptance, terminal results and snapshots during
+bursts. A 256-operation UI burst completes in order without disconnecting an actively
+pumping client. Unsupported persistence, FX, content replacement, timing and driver
+switch operations retain visible capability refusals.
+
+Focused evidence:
+
+- Seventeen real-engine service/client integration tests pass natively, including
+  Lua confirmed reads/events/timers, queue saturation, recovered script gating,
+  MIDI control ownership and teardown, held note cleanup, reset completion, and
+  waveform/MIDI views in addition to Stage 2 recovery cases.
+- Node 22.22.2: final app run passes 133 tests (including 17 service cases and retained
+  reference tests); the unchanged projection/codec/scripting suites pass 9/5/32 tests.
+  The earlier all-four-package run passed 178 tests before the final client MIDI
+  projection/cleanup case was added. wasm-pack 0.15.0, wasm-bindgen 0.2.127, Rust 1.99.1.
+- The actual native application in-process core workflow passes: session reset,
+  tracks, routes, sync and immediate audio/MIDI record/play, controls/meters, waveform,
+  MIDI detail, explicit unsupported driver switch, stop and clear. Representative
+  observed control/detail publication was approximately 5–57 ms; synchronized
+  musical transitions include their intended cycle delay. This is focused workflow
+  evidence, not the final performance matrix.
+- Development Chromium 154.0.8037.57 with fake microphone passes the full new-engine
+  AudioWorklet workflow at 900x600, reporting zero xruns. It includes fresh/reset
+  structure, audio/MIDI capture/playback, routing, controls, waveform/MIDI detail,
+  immediate stop and clear. No application worker or serialization was introduced
+  into the local app connection. This smoke preceded only the final Lua-local
+  projection/cleanup changes; ordinary Node and compile checks cover those changes.
+- Native and Wasm warning-denying builds, formatting, closed tracing inventory,
+  Rust test attribute policy, and four-target service/client/RT dependency checks pass.
+  Lua-client dependencies are audited separately from the smaller projection core.
+
+The UI-owned external engine supervisor and legacy backend/worker choices are still
+transitional and are replaced in Stages 4–6. Final native role packaging/recovery,
+required full suites, selected Miri, final-head CI and review remain Stage 7. No Miri
+has been run early. The earlier Stage 1 head's CI rerun is green; it does not validate
+these unpushed stage commits.

@@ -4624,10 +4624,13 @@ dependencies = [
 name = "shoop_app_client"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "shoop_app_api",
  "shoop_app_protocol",
+ "shoop_scripting",
  "shoop_transport",
  "shoop_wasm_test_support",
+ "tracing",
  "wasm-bindgen-test",
 ]
 
@@ -5131,6 +5134,8 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_app",
+ "shoop_app_client",
+ "shoop_app_protocol",
  "shoop_audio_protocol",
  "shoop_backend",
  "shoop_common",

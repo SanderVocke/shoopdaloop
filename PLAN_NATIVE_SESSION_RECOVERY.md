@@ -4,10 +4,10 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stages 0–2 are implemented: ownership/contract inventory, neutral backend contracts,
-shared carriers, bounded app protocol/client projection, and the authoritative service.
-Stages 3–7 remain pending;
-the production application does not yet use the new app service/client architecture.
+Stages 0–3 are implemented: ownership/contract inventory, neutral backend contracts,
+shared carriers, bounded app protocol/client projection, the authoritative service,
+and UI/Lua clients with typed local composition. Stages 4–7 remain pending, including
+independent hosts, recovery/exit UX, legacy retirement and final validation.
 See [incremental validation](docs/native_session_recovery/validation.md).
 Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,
@@ -333,14 +333,14 @@ RT-engine workflow verifies the extracted service against actual engine behavior
 
 ### Stage 3 — UI/Lua clients and browser-main composition (after 2)
 
-- [ ] Route UI actions and Lua control through `shoop_app_client`; make UI state a
+- [x] Route UI actions and Lua control through `shoop_app_client`; make UI state a
   confirmed projection with explicitly provisional edits. Preserve supported Lua
   reads/events/timers/MIDI behavior while keeping script execution client-side.
-- [ ] Use typed local app delivery for native in-process and browser-main modes.
+- [x] Use typed local app delivery for native in-process and browser-main modes.
   Pump client/service cooperatively, without recursive dispatch or blocking waits.
-- [ ] Keep browser audio/device glue and RT MessagePort connection to the worklet;
+- [x] Keep browser audio/device glue and RT MessagePort connection to the worklet;
   add no Worker or application model to the worklet. Maintain supported Web MIDI flow.
-- [ ] Gate initial scripts to fresh-session startup; reconnecting clients do not
+- [x] Gate initial scripts to fresh-session startup; reconnecting clients do not
   rerun initialization, saved startup session loads, or autoconnection policies.
 
 **Verify:** focused client/UI/Lua tests for ordering, delayed/refused replies, event

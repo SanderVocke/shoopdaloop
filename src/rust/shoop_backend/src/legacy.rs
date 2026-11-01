@@ -6408,6 +6408,7 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    content_revision: 0,
                     mode,
                     length,
                     position,
@@ -7883,6 +7884,7 @@ impl Backend for FakeBackend {
         self.loops.insert(
             id,
             BackendLoopState {
+                content_revision: 0,
                 mode: BackendLoopMode::Stopped,
                 ..Default::default()
             },
@@ -9039,6 +9041,7 @@ impl Backend for FakeBackend {
             .get_mut(&loop_id)
             .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
         *state = BackendLoopState {
+            content_revision: 0,
             mode: BackendLoopMode::Stopped,
             ..Default::default()
         };

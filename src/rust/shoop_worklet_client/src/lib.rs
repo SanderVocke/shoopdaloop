@@ -808,6 +808,7 @@ impl RemoteWorkletBackend {
                 self.snapshot.loops.insert(
                     *loop_id,
                     BackendLoopState {
+                        content_revision: 0,
                         mode: BackendLoopMode::Stopped,
                         length: source_loop.length,
                         stereo: source_track.state.audio_channels == 2,
@@ -1290,6 +1291,7 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),
                         length: loop_.length,
                         position: loop_.position,

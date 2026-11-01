@@ -54,8 +54,9 @@ use shoop_egui::{
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
-use shoop_app::CooperativeApplicationRuntime;
+use application::CooperativeApplicationRuntime;
 mod app_args;
+mod application;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -77,9 +78,9 @@ mod native_preview;
 mod settings;
 use app_args::AppArgs;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::StartupScript;
+use application::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::{ApplicationHandle, ApplicationRuntime};
+use application::{ApplicationHandle, ApplicationRuntime};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -1573,7 +1574,7 @@ fn load_ephemeral_script_path(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save_file_output(output: shoop_app::ApplicationFileOutput, sender: Sender<AppIntent>) {
+fn save_file_output(output: application::ApplicationFileOutput, sender: Sender<AppIntent>) {
     let Some(path) = rfd::FileDialog::new()
         .set_file_name(&output.suggested_name)
         .save_file()
@@ -1686,7 +1687,7 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
 
 #[cfg(target_arch = "wasm32")]
 fn save_file_output(
-    output: shoop_app::ApplicationFileOutput,
+    output: application::ApplicationFileOutput,
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
 ) {
     wasm_bindgen_futures::spawn_local(async move {
@@ -1907,7 +1908,7 @@ fn script_kind_has_file_identity(kind: ScriptKind) -> bool {
 fn reconcile_loop_smoothing_settings(
     settings: &shoop_settings::SettingsSnapshot,
     applied_revision: &mut u64,
-    mut dispatch: impl FnMut(AppIntent) -> Result<(), shoop_app::DispatchError>,
+    mut dispatch: impl FnMut(AppIntent) -> Result<(), application::DispatchError>,
 ) -> anyhow::Result<()> {
     if settings.revision() == *applied_revision {
         return Ok(());
@@ -1950,7 +1951,7 @@ struct Runtime {
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
-    pending_preview: Option<shoop_app::ApplicationAudioPreview>,
+    pending_preview: Option<application::ApplicationAudioPreview>,
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
@@ -2034,7 +2035,7 @@ impl Runtime {
             ),
         };
         let engine_transport = args.selected_engine_transport(settings, audio_backend)?;
-        let (engine_host, mut backend, backend_warnings) = match audio_backend {
+        let (engine_host, backend, backend_warnings) = match audio_backend {
             AudioBackendKind::Legacy => {
                 let (backend, warning) = NativeBackend::new_with_fallback(configured_driver)?;
                 (
@@ -2077,7 +2078,6 @@ impl Runtime {
                     )),
                 ),
             };
-        shoop_backend::Backend::set_loop_smoothing_ms(&mut *backend, loop_smoothing_ms)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(audio_backend_warning);
         warnings.extend(configuration_warning);
@@ -2097,8 +2097,9 @@ impl Runtime {
         };
         let runtime = ApplicationRuntime::start_with_options(
             backend,
-            shoop_app::ApplicationStartOptions {
+            application::ApplicationStartOptions {
                 startup_scripts,
+                loop_smoothing_ms,
                 master_auto_connect,
                 startup_warnings,
             },
@@ -2352,14 +2353,14 @@ impl Runtime {
             && self.snapshot().status.audio_driver == shoop_egui::AudioDriverState::Failed
     }
 
-    fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
+    fn dispatch(&mut self, intent: AppIntent) -> Result<(), application::DispatchError> {
         if self.fatal_engine_error() {
-            return Err(shoop_app::DispatchError::Disconnected);
+            return Err(application::DispatchError::Disconnected);
         }
         self.handle.dispatch(intent)
     }
 
-    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
+    fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
         self.handle.take_file_output()
     }
 
@@ -2410,7 +2411,7 @@ impl Runtime {
                                 samples: Arc::clone(&preview.samples),
                             })
                     {
-                        if error == shoop_app::DispatchError::Full {
+                        if error == application::DispatchError::Full {
                             self.pending_preview = Some(preview);
                         } else {
                             tracing::warn!(%error, "frontend.preview.actor_disconnected");
@@ -2767,9 +2768,10 @@ impl Runtime {
         let mut runtime = Self {
             runtime: Some(CooperativeApplicationRuntime::start_with_options_and_midi(
                 Box::new(backend),
-                shoop_app::ApplicationStartOptions {
+                application::ApplicationStartOptions {
                     startup_scripts: Vec::new(),
                     master_auto_connect,
+                    loop_smoothing_ms,
                     ..Default::default()
                 },
                 midi_service,
@@ -2860,7 +2862,7 @@ impl Runtime {
         if self.runtime.is_some() {
             return;
         }
-        let Some((mut backend, host_warnings)) = controller.take_backend() else {
+        let Some((backend, host_warnings)) = controller.take_backend() else {
             return;
         };
         let Some(pending) = self.pending_start.take() else {
@@ -2868,17 +2870,15 @@ impl Runtime {
         };
         let mut warnings = pending.warnings;
         warnings.extend(host_warnings);
-        if let Err(error) = backend.set_loop_smoothing_ms(pending.loop_smoothing_ms) {
-            warnings.push(format!("Could not apply loop edge smoothing: {error:#}"));
-        }
         for warning in &warnings {
             tracing::warn!(warning = %warning, "frontend.startup.fallback");
         }
         match CooperativeApplicationRuntime::start_with_options_and_midi(
             backend,
-            shoop_app::ApplicationStartOptions {
+            application::ApplicationStartOptions {
                 startup_scripts: Vec::new(),
                 master_auto_connect: pending.master_auto_connect,
+                loop_smoothing_ms: pending.loop_smoothing_ms,
                 startup_warnings: warnings,
             },
             pending.midi_service,
@@ -3177,14 +3177,14 @@ impl Runtime {
         }
     }
 
-    fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
+    fn dispatch(&mut self, intent: AppIntent) -> Result<(), application::DispatchError> {
         match &mut self.runtime {
             Some(runtime) => runtime.dispatch(intent),
-            None => Err(shoop_app::DispatchError::Disconnected),
+            None => Err(application::DispatchError::Disconnected),
         }
     }
 
-    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
+    fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
         self.runtime.as_ref()?.take_file_output()
     }
 
@@ -6225,7 +6225,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test(no_wasm = "uses the native backend")]
     fn native_application_builtin_fx_save_reload_smoke() {
-        use shoop_app::CooperativeApplicationRuntime;
+        use application::CooperativeApplicationRuntime;
         use shoop_backend::NativeBackend;
         use shoop_egui::{
             AppIntent, AudioDriverConfig, BuiltInFxControl, BuiltInFxDriveType,
@@ -6392,7 +6392,7 @@ mod tests {
 
         assert!(
             reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |_| Err(
-                shoop_app::DispatchError::Full
+                application::DispatchError::Full
             ),)
             .is_err()
         );
@@ -8182,7 +8182,7 @@ mod tests {
     fn native_preview_waits_for_actor_snapshot_publication() {
         let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         let request_id = app.runtime.snapshot().click_track.preview_request_id + 1;
-        app.runtime.pending_preview = Some(shoop_app::ApplicationAudioPreview {
+        app.runtime.pending_preview = Some(application::ApplicationAudioPreview {
             output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
             request_id,
             sample_rate: 48_000,

@@ -478,6 +478,7 @@ impl Mirror {
     pub fn loop_state(entry: &mut Loop, channels: u32) -> BackendLoopState {
         let view = entry.view;
         BackendLoopState {
+            content_revision: entry.content,
             mode: app_mode(view.mode),
             length: u32::try_from(view.length).unwrap_or(u32::MAX),
             position: u32::try_from(view.position).unwrap_or(u32::MAX),

@@ -299,3 +299,8 @@ src/rust/shoop_app/src/lib.rs,app_session,excluded,Portable service exports and 
 src/rust/shoop_app/src/service/mod.rs,app_session,instrumented_direct,Service receive and cooperative tick boundaries retain session operations independently of delivery.
 src/rust/shoop_app/src/service/commands.rs,app_session,instrumented_indirect,Shared mutation handlers run inside the service receive boundary.
 src/rust/shoop_app/src/service/projection.rs,app_session,instrumented_direct,Authoritative snapshot capture boundary.
+src/rust/shoop_app/src/service/commands/control.rs,app_session,instrumented_indirect,Portable control handlers run inside the service command boundary.
+src/rust/shoop_app/src/service/media.rs,app_session,instrumented_indirect,Client-owned media reads run inside the service tick boundary.
+src/rust/shoop_app_client/src/runtime.rs,application_ui_and_control,instrumented_direct,Cooperative UI and Lua client tick boundary.
+src/rust/shoop_app_protocol/src/stream.rs,app_session,excluded,Incremental bounded wire record construction; sender owns delivery tracing.
+src/rust/shoopdaloop/src/application.rs,application_ui_and_control,instrumented_indirect,Composition schedules the traced service and client turns.

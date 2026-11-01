@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+mod media;
 mod projection;
 
 use anyhow::{anyhow, Result};
@@ -36,6 +37,7 @@ struct Track {
     backend: BackendTrackId,
     audio_channels: u32,
     midi: bool,
+    monitoring_intent: Option<(u64, bool)>,
     view: TrackState,
     loops: Vec<LoopId>,
 }
@@ -61,6 +63,7 @@ enum Effect {
     TrackCreated(TrackId, Vec<LoopId>),
     LoopCreated(TrackId, LoopId),
     TrackRemoved(TrackId),
+    SessionReset(Vec<TrackId>),
     Shutdown,
 }
 
@@ -125,6 +128,7 @@ pub struct Service {
     connection_intent: BTreeMap<(PortId, String), Intent>,
     route_intent: BTreeMap<MixerRouteState, Intent>,
     piano_notes: BTreeMap<u8, BTreeSet<TrackId>>,
+    released_notes: VecDeque<(TrackId, u8)>,
     observed: BackendSnapshot,
     init_through: u64,
     init_error: Option<String>,
@@ -134,6 +138,7 @@ pub struct Service {
     xruns: u32,
     active_effect: Effect,
     media_loop: Option<LoopId>,
+    media_pending: Option<(TransferId, LoopId)>,
 }
 
 impl Service {
@@ -167,6 +172,7 @@ impl Service {
             connection_intent: BTreeMap::new(),
             route_intent: BTreeMap::new(),
             piano_notes: BTreeMap::new(),
+            released_notes: VecDeque::new(),
             observed,
             init_through: 0,
             init_error: None,
@@ -176,6 +182,7 @@ impl Service {
             xruns: 0,
             active_effect: Effect::None,
             media_loop: None,
+            media_pending: None,
         };
         service.register_master()?;
         let created = service.backend.create_direct_track(DirectTrackRequest {
@@ -195,8 +202,13 @@ impl Service {
         Ok(service)
     }
 
+    pub fn failure(&self) -> Option<&str> {
+        self.init_error.as_deref()
+    }
+
     pub fn is_ready(&self) -> bool {
         !self.closed
+            && self.released_notes.is_empty()
             && self.init_error.is_none()
             && self.revision.0 != u64::MAX
             && !self.backend.mutations_pending_through(self.init_through)
@@ -222,6 +234,28 @@ impl Service {
         let _span =
             tracing::trace_span!("app.service.receive", connection = connection.0).entered();
         match message {
+            ClientMessage::ReadMedia {
+                authority,
+                transfer,
+                loop_id,
+            } => {
+                self.check(connection, authority)?;
+                if !self.lease.as_ref().is_some_and(|lease| lease.ready) {
+                    return Err(Refusal::NotReady);
+                }
+                if transfer.0 == 0 {
+                    return Err(Refusal::Invalid);
+                }
+                self.backend.cancel_media_reads();
+                self.media_loop = None;
+                self.media_pending = Some((transfer, loop_id));
+            }
+            ClientMessage::CancelMedia { authority } => {
+                self.check(connection, authority)?;
+                self.media_pending = None;
+                self.media_loop = None;
+                self.backend.cancel_media_reads();
+            }
             ClientMessage::Attach {
                 version,
                 host,
@@ -318,9 +352,15 @@ impl Service {
             .is_some_and(|lease| lease.connection == connection)
         {
             self.lease = None;
+            for (note, tracks) in std::mem::take(&mut self.piano_notes) {
+                for track in tracks {
+                    self.released_notes.push_back((track, note));
+                }
+            }
             self.updates.clear();
             self.backend.cancel_media_reads();
             self.media_loop = None;
+            self.media_pending = None;
         }
     }
 
@@ -485,7 +525,12 @@ impl Service {
                     ..
                 },
             ) => 0,
-            _ => 3 * self.loops.len() + 16 * self.tracks.len() + 64,
+            _ => {
+                3 * self.loops.len()
+                    + 16 * self.tracks.len()
+                    + 64
+                    + self.piano_notes.values().map(BTreeSet::len).sum::<usize>()
+            }
         }
     }
 
@@ -550,12 +595,44 @@ impl Service {
             pending = self.pending.len()
         )
         .entered();
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            if self.backend.mutation_capacity() == 0 {
+                break;
+            }
+            let Some((id, note)) = self.released_notes.front().copied() else {
+                break;
+            };
+            if let Some(track) = self.tracks.get(&id) {
+                if self
+                    .backend
+                    .inject_midi_input(
+                        track.backend,
+                        &[BackendMidiEvent {
+                            time: 0,
+                            data: vec![0x80, note, 0],
+                        }],
+                    )
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            self.released_notes.pop_front();
+        }
         self.backend.advance(elapsed);
         match self.backend.poll() {
             Ok(mut observed) => {
                 let completions = std::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
                 for completion in completions {
+                    for track in self.tracks.values_mut() {
+                        if track
+                            .monitoring_intent
+                            .is_some_and(|(sequence, _)| sequence == completion.sequence)
+                        {
+                            track.monitoring_intent = None;
+                        }
+                    }
                     for intent in self
                         .connection_intent
                         .values_mut()
@@ -613,6 +690,7 @@ impl Service {
                 }
             }
         }
+        self.advance_media();
         self.publish();
     }
 
@@ -707,7 +785,7 @@ impl Service {
         port: &local::ServicePort,
         elapsed: Duration,
     ) {
-        for _ in 0..MAX_MESSAGES_PER_TURN {
+        for _ in 0..MAX_COMMANDS_PER_TURN {
             match port.commands.try_recv() {
                 Ok(message) => {
                     if let Err(reason) = self.handle(connection, message) {

@@ -686,6 +686,7 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub content_revision: u64,
     pub mode: BackendLoopMode,
     pub length: u32,
     pub position: u32,

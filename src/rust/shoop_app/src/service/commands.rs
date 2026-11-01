@@ -1,5 +1,7 @@
 use super::*;
 
+mod control;
+
 type CommandResult = std::result::Result<Effect, CommandError>;
 
 impl Service {
@@ -151,6 +153,40 @@ impl Service {
                 }
                 Ok(Effect::None)
             }
+            Command::Control(operation) => self.control_operation(operation),
+            Command::NewSession => {
+                if self.pending.len() != 1 {
+                    return Err(CommandError::invalid(
+                        "wait for admitted operations before resetting the session",
+                    ));
+                }
+                self.media_pending = None;
+                self.media_loop = None;
+                self.backend.cancel_media_reads();
+                self.prepare_shutdown()?;
+                self.backend.clear_loop(self.sync_backend()?)?;
+                let tracks: Vec<_> = self
+                    .track_order
+                    .iter()
+                    .filter(|id| !self.tracks[id].view.is_sync)
+                    .copied()
+                    .collect();
+                self.active_effect = Effect::SessionReset(tracks.clone());
+                for id in &tracks {
+                    self.backend.remove_track(self.tracks[id].backend)?;
+                }
+                self.global = GlobalControlState::default();
+                self.tracks
+                    .get_mut(&TrackId::from_raw(1))
+                    .unwrap()
+                    .view
+                    .name = "Sync".into();
+                let view = &mut self.loops.get_mut(&LoopId::from_raw(1)).unwrap().view;
+                view.name = "Sync".into();
+                view.selected = false;
+                view.targeted = false;
+                Ok(Effect::SessionReset(tracks))
+            }
             Command::ResetXruns => {
                 self.xruns = 0;
                 self.observed.status.xruns = 0;
@@ -301,17 +337,15 @@ impl Service {
                         .tracks
                         .iter()
                         .filter_map(|(other, track)| {
-                            (*other != id && !track.view.is_sync).then_some(track.backend)
+                            (*other != id && !track.view.is_sync).then_some(*other)
                         })
                         .collect();
                     for other in others {
-                        self.backend.set_track_control(
-                            other,
-                            BackendTrackControl::InputMonitoring(false),
-                        )?;
+                        self.set_input_monitoring(other, false)?;
                     }
                 }
-                BackendTrackControl::InputMonitoring(enabled)
+                self.set_input_monitoring(id, enabled)?;
+                return Ok(Effect::None);
             }
             _ => return Err(CommandError::unsupported(BackendCapability::TrackFx)),
         };
@@ -549,7 +583,7 @@ impl Service {
                 self.global.sync.then_some(0),
                 None,
             )?,
-            GlobalControlAction::MidiPanic => self.piano(PianoAction::ReleaseAll)?,
+            GlobalControlAction::MidiPanic => self.midi_panic(false)?,
             GlobalControlAction::DeselectAll => {
                 for entry in self.loops.values_mut() {
                     entry.view.selected = false;
@@ -619,13 +653,25 @@ impl Service {
                 if self.piano_notes.contains_key(&note.value()) {
                     return Ok(());
                 }
-                let tracks: BTreeSet<_> = self
-                    .loops
-                    .values()
-                    .filter(|entry| entry.view.selected || entry.view.targeted)
-                    .map(|entry| entry.track)
-                    .filter(|id| self.tracks[id].midi)
-                    .collect();
+                let tracks: BTreeSet<_> =
+                    self.tracks
+                        .iter()
+                        .filter_map(|(id, track)| {
+                            (track.midi
+                                && track.monitoring_intent.map_or(
+                                    track.view.controls.input_monitoring,
+                                    |(_, desired)| desired,
+                                ))
+                            .then_some(*id)
+                        })
+                        .collect();
+                let active: usize = self.piano_notes.values().map(BTreeSet::len).sum();
+                if active + tracks.len() > 512 {
+                    return Err(CommandError {
+                        reason: Refusal::Overloaded,
+                        message: "piano voice tracking is full".into(),
+                    });
+                }
                 for id in &tracks {
                     self.backend.inject_midi_input(
                         self.tracks[id].backend,
@@ -634,8 +680,11 @@ impl Service {
                             data: vec![0x90, note.value(), 100],
                         }],
                     )?;
+                    self.piano_notes
+                        .entry(note.value())
+                        .or_default()
+                        .insert(*id);
                 }
-                self.piano_notes.insert(note.value(), tracks);
             }
             PianoAction::Release(note) => {
                 if let Some(tracks) = self.piano_notes.get(&note.value()).cloned() {
@@ -654,23 +703,49 @@ impl Service {
                 }
             }
             PianoAction::ReleaseAll => {
-                let tracks: Vec<_> = self
-                    .tracks
-                    .values()
-                    .filter_map(|track| track.midi.then_some(track.backend))
-                    .collect();
-                for track in tracks {
-                    let events: Vec<_> = (0..16)
-                        .map(|channel| BackendMidiEvent {
-                            time: 0,
-                            data: vec![0xb0 | channel, 120, 0],
-                        })
-                        .collect();
-                    self.backend.inject_midi_input(track, &events)?;
+                let notes: Vec<_> = self.piano_notes.keys().copied().collect();
+                for note in notes {
+                    self.piano(PianoAction::Release(MidiNote::new(note).unwrap()))?;
                 }
-                self.piano_notes.clear();
             }
         }
+        Ok(())
+    }
+
+    fn set_input_monitoring(&mut self, id: TrackId, enabled: bool) -> Result<(), CommandError> {
+        let before = self.backend.mutation_cursor();
+        self.backend.set_track_control(
+            self.tracks[&id].backend,
+            BackendTrackControl::InputMonitoring(enabled),
+        )?;
+        let sequence = self.backend.mutation_cursor();
+        self.tracks.get_mut(&id).unwrap().monitoring_intent =
+            (sequence > before).then_some((sequence, enabled));
+        Ok(())
+    }
+    fn midi_panic(&mut self, all_tracks: bool) -> Result<(), CommandError> {
+        let tracks: Vec<_> = self
+            .tracks
+            .values()
+            .filter(|track| {
+                track.midi
+                    && (all_tracks
+                        || track
+                            .monitoring_intent
+                            .map_or(track.view.controls.input_monitoring, |(_, desired)| desired))
+            })
+            .map(|track| track.backend)
+            .collect();
+        let events: Vec<_> = (0..16)
+            .map(|channel| BackendMidiEvent {
+                time: 0,
+                data: vec![0xb0 | channel, 120, 0],
+            })
+            .collect();
+        for track in tracks {
+            self.backend.inject_midi_input(track, &events)?;
+        }
+        self.piano_notes.clear();
         Ok(())
     }
 
@@ -681,6 +756,7 @@ impl Service {
             .supports(BackendCapability::MidiInjection)
         {
             self.piano(PianoAction::ReleaseAll)?;
+            self.midi_panic(true)?;
         }
         self.transition(self.ordered_loops(), BackendLoopMode::Stopped, None, None)?;
         Ok(Effect::Shutdown)

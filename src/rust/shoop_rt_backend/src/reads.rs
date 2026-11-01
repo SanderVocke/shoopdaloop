@@ -239,11 +239,17 @@ impl Reads {
             return;
         };
         let loop_channels = self.loop_channels;
+        const MAX_READ_BYTES: u64 = 32 * 1024 * 1024;
         if midi {
             let Some(read) = self.midi.get_mut(&loop_id) else {
                 return;
             };
             if read.waiting.remove(&chunk.id).is_none() {
+                return;
+            }
+            if chunk.total > MAX_READ_BYTES {
+                read.outcome =
+                    Outcome::Failed("MIDI view exceeds the bounded read limit".to_owned());
                 return;
             }
             match chunk.payload {
@@ -277,6 +283,14 @@ impl Reads {
             return;
         };
         if read.waiting.remove(&chunk.id).is_none() {
+            return;
+        }
+        if chunk
+            .total
+            .checked_mul(loop_channels as u64 * 4)
+            .is_none_or(|bytes| bytes > MAX_READ_BYTES)
+        {
+            read.outcome = Outcome::Failed("audio view exceeds the bounded read limit".to_owned());
             return;
         }
         match chunk.payload {
@@ -368,5 +382,52 @@ pub(crate) fn empty_midi(version: u64, midi: bool) -> BackendMidiData {
         } else {
             Vec::new()
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn oversized_bulk_totals_fail_before_allocating_media() {
+        for midi in [false, true] {
+            let mut reads = Reads::default();
+            let id = BackendLoopId::from_raw(1);
+            let slot = LoopSlotId(shoop_rt_protocol::SlotId {
+                index: 0,
+                generation: 1,
+            });
+            if midi {
+                reads.midi(id, 1, slot);
+            } else {
+                reads.audio(id, 1, slot, 1);
+            }
+            let (loop_id, kind, request) = reads.next().unwrap();
+            reads.sent(loop_id, kind, request.id);
+            reads.receive(
+                BulkChunk {
+                    id: request.id,
+                    offset: 0,
+                    total: u64::MAX,
+                    payload: if midi {
+                        shoop_rt_protocol::BulkPayload::Midi {
+                            len: 0,
+                            bytes: [0; BULK_CHUNK_BYTES],
+                        }
+                    } else {
+                        shoop_rt_protocol::BulkPayload::Audio {
+                            len: 0,
+                            samples: [0.0; BULK_CHUNK_SAMPLES],
+                        }
+                    },
+                },
+                |_| 0,
+            );
+            if midi {
+                assert!(matches!(reads.midi(id, 1, slot), Outcome::Failed(_)));
+            } else {
+                assert!(matches!(reads.audio(id, 1, slot, 1), Outcome::Failed(_)));
+            }
+        }
     }
 }

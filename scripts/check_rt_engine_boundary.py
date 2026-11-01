@@ -33,12 +33,17 @@ FORBIDDEN = {
 
 def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
+    if package == "shoop_app_client_runtime":
+        forbidden = {"shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop", "shoop_engine",
+                     "shoop_session", "rt_runtime", "cpal", "iceoryx2"}
+        return sorted(name for name in names if name in forbidden or name.startswith(
+            ("shoop_rt_", "shoop_transport_")))
     if package == "shoop_app":
         forbidden = {"shoop_engine", "shoop_egui", "shoopdaloop", "shoop_scripting",
                      "shoop_session", "rt_runtime", "shoop_rt_engine", "cpal", "midir",
                      "web-sys", "js-sys", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(
-            ("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
+            ("shoop_rt_", "shoop_transport_")))
     if package in {"shoop_app_protocol", "shoop_app_client"}:
         forbidden = {"shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop",
                      "shoop_engine", "shoop_scripting", "shoop_session", "rt_runtime",
@@ -76,7 +81,7 @@ def main() -> int:
         for target in args.target or RUNTIME.TARGETS:
             result = subprocess.run(
                 ["cargo", "tree", "--locked", "-p", package,
-                 *(["--no-default-features"] if package in {"shoop_app", "shoop_backend"} else ["--all-features"]),
+                 *(["--no-default-features"] if package in {"shoop_app", "shoop_backend", "shoop_app_client"} else ["--all-features"]),
                  "--target", target, "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
                 cwd=ROOT, text=True, capture_output=True, check=False,
             )
@@ -86,6 +91,21 @@ def main() -> int:
             if not re.search(rf"^{package} v\d", result.stdout, re.MULTILINE):
                 print(f"{target}: missing {package} root", file=sys.stderr)
                 return 1
+            if package == "shoop_app_client":
+                runtime = subprocess.run(
+                    ["cargo", "tree", "--locked", "-p", package, "--features", "runtime", "--target", target,
+                     "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
+                    cwd=ROOT, text=True, capture_output=True, check=False,
+                )
+                if runtime.returncode:
+                    sys.stderr.write(runtime.stdout + runtime.stderr)
+                    return runtime.returncode
+                forbidden_runtime = violations(runtime.stdout, "shoop_app_client_runtime")
+                if forbidden_runtime:
+                    print(f"{target}: forbidden Lua-client dependencies: {', '.join(forbidden_runtime)}", file=sys.stderr)
+                    failed = True
+                else:
+                    print(f"{target}: Lua-client production/build boundary: ok")
             forbidden = violations(result.stdout, package)
             if forbidden:
                 print(f"{target}: forbidden {package} dependencies: {', '.join(forbidden)}",

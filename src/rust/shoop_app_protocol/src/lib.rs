@@ -6,18 +6,21 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod codec;
 pub mod local;
+pub mod stream;
 
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 use std::sync::Arc;
 
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 pub const CHUNK_BYTES: usize = 1024;
+pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_PENDING_OPERATIONS: usize = 128;
 pub const MAX_RETAINED_RESULTS: usize = 256;
 pub const QUEUE_CAPACITY: usize = 256;
 pub const MAX_MESSAGES_PER_TURN: usize = 64;
+pub const MAX_COMMANDS_PER_TURN: usize = 16;
 
 macro_rules! identity {
     ($name:ident, $value:ty) => {
@@ -97,6 +100,8 @@ pub enum Command {
         loops: Vec<LoopId>,
     },
     ResetXruns,
+    Control(ControlOperation),
+    NewSession,
 }
 
 impl Command {
@@ -104,6 +109,7 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
+            Self::Control(operation) => operation.bounded(),
             Self::AddTrack(spec) => {
                 name(&spec.name)
                     && spec.initial_output_bus_names.len() <= 64
@@ -277,11 +283,31 @@ pub enum ServiceMessage {
         authority: Authority,
         result: OperationResult,
     },
+    Media {
+        authority: Authority,
+        transfer: TransferId,
+        data: Arc<LoopMedia>,
+    },
+    MediaRefused {
+        authority: Authority,
+        transfer: TransferId,
+        reason: Refusal,
+    },
 }
 
 impl ServiceMessage {
     pub fn valid(&self) -> bool {
         match self {
+            Self::Media {
+                authority,
+                transfer,
+                data,
+            } => authority.is_valid() && transfer.0 != 0 && data.valid(),
+            Self::MediaRefused {
+                authority,
+                transfer,
+                ..
+            } => authority.is_valid() && transfer.0 != 0,
             Self::Attached { authority, host } => authority.is_valid() && host.0 != 0,
             Self::Snapshot { authority, state } => authority.is_valid() && state.valid(),
             Self::Accepted {
@@ -328,6 +354,14 @@ pub enum ClientMessage {
         authority: Authority,
         operation: OperationId,
     },
+    ReadMedia {
+        authority: Authority,
+        transfer: TransferId,
+        loop_id: LoopId,
+    },
+    CancelMedia {
+        authority: Authority,
+    },
 }
 
 /// Snapshot chunks share the same bounded record format as commands and results.
@@ -368,6 +402,24 @@ pub enum WireMessage {
         authority: Authority,
         result: OperationResult,
     },
+    MediaBegin {
+        authority: Authority,
+        transfer: TransferId,
+        bytes: u32,
+    },
+    MediaChunk {
+        transfer: TransferId,
+        index: u32,
+        bytes: Vec<u8>,
+    },
+    MediaEnd {
+        transfer: TransferId,
+    },
+    MediaRefused {
+        authority: Authority,
+        transfer: TransferId,
+        reason: Refusal,
+    },
 }
 
 impl WireMessage {
@@ -376,6 +428,31 @@ impl WireMessage {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::MediaBegin {
+                authority,
+                transfer,
+                bytes,
+            } => {
+                authority.is_valid()
+                    && transfer.0 != 0
+                    && *bytes > 0
+                    && *bytes as usize <= MAX_MEDIA_BYTES
+            }
+            Self::MediaChunk {
+                transfer, bytes, ..
+            } => transfer.0 != 0 && !bytes.is_empty() && bytes.len() <= CHUNK_BYTES,
+            Self::MediaEnd { transfer } => transfer.0 != 0,
+            Self::MediaRefused {
+                authority,
+                transfer,
+                ..
+            } => authority.is_valid() && transfer.0 != 0,
+            Self::Client(ClientMessage::ReadMedia {
+                authority,
+                transfer,
+                loop_id,
+            }) => authority.is_valid() && transfer.0 != 0 && loop_id.is_valid(),
+            Self::Client(ClientMessage::CancelMedia { authority }) => authority.is_valid(),
             Self::Client(ClientMessage::Attach {
                 host,
                 session,
@@ -429,5 +506,59 @@ impl WireMessage {
             }
             Self::Rejected(_) => true,
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AudioMediaChannel {
+    pub samples: Arc<[f32]>,
+    pub start_offset: i32,
+    pub capture_alignment_frames: i32,
+    pub preplay: u32,
+}
+pub type MidiMediaEvent = MidiEventState;
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MidiMediaChannel {
+    pub events: Arc<[MidiMediaEvent]>,
+    pub content_revision: u64,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LoopMedia {
+    pub content_revision: u64,
+    pub loop_id: LoopId,
+    pub audio: Vec<AudioMediaChannel>,
+    pub midi: Vec<MidiMediaChannel>,
+}
+impl LoopMedia {
+    pub fn valid(&self) -> bool {
+        if !self.loop_id.is_valid() || self.audio.len() > 16 || self.midi.len() > 16 {
+            return false;
+        }
+        let mut bytes = 0usize;
+        for channel in &self.audio {
+            let Some(size) = channel
+                .samples
+                .len()
+                .checked_mul(4)
+                .and_then(|size| bytes.checked_add(size))
+            else {
+                return false;
+            };
+            bytes = size;
+        }
+        for channel in &self.midi {
+            for event in channel.events.iter() {
+                if event.data.len() > 1024 {
+                    return false;
+                }
+                let Some(size) = bytes.checked_add(event.data.len() + 32) else {
+                    return false;
+                };
+                bytes = size;
+            }
+        }
+        bytes <= MAX_MEDIA_BYTES - 4096
     }
 }

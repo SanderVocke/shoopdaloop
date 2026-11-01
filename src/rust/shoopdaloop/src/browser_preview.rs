@@ -1,4 +1,4 @@
-use shoop_app::ApplicationAudioPreview;
+use crate::application::ApplicationAudioPreview;
 use shoop_egui::AppIntent;
 use std::cell::Cell;
 use std::rc::Rc;

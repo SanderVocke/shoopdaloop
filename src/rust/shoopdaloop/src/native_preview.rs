@@ -1,4 +1,4 @@
-use shoop_app::{ApplicationAudioPreview, ApplicationHandle};
+use crate::application::{ApplicationAudioPreview, ApplicationHandle};
 use shoop_egui::AppIntent;
 
 fn complete(handle: &ApplicationHandle, request_id: u64, success: bool, message: String) {
@@ -183,7 +183,7 @@ mod system {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shoop_app::ApplicationAudioPreview;
+    use crate::application::ApplicationAudioPreview;
     use shoop_backend::FakeBackend;
     use shoop_egui::AppIntent;
     use std::sync::Arc;
@@ -192,7 +192,8 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn invalid_preview_fails_without_opening_hardware() {
         let runtime =
-            shoop_app::ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+            crate::application::ApplicationRuntime::start(Box::new(FakeBackend::default()))
+                .unwrap();
         let handle = runtime.handle();
         let started = std::time::Instant::now();
         let loop_id = loop {
