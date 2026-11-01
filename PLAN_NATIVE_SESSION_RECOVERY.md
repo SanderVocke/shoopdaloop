@@ -2,7 +2,9 @@
 
 ## Status and approved scope
 
-Planning only; implementation has not started. Written under
+Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
+[ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
+Stages 1–7 remain pending. Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,
 based on PR [#897](https://github.com/SanderVocke/shoopdaloop/pull/897) head
 `e369fc257abde71a32a968aa5f922da23bed0c2a` (`feat/engine-ipc`).
@@ -280,12 +282,12 @@ assigned to an integration checkpoint or the final stage.
 - [x] Create the planning branch from PR #897 and record the approved milestone.
 - [x] Rewrite this plan for universal session authority, agreed names, browser-main
   hosting, legacy retirement, and targeted testing with final-stage Miri.
-- [ ] Recheck upstream/base and working tree before implementation; retain this branch
+- [x] Recheck upstream/base and working tree before implementation; retain this branch
   or create an implementation branch from it, recording any rebase/base changes.
-- [ ] Inventory state ownership, supported operations/capabilities, production legacy
+- [x] Inventory state ownership, supported operations/capabilities, production legacy
   dependencies, and existing useful tests. Identify every startup/autoconnect/script
   side effect that must be owned by the service or gated on attachment.
-- [ ] Specify app API/protocol, local delivery, snapshot revision ordering, accepted
+- [x] Specify app API/protocol, local delivery, snapshot revision ordering, accepted
   versus confirmed operations, lease loss/fencing, CLI/transport settings migration,
   and exit behavior. Record the exact targeted tests and final gates to use.
 
