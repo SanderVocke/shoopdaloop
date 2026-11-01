@@ -8795,7 +8795,7 @@ impl Backend for FakeBackend {
                 .ok_or_else(|| anyhow!("missing fake loop content"))?
                 .audio
                 .iter()
-                .map(|channel| Arc::from(channel.samples.clone()))
+                .map(|channel| Arc::from(channel.samples.to_vec()))
                 .collect(),
         ))
     }
@@ -8812,7 +8812,7 @@ impl Backend for FakeBackend {
             .audio
             .iter()
             .map(|channel| BackendAudioChannelData {
-                samples: Arc::from(channel.samples.clone()),
+                samples: Arc::from(channel.samples.to_vec()),
                 start_offset: channel.start_offset,
                 capture_alignment_frames: channel.capture_alignment_frames,
                 preplay: channel.preplay,
@@ -9048,7 +9048,7 @@ impl Backend for FakeBackend {
         if let Some(content) = self.loop_content.get_mut(&loop_id) {
             content.length = 0;
             for channel in &mut content.audio {
-                channel.samples = Arc::from([]);
+                channel.samples = Arc::new(Vec::new());
                 channel.capture_alignment_frames = 0;
             }
             for channel in &mut content.midi {
@@ -12292,8 +12292,14 @@ mod tests {
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == target.raw())
             .unwrap();
-        assert_eq!(target_content.audio[0].samples, [1.0, 2.0, 3.0].into());
-        assert_eq!(target_content.audio[1].samples, [10.0, 20.0, 30.0].into());
+        assert_eq!(
+            target_content.audio[0].samples,
+            [1.0, 2.0, 3.0].to_vec().into()
+        );
+        assert_eq!(
+            target_content.audio[1].samples,
+            [10.0, 20.0, 30.0].to_vec().into()
+        );
         assert_eq!(target_content.audio[0].start_offset, -1);
         assert_eq!(target_content.audio[1].preplay, 5);
         assert_eq!(target_content.midi[0].events[0].time, 2);
@@ -12405,10 +12411,13 @@ mod tests {
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == target.raw())
             .unwrap();
-        assert_eq!(lengthened_content.audio[0].samples, [1.0, 2.0, 3.0].into());
+        assert_eq!(
+            lengthened_content.audio[0].samples,
+            [1.0, 2.0, 3.0].to_vec().into()
+        );
         assert_eq!(
             lengthened_content.audio[1].samples,
-            [10.0, 20.0, 30.0].into()
+            [10.0, 20.0, 30.0].to_vec().into()
         );
 
         let before_invalid = backend.capture_session().unwrap();

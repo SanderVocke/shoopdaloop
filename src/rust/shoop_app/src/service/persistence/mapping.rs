@@ -57,13 +57,13 @@ fn backend_port(port: &image::Port, owner: BackendPortOwner) -> Result<BackendSe
         external_connections: port.external_connections.clone(),
     })
 }
-fn audio_samples(image: &image::Image, channel: &image::Channel) -> Result<Arc<[f32]>> {
+fn audio_samples(image: &image::Image, channel: &image::Channel) -> Result<Arc<Vec<f32>>> {
     match channel.object {
         Some(object) => match image.payloads.get(object as usize - 1) {
             Some(image::Payload::Audio(samples)) => Ok(Arc::clone(samples)),
             _ => Err(anyhow!("missing audio payload")),
         },
-        None => Ok(Arc::from([])),
+        None => Ok(Arc::new(Vec::new())),
     }
 }
 fn midi_events(image: &image::Image, channel: &image::Channel) -> Result<Vec<BackendMidiEvent>> {

@@ -183,6 +183,9 @@ pub struct UploadStream {
     offset: u64,
 }
 impl UploadStream {
+    pub fn description(&self) -> Description {
+        self.description
+    }
     pub fn new(image: Arc<Image>, key: Key, target: Target) -> Result<Self, Refusal> {
         let source = Source::new(image)?;
         let description = source.description(key, target);

@@ -5,7 +5,8 @@ use shoop_app_protocol::{persistence::*, persistence_image as image};
 use shoop_session::*;
 use std::sync::Arc;
 
-pub(super) enum Decoded {
+pub enum Decoded {
+    Remote(crate::worker::Summary),
     Session(SessionBundle),
     Audio(LoopAudio),
     Midi(ExactMidi),
@@ -13,9 +14,30 @@ pub(super) enum Decoded {
 impl Decoded {
     pub fn rate(&self) -> u32 {
         match self {
+            Self::Remote(summary) => summary.rate,
             Self::Session(b) => b.document.sample_rate,
             Self::Audio(a) => a.sample_rate,
             Self::Midi(m) => m.sample_rate,
+        }
+    }
+    pub fn audio_labels(&self) -> Option<Vec<String>> {
+        match self {
+            Self::Audio(audio) => Some(
+                audio
+                    .channels
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if c.label.is_empty() {
+                            format!("Audio {}", i + 1)
+                        } else {
+                            c.label.clone()
+                        }
+                    })
+                    .collect(),
+            ),
+            Self::Remote(summary) => summary.audio_labels.clone(),
+            _ => None,
         }
     }
     fn bytes(&self) -> Result<u64> {
@@ -30,6 +52,7 @@ impl Decoded {
                     .sum::<u64>()
         }
         let (bytes, events) = match self {
+            Self::Remote(_) => anyhow::bail!("decoded input belongs to the browser codec worker"),
             Self::Session(b) => {
                 b.media
                     .values()
@@ -53,11 +76,11 @@ impl Decoded {
         Ok(bytes)
     }
 }
-pub(super) enum Work {
+pub enum Work {
     Assemble(Vec<shoop_app_protocol::persistence::Object>),
     Decode {
         kind: IoTaskKind,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         rate: u32,
     },
     Resample {
@@ -77,14 +100,14 @@ pub(super) enum Work {
         channels: Vec<u32>,
     },
 }
-pub(super) enum Value {
+pub enum Value {
     Captured(Arc<image::Image>),
     Decoded(Decoded),
     Image(Arc<image::Image>),
     File {
         name: String,
         mime: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         warning: String,
     },
 }
@@ -129,6 +152,9 @@ impl Work {
                     "converted media would exceed the 256 MiB budget"
                 );
                 let decoded = match decoded {
+                    Decoded::Remote(_) => {
+                        anyhow::bail!("decoded input belongs to the browser codec worker")
+                    }
                     Decoded::Session(b) => Decoded::Session(resample_session(&b, rate)?),
                     Decoded::Audio(a) => Decoded::Audio(resample_loop_audio(&a, rate)?),
                     Decoded::Midi(m) => Decoded::Midi(resample_exact_midi(&m, rate)?),
@@ -143,6 +169,9 @@ impl Work {
             } => {
                 decoded.bytes()?;
                 let image = match decoded {
+                    Decoded::Remote(_) => {
+                        anyhow::bail!("decoded input belongs to the browser codec worker")
+                    }
                     Decoded::Session(b) => document::from_bundle(b)?,
                     Decoded::Audio(audio) => {
                         ensure!(!mapping.is_empty(), "no destination audio channels");
@@ -152,7 +181,7 @@ impl Work {
                         let channels = audio
                             .channels
                             .into_iter()
-                            .map(|c| Arc::<[f32]>::from(c.samples))
+                            .map(|c| Arc::<Vec<f32>>::from(c.samples))
                             .collect::<Vec<_>>();
                         for (channel, source) in mapping.into_iter().enumerate() {
                             let samples = channels.get(source as usize).ok_or_else(|| {
@@ -266,7 +295,7 @@ impl Work {
                             let channel = content.audio.get(index as usize).ok_or_else(|| {
                                 anyhow!("audio selection refers to a missing channel")
                             })?;
-                            let samples = if let Some(object) = channel.object {
+                            let samples: &[f32] = if let Some(object) = channel.object {
                                 let image::Payload::Audio(samples) =
                                     &image.payloads[object as usize - 1]
                                 else {

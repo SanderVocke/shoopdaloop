@@ -2490,7 +2490,7 @@ impl Backend for RemoteWorkletBackend {
                     let (start_offset, capture_alignment_frames, preplay) =
                         timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
-                        samples,
+                        samples: samples.to_vec().into(),
                         start_offset,
                         capture_alignment_frames,
                         preplay,
@@ -4315,7 +4315,7 @@ mod tests {
             .loop_audio_data_with_metadata(loop_id)
             .unwrap()
             .unwrap();
-        assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
+        assert_eq!(audio.channels[0].samples.as_slice(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
         assert_eq!(audio.channels[0].capture_alignment_frames, 3);
         assert_eq!(audio.channels[0].preplay, 6);

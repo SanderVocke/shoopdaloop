@@ -1128,6 +1128,9 @@ pub struct HostPortState {
     pub direction: PortDirection,
 }
 
+pub const MASTER_BUS_NAME: &str = "Master";
+pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+
 pub const MAX_BUS_NAME_BYTES: usize = 128;
 pub const MAX_BUSES: usize = 64;
 pub const MAX_BUS_CHANNELS: usize = 64;
@@ -2499,12 +2502,12 @@ pub enum AppIntent {
     },
     LoadSessionBytes {
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
     },
     CompleteIoInput {
         task_id: TaskId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
     },
     CompleteIoOutput {
         task_id: TaskId,
@@ -2566,7 +2569,7 @@ pub enum AppIntent {
     ImportLoopAudioBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
     RequestLoopMidiExport {
@@ -2579,7 +2582,7 @@ pub enum AppIntent {
     ImportLoopMidiBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
 }

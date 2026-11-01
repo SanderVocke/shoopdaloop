@@ -457,6 +457,23 @@ No rejected/partial upload changes any existing media.
 
 ### Stage 5 — transactional core session load
 
+Portable codec-worker foundation: document conversion and existing codec calls now
+live in `shoop_persistence_codec`, with no backend/engine/device dependency. Its
+bounded worker protocol retains decoded input across dialogs, fences handles,
+streams complete images and files, and rejects oversized/reordered input. The
+standalone Wasm module builds with zero imports and three checked-buffer ABI
+exports; browser peer and packaging integration remain pending.
+
+Shared PCM and file buffers now retain their vector allocation behind `Arc<Vec<_>>`.
+Taking ownership of a completed bounded builder no longer copies its entire data
+into a new shared slice. Serialization remains the same sequence representation;
+legacy/view boundaries retain explicit conversions. Native service/client/protocol/
+adapter/codec suites pass; Node passes 27 service, 11 client, 13 protocol, 26 portable
+adapter, two worker and three production file tests. All-target workspace checking
+with legacy fixtures and warning-denying frontend/codec builds pass. The worker's
+repeated end-of-stream response is also tested natively. Browser worker execution,
+cooperative assembly/validation and complete codec quota preflight remain pending.
+
 - [ ] Decode/migrate/validate the complete bundle and inventory all required
   capabilities before staging. Reject unsupported documents as a whole, with all
   useful diagnostics; preserve future-format and corruption checks.
@@ -489,8 +506,11 @@ rollback/success and no stale operations reaching newly loaded objects.
 - [ ] Update user/developer docs and the ledger with restored subitems and precise
   remaining P01/P02/P11 dependencies. Add production UI tests alongside retained
   reference fixtures; expose capabilities only after the complete route works.
-- [ ] Add `feat/backend-replacement` to the PR base filters in build/test, CodeQL
+- [x] Add `feat/backend-replacement` to the PR base filters in build/test, CodeQL
   and docs workflows. Preserve production release and docs-deployment guards.
+
+CI-filter validation checks all three feature-branch PR filters and the retained
+push-to-`master` docs deployment guard. Actual final-head PR checks remain Stage 7.
 
 Verification: native typed/socket/shared-memory workflows and browser main-thread
 service/AudioWorklet scenarios, including actual file output/input, URL failure,

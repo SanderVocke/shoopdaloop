@@ -1,11 +1,9 @@
 //! Client-owned files, codecs and dialogs over the authoritative persistence protocol.
-mod codec;
-mod document;
 use anyhow::{anyhow, bail, ensure, Result};
-use codec::{Decoded, Value, Work};
 use shoop_app_api::*;
 use shoop_app_client::{runtime::*, Client, Error, State};
 use shoop_app_protocol::{persistence as transfer, persistence_image as image, *};
+use shoop_persistence_codec::codec::{Decoded, Value, Work};
 use std::{collections::VecDeque, sync::Arc};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -247,28 +245,17 @@ impl Provider {
                 affected_media: "Session audio, MIDI and frame timing".into(),
             });
             self.phase = Phase::Decoded(decoded);
-        } else if let Decoded::Audio(audio) = &decoded {
-            ensure!(!audio.channels.is_empty(), "the audio file has no channels");
+        } else if let Some(labels) = decoded.audio_labels() {
+            ensure!(!labels.is_empty(), "the audio file has no channels");
             task.view.status = IoTaskStatus::AwaitingChannelMapping;
             task.view.sample_rate_warning = None;
             task.view.audio_channel_mapping = Some(AudioChannelMappingState {
-                source_channels: audio
-                    .channels
-                    .iter()
-                    .enumerate()
-                    .map(|(i, c)| {
-                        if c.label.is_empty() {
-                            format!("Audio {}", i + 1)
-                        } else {
-                            c.label.clone()
-                        }
-                    })
-                    .collect(),
+                source_channels: labels.clone(),
                 destination_channels: (0..task.audio_channels)
                     .map(|i| format!("Audio {}", i + 1))
                     .collect(),
                 default_mapping: (0..task.audio_channels)
-                    .map(|i| (i % audio.channels.len()) as u32)
+                    .map(|i| (i % labels.len()) as u32)
                     .collect(),
             });
             task.view.message = "Map source audio to the loop channels".into();

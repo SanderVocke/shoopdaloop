@@ -23,6 +23,7 @@ shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_session = { path = "../shoop_session" }
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
 shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_egui = { path = "../shoop_egui" }

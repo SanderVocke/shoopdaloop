@@ -330,7 +330,7 @@ fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_st
     loaded(&mut backend, &small).unwrap();
     assert_eq!(
         backend.capture_session().unwrap().tracks[0].loops[0].audio[0].samples,
-        [0.5; 16].into()
+        [0.5; 16].to_vec().into()
     );
 }
 
@@ -366,12 +366,12 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
             },
         )
         .expect("selected capture completion");
-    assert_eq!(content.audio[0].samples, [0.25; 6].into());
+    assert_eq!(content.audio[0].samples, [0.25; 6].to_vec().into());
     let audio = backend
         .loop_audio_data_with_metadata(selected)
         .unwrap()
         .unwrap();
-    assert_eq!(audio.channels[0].samples.as_ref(), [0.25; 6]);
+    assert_eq!(audio.channels[0].samples.as_slice(), [0.25; 6]);
     assert_eq!(audio.channels[0].start_offset, 1);
     let chunk = backend.loop_audio_data_chunk(selected, 0, 1, 2).unwrap();
     assert_eq!(chunk.start_offset, 1);

@@ -344,9 +344,9 @@ pub struct BackendMixerSnapshot {
 }
 
 pub const GLOBAL_FX_PORT_ID: BackendPortId = BackendPortId::from_raw(9_007_199_254_740_991);
-pub const MASTER_BUS_NAME: &str = "Master";
+pub use shoop_app_api::MASTER_BUS_NAME;
 pub const MASTER_BUS_ID: BackendBusId = BackendBusId::from_raw(1);
-pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+pub use shoop_app_api::MASTER_BUS_CHANNEL_LABELS;
 pub const MASTER_BUS_CHANNEL_IDS: [BackendBusChannelId; 2] = [
     BackendBusChannelId::from_raw(1),
     BackendBusChannelId::from_raw(2),
@@ -768,7 +768,7 @@ pub enum BackendChannelMode {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioContent {
     pub mode: BackendChannelMode,
-    pub samples: Arc<[f32]>,
+    pub samples: Arc<Vec<f32>>,
     pub gain: f32,
     pub start_offset: i32,
     #[serde(default)]
@@ -778,7 +778,7 @@ pub struct BackendAudioContent {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendAudioChannelData {
-    pub samples: Arc<[f32]>,
+    pub samples: Arc<Vec<f32>>,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
     pub preplay: u32,
@@ -889,7 +889,7 @@ pub struct BackendLoopContent {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioChannelUpdate {
     pub channel: usize,
-    pub samples: Arc<[f32]>,
+    pub samples: Arc<Vec<f32>>,
     pub start_offset: Option<i32>,
     #[serde(default)]
     pub capture_alignment_frames: Option<i32>,
@@ -1323,7 +1323,7 @@ pub trait Backend {
                 channels: channels
                     .into_iter()
                     .map(|samples| BackendAudioChannelData {
-                        samples,
+                        samples: samples.to_vec().into(),
                         ..Default::default()
                     })
                     .collect(),
@@ -1344,7 +1344,7 @@ pub trait Backend {
         let channel_data = channels.get(channel);
         let samples = channel_data
             .map(|channel| Arc::clone(&channel.samples))
-            .unwrap_or_else(|| Arc::from([]));
+            .unwrap_or_else(|| Arc::new(Vec::new()));
         let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
         let capture_alignment_frames =
             channel_data.map_or(0, |channel| channel.capture_alignment_frames);

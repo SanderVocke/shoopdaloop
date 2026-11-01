@@ -51,7 +51,7 @@ impl Service {
                     .channels
                     .into_iter()
                     .map(|channel| AudioMediaChannel {
-                        samples: channel.samples,
+                        samples: channel.samples.to_vec().into(),
                         start_offset: channel.start_offset,
                         capture_alignment_frames: channel.capture_alignment_frames,
                         preplay: channel.preplay,

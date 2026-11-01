@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, ensure, Result};
 use shoop_app_api::*;
 use shoop_app_protocol::persistence_image as image;
-use shoop_backend::{MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_NAME};
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
 

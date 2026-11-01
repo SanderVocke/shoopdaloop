@@ -7547,7 +7547,7 @@ mod tests {
             .unwrap();
         assert_eq!(audio_details.channels.len(), 2);
         assert_eq!(
-            audio_details.channels[0].samples.as_ref(),
+            audio_details.channels[0].samples.as_slice(),
             [1.0, 2.0, 3.0, 4.0]
         );
         assert_eq!(audio_details.channels[0].start_offset, -1);
@@ -7573,7 +7573,7 @@ mod tests {
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[1].audio[0].samples,
-            [1.0, 2.0, 3.0, 4.0].into()
+            [1.0, 2.0, 3.0, 4.0].to_vec().into()
         );
         let cycles_after_capture = {
             let runtime = backend.runtime_mut().unwrap();

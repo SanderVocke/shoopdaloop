@@ -281,7 +281,7 @@ fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
     });
     let epoch = f.runtime.client().snapshot().unwrap().persistence_epoch;
     let bundle = shoop_session::SessionBundle::new(shoop_session::SessionDocument::empty(2000));
-    let bytes: Arc<[u8]> = shoop_session::encode_session(&bundle, "test")
+    let bytes: Arc<Vec<u8>> = shoop_session::encode_session(&bundle, "test")
         .unwrap()
         .into();
     f.dispatch(AppIntent::CompleteIoInput {

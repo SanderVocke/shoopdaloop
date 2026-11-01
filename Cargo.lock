@@ -4880,6 +4880,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_persistence_codec"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "serde",
+ "shoop_app_api",
+ "shoop_app_protocol",
+ "shoop_session",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [
@@ -5203,6 +5217,7 @@ dependencies = [
  "shoop_common",
  "shoop_egui",
  "shoop_host",
+ "shoop_persistence_codec",
  "shoop_plugin_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",

@@ -451,7 +451,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(self.read_audio(loop_id)?.map(|data| {
             data.channels
                 .into_iter()
-                .map(|channel| channel.samples)
+                .map(|channel| channel.samples.to_vec().into())
                 .collect()
         }))
     }
@@ -477,7 +477,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .channels
             .get(channel)
             .map(|channel| Arc::clone(&channel.samples))
-            .unwrap_or_else(|| Arc::from([]));
+            .unwrap_or_else(|| Arc::new(Vec::new()));
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
             content_revision: self

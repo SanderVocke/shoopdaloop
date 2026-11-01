@@ -103,7 +103,7 @@ pub struct ApplicationFileOutput {
     pub task_id: TaskId,
     pub suggested_name: String,
     pub mime_type: String,
-    pub bytes: Arc<[u8]>,
+    pub bytes: Arc<Vec<u8>>,
 }
 
 #[derive(Clone, Debug)]
@@ -2758,7 +2758,7 @@ impl ApplicationModel {
                 task_id,
                 suggested_name: name.to_owned(),
                 mime_type: "text/x-lua".to_owned(),
-                bytes: Arc::from(source.as_bytes()),
+                bytes: Arc::new(source.as_bytes().to_vec()),
             });
         Ok(())
     }
@@ -11934,7 +11934,7 @@ impl ApplicationModel {
                             .get(index)
                             .cloned()
                             .unwrap_or_else(|| format!("Audio {}", index + 1)),
-                        samples: Arc::clone(&channel.samples),
+                        samples: channel.samples.to_vec().into(),
                         start_offset: i64::from(channel.start_offset)
                             .saturating_add(i64::from(channel.capture_alignment_frames)),
                         preplay_samples: u64::from(channel.preplay),
@@ -18559,7 +18559,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             model.length = 480;
             model.audio_data = Some(BackendAudioData {
                 channels: vec![shoop_backend::BackendAudioChannelData {
-                    samples: Arc::from([0.25, -0.25]),
+                    samples: Arc::new(vec![0.25, -0.25]),
                     ..Default::default()
                 }],
             });
@@ -24093,7 +24093,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "old.shl".to_owned(),
-                bytes: Arc::from(&b"unsupported predecessor archive"[..]),
+                bytes: Arc::new(b"unsupported predecessor archive".to_vec()),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -24326,7 +24326,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let loop_id = runtime.snapshot().tracks[1].loops[0].id;
 
         for (name, bytes) in [
-            ("broken.shoop-audio", Arc::from(&b"not audio"[..])),
+            ("broken.shoop-audio", Arc::new(b"not audio".to_vec())),
             (
                 "empty.shoop-audio",
                 Arc::from(
@@ -24357,7 +24357,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .dispatch(AppIntent::ImportLoopMidiBytes {
                 loop_id,
                 name: "broken.shoop-midi".to_owned(),
-                bytes: Arc::from(&b"not midi"[..]),
+                bytes: Arc::new(b"not midi".to_vec()),
                 update_loop_length: true,
             })
             .unwrap();
@@ -26246,7 +26246,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 AppIntent::ImportLoopAudioBytes {
                     loop_id,
                     name: "take.wav".to_owned(),
-                    bytes: Arc::from([]),
+                    bytes: Arc::new(Vec::new()),
                     update_loop_length: true,
                 },
             ),

@@ -73,7 +73,7 @@ pub struct ApplicationFileOutput {
     pub task_id: TaskId,
     pub suggested_name: String,
     pub mime_type: String,
-    pub bytes: Arc<[u8]>,
+    pub bytes: Arc<Vec<u8>>,
 }
 #[derive(Clone, Debug)]
 pub struct ApplicationAudioPreview {
@@ -1029,7 +1029,7 @@ impl Runtime {
                     task_id: TaskId::from_raw(self.next_notice),
                     suggested_name: format!("{name}.lua"),
                     mime_type: "text/x-lua".into(),
-                    bytes: Arc::from(source.as_bytes()),
+                    bytes: Arc::new(source.as_bytes().to_vec()),
                 });
                 self.next_notice = self.next_notice.saturating_add(1);
                 return Ok(());

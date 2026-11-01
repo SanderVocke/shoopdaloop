@@ -1163,7 +1163,7 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
         AppIntent::RequestSaveSession,
         AppIntent::LoadSessionBytes {
             name: "unavailable.shoop".into(),
-            bytes: std::sync::Arc::from([]),
+            bytes: std::sync::Arc::new(Vec::new()),
         },
         AppIntent::PreviewClickTrack {
             output: ClickTrackPreviewOutput::System,
@@ -1895,7 +1895,7 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
     content.midi[0].channel.object = Some(2);
     content.midi[0].initial = vec![vec![0xb0, 7, 12], vec![0xb0, 7, 99]];
     image.payloads = vec![
-        persistence_image::Payload::Audio(Arc::from([0., 0.25, 0.5, 0.75, 1., 0.125])),
+        persistence_image::Payload::Audio(Arc::new(vec![0., 0.25, 0.5, 0.75, 1., 0.125])),
         persistence_image::Payload::Midi(Arc::from([
             MidiEventState {
                 frame: 0,
