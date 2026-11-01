@@ -110,6 +110,7 @@ foreach ($r in $a.GetAccessRules($true, $true, [System.Security.Principal.Securi
 "#;
     let output = Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .env_remove("PSModulePath")
         .env("SHOOP_PRIVATE_PATH", path)
         .env("SHOOP_PRIVATE_PROTECT", if protect { "1" } else { "0" })
         .stdin(Stdio::null())

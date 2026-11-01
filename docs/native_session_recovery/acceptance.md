@@ -28,7 +28,7 @@ handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
 
 These checks ran on the Stage 7 candidate ending at `d69dea15`; subsequent
 changes correct browser harness permissions/artifact paths and expose Windows ACL
-adapter diagnostics. Portable Miri sources are unchanged. The final frontend
+adapter module lookup/diagnostics. Portable Miri sources are unchanged. The final frontend
 preference reconciliation received its complete 63-test rerun after the broader
 native run. Remote CI reruns the whole integrated tree.
 
@@ -104,8 +104,11 @@ seeds and interpreter flags were not weakened.
 PR #899 is open against `feat/engine-ipc`; no merge is requested. The failed
 candidate run was stopped while its last Node job was running so GitHub would
 provide its completed log archive; per-job log/artifact downloads returned 403.
-Windows package probes refused ACL validation; the next run preserves and reports
-the adapter's underlying error. Candidate CI failures are being corrected before
+Windows package probes refused ACL validation. Diagnostic run
+[41304154241](https://github.com/SanderVocke/shoopdaloop/actions/runs/41304154241)
+identified an inherited PowerShell 7 module search path preventing Windows
+PowerShell from loading its security module. The adapter clears `PSModulePath`
+for that child; ownership and ACL checks remain enforced. Candidate CI failures are being corrected before
 final acceptance. Codecov reports 82.33%
 patch coverage / 89.43% project coverage on `d69dea15`, satisfying the configured
 80% patch floor and project tolerance. No code-review verdict has been received;
