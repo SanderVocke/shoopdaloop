@@ -81,7 +81,7 @@ fn image(samples: usize) -> Arc<Image> {
 fn segmented_images_reconstruct_exact_typed_content_and_random_midi_byte_ranges() {
     let image = image(2048);
     let source = Source::new(Arc::clone(&image)).unwrap();
-    assert!(Arc::ptr_eq(&source.image, &image));
+    assert!(Arc::ptr_eq(source.image(), &image));
     let mut stream = UploadStream::new(Arc::clone(&image), key(), target()).unwrap();
     let Request::Begin(description) = stream.next_request().unwrap().unwrap() else {
         panic!()
@@ -156,4 +156,57 @@ fn typed_media_cannot_enter_an_ordinary_wire_record_and_bad_references_refuse() 
     content.audio[0].object = Some(1);
     content.audio[0].frames = u64::MAX;
     assert!(invalid.validate().is_err());
+}
+#[shoop_test]
+fn validation_and_assembly_yield_before_full_media_and_keep_immutable_ownership() {
+    let image = image(256 * 1024);
+    assert!(matches!(
+        Validation::new(Arc::clone(&image)).unwrap().finish(),
+        Err(Refusal::NotReady)
+    ));
+    let mut validation = Validation::for_transfer(Arc::clone(&image)).unwrap();
+    assert!(!validation.step(64 * 1024).unwrap());
+    let mut turns = 1;
+    while !validation.step(64 * 1024).unwrap() {
+        turns += 1;
+    }
+    assert!(turns >= 16);
+    let validated = validation.finish().unwrap();
+    assert!(Arc::ptr_eq(validated.image(), &image));
+    let source = Source::from_validated(validated).unwrap();
+    assert!(Arc::ptr_eq(source.image(), &image));
+    let mut receiver = Receiver::new(authority(), source.description(key(), target())).unwrap();
+    let mut stream = UploadStream::new(Arc::clone(&image), key(), target()).unwrap();
+    stream.next_request().unwrap();
+    while let Some(request) = stream.next_request().unwrap() {
+        receiver.apply(authority(), request).unwrap();
+    }
+    let mut assembly = Assembly::new(receiver.into_objects().unwrap()).unwrap();
+    for _ in 0..15 {
+        assert!(assembly.step(64 * 1024).unwrap().is_none());
+    }
+    let rebuilt = loop {
+        if let Some(image) = assembly.step(64 * 1024).unwrap() {
+            break image.into_image();
+        }
+    };
+    assert_eq!(*rebuilt, *image);
+    let mut malformed = (*image).clone();
+    let Payload::Audio(samples) = &mut malformed.payloads[0] else {
+        panic!()
+    };
+    *Arc::make_mut(samples).last_mut().unwrap() = f32::NAN;
+    let mut validation = Validation::new(Arc::new(malformed)).unwrap();
+    assert!(!validation.step(64 * 1024).unwrap());
+    loop {
+        match validation.step(64 * 1024) {
+            Err(Refusal::Invalid) => break,
+            Ok(false) => {}
+            _ => panic!("invalid trailing media was accepted"),
+        }
+    }
+    assert_eq!(
+        image.validate().unwrap(),
+        source.description(key(), target()).media_bytes
+    );
 }

@@ -440,6 +440,33 @@ complete quota preflight and public capability admission remain pending; the
 browser implementation still contains a temporary synchronous codec path. These
 tests are foundation evidence, not final file/deployment acceptance.
 
+Cooperative image/worker milestone: incremental image validation and assembly now
+retain a proof tied to immutable ownership. PCM conversion, validation and optional
+MIDI read indexing yield between turns; shared vector ownership avoids a final full
+PCM copy. Service ingress withholds Ready until validation finishes, and capture
+publishes only after its bounded validation/indexing completes. A >32 MiB staged
+image test proves ordinary controls finish while validation remains pending and
+that cancel reclaims the job without changing identities or waiting synchronously.
+
+Browser codecs now execute in the dedicated client worker. File records are 16 KiB;
+image batches contain at most sixteen existing 1024-byte records, with sixteen
+requests in flight. Decoded media remains worker-owned across dialogs and returns
+through bounded assembly. Terminal tasks terminate the browser worker. Node uses
+the portable execution path for tests. Hosted and single-file packaging include
+the import-free codec module. Competing file starts refuse without cancelling the
+active task.
+
+Validation: native passes 28 service, 14 protocol, two worker and four production
+file tests; Node passes the same service/protocol/worker counts and all 25 frontend
+tests. All four production file cases pass in actual pinned Chrome 147 with its
+matching driver, exercising the worker rather than Node's fallback. A system Chrome
+154 mismatch was resolved by installing the repository-pinned browser in the
+workspace, without changing version checks. Warning-denying affected builds,
+production boundaries, formatting, parity inventory, test-attribute policy and
+whitespace checks pass. Packaged AudioWorklet workflows, adapter preparation/MIDI
+copy progression, complete codec quotas, capability admission and final gates are
+still pending.
+
 - [ ] Restore WAV/loop-audio/exact-MIDI/SMF decoding and channel mapping/selection
   using existing semantics, with bounded expansion and clear malformed-file errors.
 - [ ] Restore sample-rate confirmation/resampling and revalidate target, host rate,

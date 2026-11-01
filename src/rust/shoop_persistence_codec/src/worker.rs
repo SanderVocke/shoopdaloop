@@ -44,6 +44,7 @@ pub enum Command {
         update_length: bool,
     },
     Next,
+    NextImageBatch,
     Reset,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -52,6 +53,10 @@ pub enum Response {
     Decoded(Summary),
     Image(Description),
     ImagePart(Request),
+    ImageBatch {
+        parts: Vec<Request>,
+        done: bool,
+    },
     File {
         name: String,
         mime: String,
@@ -65,13 +70,31 @@ pub enum Response {
     Done,
     Failed(String),
 }
+struct Writer(Vec<u8>);
+impl bincode::enc::write::Writer for Writer {
+    fn write(&mut self, bytes: &[u8]) -> std::result::Result<(), bincode::error::EncodeError> {
+        let end = self
+            .0
+            .len()
+            .checked_add(bytes.len())
+            .filter(|end| *end <= MAX_RECORD)
+            .ok_or(bincode::error::EncodeError::UnexpectedEnd)?;
+        if end > self.0.capacity() {
+            let capacity = end.max(self.0.capacity().max(1024) * 2).min(MAX_RECORD);
+            self.0
+                .try_reserve_exact(capacity - self.0.len())
+                .map_err(|_| {
+                    bincode::error::EncodeError::Other("codec record allocation failed")
+                })?;
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(())
+    }
+}
 pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>> {
-    let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())?;
-    ensure!(
-        bytes.len() <= MAX_RECORD,
-        "codec worker record exceeds its limit"
-    );
-    Ok(bytes)
+    let mut bytes = Writer(Vec::new());
+    bincode::serde::encode_into_writer(value, &mut bytes, bincode::config::standard())?;
+    Ok(bytes.0)
 }
 pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     ensure!(
@@ -192,6 +215,25 @@ impl Worker {
     }
     fn apply(&mut self, command: Command) -> Result<Response> {
         match command {
+            Command::NextImageBatch => {
+                let mut parts = Vec::new();
+                for _ in 0..16 {
+                    let Some(stream) = &mut self.image else {
+                        return Ok(Response::ImageBatch { parts, done: true });
+                    };
+                    match stream
+                        .next_request()
+                        .map_err(|r| anyhow!("codec image read failed: {r:?}"))?
+                    {
+                        Some(request) => parts.push(request),
+                        None => {
+                            self.image = None;
+                            return Ok(Response::ImageBatch { parts, done: true });
+                        }
+                    }
+                }
+                Ok(Response::ImageBatch { parts, done: false })
+            }
             Command::Reset => {
                 self.clear();
                 Ok(Response::Ack)

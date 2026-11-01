@@ -1,35 +1,32 @@
 //! Segmented ownership-preserving adapters for transports that require bytes.
 use crate::{codec, persistence::*, persistence_image::*, Refusal, CHUNK_BYTES};
-use shoop_app_api::MidiEventState;
 use std::sync::Arc;
 
 pub struct Source {
-    pub image: Arc<Image>,
+    image: Arc<Image>,
     metadata: Vec<u8>,
     midi_offsets: Vec<Vec<u64>>,
     media_bytes: u64,
 }
 impl Source {
+    pub fn image(&self) -> &Arc<Image> {
+        &self.image
+    }
     pub fn new(image: Arc<Image>) -> Result<Self, Refusal> {
-        let media_bytes = image.validate()?;
+        let mut validation = Validation::for_transfer(image)?;
+        while !validation.step(64 * 1024)? {}
+        Self::from_validated(validation.finish()?)
+    }
+    pub fn from_validated(validated: ValidatedImage) -> Result<Self, Refusal> {
+        let ValidatedImage {
+            image,
+            media_bytes,
+            midi_offsets,
+        } = validated;
+        let Some(midi_offsets) = midi_offsets else {
+            return Self::new(image);
+        };
         let metadata = codec::encode_manifest(&image.manifest).map_err(|_| Refusal::Invalid)?;
-        let mut midi_offsets = Vec::new();
-        midi_offsets
-            .try_reserve_exact(image.payloads.len())
-            .map_err(|_| Refusal::Overloaded)?;
-        for payload in &image.payloads {
-            let mut offsets = Vec::new();
-            if let Payload::Midi(events) = payload {
-                offsets
-                    .try_reserve_exact(events.len() + 1)
-                    .map_err(|_| Refusal::Overloaded)?;
-                offsets.push(0);
-                for event in events.iter() {
-                    offsets.push(offsets.last().copied().unwrap() + 12 + event.data.len() as u64);
-                }
-            }
-            midi_offsets.push(offsets);
-        }
         Ok(Self {
             image,
             metadata,
@@ -112,67 +109,16 @@ impl Source {
     }
 }
 
+mod assembly;
+pub use assembly::Assembly;
+
 pub fn assemble(objects: Vec<Object>) -> Result<Arc<Image>, Refusal> {
-    let mut objects = objects.into_iter();
-    let metadata = objects.next().ok_or(Refusal::Invalid)?;
-    if metadata.description.kind != ObjectKind::Metadata || metadata.description.index != 0 {
-        return Err(Refusal::Invalid);
-    }
-    let manifest = codec::decode_manifest(&metadata.bytes).map_err(|_| Refusal::Invalid)?;
-    let mut payloads = Vec::new();
-    for object in objects {
-        if object.description.index as usize != payloads.len() + 1
-            || object.description.bytes != object.bytes.len() as u64
-        {
-            return Err(Refusal::Invalid);
+    let mut assembly = Assembly::new(objects)?;
+    loop {
+        if let Some(validated) = assembly.step(64 * 1024)? {
+            return Ok(validated.into_image());
         }
-        payloads.try_reserve(1).map_err(|_| Refusal::Overloaded)?;
-        payloads.push(match object.description.kind {
-            ObjectKind::Audio => {
-                if object.bytes.len() % 4 != 0 {
-                    return Err(Refusal::Invalid);
-                }
-                let mut samples = Vec::new();
-                samples
-                    .try_reserve_exact(object.bytes.len() / 4)
-                    .map_err(|_| Refusal::Overloaded)?;
-                for word in object.bytes.chunks_exact(4) {
-                    samples.push(f32::from_le_bytes(word.try_into().unwrap()));
-                }
-                Payload::Audio(samples.into())
-            }
-            ObjectKind::Midi => {
-                let mut events = Vec::new();
-                let mut bytes = object.bytes.as_slice();
-                while !bytes.is_empty() {
-                    let frame = bytes.get(..8).ok_or(Refusal::Invalid)?;
-                    let len = u32::from_le_bytes(
-                        bytes
-                            .get(8..12)
-                            .ok_or(Refusal::Invalid)?
-                            .try_into()
-                            .unwrap(),
-                    ) as usize;
-                    let packet = bytes.get(12..12 + len).ok_or(Refusal::Invalid)?;
-                    if len == 0 || events.len() as u64 >= MAX_SESSION_MIDI_EVENTS {
-                        return Err(Refusal::Invalid);
-                    }
-                    events.try_reserve(1).map_err(|_| Refusal::Overloaded)?;
-                    events.push(MidiEventState {
-                        frame: u32::try_from(u64::from_le_bytes(frame.try_into().unwrap()))
-                            .map_err(|_| Refusal::Invalid)?,
-                        data: Arc::from(packet),
-                    });
-                    bytes = &bytes[12 + len..];
-                }
-                Payload::Midi(events.into())
-            }
-            ObjectKind::Metadata => return Err(Refusal::Invalid),
-        });
     }
-    let image = Arc::new(Image { manifest, payloads });
-    image.validate()?;
-    Ok(image)
 }
 
 pub struct UploadStream {
@@ -188,6 +134,16 @@ impl UploadStream {
     }
     pub fn new(image: Arc<Image>, key: Key, target: Target) -> Result<Self, Refusal> {
         let source = Source::new(image)?;
+        Self::from_source(source, key, target)
+    }
+    pub fn from_validated(
+        image: ValidatedImage,
+        key: Key,
+        target: Target,
+    ) -> Result<Self, Refusal> {
+        Self::from_source(Source::from_validated(image)?, key, target)
+    }
+    fn from_source(source: Source, key: Key, target: Target) -> Result<Self, Refusal> {
         let description = source.description(key, target);
         if !description.valid() {
             return Err(Refusal::Invalid);

@@ -6,41 +6,8 @@ use shoop_app_protocol::{persistence as transfer, persistence_image as image, *}
 use shoop_persistence_codec::codec::{Decoded, Value, Work};
 use std::{collections::VecDeque, sync::Arc};
 
-#[cfg(not(target_arch = "wasm32"))]
-struct CodecJob(std::sync::mpsc::Receiver<Result<Value, String>>);
-#[cfg(not(target_arch = "wasm32"))]
-impl CodecJob {
-    fn start(work: Work) -> Result<Self> {
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        std::thread::Builder::new()
-            .name("session-file-codec".into())
-            .spawn(move || {
-                let _ = tx.send(work.run().map_err(|e| e.to_string()));
-            })?;
-        Ok(Self(rx))
-    }
-    fn poll(&mut self) -> Option<Result<Value, String>> {
-        match self.0.try_recv() {
-            Ok(value) => Some(value),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(_) => Some(Err("file codec worker stopped without a result".into())),
-        }
-    }
-}
-// Replaced by bounded browser codec progression before public capability admission.
-#[cfg(target_arch = "wasm32")]
-struct CodecJob(Option<Work>);
-#[cfg(target_arch = "wasm32")]
-impl CodecJob {
-    fn start(work: Work) -> Result<Self> {
-        Ok(Self(Some(work)))
-    }
-    fn poll(&mut self) -> Option<Result<Value, String>> {
-        self.0
-            .take()
-            .map(|work| work.run().map_err(|e| e.to_string()))
-    }
-}
+mod jobs;
+use jobs::{CodecExecutor, CodecJob};
 struct Read {
     receiver: transfer::Receiver,
     object: Option<transfer::ObjectDescription>,
@@ -76,6 +43,7 @@ pub(super) struct Provider {
     task: Option<Task>,
     phase: Phase,
     worker: Option<CodecJob>,
+    codec: CodecExecutor,
     messages: VecDeque<ClientMessage>,
     requests: VecDeque<ApplicationFileRequest>,
     output: Option<ApplicationFileOutput>,
@@ -88,6 +56,7 @@ impl Provider {
             task: None,
             phase: Phase::Idle,
             worker: None,
+            codec: CodecExecutor::new(),
             messages: VecDeque::new(),
             requests: VecDeque::new(),
             output: None,
@@ -104,6 +73,7 @@ impl Provider {
             matches!(self.phase, Phase::Idle) && self.worker.is_none() && self.output.is_none(),
             "another file workflow is still active"
         );
+        self.codec.reset();
         let (target, audio_channels) = if let Some(loop_id) = loop_id {
             let (track, entry) = state
                 .tracks
@@ -183,11 +153,16 @@ impl Provider {
             self.worker.is_none(),
             "file codec worker is still reclaiming an earlier task"
         );
-        self.worker = Some(CodecJob::start(work)?);
+        self.worker = Some(self.codec.start(work)?);
         self.phase = Phase::Working;
         Ok(())
     }
     fn finish(&mut self, status: IoTaskStatus, message: impl Into<String>) {
+        self.codec.reset();
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.worker = None;
+        }
         if let Some(task) = &mut self.task {
             task.view.status = status;
             task.view.message = message.into();
@@ -407,6 +382,23 @@ impl PersistenceIo for Provider {
         )
     }
     fn apply(&mut self, intent: AppIntent, state: &SessionSnapshot, scripts: bool) -> Result<()> {
+        let starting = matches!(
+            intent,
+            AppIntent::RequestSaveSession
+                | AppIntent::RequestLoadSessionPicker
+                | AppIntent::RequestLoadSessionUrl
+                | AppIntent::RequestLoadSessionSource { .. }
+                | AppIntent::LoadSessionBytes { .. }
+                | AppIntent::RequestLoopAudioExport { .. }
+                | AppIntent::RequestLoopMidiExport { .. }
+                | AppIntent::RequestLoopAudioImportPicker { .. }
+                | AppIntent::RequestLoopMidiImportPicker { .. }
+                | AppIntent::ImportLoopAudioBytes { .. }
+                | AppIntent::ImportLoopMidiBytes { .. }
+        );
+        if starting && (!matches!(self.phase, Phase::Idle) || self.worker.is_some()) {
+            bail!("another file workflow is still active");
+        }
         if let Err(error) = self.apply_inner(intent, state, scripts) {
             if !matches!(
                 self.phase,

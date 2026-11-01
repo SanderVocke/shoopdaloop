@@ -1809,11 +1809,22 @@ fn stage_image(
             )
             .unwrap();
         drain(service, client, ConnectionId(1), false);
-        assert!(
-            matches!(client.take_persistence_reply(), Some(persistence::Reply::Ready { key: received }) if received == key)
-        );
     }
-    key
+    for _ in 0..20 {
+        service.tick(STEP);
+        drain(service, client, ConnectionId(1), encoded);
+        while let Some(reply) = client.take_persistence_reply() {
+            match reply {
+                persistence::Reply::Ready { key: received } => {
+                    assert_eq!(received, key);
+                    return key;
+                }
+                persistence::Reply::Refused { reason, .. } => panic!("stage refused: {reason:?}"),
+                _ => {}
+            }
+        }
+    }
+    panic!("persistence preparation did not complete")
 }
 #[shoop_test]
 fn service_captures_and_reloads_core_images_through_typed_and_wire_paths() {
@@ -2327,4 +2338,98 @@ fn selected_loop_capture_continues_while_another_loop_records() {
         client.snapshot().unwrap().tracks[1].loops[0].mode,
         LoopMode::Recording
     );
+}
+
+#[shoop_test]
+fn large_private_validation_yields_to_controls_and_cancel_reclaims_the_job() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 10, ConnectionId(1), false);
+    let original = capture_image(&mut f.service, &mut client, 1, false);
+    let epoch = client.snapshot().unwrap().persistence_epoch;
+    release_image(&mut f.service, &mut client, 1, epoch, false);
+    let identities = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .map(|l| l.id)
+        .collect::<Vec<_>>();
+    let mut large = (*original).clone();
+    let persistence_image::Manifest::Session(session) = &mut large.manifest else {
+        panic!()
+    };
+    let frames = 8 * 1024 * 1024 + 1;
+    let content = &mut session.tracks[0].loops[0];
+    content.frames = frames;
+    content.audio[0].frames = frames;
+    content.audio[0].object = Some(1);
+    large.payloads = vec![persistence_image::Payload::Audio(Arc::new(
+        vec![0.25; frames as usize],
+    ))];
+    let key = persistence::Key {
+        transfer: TransferId(2),
+        epoch,
+    };
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    f.service
+        .handle(
+            ConnectionId(1),
+            client.stage_image(key, target, Arc::new(large)).unwrap(),
+        )
+        .unwrap();
+    f.service.tick(STEP);
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert!(
+        client.take_persistence_reply().is_none(),
+        "large validation must yield before ready"
+    );
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Global(GlobalControlAction::SetSolo(true)),
+    );
+    for _ in 0..4 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+    }
+    assert!(matches!(
+        client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
+    assert!(client.snapshot().unwrap().global.solo);
+    assert!(client.take_persistence_reply().is_none());
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key },
+        false,
+    );
+    assert!(
+        matches!(client.take_persistence_reply(), Some(persistence::Reply::Closed { key: closed }) if closed == key)
+    );
+    let next = stage_image(&mut f.service, &mut client, 3, original, false);
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key: next },
+        false,
+    );
+    assert_eq!(client.snapshot().unwrap().persistence_epoch, epoch);
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .map(|l| l.id)
+            .collect::<Vec<_>>(),
+        identities
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
 }

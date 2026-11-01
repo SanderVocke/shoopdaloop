@@ -1,7 +1,7 @@
 use super::*;
 use shoop_app_protocol::{
     persistence_image as image,
-    persistence_transfer::{assemble, Source},
+    persistence_transfer::{Assembly, Source},
 };
 mod capture;
 mod mapping;
@@ -32,7 +32,40 @@ pub(super) struct Ready {
     input: Input,
     started: bool,
 }
+pub(super) enum Preparing {
+    Validation(image::Validation),
+    Assembly(Assembly),
+}
+impl Preparing {
+    fn step(self) -> Result<std::result::Result<image::ValidatedImage, Self>, Refusal> {
+        match self {
+            Self::Validation(mut validation) => {
+                if !validation.step(256 * 1024)? {
+                    return Ok(Err(Self::Validation(validation)));
+                }
+                validation.finish().map(Ok)
+            }
+            Self::Assembly(mut assembly) => match assembly.step(256 * 1024)? {
+                Some(validated) => Ok(Ok(validated)),
+                None => Ok(Err(Self::Assembly(assembly))),
+            },
+        }
+    }
+}
 pub(super) enum Job {
+    Prepare {
+        authority: Authority,
+        key: persistence::Key,
+        target: persistence::Target,
+        work: Preparing,
+    },
+    ValidateCapture {
+        authority: Authority,
+        key: persistence::Key,
+        target: persistence::Target,
+        local: bool,
+        validation: image::Validation,
+    },
     Upload {
         authority: Authority,
         receiver: persistence::Receiver,
@@ -48,8 +81,7 @@ pub(super) enum Job {
     Captured {
         authority: Authority,
         key: persistence::Key,
-        image: Arc<image::Image>,
-        source: Option<Source>,
+        source: Source,
     },
     Commit(Ready),
 }
@@ -57,6 +89,8 @@ impl Job {
     fn authority(&self) -> Authority {
         match self {
             Self::Upload { authority, .. }
+            | Self::Prepare { authority, .. }
+            | Self::ValidateCapture { authority, .. }
             | Self::Capture { authority, .. }
             | Self::Captured { authority, .. } => *authority,
             Self::Ready(ready) | Self::Commit(ready) => ready.authority,
@@ -65,7 +99,10 @@ impl Job {
     fn key(&self) -> persistence::Key {
         match self {
             Self::Upload { receiver, .. } => receiver.description().key,
-            Self::Capture { key, .. } | Self::Captured { key, .. } => *key,
+            Self::Capture { key, .. }
+            | Self::Captured { key, .. }
+            | Self::Prepare { key, .. }
+            | Self::ValidateCapture { key, .. } => *key,
             Self::Ready(ready) | Self::Commit(ready) => ready.key,
         }
     }
@@ -128,11 +165,13 @@ impl Service {
         image: Arc<image::Image>,
     ) -> Result<(), Refusal> {
         self.persistence_begin(authority, key, target)?;
-        let ready = self
-            .prepare_image(authority, key, target, image)
-            .map_err(|_| Refusal::Invalid)?;
-        self.persistence_job = Some(Job::Ready(ready));
-        self.persistence_reply(authority, persistence::Reply::Ready { key });
+        let work = Preparing::Validation(image::Validation::new(image)?);
+        self.persistence_job = Some(Job::Prepare {
+            authority,
+            key,
+            target,
+            work,
+        });
         Ok(())
     }
     fn prepare_image(
@@ -140,11 +179,9 @@ impl Service {
         authority: Authority,
         key: persistence::Key,
         target: persistence::Target,
-        image: Arc<image::Image>,
+        validated: image::ValidatedImage,
     ) -> Result<Ready> {
-        image
-            .validate()
-            .map_err(|reason| anyhow!("invalid persistence image: {reason:?}"))?;
+        let image = validated.into_image();
         shoop_app_protocol::codec::encode_manifest(&image.manifest)
             .map_err(|_| anyhow!("persistence metadata exceeds its 8 MiB budget"))?;
         if self.persistence_epoch == u64::MAX {
@@ -271,11 +308,7 @@ impl Service {
             }
             persistence::Request::Describe { object, .. }
             | persistence::Request::Read { object, .. } => {
-                if let Job::Captured { image, source, .. } = &mut job {
-                    if source.is_none() {
-                        *source = Some(Source::new(Arc::clone(image))?);
-                    }
-                    let source = source.as_ref().unwrap();
+                if let Job::Captured { source, .. } = &mut job {
                     match request {
                         persistence::Request::Read { offset, .. } => source
                             .chunk(object, offset)
@@ -300,11 +333,14 @@ impl Service {
                 unreachable!()
             };
             let target = receiver.description().target;
-            let image = assemble(receiver.into_objects()?)?;
-            match self.prepare_image(authority, key, target, image) {
-                Ok(ready) => self.persistence_job = Some(Job::Ready(ready)),
-                Err(_) => return Err(Refusal::Invalid),
-            }
+            let work = Preparing::Assembly(Assembly::new(receiver.into_objects()?)?);
+            self.persistence_job = Some(Job::Prepare {
+                authority,
+                key,
+                target,
+                work,
+            });
+            return Ok(());
         } else {
             self.persistence_job = Some(job);
         }
@@ -420,6 +456,84 @@ impl Service {
             return;
         };
         match job {
+            Job::Prepare {
+                authority,
+                key,
+                target,
+                work,
+            } => match work.step() {
+                Ok(Err(work)) => {
+                    self.persistence_job = Some(Job::Prepare {
+                        authority,
+                        key,
+                        target,
+                        work,
+                    })
+                }
+                Ok(Ok(validated)) => {
+                    let result = self.target_current(key, target).and_then(|()| {
+                        self.prepare_image(authority, key, target, validated)
+                            .map_err(|_| Refusal::Invalid)
+                    });
+                    match result {
+                        Ok(ready) => {
+                            self.persistence_job = Some(Job::Ready(ready));
+                            self.persistence_reply(authority, persistence::Reply::Ready { key });
+                        }
+                        Err(reason) => self.persistence_reply(
+                            authority,
+                            persistence::Reply::Refused { key, reason },
+                        ),
+                    }
+                }
+                Err(reason) => {
+                    self.persistence_reply(authority, persistence::Reply::Refused { key, reason })
+                }
+            },
+            Job::ValidateCapture {
+                authority,
+                key,
+                target,
+                local,
+                mut validation,
+            } => match validation.step(256 * 1024) {
+                Ok(false) => {
+                    self.persistence_job = Some(Job::ValidateCapture {
+                        authority,
+                        key,
+                        target,
+                        local,
+                        validation,
+                    })
+                }
+                Ok(true) => match validation.finish().and_then(Source::from_validated) {
+                    Ok(source) => {
+                        let image = Arc::clone(source.image());
+                        let reply = (!local)
+                            .then(|| persistence::Reply::Captured(source.description(key, target)));
+                        self.persistence_job = Some(Job::Captured {
+                            authority,
+                            key,
+                            source,
+                        });
+                        if let Some(reply) = reply {
+                            self.persistence_reply(authority, reply);
+                        } else {
+                            self.emit(ServiceMessage::CapturedImage {
+                                authority,
+                                key,
+                                image,
+                            });
+                        }
+                    }
+                    Err(reason) => self
+                        .persistence_reply(authority, persistence::Reply::Refused { key, reason }),
+                },
+                Err(reason) => {
+                    self.persistence_reply(authority, persistence::Reply::Refused { key, reason })
+                }
+            },
+
             Job::Capture {
                 authority,
                 key,
@@ -522,40 +636,21 @@ impl Service {
                             _ => unreachable!(),
                         };
                         match image {
-                            Ok(image) => {
-                                let source = if local {
-                                    None
-                                } else {
-                                    match Source::new(Arc::clone(&image)) {
-                                        Ok(source) => Some(source),
-                                        Err(reason) => {
-                                            self.persistence_reply(
-                                                authority,
-                                                persistence::Reply::Refused { key, reason },
-                                            );
-                                            return;
-                                        }
-                                    }
-                                };
-                                let reply = source.as_ref().map(|source| {
-                                    persistence::Reply::Captured(source.description(key, target))
-                                });
-                                self.persistence_job = Some(Job::Captured {
-                                    authority,
-                                    key,
-                                    image: Arc::clone(&image),
-                                    source,
-                                });
-                                if let Some(reply) = reply {
-                                    self.persistence_reply(authority, reply);
-                                } else {
-                                    self.emit(ServiceMessage::CapturedImage {
+                            Ok(image) => match image::Validation::for_transfer(image) {
+                                Ok(validation) => {
+                                    self.persistence_job = Some(Job::ValidateCapture {
                                         authority,
                                         key,
-                                        image,
-                                    });
+                                        target,
+                                        local,
+                                        validation,
+                                    })
                                 }
-                            }
+                                Err(reason) => self.persistence_reply(
+                                    authority,
+                                    persistence::Reply::Refused { key, reason },
+                                ),
+                            },
                             Err(_) => self.persistence_reply(
                                 authority,
                                 persistence::Reply::Refused {
@@ -842,7 +937,24 @@ impl Service {
         let target = persistence::Target::Session {
             revision: self.revision,
         };
-        let ready = self.prepare_image(authority, key, target, image)?;
+        let mut validation = image::Validation::new(image)
+            .map_err(|_| CommandError::invalid("invalid new session image"))?;
+        if !validation
+            .step(256 * 1024)
+            .map_err(|_| CommandError::invalid("invalid new session image"))?
+        {
+            return Err(CommandError::invalid(
+                "new session image unexpectedly contains media",
+            ));
+        }
+        let ready = self.prepare_image(
+            authority,
+            key,
+            target,
+            validation
+                .finish()
+                .map_err(|_| CommandError::invalid("incomplete new session image"))?,
+        )?;
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }

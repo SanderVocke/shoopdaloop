@@ -72,6 +72,8 @@ web-sys = { version = "0.3", features = [
     "AudioWorkletNode",
     "AudioWorkletNodeOptions",
     "Blob",
+    "BlobPropertyBag",
+    "ErrorEvent",
     "Document",
     "Element",
     "Event",

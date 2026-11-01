@@ -103,7 +103,10 @@ impl Fixture {
             port,
             hold,
         };
-        f.until(|s| !s.tracks.is_empty());
+        for _ in 0..4 {
+            f.step();
+        }
+        assert!(!f.runtime.snapshot().tracks.is_empty());
         f
     }
     fn step(&mut self) {
@@ -112,9 +115,10 @@ impl Fixture {
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::yield_now();
     }
-    fn until(&mut self, predicate: impl Fn(&AppSnapshot) -> bool) -> Arc<AppSnapshot> {
+    async fn until(&mut self, predicate: impl Fn(&AppSnapshot) -> bool) -> Arc<AppSnapshot> {
         for _ in 0..10_000 {
             self.step();
+            idle().await;
             let s = self.runtime.snapshot();
             if predicate(&s) {
                 return s;
@@ -135,9 +139,10 @@ impl Fixture {
         self.runtime.dispatch(intent).unwrap();
         self.step();
     }
-    fn output(&mut self) -> ApplicationFileOutput {
+    async fn output(&mut self) -> ApplicationFileOutput {
         for _ in 0..10_000 {
             self.step();
+            idle().await;
             if let Some(output) = self.runtime.take_file_output() {
                 return output;
             }
@@ -155,7 +160,7 @@ impl Fixture {
     }
 }
 #[shoop_test]
-fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
+async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
     let mut f = Fixture::new();
     f.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)));
     f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
@@ -163,7 +168,9 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         audio_channels: 1,
         midi: true,
     }));
-    let state = f.until(|s| s.tracks.len() == 2 && s.tracks[1].loops.len() == 8);
+    let state = f
+        .until(|s| s.tracks.len() == 2 && s.tracks[1].loops.len() == 8)
+        .await;
     let loop_id = state.tracks[1].loops[0].id;
     let audio = shoop_session::LoopAudio {
         sample_rate: 1000,
@@ -180,11 +187,13 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         bytes: wav.into(),
         update_loop_length: true,
     });
-    let state = f.until(|s| {
-        s.io_task
-            .as_ref()
-            .is_some_and(|t| t.status == IoTaskStatus::AwaitingChannelMapping)
-    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingChannelMapping)
+        })
+        .await;
     f.dispatch(AppIntent::ConfirmAudioChannelMapping {
         task_id: state.io_task.as_ref().unwrap().id,
         source_for_destination: vec![0],
@@ -193,7 +202,8 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         s.io_task
             .as_ref()
             .is_some_and(|t| t.status == IoTaskStatus::Completed)
-    });
+    })
+    .await;
     let midi = shoop_session::ExactMidi {
         sample_rate: 1000,
         length_frames: 4,
@@ -221,9 +231,10 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         s.io_task.as_ref().is_some_and(|t| {
             t.kind == IoTaskKind::ImportLoopMidi && t.status == IoTaskStatus::Completed
         })
-    });
+    })
+    .await;
     f.dispatch(AppIntent::RequestSaveSession);
-    let file = f.output();
+    let file = f.output().await;
     let before = shoop_session::decode_session(&file.bytes).unwrap();
     assert!(before.media.values().any(|p| matches!(p, shoop_session::MediaPayload::Audio(a) if a.samples == audio.channels[0].samples)));
     assert!(before
@@ -242,7 +253,8 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         s.io_task
             .as_ref()
             .is_some_and(|t| t.status == IoTaskStatus::Completed)
-    });
+    })
+    .await;
     let epoch = f.runtime.client().snapshot().unwrap().persistence_epoch;
     f.dispatch(AppIntent::LoadSessionBytes {
         name: "saved.shoop".into(),
@@ -252,7 +264,8 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         s.io_task.as_ref().is_some_and(|t| {
             t.kind == IoTaskKind::LoadSession && t.status == IoTaskStatus::Completed
         })
-    });
+    })
+    .await;
     let state = f.runtime.snapshot();
     assert_ne!(state.tracks[1].loops[0].id, loop_id);
     assert!(state
@@ -265,14 +278,14 @@ fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         epoch + 1
     );
     f.dispatch(AppIntent::RequestSaveSession);
-    let saved = shoop_session::decode_session(&f.output().bytes).unwrap();
+    let saved = shoop_session::decode_session(&f.output().await.bytes).unwrap();
     assert_eq!(
         before.media.values().collect::<Vec<_>>(),
         saved.media.values().collect::<Vec<_>>()
     );
 }
 #[shoop_test]
-fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
+async fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
     let mut f = Fixture::new();
     f.dispatch(AppIntent::RequestLoadSessionPicker);
     let request = f.runtime.take_file_request().unwrap();
@@ -304,11 +317,13 @@ fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
         name: "convert.shoop".into(),
         bytes,
     });
-    let state = f.until(|s| {
-        s.io_task
-            .as_ref()
-            .is_some_and(|t| t.status == IoTaskStatus::AwaitingSampleRateConfirmation)
-    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingSampleRateConfirmation)
+        })
+        .await;
     f.dispatch(AppIntent::ConfirmSampleRateConversion {
         task_id: state.io_task.as_ref().unwrap().id,
         accept: false,
@@ -323,7 +338,7 @@ fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
     );
 }
 #[shoop_test]
-fn queued_global_commands_keep_their_original_session_epoch() {
+async fn queued_global_commands_keep_their_original_session_epoch() {
     let mut f = Fixture::new();
     f.hold.set(true);
     f.dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)));
@@ -338,7 +353,8 @@ fn queued_global_commands_keep_their_original_session_epoch() {
         s.io_task
             .as_ref()
             .is_some_and(|t| t.status == IoTaskStatus::Completed)
-    });
+    })
+    .await;
     f.hold.set(false);
     for _ in 0..12 {
         f.step();
@@ -356,4 +372,41 @@ fn queued_global_commands_keep_their_original_session_epoch() {
                 ..
             }
         )));
+}
+
+async fn idle() {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(window) = web_sys::window() {
+        let promise = js_sys::Promise::new(&mut |resolve, _| {
+            window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
+                .unwrap();
+        });
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+    }
+}
+
+#[shoop_test]
+async fn a_second_file_request_refuses_without_cancelling_the_active_task() {
+    let mut f = Fixture::new();
+    f.dispatch(AppIntent::RequestLoadSessionPicker);
+    let request = f.runtime.take_file_request().unwrap();
+    f.dispatch(AppIntent::RequestSaveSession);
+    let state = f.runtime.snapshot();
+    assert_eq!(state.io_task.as_ref().unwrap().id, request.task_id);
+    assert_eq!(
+        state.io_task.as_ref().unwrap().status,
+        IoTaskStatus::Running
+    );
+    assert!(state
+        .notifications
+        .iter()
+        .any(|n| n.message.contains("another file workflow is still active")));
+    f.dispatch(AppIntent::CancelIoTask {
+        task_id: request.task_id,
+    });
+    assert_eq!(
+        f.runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Cancelled
+    );
 }

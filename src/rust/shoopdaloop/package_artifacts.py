@@ -44,6 +44,7 @@ WEB_REQUIRED_FILES = (
     "icon.png",
     "rt_audio_worklet.js",
     "generated/shoop_rt_host_worklet.wasm",
+    "generated/shoop_persistence_codec.wasm",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
 
@@ -433,6 +434,10 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
     reject_application_script_payload(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_rt_worklet, "hosted new engine AudioWorklet Wasm")
+    hosted_codec = archive_file(bundle, f"{root}generated/shoop_persistence_codec.wasm")
+    reject_carla_native_payload(hosted_codec, "hosted client file codec worker Wasm")
+    if not hosted_codec.startswith(b"\0asm"):
+        raise RuntimeError("hosted client codec worker is not a Wasm module")
     if html is None:
         return
     text = html.read_text(encoding="utf-8")
@@ -469,7 +474,7 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     ) != APPLICATION_ICON.read_bytes():
         raise RuntimeError("self-contained HTML does not contain the application icon")
     application_binary = None
-    for variable in ("shoopWasmBinary", "shoopRtWorkletBinary"):
+    for variable in ("shoopWasmBinary", "shoopRtWorkletBinary", "shoopCodecWorkerBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
         if not match:
             raise RuntimeError(f"self-contained HTML is missing {variable}")

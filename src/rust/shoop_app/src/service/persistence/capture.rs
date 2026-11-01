@@ -279,9 +279,6 @@ impl Cut {
             }
         };
         let image = Arc::new(image::Image { manifest, payloads });
-        image
-            .validate()
-            .map_err(|reason| anyhow!("capture exceeds persistence bounds: {reason:?}"))?;
         Ok(image)
     }
     pub(super) fn finish_loop(
@@ -308,9 +305,6 @@ impl Cut {
             },
             payloads,
         });
-        image
-            .validate()
-            .map_err(|reason| anyhow!("capture exceeds persistence bounds: {reason:?}"))?;
         Ok(image)
     }
 }
