@@ -86,3 +86,35 @@ assertions remain unchanged. This is not a production latency policy change.
 
 This correction addresses the observed coverage failure. A successful CI run on
 the corrected head is still required; the overall recovery plan remains incomplete.
+
+## Engine-independent backend contract
+
+The crate root now contains the backend contract and shared data without engine
+imports. Concrete/reference implementations and legacy conversions are gated by
+the legacy feature; that feature temporarily remains a default for the existing
+production entry points. The RT adapter explicitly disables those defaults.
+This completes the Stage 1 boundary extraction, not Stage 6 production retirement.
+
+- Warning-denying native and Wasm builds of `shoop_backend` and `shoop_rt_backend`
+  with `--no-default-features` pass. Their production dependency trees exclude
+  `shoop_engine`; the adapter audit now inspects its full transitive tree instead
+  of only direct dependencies.
+- All 86 retained backend library tests and all 15 RT adapter tests pass. Existing
+  reference assertions remain intact; backend library tests now live under the
+  legacy module rather than the portable contract root.
+- Native-driver warning-denying build passes. The initial attempt was blocked by
+  missing JACK development metadata; the official Debian `libjack-jackd2-dev`
+  1.9.22~dfsg-4 package was extracted into `/workspace/tools/sysroot` and selected
+  with PKG_CONFIG_PATH/PKG_CONFIG_SYSROOT_DIR. No system configuration was changed.
+- Existing application and RT-adapter Wasm consumers build with warnings denied.
+- The native dummy topology/capture/same-driver-switch contract passes under its
+  new `legacy::native::tests` path. Its exact nextest scheduling override moves
+  with it, retaining the original scheduling protection.
+- The four-target dependency audit covers 16 packages, with dedicated checks for
+  the neutral backend and RT adapter. Boundary policy tests pass (11 tests).
+- Formatting, test-attribute and closed tracing inventories pass. The tracing
+  inventory follows the moved legacy code and classifies the contract root as data.
+
+Native production UI/Lua composition still owns the old application model. No
+session-service recovery, independent app host roles or recovery UX is implemented
+by this boundary refactor. Stages 2–7 and all final acceptance evidence remain open.

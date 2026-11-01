@@ -18,7 +18,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
-shoop_backend = { path = "../shoop_backend" }
+shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 tracing = { workspace = true }
 

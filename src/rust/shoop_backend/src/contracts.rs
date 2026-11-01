@@ -12,6 +12,7 @@ use std::time::Duration;
 use anyhow::Result;
 use shoop_app_api::AudioDriverConfig;
 
+use crate::legacy::{WEB_AUDIO_CAPTURE_PORTS, WEB_AUDIO_DESTINATION_PORTS};
 use crate::BackendPortDataType::{Audio, Midi};
 use crate::BackendPortDirection::{Input, Output};
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
     BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackCreation,
     BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
     DirectTrackRequest, EngineBackend, TrackRequest, MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID,
-    MASTER_BUS_NAME, WEB_AUDIO_CAPTURE_PORTS, WEB_AUDIO_DESTINATION_PORTS,
+    MASTER_BUS_NAME,
 };
 
 /// The host ports a backend offers the contracts.

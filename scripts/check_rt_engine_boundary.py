@@ -18,7 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
-    "shoop_app_protocol", "shoop_app_client",
+    "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
@@ -39,8 +39,12 @@ def violations(tree: str, package: str | None = None) -> list[str]:
                      "cpal", "midir", "web-sys", "js-sys", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_", "shoop_transport_")))
-    if package == "shoop_rt_backend":
-        return sorted(name for name in names if name == "shoop_rt_engine" or name.startswith(("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
+    if package in {"shoop_backend", "shoop_rt_backend"}:
+        forbidden = {"shoop_app", "shoop_app_protocol", "shoop_app_client", "shoop_engine",
+                     "shoop_egui", "shoopdaloop", "shoop_scripting", "shoop_session",
+                     "shoop_rt_engine", "rt_runtime", "cpal", "midir"}
+        return sorted(name for name in names if name in forbidden or name.startswith(
+            ("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
     forbidden = set(FORBIDDEN)
     if package in {"shoop_transport", "shoop_rt_protocol", "shoop_rt_transport"}:
         forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
@@ -65,8 +69,8 @@ def main() -> int:
     for package in PACKAGES:
         for target in args.target or RUNTIME.TARGETS:
             result = subprocess.run(
-                ["cargo", "tree", "--locked", "-p", package, "--all-features",
-                 *(["--depth", "1"] if package == "shoop_rt_backend" else []),
+                ["cargo", "tree", "--locked", "-p", package,
+                 *(["--no-default-features"] if package == "shoop_backend" else ["--all-features"]),
                  "--target", target, "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
                 cwd=ROOT, text=True, capture_output=True, check=False,
             )

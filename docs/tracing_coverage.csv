@@ -59,7 +59,7 @@ src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Ru
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_worklet/src/lib.rs,mixed_realtime_and_control,instrumented_direct,"Owns the raw producer lifecycle, timestamp updates, drain ABI, and static metadata exports around engine processing."
 src/rust/shoop_backend/src/contracts.rs,test_infrastructure,excluded,Shared backend contract tests and their reference timing harness for test builds; not part of the application runtime.
-src/rust/shoop_backend/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_backend/src/lib.rs,app_session,excluded,Portable backend contract and data types; no execution boundary to instrument.
 src/rust/shoop_backend/src/native.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_common/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoop_common/src/lib.rs,non_realtime_support,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
@@ -294,3 +294,4 @@ src/rust/shoop_app_protocol/src/lib.rs,app_session,excluded,App message identiti
 src/rust/shoop_app_protocol/src/codec.rs,app_session,excluded,Bounded app wire codec; the delivery owner handles encode and decode failures.
 src/rust/shoop_app_protocol/src/local.rs,app_session,excluded,Typed bounded channel construction; no execution boundary to instrument.
 src/rust/shoop_app_client/src/lib.rs,app_session,excluded,Portable projection and attachment state machine; the UI delivery owner reports state and transport failures.
+src/rust/shoop_backend/src/legacy.rs,non_realtime_support,instrumented_indirect,"Legacy reference implementations run within traced application and engine orchestration; a separate span would duplicate their owning boundary."

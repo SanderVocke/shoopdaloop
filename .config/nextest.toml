@@ -32,7 +32,7 @@ filter = 'test(/carla_processor::tests::bridge_/)'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
-filter = 'test(=native::tests::native_dummy_satisfies_topology_capture_and_same_driver_switch)'
+filter = 'test(=legacy::native::tests::native_dummy_satisfies_topology_capture_and_same_driver_switch)'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]

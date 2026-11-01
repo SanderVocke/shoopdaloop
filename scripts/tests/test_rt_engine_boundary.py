@@ -60,10 +60,16 @@ class EngineBoundaryTests(unittest.TestCase):
             for dependency in ("shoop_app", "shoop_backend", "shoop_scripting", "shoop_rt_protocol", "shoop_transport_socket", "cpal"):
                 self.assertEqual(MODULE.violations(dependency + " v0.3.0\n", package), [dependency])
 
+    def test_neutral_backend_contract_has_no_engine_or_application_runtime(self):
+        self.assertIn("shoop_backend", MODULE.PACKAGES)
+        self.assertEqual(MODULE.violations("shoop_app_api v0.3.0\nshoop_latency v0.3.0\n", "shoop_backend"), [])
+        for dependency in ("shoop_engine", "shoop_app", "shoop_scripting", "shoop_rt_host_native"):
+            self.assertEqual(MODULE.violations(dependency + " v0.3.0\n", "shoop_backend"), [dependency])
+
     def test_adapter_uses_only_portable_engine_connections(self):
         tree = "shoop_rt_backend v0.3.0\nshoop_backend v0.3.0\nshoop_rt_protocol v0.3.0\nshoop_rt_transport v0.3.0\n"
         self.assertEqual(MODULE.violations(tree, "shoop_rt_backend"), [])
-        for dependency in ("shoop_rt_engine", "shoop_rt_host_process", "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory"):
+        for dependency in ("shoop_engine", "shoop_app", "shoop_scripting", "shoop_rt_engine", "shoop_rt_host_process", "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory"):
             self.assertEqual(MODULE.violations(tree + dependency + " v0.3.0\n", "shoop_rt_backend"), [dependency])
 
 
