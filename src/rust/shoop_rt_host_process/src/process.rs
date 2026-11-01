@@ -28,6 +28,8 @@ struct Monitor {
     frame: Arc<AtomicU64>,
     stop: Arc<AtomicU8>,
     #[cfg(feature = "testing")]
+    observations: Arc<AtomicU64>,
+    #[cfg(feature = "testing")]
     expected: Arc<AtomicU64>,
 }
 impl Monitor {
@@ -39,6 +41,8 @@ impl Monitor {
         let stopped = stop.clone();
         let expected = Arc::new(AtomicU64::new(0));
         let egress = expected.clone();
+        let observations = Arc::new(AtomicU64::new(0));
+        let observed = observations.clone();
         let thread = std::thread::spawn(move || {
             for line in BufReader::new(output).lines() {
                 let Ok(line) = line else { break };
@@ -49,6 +53,7 @@ impl Monitor {
                             egress.store(count, Ordering::Release);
                         }
                         frames.store(frame, Ordering::Release);
+                        observed.fetch_add(1, Ordering::Release);
                     }
                 } else if let Some(value) = line.strip_prefix("@STOP ").and_then(|s| s.parse().ok())
                 {
@@ -65,6 +70,8 @@ impl Monitor {
             stop,
             #[cfg(feature = "testing")]
             expected,
+            #[cfg(feature = "testing")]
+            observations,
         }
     }
     fn join(&mut self) {
@@ -113,6 +120,11 @@ pub struct StopReport {
 }
 impl Supervisor {
     #[cfg(feature = "testing")]
+    pub fn disconnect_for_test(&self) -> std::io::Result<()> {
+        self.input.lock().unwrap().write_all(b"D")
+    }
+
+    #[cfg(feature = "testing")]
     pub fn kill_for_test(&mut self) -> std::io::Result<()> {
         self.child.as_mut().unwrap().kill()
     }
@@ -150,6 +162,12 @@ impl Supervisor {
         };
         self.monitor.join();
         let stop = self.monitor.stop.load(Ordering::Acquire);
+        tracing::info!(
+            success,
+            midi_reset = stop & 1 != 0,
+            cleaned = stop & 2 != 0,
+            "engine_process.stopped"
+        );
         StopReport {
             success,
             midi_reset: stop & 1 != 0,
@@ -167,6 +185,7 @@ impl Supervisor {
             sent: self.sent.clone(),
             received: self.received.clone(),
             expected: self.monitor.expected.clone(),
+            observations: self.monitor.observations.clone(),
         }
     }
 }
@@ -185,6 +204,7 @@ pub struct TestingClock {
     sent: Arc<AtomicU64>,
     received: Arc<AtomicU64>,
     expected: Arc<AtomicU64>,
+    observations: Arc<AtomicU64>,
 }
 #[cfg(feature = "testing")]
 impl TestingClock {
@@ -195,9 +215,7 @@ impl TestingClock {
         self.frame.load(Ordering::Acquire)
     }
     pub fn step(&mut self, frames: u64) -> bool {
-        if frames == 0 {
-            return true;
-        }
+        let observed = self.observations.load(Ordering::Acquire);
         let target = self.frame() + frames;
         let Ok(mut input) = self.input.lock() else {
             return false;
@@ -205,7 +223,16 @@ impl TestingClock {
         if input
             .write_all(b"A")
             .and_then(|_| input.write_all(&frames.to_le_bytes()))
-            .and_then(|_| input.write_all(&self.sent.load(Ordering::Acquire).to_le_bytes()))
+            .and_then(|_| {
+                input.write_all(
+                    &if frames == 0 {
+                        0
+                    } else {
+                        self.sent.load(Ordering::Acquire)
+                    }
+                    .to_le_bytes(),
+                )
+            })
             .and_then(|_| input.flush())
             .is_err()
         {
@@ -213,7 +240,7 @@ impl TestingClock {
         }
         drop(input);
         let deadline = Instant::now() + TIMEOUT;
-        while self.frame() < target {
+        while self.frame() < target || self.observations.load(Ordering::Acquire) == observed {
             if Instant::now() > deadline {
                 return false;
             }
@@ -253,6 +280,11 @@ impl Pending {
         let mut child = command
             .spawn()
             .context("could not launch the companion engine executable")?;
+        tracing::info!(
+            pid = child.id(),
+            transport = transport.as_str(),
+            "engine_process.spawned"
+        );
         let input = Arc::new(Mutex::new(child.stdin.take().expect("piped stdin")));
         let monitor = Monitor::start(&mut child);
         let mut pending = Self {
@@ -444,6 +476,11 @@ impl Pending {
         } else {
             Port::socket(control)
         };
+        tracing::info!(
+            transport = self.transport.as_str(),
+            warnings = warnings.len(),
+            "engine_process.ready"
+        );
         let supervisor = Supervisor {
             child: self.child.take(),
             input: self.input.take().unwrap(),

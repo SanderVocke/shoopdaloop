@@ -284,4 +284,4 @@ src/rust/shoop_rt_host_process/src/lib.rs,engine_process,excluded,Process compos
 src/rust/shoop_rt_host_process/src/convert.rs,engine_process,excluded,Checked plain-data host configuration conversions; startup reports failures.
 src/rust/shoop_rt_host_process/src/main.rs,engine_process,excluded,Headless entry point reports startup failure to stderr and parent.
 src/rust/shoop_rt_host_process/src/process.rs,engine_process,instrumented_direct,Parent supervises child and traces non-control output and lifecycle failures.
-src/rust/shoop_rt_host_process/src/serve.rs,engine_process,excluded,Child dispatches bounded host messages and reports lifecycle results through its supervisor channel.
+src/rust/shoop_rt_host_process/src/serve.rs,engine_process,instrumented_direct,Child dispatches bounded host messages and reports lifecycle results through its supervisor channel.

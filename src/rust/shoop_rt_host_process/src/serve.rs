@@ -34,7 +34,7 @@ fn send(control: &mut shoop_rt_transport_socket::Port, reply: HostReply) -> Resu
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         match control.post(&bytes[..len]) {
-            Ok(()) => return Ok(()),
+            Ok(()) => break,
             Err(CarrierError::Full) => {}
             Err(e) => bail!("host connection: {e:?}"),
         }
@@ -43,6 +43,16 @@ fn send(control: &mut shoop_rt_transport_socket::Port, reply: HostReply) -> Resu
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    while control.pending() != 0 {
+        control
+            .flush()
+            .map_err(|error| anyhow::anyhow!("host flush: {error:?}"))?;
+        if Instant::now() > deadline {
+            bail!("host response flush timed out")
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    Ok(())
 }
 fn failure(
     control: &mut shoop_rt_transport_socket::Port,
@@ -337,7 +347,9 @@ fn run_impl(
         }
         send(&mut control, HostReply::Ready(started.host.status().driver))?;
         let data = if let Some(shared) = shared {
-            Port::shared(shared.with_liveness(control.stream().try_clone()?)?)
+            let liveness = control.stream().try_clone()?;
+            drop(control);
+            Port::shared(shared.with_liveness(liveness)?)
         } else {
             Port::socket(control)
         };
@@ -346,6 +358,8 @@ fn run_impl(
     drop(input);
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
+    let disconnect = Arc::new(AtomicBool::new(false));
+    let disconnecting = disconnect.clone();
     #[cfg(feature = "testing")]
     let (step_tx, step_rx) = std::sync::mpsc::sync_channel::<(u64, u64)>(16);
     let _watcher = std::thread::spawn(move || {
@@ -353,12 +367,17 @@ fn run_impl(
         loop {
             let mut tag = [0];
             if input.read_exact(&mut tag).is_err() {
+                disconnecting.store(true, Ordering::Release);
                 return;
             }
             match tag[0] {
                 b'Q' => {
                     stopping.store(true, Ordering::Release);
                     return;
+                }
+                #[cfg(feature = "testing")]
+                b'D' => {
+                    disconnecting.store(true, Ordering::Release);
                 }
                 #[cfg(feature = "testing")]
                 b'A' => {
@@ -372,7 +391,10 @@ fn run_impl(
                         return;
                     }
                 }
-                _ => {}
+                _ => {
+                    disconnecting.store(true, Ordering::Release);
+                    return;
+                }
             }
         }
     });
@@ -405,7 +427,15 @@ fn run_impl(
     while !stop.load(Ordering::Acquire) {
         if let Some(server) = connection.as_mut() {
             server.pump(32);
-            if server.failure().is_some() || server.endpoint().retired {
+            let channel_lost = disconnect.load(Ordering::Acquire);
+            let driver_failed =
+                host.status().driver.state == shoop_rt_protocol::DriverRunState::Failed;
+            if server.failure().is_some()
+                || server.endpoint().retired
+                || channel_lost
+                || driver_failed
+            {
+                tracing::info!(failure=?server.failure(), channel_lost, driver_failed, "engine_process.control_retired");
                 let (mut endpoint, _port, _outbox) = connection.take().unwrap().into_parts();
                 endpoint.inner.disconnect();
                 retired = Some(endpoint.inner);
@@ -422,7 +452,7 @@ fn run_impl(
             }
             if let Some((frames, ingress)) = pending_step {
                 if received.load(Ordering::Acquire) >= ingress {
-                    if let Some(dummy) = host.dummy() {
+                    if let Some(dummy) = host.dummy().filter(|_| frames != 0) {
                         dummy.request_frames(frames);
                         if !dummy.wait_rendered(Duration::from_secs(5)) {
                             bail!("test driver did not advance")

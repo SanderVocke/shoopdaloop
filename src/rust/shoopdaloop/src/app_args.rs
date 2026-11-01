@@ -30,10 +30,17 @@ pub struct AppArgs {
     /// Start with this audio backend instead of the saved setting: legacy or new_engine.
     #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
     pub audio_backend: Option<shoop_egui::AudioBackendKind>,
+    /// Native new-engine transport: in_process, socket or shared_memory (restart required).
+    #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
+    pub engine_transport: Option<shoop_egui::EngineTransportKind>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Validate packaged external built-in scripts and exit.
     #[arg(long)]
     pub probe_builtins: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise the selected engine companion on a dummy driver without opening a window.
+    #[arg(long, requires = "engine_transport")]
+    pub probe_engine_transport: bool,
     #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
     /// Validate the bundled Carla runtime and exit without opening the GUI.
     #[arg(long)]
@@ -74,6 +81,35 @@ pub struct AppArgs {
     #[cfg(target_arch = "wasm32")]
     #[arg(long, hide = true)]
     pub instance: Option<usize>,
+}
+
+impl AppArgs {
+    pub fn selected_engine_transport(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+        backend: shoop_egui::AudioBackendKind,
+    ) -> anyhow::Result<shoop_egui::EngineTransportKind> {
+        use shoop_egui::{AudioBackendKind, EngineTransportKind};
+        if backend == AudioBackendKind::Legacy {
+            anyhow::ensure!(
+                self.engine_transport
+                    .is_none_or(|kind| kind == EngineTransportKind::InProcess),
+                "--engine-transport requires --audio-backend new_engine"
+            );
+            return Ok(EngineTransportKind::InProcess);
+        }
+        let kind = self
+            .engine_transport
+            .map(Ok)
+            .unwrap_or_else(|| shoop_egui::engine_transport_from_snapshot(settings))
+            .map_err(anyhow::Error::msg)?;
+        #[cfg(target_arch = "wasm32")]
+        anyhow::ensure!(
+            kind == EngineTransportKind::InProcess,
+            "native engine IPC is unavailable in the browser"
+        );
+        Ok(kind)
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -165,6 +201,51 @@ mod native_tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn transport_cli_overrides_saved_selection_and_rejects_legacy_ipc() {
+        use shoop_egui::{AudioBackendKind as B, EngineTransportKind as T};
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::ENGINE_TRANSPORT, "shared_memory".into());
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        assert_eq!(
+            AppArgs::default()
+                .selected_engine_transport(&settings, B::NewEngine)
+                .unwrap(),
+            T::SharedMemory
+        );
+        assert_eq!(
+            AppArgs::default()
+                .selected_engine_transport(&settings, B::Legacy)
+                .unwrap(),
+            T::InProcess
+        );
+        for kind in [T::InProcess, T::Socket, T::SharedMemory] {
+            let args =
+                AppArgs::try_parse_from(["shoopdaloop", "--engine-transport", kind.id()]).unwrap();
+            assert_eq!(
+                args.selected_engine_transport(&settings, B::NewEngine)
+                    .unwrap(),
+                kind
+            );
+            assert_eq!(
+                args.selected_engine_transport(&settings, B::Legacy)
+                    .is_err(),
+                kind != T::InProcess
+            );
+        }
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--engine-transport=ipc"]).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn cli_overrides_the_audio_backend() {
         use shoop_egui::AudioBackendKind;
         assert_eq!(
@@ -204,6 +285,24 @@ mod tests {
             Some("https://example.com/demo.shoop")
         );
         assert!(args.force_url_session);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_rejects_native_ipc_selection() {
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        let settings = builder.finish().defaults(1);
+        for kind in ["socket", "shared_memory"] {
+            let args = parse_web_query(&format!(
+                "?audio-backend=new_engine&engine-transport={kind}"
+            ))
+            .unwrap();
+            assert!(args
+                .selected_engine_transport(&settings, shoop_egui::AudioBackendKind::NewEngine)
+                .unwrap_err()
+                .to_string()
+                .contains("browser"));
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

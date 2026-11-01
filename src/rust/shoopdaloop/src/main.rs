@@ -504,6 +504,18 @@ impl UnifiedApp {
         touch_mode_default: bool,
         args: &AppArgs,
     ) -> anyhow::Result<Self> {
+        Self::new_with_runtime(ui_scale_default, touch_mode_default, args, Runtime::new)
+    }
+
+    fn new_with_runtime(
+        ui_scale_default: f64,
+        touch_mode_default: bool,
+        args: &AppArgs,
+        make_runtime: impl FnOnce(
+            &shoop_settings::SettingsSnapshot,
+            &AppArgs,
+        ) -> anyhow::Result<Runtime>,
+    ) -> anyhow::Result<Self> {
         let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
@@ -527,7 +539,7 @@ impl UnifiedApp {
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone(), args);
         let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
-        let runtime = Runtime::new(&settings.active(), args)?;
+        let runtime = make_runtime(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
             runtime,
@@ -1249,6 +1261,17 @@ impl UnifiedApp {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.runtime.fatal_engine_error() {
+            ui.heading("Fatal engine error");
+            ui.label("The engine connection was lost or the engine failed. Recovery is unavailable for this app run.");
+            ui.label("A healthy disconnected engine keeps playing and recording. Close this application to stop its engine, then start a fresh application.");
+            if ui.button("Close application").clicked() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+            return;
+        }
         if let Some((source, force_url_session)) = self.startup_session.take() {
             self.process_startup_session_source(source, force_url_session);
         }
@@ -1955,6 +1978,18 @@ impl Drop for Runtime {
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        Self::new_with_engine_start(settings, args, engine_backend::start_selected)
+    }
+
+    fn new_with_engine_start(
+        settings: &shoop_settings::SettingsSnapshot,
+        args: &AppArgs,
+        start_engine: impl FnOnce(
+            &AudioDriverConfig,
+            &shoop_egui::NewEnginePools,
+            shoop_egui::EngineTransportKind,
+        ) -> anyhow::Result<engine_backend::NewEngine>,
+    ) -> anyhow::Result<Self> {
         #[cfg(feature = "native-fx")]
         let (carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
         #[cfg(feature = "native-fx")]
@@ -1998,6 +2033,7 @@ impl Runtime {
                 )),
             ),
         };
+        let engine_transport = args.selected_engine_transport(settings, audio_backend)?;
         let (engine_host, mut backend, backend_warnings) = match audio_backend {
             AudioBackendKind::Legacy => {
                 let (backend, warning) = NativeBackend::new_with_fallback(configured_driver)?;
@@ -2018,7 +2054,7 @@ impl Runtime {
                             )),
                         ),
                     };
-                let started = engine_backend::start(&configured_driver, &pools)?;
+                let started = start_engine(&configured_driver, &pools, engine_transport)?;
                 let warnings = pools_warning.into_iter().chain(started.warnings).collect();
                 (Some(started.host), started.backend, warnings)
             }
@@ -2309,7 +2345,17 @@ impl Runtime {
         self.handle.snapshot()
     }
 
+    fn fatal_engine_error(&self) -> bool {
+        self._engine_host
+            .as_ref()
+            .is_some_and(|host| host.is_process())
+            && self.snapshot().status.audio_driver == shoop_egui::AudioDriverState::Failed
+    }
+
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
+        if self.fatal_engine_error() {
+            return Err(shoop_app::DispatchError::Disconnected);
+        }
         self.handle.dispatch(intent)
     }
 
@@ -2683,6 +2729,7 @@ impl Runtime {
                 AudioBackendKind::Legacy
             }
         };
+        args.selected_engine_transport(settings, audio_backend)?;
         if audio_backend == AudioBackendKind::NewEngine {
             return Self::new_engine(settings, offline || worker, midi, midi_service);
         }
@@ -3262,6 +3309,22 @@ fn main() {
     }
 
     let cli = AppArgs::parse();
+    if cli.probe_engine_transport {
+        let result = engine_backend::probe(cli.engine_transport.unwrap());
+        match result {
+            Ok(()) => {
+                println!(
+                    "Engine transport {}: audio/MIDI workflow and graceful shutdown passed",
+                    cli.engine_transport.unwrap().id()
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!("Engine transport probe failed: {error:#}");
+                std::process::exit(5);
+            }
+        }
+    }
     if cli.probe_builtins {
         let root = shoop_egui::default_builtins_location();
         let result = shoop_script_resources::scan_builtin_directory(
@@ -6787,17 +6850,40 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn new_engine_backend_runs_the_core_workflow_in_the_application() {
+        application_core_workflow(UnifiedApp::new(1.0, false, &new_engine_args()).unwrap());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn process_app(transport: shoop_egui::EngineTransportKind) -> UnifiedApp {
+        let args = AppArgs {
+            engine_transport: Some(transport),
+            ..new_engine_args()
+        };
+        UnifiedApp::new_with_runtime(1.0, false, &args, |settings, args| {
+            Runtime::new_with_engine_start(settings, args, engine_backend::tests::process_start)
+        })
+        .unwrap()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_socket_runs_the_core_workflow_in_the_application() {
+        application_core_workflow(process_app(shoop_egui::EngineTransportKind::Socket));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_shared_memory_runs_the_core_workflow_in_the_application() {
+        application_core_workflow(process_app(shoop_egui::EngineTransportKind::SharedMemory));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn application_core_workflow(mut app: UnifiedApp) {
         use shoop_egui::{
             BackendCapabilities, BackendCapability, BusAction, ConfirmedConnectionState,
             GlobalControlAction, IoTaskStatus, MixerRouteState, NotificationLevel, StructuralState,
         };
 
-        let start = Instant::now();
-        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
-        eprintln!(
-            "new engine smoke: application start after {:?}",
-            start.elapsed()
-        );
         let runtime = &mut app.runtime;
         let snapshot = wait_for_snapshot(runtime, "startup", |snapshot| {
             snapshot.tracks.len() == 1 && snapshot.connections.backend_available
@@ -7100,10 +7186,66 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close() {
+        for transport in [
+            shoop_egui::EngineTransportKind::Socket,
+            shoop_egui::EngineTransportKind::SharedMemory,
+        ] {
+            let mut app = process_app(transport);
+            wait_for_snapshot(&app.runtime, "startup", |s| s.tracks.len() == 1);
+            let host = app.runtime._engine_host.as_ref().unwrap();
+            let mut clock = host.process().testing_clock(48_000, 256);
+            host.process().disconnect_for_test().unwrap();
+            wait_for_snapshot(&app.runtime, "fatal disconnect", |s| {
+                s.status.audio_driver == shoop_egui::AudioDriverState::Failed
+            });
+            assert!(app.runtime.fatal_engine_error());
+            assert!(app.runtime.dispatch(AppIntent::RequestNewSession).is_err());
+            let context = egui::Context::default();
+            for _ in 0..3 {
+                let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+                assert!(output.viewport_output.values().all(|v| !v
+                    .commands
+                    .iter()
+                    .any(|c| matches!(c, egui::ViewportCommand::Close))));
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Fatal engine error"))));
+                output.textures_delta.clear();
+                assert!(app.runtime._engine_host.is_some());
+                assert!(clock.step(0));
+                let before = clock.frame();
+                thread::sleep(Duration::from_millis(20));
+                assert!(clock.step(0));
+                assert!(clock.frame() > before);
+            }
+            let host = app.runtime._engine_host.take().unwrap();
+            drop(app);
+            assert!(host.stop().is_empty());
+        }
+    }
+
     /// Opt-in, because it opens the default audio devices: set `SHOOP_TEST_CPAL_DEVICE=1`.
     #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
     #[shoop_wasm_test_support::shoop_test]
     fn new_engine_backend_runs_the_core_workflow_on_a_cpal_device() {
+        cpal_core_workflow(shoop_egui::EngineTransportKind::InProcess);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_socket_runs_the_core_workflow_on_a_cpal_device() {
+        cpal_core_workflow(shoop_egui::EngineTransportKind::Socket);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_shared_memory_runs_the_core_workflow_on_a_cpal_device() {
+        cpal_core_workflow(shoop_egui::EngineTransportKind::SharedMemory);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
+    fn cpal_core_workflow(transport: shoop_egui::EngineTransportKind) {
         use shoop_egui::{
             BusAction, GlobalControlAction, IoTaskStatus, NotificationLevel, StructuralState,
         };
@@ -7121,6 +7263,9 @@ mod tests {
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
         shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Cpal);
+        if let Ok(host) = std::env::var("SHOOP_TEST_CPAL_HOST") {
+            draft.set(shoop_egui::CPAL_HOST, host);
+        }
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -7129,7 +7274,19 @@ mod tests {
             )
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
-        let mut runtime = Runtime::new(&settings, &new_engine_args()).unwrap();
+        let args = AppArgs {
+            engine_transport: Some(transport),
+            ..new_engine_args()
+        };
+        let mut runtime =
+            Runtime::new_with_engine_start(&settings, &args, |driver, pools, kind| {
+                if kind == shoop_egui::EngineTransportKind::InProcess {
+                    engine_backend::start_selected(driver, pools, kind)
+                } else {
+                    engine_backend::tests::process_start(driver, pools, kind)
+                }
+            })
+            .unwrap();
         let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
             snapshot.tracks.len() == 1 && snapshot.connections.backend_available
         });

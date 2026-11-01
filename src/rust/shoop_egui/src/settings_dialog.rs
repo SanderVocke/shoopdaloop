@@ -913,6 +913,14 @@ impl SettingsDialog {
             .and_then(|draft| draft.get(crate::AUDIO_BACKEND).ok())
             .is_some_and(|id| id == crate::AudioBackendKind::NewEngine.id());
         if new_engine {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(transport) = self
+                .registry
+                .definition(crate::ENGINE_TRANSPORT.id())
+                .cloned()
+            {
+                self.show_definition_cards(ui, vec![transport], None);
+            }
             let pools = self
                 .registry
                 .definitions()
@@ -2168,7 +2176,14 @@ mod tests {
             output.textures_delta.clear();
             cards.push(dialog.setting_card_rects.len());
         }
-        assert_eq!(cards, [3, 7]);
+        assert_eq!(
+            cards,
+            if cfg!(target_arch = "wasm32") {
+                [3, 7]
+            } else {
+                [3, 8]
+            }
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test(no_wasm = "browser builds have no native drivers")]

@@ -41,6 +41,12 @@ class EngineBoundaryTests(unittest.TestCase):
         self.assertEqual(MODULE.violations("shoop_rt_transport v0.3.0\n", "shoop_rt_protocol"),
                          ["shoop_rt_transport"])
 
+    def test_adapter_uses_only_portable_engine_connections(self):
+        tree = "shoop_rt_backend v0.3.0\nshoop_backend v0.3.0\nshoop_rt_protocol v0.3.0\nshoop_rt_transport v0.3.0\n"
+        self.assertEqual(MODULE.violations(tree, "shoop_rt_backend"), [])
+        for dependency in ("shoop_rt_engine", "shoop_rt_host_process", "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory"):
+            self.assertEqual(MODULE.violations(tree + dependency + " v0.3.0\n", "shoop_rt_backend"), [dependency])
+
 
 if __name__ == "__main__":
     unittest.main()

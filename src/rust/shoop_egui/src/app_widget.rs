@@ -124,6 +124,7 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
     SettingKey::new("audio.cpal.capture_ring_frames");
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
+pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.engine_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
 pub const NEW_ENGINE_TRACKS: SettingKey<u32> = SettingKey::new("audio.new_engine.tracks");
 pub const NEW_ENGINE_LOOPS: SettingKey<u32> = SettingKey::new("audio.new_engine.loops");
@@ -669,6 +670,45 @@ impl std::str::FromStr for AudioBackendKind {
     }
 }
 
+/// Native new-engine message delivery, selected at application startup.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum EngineTransportKind {
+    #[default]
+    InProcess,
+    Socket,
+    SharedMemory,
+}
+impl EngineTransportKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::InProcess => "in_process",
+            Self::Socket => "socket",
+            Self::SharedMemory => "shared_memory",
+        }
+    }
+}
+impl std::str::FromStr for EngineTransportKind {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "in_process" => Ok(Self::InProcess),
+            "socket" => Ok(Self::Socket),
+            "shared_memory" => Ok(Self::SharedMemory),
+            _ => Err(format!(
+                "unknown engine transport {value:?}; expected in_process, socket or shared_memory"
+            )),
+        }
+    }
+}
+pub fn engine_transport_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<EngineTransportKind, String> {
+    snapshot
+        .get(ENGINE_TRANSPORT)
+        .map_err(|e| e.to_string())?
+        .parse()
+}
+
 const AUDIO_BACKEND_CHOICES: &[(&str, &str)] = &[
     ("legacy", "Legacy engine"),
     ("new_engine", "New engine (core looping only)"),
@@ -715,6 +755,20 @@ pub fn register_audio_backend_settings(
         .editor(SettingEditor::StringChoice {
             choices: AUDIO_BACKEND_CHOICES,
         }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            ENGINE_TRANSPORT, EngineTransportKind::InProcess.id().to_owned(),
+            "Audio", "Engine transport",
+            "Native new engine only. Socket and shared memory run the engine in a separate process. A lost connection is fatal for this app run; the engine keeps running until you close the app. After an app crash, terminate the surviving engine externally.",
+        )
+        .category_order(5).setting_order(55)
+        .effect(SettingEffect::RestartRequired)
+        .editor(SettingEditor::StringChoice { choices: &[
+            ("in_process", "In application process"),
+            ("socket", "Separate process: socket"),
+            ("shared_memory", "Separate process: shared memory"),
+        ] }),
     )?;
     for (order, key, default, label, help, min, max) in [
         (
@@ -3810,6 +3864,7 @@ mod tests {
         );
         for key in [
             AUDIO_BACKEND.id(),
+            ENGINE_TRANSPORT.id(),
             NEW_ENGINE_TRACKS.id(),
             NEW_ENGINE_LOOPS.id(),
             NEW_ENGINE_CHANNELS.id(),
@@ -3822,8 +3877,21 @@ mod tests {
             );
         }
 
+        assert_eq!(
+            engine_transport_from_snapshot(&defaults).unwrap(),
+            EngineTransportKind::InProcess
+        );
+        for kind in [
+            EngineTransportKind::InProcess,
+            EngineTransportKind::Socket,
+            EngineTransportKind::SharedMemory,
+        ] {
+            assert_eq!(kind.id().parse::<EngineTransportKind>().unwrap(), kind);
+        }
+        assert!("ipc".parse::<EngineTransportKind>().is_err());
         let mut draft = SettingsDraft::from_snapshot(&defaults);
         draft.set(AUDIO_BACKEND, "new_engine".to_owned());
+        draft.set(ENGINE_TRANSPORT, "shared_memory".to_owned());
         draft.set(NEW_ENGINE_TRACKS, 4);
         draft.set(NEW_ENGINE_LOOPS, 33);
         draft.set(NEW_ENGINE_CHANNELS, 1);
@@ -3833,6 +3901,10 @@ mod tests {
             .document_from_draft(&empty, &draft, "test")
             .unwrap();
         let resolved = registry.resolve(&document, 2).snapshot;
+        assert_eq!(
+            engine_transport_from_snapshot(&resolved).unwrap(),
+            EngineTransportKind::SharedMemory
+        );
         assert_eq!(
             audio_backend_from_snapshot(&resolved).unwrap(),
             AudioBackendKind::NewEngine

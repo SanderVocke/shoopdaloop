@@ -1,6 +1,4 @@
-//! The new engine backend natively: the application's driver and capacity settings become
-//! a native host configuration, the host renders the engine on its driver thread and the
-//! adapter reaches it through the in-process carrier.
+//! Application settings mapped to native engine hosts and their selected transport.
 
 use anyhow::{anyhow, Result};
 use shoop_backend::Backend;
@@ -43,9 +41,24 @@ pub(crate) struct NewEngine {
 
 /// Stops the native host when dropped. Drop the backend first: the engine then sees its
 /// client leave and resets MIDI before the driver stops.
-pub(crate) struct EngineHost(Option<NativeHost>);
+enum Host {
+    Native(NativeHost),
+    Process(shoop_rt_host_process::Supervisor),
+}
+pub(crate) struct EngineHost(Option<Host>);
 
 impl EngineHost {
+    #[cfg(test)]
+    pub fn process(&self) -> &shoop_rt_host_process::Supervisor {
+        match self.0.as_ref().unwrap() {
+            Host::Process(process) => process,
+            _ => panic!("expected process"),
+        }
+    }
+    pub fn is_process(&self) -> bool {
+        matches!(self.0, Some(Host::Process(_)))
+    }
+
     #[cfg(test)]
     pub fn stop(mut self) -> Vec<String> {
         self.stop_host()
@@ -55,6 +68,26 @@ impl EngineHost {
     fn stop_host(&mut self) -> Vec<String> {
         let Some(host) = self.0.take() else {
             return Vec::new();
+        };
+        let Host::Native(host) = host else {
+            let Host::Process(supervisor) = host else {
+                unreachable!()
+            };
+            let report = supervisor.stop();
+            let mut problems = Vec::new();
+            if !report.success {
+                problems.push("Engine process did not exit cleanly".into());
+            }
+            if !report.midi_reset {
+                problems.push("Engine process did not confirm MIDI reset".into());
+            }
+            if !report.cleaned {
+                problems.push("Engine process did not confirm cleanup".into());
+            }
+            for problem in &problems {
+                tracing::warn!(problem=%problem, "frontend.new_engine.stop_problem");
+            }
+            return problems;
         };
         let report = host.stop();
         let problems = stop_problems(
@@ -88,6 +121,79 @@ pub(crate) fn start(driver: &AudioDriverConfig, pools: &NewEnginePools) -> Resul
     start_with(driver, pools, &inventory(driver))
 }
 
+pub(crate) fn start_selected(
+    driver: &AudioDriverConfig,
+    pools: &NewEnginePools,
+    transport: shoop_egui::EngineTransportKind,
+) -> Result<NewEngine> {
+    use shoop_egui::EngineTransportKind;
+    let transport = match transport {
+        EngineTransportKind::InProcess => return start(driver, pools),
+        EngineTransportKind::Socket => shoop_rt_host_process::Transport::Socket,
+        EngineTransportKind::SharedMemory => shoop_rt_host_process::Transport::SharedMemory,
+    };
+    let path = shoop_rt_host_process::companion_path(&std::env::current_exe()?)?;
+    let pending = shoop_rt_host_process::Pending::spawn(&path, transport).map_err(|e| {
+        anyhow!(
+            "could not start companion engine at {}: {e:#}",
+            path.display()
+        )
+    })?;
+    start_process(driver, pools, pending)
+}
+
+fn start_process(
+    driver: &AudioDriverConfig,
+    pools: &NewEnginePools,
+    pending: shoop_rt_host_process::Pending,
+) -> Result<NewEngine> {
+    #[cfg(feature = "cpal")]
+    let mut pending = pending;
+    let mut warnings = Vec::new();
+    #[cfg(feature = "cpal")]
+    let inventory = match driver {
+        AudioDriverConfig::Dummy(_) | AudioDriverConfig::WebAudio => Discovery::default(),
+        _ => {
+            let host = match driver {
+                AudioDriverConfig::Cpal(c) if !matches!(c.host.trim(), "" | "default") => {
+                    Some(c.host.as_str())
+                }
+                _ => None,
+            };
+            match pending.discover(host) {
+                Ok(found) => found,
+                Err(error) if host.is_some() => {
+                    warnings.push(format!(
+                        "Could not discover selected CPAL host: {error}; using default host"
+                    ));
+                    pending.discover(None)?
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    };
+    #[cfg(not(feature = "cpal"))]
+    let inventory = Discovery;
+    let (mut config, mapped_warnings) = native_config(driver, pools, &inventory);
+    warnings.extend(mapped_warnings);
+    // Function pointers are local to the in-process dummy test host.
+    match &mut config.driver {
+        DriverConfig::Dummy(dummy) => dummy.input = None,
+        #[cfg(feature = "cpal")]
+        DriverConfig::Cpal(_) => {}
+    }
+    let started = pending.start(&config)?;
+    warnings.extend(started.warnings);
+    let host = EngineHost(Some(Host::Process(started.supervisor)));
+    let backend = RtBackend::connect(started.client, Sleep::default())
+        .map_err(|e| anyhow!("engine process did not synchronize: {e:#}"))?;
+    Ok(NewEngine {
+        backend: Box::new(backend),
+        host,
+        warnings,
+    })
+}
+
 fn start_with(
     driver: &AudioDriverConfig,
     pools: &NewEnginePools,
@@ -117,7 +223,7 @@ fn start_with(
             .iter()
             .map(|warning| format!("Audio driver: {warning}")),
     );
-    let host = EngineHost(Some(started.host));
+    let host = EngineHost(Some(Host::Native(started.host)));
     let backend = RtBackend::connect(started.client, Sleep::default())
         .map_err(|error| anyhow!("the new engine backend did not connect: {error:#}"))?;
     Ok(NewEngine {
@@ -125,6 +231,125 @@ fn start_with(
         host,
         warnings,
     })
+}
+
+/// Headless packaged-application smoke: uses the same launch and adapter as the UI.
+pub(crate) fn probe(transport: shoop_egui::EngineTransportKind) -> Result<()> {
+    use shoop_backend::{
+        BackendLoopMode as Mode, BackendMidiEvent, BackendPortRole, DirectTrackRequest,
+    };
+    use std::time::Duration;
+    let NewEngine {
+        mut backend,
+        mut host,
+        warnings,
+    } = start_selected(
+        &AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
+        &NewEnginePools {
+            tracks: 3,
+            loops: 4,
+            channels: 2,
+            loop_memory_mb: 16,
+        },
+        transport,
+    )?;
+    anyhow::ensure!(
+        warnings.is_empty(),
+        "unexpected startup warnings: {warnings:?}"
+    );
+    let track = backend.create_direct_track(DirectTrackRequest {
+        port_name_base: "package probe".into(),
+        audio_channels: 2,
+        midi: true,
+        initial_loops: 1,
+    })?;
+    for port in &track.ports {
+        let name = match port.role {
+            BackendPortRole::AudioInput => "audio_in_1",
+            BackendPortRole::MidiInput => "midi_in_1",
+            _ => continue,
+        };
+        backend.set_port_connected(port.id, name, true)?;
+    }
+    let id = track.loops[0];
+    probe_wait(&mut *backend, |s| s.loops.contains_key(&id))?;
+    backend.transition_loop(id, Mode::Recording, None)?;
+    probe_wait(&mut *backend, |s| s.loops[&id].mode == Mode::Recording)?;
+    backend.inject_midi_input(
+        track.track_id,
+        &[BackendMidiEvent {
+            time: 0,
+            data: vec![0x90, 60, 100],
+        }],
+    )?;
+    backend.wait_idle();
+    std::thread::sleep(Duration::from_millis(40));
+    backend.inject_midi_input(
+        track.track_id,
+        &[BackendMidiEvent {
+            time: 0,
+            data: vec![0x80, 60, 0],
+        }],
+    )?;
+    backend.wait_idle();
+    std::thread::sleep(Duration::from_millis(40));
+    backend.transition_loop(id, Mode::Playing, None)?;
+    probe_wait(&mut *backend, |s| {
+        s.loops[&id].mode == Mode::Playing && s.loops[&id].length > 0
+    })?;
+    backend.transition_loop(id, Mode::Stopped, None)?;
+    probe_wait(&mut *backend, |s| s.loops[&id].mode == Mode::Stopped)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut audio = false;
+    let mut midi = false;
+    while !audio || !midi {
+        if !audio {
+            if let Some(channels) = backend.loop_audio_data(id)? {
+                audio = channels.len() == 2 && channels.iter().all(|c| !c.is_empty());
+            }
+        }
+        if !midi {
+            if let Some(data) = backend.loop_midi_data(id)? {
+                midi = data.channels.iter().any(|c| c.events.len() == 2);
+            }
+        }
+        probe_wait(&mut *backend, |_| true)?;
+        anyhow::ensure!(std::time::Instant::now() < deadline, "media read timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    drop(backend);
+    let problems = host.stop_host();
+    anyhow::ensure!(
+        !problems.iter().any(|p| !p.contains("xruns")),
+        "engine shutdown: {problems:?}"
+    );
+    Ok(())
+}
+fn probe_wait(
+    backend: &mut dyn Backend,
+    ready: impl Fn(&shoop_backend::BackendSnapshot) -> bool,
+) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let snapshot = backend.poll()?;
+        anyhow::ensure!(
+            snapshot.status.driver_state != shoop_backend::BackendDriverState::Failed,
+            "engine failed"
+        );
+        anyhow::ensure!(
+            snapshot.mutation_failures.is_empty(),
+            "mutation failed: {:?}",
+            snapshot.mutation_failures
+        );
+        if ready(&snapshot) {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            std::time::Instant::now() < deadline,
+            "engine operation timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 fn start_failure(error: StartError) -> anyhow::Error {
@@ -441,6 +666,48 @@ pub(crate) mod tests {
         } else {
             0.0
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "native engine process fixture")]
+    fn process_peer() {
+        if std::env::var_os("SHOOP_RT_PROCESS_ADDRESS").is_none() {
+            return;
+        }
+        shoop_rt_host_process::run_with_start(|config| {
+            let mut config = config.clone();
+            match &mut config.driver {
+                DriverConfig::Dummy(dummy) => dummy.input = Some(dummy_input),
+                #[cfg(feature = "cpal")]
+                DriverConfig::Cpal(_) => {}
+            }
+            shoop_rt_host_native::start_endpoint(&config)
+        })
+        .unwrap();
+    }
+    pub(crate) fn process_start(
+        driver: &AudioDriverConfig,
+        pools: &NewEnginePools,
+        transport: shoop_egui::EngineTransportKind,
+    ) -> Result<NewEngine> {
+        let transport = match transport {
+            shoop_egui::EngineTransportKind::Socket => shoop_rt_host_process::Transport::Socket,
+            shoop_egui::EngineTransportKind::SharedMemory => {
+                shoop_rt_host_process::Transport::SharedMemory
+            }
+            _ => anyhow::bail!("expected IPC carrier"),
+        };
+        let mut command = std::process::Command::new(std::env::current_exe()?);
+        command.args([
+            "--exact",
+            "engine_backend::tests::process_peer",
+            "--nocapture",
+            "--format=terse",
+        ]);
+        start_process(
+            driver,
+            pools,
+            shoop_rt_host_process::Pending::spawn_command(command, transport)?,
+        )
     }
 
     fn pools() -> NewEnginePools {

@@ -850,3 +850,38 @@ uses endpoint-drop, MIDI reset and render cleanup.
 - Warnings-denied process-host build, four-target production dependency audit,
   tracing inventory and project test-attribute policy pass. Platform execution
   and app/package integration remain later gates.
+
+
+### Stage 7: native application selection and fatal failure
+
+The saved restart-required `audio.engine_transport` and `--engine-transport`
+override choose in-process, socket or shared-memory delivery for native new-engine
+runs. Legacy remains the default; explicit legacy/browser IPC is rejected.
+Child-owned discovery/configuration reuse the existing application settings mapper.
+The persistent fatal screen blocks app commands without closing/dropping the live
+runtime or supervisor. Explicit close uses independent engine shutdown.
+
+- Both IPC choices pass the existing full cooperative application core workflow:
+  structure-only New Session, routing, sync/immediate recording and playback,
+  gains/meters, capability refusals, clearing and chunked audio/MIDI detail reads.
+- The UI failure test passes over both carriers: fatal text is actually painted,
+  no window-close command is issued, later dispatch is refused, engine frames
+  continue advancing, and explicit app close confirms MIDI reset and cleanup.
+- The test exposed a retained shared-memory bootstrap socket clone that hid EOF;
+  startup now flushes replies and transfers unique liveness ownership. Independent
+  control-pipe loss retires control as well. Device failure also closes control.
+- Complete retained native nextest suite: **2374 passed, 4 skipped**, 120.876 s,
+  peak RSS 1231.6 MiB. Optional hardware tests are not hardware evidence when their
+  opt-in environment is absent. A subsequent process-host regression run after
+  device-failure retirement: **12 passed**. Warnings-denied workspace build passes
+  (peak 1383.9 MiB); dummy-only app/companion build and CPAL-free graph check pass.
+- Nextest's single-worker libtest prefix initially obscured fixture stdout clock/
+  stop acknowledgements. Terse fixture output fixes that test-only issue; all 13
+  focused process/fatal-UI nextest tests then passed. Production wire records and
+  timing are unchanged.
+- Four-target production boundary audit now also rejects concrete carriers/hosts
+  or the engine as direct adapter dependencies. Tracing/test-attribute policies,
+  formatting and all **134 Python orchestration/packaging tests** pass. The Python
+  suite also uncovered a package-import path bug in the retained host runner;
+  it now supports package and standalone invocation. Miri inventory expectations
+  include the added portable cases (336 executions total).

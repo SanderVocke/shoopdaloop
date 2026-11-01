@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–6 are verified locally;
-Application integration is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–7 are verified locally;
+Packaging, browser/platform verification and delivery are in progress. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -449,16 +449,16 @@ altering production timing. The original offline contracts remain regression gat
 
 ### Stage 7 — App selection and core workflow
 
-- [ ] Add `audio.engine_transport` and `--engine-transport` with the three choices;
+- [x] Add `audio.engine_transport` and `--engine-transport` with the three choices;
       default to `in_process`, apply only to native `new_engine`, require restart
       and explicitly reject IPC selection in unsupported environments.
-- [ ] Replace local-host ownership with child supervision for IPC; move its discovery
+- [x] Replace local-host ownership with child supervision for IPC; move its discovery
       calls across bootstrap, surface errors/warnings and wait for initial readiness
       before normal app startup. Do not silently switch carriers after failure.
-- [ ] Add a fatal disconnect state that keeps the app window/event loop alive,
+- [x] Add a fatal disconnect state that keeps the app window/event loop alive,
       visibly explains that recovery is unavailable and disables engine operations.
       Supervisor/drop handling must preserve the engine until explicit app shutdown.
-- [ ] Run shared backend and timing contracts plus cooperative app workflows through
+- [x] Run shared backend and timing contracts plus cooperative app workflows through
       both carriers; keep current refused capabilities and structure-only New Session.
 
 **Verify:** application tests for settings/CLI precedence, capability gating,

@@ -40,7 +40,7 @@ fn config() -> NativeConfig {
 fn command(mode: &str) -> Command {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
-        .args(["--exact", "engine_peer", "--nocapture"])
+        .args(["--exact", "engine_peer", "--nocapture", "--format=terse"])
         .env("SHOOP_RT_TEST_DRIVER", mode);
     command
 }
@@ -126,12 +126,16 @@ fn engine_peer() {
     }
     shoop_rt_host_process::run_with_start(move |config| {
         let mut config = config.clone();
-        if let DriverConfig::Dummy(dummy) = &mut config.driver {
-            if mode == "controlled" {
-                dummy.mode = DummyMode::Controlled;
+        match &mut config.driver {
+            DriverConfig::Dummy(dummy) => {
+                if mode == "controlled" {
+                    dummy.mode = DummyMode::Controlled;
+                }
+                dummy.input = Some(ramp);
+                dummy.wrap_cycle = Some(guarded);
             }
-            dummy.input = Some(ramp);
-            dummy.wrap_cycle = Some(guarded);
+            #[cfg(feature = "cpal")]
+            DriverConfig::Cpal(_) => {}
         }
         shoop_rt_host_native::start_endpoint(&config)
     })
@@ -536,10 +540,14 @@ struct Local {
 impl Local {
     fn new() -> Self {
         let mut config = config();
-        if let DriverConfig::Dummy(dummy) = &mut config.driver {
-            dummy.mode = DummyMode::Controlled;
-            dummy.input = Some(ramp);
-            dummy.wrap_cycle = Some(guarded);
+        match &mut config.driver {
+            DriverConfig::Dummy(dummy) => {
+                dummy.mode = DummyMode::Controlled;
+                dummy.input = Some(ramp);
+                dummy.wrap_cycle = Some(guarded);
+            }
+            #[cfg(feature = "cpal")]
+            DriverConfig::Cpal(_) => {}
         }
         let started = shoop_rt_host_native::start(&config).unwrap();
         let clock = LocalClock {

@@ -16,6 +16,9 @@ fn selection(value: &shoop_rt_host_native::DeviceSelection) -> Result<DeviceSele
 pub fn driver(config: &NativeConfig) -> Result<DriverSettings> {
     Ok(match &config.driver {
         DriverConfig::Dummy(dummy) => {
+            if dummy.mode != DummyMode::Automatic {
+                bail!("controlled dummy timing is local to a test host");
+            }
             if dummy.input.is_some() || dummy.wrap_cycle.is_some() {
                 bail!("dummy callback functions cannot cross a process boundary")
             }
