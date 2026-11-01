@@ -5,7 +5,8 @@ Completed code/test candidate: `929ed71b4800e208620262f1bafd12acd970735d` on
 [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899), based on
 `feat/engine-ipc`. All A1–A11 have evidence below; the full platform matrix is green
 in [run 41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452).
-The final documentation-only completion retains the exact executable sources;
+The completion follow-up retains production sources and corrects the native stress
+fixture's media budget;
 [current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
 are required before delivery.
 The [plan](../../PLAN_NATIVE_SESSION_RECOVERY.md) retains the fixed A1–A11 contract.
@@ -33,7 +34,8 @@ handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
 These checks ran on the Stage 7 candidate ending at `d69dea15`; subsequent
 changes correct browser harness permissions/artifact paths and expose Windows ACL
 adapter module lookup/diagnostics and make the native heap fixture's rendering
-deterministic. Portable Miri sources are unchanged. The final frontend
+deterministic, then budget the recovery stress recording for Windows attachment
+latency. Production and portable Miri sources are unchanged by that budget correction. The final frontend
 preference reconciliation received its complete 63-test rerun after the broader
 native run. Remote CI reruns the whole integrated tree.
 
@@ -119,7 +121,7 @@ for that child; ownership and ACL checks remain enforced. These candidate failur
 are resolved by the completed checkpoint below. Codecov reports 82.33%
 patch coverage / 89.43% project coverage on `d69dea15`, satisfying the configured
 80% patch floor and project tolerance. No code-review verdict has been received;
-absence of feedback is not approval. Delivery checks for the documentation-only
+absence of feedback is not approval. Delivery checks for the completion
 completion use the current PR head, retaining this executable-source evidence.
 
 The next run at `a6f73a18` passed Windows debug and all its native host suites.
@@ -165,6 +167,23 @@ documentation passes in
 [41306455459](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455459),
 and both Codecov checks pass. PR #899 has no review requests or code-review verdicts;
 no independent reviewer was available in this execution and no approval is inferred.
-The final completion commit changes documentation/evidence only. Its
+The completion follow-up changes documentation/evidence and the native stress
+fixture's recording budget, preserving production sources. Its
 [current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
 remain the final delivery gate; the pinned executable evidence above is unchanged.
+
+## Windows stress recording budget
+
+The documentation completion `2dcf153e` received a Windows release failure in
+[41309817206](https://github.com/SanderVocke/shoopdaloop/actions/runs/41309817206):
+after 62.72 seconds, the 32-cycle test observed `Stopped` instead of `Recording`.
+Its explicitly reduced 16 MiB media pool holds about 43.675 seconds for that
+prepared two-channel loop. A [controlled native probe](evidence/recording-capacity.md)
+reproduces exhaustion with one continuously connected client, and stays recording
+through 120 rendered seconds with the normal 256 MiB default.
+
+The stress fixture now uses that default while retaining 48 kHz, all 32 cycles,
+every identity/recording/progress assertion, operation/result bounds and descriptor
+reclamation. Other fixtures retain 16 MiB. Production defaults and exhaustion
+behavior are unchanged, and all 2404 native tests pass after the correction.
+The final-head CI link above gates delivery of this native-test-only follow-up.

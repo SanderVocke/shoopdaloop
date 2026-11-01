@@ -13,7 +13,8 @@ Stages 0–7 are complete on code/test candidate `929ed71b`. Native, all 31 Node
 packages, browser workflows and 35 selected Miri executions passed. The complete
 platform CI matrix, coverage, CodeQL and documentation checks are green; see the
 [acceptance index](docs/native_session_recovery/acceptance.md). The final
-documentation-only completion retains those executable sources; delivery checks
+completion follow-up retains production sources and corrects the native stress
+fixture's media budget; delivery checks
 for the current branch head are linked from [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899/checks).
 See [incremental validation](docs/native_session_recovery/validation.md).
 
@@ -58,6 +59,14 @@ Current checkpoint (2026-11-01):
   packages; all eight Linux/macOS/Windows/web debug/release jobs pass. Independent
   code-review approval is unavailable: no review requests or verdicts were present.
   No approval is inferred from that absence. All 16 parity gaps remain OPEN.
+- The documentation completion `2dcf153e` exposed a Windows stress-fixture budget
+  failure in [41309817206](https://github.com/SanderVocke/shoopdaloop/actions/runs/41309817206):
+  32 recovery cycles outlasted its 16 MiB recording capacity. A controlled probe
+  reproduced exhaustion after 43.675 seconds without any client loss, and kept
+  recording through 120 rendered seconds with 256 MiB. The stress test now uses
+  the normal 256 MiB default, preserving every cycle, assertion and deadline;
+  production capacities are unchanged. The corrected full native suite passes
+  2404/2404 again. Current-head CI remains the delivery gate for this follow-up.
 
 Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,

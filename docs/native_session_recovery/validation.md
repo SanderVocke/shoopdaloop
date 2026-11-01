@@ -405,7 +405,19 @@ CodeQL, documentation and both Codecov checks pass. No code-review verdict or
 review request was available; absence of review is not approval.
 
 The [A1–A11 index](acceptance.md) and [compact CI record](evidence/ci-929ed71b.json)
-retain exact source/run provenance. The final documentation-only completion changes
-no executable source; its current-head CI is linked from the index and must pass
+retain exact source/run provenance. The completion follow-up retains production
+sources; its current-head CI is linked from the index and must pass
 before delivery. The 16 parity gaps remain OPEN, and physical hardware limitations
 and the selected Miri scope remain explicit.
+
+## Recording budget follow-up
+
+Final documentation head `2dcf153e` exposed a Windows-only duration issue in the
+32-cycle stress fixture: 62.72 seconds exceeded its reduced 16 MiB recording budget.
+The [controlled capacity probe](evidence/recording-capacity.md) reproduced a stop
+after 2,096,384 frames (43.675 seconds) without any client disconnect; a 256 MiB pool
+kept recording through 120 rendered seconds. The stress fixture now uses the normal
+256 MiB default while preserving sample rate, all cycles, continuity assertions,
+deadlines and descriptor/pending/result bounds. Production behavior is unchanged.
+The full corrected native suite passes 2404/2404, with the same four intentional
+failure canaries skipped. Final-head CI remains required for this follow-up.

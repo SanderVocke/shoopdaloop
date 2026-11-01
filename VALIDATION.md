@@ -24,8 +24,12 @@ Node run confirms 2026 tests across 31 packages. All CodeQL analyses, Codecov an
 documentation checks also pass. Windows ACL module lookup, the packaged web path
 and native driver fixture timing/counter assumptions are corrected.
 
-The final documentation-only completion changes no executable source, test,
-manifest, asset or workflow. [Current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
+The completion follow-up changes documentation/evidence and the native recovery
+stress fixture's recording budget. A Windows run outlasted its reduced 16 MiB
+capacity; the fixture now uses the normal 256 MiB default and retains all 32 cycles
+and continuity/resource assertions. The [controlled capacity probe](docs/native_session_recovery/evidence/recording-capacity.md)
+isolates the exhaustion without client loss. Production sources, manifests, assets
+and workflows are unchanged. [Current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
 are the delivery gate for that head. No independent code reviewer or verdict was
 available; code-review approval is not claimed. The acceptance index retains the
 exact source pins, selected Miri reports and physical-hardware limitations.

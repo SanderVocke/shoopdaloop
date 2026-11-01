@@ -1,0 +1,2 @@
+pool_mb=16 pages=4096 page_bytes=4096 rendered_seconds=120 stopped_after_frames=Some(2096384) final=Some((Stopped, 0))
+pool_mb=256 pages=65536 page_bytes=4096 rendered_seconds=120 stopped_after_frames=None final=Some((Recording, 5759232))

@@ -20,6 +20,11 @@ waveform/MIDI reads. UI and Lua use the same confirmed service projection. Socke
 UI recovery retains these states and admitted operations. These are the regression
 floor for parity work, not a claim that all old behavior has been ported.
 
+Recording uses a finite prepared host media pool, normally 256 MiB shared across
+loops. Budget capacity for recording duration and channel count; exhaustion ends
+capture. The [capacity diagnostic](evidence/recording-capacity.md) records this
+existing limit and the recovery stress fixture's corresponding budget.
+
 ## Open gaps
 
 Paths in this table are relative to `src/rust/`. Reference test names are searchable

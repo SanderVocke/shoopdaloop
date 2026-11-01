@@ -30,13 +30,16 @@ impl Drop for Host {
     }
 }
 fn host(transport: AppTransport) -> Host {
+    host_with_loop_memory(transport, 16)
+}
+fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let root = tempfile::tempdir().unwrap();
     let config = HostConfig {
         pools: NewEnginePools {
             tracks: 8,
             loops: 80,
             channels: 2,
-            loop_memory_mb: 16,
+            loop_memory_mb,
         },
         transport,
         test_signal: true,
@@ -561,7 +564,8 @@ fn authenticated_management_can_close_a_shared_host_after_its_only_data_connecti
 
 #[shoop_test]
 fn bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections() {
-    let mut host = host(AppTransport::Socket);
+    let loop_memory_mb = NewEnginePools::default().loop_memory_mb;
+    let mut host = host_with_loop_memory(AppTransport::Socket, loop_memory_mb);
     let (mut client, mut connection) = attach(&host.entry, 1000);
     command(
         &mut client,
@@ -667,7 +671,7 @@ fn bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections
     control_ms.sort_by(f64::total_cmp);
     eprintln!(
         "recovery stress: {}",
-        serde_json::json!({"cycles":32, "attach_ms_p50":attach_ms[16], "attach_ms_p95":attach_ms[30], "control_ms_p50":control_ms[16], "control_ms_p95":control_ms[30], "host_fds_before":descriptors_before, "host_fds_after":descriptors_after, "frames":frames})
+        serde_json::json!({"cycles":32, "loop_memory_mb":loop_memory_mb, "attach_ms_p50":attach_ms[16], "attach_ms_p95":attach_ms[30], "control_ms_p50":control_ms[16], "control_ms_p95":control_ms[30], "host_fds_before":descriptors_before, "host_fds_after":descriptors_after, "frames":frames})
     );
     shutdown(&mut host, &mut client);
 }
