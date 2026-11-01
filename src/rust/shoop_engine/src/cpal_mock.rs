@@ -410,7 +410,11 @@ unsafe fn make_data(buffer: &mut [f32], sample_format: SampleFormat) -> Data {
 /// The buffer must outlive every use of the returned data, which must remain read-only.
 unsafe fn make_data_const(buffer: &[f32], sample_format: SampleFormat) -> Data {
     assert_eq!(sample_format, SampleFormat::F32);
-    Data::from_parts(buffer.as_ptr().cast_mut().cast(), buffer.len(), sample_format)
+    Data::from_parts(
+        buffer.as_ptr().cast_mut().cast(),
+        buffer.len(),
+        sample_format,
+    )
 }
 
 fn stream_instant(origin: Instant) -> StreamInstant {
