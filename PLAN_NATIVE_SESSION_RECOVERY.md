@@ -77,6 +77,15 @@ browser page/renderer-crash recovery, undo-history recovery, Lua VM recovery or
 automatic script restart, moving Lua to the host/RT callback, and new latency compensation.
 Normal fresh-session scripting remains available through the app client.
 
+The user has approved full feature parity as the work immediately following this
+milestone. Maintain [the feature parity ledger](docs/native_session_recovery/feature-parity.md)
+as a required handoff: enumerate temporary gaps (including client-local workflows
+outside capability flags), surviving implementation/UI/configuration/assets, reference
+behavior/tests and concrete completion evidence. Preserve feature UI and useful code
+and tests while gating unavailable operations. Account for every retirement with
+replacement coverage or source provenance; an unavailable feature is not a removed
+product feature. Full parity itself remains outside this plan.
+
 ## Baseline findings
 
 Paths below are relative to `src/rust/` unless otherwise stated.
@@ -263,6 +272,11 @@ Goals and A1–A11 require explicit user approval to change.
     replacement is wired. Extract reusable data types/helpers into appropriate neutral
     crates. Retain useful fixtures only as isolated development references. Update
     unsupported-feature UX and docs; do not accidentally claim session save/load parity.
+12. **Preserve the parity handoff.** Keep the feature parity ledger current as code,
+    dependencies, UI or tests move. Preserve existing feature editors/configuration,
+    assets and meaningful reference coverage for forthcoming restoration. Use temporary
+    availability wording and capability gates. Removing a production legacy path must
+    not erase the behavior that the new path will need to implement.
 
 ## Testing strategy and execution cadence
 
@@ -426,7 +440,11 @@ UI-kill, reattach, UI-only-close, reattach, close-both workflow with actual serv
 - [ ] Make the new engine the sole production backend for every deployment; migrate
   persisted backend settings deliberately with diagnostics instead of silent fallback.
   Update transport setting names/help to reflect the app versus engine boundaries.
-- [ ] Keep unavailable features explicitly disabled/refused; update user docs,
+- [ ] Maintain the parity ledger with current gaps, missing architectural layers,
+  retained UI/code/assets, named reference tests/provenance and completion criteria.
+  Audit retirement changes against it; retain feature UI/configuration and meaningful
+  behavioral fixtures for subsequent full parity work.
+- [ ] Keep temporarily unavailable features explicitly disabled/refused; update user docs,
   architecture, crate READMEs, CLI examples, tracing inventory, and agent test guidance.
 - [ ] Update CI coverage/build commands, package manifests/probes and Miri targets
   for the new names/dependencies. Remove obsolete legacy-only gates while preserving
@@ -434,6 +452,8 @@ UI-kill, reattach, UI-only-close, reattach, close-both workflow with actual serv
 
 **Verify:** production dependency/artifact audits prove legacy removal; focused
 settings-migration/capability tests and packaged development startup smoke pass.
+The ledger covers all capability flags and client-local gaps, links retained evidence,
+and distinguishes temporary parity gaps from deliberate recovery exclusions.
 Compile changed native/browser entry points and run affected scripts' own tests.
 Queue the complete retained-stack suites for the integration push, not every edit.
 
@@ -463,6 +483,8 @@ Queue the complete retained-stack suites for the integration push, not every edi
   rerun affected checks; avoid repeating unrelated Miri batches.
 - [ ] Record final-head evidence in `VALIDATION.md` and an A1–A11 evidence index,
   including package/performance/Miri results, remaining capabilities, and review status.
+  Reconcile the parity ledger against final production behavior, reference suites and
+  retired files/tests; link it from the acceptance index and user documentation.
 - [ ] Push the implementation branch and create/update the PR against `feat/engine-ipc`
   while #897 is unmerged, or its merged successor. Use batched integration pushes;
   satisfy pre-push suite requirements and keep the PR focused on the final scope.
