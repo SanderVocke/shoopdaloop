@@ -1,0 +1,28 @@
+[package]
+name = "shoop_rt_host_process"
+version.workspace = true
+edition = "2021"
+description = "Supervised native engine process over socket or shared-memory records"
+[lints]
+workspace = true
+[features]
+default = ["cpal"]
+cpal = ["shoop_rt_host_native/cpal"]
+testing = []
+[dependencies]
+anyhow = { workspace = true }
+tracing = { workspace = true }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_rt_transport = { path = "../shoop_rt_transport" }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
+shoop_rt_transport_socket = { path = "../shoop_rt_transport_socket" }
+shoop_rt_transport_shared_memory = { path = "../shoop_rt_transport_shared_memory" }
+[dev-dependencies]
+cpal = { workspace = true }
+tempfile = { workspace = true }
+shoop_rt_host_process = { path = ".", features = ["testing"] }
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_backend = { path = "../shoop_backend", features = ["contracts"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

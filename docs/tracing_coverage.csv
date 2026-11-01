@@ -280,3 +280,8 @@ src/rust/shoop_rt_protocol/src/codec/host.rs,engine_protocol,excluded,Canonical 
 src/rust/shoop_rt_transport_socket/src/lib.rs,engine_transport,excluded,Bounded socket record carrier; its host traces connection lifecycle and errors.
 src/rust/shoop_rt_transport_socket/src/setup.rs,engine_transport,excluded,Private authenticated local endpoint setup; its host reports startup results.
 src/rust/shoop_rt_transport_shared_memory/src/lib.rs,engine_transport,excluded,Safe shared record queues and liveness; host reports startup and terminal transport failures.
+src/rust/shoop_rt_host_process/src/lib.rs,engine_process,excluded,Process composition and record dispatch; supervisor reports lifecycle.
+src/rust/shoop_rt_host_process/src/convert.rs,engine_process,excluded,Checked plain-data host configuration conversions; startup reports failures.
+src/rust/shoop_rt_host_process/src/main.rs,engine_process,excluded,Headless entry point reports startup failure to stderr and parent.
+src/rust/shoop_rt_host_process/src/process.rs,engine_process,instrumented_direct,Parent supervises child and traces non-control output and lifecycle failures.
+src/rust/shoop_rt_host_process/src/serve.rs,engine_process,excluded,Child dispatches bounded host messages and reports lifecycle results through its supervisor channel.

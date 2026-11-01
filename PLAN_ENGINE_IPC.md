@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–5 are verified locally;
-Process hosting and supervision are next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–6 are verified locally;
+Application integration is next. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -417,16 +417,16 @@ including bulk media, do not travel over the control channel.
 
 ### Stage 6 — Headless process host and supervision
 
-- [ ] Add `shoop_rt_host_process` with a launch/supervision library and engine
+- [x] Add `shoop_rt_host_process` with a launch/supervision library and engine
       executable. Compose `shoop_rt_host_native` with either transport through
       common interfaces; keep process launching out of the carrier crates.
-- [ ] Add child-side host-message dispatch, discovery/configuration and the control
+- [x] Add child-side host-message dispatch, discovery/configuration and the control
       loop; open dummy or CPAL/midir devices only in the child. Engine messages
       reach the existing common engine endpoint without another semantic adapter.
-- [ ] Implement parent launch/readiness, one-session enforcement, peer-loss handling,
+- [x] Implement parent launch/readiness, one-session enforcement, peer-loss handling,
       an independent explicit shutdown signal, bounded shutdown/rollback and child
       reaping for both carriers. Parent death does not kill the running engine.
-- [ ] Keep rendering independent of stalled/disconnected IPC, retain the endpoint
+- [x] Keep rendering independent of stalled/disconnected IPC, retain the endpoint
       after connection loss and pump completions without ingress or absent readers.
 
 **Verify:** two-process dummy and CPAL/midir mock tests for each carrier: startup,
@@ -439,6 +439,13 @@ transfers. Test explicit shutdown independently of the failed carrier, including
 MIDI-reset ordering. Harnesses externally terminate intentional survivors after
 verification, bound waits and clean up all test processes. Real render faults
 still follow the existing fault policy.
+
+Timing-verification refinement: the existing native host applies at least one
+buffer of control lead, while the older offline timing fixture uses zero lead.
+IPC now replays the same deterministic trace against an identically configured
+native in-process host, comparing every observed transition and exported audio/MIDI
+exactly. Test-only ingress/egress barriers establish timely admission without
+altering production timing. The original offline contracts remain regression gates.
 
 ### Stage 7 — App selection and core workflow
 

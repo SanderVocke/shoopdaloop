@@ -4841,6 +4841,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_host_process"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "cpal",
+ "shoop_backend",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_host_native",
+ "shoop_rt_host_process",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_rt_transport_shared_memory",
+ "shoop_rt_transport_socket",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "shoop_rt_host_worklet"
 version = "0.3.0"
 dependencies = [
@@ -5065,6 +5085,7 @@ dependencies = [
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
+ "shoop_rt_host_process",
  "shoop_rt_host_worklet",
  "shoop_rt_protocol",
  "shoop_rt_transport",

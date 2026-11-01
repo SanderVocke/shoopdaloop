@@ -822,3 +822,31 @@ liveness distinguishes a departed peer from empty queues.
 - Publication ordering, alignment and counter wrap are delegated to the pinned
   dependency's queue primitives; project-level queue/record ownership remains in
   the common transport. macOS/Windows execution and device hosting remain later gates.
+
+
+### Stage 6: process hosting and supervision
+
+`shoop_rt_host_process` composes the existing native endpoint with either record
+carrier, using child-owned discovery/setup and an independent stdin shutdown
+signal. The parent authenticates its launched child, bounds startup/stop waits,
+reaps rollback failures and resolves a companion beside the application. EOF
+retires control while retaining the live endpoint/host; only explicit shutdown
+uses endpoint-drop, MIDI reset and render cleanup.
+
+- `cargo test -p shoop_rt_host_process`: 12 passed (Linux), peak RSS 1257.0 MiB.
+  Both carriers run shared backend contracts, threaded CPAL/MIDI mocks with zero
+  callback heap operations, deterministic audio/MIDI/transition equivalence,
+  malformed traffic, receive-only engine death, rollback and independent stop.
+- A real crashing-parent fixture leaves its recording engine in Running phase
+  with advancing frames; fixtures externally terminate intentional survivors.
+  Data-channel loss likewise leaves a controlled engine advancing until explicit
+  stop confirms MIDI reset and cleanup. Device faults retain the existing native
+  terminal-failure policy; a failed device may not acknowledge MIDI reset.
+- Native in-process and IPC traces agree exactly on loop states, 16/32-frame
+  recorded ramp content and MIDI event frames. The native host's existing
+  one-buffer lead differs from the older zero-lead offline fixture; the reference
+  therefore uses the same native host/configuration. No production lead, latency
+  mitigation or scheduling policy changed. Barriers exist only in test builds.
+- Warnings-denied process-host build, four-target production dependency audit,
+  tracing inventory and project test-attribute policy pass. Platform execution
+  and app/package integration remain later gates.
