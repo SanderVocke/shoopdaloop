@@ -18,6 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
+    "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
@@ -32,16 +33,18 @@ FORBIDDEN = {
 def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
     if package == "shoop_rt_backend":
-        return sorted(name for name in names if name == "shoop_rt_engine" or name.startswith(("shoop_rt_host_", "shoop_rt_transport_")))
+        return sorted(name for name in names if name == "shoop_rt_engine" or name.startswith(("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
     forbidden = set(FORBIDDEN)
-    if package in {"shoop_rt_protocol", "shoop_rt_transport"}:
+    if package in {"shoop_transport", "shoop_rt_protocol", "shoop_rt_transport"}:
         forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
         forbidden.update(name for name in names if name.startswith(
-            ("shoop_rt_host_", "shoop_rt_transport_")
+            ("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")
         ))
         forbidden.update({"cpal", "midir", "iceoryx2", "web-sys", "js-sys", "wasm-bindgen"})
-    if package and package.startswith("shoop_rt_transport_"):
+    if package and package.startswith(("shoop_rt_transport_", "shoop_transport_")):
         forbidden.update({"shoop_rt_engine", "shoop_loops", "rt_runtime"})
+    if package and package.startswith("shoop_transport"):
+        forbidden.update(name for name in names if name.startswith("shoop_rt_"))
     if package == "shoop_rt_protocol":
         forbidden.add("shoop_rt_transport")
     return sorted(names & forbidden)

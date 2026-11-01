@@ -256,12 +256,12 @@ src/rust/shoop_rt_host_native/src/midir_ports.rs,native_engine_host,instrumented
 src/rust/shoop_rt_host_native/src/status.rs,native_engine_host,excluded,Atomic counters and driver state written from callbacks; no execution boundary to instrument.
 src/rust/shoop_rt_host_worklet/src/abi.rs,browser_engine_host,excluded,"Import-free module exports called on the audio thread; preparation and render failures are returned as status codes, which the processor script posts to the traced main-thread half."
 src/rust/shoop_rt_host_worklet/src/config.rs,browser_engine_host,excluded,Plain configuration record encoding and validation; the main-thread half traces preparation failures.
-src/rust/shoop_rt_transport/src/framing.rs,browser_engine_host,excluded,Allocation-free record framing over postMessage; framing errors are counted and end the connection with a protocol error.
+src/rust/shoop_rt_transport/src/framing.rs,engine_transport,excluded,Compatibility exports for shared byte delivery; no execution boundary to instrument.
 src/rust/shoop_rt_host_worklet/src/host.rs,browser_engine_host,excluded,"Pumps the record server and renders on the audio thread, which must not trace; xruns, load, MIDI drops and faults are reported through counters and engine telemetry."
 src/rust/shoop_rt_host_worklet/src/lane.rs,browser_engine_host,excluded,Plain MIDI lane event encoding; drops are counted by the host.
 src/rust/shoop_rt_host_worklet/src/lib.rs,browser_engine_host,excluded,Module declarations and re-exports.
 src/rust/shoop_rt_host_worklet/src/main_thread.rs,browser_engine_host,excluded,"Browser-independent record batches, MIDI lane batching, timestamp conversion and port naming; the application's browser glue traces preparation, connection and failures."
-src/rust/shoop_rt_transport/src/buffer.rs,browser_engine_host,excluded,Fixed-capacity byte buffers shared with the processor script; no execution boundary to instrument.
+src/rust/shoop_rt_transport/src/buffer.rs,engine_transport,excluded,Compatibility exports for shared byte delivery; no execution boundary to instrument.
 src/rust/shoop_rt_transport/src/carrier.rs,engine_protocol,excluded,Bounded queues and carriers without semantics; the engine host and adapter trace connection lifecycle.
 src/rust/shoop_rt_transport/src/client.rs,engine_protocol,excluded,Plain-data client state and credit accounting; the application adapter owns tracing of requests and outcomes.
 src/rust/shoop_rt_protocol/src/codec.rs,engine_protocol,excluded,Bounded record encoding and decoding without I/O or allocation; carriers and adapters trace transport failures.
@@ -277,11 +277,16 @@ src/rust/shoop_rt_transport_message_port/src/server.rs,engine_transport,excluded
 src/rust/shoop_rt_transport_message_port/src/browser.rs,engine_transport,excluded,MessagePort carrier adapter; lifecycle is traced by its host and application.
 src/rust/shoop_rt_protocol/src/host.rs,engine_protocol,excluded,Plain portable host setup messages with bounded text.
 src/rust/shoop_rt_protocol/src/codec/host.rs,engine_protocol,excluded,Canonical bounded host message encoding and decoding without I/O.
-src/rust/shoop_rt_transport_socket/src/lib.rs,engine_transport,excluded,Bounded socket record carrier; its host traces connection lifecycle and errors.
-src/rust/shoop_rt_transport_socket/src/setup.rs,engine_transport,excluded,Private authenticated local endpoint setup; its host reports startup results.
-src/rust/shoop_rt_transport_shared_memory/src/lib.rs,engine_transport,excluded,Safe shared record queues and liveness; host reports startup and terminal transport failures.
+src/rust/shoop_rt_transport_socket/src/lib.rs,engine_transport,excluded,Compatibility exports for shared byte delivery; no execution boundary to instrument.
+src/rust/shoop_transport_socket/src/setup.rs,session_transport,excluded,Authenticated local endpoint setup; its host reports startup results.
+src/rust/shoop_rt_transport_shared_memory/src/lib.rs,engine_transport,excluded,Compatibility exports for shared byte delivery; no execution boundary to instrument.
 src/rust/shoop_rt_host_process/src/lib.rs,engine_process,excluded,Process composition and record dispatch; supervisor reports lifecycle.
 src/rust/shoop_rt_host_process/src/convert.rs,engine_process,excluded,Checked plain-data host configuration conversions; startup reports failures.
 src/rust/shoop_rt_host_process/src/main.rs,engine_process,excluded,Headless entry point reports startup failure to stderr and parent.
 src/rust/shoop_rt_host_process/src/process.rs,engine_process,instrumented_direct,Parent supervises child and traces non-control output and lifecycle failures.
 src/rust/shoop_rt_host_process/src/serve.rs,engine_process,instrumented_direct,Child dispatches bounded host messages and reports lifecycle results through its supervisor channel.
+src/rust/shoop_transport/src/lib.rs,session_transport,excluded,Common byte delivery contracts and error types; no execution boundary to instrument.
+src/rust/shoop_transport/src/buffer.rs,session_transport,excluded,Fixed-capacity byte buffers; no execution boundary to instrument.
+src/rust/shoop_transport/src/framing.rs,session_transport,excluded,Allocation-free record framing; the connection owner handles framing errors.
+src/rust/shoop_transport_socket/src/lib.rs,session_transport,excluded,Bounded socket record carrier; its host traces connection lifecycle and errors.
+src/rust/shoop_transport_shared_memory/src/lib.rs,session_transport,excluded,Safe shared record queues and liveness; its host reports startup and terminal transport failures.

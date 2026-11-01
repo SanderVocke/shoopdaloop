@@ -20,7 +20,7 @@ class MiriRunnerTests(unittest.TestCase):
         self.assertEqual(sum(c[3] for c in runner.selected_cases()), 336)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 4)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 10)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 5)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 142)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 104)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
@@ -32,6 +32,9 @@ class MiriRunnerTests(unittest.TestCase):
             if "--exact" in arguments:
                 self.assertIn("--", arguments)
                 self.assertLess(arguments.index("--"), arguments.index("--exact"))
+
+    def test_extracted_shared_buffer_workload_is_retained(self):
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_transport")), 5)
 
     def test_full_length_stage8_models_have_four_additive_exact_commands(self):
         expected = (

@@ -25,4 +25,4 @@ pub const BULK_CHUNK_SAMPLES: usize = 256;
 /// Bytes per bulk MIDI chunk.
 pub const BULK_CHUNK_BYTES: usize = 1024;
 /// Largest encoded record.
-pub const MAX_RECORD_BYTES: usize = 1280;
+pub use shoop_transport::MAX_RECORD_BYTES;

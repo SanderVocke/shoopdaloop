@@ -5,16 +5,7 @@ use crate::schema::{
     Telemetry,
 };
 
-/// Capacity class of a message.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Lane {
-    /// Requests, results, lifecycle and state: never dropped.
-    Reliable,
-    /// Latest values: a newer record supersedes an undelivered older one.
-    Telemetry,
-    /// Chunked reads, limited by bulk credits.
-    Bulk,
-}
+pub use shoop_transport::Lane;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClientMessage {

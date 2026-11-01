@@ -6,17 +6,11 @@
 
 use std::collections::VecDeque;
 
-use shoop_rt_protocol::codec::{self, CodecError};
+use shoop_rt_protocol::codec;
 use shoop_rt_protocol::message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
 use shoop_rt_protocol::MAX_RECORD_BYTES;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CarrierError {
-    /// The carrier cannot take more now; retry later.
-    Full,
-    Disconnected,
-    Codec(CodecError),
-}
+pub use shoop_transport::{CarrierError, RecordPort};
 
 /// Engine-side output, with one bounded queue per lane. Capacities are prepared at
 /// construction and never grow.
@@ -139,21 +133,6 @@ impl<E: Endpoint> Carrier for InProcess<E> {
         }
         self.outbox.pop()
     }
-}
-
-/// A bidirectional transport of encoded records.
-pub trait RecordPort {
-    fn post(&mut self, record: &[u8]) -> Result<(), CarrierError>;
-    fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
-        self.post(record)
-    }
-    /// Terminal carrier failure, distinct from an idle receive.
-    fn failure(&mut self) -> Option<CarrierError> {
-        None
-    }
-
-    /// Copy the next received record into `buf` and return its length.
-    fn take(&mut self, buf: &mut [u8]) -> Option<usize>;
 }
 
 /// The client side of a record carrier.

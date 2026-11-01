@@ -16,6 +16,7 @@ contracts = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_transport = { path = "../shoop_transport" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 
 [dev-dependencies]

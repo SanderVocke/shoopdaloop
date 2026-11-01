@@ -6,11 +6,9 @@ description = "Authenticated socket endpoints for the common engine record trans
 [lints]
 workspace = true
 [dependencies]
-shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-getrandom = "0.4"
+shoop_transport_socket = { path = "../shoop_transport_socket" }
 [dev-dependencies]
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["contracts"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

@@ -13,17 +13,7 @@ use crate::{
     MAX_STRIP_CHANNELS,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CodecError {
-    /// The output buffer is too small.
-    Overflow,
-    /// The record ended early.
-    Truncated,
-    /// A tag, length or value is invalid.
-    Invalid,
-    /// Bytes remain after the message.
-    Trailing,
-}
+pub use shoop_transport::CodecError;
 
 struct Writer<'a> {
     buf: &'a mut [u8],

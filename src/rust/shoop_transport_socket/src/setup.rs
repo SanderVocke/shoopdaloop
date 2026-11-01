@@ -1,4 +1,4 @@
-//! Private launch authentication; tokens never enter the engine schema.
+//! Authenticated loopback connection setup; credentials stay outside logical protocols.
 use crate::{Config, Port};
 use std::{
     io::{self, Read, Write},

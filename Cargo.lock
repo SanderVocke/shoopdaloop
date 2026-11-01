@@ -4877,6 +4877,7 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4887,6 +4888,7 @@ version = "0.3.0"
 dependencies = [
  "shoop_rt_protocol",
  "shoop_rt_transport",
+ "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4909,11 +4911,10 @@ dependencies = [
 name = "shoop_rt_transport_shared_memory"
 version = "0.3.0"
 dependencies = [
- "getrandom 0.4.3",
- "iceoryx2",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_rt_transport_socket",
+ "shoop_transport_shared_memory",
  "shoop_wasm_test_support",
 ]
 
@@ -4921,9 +4922,9 @@ dependencies = [
 name = "shoop_rt_transport_socket"
 version = "0.3.0"
 dependencies = [
- "getrandom 0.4.3",
  "shoop_rt_protocol",
  "shoop_rt_transport",
+ "shoop_transport_socket",
  "shoop_wasm_test_support",
 ]
 
@@ -5016,6 +5017,31 @@ dependencies = [
  "tracing-subscriber",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "shoop_transport"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_transport_shared_memory"
+version = "0.3.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "iceoryx2",
+ "shoop_transport",
+]
+
+[[package]]
+name = "shoop_transport_socket"
+version = "0.3.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "shoop_transport",
 ]
 
 [[package]]
