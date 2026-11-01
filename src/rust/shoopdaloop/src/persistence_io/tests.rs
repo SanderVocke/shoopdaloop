@@ -278,11 +278,99 @@ async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         epoch + 1
     );
     f.dispatch(AppIntent::RequestSaveSession);
-    let saved = shoop_session::decode_session(&f.output().await.bytes).unwrap();
+    let saved_file = f.output().await;
+    let saved = shoop_session::decode_session(&saved_file.bytes).unwrap();
     assert_eq!(
         before.media.values().collect::<Vec<_>>(),
         saved.media.values().collect::<Vec<_>>()
     );
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: saved_file.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    let state = f.runtime.snapshot();
+    let loop_id = state.tracks[1].loops[0].id;
+    f.dispatch(AppIntent::Loop {
+        track_id: state.tracks[1].id,
+        loop_id,
+        action: LoopAction::PlayClicked,
+    });
+    f.until(|s| s.tracks[1].loops[0].mode == LoopMode::Playing)
+        .await;
+    f.dispatch(AppIntent::RequestLoopAudioExport {
+        loop_id,
+        format: LoopAudioExportFormat::Exact,
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingChannelSelection)
+        })
+        .await;
+    let task_id = state.io_task.as_ref().unwrap().id;
+    f.dispatch(AppIntent::ConfirmAudioChannelSelection {
+        task_id,
+        channels: vec![0, 0],
+    });
+    assert_eq!(
+        f.runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::AwaitingChannelSelection
+    );
+    f.dispatch(AppIntent::ConfirmAudioChannelSelection {
+        task_id,
+        channels: vec![0],
+    });
+    let output = f.output().await;
+    assert_eq!(
+        shoop_session::decode_loop_audio(&output.bytes)
+            .unwrap()
+            .channels[0]
+            .samples,
+        audio.channels[0].samples
+    );
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: output.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    f.dispatch(AppIntent::RequestLoopMidiExport {
+        loop_id,
+        standard: false,
+    });
+    let output = f.output().await;
+    assert_eq!(
+        shoop_session::decode_exact_midi(&output.bytes).unwrap(),
+        midi
+    );
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: output.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    f.dispatch(AppIntent::RequestLoopMidiExport {
+        loop_id,
+        standard: true,
+    });
+    let output = f.output().await;
+    assert!(output.bytes.starts_with(b"MThd"));
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: output.task_id,
+        outcome: FileOutputOutcome::DownloadHandedOff,
+    });
+    let state = f.runtime.snapshot();
+    assert!(state
+        .io_task
+        .as_ref()
+        .unwrap()
+        .message
+        .contains("Standard MIDI quantizes timing"));
+    assert!(state
+        .io_task
+        .as_ref()
+        .unwrap()
+        .message
+        .contains("disk completion"));
+    assert_eq!(state.tracks[1].loops[0].id, loop_id);
+    assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Playing);
 }
 #[shoop_test]
 async fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {

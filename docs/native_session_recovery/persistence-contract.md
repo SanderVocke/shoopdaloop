@@ -28,6 +28,7 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
+| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
 | Archive expansion | Declared entry counts and cumulative expanded bytes checked before payload extraction; actual decoded shapes/counts checked again |

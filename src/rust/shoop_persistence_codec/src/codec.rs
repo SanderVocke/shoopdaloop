@@ -3,7 +3,7 @@ use anyhow::{anyhow, ensure, Result};
 use shoop_app_api::*;
 use shoop_app_protocol::{persistence::*, persistence_image as image};
 use shoop_session::*;
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 pub enum Decoded {
     Remote(crate::worker::Summary),
@@ -264,6 +264,7 @@ impl Work {
                 image
                     .validate()
                     .map_err(|r| anyhow!("invalid or oversized media: {r:?}"))?;
+                validate_initials(&image)?;
                 Ok(Value::Image(image))
             }
             Self::Encode {
@@ -289,7 +290,20 @@ impl Work {
                         anyhow::bail!("expected loop capture")
                     };
                     if kind == IoTaskKind::ExportLoopAudio {
-                        ensure!(!channels.is_empty(), "select at least one audio channel");
+                        ensure!(
+                            !channels.is_empty()
+                                && channels.iter().copied().collect::<BTreeSet<_>>().len()
+                                    == channels.len(),
+                            "select distinct audio channels"
+                        );
+                        ensure!(
+                            content
+                                .frames
+                                .saturating_mul(4)
+                                .saturating_mul(channels.len() as u64)
+                                <= MAX_SESSION_MEDIA_BYTES,
+                            "logical export exceeds the media budget"
+                        );
                         let mut output = Vec::new();
                         for index in channels {
                             let channel = content.audio.get(index as usize).ok_or_else(|| {
@@ -306,14 +320,6 @@ impl Work {
                                 &[]
                             };
                             let mut normalized = Vec::new();
-                            ensure!(
-                                content
-                                    .frames
-                                    .saturating_mul(4)
-                                    .saturating_mul(content.audio.len() as u64)
-                                    <= MAX_SESSION_MEDIA_BYTES,
-                                "logical export exceeds the media budget"
-                            );
                             normalized.try_reserve_exact(content.frames as usize)?;
                             for frame in 0..content.frames {
                                 let source = i128::from(frame)
@@ -355,7 +361,33 @@ impl Work {
                         // Export logical time, preserving stable order at equal frames.
                         let origin = i128::from(channel.channel.start_offset)
                             + i128::from(channel.channel.capture_alignment);
-                        ensure!(origin <= 0 || !midi.events.iter().any(|e| i128::from(e.frame) < origin), "MIDI export needs preroll state folding; save the session to preserve this take");
+                        if origin > 0
+                            && midi
+                                .events
+                                .iter()
+                                .any(|event| i128::from(event.frame) < origin)
+                        {
+                            let mut state = rt_runtime::midi_state::MidiState::default();
+                            for packet in midi.start_state.iter().map(Vec::as_slice).chain(
+                                midi.events
+                                    .iter()
+                                    .take_while(|event| i128::from(event.frame) < origin)
+                                    .map(|event| event.data.as_slice()),
+                            ) {
+                                ensure!(matches!(packet.first(), Some(0x80..=0xef | 0xff)), "MIDI preroll requires unsupported vendor/system state; save the complete session to preserve it (P11)");
+                                state
+                                    .apply_packet(packet, 1024 * 1024)
+                                    .map_err(|error| anyhow!("invalid MIDI preroll: {error:?}"))?;
+                            }
+                            let mut initial =
+                                Vec::with_capacity(shoop_loops::midi_restore::RESTORE_MAX_EVENTS);
+                            let report = shoop_loops::midi_restore::restore(&state, |packet| {
+                                initial.push(packet.to_vec());
+                                Ok(())
+                            });
+                            ensure!(!report.parameter_history_untracked && report.first_error.is_none(), "MIDI preroll requires unsupported parameter history; save the complete session to preserve it (P11)");
+                            midi.start_state = initial;
+                        }
                         midi.events = midi
                             .events
                             .into_iter()
@@ -385,8 +417,28 @@ impl Work {
                     bytes.len() as u64 <= MAX_SESSION_FILE_BYTES,
                     "encoded file exceeds the 512 MiB output limit"
                 );
+                let name = if let image::Manifest::Loop { content, .. } = &image.manifest {
+                    let stem = content
+                        .name
+                        .chars()
+                        .map(|c| {
+                            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                                c
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect::<String>();
+                    format!(
+                        "{}.{}",
+                        if stem.is_empty() { "loop" } else { &stem },
+                        name.split_once('.').map_or("", |(_, extension)| extension)
+                    )
+                } else {
+                    name.to_owned()
+                };
                 Ok(Value::File {
-                    name: name.into(),
+                    name,
                     mime: mime.into(),
                     bytes: bytes.into(),
                     warning,
@@ -395,3 +447,66 @@ impl Work {
         }
     }
 }
+
+fn validate_initials(image: &image::Image) -> Result<()> {
+    let channels: Vec<&image::MidiChannel> = match &image.manifest {
+        image::Manifest::Session(session) => session
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .flat_map(|l| &l.midi)
+            .collect(),
+        image::Manifest::Loop { content, .. } => content.midi.iter().collect(),
+        image::Manifest::Update { midi, .. } => midi.iter().map(|u| &u.content).collect(),
+    };
+    for channel in channels {
+        ensure!(
+            channel.initial.len() <= 16_384,
+            "MIDI initial state exceeds the current engine limit (P11)"
+        );
+        let mut state = rt_runtime::midi_state::MidiState::default();
+        let origin = i128::from(channel.channel.start_offset)
+            + i128::from(channel.channel.capture_alignment);
+        let events = channel
+            .channel
+            .object
+            .and_then(|object| image.payloads.get(object as usize - 1));
+        let mut count = 0;
+        let mut apply = |packet: &[u8]| -> Result<()> {
+            count += 1;
+            ensure!(
+                count <= 16_384,
+                "MIDI initial/preroll state exceeds the current engine limit (P11)"
+            );
+            ensure!(
+                matches!(packet.first(), Some(0x80..=0xef | 0xff)),
+                "MIDI initial/preroll vendor or system state is not supported yet (P11)"
+            );
+            state
+                .apply_packet(packet, 3)
+                .map_err(|e| anyhow!("unsupported MIDI initial/preroll packet: {e:?} (P11)"))?;
+            Ok(())
+        };
+        for packet in &channel.initial {
+            apply(packet)?;
+        }
+        if let Some(image::Payload::Midi(events)) = events {
+            for event in events
+                .iter()
+                .take_while(|event| i128::from(event.frame) < origin)
+            {
+                apply(&event.data)?;
+            }
+        }
+        ensure!(
+            (0..16).all(|channel| !state
+                .channel(channel)
+                .unwrap()
+                .parameter_history_untracked()),
+            "MIDI initial/preroll parameter history is not supported yet (P11)"
+        );
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod tests;

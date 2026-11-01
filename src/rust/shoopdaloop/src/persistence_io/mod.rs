@@ -37,6 +37,7 @@ struct Task {
     update_length: bool,
     wav: bool,
     standard: bool,
+    output_warning: String,
 }
 pub(super) struct Provider {
     next: u64,
@@ -145,6 +146,7 @@ impl Provider {
             update_length: true,
             wav: false,
             standard: false,
+            output_warning: String::new(),
         });
         Ok(())
     }
@@ -342,7 +344,10 @@ impl Provider {
             }
             AppIntent::FailIoTask { task_id, message } if self.matches(task_id) && !matches!(self.phase, Phase::Committed(_)) => self.finish(IoTaskStatus::Failed, message),
             AppIntent::CompleteIoOutput { task_id, outcome } if self.matches(task_id) && matches!(self.phase, Phase::Output) => {
-                let (status, message) = match outcome { FileOutputOutcome::Saved => (IoTaskStatus::Completed, "File saved"), FileOutputOutcome::DownloadHandedOff => (IoTaskStatus::Completed, "Download handed to the browser; disk completion is controlled by the browser"), FileOutputOutcome::Cancelled => (IoTaskStatus::Cancelled, "File output cancelled") }; self.finish(status, message);
+                let (status, message) = match outcome { FileOutputOutcome::Saved => (IoTaskStatus::Completed, "File saved"), FileOutputOutcome::DownloadHandedOff => (IoTaskStatus::Completed, "Download handed to the browser; disk completion is controlled by the browser"), FileOutputOutcome::Cancelled => (IoTaskStatus::Cancelled, "File output cancelled") };
+                let warning = &self.task.as_ref().unwrap().output_warning;
+                let message = if status == IoTaskStatus::Completed && !warning.is_empty() { format!("{message}. {warning}") } else { message.to_owned() };
+                self.finish(status, message);
             }
             AppIntent::FailIoWorkflow { kind, message } if self.task.as_ref().is_some_and(|t| t.view.kind == kind) && matches!(self.phase, Phase::Input) => self.finish(IoTaskStatus::Failed, message),
             _ => {}
@@ -398,6 +403,49 @@ impl PersistenceIo for Provider {
         );
         if starting && (!matches!(self.phase, Phase::Idle) || self.worker.is_some()) {
             bail!("another file workflow is still active");
+        }
+        match (&intent, &self.phase) {
+            (
+                AppIntent::ConfirmAudioChannelMapping {
+                    task_id,
+                    source_for_destination,
+                },
+                Phase::Decoded(decoded),
+            ) if self.matches(*task_id)
+                && self.task.as_ref().unwrap().view.status
+                    == IoTaskStatus::AwaitingChannelMapping =>
+            {
+                let count = decoded.audio_labels().map_or(0, |labels| labels.len());
+                ensure!(
+                    source_for_destination.len() == self.task.as_ref().unwrap().audio_channels
+                        && source_for_destination
+                            .iter()
+                            .all(|source| (*source as usize) < count),
+                    "invalid audio channel mapping"
+                );
+            }
+            (
+                AppIntent::ConfirmAudioChannelSelection { task_id, channels },
+                Phase::Captured(image),
+            ) if self.matches(*task_id) => {
+                let image::Manifest::Loop { content, .. } = &image.manifest else {
+                    bail!("expected loop capture")
+                };
+                ensure!(
+                    !channels.is_empty()
+                        && channels
+                            .iter()
+                            .copied()
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                            == channels.len()
+                        && channels
+                            .iter()
+                            .all(|channel| (*channel as usize) < content.audio.len()),
+                    "invalid audio channel selection"
+                );
+            }
+            _ => {}
         }
         if let Err(error) = self.apply_inner(intent, state, scripts) {
             if !matches!(

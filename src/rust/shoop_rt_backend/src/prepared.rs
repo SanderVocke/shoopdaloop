@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
-use shoop_backend::{BackendChannelMode, BackendLoopContent};
+use shoop_backend::{BackendChannelMode, BackendLoopContent, BackendMidiContent};
 use shoop_rt_protocol::{ContentChunk, ContentDescription, MidiMessage};
 
 pub(crate) const MAX_MEDIA_BYTES: u64 = 256 * 1024 * 1024;
@@ -52,8 +52,8 @@ pub(crate) fn canonical_bytes(content: &BackendLoopContent) -> Result<u64> {
                 .checked_add(event.data.len() as u64 + 12)
                 .ok_or_else(|| anyhow!("media size overflow"))?;
         }
+        validate_initial_parameters(midi)?;
         for packet in &midi.start_state {
-            initial_message(packet)?;
             bytes = bytes
                 .checked_add(packet.len() as u64 + 4)
                 .ok_or_else(|| anyhow!("media size overflow"))?;
@@ -76,6 +76,32 @@ fn initial_message(packet: &[u8]) -> Result<MidiMessage> {
     }
     MidiMessage::new(packet).ok_or_else(|| anyhow!("invalid MIDI initial packet"))
 }
+fn validate_initial_parameters(channel: &BackendMidiContent) -> Result<()> {
+    let origin = i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
+    let prefix = channel
+        .events
+        .partition_point(|event| i64::from(event.time) < origin);
+    if channel.start_state.len() + prefix > 16_384 {
+        bail!("MIDI initial/preroll state exceeds its bounded packet count");
+    }
+    let mut history = false;
+    for packet in channel.start_state.iter().map(Vec::as_slice).chain(
+        channel.events[..prefix]
+            .iter()
+            .map(|event| event.data.as_slice()),
+    ) {
+        initial_message(packet)?;
+        if packet == [0xff] {
+            history = false;
+        } else if matches!(packet, [0xb0..=0xbf, 6 | 38 | 96 | 97, _]) {
+            history = true;
+        }
+    }
+    if history {
+        bail!("MIDI initial/preroll parameter history is not supported yet (P11)");
+    }
+    Ok(())
+}
 impl Upload {
     pub fn new(
         id: u64,
@@ -95,15 +121,7 @@ impl Upload {
                 event_end = channel.events.partition_point(|event| {
                     i64::from(event.time) < origin + i64::from(content.length)
                 });
-                for packet in &channel.start_state {
-                    initial_message(packet)?;
-                }
-                if channel.start_state.len() + initial_end > 16_384 {
-                    bail!("MIDI initial state exceeds its bounded packet count");
-                }
-                for event in &channel.events[..initial_end] {
-                    initial_message(&event.data)?;
-                }
+                validate_initial_parameters(channel)?;
                 channel.events[event..event_end]
                     .iter()
                     .try_fold(0u64, |n, event| {

@@ -471,7 +471,7 @@ still pending.
   using existing semantics, with bounded expansion and clear malformed-file errors.
 - [ ] Restore sample-rate confirmation/resampling and revalidate target, host rate,
   topology/content revision and capacity after dialogs/background work finish.
-- [ ] Upload/stage media through the service and commit one validated replacement.
+- [x] Upload/stage media through the service and commit one validated replacement.
   Preserve opposite media, loop identity and unaffected metadata; apply only the
   reference-prescribed offset resets and requested loop-length update.
 - [ ] Separate restored import support from still-refused duplication/click actions
@@ -481,6 +481,27 @@ Verification: actual client -> service -> adapter -> RT imports, exact export/im
 round-trips, standard MIDI warnings, channel reorder/subset mapping, resampling
 accept/decline, stale target, playing/recording conflict, quota failure and cancellation.
 No rejected/partial upload changes any existing media.
+
+Standalone-export milestone: production-path tests now also export loop audio,
+exact MIDI and SMF while playback continues, after save/load/save. Invalid channel
+selections retain their dialog for retry, safe loop names supply output filenames,
+and SMF timing/format warnings survive platform completion. Logical audio export
+preserves signed zero and excludes gain, matching reference behavior. Logical MIDI
+export folds supported preroll through the existing portable MIDI projection and
+restore helpers, preserving stable event order and trimming the logical window.
+This reuses `rt_runtime`/`shoop_loops`' MIDI helpers in the client codec; it adds no
+backend adapter, engine service or device dependency and leaves no_std boundaries
+unchanged.
+
+Unrestorable vendor/system initial state and untracked parameter history are named
+P11 follow-ups, with explicit preflight refusal rather than omission. A later
+System Reset makes prior parameter history restorable and is preserved exactly.
+Capability diagnostics use the ledger's correct composite, dry/wet and FX IDs.
+Native passes six codec, 28 adapter and four expanded production file tests; Node
+passes six codec and 27 portable adapter tests. All four expanded file cases pass
+in actual Chrome. Warning-denying affected builds, dependency boundaries, Rust
+test policy, formatting and whitespace checks pass. Codec expansion quotas, public
+capability split/admission and final deployment validation remain pending.
 
 ### Stage 5 — transactional core session load
 

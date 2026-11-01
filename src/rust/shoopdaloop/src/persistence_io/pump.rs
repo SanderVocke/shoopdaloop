@@ -125,6 +125,7 @@ impl Provider {
                             mime_type: mime,
                             bytes,
                         });
+                        task.output_warning = warning.clone();
                         task.view.message = if warning.is_empty() {
                             "Awaiting platform file output".into()
                         } else {

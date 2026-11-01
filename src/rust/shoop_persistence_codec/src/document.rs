@@ -347,7 +347,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         unsupported.insert("session scripts/resources (P16)");
     }
     if !doc.fx_states.is_empty() {
-        unsupported.insert("recorded FX states (P06)");
+        unsupported.insert("recorded FX states (P07)");
     }
     if !doc.midi_control.bindings.is_empty() || !doc.settings.is_empty() {
         unsupported.insert("reserved MIDI bindings/session settings");
@@ -364,7 +364,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         unsupported.insert("additional or nonstandard buses (P13)");
     }
     if doc.buses.iter().any(|b| b.fx_chain.is_some()) {
-        unsupported.insert("bus FX (P07)");
+        unsupported.insert("bus FX (P08)");
     }
     let mut seen_groups = BTreeSet::new();
     for group in &doc.track_groups {
@@ -385,10 +385,10 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                     ..
                 } | TrackTopologyDocument::Trigger
             ) {
-                unsupported.insert("FX/dry-wet or wider track topology (P03/P06)");
+                unsupported.insert("FX/dry-wet or wider track topology (P06/P07)");
             }
             if track.fx_chain.is_some() {
-                unsupported.insert("track FX (P06)");
+                unsupported.insert("track FX (P07)");
             }
             if track.width.is_some() {
                 unsupported.insert("stored track width");
@@ -397,18 +397,18 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                 unsupported.insert("latency compensation/take alignment (P09/P10)");
             }
             if track.default_playback_mode != DefaultPlaybackModeDocument::Regular {
-                unsupported.insert("dry/wet default playback (P03)");
+                unsupported.insert("dry/wet default playback (P06)");
             }
             for content in &track.loops {
                 if content.composite.is_some() {
-                    unsupported.insert("composite loops (P08)");
+                    unsupported.insert("composite loops (P03)");
                 }
                 for channel in &content.channels {
                     if channel.mode != ChannelModeDocument::Direct || channel.preplay_frames != 0 {
-                        unsupported.insert("channel mode/preplay (P03/P12)");
+                        unsupported.insert("channel mode/preplay (P06/P12)");
                     }
                     if channel.recording_fx_state_id.is_some() {
-                        unsupported.insert("recorded FX states (P06)");
+                        unsupported.insert("recorded FX states (P07)");
                     }
                 }
             }

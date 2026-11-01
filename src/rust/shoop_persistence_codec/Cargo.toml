@@ -23,6 +23,8 @@ serde = { workspace = true, features = ["derive"] }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_session = { path = "../shoop_session" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_loops = { path = "../shoop_loops" }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

@@ -406,3 +406,20 @@ fn engine_loss_finishes_a_pending_persistence_job_with_an_honest_unknown_outcome
         .to_string()
         .contains("unknown"));
 }
+#[shoop_test]
+fn untracked_initial_parameters_refuse_but_a_later_system_reset_is_preserved() {
+    let (mut backend, old, mut session) = fixture();
+    let before = backend.capture_session().unwrap();
+    session.tracks[0].loops[0].midi[0].start_state = vec![vec![0xb0, 6, 40]];
+    assert!(loaded(&mut backend, &session).is_err());
+    assert_eq!(backend.capture_session().unwrap(), before);
+    session.tracks[0].loops[0].midi[0]
+        .start_state
+        .push(vec![0xff]);
+    let mapping = loaded(&mut backend, &session).unwrap();
+    assert_ne!(mapping.loops[&old.loops[0].raw()], old.loops[0]);
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops[0].midi[0].start_state,
+        [vec![0xb0, 6, 40], vec![0xff]]
+    );
+}

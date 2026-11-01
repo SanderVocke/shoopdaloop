@@ -4885,9 +4885,11 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "rt_runtime",
  "serde",
  "shoop_app_api",
  "shoop_app_protocol",
+ "shoop_loops",
  "shoop_session",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
