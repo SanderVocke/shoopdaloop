@@ -601,7 +601,7 @@ impl UnifiedApp {
         if self.session_url_prompt_open {
             let mut submit = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("load_session_url_prompt")).show(context, |ui| {
+            egui::Modal::new(egui::Id::unique("load_session_url_prompt")).show(context, |ui| {
                 ui.heading("Load session from URL");
                 ui.add_space(8.0);
                 ui.label("Session URL:");
@@ -635,7 +635,7 @@ impl UnifiedApp {
         if let Some(url) = self.session_url_confirmation.clone() {
             let mut fetch = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("confirm_session_url_fetch")).show(context, |ui| {
+            egui::Modal::new(egui::Id::unique("confirm_session_url_fetch")).show(context, |ui| {
                 ui.heading("Fetch session from URL?");
                 ui.add_space(8.0);
                 ui.label("ShoopDaLoop will download and open this session:");
@@ -1226,7 +1226,7 @@ impl UnifiedApp {
             }
         });
         if hovering {
-            egui::Area::new(egui::Id::new("lua_file_drop_overlay"))
+            egui::Area::new(egui::Id::unique("lua_file_drop_overlay"))
                 .order(egui::Order::Foreground)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(context, |ui| {
