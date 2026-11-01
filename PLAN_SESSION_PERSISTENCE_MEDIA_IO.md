@@ -284,6 +284,22 @@ Node/Wasm passes all 31 engine and four protocol tests plus the runtime reclamat
 case. Warning-denying affected native and runtime/loop embedded builds, dependency
 boundaries, formatting, Rust test policy and whitespace checks pass.
 
+Content milestone: prepared source adoption and `ContentApply` now replace a
+single loop's complete media through the existing validated selection transition,
+preserving loop identity and playing mode. Active capture refuses unchanged.
+Short MIDI initial packets update the indexed upload before event bytes; malformed
+or unrepresentable initial packets refuse explicitly. Bounded initial-state reads
+emit the existing MIDI restoration projection one channel at a time. Imported
+canonical initial packet sequences still need adapter retention for exact export.
+
+Content validation: full native runtime/loop/engine/protocol suites pass, followed
+by the new direct initial-packet validation test. Node/Wasm passes all 197 runtime,
+166 loop, 33 engine and four protocol tests. Heap-guarded cases include 12 repeated
+live content replacements and initial-state activation/export. Warning-denying
+native and embedded builds, formatting and Rust test policy pass. The restored
+MIDI helper keeps its existing full attempted-event accounting on sink failure;
+the retained regression test caught and verified that detail during extraction.
+
 ### Stage 3 — service-owned coherent session capture and exports
 
 - [ ] Add service capture jobs that settle prior admitted work, capture matching

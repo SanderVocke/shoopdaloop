@@ -183,6 +183,47 @@ impl ControlEndpoint {
                 });
                 Ok(None)
             }
+            Request::ContentInitial { id, message } => {
+                let slot = self.uploads.index(id)?;
+                let entry = self.uploads.slots[slot].as_ref().expect("located upload");
+                if let Some(failure) = entry.failure {
+                    return Err(failure);
+                }
+                if entry.phase != Phase::Receiving || entry.position != 0 || !entry.description.midi
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                if !self.room(1) {
+                    return Err(Refusal::Overloaded);
+                }
+                let bytes = message.as_bytes();
+                if bytes.len() > 3
+                    || !matches!(bytes.first(), Some(0x80..=0xef | 0xff))
+                    || rt_runtime::midi::Message::parse(bytes, 3).is_err()
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                let mut packet = [0; 3];
+                packet[..bytes.len()].copy_from_slice(bytes);
+                self.submit(
+                    Command::resource(resource::Request::MidiInitial {
+                        upload: entry.upload.expect("receiving resource"),
+                        packet,
+                        len: bytes.len() as u8,
+                    }),
+                    Purpose::Content {
+                        slot,
+                        step: Step::Write,
+                        correlation: Some(correlation),
+                    },
+                    false,
+                )?;
+                self.uploads.slots[slot]
+                    .as_mut()
+                    .expect("located upload")
+                    .pending += 1;
+                Ok(None)
+            }
             Request::ContentWrite { id, offset, data } => {
                 let slot = self.uploads.index(id)?;
                 let entry = self.uploads.slots[slot].as_ref().expect("located upload");

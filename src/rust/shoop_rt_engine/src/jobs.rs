@@ -42,6 +42,8 @@ pub(crate) enum Step {
     ClearApply,
     Smoothing,
     Configure,
+    ContentAdopt,
+    ContentSelect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,6 +61,8 @@ enum Phase {
     Smoothing,
     Configure,
     Prepared,
+    ContentSelect,
+    ContentFinish,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -68,6 +72,12 @@ enum Kind {
     Clear(LoopSlotId),
     Smoothing(u32),
     Replacement,
+    Content {
+        id: LoopSlotId,
+        frames: u64,
+        audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        midi: Option<shoop_loops::runtime::NodePairSourceId>,
+    },
 }
 
 pub(crate) fn smoothing(frames: u32) -> Smoothing {
@@ -98,6 +108,7 @@ pub(crate) struct Job {
     configured: bool,
     committed: bool,
     cancelled: bool,
+    content_media: Option<shoop_loops::media::MediaId>,
 }
 
 impl Job {
@@ -123,6 +134,7 @@ impl Job {
             configured: false,
             committed: false,
             cancelled: false,
+            content_media: None,
         }
     }
     pub(crate) fn batch(len: usize) -> Self {
@@ -160,6 +172,19 @@ impl Job {
     }
     pub(crate) fn smoothing(frames: u32) -> Self {
         Self::new(Kind::Smoothing(frames))
+    }
+    pub(crate) fn content(
+        id: LoopSlotId,
+        frames: u64,
+        audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        midi: Option<shoop_loops::runtime::NodePairSourceId>,
+    ) -> Self {
+        Self::new(Kind::Content {
+            id,
+            frames,
+            audio,
+            midi,
+        })
     }
     fn fail(&mut self, refusal: Refusal) {
         self.failure.get_or_insert(refusal);
@@ -397,6 +422,39 @@ impl ControlEndpoint {
             return true;
         }
         match job.phase {
+            Phase::ContentSelect => {
+                if !self.room(1) {
+                    return false;
+                }
+                let Kind::Content { id, .. } = job.kind else {
+                    unreachable!()
+                };
+                let media = job.content_media.expect("adopted content");
+                self.submit_job_loop(
+                    job,
+                    Frame(0),
+                    Operation::Select {
+                        target: loop_id(id),
+                        timing: Timing::At,
+                        media,
+                        preserve_position: false,
+                    },
+                    Step::ContentSelect,
+                );
+                job.phase = Phase::ContentFinish;
+                true
+            }
+            Phase::ContentFinish => {
+                if !self.room(1) {
+                    return false;
+                }
+                if let Some(media) = job.content_media.take() {
+                    self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+                }
+                self.answer_job(job, Outcome::Done);
+                job.phase = Phase::Finishing;
+                true
+            }
             Phase::Start => self.start_job(job),
             Phase::Append => self.append(job),
             Phase::Validate => {
@@ -464,6 +522,29 @@ impl ControlEndpoint {
 
     fn start_job(&mut self, job: &mut Job) -> bool {
         match job.kind {
+            Kind::Content {
+                id,
+                frames,
+                audio,
+                midi,
+            } => {
+                if !self.room(1) {
+                    return false;
+                }
+                self.submit_job_loop(
+                    job,
+                    Frame(0),
+                    Operation::Adopt {
+                        target: loop_id(id),
+                        frames,
+                        audio,
+                        midi,
+                    },
+                    Step::ContentAdopt,
+                );
+                job.phase = Phase::ContentSelect;
+                true
+            }
             Kind::Smoothing(frames) => {
                 let loops = self.model.loops.iter().flatten().count();
                 if !self.room(loops) {
@@ -984,6 +1065,14 @@ impl ControlEndpoint {
     }
 
     fn cleanup(&mut self, job: &mut Job) -> bool {
+        if let Some(media) = job.content_media {
+            if !self.room(1) {
+                return false;
+            }
+            job.content_media = None;
+            self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+            return true;
+        }
         if job.replacing() && job.configured && !job.activated {
             let count = self.configuration_nodes();
             if !self.room(count + 3) {
@@ -1030,6 +1119,21 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn job_result(&mut self, step: Step, result: RuntimeResult) {
+        if step == Step::ContentAdopt {
+            if let RuntimeResult::Execution(execution) = &result {
+                if let Some(Reply::Adopted { .. }) = execution.operation_result {
+                    if let rt_runtime::schedule::Action::Planner {
+                        operation: Operation::Adopt { audio, midi, .. },
+                        ..
+                    } = execution.action
+                    {
+                        for source in [audio, midi].into_iter().flatten() {
+                            self.uploads.consumed(source);
+                        }
+                    }
+                }
+            }
+        }
         if step == Step::NodePairAppend {
             if let RuntimeResult::Execution(execution) = &result {
                 if execution_outcome(execution) == Outcome::Done {
@@ -1090,6 +1194,9 @@ impl ControlEndpoint {
                 return;
             }
             match (step, reply) {
+                (Step::ContentAdopt, Some(Reply::Adopted { media })) => {
+                    job.content_media = Some(media)
+                }
                 (Step::NodePairBegin, Some(Reply::NodePairStatus { id, .. })) => {
                     job.node_pairs = Some(id)
                 }

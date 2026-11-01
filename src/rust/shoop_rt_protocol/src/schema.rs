@@ -179,6 +179,16 @@ pub enum Request {
     ContentFinish {
         id: u64,
     },
+    ContentInitial {
+        id: u64,
+        message: MidiMessage,
+    },
+    ContentApply {
+        loop_id: LoopSlotId,
+        frames: u64,
+        audio: Option<u64>,
+        midi: Option<u64>,
+    },
     ContentRelease {
         id: u64,
     },
@@ -446,6 +456,10 @@ pub enum BulkSelector {
     /// count frames; a chunk carries whole frames.
     AudioFrames,
     Midi,
+    /// Length-prefixed short packets restoring one channel's initial projection.
+    MidiInitial {
+        channel: u8,
+    },
 }
 
 /// Read one chunk of a loop's current media, starting at `offset` (frames for

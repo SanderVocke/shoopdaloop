@@ -132,7 +132,7 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::LoopClear { .. } | Request::SetSmoothing { .. }
+            Request::LoopClear { .. } | Request::SetSmoothing { .. } | Request::ContentApply { .. }
         ) {
             if !*open || self.batch_len > 0 {
                 return false;
@@ -143,7 +143,9 @@ impl ControlEndpoint {
             if self.job.is_some() {
                 *staging = false;
                 *open = false;
-                if let Request::LoopClear { loop_id } = request {
+                if let Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } =
+                    request
+                {
                     self.touched_loops[loop_id.0.index as usize] = HARD;
                 }
             }
@@ -176,6 +178,7 @@ impl ControlEndpoint {
             | Request::ReplacementCancel { .. } => false,
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
+            | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
             | Request::ContentRelease { .. } => false,
             Request::StripControl { strip: id, .. } | Request::InjectMidi { strip: id, .. } => {
@@ -195,7 +198,9 @@ impl ControlEndpoint {
             Request::LoopGain { loop_id, .. } | Request::LoopBalance { loop_id, .. } => {
                 loop_(loop_id.0.index, HARD)
             }
-            Request::LoopClear { loop_id } => loop_(loop_id.0.index, SOFT),
+            Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
+                loop_(loop_id.0.index, SOFT)
+            }
             Request::BusControl { .. } => self.blocked_master,
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. } => strip(id.0.index, WAITING),
@@ -237,6 +242,7 @@ impl ControlEndpoint {
             | Request::ReplacementCancel { .. } => {}
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
+            | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
             | Request::ContentRelease { .. } => {}
             Request::StripControl { strip: id, .. }
@@ -265,6 +271,7 @@ impl ControlEndpoint {
             | Request::LoopTransition { loop_id, .. }
             | Request::LoopGain { loop_id, .. }
             | Request::LoopBalance { loop_id, .. }
+            | Request::ContentApply { loop_id, .. }
             | Request::LoopClear { loop_id } => {
                 if let Some(blocked) = self.blocked_loops.get_mut(loop_id.0.index as usize) {
                     *blocked = true;

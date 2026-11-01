@@ -34,6 +34,11 @@ pub enum Request {
     Finish {
         upload: UploadId,
     },
+    MidiInitial {
+        upload: UploadId,
+        packet: [u8; 3],
+        len: u8,
+    },
     Commit {
         upload: UploadId,
     },
@@ -172,6 +177,15 @@ impl ResourceCommand {
             }
             Request::Finish { upload } => {
                 store.finish_upload(*upload)?;
+                Reply::Done
+            }
+            Request::MidiInitial {
+                upload,
+                packet,
+                len,
+            } => {
+                let bytes = packet.get(..usize::from(*len)).ok_or(Error::InvalidShape)?;
+                store.upload_midi_initial(*upload, bytes)?;
                 Reply::Done
             }
             Request::Commit { upload } => Reply::Revision(store.commit(*upload)?),

@@ -114,6 +114,16 @@ fn client_samples() -> Vec<ClientMessage> {
             data: ContentChunk::new(&[42; 1024]).unwrap(),
         },
         Request::ContentFinish { id: 1 },
+        Request::ContentApply {
+            loop_id: loop_id(0),
+            frames: 4,
+            audio: Some(1),
+            midi: Some(2),
+        },
+        Request::ContentInitial {
+            id: 1,
+            message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
+        },
         Request::ContentRelease { id: 1 },
         Request::CreateStrip {
             strip: strip(1),
@@ -218,6 +228,12 @@ fn client_samples() -> Vec<ClientMessage> {
             loop_id: loop_id(2),
             selector: BulkSelector::AudioFrames,
             offset: 128,
+        }),
+        ClientMessage::Bulk(BulkRead {
+            id: 7,
+            loop_id: loop_id(2),
+            selector: BulkSelector::MidiInitial { channel: 15 },
+            offset: 0,
         }),
     ];
     messages.extend(requests.into_iter().enumerate().map(|(index, request)| {

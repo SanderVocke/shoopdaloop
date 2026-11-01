@@ -438,3 +438,129 @@ fn disconnect_abandons_preparation_but_finishes_an_admitted_commit() {
         h.done(Request::ReplacementCommit { id: 2 });
     }
 }
+
+#[shoop_test]
+fn content_apply_keeps_loop_identity_and_playing_mode_and_refuses_active_capture() {
+    let mut h = Harness::new(&description());
+    let id = old_playback(&mut h);
+    for generation in 1..=12 {
+        let audio_id = generation * 2 - 1;
+        let midi_id = generation * 2;
+        let audio = [0.25f32, 0.]
+            .repeat(4)
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect::<Vec<_>>();
+        upload(&mut h, audio_id, false, 4, &audio);
+        upload(&mut h, midi_id, true, 4, &[]);
+        h.done(Request::ContentApply {
+            loop_id: id,
+            frames: 4,
+            audio: Some(audio_id),
+            midi: Some(midi_id),
+        });
+        h.run(8, 4);
+        assert!(matches!(
+            h.last_loop(id),
+            Some((
+                _,
+                Telemetry::Loop {
+                    mode: LoopMode::Playing,
+                    length: 4,
+                    ..
+                }
+            ))
+        ));
+        assert_eq!(&h.outputs[0][h.outputs[0].len() - 8..], &[0.25; 8]);
+        assert_eq!(
+            h.read(id, BulkSelector::AudioFrames).1,
+            [0.25, 0.].repeat(4)
+        );
+    }
+    h.done(Request::LoopTransition {
+        loop_id: id,
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    upload(&mut h, 25, false, 4, &vec![0; 32]);
+    upload(&mut h, 26, true, 4, &[]);
+    assert_eq!(
+        h.apply(Request::ContentApply {
+            loop_id: id,
+            frames: 4,
+            audio: Some(25),
+            midi: Some(26)
+        }),
+        Outcome::Refused(Refusal::Busy)
+    );
+    assert!(matches!(
+        h.last_loop(id),
+        Some((
+            _,
+            Telemetry::Loop {
+                mode: LoopMode::Recording,
+                ..
+            }
+        ))
+    ));
+    h.done(Request::ContentRelease { id: 25 });
+    h.done(Request::ContentRelease { id: 26 });
+}
+
+#[shoop_test]
+fn uploaded_midi_initial_state_survives_activation_and_bounded_export() {
+    let mut h = Harness::new(&description());
+    let id = old_playback(&mut h);
+    upload(&mut h, 1, false, 4, &vec![0; 32]);
+    h.done(Request::ContentBegin(ContentDescription {
+        id: 2,
+        midi: true,
+        frames: 4,
+        bytes: 0,
+    }));
+    for packet in [
+        &[0xc0, 12][..],
+        &[0xb0, 7, 91],
+        &[0x90, 61, 99],
+        &[0xe0, 1, 65],
+    ] {
+        h.done(Request::ContentInitial {
+            id: 2,
+            message: MidiMessage::new(packet).unwrap(),
+        });
+    }
+    assert_eq!(
+        h.apply(Request::ContentInitial {
+            id: 2,
+            message: MidiMessage::new(&[0xf0, 0xf7]).unwrap()
+        }),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+    h.done(Request::ContentFinish { id: 2 });
+    h.done(Request::ContentApply {
+        loop_id: id,
+        frames: 4,
+        audio: Some(1),
+        midi: Some(2),
+    });
+    let bytes = h.read(id, BulkSelector::MidiInitial { channel: 0 }).2;
+    let mut packets = Vec::new();
+    let mut at = 0;
+    while at < bytes.len() {
+        let count = bytes[at] as usize;
+        packets.push(bytes[at + 1..at + 1 + count].to_vec());
+        at += 1 + count;
+    }
+    for expected in [
+        &[0xc0, 12][..],
+        &[0xb0, 7, 91],
+        &[0x90, 61, 99],
+        &[0xe0, 1, 65],
+    ] {
+        assert!(
+            packets.iter().any(|packet| packet == expected),
+            "missing {expected:?}"
+        );
+    }
+    assert_eq!(h.read(id, BulkSelector::Midi).2, Vec::<u8>::new());
+}

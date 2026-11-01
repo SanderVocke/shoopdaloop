@@ -729,8 +729,39 @@ impl ControlEndpoint {
             | Request::ReplacementCancel { .. } => self.replacement_request(correlation, request),
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
+            | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
             | Request::ContentRelease { .. } => self.content_request(correlation, request),
+            Request::ContentApply {
+                loop_id: id,
+                frames,
+                audio,
+                midi,
+            } => {
+                if self.model.find_loop(id).is_none() {
+                    Err(Refusal::InvalidId)
+                } else {
+                    let sources = audio
+                        .map(|id| self.uploads.source(id, false, frames))
+                        .transpose()
+                        .and_then(|audio| {
+                            midi.map(|id| self.uploads.source(id, true, frames))
+                                .transpose()
+                                .map(|midi| (audio, midi))
+                        });
+                    match sources {
+                        Err(refusal) => Err(refusal),
+                        Ok((audio, midi)) => {
+                            if self.job.is_some() {
+                                return Err(());
+                            }
+                            self.touched_loops[id.0.index as usize] = crate::queue::HARD;
+                            return self
+                                .begin_job(correlation, Job::content(id, frames, audio, midi));
+                        }
+                    }
+                }
+            }
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }

@@ -430,6 +430,23 @@ impl Wire for Request {
                 w.u8(17)?;
                 w.u64(id)
             }
+            Self::ContentInitial { id, message } => {
+                w.u8(24)?;
+                w.u64(id)?;
+                message.put(w)
+            }
+            Self::ContentApply {
+                loop_id,
+                frames,
+                audio,
+                midi,
+            } => {
+                w.u8(25)?;
+                loop_id.put(w)?;
+                w.u64(frames)?;
+                audio.put(w)?;
+                midi.put(w)
+            }
             Self::ContentRelease { id } => {
                 w.u8(18)?;
                 w.u64(id)
@@ -607,6 +624,16 @@ impl Wire for Request {
             21 => Self::ReplacementPrepare { id: r.u64()? },
             22 => Self::ReplacementCommit { id: r.u64()? },
             23 => Self::ReplacementCancel { id: r.u64()? },
+            24 => Self::ContentInitial {
+                id: r.u64()?,
+                message: MidiMessage::get(r)?,
+            },
+            25 => Self::ContentApply {
+                loop_id: LoopSlotId::get(r)?,
+                frames: r.u64()?,
+                audio: Option::<u64>::get(r)?,
+                midi: Option::<u64>::get(r)?,
+            },
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -1001,6 +1028,10 @@ impl Wire for BulkSelector {
             }
             Self::Midi => w.u8(1),
             Self::AudioFrames => w.u8(2),
+            Self::MidiInitial { channel } => {
+                w.u8(3)?;
+                w.u8(*channel)
+            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
@@ -1008,6 +1039,7 @@ impl Wire for BulkSelector {
             0 => Self::Audio { channel: r.u8()? },
             1 => Self::Midi,
             2 => Self::AudioFrames,
+            3 => Self::MidiInitial { channel: r.u8()? },
             _ => return Err(CodecError::Invalid),
         })
     }

@@ -216,6 +216,12 @@ pub enum Operation {
         media: media::MediaId,
         preserve_position: bool,
     },
+    Adopt {
+        target: LoopId,
+        frames: u64,
+        audio: Option<NodePairSourceId>,
+        midi: Option<NodePairSourceId>,
+    },
     Gain {
         target: LoopId,
         value: f32,
@@ -343,6 +349,9 @@ pub enum Reply {
         completion: crate::Completion,
     },
     Done,
+    Adopted {
+        media: media::MediaId,
+    },
     Failed(Failure),
     Transition(crate::Completion),
     State(Cut),

@@ -1076,6 +1076,38 @@ impl Planner for LoopPlanner {
                     self.ledger.retire(&mut context.resources, media)?;
                     Ok(Disposition::Complete(Reply::Done))
                 }
+                Operation::Adopt {
+                    target,
+                    frames,
+                    audio,
+                    midi,
+                } => {
+                    let row = self.row(target)?;
+                    let state = self.resolver.state(target)?;
+                    if state.mode == crate::Mode::Recording {
+                        return Err(Error::Busy.into());
+                    }
+                    let revision = state
+                        .revision_watermark
+                        .checked_next()
+                        .map_err(|_| Error::Exhausted)?;
+                    let description = media::Description {
+                        owner: target,
+                        revision,
+                        frames,
+                        channels: row.binding.channels as u32,
+                        midi: row.binding.midi,
+                    };
+                    let media = self.node_pairs.adopt(
+                        description,
+                        audio,
+                        midi,
+                        row.binding.packet_bytes,
+                        &mut self.ledger,
+                        &mut context.resources,
+                    )?;
+                    Ok(Disposition::Complete(Reply::Adopted { media }))
+                }
                 Operation::MidiInitial { export, channel } => {
                     if channel >= 16 {
                         return Err(Error::InvalidShape.into());
