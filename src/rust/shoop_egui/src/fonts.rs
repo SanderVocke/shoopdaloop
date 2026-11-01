@@ -165,7 +165,7 @@ mod tests {
             ROBOTO_BOLD_ITALIC,
         ] {
             let data = definitions.font_data.get(name).unwrap();
-            assert_eq!(&data.font[..4], b"\0\x01\0\0");
+            assert_eq!(&data.font.as_ref().as_ref()[..4], b"\0\x01\0\0");
         }
         for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             assert_eq!(definitions.families[&family][0], ROBOTO_REGULAR);

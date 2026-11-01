@@ -76,7 +76,7 @@ impl ClickTrackDialog {
             validate_draft(draft, target, &state.click_track, state.status.sample_rate);
 
         egui::Window::new("Generate click track")
-            .id(egui::Id::new(("click_track_dialog", target_id.raw())))
+            .id(egui::Id::unique(("click_track_dialog", target_id.raw())))
             .collapsible(false)
             .resizable(true)
             .default_width(390.0)

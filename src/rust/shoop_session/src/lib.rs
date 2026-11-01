@@ -525,7 +525,7 @@ mod tests {
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         for index in 0..input.len() {
             let mut entry = input.by_index(index).unwrap();
-            let name = entry.name().to_owned();
+            let name = entry.name().unwrap().into_owned();
             let mut payload = Vec::new();
             entry.read_to_end(&mut payload).unwrap();
             if name == "manifest.json" {
@@ -1899,7 +1899,7 @@ mod tests {
         let mut corrupted = false;
         for index in 0..input.len() {
             let mut entry = input.by_index(index).unwrap();
-            let name = entry.name().to_owned();
+            let name = entry.name().unwrap().into_owned();
             let mut payload = Vec::new();
             entry.read_to_end(&mut payload).unwrap();
             if !corrupted && name.starts_with("media/audio/") {

@@ -89,6 +89,7 @@ impl GlobalControls {
         self.about_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
+            ui.spacing_mut().button_padding = egui::vec2(4.0, 1.0);
             let response = ui
                 .menu_button(ICON_MENU.rich_text().size(20.0), |ui| {
                     let connections = ui.button("Connections");
@@ -344,7 +345,7 @@ impl GlobalControls {
                 .fill(colors::CONTROL_BACKGROUND)
                 .stroke(egui::Stroke::new(1.0, colors::MUTED_FOREGROUND))
                 .corner_radius(3)
-                .inner_margin(egui::Margin::symmetric(4, 4))
+                .inner_margin(egui::Margin::symmetric(4, 3))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if ui.small_button("−").clicked() {

@@ -134,7 +134,7 @@ impl BuiltInFxEditor {
         let mut actions = Vec::new();
         let mut open = true;
         let _shown = egui::Window::new(format!("{name} — Built-in FX"))
-            .id(egui::Id::new(("builtin_fx_editor", id)))
+            .id(egui::Id::unique(("builtin_fx_editor", id)))
             .open(&mut open)
             .resizable(true)
             .default_width(430.0)
@@ -310,7 +310,7 @@ impl BuiltInFxEditor {
             let mut learn_open = self.midi_learn_open;
             let mut selected_parameter = self.selected_midi_parameter;
             egui::Window::new(format!("{name} — MIDI Learn"))
-                .id(egui::Id::new(("builtin_fx_midi_learn", id)))
+                .id(egui::Id::unique(("builtin_fx_midi_learn", id)))
                 .open(&mut learn_open)
                 .resizable(true)
                 .show(context, |ui| {
