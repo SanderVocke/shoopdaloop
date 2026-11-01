@@ -10,8 +10,10 @@ authoritative service, UI/Lua clients with typed local composition, and independ
 native hosts with authenticated attachment, recovery controls and explicit shutdown.
 Production legacy retirement and the parity handoff are implemented.
 Final validation is in progress in Stage 7. Native, all 31 Node packages, browser
-ordinary gates and 35 selected Miri executions passed. Platform CI fixes and
-final-head CI remain open; see the [acceptance index](docs/native_session_recovery/acceptance.md).
+ordinary gates and 35 selected Miri executions passed. Windows ACL lookup and the
+packaged HTML path are corrected; a native heap fixture now uses deterministic
+render progress. Final-head CI remains open; see the
+[acceptance index](docs/native_session_recovery/acceptance.md).
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -37,6 +39,15 @@ Current checkpoint (2026-11-01):
   [41302375014](https://github.com/SanderVocke/shoopdaloop/actions/runs/41302375014)
   exposed Windows packaging and web release smoke failures; these are not passes.
   Selected Miri ran after the ordinary local integration gates and passed.
+- `d1b0a2e9` records the A1–A11 index, Miri reports and browser harness corrections;
+  `a6f73a18` fixes inherited PowerShell module paths for Windows ACL validation.
+  Its CI passes Windows debug, both Linux profiles, macOS debug, coverage and web
+  release (including direct-file HTML and Firefox). macOS release exposed a live
+  render-deadline assumption in the driver heap fixture. That fixture now controls
+  frame progress, retains every successful-edit/heap/cleanup assertion, and checks
+  exactly 20 ms of recording. The automatic timing test also waits for a completed
+  callback before comparing independently published counters. The corrected full
+  native suite passes all 2404 tests; final full CI must validate these corrections.
 - The user has resumed execution through completion, including push and final-head CI.
 
 Originally written under

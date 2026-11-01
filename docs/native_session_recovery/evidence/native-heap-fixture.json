@@ -1,0 +1,57 @@
+{
+  "source_before": "a6f73a18c2eacf62b03236c25c677207b9c8a188",
+  "corrected_fixture_sha256": "41c265bf1c43b25f469f17ead5b268c6c8d2e1c8d05a75e28d19c27290a3a1ba",
+  "platform": "Linux x86_64",
+  "profile": "release",
+  "mode_notes": {
+    "baseline": "No artificial affinity or CPU competitors",
+    "one-cpu": "Test and render thread pinned to one allowed CPU",
+    "contention": "Same CPU plus two Python busy-loop child processes, terminated after the batch"
+  },
+  "results": {
+    "before": {
+      "baseline": {
+        "passed": 20,
+        "total": 20
+      },
+      "one-cpu": {
+        "passed": 20,
+        "total": 20
+      },
+      "contention": {
+        "passed": 20,
+        "total": 20
+      }
+    },
+    "after": {
+      "baseline": {
+        "passed": 20,
+        "total": 20
+      },
+      "one-cpu": {
+        "passed": 20,
+        "total": 20
+      },
+      "contention": {
+        "passed": 20,
+        "total": 20
+      }
+    }
+  },
+  "limitations": [
+    "The macOS release failure was observed in CI, not reproduced locally.",
+    "The correction controls render-frame progress for the heap test; no production scheduling or deadline change."
+  ],
+  "corrected_recording_frames": 960,
+  "sample_rate": 48000,
+  "automatic_counter_observation": {
+    "observed_callbacks": 51,
+    "observed_completed_buffers": 50,
+    "correction": "Wait for a completed-callback observation within the existing deadline, then retain exact equality and pacing assertions."
+  },
+  "final_full_native": {
+    "passed": 2404,
+    "failed": 0,
+    "intentional_failure_canaries_skipped": 4
+  }
+}

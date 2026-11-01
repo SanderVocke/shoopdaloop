@@ -61,12 +61,12 @@ The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssem
 - [VALIDATION.md](VALIDATION.md): actual source-scoped results, retained failures and verification debt.
 - [Historical documents](docs/history/README.md): retired plans/designs, readable snapshots and the exact-original archive.
 
-These describe development work, not a claim that the production application has
-migrated to the portable runtime/loop/service stack. Public library guides and
-application operating instructions remain separate.
+These distinguish the current production session-service composition from ongoing
+library work and temporary feature gaps. Public library guides and application
+operating instructions remain separate.
 
 ## License and credits
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).
 
-ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Perfetto, and many other open-source projects represented in `Cargo.lock`. Native archives include the pinned GPL-2.0-or-later Carla runtime and its corresponding-source information.
+ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Perfetto, and many other open-source projects represented in `Cargo.lock`. Carla sources, build recipes and license information remain available for the forthcoming FX parity work.

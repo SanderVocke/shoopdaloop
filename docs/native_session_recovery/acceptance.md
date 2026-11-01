@@ -3,7 +3,8 @@
 Implementation source: `d69dea15301e1ddfcc9b4c75a2d11e496ce39b8f` on
 `plan/native-session-recovery`, pushed to origin in
 [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899), based on
-`feat/engine-ipc`. Final platform CI is **pending fixes**, not accepted yet.
+`feat/engine-ipc`, with platform corrections through `a6f73a18` and the subsequent
+native heap-fixture correction. Final platform CI is **pending**, not accepted yet.
 The [plan](../../PLAN_NATIVE_SESSION_RECOVERY.md) retains the fixed A1–A11 contract.
 The [feature parity ledger](feature-parity.md) is the mandatory next-workstream
 handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
@@ -22,18 +23,19 @@ handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
 | A8 — explicit exit | Egui window-close/Cancel/choice tests and real frontend subprocess tests exercise both exits. Service/host tests verify MIDI release, render stop, actual cleanup before confirmation, uncertain retry and cleanup refusal. UI destruction has no host-stop path. |
 | A9 — browser execution | Actual Chromium main-thread client/service plus RT AudioWorklet core, 64-command burst, waveform/MIDI reads, mocked Web MIDI and settings workflows pass. Worklet contracts/heap guards pass. Typed local delivery does not run a codec or wait synchronously. |
 | A10 — portable/bounded | Portable service/client/protocol native and Node tests cover queue/operation/history/media limits, interrupted transfers, overload and departed-client reclamation. Four-target graphs exclude UI/Lua/app semantics from engine/worklet. Selected Miri cases below pass. |
-| A11 — delivery | Local Linux debug/release packages and public companion workflows pass. Candidate CI run [41302375014](https://github.com/SanderVocke/shoopdaloop/actions/runs/41302375014) passes Linux/macOS, coverage and bare-metal jobs but exposes Windows packaging and web release smoke failures. Final-head CI/review remain open. |
+| A11 — delivery | Local Linux debug/release packages and public companion workflows pass. CI run [41304560598](https://github.com/SanderVocke/shoopdaloop/actions/runs/41304560598) passes Windows debug, both Linux profiles, macOS debug, coverage, bare-metal and web release (including direct-file HTML and Firefox). macOS release's heap-fixture scheduling assumption is corrected below; Windows release/Node were stopped to obtain logs and need a complete final run. |
 
 ## Full local gates and provenance
 
 These checks ran on the Stage 7 candidate ending at `d69dea15`; subsequent
 changes correct browser harness permissions/artifact paths and expose Windows ACL
-adapter module lookup/diagnostics. Portable Miri sources are unchanged. The final frontend
+adapter module lookup/diagnostics and make the native heap fixture's rendering
+deterministic. Portable Miri sources are unchanged. The final frontend
 preference reconciliation received its complete 63-test rerun after the broader
 native run. Remote CI reruns the whole integrated tree.
 
 - Warning-denying full workspace build; native nextest: **2404 passed**, four
-  deliberately ignored failure/hardware canaries. Engine/backend reference subset:
+  deliberately ignored failure canaries. Engine/backend reference subset:
   1182 passed, overlapping that total. Reference model remains executable (134
   native model tests plus two RT contracts), and old browser scenarios remain
   frozen under `reference/` for parity restoration.
@@ -52,10 +54,12 @@ native run. Remote CI reruns the whole integrated tree.
   AudioWorklet with fake capture, not physical audio/MIDI hardware.
 - Single-file HTML builds locally. Managed Chromium blocks `file:` navigation by
   organization policy; local direct-file execution is not claimed. Unmanaged CI
-  must validate the distributed direct-file artifact. Serving the embedded bundle
+  validates the distributed direct-file artifact. Serving the embedded bundle
   over HTTP passes the complete workflow. Candidate CI's direct-file failure was
   a missing file: the harness used the default dist path rather than the identified
-  release artifact. The workflow now passes its actual packaged HTML path.
+  release artifact. Passing its actual packaged HTML path corrected this; the
+  complete CI web release job, including direct-file Chromium and Firefox, passes
+  at `a6f73a18`.
 
 ## Measurements and limits
 
@@ -114,3 +118,28 @@ patch coverage / 89.43% project coverage on `d69dea15`, satisfying the configure
 80% patch floor and project tolerance. No code-review verdict has been received;
 absence of feedback is not approval. Final status will name the final branch head
 and its CI run rather than treating an earlier green head as proof.
+
+The next run at `a6f73a18` passed Windows debug and all its native host suites.
+macOS release ran 1676 native tests: 1675 passed; the driver heap fixture received
+`Refused(Busy)` for loop removal. Its automatic 32-frame render period gives the
+control thread less than one millisecond per deadline; successful edits are not
+guaranteed under arbitrary OS preemption. The fixture now requests each render
+quantum after pumping control, executes the identical create/route/record/play/
+remove sequence and exactly 960 recording frames (20 ms at 48 kHz), and retains
+every `Done`, MIDI-reset, cleanup, guarded-cycle and zero-heap assertion. Other
+automatic-driver timing and telemetry tests are unchanged.
+
+The original case passed 20 unconstrained local release repetitions, 20 pinned to
+one CPU and 20 with two CPU competitors on that CPU; the CI failure was not locally
+reproduced. The corrected case passes the same 60 repetitions and all seven release
+dummy-driver tests. This removes a wall-clock assumption from an allocation test;
+it does not claim a production scheduling or latency fix. Final CI must confirm it.
+
+A subsequent full native rerun passed 2403/2404 tests and caught the automatic
+driver test comparing independently published counters during a callback
+(51 callbacks, 50 completed buffers). That test now waits, within its existing
+five-second bound, for a completed-callback observation before asserting the same
+exact counter/frame equality and real-time pacing. Recorded workload/provenance
+is retained in [native-heap-fixture.json](evidence/native-heap-fixture.json).
+The complete corrected native suite passes **2404/2404**, with the same four
+intentional failure canaries skipped; the release dummy-driver suite passes 7/7.

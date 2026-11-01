@@ -11,7 +11,12 @@ The cross-platform workflow produces:
 - macOS arm64: `.tar.gz` archives containing `ShoopDaLoop.app`.
 - WebAssembly: a hosted bundle `.zip` and a self-contained `.html` file.
 
-Native archives bundle the pinned Carla Native runtime used by hosted Rack/Patchbay tracks, including its UI and plugin discovery/bridge helpers. They are not installers and remain unsigned; the operating system may require explicit approval before first launch. Release and workflow artifacts should be treated as development software and tested before performance use.
+Native archives include the independent `shoop_host` companion, built-ins and fonts.
+FX/Rack/Patchbay support and its runtime packaging are tracked in the
+[feature parity ledger](docs/native_session_recovery/feature-parity.md).
+Archives are not installers and remain unsigned; the operating system may require
+explicit approval before first launch. Release and workflow artifacts should be
+treated as development software and tested before performance use.
 
 The hosted web bundle should be served over HTTPS or `localhost`. The self-contained HTML can be opened directly, but browser security policy may restrict audio, MIDI, or storage on `file:` URLs.
 

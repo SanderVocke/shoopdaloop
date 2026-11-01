@@ -359,3 +359,35 @@ Final production packages/platform matrices, selected Miri and final-head CI/rev
 are still required. Physical audio/MIDI devices are absent here; deterministic dummy,
 CPAL/midir mock and browser fake-capture tests ran. Optional hardware tests are not
 claimed as exercised. The parity ledger remains OPEN and is a required handoff.
+
+## Final-stage platform corrections and Miri
+
+All 35 selected interpreted executions passed after ordinary local gates; their
+exact commands, source `d69dea15`, seeds and logs are linked from the
+[acceptance index](acceptance.md#selected-miri-run-last). Portable Miri sources have
+not changed in the subsequent platform/harness corrections.
+
+The fresh full Node run passes 2026 tests across 31 packages. Candidate CI exposed
+two integration mistakes: the release direct-file smoke used the default dist HTML
+path rather than its identified packaged artifact; Windows PowerShell inherited
+PowerShell 7's module path and could not import its ACL commands. The workflow now
+passes the actual HTML path; the ACL adapter clears only its child's `PSModulePath`
+and reports underlying validation failures. Ownership/permission enforcement is
+retained. The next CI run passes Windows debug and web release, including direct-file
+Chromium and Firefox, plus both Linux profiles and macOS debug.
+
+macOS release then observed a `Busy` refusal in the driver's allocation test. That
+test used automatic 32-frame callbacks while assuming every structural transaction
+met its sub-millisecond submission deadline. Controlled render quanta retain the
+same requests and all successful-edit/heap/cleanup assertions, with exactly 960
+recording frames replacing the 20 ms sleep. The original case passed all 60 local
+release repetitions (20 unconstrained, 20 on one CPU, 20 with two CPU competitors),
+so a local reproduction is not claimed. The corrected case passes the same 60
+repetitions and all seven dummy tests. Final full CI remains required.
+
+The full native rerun caught one additional fixture race: automatic-driver status
+publishes callback and frame counters independently, so a mid-callback observation
+reported 51 callbacks but 50 completed buffers. The test waits within its existing
+deadline for a completed-callback observation, then retains the exact equality,
+driver-state and real-time pacing assertions. This changes neither telemetry's
+publication contract nor production rendering.

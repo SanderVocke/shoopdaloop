@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use shoop_rt_host_native::{
-    start, DriverConfig, DummyConfig, DummyMode, NativeConfig, RenderPhase, StartError, Started,
+    start, DriverConfig, DummyConfig, DummyMode, NativeClient, NativeConfig, RenderPhase,
+    StartError, Started,
 };
 use shoop_rt_protocol::*;
 use shoop_wasm_test_support::shoop_test;
@@ -47,7 +48,17 @@ fn automatic_mode_renders_buffers_in_real_time_until_stopped() {
         );
         std::thread::sleep(Duration::from_millis(1));
     }
-    let status = host.status();
+    let status = loop {
+        let status = host.status();
+        if status.stats.callbacks == status.next_frame / 48 {
+            break status;
+        }
+        assert!(
+            begun.elapsed() < Duration::from_secs(5),
+            "a completed callback was not observed"
+        );
+        std::thread::yield_now();
+    };
     let elapsed = begun.elapsed().as_secs_f64();
     assert_eq!(status.driver.kind, DriverKind::Dummy);
     assert_eq!(status.driver.state, DriverRunState::Running);
@@ -163,13 +174,27 @@ fn guarded(cycle: &mut dyn FnMut()) {
 fn the_driver_loop_does_not_touch_the_heap_through_structural_edits() {
     let Started { host, mut client } = start(&config(DummyConfig {
         buffer_frames: 32,
+        mode: DummyMode::Controlled,
         input: Some(|_, frame| (frame % 7) as f32 * 0.1),
         wrap_cycle: Some(guarded),
         ..DummyConfig::default()
     }))
     .unwrap();
+    let dummy = host.dummy().unwrap().clone();
     let mut received = Received::default();
     connected(&mut client, &mut received);
+    let request_done = |client: &mut NativeClient, received: &mut Received, request| {
+        let correlation = client.request(request).unwrap();
+        until(client, received, |r| {
+            if r.results.contains_key(&correlation) {
+                return true;
+            }
+            dummy.request_frames(32);
+            assert!(dummy.wait_rendered(Duration::from_secs(5)));
+            false
+        });
+        assert_eq!(received.results[&correlation], Outcome::Done, "{request:?}");
+    };
     let track = strip(1);
     let looped = loop_id(2);
     for edit in [
@@ -192,7 +217,10 @@ fn the_driver_loop_does_not_touch_the_heap_through_structural_edits() {
     ] {
         request_done(&mut client, &mut received, edit);
     }
-    std::thread::sleep(Duration::from_millis(20));
+    let recording_frame = host.status().next_frame;
+    dummy.advance(Duration::from_millis(20));
+    assert!(dummy.wait_rendered(Duration::from_secs(5)));
+    assert_eq!(host.status().next_frame, recording_frame + 960);
     for edit in [
         Request::LoopTransition {
             loop_id: looped,

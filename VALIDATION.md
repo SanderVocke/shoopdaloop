@@ -17,8 +17,10 @@ workflows, packaged Linux companion workflows, policies and 35 selected Miri
 executions run after ordinary integration gates. The acceptance index records
 source provenance, workloads, timing/resource measurements and hardware limits.
 The 16 parity gaps remain OPEN with retained implementation/UI/tests and concrete
-completion criteria. Final platform CI is pending corrections to Windows packaging
-and the web release smoke; no final delivery or review approval is claimed yet.
+completion criteria. Windows ACL module lookup and the packaged web artifact path
+are corrected and their CI probes pass. A macOS release heap-fixture scheduling
+failure received a deterministic-frame correction. Final full CI is pending;
+no final delivery or code-review approval is claimed yet.
 
 ## Evidence boundary
 

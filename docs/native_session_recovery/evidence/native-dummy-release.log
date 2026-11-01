@@ -1,0 +1,15 @@
+   Compiling shoop_rt_host_native v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_host_native)
+    Finished `release` profile [optimized] target(s) in 0.57s
+     Running tests/dummy.rs (target/release/deps/dummy-910a1bad7c4d397c)
+
+running 7 tests
+test heap_guards_are_live ... ok
+test buffers_above_the_prepared_maximum_are_refused ... ok
+test retiring_a_connection_preserves_the_endpoint_and_running_host ... ok
+test controlled_mode_renders_exactly_the_requested_frames ... ok
+test a_client_creates_a_strip_and_sees_its_telemetry_while_the_driver_renders ... ok
+test automatic_mode_renders_buffers_in_real_time_until_stopped ... ok
+test the_driver_loop_does_not_touch_the_heap_through_structural_edits ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

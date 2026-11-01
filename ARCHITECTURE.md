@@ -22,15 +22,15 @@ shared below application and engine protocol lifecycles.
 The RT engine is the sole production stack. Old application/engine/worklet code is
 isolated as development/reference evidence. Temporary feature gaps and their retained
 UI/code/tests are maintained in the [parity ledger](docs/native_session_recovery/feature-parity.md).
-The lower-layer history and contracts below remain useful; statements about the old
-application being the default are superseded by this composition.
+The lower-layer history and contracts below remain useful; historical workstream
+checkpoints are distinct from this production composition.
 
 ## Scope and implementation map
 
 This is the maintained architecture/design entry point for all workstreams in
 [PLAN.md](PLAN.md). It separates implemented mechanisms, accepted constraints and
-proposals. It does not claim production migration, feature parity or final loop
-acceptance. The pre-consolidation proposals, contracts, critique and experiments
+proposals. Production session migration is implemented; feature parity and final
+independent loop acceptance retain their own criteria. The pre-consolidation proposals, contracts, critique and experiments
 are preserved in the [historical snapshot](docs/history/README.md); obsolete
 snapshot-status paragraphs there do not describe the current tree.
 
@@ -49,7 +49,7 @@ snapshot-status paragraphs there do not describe the current tree.
 | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices and pump audio/MIDI/messages: dummy and CPAL/midir natively; an import-free AudioWorklet module serving the record carrier | No engine or application semantics; no application dependency |
 | `shoop_rt_backend` | The application's `Backend` trait over a protocol client: ID mapping, state mirror, capability descriptor, structure-only session documents | Depends on the application API and the protocol, not on the engine or a host |
 | Application session service | `shoop_app`, `shoop_app_client`, portable app protocol and native `shoop_host` | Sole RT production stack; legacy model is an isolated reference fixture |
-| Common modular protocol, service browser/IPC/network deployment | Proposed; the new engine backend's protocol is its first concrete instance | Not implemented merely because test-host codecs, Wasm libraries or that one protocol exist |
+| General modular service/network framework | Proposed beyond the concrete application and engine protocols | Arbitrary schema composition and remote deployment are not established by the current local session service |
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
 [task guides](src/rust/shoop_loops/README.md), DSP
@@ -480,8 +480,9 @@ full. The D=3 probe retains raw physical data and exposes absent dry history, we
 postroll and independent logical playback windows rather than shifting media to
 fake latency parity.
 
-The native composition is implemented and its narrower consolidation is delivered.
-Service browser/IPC deployment and production UI/backend integration are not.
+The independent native engine-service composition is implemented and its narrower
+consolidation is delivered. Its general browser/IPC deployment is separate from
+the production app session service described above.
 Measurement regressions and validation limits belong in [VALIDATION.md](VALIDATION.md#integration-evidence),
 not architectural claims of performance parity.
 
@@ -624,15 +625,14 @@ are separate work requiring approval. No such new deployment is claimed here.
 
 ## New engine backend
 
-The new engine backend is an application `Backend` on this stack for the core
-looping set, natively and in the browser's AudioWorklet. It is opt-in: a
-restart-required setting and an application-argument override choose it at startup
-instead of the legacy backend, which stays the default. Its goals, criteria and
-stages are in its [plan](PLAN_RT_BACKEND.md); its status and parity gaps are in
-[PLAN.md](PLAN.md#new-engine-backend). The engine, protocol, adapter, native host and
-worklet module and application composition roots are implemented. Native deployment
-also offers a supervised child process over socket or shared-memory IPC; its
-acceptance/evidence is tracked in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md).
+The RT backend is the sole production application `Backend`, natively and in the
+browser's AudioWorklet. Its initial opt-in implementation is recorded in
+[PLAN_RT_BACKEND.md](PLAN_RT_BACKEND.md), and the earlier engine-only subprocess
+fixture in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md). The current
+[session recovery plan](PLAN_NATIVE_SESSION_RECOVERY.md) adds authoritative app
+state, independent native host/UI roles and app-level recovery. The
+[parity ledger](docs/native_session_recovery/feature-parity.md) tracks all temporary
+feature gaps and surviving restoration evidence.
 
 Here **Runtime** means `rt_runtime` only, **Engine** the application's real-time
 composition, **Host** environment glue (the worklet is one host) and **Backend** the
@@ -641,8 +641,10 @@ application adapter.
 ### Layers and transports
 
 ```text
-Application side                            Engine side (same process, worklet or native child process)
-shoop_egui / shoop_app
+Client side                                 Session/engine side
+shoop_egui + client-local Lua
+  │ shoop_app_client: typed local delivery or authenticated app IPC
+shoop_app::Service (canonical session state and admitted work)
   │ Backend trait
 shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
   │ protocol client
@@ -661,9 +663,10 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Loop parts | `shoop_loops` | Musical timing, media and capture; the resolver keeps musical authority |
 | Engine | `shoop_rt_engine` | Node enum over the loop nodes and its own processors (gain, balance, mute, monitoring, meters, summing into Master), prepared pools, structural transactions, the control endpoint and the render owner |
 | Protocol | `shoop_rt_protocol` | Logical engine/host messages, capabilities, limits and canonical codec; no dependencies |
-| Shared transport | `shoop_rt_transport` | Client lifecycle, credits, outboxes, interfaces, typed in-process and encoded record adapters |
-| Concrete transports | `shoop_rt_transport_message_port`, `shoop_rt_transport_socket`, `shoop_rt_transport_shared_memory` | Both ends of each carrier plus carrier-private bootstrap; no engine/application dependency |
-| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet`, `shoop_rt_host_process` | Own the engine, open devices, pump audio, MIDI and messages. No semantics |
+| Shared transport | `shoop_transport*` | Bounded record buffers, framing and socket/shared-memory delivery reused below both app and engine lifecycles |
+| Engine transport | `shoop_rt_transport*` | Engine client lifecycle, credits, typed in-process and encoded record adapters, MessagePort bindings and compatibility carrier aliases |
+| Engine hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices, pump audio, MIDI and messages; no app semantics |
+| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; authenticated discovery, app attachment and management |
 | Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
 
 The composition root (the native binary or the browser bootstrap) chooses a host and
@@ -701,23 +704,22 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   the carrier. Carrier latency can delay immediate actions or miss a musical
   scheduling boundary. No additional lookahead or latency compensation is applied.
 
-The native process host authenticates one launched peer using a private stdin
-secret and an ephemeral loopback listener. Bounded `shoop_rt_protocol::host`
-records describe discovery, configuration, warnings and readiness; mapping
-negotiation belongs to the shared-memory carrier. The companion executable lives
-beside the app (inside `Contents/MacOS` on macOS), resolved independently of cwd
-and `PATH`. Driver/capacity/transport changes require restart.
+The independent native session host authenticates loopback app data and management
+connections with protected credential references. Its registry publishes readiness,
+host/session identity, endpoints and carrier configuration. The companion lives
+beside the app (inside `Contents/MacOS` on macOS), independently of cwd and `PATH`.
+Driver/capacity/transport changes apply at host startup.
 
-A process serves one connection lifetime. EOF, malformed records or a second
-handshake retire control permanently. The app displays a fatal error and stays
-open without recovery; its backend refuses engine operations. The child retains
-its control endpoint, render owner and devices and drains abandoned completions,
-so a healthy engine keeps playing/recording even after an app crash. Closing the
-app explicitly sends an independent stop signal, drops the endpoint for MIDI
-reset, stops rendering and reclaims resources. Startup rollback and bounded
-shutdown reap the child. An engine orphaned by an app crash needs external
-termination; a killed/failed engine may be unable to reset MIDI. No reconnect,
-automatic restart or adoption of a surviving engine is implemented.
+One controlling lease can be replaced after socket client loss. Connection
+generations fence stale mutations and shutdown; attachment streams a coherent app
+snapshot and retained operation outcomes without reconstructing the RT adapter or
+reopening devices. Shared memory supports one data attachment only. The launcher
+starts host/UI siblings and relinquishes lifetime ownership after readiness.
+UI-only exit leaves the host running; close-both uses authenticated management and
+confirms actual MIDI/render/device cleanup. Explicit ownerless shutdown is available
+after an abandoned data connection; it cannot evict a live lease. Host-failure
+recovery and automatic restart remain excluded. `shoop_rt_host_process` is retained
+only as a development/reference engine-only fixture outside production graphs.
 
 All deployments share logical messages and one engine handler. In-process calls
 skip encoding; MessagePort/socket/shared-memory reuse the codec and record
@@ -748,13 +750,14 @@ to the worklet on its own lane beside the protocol records.
   outcome.
 - **Resynchronization.** On request the engine streams its confirmed state as
   reliable records between begin and end markers, including which generations are in
-  use. A connecting adapter rebuilds its mirror from it: the host port inventory,
-  Master's controls and connections, and removal of engine strips the application
-  does not know.
+  use. The adapter reconciles host ports, Master's controls and connections. It
+  refuses unknown live structure rather than deleting it. App UI attachment uses
+  the service snapshot and retains the existing adapter/mappings.
 - **Disconnect.** The client's `Goodbye` ends the connection: queued requests are
   discarded, transactions in progress complete without results, and the engine keeps
   its state and keeps rendering. Generic in-process/worklet endpoints can accept a
-  new `Hello`; the process host prohibits a second handshake. The
+  new `Hello`; the reference engine-only process fixture prohibits a second handshake.
+  UI loss in production detaches the app client and preserves this engine connection. The
   engine ends a connection with a reason: shutdown, a render fault (output silenced
   after a MIDI reset) or a protocol error (malformed framing). The adapter then
   reports the driver as failed and refuses later operations. A dropped control
@@ -765,10 +768,10 @@ to the worklet on its own lane beside the protocol records.
   numbered from the inventory; Master is a named bus. The adapter reserves IDs on its
   side; the engine validates them against its confirmed state.
 
-Driver status and host-port inventory are engine protocol data. The separate
-`host` schema provides paginated discovery and checked initial configuration.
-The process host dispatches it before constructing the native engine/device host;
-the UI process opens no selected IPC audio/MIDI devices.
+Driver status and host-port inventory are engine protocol data. The engine-only
+reference fixture uses its separate `host` bootstrap schema; production
+`shoop_host` consumes checked host configuration and publishes protected app
+discovery. The external UI process opens no selected IPC audio/MIDI devices.
 
 ### Capabilities
 
@@ -779,14 +782,14 @@ optional feature outside the core looping workflow; the legacy backends report t
 full set, and the new engine backend reports none except MIDI injection when the
 engine announces it.
 
-The application presents unsupported features as unavailable: the UI disables or
-hides each action with the capability's explanation, and refusals and capacity errors
+The application presents unsupported features as unavailable: the UI gates actions
+with the capability's explanation, and refusals and capacity errors
 reach the user as notifications. Documents, session loads and script operations that
 need an unsupported capability are rejected whole before anything is applied,
 including composite documents on a backend without composites. The backend refuses
 any remaining unsupported call with the same explanation; nothing is routed to
 another engine. The supported and refused sets are in
-[PLAN.md](PLAN.md#new-engine-backend).
+[feature parity ledger](docs/native_session_recovery/feature-parity.md).
 
 ### Capacities
 
