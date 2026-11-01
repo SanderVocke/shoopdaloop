@@ -355,6 +355,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::CancelReads {
+            return;
+        }
         if pending.purpose == Purpose::Persistence {
             if let Some(replacement) = &mut self.replacement {
                 replacement.job.answered(outcome, self.status.callbacks);
@@ -619,7 +622,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     refusal_text(refusal)
                 ),
             ),
-            (Purpose::InjectMidi(_) | Purpose::Smoothing(_) | Purpose::Persistence, _) => {}
+            (
+                Purpose::InjectMidi(_)
+                | Purpose::Smoothing(_)
+                | Purpose::Persistence
+                | Purpose::CancelReads,
+                _,
+            ) => {}
         }
     }
 }

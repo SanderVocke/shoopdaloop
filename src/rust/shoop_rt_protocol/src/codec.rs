@@ -391,6 +391,7 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::CancelBulk => w.u8(26),
             Self::ReplacementBegin { id } => {
                 w.u8(19)?;
                 w.u64(id)
@@ -624,6 +625,7 @@ impl Wire for Request {
             21 => Self::ReplacementPrepare { id: r.u64()? },
             22 => Self::ReplacementCommit { id: r.u64()? },
             23 => Self::ReplacementCancel { id: r.u64()? },
+            26 => Self::CancelBulk,
             24 => Self::ContentInitial {
                 id: r.u64()?,
                 message: MidiMessage::get(r)?,

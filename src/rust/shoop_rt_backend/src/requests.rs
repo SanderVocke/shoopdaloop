@@ -33,6 +33,7 @@ pub(crate) enum Purpose {
     InjectMidi(BackendTrackId),
     Smoothing(u32),
     Persistence,
+    CancelReads,
 }
 
 #[derive(Clone, Debug)]

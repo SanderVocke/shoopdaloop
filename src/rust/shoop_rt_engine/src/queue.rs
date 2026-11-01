@@ -93,7 +93,8 @@ impl ControlEndpoint {
     ) -> bool {
         if matches!(
             request,
-            Request::ReplacementBegin { .. }
+            Request::CancelBulk
+                | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
                 | Request::ReplacementPrepare { .. }
                 | Request::ReplacementCommit { .. }
@@ -171,6 +172,7 @@ impl ControlEndpoint {
                 || self.touched_loops.get(index).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -235,6 +237,7 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }

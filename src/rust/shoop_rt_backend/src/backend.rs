@@ -155,6 +155,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn cancel_media_reads(&mut self) {
         self.reads.clear();
+        self.read_cancel_needed = true;
     }
 
     fn capabilities(&self) -> BackendCapabilities {

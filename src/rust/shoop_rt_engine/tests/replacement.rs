@@ -564,3 +564,68 @@ fn uploaded_midi_initial_state_survives_activation_and_bounded_export() {
     }
     assert_eq!(h.read(id, BulkSelector::Midi).2, Vec::<u8>::new());
 }
+
+#[shoop_test]
+fn cancelling_bulk_returns_credits_and_releases_reader_exports_without_interrupting_music() {
+    let mut configured = description();
+    configured.resource_pages = 64;
+    let mut h = Harness::new(&configured);
+    let old = old_playback(&mut h);
+    h.done(Request::LoopTransition {
+        loop_id: old,
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.run(1023, 16);
+    h.done(Request::LoopTransition {
+        loop_id: old,
+        mode: LoopMode::Playing,
+        delay: None,
+    });
+    assert_no_heap(|| {
+        h.host.bulk(BulkRead {
+            id: 10,
+            loop_id: old,
+            selector: BulkSelector::AudioFrames,
+            offset: 0,
+        })
+    })
+    .unwrap();
+    for _ in 0..200 {
+        h.run(1, 1);
+        if h.chunks.iter().any(|chunk| chunk.id == 10) {
+            break;
+        }
+    }
+    assert!(h.chunks.iter().any(|chunk| chunk.id == 10));
+    for round in 0..2 {
+        for index in 0..2 {
+            assert_no_heap(|| {
+                h.host.bulk(BulkRead {
+                    id: 11 + round * 2 + index,
+                    loop_id: old,
+                    selector: BulkSelector::AudioFrames,
+                    offset: 128 + u64::from(index) * 128,
+                })
+            })
+            .unwrap();
+        }
+        h.pump();
+        let from = h.outputs[0].len();
+        h.done(Request::CancelBulk);
+        assert!(h.outputs[0][from..].iter().all(|sample| *sample == 1.));
+        for index in 0..2 {
+            assert!(
+                h.chunks
+                    .iter()
+                    .any(|chunk| chunk.id == 11 + round * 2 + index),
+                "cancelled bulk request lost its credit"
+            );
+        }
+    }
+    h.done(Request::ReplacementBegin { id: 1 });
+    h.done(Request::ReplacementPrepare { id: 1 });
+    h.done(Request::ReplacementCommit { id: 1 });
+    upload(&mut h, 1, false, 1536, &vec![0; 1536 * 8]);
+    h.done(Request::ContentRelease { id: 1 });
+}

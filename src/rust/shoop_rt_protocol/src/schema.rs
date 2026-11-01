@@ -154,6 +154,7 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    CancelBulk,
     ReplacementBegin {
         id: u64,
     },

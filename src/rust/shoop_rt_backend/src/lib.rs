@@ -123,6 +123,7 @@ pub struct RtBackend<C, K> {
     mirror: Mirror,
     requests: Requests,
     reads: Reads,
+    read_cancel_needed: bool,
     resync: Option<Vec<StateRecord>>,
     mutation_failures: Vec<BackendMutationFailure>,
     mutation_completions: Vec<BackendMutationCompletion>,
@@ -162,6 +163,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             mirror: Mirror::new(),
             requests: Requests::default(),
             reads: Reads::default(),
+            read_cancel_needed: false,
             resync: None,
             mutation_failures: Vec::new(),
             mutation_completions: Vec::new(),
@@ -234,6 +236,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// has arrived. Never waits.
     pub fn pump(&mut self) {
         for _ in 0..MAX_PUMP_ROUNDS {
+            if self.read_cancel_needed
+                && self.is_ready()
+                && self.require_mutation_capacity(1).is_ok()
+                && !self
+                    .requests
+                    .outgoing
+                    .iter()
+                    .chain(self.requests.in_flight.values())
+                    .any(|pending| pending.purpose == crate::requests::Purpose::CancelReads)
+            {
+                self.requests.push(
+                    shoop_rt_protocol::Request::CancelBulk,
+                    crate::requests::Purpose::CancelReads,
+                );
+                self.read_cancel_needed = false;
+            }
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
@@ -284,6 +302,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         match self.link {
             Link::Ready => {
                 self.requests.is_empty()
+                    && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
                     && self

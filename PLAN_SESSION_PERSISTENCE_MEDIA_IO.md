@@ -348,6 +348,16 @@ Warning-denying protocol/client/service/host builds, dependency boundaries,
 formatting, Rust test policy and whitespace checks pass. These are transport and
 fencing checks; they do not claim restored file menus or service persistence yet.
 
+Reader-release milestone: explicit engine bulk cancellation returns every active
+or queued read credit, stops its reader and releases immutable exports before its
+reliable completion. The adapter coalesces cancellation separately from ordinary
+mutation receipts. Cancelling a view/capture therefore cannot retain old media
+storage indefinitely. Heap-guarded tests cancel/reuse both credits twice while
+music continues, then replace the session and consume the tight pool's newly freed
+storage. Full native engine/protocol/adapter suites and all 34 engine, four protocol
+and 24 adapter Node/Wasm tests pass. Warning-denying affected builds, formatting,
+Rust test policy and whitespace checks pass.
+
 ### Stage 3 — service-owned coherent session capture and exports
 
 - [ ] Add service capture jobs that settle prior admitted work, capture matching

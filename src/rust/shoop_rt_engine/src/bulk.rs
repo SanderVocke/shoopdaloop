@@ -63,6 +63,8 @@ pub(crate) struct Bulk {
     scratch: Box<[u8]>,
     ready: Ring<BulkChunk>,
     channels: usize,
+    cancelled: bool,
+    cancel_correlation: Option<u64>,
     initial: Box<[u8]>,
 }
 
@@ -80,6 +82,8 @@ impl Bulk {
             scratch: vec![0; BULK_CHUNK_SAMPLES * 4 * channels.max(1)].into_boxed_slice(),
             ready: Ring::new(capacity),
             channels,
+            cancelled: false,
+            cancel_correlation: None,
             initial: vec![0; shoop_loops::midi_restore::RESTORE_MAX_EVENTS * 4].into_boxed_slice(),
         }
     }
@@ -88,14 +92,40 @@ impl Bulk {
             && self.queue.len() == 0
             && self.ready.len() == 0
             && self.waiting == Waiting::None
+            && !self.cancelled
+            && self.cancel_correlation.is_none()
     }
     fn in_flight(&self) -> usize {
         self.queue.len() + usize::from(self.active.is_some()) + self.ready.len()
     }
     pub(crate) fn disconnect(&mut self) {
+        self.active = None;
+        self.filled = 0;
         self.queue.clear();
         self.respond = false;
         self.ready.clear();
+        self.cancelled = true;
+        self.cancel_correlation = None;
+    }
+    pub(crate) fn cancel(&mut self, correlation: u64) -> Result<(), Refusal> {
+        if self.cancel_correlation.is_some() {
+            return Err(Refusal::Overloaded);
+        }
+        self.cancel_correlation = Some(correlation);
+        if let Some(read) = self.active.take() {
+            self.ready
+                .push(refused(read, Refusal::Busy))
+                .expect("reserved bulk credit");
+        }
+        while let Some(read) = self.queue.pop() {
+            self.ready
+                .push(refused(read, Refusal::Busy))
+                .expect("reserved bulk credit");
+        }
+        self.cancelled = true;
+        self.respond = false;
+        self.filled = 0;
+        Ok(())
     }
     fn frame_bytes(&self) -> u64 {
         self.channels as u64 * 4
@@ -260,6 +290,17 @@ impl ControlEndpoint {
         for _ in 0..self.bulk.queue.len() + 4 {
             if self.bulk.waiting != Waiting::None || self.bulk.ready.is_full() {
                 return;
+            }
+            if self.bulk.cancelled {
+                if self.bulk.session.is_some() {
+                    self.end_session();
+                    return;
+                }
+                self.bulk.cancelled = false;
+                self.bulk.respond = true;
+                if let Some(correlation) = self.bulk.cancel_correlation.take() {
+                    self.answer(correlation, Outcome::Done);
+                }
             }
             if self.bulk.active.is_none() {
                 self.bulk.active = self.bulk.queue.pop();

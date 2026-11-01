@@ -36,6 +36,7 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CancelBulk,
         Request::ReplacementBegin { id: 1 },
         Request::ReplacementEdit {
             id: 1,
