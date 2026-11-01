@@ -843,7 +843,7 @@ fn inspect_archive(
     let mut total = 0_u64;
     for index in 0..archive.len() {
         let file = archive.by_index(index)?;
-        let name = file.name().to_owned();
+        let name = file.name()?.into_owned();
         if file.enclosed_name().is_none() || name.starts_with('/') || name.contains('\\') {
             return Err(SessionError::Archive(format!(
                 "unsafe archive path {name:?}"
