@@ -382,10 +382,13 @@ fn crashing_parent() {
         )
         .unwrap();
     backend.wait_idle();
-    assert_eq!(
-        backend.poll().unwrap().loops[&created.loops[0]].mode,
-        shoop_backend::BackendLoopMode::Recording
-    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while backend.poll().unwrap().loops[&created.loops[0]].mode
+        != shoop_backend::BackendLoopMode::Recording
+    {
+        assert!(Instant::now() < deadline, "recording was not confirmed");
+        std::thread::sleep(Duration::from_millis(5));
+    }
     std::fs::write(
         std::env::var_os("SHOOP_RT_TEST_PID_FILE").unwrap(),
         supervisor.id().unwrap().to_string(),

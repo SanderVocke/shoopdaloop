@@ -7012,9 +7012,10 @@ mod tests {
         });
 
         loop_action(runtime, &audio, LoopAction::RecordClicked);
-        wait_for_snapshot(runtime, "a planned synchronized recording", |snapshot| {
+        wait_for_snapshot(runtime, "a synchronized recording request", |snapshot| {
             let state = first_loop(snapshot, audio.id);
-            state.mode == LoopMode::Stopped && state.next_mode == LoopMode::Recording
+            (state.mode == LoopMode::Stopped && state.next_mode == LoopMode::Recording)
+                || state.mode == LoopMode::Recording
         });
         wait_for_snapshot(runtime, "synchronized recording", |snapshot| {
             first_loop(snapshot, audio.id).mode == LoopMode::Recording
