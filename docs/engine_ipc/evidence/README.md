@@ -15,6 +15,11 @@ The acceptance mapping and limits are in
 - [browser.json](browser.json) records the new-engine Chrome workflow and both
   worklet artifact contracts. It also retains the additional legacy debug synth
   smoke failure and its reproduction on the base branch's CI bundle.
+- [ci.json](ci.json) pins the successful CI head/merge tree, six native
+  platform/profile subprocess/package results, required check conclusions,
+  representative macOS archive inspection, Node totals and review availability.
+  [The compressed Node summary](node/summary.json.gz) retains the original runner
+  report, including per-test results and its worklet asset/source manifest.
 
 The canonical Miri runner is `scripts/run_rt_runtime_miri.py`, with
 `--package shoop_rt_protocol`, `--package shoop_rt_transport`, and

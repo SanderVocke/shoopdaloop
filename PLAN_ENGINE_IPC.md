@@ -4,9 +4,14 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–8 are implemented; the retained
-native suite, selected Miri cases and new-engine Chrome smoke pass. Final-head CI,
-artifact inspection and review closure remain in Stage 9. Scope agreed on 2026-10-31:
+Completed on `feat/engine-ipc` on 2026-11-01, delivered in
+[PR #897](https://github.com/SanderVocke/shoopdaloop/pull/897) against
+`feat/loop-execution-layer`. All stages are executed; source-pinned results and
+verification limits are in [VALIDATION.md](VALIDATION.md#native-engine-ipc-evidence).
+Implementation checkpoint `bcc86364` passes all required CI, with a verified
+representative archive. No automated code-review response was available; no
+approval is claimed. Documentation-only closure commits are rechecked before
+handoff; the PR identifies the final head and its checks. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -499,10 +504,10 @@ produce a clear startup error. Both carrier jobs are required, not optional skip
 - [x] For both carriers demonstrate fatal app disconnect without app exit, continued
       healthy engine playback/recording after connection loss and app crash, no
       reconnection/control, and graceful explicit shutdown of the failed app's engine.
-- [ ] Run existing Node/worklet and application browser regression gates, including
+- [x] Run existing Node/worklet and application browser regression gates, including
       the manual Chrome smoke. Record newly run source-pinned results; do not copy
       prior milestone counts as this milestone's evidence.
-- [ ] Collect Linux/macOS/Windows subprocess and extracted-package results for both
+- [x] Collect Linux/macOS/Windows subprocess and extracted-package results for both
       carriers. Verify the crate dependency/feature matrix and absence of duplicated
       protocol/connection machinery. Map I1–I9 to evidence in `VALIDATION.md`, with
       failures, skips and unavailable environments stated. Do not mark an unmet
@@ -510,17 +515,30 @@ produce a clear startup error. Both carrier jobs are required, not optional skip
 - [x] Commit meaningful milestones, push `feat/engine-ipc`, and open/update a PR
       against `feat/loop-execution-layer` (or the default branch if that base has
       merged). Describe the final scope, validation and remaining limitations.
-- [ ] Work required CI to green on the final PR head and inspect representative
+- [x] Work required CI to green on the final PR head and inspect representative
       artifacts. Check automated reviews/comments; repeatedly address applicable
       feedback, explain justified disagreements and request re-review until the
       reviewer approves. If unavailable, report that explicitly; CI is not review.
-- [ ] Recheck final-head CI after any final commit, update plan/evidence and report
+- [x] Recheck final-head CI after any final commit, update plan/evidence and report
       the PR/head, carrier/platform results and remaining limitations. Do not merge
       without a separate request.
 
 **Verify:** I1–I9 have source-matched evidence and required final-head CI is green;
 review status and any unavailable verification are explicit. This plan does not
 close unrelated historical acceptance gaps.
+
+*Recorded:* implementation `0f52c68d`, evidence/CI checkpoint `bcc86364`, build/test
+run [41266246856](https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856):
+all nine required jobs pass, as do Docs, CodeQL and both coverage checks. Native
+workspace: 2376 passed, 4 skipped; Node: 1986 passed, two intentional canaries
+ignored in the ordinary suite; selected Miri: 26 executions; both worklet artifact
+contracts and the new-engine Chrome workflow pass. Both carriers pass all six
+native platform/profile subprocess and staged/extracted-package gates. The CPAL
+workflow uses a Linux JACK virtual device; physical audio/MIDI hardware is absent.
+An additional legacy debug Chrome synth smoke fails identically on the base
+bundle and remains an inherited gap. Review submissions are absent; Codecov is
+the only bot feedback. These limits and the interrupted Miri recovery are retained
+in the acceptance map and [evidence index](docs/engine_ipc/evidence/README.md).
 
 ## Execution contract
 

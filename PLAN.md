@@ -42,8 +42,8 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
 | [New engine backend](#new-engine-backend) | **Validated locally** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–10 done; B1 and B3–B12 met, B2 verified on Linux and in the browser ([evidence](VALIDATION.md#new-engine-backend-evidence)) | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default. Open: macOS and Windows runs (CI on push), real MIDI hardware, a manual Chrome check, remote CI and review. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
-| [Native engine IPC](#native-engine-ipc) | **Execution in progress**, under [its own plan](PLAN_ENGINE_IPC.md); Stages 0–8 locally verified | One supervised engine child, socket and shared-memory options, engine-side device setup; no reconnect or new latency mitigation. Final platform/browser verification and PR delivery are in progress |
-| [Common transport / application integration](#proposed-next-work) | The new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers; native IPC now has a bounded milestone plan | Cross-machine deployment and any common framework beyond that protocol remain proposals; no production parity claim |
+| [Native engine IPC](#native-engine-ipc) | **Completed**, under [its own plan](PLAN_ENGINE_IPC.md); [PR #897](https://github.com/SanderVocke/shoopdaloop/pull/897) | One supervised engine child, socket and shared-memory options, engine-side device setup; no reconnect or new latency mitigation. Native/platform/browser CI and new-engine Chrome pass; hardware, inherited legacy Chrome and review limits are explicit in [validation](VALIDATION.md#native-engine-ipc-evidence) |
+| [Common transport / application integration](#proposed-next-work) | The new engine backend uses shared logical messages over typed in-process, MessagePort, socket and shared-memory carriers | Cross-machine deployment and any common framework beyond that protocol remain proposals; no production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
 
@@ -468,7 +468,7 @@ Everything else is a gap:
 
 ## Native engine IPC
 
-The next milestone is scoped in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md), written
+This milestone was implemented under [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md), written
 using [.agents/prompts/write_plan.md](.agents/prompts/write_plan.md). The native
 application now supervises one engine child on the same system, using either
 loopback TCP sockets or shared-memory records. It retains the existing core
@@ -488,15 +488,19 @@ schemas and the common codec stay in `shoop_rt_protocol`. The in-process path
 passes typed messages without requiring serialization. Shared host setup messages
 and carrier-private bootstrap have separate ownership.
 
-Status: Stages 0–8 locally verified, including both IPC application workflows, fatal disconnect and extracted Linux packaging; final platform/browser delivery gates remain. This does
-not close the previous backend milestone's platform/hardware or historical gaps.
+Status: completed in [PR #897](https://github.com/SanderVocke/shoopdaloop/pull/897),
+including both IPC application workflows, fatal disconnect, autonomous survivors,
+all three native platforms' subprocess/package gates and browser regression CI.
+The source-pinned acceptance map records physical hardware and review limitations,
+plus an inherited legacy debug Chrome failure reproduced on the base bundle.
+This does not close unrelated historical backend or loop-library gaps.
 
 ## Proposed next work
 
 These are design directions, not authorized implementation checkboxes:
 
 1. Resolved by the [composable loop boundary](#composable-loop-boundary) work: see [ARCHITECTURE.md](ARCHITECTURE.md#composable-loop-boundary). When a second planning domain is needed, compose planners explicitly rather than nesting runtimes.
-2. Native IPC is now scoped by [its own milestone plan](PLAN_ENGINE_IPC.md): the existing application/engine protocol over sockets and shared memory. Implementation is in progress. A general service/protocol framework and cross-machine deployment remain proposals.
+2. Native IPC is implemented under [its own milestone plan](PLAN_ENGINE_IPC.md): the existing application/engine protocol over sockets and shared memory. A general service/protocol framework and cross-machine deployment remain proposals.
 3. The opt-in [new engine backend](#new-engine-backend) is validated locally, ahead of IPC, using the existing UI/modules and the old backend as a selectable reference. Backend selection belongs at a lifecycle boundary, not per-operation delegation between two live engines.
 4. Close parity gaps driven by real workflows, then consider broader deployment. Full dry/wet, prerecord/preplay/latency windows, production plugins/devices, persistence/undo/scripting and network operation remain future work. The [loop features assessment](LOOP_FEATURES_ASSESSMENT.md) estimates the loop-library gaps and the decisions they need.
 5. A plan-linked execution extension is only a reviewed tooling proposal. Do not implement/configure one or create a second task authority under this documentation migration.

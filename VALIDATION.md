@@ -1000,7 +1000,7 @@ or alters render timing.
 The selected Miri campaign passed **16 commands / 26 interpreted executions**:
 protocol 4, portable transport 10 and engine 12. The eight verified engine
 commands preserved across the workspace interruption account for nine executions;
-the remaining three exact shards passed in 399.137, 414.440 and 491.040 seconds.
+the remaining three exact shards passed in 399.137, 414.439 and 491.040 seconds.
 The seed remained zero and the per-command watchdog remained 900 seconds.
 [The archived index, reports and logs](docs/engine_ipc/evidence/miri/index.json)
 include log digests and Rust-source/Cargo-manifest fingerprints. Those dependencies
@@ -1071,4 +1071,55 @@ tests exercise the concrete carriers; browser tests exercise MessagePort.
 | I8 — platforms and delivery | Linux/macOS arm64/Windows x86_64 debug/release subprocess and staged/extracted package gates; local fresh Linux package probes; three-mode real CPAL/JACK virtual-device workflow and mock MIDI routing/reset. Physical audio/MIDI hardware is unavailable. Final PR-head CI/artifact/review closure is recorded below; inherited legacy debug Chrome failure remains explicit. |
 | I9 — shared protocol and crate roles | Shared carrier fixtures run typed local, encoded records, MessagePort, socket and shared memory. `check_rt_engine_boundary.py`, Wasm dependency audits and import-free built-worklet contracts enforce separation. Protocol, portable connection, concrete transport and host roles are documented in `ARCHITECTURE.md` and crate READMEs. |
 
-Final PR-head CI, artifact inspection and review closure are still in progress.
+### Final CI and delivery closure
+
+Implementation/evidence head `bcc863647ff45ef5af2db811a160584d11931bf7` is green:
+build/test run [41266246856](https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856),
+Docs `41266246854`, CodeQL `41266246888`, and Codecov project/patch. The merge
+`b063c01a6a4ef70ab303bb00d6389001e941593a` has exactly the pushed head's tree
+(`bbb4d259fe583ddf470eabc089e1042556250d77`); its parents include the integration
+base and the pushed head. [CI records](docs/engine_ipc/evidence/ci.json) preserve
+check conclusions, source pins and relevant native log excerpts.
+
+All six native platform/profile jobs passed both carrier subprocess contracts,
+CPAL/MIDI callback mocks, autonomous-parent-crash and fatal-app workflows, plus
+two staged and two extracted package probes per job. Linux debug's retained
+workspace passed **2376 tests, 4 skipped**; Linux release's main native suite
+passed **1768**, macOS debug/release **1767 each**, and Windows debug/release
+**1765 each**, with zero skipped in those five main native suites. Additional
+filtered tracing canaries intentionally skip unrelated cases; these are not
+missing core tests. Release jobs execute the heap guards. The scheduled/optional
+CPAL-free nightly job is skipped on this PR; local CPAL-free build/audit evidence
+is recorded separately above.
+
+The full Node suite passed **1986 tests across 27 packages**, with two intentional
+failure-capture canaries ignored in the ordinary suite and exercised separately
+by its required canary step. The portable packages include protocol 4, transport
+10, MessagePort 5, engine 20, backend 14, worklet 17 and app 21 passing tests.
+Its source-matched runner summary, tool versions and asset manifest are retained
+in [the compressed report](docs/engine_ipc/evidence/node/summary.json.gz).
+Artifact `13068147219` has SHA256
+`cb383e0939382ae10f9fbe5c3ed1f6f7e8363da614afaa4e7f9b9810073fe85e`; its asset manifest pins merge `b063c01a`.
+The web release job also passed its existing Firefox 159 AudioWorklet smoke.
+
+Downloaded representative macOS debug artifact `13067411273`
+(`shoopdaloop-macos-arm64-debug-dev-b063c01a.tar.gz`, SHA256
+`1911421b9f1553e0725ee4245ba8aaa2f83e4525584cb24686a668e18ecce761`)
+passes the native package verifier for arm64. Both app and companion are present
+under `Contents/MacOS` with mode 0755; binary digests are retained in the CI record.
+This inspection ran on Linux; macOS CI supplies actual execution and extracted
+space/Unicode-path probes. The fresh local Linux package and CPAL/JACK workflow
+remain separate evidence, with their stated component/hardware limits.
+
+PR [#897](https://github.com/SanderVocke/shoopdaloop/pull/897) remains open against
+`feat/loop-execution-layer`; it is not merged. Review submissions and requested
+reviewers are absent. The only bot comment is Codecov; its patch check passes
+at 82.78% against the configured 80% floor, and project coverage passes at 90.25%.
+No automated code-review response was available, so no approval is claimed.
+Physical audio/MIDI hardware and the inherited legacy debug Chrome synth gap
+remain explicit; the milestone does not close unrelated historical acceptance gaps.
+
+The final closure commit changes documentation/evidence only. Its Rust source tree
+matches implementation `0f52c68d`; final-head checks are rechecked before handoff
+and remain visible on the PR. Source-pinned artifacts above retain their actual
+checkpoint identities instead of being relabelled with that later documentation SHA.

@@ -1,0 +1,1016 @@
+{
+  "head": "bcc863647ff45ef5af2db811a160584d11931bf7",
+  "merge": {
+    "sha": "b063c01a6a4ef70ab303bb00d6389001e941593a",
+    "tree": "bbb4d259fe583ddf470eabc089e1042556250d77",
+    "parents": [
+      "f22dbd1c8ea72ae1bc5497b40cd7daf6066f3b39",
+      "bcc863647ff45ef5af2db811a160584d11931bf7"
+    ]
+  },
+  "run_id": 41266246856,
+  "jobs": [
+    {
+      "id": 124729597775,
+      "name": "Rust coverage (Linux)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 124729597868,
+      "name": "macos arm64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729597875,
+      "name": "windows x86_64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729597876,
+      "name": "windows x86_64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729597899,
+      "name": "macos arm64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729597903,
+      "name": "web wasm32 release",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 124729597963,
+      "name": "web wasm32 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729597967,
+      "name": "linux x86_64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729598034,
+      "name": "linux x86_64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Exercise bundled engine transports from extracted paths",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test native application path",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run required Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run optimized nightly/manual Node Wasm suite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Start virtual Firefox audio output",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Firefox browser",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run Firefox Web Audio workflow",
+          "status": "completed",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 124729598842,
+      "name": "Nightly without CPAL (${{ matrix.flavor }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "steps": []
+    }
+  ],
+  "checks": [
+    {
+      "name": "codecov/patch",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/runs/124730819114",
+      "title": "82.78% of diff hit (target 80.00%)"
+    },
+    {
+      "name": "codecov/project",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/runs/124730816120",
+      "title": "90.25% (-0.10%) compared to f22dbd1"
+    },
+    {
+      "name": "CodeQL",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/runs/124729652485",
+      "title": "No new alerts in code changed by this pull request"
+    },
+    {
+      "name": "Nightly without CPAL (${{ matrix.flavor }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729598842",
+      "title": null
+    },
+    {
+      "name": "linux x86_64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729598034",
+      "title": null
+    },
+    {
+      "name": "linux x86_64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597967",
+      "title": null
+    },
+    {
+      "name": "web wasm32 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597963",
+      "title": null
+    },
+    {
+      "name": "web wasm32 release",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597903",
+      "title": null
+    },
+    {
+      "name": "macos arm64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597899",
+      "title": null
+    },
+    {
+      "name": "windows x86_64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597876",
+      "title": null
+    },
+    {
+      "name": "windows x86_64 debug",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597875",
+      "title": null
+    },
+    {
+      "name": "macos arm64 release",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597868",
+      "title": null
+    },
+    {
+      "name": "Rust coverage (Linux)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597775",
+      "title": null
+    },
+    {
+      "name": "Analyze (c-cpp)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246888/job/124729541848",
+      "title": null
+    },
+    {
+      "name": "Analyze (python)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246888/job/124729541740",
+      "title": null
+    },
+    {
+      "name": "Analyze (rust)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246888/job/124729541735",
+      "title": null
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246888/job/124729541556",
+      "title": null
+    },
+    {
+      "name": "docs",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246854/job/124729541425",
+      "title": null
+    }
+  ],
+  "native_jobs": [
+    {
+      "id": 124729597868,
+      "name": "macos arm64 release",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597868",
+      "lines": [
+        "2026-11-01T02:45:49.9145020Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:45:51.0395200Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:46:45.2037670Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:46:46.1521970Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:52:27.8636120Z         PASS [   0.009s] (1613/1767) shoop_rt_host_native::cpal heap_guards_are_live",
+        "2026-11-01T02:52:28.0319350Z         PASS [   0.012s] (1622/1767) shoop_rt_host_native::dummy heap_guards_are_live",
+        "2026-11-01T02:52:28.5491460Z         PASS [   0.484s] (1628/1767) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations",
+        "2026-11-01T02:52:28.5592730Z         PASS [   0.010s] (1629/1767) shoop_rt_host_process::process crashing_parent",
+        "2026-11-01T02:52:28.9421350Z         PASS [   0.383s] (1630/1767) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown",
+        "2026-11-01T02:52:28.9689390Z         PASS [   0.913s] (1631/1767) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control",
+        "2026-11-01T02:52:29.2352040Z         PASS [   0.293s] (1632/1767) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child",
+        "2026-11-01T02:52:29.6126900Z         PASS [   0.377s] (1633/1767) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations",
+        "2026-11-01T02:52:29.6241150Z         PASS [   0.011s] (1634/1767) shoop_rt_host_process::process engine_peer",
+        "2026-11-01T02:52:29.9829100Z         PASS [   0.359s] (1635/1767) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works",
+        "2026-11-01T02:52:30.0880700Z         PASS [   0.105s] (1636/1767) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback",
+        "2026-11-01T02:52:30.1407650Z         PASS [   1.172s] (1641/1767) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy",
+        "2026-11-01T02:52:30.4284590Z         PASS [   0.044s] (1674/1767) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models",
+        "2026-11-01T02:52:30.4459810Z         PASS [   0.017s] (1675/1767) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access",
+        "2026-11-01T02:52:30.4471940Z         PASS [   0.044s] (1676/1767) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples",
+        "2026-11-01T02:52:30.4546570Z         PASS [   0.007s] (1677/1767) shoop_rt_transport_shared_memory::shared shared_peer",
+        "2026-11-01T02:52:30.5050410Z         PASS [   0.059s] (1678/1767) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed",
+        "2026-11-01T02:52:30.5104980Z         PASS [   0.056s] (1679/1767) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic",
+        "2026-11-01T02:52:30.5612310Z         PASS [   0.056s] (1680/1767) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof",
+        "2026-11-01T02:52:30.7591500Z         PASS [   0.249s] (1681/1767) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection",
+        "2026-11-01T02:52:30.7676970Z         PASS [   0.008s] (1682/1767) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle",
+        "2026-11-01T02:52:30.7786260Z         PASS [   0.011s] (1683/1767) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order",
+        "2026-11-01T02:52:30.7870310Z         PASS [   0.008s] (1684/1767) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier",
+        "2026-11-01T02:52:30.7945940Z         PASS [   0.008s] (1685/1767) shoop_rt_transport_socket::socket socket_peer",
+        "2026-11-01T02:52:30.8129210Z         PASS [   0.018s] (1686/1767) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract",
+        "2026-11-01T02:52:30.8818310Z         PASS [   2.510s] (1687/1767) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully",
+        "2026-11-01T02:52:30.9599520Z         PASS [   0.398s] (1688/1767) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline",
+        "2026-11-01T02:52:32.8300140Z         PASS [   4.697s] (1689/1767) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts",
+        "2026-11-01T02:52:36.5525310Z         PASS [   1.841s] (1736/1767) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close",
+        "2026-11-01T02:52:44.1544150Z         PASS [   5.786s] (1756/1767) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:52:44.7739430Z         PASS [   5.981s] (1762/1767) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:52:45.3513490Z      Summary [  61.724s] 1767 tests run: 1767 passed, 0 skipped"
+      ]
+    },
+    {
+      "id": 124729597875,
+      "name": "windows x86_64 debug",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597875",
+      "lines": [
+        "2026-11-01T02:45:34.7261217Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:45:37.0357796Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:46:12.3222806Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:46:13.1921898Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:50:21.3035685Z         PASS [   0.026s] (1611/1765) shoop_rt_host_native::cpal heap_guards_are_live\r",
+        "2026-11-01T02:50:21.5386873Z         PASS [   0.024s] (1620/1765) shoop_rt_host_native::dummy heap_guards_are_live\r",
+        "2026-11-01T02:50:23.4354670Z         PASS [   1.823s] (1626/1765) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations\r",
+        "2026-11-01T02:50:23.4612539Z         PASS [   0.026s] (1627/1765) shoop_rt_host_process::process crashing_parent\r",
+        "2026-11-01T02:50:23.8198678Z         PASS [   2.231s] (1628/1765) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control\r",
+        "2026-11-01T02:50:23.9250882Z         PASS [   0.105s] (1629/1765) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child\r",
+        "2026-11-01T02:50:24.6898672Z         PASS [   2.991s] (1630/1765) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully\r",
+        "2026-11-01T02:50:25.1536839Z         PASS [   1.692s] (1631/1765) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown\r",
+        "2026-11-01T02:50:25.1783879Z         PASS [   0.025s] (1632/1765) shoop_rt_host_process::process engine_peer\r",
+        "2026-11-01T02:50:26.0993178Z         PASS [   2.172s] (1633/1765) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy\r",
+        "2026-11-01T02:50:26.3191977Z         PASS [   1.633s] (1634/1765) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations\r",
+        "2026-11-01T02:50:26.5420336Z         PASS [   0.445s] (1644/1765) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback\r",
+        "2026-11-01T02:50:26.7464313Z         PASS [   1.571s] (1650/1765) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works\r",
+        "2026-11-01T02:50:27.1242333Z         PASS [   5.497s] (1673/1765) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts\r",
+        "2026-11-01T02:50:27.3085358Z         PASS [   0.407s] (1674/1765) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access\r",
+        "2026-11-01T02:50:27.3220661Z         PASS [   0.013s] (1675/1765) shoop_rt_transport_shared_memory::shared shared_peer\r",
+        "2026-11-01T02:50:27.5471992Z         PASS [   0.662s] (1676/1765) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models\r",
+        "2026-11-01T02:50:27.7257762Z         PASS [   0.839s] (1677/1765) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples\r",
+        "2026-11-01T02:50:27.7908613Z         PASS [   0.666s] (1678/1765) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed\r",
+        "2026-11-01T02:50:27.9071680Z         PASS [   0.585s] (1679/1765) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic\r",
+        "2026-11-01T02:50:27.9209787Z         PASS [   0.014s] (1680/1765) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle\r",
+        "2026-11-01T02:50:27.9347699Z         PASS [   0.014s] (1681/1765) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order\r",
+        "2026-11-01T02:50:27.9446116Z         PASS [   0.219s] (1682/1765) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection\r",
+        "2026-11-01T02:50:27.9497472Z         PASS [   0.015s] (1683/1765) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier\r",
+        "2026-11-01T02:50:27.9578488Z         PASS [   0.013s] (1684/1765) shoop_rt_transport_socket::socket socket_peer\r",
+        "2026-11-01T02:50:27.9781176Z         PASS [   0.028s] (1685/1765) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract\r",
+        "2026-11-01T02:50:28.0057555Z         PASS [   0.459s] (1686/1765) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof\r",
+        "2026-11-01T02:50:28.0589347Z         PASS [   0.268s] (1687/1765) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline\r",
+        "2026-11-01T02:50:39.8359657Z         PASS [   7.193s] (1753/1765) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application\r",
+        "2026-11-01T02:50:40.2375011Z         PASS [  10.190s] (1755/1765) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close\r",
+        "2026-11-01T02:50:43.6070278Z         PASS [   5.502s] (1765/1765) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application\r",
+        "2026-11-01T02:50:43.6092438Z      Summary [  93.579s] 1765 tests run: 1765 passed, 0 skipped\r",
+        "2026-11-01T02:53:19.4991165Z      Summary [   0.782s] 1 test run: 1 passed, 971 skipped\r",
+        "2026-11-01T02:54:05.6232384Z      Summary [   0.283s] 1 test run: 1 passed, 5 skipped\r"
+      ]
+    },
+    {
+      "id": 124729597876,
+      "name": "windows x86_64 release",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597876",
+      "lines": [
+        "2026-11-01T02:46:55.4415815Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:46:56.1076245Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:47:26.5388497Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:47:27.2069512Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed\r",
+        "2026-11-01T02:55:42.0044820Z         PASS [   0.013s] (1613/1765) shoop_rt_host_native::cpal heap_guards_are_live\r",
+        "2026-11-01T02:55:42.1256691Z         PASS [   0.017s] (1620/1765) shoop_rt_host_native::dummy heap_guards_are_live\r",
+        "2026-11-01T02:55:42.9931964Z         PASS [   0.824s] (1626/1765) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations\r",
+        "2026-11-01T02:55:43.0152831Z         PASS [   0.022s] (1627/1765) shoop_rt_host_process::process crashing_parent\r",
+        "2026-11-01T02:55:43.4945817Z         PASS [   1.353s] (1628/1765) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control\r",
+        "2026-11-01T02:55:43.5903471Z         PASS [   0.096s] (1629/1765) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child\r",
+        "2026-11-01T02:55:43.8272190Z         PASS [   0.812s] (1630/1765) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown\r",
+        "2026-11-01T02:55:43.9211904Z         PASS [   1.685s] (1631/1765) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully\r",
+        "2026-11-01T02:55:43.9413296Z         PASS [   0.020s] (1632/1765) shoop_rt_host_process::process engine_peer\r",
+        "2026-11-01T02:55:44.6850024Z         PASS [   0.857s] (1633/1765) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations\r",
+        "2026-11-01T02:55:44.8850021Z         PASS [   0.943s] (1634/1765) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works\r",
+        "2026-11-01T02:55:45.0141838Z         PASS [   0.329s] (1643/1765) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback\r",
+        "2026-11-01T02:55:45.1622766Z         PASS [   1.572s] (1652/1765) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy\r",
+        "2026-11-01T02:55:45.4698423Z         PASS [   3.298s] (1673/1765) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts\r",
+        "2026-11-01T02:55:45.6160041Z         PASS [   0.353s] (1674/1765) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access\r",
+        "2026-11-01T02:55:45.6325251Z         PASS [   0.016s] (1675/1765) shoop_rt_transport_shared_memory::shared shared_peer\r",
+        "2026-11-01T02:55:45.6391760Z         PASS [   0.387s] (1676/1765) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models\r",
+        "2026-11-01T02:55:45.8178885Z         PASS [   0.560s] (1677/1765) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples\r",
+        "2026-11-01T02:55:45.9228947Z         PASS [   0.453s] (1678/1765) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed\r",
+        "2026-11-01T02:55:45.9777584Z         PASS [   0.345s] (1679/1765) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic\r",
+        "2026-11-01T02:55:45.9905920Z         PASS [   0.013s] (1680/1765) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle\r",
+        "2026-11-01T02:55:46.0055391Z         PASS [   0.015s] (1681/1765) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order\r",
+        "2026-11-01T02:55:46.0188868Z         PASS [   0.013s] (1682/1765) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier\r",
+        "2026-11-01T02:55:46.0191945Z         PASS [   0.380s] (1683/1765) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof\r",
+        "2026-11-01T02:55:46.0299534Z         PASS [   0.011s] (1684/1765) shoop_rt_transport_socket::socket socket_peer\r",
+        "2026-11-01T02:55:46.0364943Z         PASS [   0.219s] (1685/1765) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection\r",
+        "2026-11-01T02:55:46.0482246Z         PASS [   0.029s] (1686/1765) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract\r",
+        "2026-11-01T02:55:46.1894443Z         PASS [   0.266s] (1687/1765) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline\r",
+        "2026-11-01T02:55:50.4024890Z         PASS [   2.565s] (1749/1765) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close\r",
+        "2026-11-01T02:55:52.0377896Z         PASS [   2.650s] (1753/1765) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application\r",
+        "2026-11-01T02:55:52.7843037Z         PASS [   2.359s] (1764/1765) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application\r",
+        "2026-11-01T02:55:52.8484794Z      Summary [  40.745s] 1765 tests run: 1765 passed, 0 skipped\r"
+      ]
+    },
+    {
+      "id": 124729597899,
+      "name": "macos arm64 debug",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597899",
+      "lines": [
+        "2026-11-01T02:43:47.3773380Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:43:48.4519740Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:44:29.2131310Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:44:30.4383640Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:48:00.3289410Z         PASS [   0.026s] (1614/1767) shoop_rt_host_native::cpal heap_guards_are_live",
+        "2026-11-01T02:48:00.5818180Z         PASS [   0.040s] (1622/1767) shoop_rt_host_native::dummy heap_guards_are_live",
+        "2026-11-01T02:48:02.0034140Z         PASS [   1.336s] (1628/1767) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations",
+        "2026-11-01T02:48:02.0289700Z         PASS [   0.026s] (1629/1767) shoop_rt_host_process::process crashing_parent",
+        "2026-11-01T02:48:02.5942490Z         PASS [   1.931s] (1630/1767) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control",
+        "2026-11-01T02:48:03.1900560Z         PASS [   1.161s] (1631/1767) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown",
+        "2026-11-01T02:48:05.0261460Z         PASS [   1.835s] (1632/1767) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy",
+        "2026-11-01T02:48:05.2645890Z         PASS [   4.162s] (1633/1767) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully",
+        "2026-11-01T02:48:05.2887110Z         PASS [   0.024s] (1634/1767) shoop_rt_host_process::process engine_peer",
+        "2026-11-01T02:48:05.5942040Z         PASS [   2.998s] (1635/1767) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child",
+        "2026-11-01T02:48:05.7697250Z         PASS [   0.176s] (1636/1767) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback",
+        "2026-11-01T02:48:06.1853060Z         PASS [   1.159s] (1647/1767) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations",
+        "2026-11-01T02:48:06.4191150Z         PASS [   1.130s] (1656/1767) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works",
+        "2026-11-01T02:48:06.7510610Z         PASS [   0.059s] (1675/1767) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access",
+        "2026-11-01T02:48:06.7674800Z         PASS [   0.137s] (1676/1767) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models",
+        "2026-11-01T02:48:06.7865140Z         PASS [   0.024s] (1677/1767) shoop_rt_transport_shared_memory::shared shared_peer",
+        "2026-11-01T02:48:06.8457240Z         PASS [   0.104s] (1678/1767) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed",
+        "2026-11-01T02:48:06.9046510Z         PASS [   0.059s] (1679/1767) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof",
+        "2026-11-01T02:48:06.9086380Z         PASS [   0.118s] (1680/1767) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic",
+        "2026-11-01T02:48:06.9556880Z         PASS [   0.330s] (1681/1767) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples",
+        "2026-11-01T02:48:06.9850210Z         PASS [   0.029s] (1682/1767) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle",
+        "2026-11-01T02:48:07.0112680Z         PASS [   0.026s] (1683/1767) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order",
+        "2026-11-01T02:48:07.0339040Z         PASS [   0.023s] (1684/1767) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier",
+        "2026-11-01T02:48:07.0559940Z         PASS [   0.022s] (1685/1767) shoop_rt_transport_socket::socket socket_peer",
+        "2026-11-01T02:48:07.1069470Z         PASS [   0.051s] (1686/1767) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract",
+        "2026-11-01T02:48:07.1803250Z         PASS [   0.276s] (1687/1767) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection",
+        "2026-11-01T02:48:07.3766520Z         PASS [   0.472s] (1688/1767) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline",
+        "2026-11-01T02:48:08.2963760Z         PASS [   7.575s] (1689/1767) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts",
+        "2026-11-01T02:48:17.6775450Z         PASS [   6.790s] (1751/1767) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close",
+        "2026-11-01T02:48:21.5466090Z         PASS [   7.076s] (1755/1767) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:48:25.3875490Z         PASS [   7.678s] (1767/1767) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:48:25.3881810Z      Summary [ 108.302s] 1767 tests run: 1767 passed, 0 skipped",
+        "2026-11-01T02:49:36.0971630Z      Summary [   1.861s] 1 test run: 1 passed, 970 skipped"
+      ]
+    },
+    {
+      "id": 124729597967,
+      "name": "linux x86_64 release",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729597967",
+      "lines": [
+        "2026-11-01T02:47:16.6347983Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:47:17.1710644Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:48:40.4885912Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:48:40.9544036Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:51:38.7292743Z         PASS [   0.005s] (1615/1768) shoop_rt_host_native::cpal heap_guards_are_live",
+        "2026-11-01T02:51:38.8656330Z         PASS [   0.005s] (1623/1768) shoop_rt_host_native::dummy heap_guards_are_live",
+        "2026-11-01T02:51:39.8452852Z         PASS [   0.946s] (1629/1768) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations",
+        "2026-11-01T02:51:39.8527391Z         PASS [   0.007s] (1630/1768) shoop_rt_host_process::process crashing_parent",
+        "2026-11-01T02:51:40.2256543Z         PASS [   1.328s] (1631/1768) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control",
+        "2026-11-01T02:51:40.2559270Z         PASS [   0.030s] (1632/1768) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child",
+        "2026-11-01T02:51:40.7861249Z         PASS [   0.933s] (1633/1768) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown",
+        "2026-11-01T02:51:41.6356797Z         PASS [   1.379s] (1634/1768) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy",
+        "2026-11-01T02:51:41.6470744Z         PASS [   0.012s] (1635/1768) shoop_rt_host_process::process engine_peer",
+        "2026-11-01T02:51:41.6809049Z         PASS [   0.895s] (1636/1768) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations",
+        "2026-11-01T02:51:41.7735341Z         PASS [   0.092s] (1637/1768) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback",
+        "2026-11-01T02:51:41.8591959Z         PASS [   2.888s] (1648/1768) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully",
+        "2026-11-01T02:51:42.1455681Z         PASS [   0.098s] (1675/1768) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models",
+        "2026-11-01T02:51:42.2519511Z         PASS [   0.108s] (1676/1768) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access",
+        "2026-11-01T02:51:42.2548956Z         PASS [   0.206s] (1677/1768) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples",
+        "2026-11-01T02:51:42.2608080Z         PASS [   0.006s] (1678/1768) shoop_rt_transport_shared_memory::shared shared_peer",
+        "2026-11-01T02:51:42.2914123Z         PASS [   0.039s] (1679/1768) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed",
+        "2026-11-01T02:51:42.3962917Z         PASS [   0.135s] (1680/1768) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic",
+        "2026-11-01T02:51:42.4753789Z         PASS [   0.184s] (1681/1768) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof",
+        "2026-11-01T02:51:42.5021071Z         PASS [   0.855s] (1682/1768) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works",
+        "2026-11-01T02:51:42.5077610Z         PASS [   0.006s] (1683/1768) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle",
+        "2026-11-01T02:51:42.5186680Z         PASS [   0.011s] (1684/1768) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order",
+        "2026-11-01T02:51:42.5237063Z         PASS [   0.005s] (1685/1768) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier",
+        "2026-11-01T02:51:42.5283547Z         PASS [   0.004s] (1686/1768) shoop_rt_transport_socket::socket socket_peer",
+        "2026-11-01T02:51:42.6034037Z         PASS [   0.207s] (1687/1768) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection",
+        "2026-11-01T02:51:42.7339223Z         PASS [   0.258s] (1688/1768) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline",
+        "2026-11-01T02:51:42.7424597Z         PASS [   0.214s] (1689/1768) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract",
+        "2026-11-01T02:51:42.9680817Z         PASS [   4.039s] (1690/1768) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts",
+        "2026-11-01T02:51:46.2137445Z         PASS [   2.238s] (1752/1768) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close",
+        "2026-11-01T02:51:47.3167250Z         PASS [   2.086s] (1756/1768) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:51:48.5636536Z         PASS [   2.343s] (1768/1768) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:51:48.5637925Z      Summary [  33.169s] 1768 tests run: 1768 passed, 0 skipped",
+        "2026-11-01T02:54:40.5058443Z      Summary [   9.515s] 1 test run: 1 passed, 970 skipped"
+      ]
+    },
+    {
+      "id": 124729598034,
+      "name": "linux x86_64 debug",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41266246856/job/124729598034",
+      "lines": [
+        "2026-11-01T02:46:31.5579720Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:46:32.2167795Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:49:23.1948150Z Engine transport socket: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:49:23.8012049Z Engine transport shared_memory: audio/MIDI workflow and graceful shutdown passed",
+        "2026-11-01T02:52:14.7195129Z         PASS [   0.007s] (1873/2376) shoop_loops::compiler heap_guards_are_live_in_optimized_and_wasm_tests",
+        "2026-11-01T02:52:19.9260945Z         PASS [   0.005s] (2060/2376) shoop_rt_host_native::cpal heap_guards_are_live",
+        "2026-11-01T02:52:20.1117575Z         PASS [   0.007s] (2069/2376) shoop_rt_host_native::dummy heap_guards_are_live",
+        "2026-11-01T02:52:22.1478839Z         PASS [   1.961s] (2075/2376) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations",
+        "2026-11-01T02:52:22.1574316Z         PASS [   0.009s] (2076/2376) shoop_rt_host_process::process crashing_parent",
+        "2026-11-01T02:52:22.2637963Z         PASS [   2.083s] (2077/2376) shoop_rt_host_process::process a_crashed_app_leaves_its_recording_engine_running_without_control",
+        "2026-11-01T02:52:22.3083385Z         PASS [   0.045s] (2078/2376) shoop_rt_host_process::process device_discovery_and_rejections_are_served_by_the_child",
+        "2026-11-01T02:52:24.1761256Z         PASS [   2.019s] (2079/2376) shoop_rt_host_process::process data_disconnect_keeps_the_process_running_until_independent_shutdown",
+        "2026-11-01T02:52:24.4869744Z         PASS [   4.209s] (2080/2376) shoop_rt_host_process::process both_process_carriers_run_the_backend_contracts_and_stop_gracefully",
+        "2026-11-01T02:52:24.4959425Z         PASS [   0.009s] (2081/2376) shoop_rt_host_process::process engine_peer",
+        "2026-11-01T02:52:24.7549673Z         PASS [   2.446s] (2082/2376) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy",
+        "2026-11-01T02:52:24.8678661Z         PASS [   0.113s] (2083/2376) shoop_rt_host_process::process startup_errors_and_missing_companions_fail_without_carrier_fallback",
+        "2026-11-01T02:52:25.7972686Z         PASS [   0.099s] (2120/2376) shoop_rt_transport_shared_memory::shared bounded_queue_recycling_matches_fifo_and_latest_value_models",
+        "2026-11-01T02:52:25.9788362Z         PASS [   1.802s] (2121/2376) shoop_rt_host_process::process engine_death_reaches_a_polling_client_without_new_mutations",
+        "2026-11-01T02:52:26.0288223Z         PASS [   0.050s] (2122/2376) shoop_rt_transport_shared_memory::shared descriptor_layouts_are_validated_before_mapping_access",
+        "2026-11-01T02:52:26.0543586Z         PASS [   0.257s] (2123/2376) shoop_rt_transport_shared_memory::shared concurrent_publication_keeps_every_payload_coherent_and_recycles_samples",
+        "2026-11-01T02:52:26.0610623Z         PASS [   0.008s] (2124/2376) shoop_rt_transport_shared_memory::shared shared_peer",
+        "2026-11-01T02:52:26.1348346Z         PASS [   0.106s] (2125/2376) shoop_rt_transport_shared_memory::shared peer_death_during_publication_is_terminal_and_dead_resources_are_reclaimed",
+        "2026-11-01T02:52:26.1780035Z         PASS [   0.116s] (2126/2376) shoop_rt_transport_shared_memory::shared subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic",
+        "2026-11-01T02:52:26.2038072Z         PASS [   0.068s] (2127/2376) shoop_rt_transport_shared_memory::shared unexpected_liveness_bytes_cannot_hide_peer_eof",
+        "2026-11-01T02:52:26.2194096Z         PASS [   1.723s] (2128/2376) shoop_rt_host_process::process malformed_traffic_retires_control_and_independent_shutdown_still_works",
+        "2026-11-01T02:52:26.2247217Z         PASS [   0.005s] (2129/2376) shoop_rt_transport_socket::socket fragmented_and_coalesced_records_and_eof_are_distinct_from_idle",
+        "2026-11-01T02:52:26.2355118Z         PASS [   0.011s] (2130/2376) shoop_rt_transport_socket::socket full_output_retries_preserve_whole_records_in_order",
+        "2026-11-01T02:52:26.2406739Z         PASS [   0.005s] (2131/2376) shoop_rt_transport_socket::socket malformed_lengths_end_the_carrier",
+        "2026-11-01T02:52:26.2459374Z         PASS [   0.005s] (2132/2376) shoop_rt_transport_socket::socket socket_peer",
+        "2026-11-01T02:52:26.3892875Z         PASS [   0.213s] (2133/2376) shoop_rt_transport_socket::socket an_unauthenticated_peer_cannot_establish_the_connection",
+        "2026-11-01T02:52:26.4591262Z         PASS [   0.256s] (2143/2376) shoop_rt_transport_socket::socket authentication_uses_the_remaining_launch_deadline",
+        "2026-11-01T02:52:26.4619320Z         PASS [   0.216s] (2144/2376) shoop_rt_transport_socket::socket subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract",
+        "2026-11-01T02:52:27.1776200Z         PASS [   6.966s] (2197/2376) shoop_rt_host_process::process both_carriers_preserve_the_shared_transition_signal_and_playback_contracts",
+        "2026-11-01T02:52:38.1924380Z         PASS [   5.948s] (2364/2376) shoopdaloop::bin/shoopdaloop tests::new_engine_shared_memory_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:52:39.4633073Z         PASS [   9.380s] (2372/2376) shoopdaloop::bin/shoopdaloop tests::ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close",
+        "2026-11-01T02:52:40.6003640Z         PASS [   6.018s] (2375/2376) shoopdaloop::bin/shoopdaloop tests::new_engine_socket_runs_the_core_workflow_in_the_application",
+        "2026-11-01T02:52:40.6183105Z      Summary [  80.590s] 2376 tests run: 2376 passed, 4 skipped",
+        "2026-11-01T02:54:15.2264099Z      Summary [  11.270s] 1 test run: 1 passed, 970 skipped"
+      ]
+    }
+  ],
+  "reviews": {
+    "submissions": 0,
+    "requested_reviewers": [],
+    "only_comment_author": "codecov[bot]",
+    "status": "No automated code-review response available; no approval claimed. Codecov feedback passes the configured coverage gates."
+  },
+  "checked_at_utc": "2026-11-01T03:05:21Z",
+  "rust_source_tree": "1c5d703aba4b10e7c632e282c96cf8791377a72a",
+  "representative_artifact": {
+    "artifact_id": 13067411273,
+    "name": "shoopdaloop-macos-arm64-debug-dev-b063c01a.tar.gz",
+    "bytes": 138770282,
+    "archive_sha256": "1911421b9f1553e0725ee4245ba8aaa2f83e4525584cb24686a668e18ecce761",
+    "binaries": [
+      {
+        "path": "shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoop_rt_host_process",
+        "bytes": 19252424,
+        "mode": "0o755",
+        "sha256": "26ea32a11872a5d07f8ab3d953362d7cbcef5511b062a9410f593060968a66fd"
+      },
+      {
+        "path": "shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop",
+        "bytes": 167966944,
+        "mode": "0o755",
+        "sha256": "87e4f19c4c2546505973cde27a72a97e5f3f508dd0d646a00b966020bd0e6683"
+      }
+    ],
+    "verify_command": "python3 src/rust/shoopdaloop/package_artifacts.py verify --platform macos --arch arm64 --artifact <downloaded archive>",
+    "verified": true,
+    "verify_peak_rss_mib": 264.3,
+    "limitations": [
+      "Inspected on Linux; macOS execution is covered by the source-matched macOS CI job."
+    ]
+  },
+  "node": {
+    "artifact_id": 13068147219,
+    "archive_sha256": "cb383e0939382ae10f9fbe5c3ed1f6f7e8363da614afaa4e7f9b9810073fe85e",
+    "summary": "node/summary.json.gz",
+    "summary_sha256": "75807281013e446471280a29d4fc05684775f15dde605fc0524dd266cbbf3980",
+    "packages": 27,
+    "passed": 1986,
+    "failed": 0,
+    "ignored": 2,
+    "ignored_reason": "Two intentional failure-capture canaries are excluded from the ordinary suite and exercised by the separate required canary step.",
+    "source_merge": "b063c01a6a4ef70ab303bb00d6389001e941593a",
+    "tool_versions": {
+      "node": "22.22.2",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+      "wasm-bindgen": "0.2.127",
+      "wasm-bindgen-test": "0.3.77",
+      "wasm-pack": "wasm-pack 0.15.0"
+    },
+    "package_counts": [
+      {
+        "package": "rt_runtime",
+        "passed": 193,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 200.272518601
+      },
+      {
+        "package": "shoop_app",
+        "passed": 116,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 71.43434747600008
+      },
+      {
+        "package": "shoop_app_api",
+        "passed": 24,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 8.02677204400004
+      },
+      {
+        "package": "shoop_audio_protocol",
+        "passed": 13,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 12.20459908700002
+      },
+      {
+        "package": "shoop_audio_worklet",
+        "passed": 24,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 29.873216017999994
+      },
+      {
+        "package": "shoop_backend",
+        "passed": 86,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 27.201778667999974
+      },
+      {
+        "package": "shoop_egui",
+        "passed": 213,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 50.52043170100001
+      },
+      {
+        "package": "shoop_engine",
+        "passed": 873,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 197.177378708
+      },
+      {
+        "package": "shoop_engine_service",
+        "passed": 18,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 28.409871089000035
+      },
+      {
+        "package": "shoop_example_dsp",
+        "passed": 15,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 6.826972845
+      },
+      {
+        "package": "shoop_latency",
+        "passed": 4,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 5.879157190000001
+      },
+      {
+        "package": "shoop_loops",
+        "passed": 164,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 127.41792139400002
+      },
+      {
+        "package": "shoop_plugin_protocol",
+        "passed": 5,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 7.1739706570001545
+      },
+      {
+        "package": "shoop_rt_backend",
+        "passed": 14,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 57.676891363000095
+      },
+      {
+        "package": "shoop_rt_engine",
+        "passed": 20,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 35.38576713799989
+      },
+      {
+        "package": "shoop_rt_host_worklet",
+        "passed": 17,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 23.016726745999904
+      },
+      {
+        "package": "shoop_rt_protocol",
+        "passed": 4,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 11.096248354999943
+      },
+      {
+        "package": "shoop_rt_transport",
+        "passed": 10,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 16.259010962000048
+      },
+      {
+        "package": "shoop_rt_transport_message_port",
+        "passed": 5,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 11.977003261999926
+      },
+      {
+        "package": "shoop_script_resources",
+        "passed": 5,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 7.277678817999913
+      },
+      {
+        "package": "shoop_scripting",
+        "passed": 32,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 16.34684490199993
+      },
+      {
+        "package": "shoop_session",
+        "passed": 37,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 16.784549690000176
+      },
+      {
+        "package": "shoop_settings",
+        "passed": 9,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 7.040971132000095
+      },
+      {
+        "package": "shoop_wasm_runtime_tests",
+        "passed": 10,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 45.898363132999975
+      },
+      {
+        "package": "shoop_wasm_test_support",
+        "passed": 7,
+        "ignored": 2,
+        "failed": 0,
+        "elapsed_seconds": 11.317727299999888
+      },
+      {
+        "package": "shoop_worklet_client",
+        "passed": 47,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 21.263636834999943
+      },
+      {
+        "package": "shoopdaloop",
+        "passed": 21,
+        "ignored": 0,
+        "failed": 0,
+        "elapsed_seconds": 75.31371076699998
+      }
+    ]
+  },
+  "limitations": [
+    "The scheduled/optional CPAL-free nightly job is skipped on this PR; local dummy-only builds and dependency audits are recorded separately.",
+    "No automated code review was submitted; only Codecov feedback was available. Required CI is not code-review approval.",
+    "The final documentation-only closure commit is rechecked before delivery. These artifacts pin the identical implementation source tree at this checkpoint.",
+    "Physical audio/MIDI hardware is unavailable; inherited legacy debug Chrome synth failure is retained in browser.json."
+  ]
+}
