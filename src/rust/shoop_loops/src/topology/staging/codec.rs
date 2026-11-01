@@ -135,7 +135,7 @@ pub(super) fn decode_header(
     {
         return Err(Error::InvalidConfig);
     }
-    let counts = Counts(std::array::from_fn(|index| get32(bytes, 32 + 4 * index)));
+    let counts = Counts(core::array::from_fn(|index| get32(bytes, 32 + 4 * index)));
     if counts
         .0
         .into_iter()

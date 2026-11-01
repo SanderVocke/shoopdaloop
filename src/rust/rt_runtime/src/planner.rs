@@ -1,6 +1,7 @@
 //! Generic planning metadata, independent of signal ports and domain semantics.
 
 use crate::{Error, Frame, NodeId, PlannerId};
+use alloc::{boxed::Box, vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlannerSpec {
@@ -246,7 +247,7 @@ impl<O: Copy + Default> Observations<O> {
         };
         let mut buffer = vec![initial; capacity].into_boxed_slice();
         for value in &mut buffer {
-            *std::hint::black_box(value) = initial;
+            *core::hint::black_box(value) = initial;
         }
         Ok(Self { buffer, written: 0 })
     }

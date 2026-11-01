@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master", "feat/loop-execution-layer" ]
+    branches: [ "master", "feat/loop-execution-layer", "feat/engine-ipc" ]
 
 permissions:
     contents: write

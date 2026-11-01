@@ -4,8 +4,9 @@
 //! successful adoption/publication and must not release those snapshots separately.
 //! All methods after preparation use fixed storage. Quiescent cleanup is explicit.
 use crate::LoopId;
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::sync::atomic::{AtomicU32, Ordering};
 use rt_runtime::{resource::*, Error, Frame, Revision};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 #[cfg(test)]
 #[path = "media_tests.rs"]
@@ -144,23 +145,25 @@ impl Ledger {
         export_slots: usize,
     ) -> Result<Self, Error> {
         let bytes = loop_slots
-            .checked_mul(std::mem::size_of::<OwnerSlot>())
+            .checked_mul(core::mem::size_of::<OwnerSlot>())
             .and_then(|n| {
                 media_slots
-                    .checked_mul(std::mem::size_of::<Slot<Media>>() + std::mem::size_of::<usize>())
+                    .checked_mul(
+                        core::mem::size_of::<Slot<Media>>() + core::mem::size_of::<usize>(),
+                    )
                     .and_then(|m| n.checked_add(m))
             })
             .and_then(|n| {
                 export_slots
                     .checked_mul(
-                        std::mem::size_of::<Slot<ExportRef>>() + std::mem::size_of::<usize>(),
+                        core::mem::size_of::<Slot<ExportRef>>() + core::mem::size_of::<usize>(),
                     )
                     .and_then(|m| n.checked_add(m))
             })
             .and_then(|n| {
                 pin_slots
                     .checked_mul(
-                        std::mem::size_of::<Slot<MediaId>>() + std::mem::size_of::<usize>(),
+                        core::mem::size_of::<Slot<MediaId>>() + core::mem::size_of::<usize>(),
                     )
                     .and_then(|m| n.checked_add(m))
             })
@@ -216,16 +219,16 @@ impl Ledger {
             free_pins: (0..pin_slots).rev().collect(),
         };
         for value in ledger.media.iter_mut() {
-            std::hint::black_box(value);
+            core::hint::black_box(value);
         }
         for value in ledger.exports.iter_mut() {
-            std::hint::black_box(value);
+            core::hint::black_box(value);
         }
         for value in ledger.pins.iter_mut() {
-            std::hint::black_box(value);
+            core::hint::black_box(value);
         }
         for value in ledger.owners.iter_mut() {
-            std::hint::black_box(value);
+            core::hint::black_box(value);
         }
         Ok(ledger)
     }

@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 
 #[cfg(test)]
 #[path = "node_pairs_tests.rs"]
@@ -149,10 +149,10 @@ impl NodePairs {
                 })
                 .collect();
             for value in &mut edits {
-                std::hint::black_box(value);
+                core::hint::black_box(value);
             }
             for value in &mut changes {
-                std::hint::black_box(value);
+                core::hint::black_box(value);
             }
             edits.clear();
             changes.clear();
@@ -174,7 +174,7 @@ impl NodePairs {
             })
             .collect();
         for value in &mut sources {
-            std::hint::black_box(value);
+            core::hint::black_box(value);
         }
         Ok(Self {
             scope,
@@ -402,7 +402,8 @@ impl NodePairs {
             media::OwnerChange::remove(edit.previous.ok_or(Error::InvalidId)?)
         };
         {
-            let _permit = ledger.prepare_owner_activation(io, std::slice::from_mut(&mut change))?;
+            let _permit =
+                ledger.prepare_owner_activation(io, core::slice::from_mut(&mut change))?;
         }
         if let Some(initial) = edit.initial {
             for source in [initial.audio, initial.midi].into_iter().flatten() {

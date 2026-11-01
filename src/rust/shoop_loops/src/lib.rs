@@ -1,5 +1,8 @@
 //! Portable, single-owner loop timing and media execution.
 //!
+//! This crate always uses `no_std` with `alloc`. Hosts supply allocation and panic
+//! handling; targets need pointer-width and 32-bit atomic operations.
+//!
 //! Preparation may allocate. Render-side state and scratch are prepared before
 //! execution. [`Resolver`] is the musical authority; low-level renderers execute
 //! supplied positions/discontinuities without advancing another clock.
@@ -16,7 +19,13 @@
 //! Final teardown is off-render and explicit. Permanent quiescence recovers actual
 //! owners without rollback, callback replay or device cleanup. Devices, browser
 //! bindings, unrestricted port resizing and hard-deadline guarantees are excluded.
+#![no_std]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
 
 pub mod audio;
 pub mod command;

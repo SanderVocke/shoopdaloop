@@ -1,7 +1,8 @@
 //! Validated graph owners and borrow-scoped, infallible activation after preflight.
 use super::PreparedPlan;
 use crate::{Epoch, Error};
-use std::sync::atomic::{AtomicU32, Ordering};
+use alloc::boxed::Box;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 fn reserve_scope(counter: &AtomicU32) -> Result<u32, Error> {
@@ -114,7 +115,7 @@ impl GraphStages {
             })
             .collect();
         for slot in &mut slots {
-            std::hint::black_box(slot).validated_epoch = Epoch(0);
+            core::hint::black_box(slot).validated_epoch = Epoch(0);
         }
         Ok(Self {
             scope,

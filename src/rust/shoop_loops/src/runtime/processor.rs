@@ -16,7 +16,7 @@ impl LoopNodes {
 }
 impl IntoIterator for LoopNodes {
     type Item = (NodeId, LoopNode);
-    type IntoIter = std::vec::IntoIter<(NodeId, LoopNode)>;
+    type IntoIter = alloc::vec::IntoIter<(NodeId, LoopNode)>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }

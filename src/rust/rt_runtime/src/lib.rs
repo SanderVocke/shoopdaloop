@@ -1,5 +1,8 @@
 //! Generic, bounded audio/MIDI processing primitives.
 //!
+//! This crate always uses `no_std` with `alloc`. Hosts supply allocation and panic
+//! handling; targets need pointer-width and 32-bit atomic operations.
+//!
 //! Preparation and final teardown belong outside rendering. Processing receives
 //! borrowed buffers and must not allocate, free, lock, wait, or perform I/O.
 //! Capacity and work-budget failures are explicit errors, not permission to grow.
@@ -23,7 +26,13 @@
 //! staged graph publication. Permits are not rollback, and copied IDs acquire no
 //! lease. These finite storage/work contracts do not certify callback deadlines.
 
+#![no_std]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

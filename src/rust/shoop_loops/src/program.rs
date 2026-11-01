@@ -1,7 +1,8 @@
 //! Control-side compilation of sparse, finite composite programs.
 
 use crate::{Error, Limits, LoopId};
-use std::collections::BTreeSet;
+use alloc::collections::BTreeSet;
+use alloc::{boxed::Box, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Mode {
@@ -131,7 +132,7 @@ impl<'a> IntoIterator for TargetTimelines<'a> {
 }
 #[derive(Clone)]
 pub struct TargetIter<'a> {
-    records: std::slice::Iter<'a, TargetRecord>,
+    records: core::slice::Iter<'a, TargetRecord>,
     segments: &'a [Segment],
 }
 impl<'a> Iterator for TargetIter<'a> {

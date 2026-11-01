@@ -10,7 +10,8 @@ use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
 };
 use crate::{Error, NodeId, PreparedConfig};
-use std::collections::BTreeSet;
+use alloc::collections::BTreeSet;
+use alloc::{vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PortType {
@@ -336,7 +337,7 @@ impl PreparedPlan {
         }
         let mut membership = vec![Membership::default(); limits.max_nodes];
         for slot in &mut membership {
-            *std::hint::black_box(slot) = Membership::default();
+            *core::hint::black_box(slot) = Membership::default();
         }
         for step in &descriptor.steps {
             if let Some(slot) = membership.get_mut(step.node.slot() as usize) {
@@ -390,10 +391,10 @@ impl PreparedPlan {
             connections: vec![edge; limits.max_edges],
         };
         for value in &mut descriptor.steps {
-            *std::hint::black_box(value) = step;
+            *core::hint::black_box(value) = step;
         }
         for value in &mut descriptor.connections {
-            *std::hint::black_box(value) = edge;
+            *core::hint::black_box(value) = edge;
         }
         descriptor.steps.clear();
         descriptor.connections.clear();
@@ -404,7 +405,7 @@ impl PreparedPlan {
         };
         let mut bindings = vec![binding; limits.max_nodes];
         for value in &mut bindings {
-            *std::hint::black_box(value) = binding;
+            *core::hint::black_box(value) = binding;
         }
         bindings.clear();
         Self::from_planned_descriptor(

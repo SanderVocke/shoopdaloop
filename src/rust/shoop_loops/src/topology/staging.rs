@@ -3,7 +3,7 @@
 //! epochs. The metadata codec is not a complete independent-instance host protocol.
 
 use super::*;
-use std::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 mod codec;
 mod validate;
 pub use codec::RECORD_BYTES;
@@ -66,7 +66,7 @@ fn next_scope(counter: &AtomicU32) -> Result<u32, Error> {
 fn initialized<T: Clone>(count: usize, value: T) -> Vec<T> {
     let mut data = vec![value.clone(); count];
     for item in &mut data {
-        *std::hint::black_box(item) = value.clone();
+        *core::hint::black_box(item) = value.clone();
     }
     data
 }

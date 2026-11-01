@@ -5,7 +5,8 @@ use crate::program::{
     TargetRecord,
 };
 use crate::{Error, Limits, LoopId, Mode, ProgramDescription};
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{vec, vec::Vec};
 
 pub mod staging;
 
@@ -155,7 +156,7 @@ impl<'a> Components<'a> {
         }
     }
 }
-impl std::ops::Index<usize> for Components<'_> {
+impl core::ops::Index<usize> for Components<'_> {
     type Output = [LoopId];
     fn index(&self, index: usize) -> &Self::Output {
         self.get(index).expect("component index")
@@ -170,7 +171,7 @@ impl<'a> IntoIterator for Components<'a> {
 }
 #[derive(Clone)]
 pub struct ComponentIter<'a> {
-    ranges: std::slice::Iter<'a, TableRange>,
+    ranges: core::slice::Iter<'a, TableRange>,
     members: &'a [LoopId],
 }
 impl<'a> Iterator for ComponentIter<'a> {

@@ -111,16 +111,16 @@ impl CapturePool {
             staging: vec![0; staging],
         };
         for slot in &mut pool.groups {
-            *std::hint::black_box(slot) = Slot {
+            *core::hint::black_box(slot) = Slot {
                 generation: 1,
                 value: None,
             };
         }
         for member in &mut pool.members {
-            *std::hint::black_box(member) = None;
+            *core::hint::black_box(member) = None;
         }
         for byte in &mut pool.staging {
-            *std::hint::black_box(byte) = 0;
+            *core::hint::black_box(byte) = 0;
         }
         Ok(pool)
     }

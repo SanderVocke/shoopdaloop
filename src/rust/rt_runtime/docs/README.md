@@ -1,5 +1,11 @@
 # rt_runtime
 
+This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
+It works in ordinary `std` applications using their allocator and panic handling.
+Bare-metal hosts must provide both and support pointer-width and 32-bit atomics.
+Preparation still allocates; rendering retains its prepared-storage contract.
+
+
 ## Part I — Process audio
 
 - [1. The runtime and the host](part-1-process-audio/01-the-runtime-and-the-host.md)

@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -43,6 +43,24 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  no_std_core:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    name: Bare-metal runtime and loops
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust stable with bare-metal target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+
+      - name: Build libraries without a standard library
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+
   rust_coverage:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)

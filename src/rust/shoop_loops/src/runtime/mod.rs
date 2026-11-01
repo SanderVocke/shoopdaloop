@@ -8,6 +8,7 @@ use crate::{
     audio, media, midi, Decision, LoopId, LoopKind, Mode, PreparedTopology, RequestId, Resolver,
     State, Timing, Transition,
 };
+use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
     executor::Command,
     graph::{Catalog, GraphDescription, PreparedPlan},
@@ -437,7 +438,7 @@ pub trait BoundaryObserver: Send {
         events: &[crate::Event],
         dropped: u64,
     );
-    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any(&self) -> &dyn core::any::Any;
 }
 struct NoObserver;
 impl BoundaryObserver for NoObserver {
@@ -449,7 +450,7 @@ impl BoundaryObserver for NoObserver {
         _dropped: u64,
     ) {
     }
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn core::any::Any {
         self
     }
 }
@@ -791,10 +792,10 @@ impl LoopPlanner {
         let mut views = vec![initial; slots].into_boxed_slice();
         let mut inputs = vec![MidiState::default(); slots].into_boxed_slice();
         for value in &mut views {
-            *std::hint::black_box(value) = initial;
+            *core::hint::black_box(value) = initial;
         }
         for value in &mut inputs {
-            *std::hint::black_box(value) = MidiState::default();
+            *core::hint::black_box(value) = MidiState::default();
         }
         let failure_capacity = slots
             .checked_mul(2)
