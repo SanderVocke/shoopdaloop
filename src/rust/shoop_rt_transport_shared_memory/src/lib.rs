@@ -177,6 +177,7 @@ impl Port {
         if let Some(stream) = &self.liveness {
             match stream.peek(&mut [0; 1]) {
                 Ok(0) => self.failure = Some(CarrierError::Disconnected),
+                Ok(_) => self.failure = Some(CarrierError::Codec(CodecError::Invalid)),
                 Err(error)
                     if error.kind() != io::ErrorKind::WouldBlock
                         && error.kind() != io::ErrorKind::Interrupted =>

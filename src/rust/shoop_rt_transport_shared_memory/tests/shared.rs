@@ -15,6 +15,36 @@ fn frame(seq: u64) -> [u8; MAX_RECORD_BYTES] {
     bytes[2..10].copy_from_slice(&seq.to_le_bytes());
     bytes
 }
+#[shoop_test(no_wasm = "native liveness stream")]
+fn unexpected_liveness_bytes_cannot_hide_peer_eof() {
+    use std::net::{Shutdown, TcpListener, TcpStream};
+    for trailing_bytes in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let stream = listener.accept().unwrap().0;
+        let mut port = Port::create(Descriptor::new([1, 1, 1]).unwrap(), Side::Client)
+            .unwrap()
+            .with_liveness(stream)
+            .unwrap();
+        if trailing_bytes {
+            peer.write_all(b"unexpected control traffic").unwrap();
+        }
+        peer.shutdown(Shutdown::Write).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while port.failure().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        let expected = if trailing_bytes {
+            CarrierError::Codec(shoop_rt_protocol::codec::CodecError::Invalid)
+        } else {
+            CarrierError::Disconnected
+        };
+        assert_eq!(port.failure(), Some(expected));
+        assert_eq!(port.post(&frame(0)), Err(expected));
+        assert!(port.take(&mut [0; MAX_RECORD_BYTES]).is_none());
+    }
+}
 fn receive(port: &mut Port) -> [u8; MAX_RECORD_BYTES] {
     let mut bytes = [0; MAX_RECORD_BYTES];
     let deadline = Instant::now() + Duration::from_secs(5);

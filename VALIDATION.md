@@ -923,3 +923,12 @@ targets the still-open integration branch. Existing workflows filtered PRs to
 `master`, so their PR filters now also include `feat/loop-execution-layer` to run
 required build/test, documentation and CodeQL checks on this PR. Push/deployment
 filters remain unchanged.
+
+
+A final disconnect audit found that unexpected bytes on the shared-memory
+liveness socket could remain unread and hide a later EOF. The liveness channel
+carries no post-start records, so any such data now causes terminal protocol
+failure. A regression test covers clean EOF and trailing data followed by EOF,
+including latched send/receive refusal. All seven shared-memory carrier tests and
+the warnings-denied carrier build pass; this native-only correction does not
+change the protocol, engine, portable transport, worklet or timing.
