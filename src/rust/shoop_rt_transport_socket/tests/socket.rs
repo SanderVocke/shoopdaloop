@@ -80,6 +80,24 @@ fn streams() -> (TcpStream, TcpStream) {
     let b = listener.accept().unwrap().0;
     (a, b)
 }
+#[shoop_test(no_wasm = "native socket authentication")]
+fn authentication_uses_the_remaining_launch_deadline() {
+    let listener = setup::Listener::bind().unwrap();
+    let address = listener.address().unwrap();
+    let token = *listener.token();
+    let server =
+        std::thread::spawn(move || listener.accept(Config::default(), Duration::from_secs(2)));
+    let mut peer = TcpStream::connect(address).unwrap();
+    std::thread::sleep(Duration::from_millis(250));
+    peer.write_all(&token).unwrap();
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut ack = [0];
+    let authenticated = peer.read_exact(&mut ack);
+    let accepted = server.join().unwrap();
+    assert!(accepted.is_ok(), "{authenticated:?}");
+    assert!(authenticated.is_ok());
+    assert_eq!(ack, [1]);
+}
 #[shoop_test(no_wasm = "native sockets")]
 fn fragmented_and_coalesced_records_and_eof_are_distinct_from_idle() {
     let (mut sender, receiver) = streams();

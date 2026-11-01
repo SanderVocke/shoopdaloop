@@ -32,9 +32,7 @@ impl Listener {
                     if !peer.ip().is_loopback() {
                         continue;
                     }
-                    let remaining = deadline
-                        .saturating_duration_since(Instant::now())
-                        .min(Duration::from_millis(100));
+                    let remaining = deadline.saturating_duration_since(Instant::now());
                     stream.set_read_timeout(Some(remaining.max(Duration::from_millis(1))))?;
                     stream.set_write_timeout(Some(remaining.max(Duration::from_millis(1))))?;
                     let mut token = [0; 32];

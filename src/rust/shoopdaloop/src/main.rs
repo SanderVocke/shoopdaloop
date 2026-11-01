@@ -6992,7 +6992,10 @@ mod tests {
         wait_for_snapshot(runtime, "sync recording", |snapshot| {
             first_loop(snapshot, sync.id).mode == LoopMode::Recording
         });
-        thread::sleep(Duration::from_millis(150));
+        wait_for_snapshot(runtime, "sync captured frames", |snapshot| {
+            let state = first_loop(snapshot, sync.id);
+            state.mode == LoopMode::Recording && state.length_frames >= 4_800
+        });
         loop_action(runtime, &sync, LoopAction::PlayClicked);
         let snapshot = wait_for_snapshot(runtime, "sync playback", |snapshot| {
             first_loop(snapshot, sync.id).mode == LoopMode::Playing

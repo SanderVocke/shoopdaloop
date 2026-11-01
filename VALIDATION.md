@@ -963,3 +963,23 @@ unintentional overlap with Miri; it is not claimed as a complete local pass.
 The complete Node suite subsequently passed in CI. Remaining heavy local checks
 run sequentially; the overlapping processes remained below the session RAM cap.
 Final source/evidence mapping and the manual Chrome check remain open.
+
+
+The following-head CI run `41262115536` exposed two timing assumptions. macOS
+caught a bootstrap listener reading the child authentication token with a 100 ms
+cap despite its 10 s launch deadline; the listener now uses the remaining launch
+deadline. A 250 ms delayed-token regression failed on the old implementation and
+passes with the fix; all seven socket tests pass. Windows caught the cooperative
+app test assuming a 150 ms wall-clock sleep guaranteed 4800 rendered frames.
+That test now waits for the same minimum confirmed recording length before
+requesting playback. Production render scheduling and transport latency policy
+are unchanged. All 16 focused subprocess, app workflow and fatal-UI tests, plus
+the warnings-denied app/process/socket build, pass after these corrections.
+
+The managed workspace went offline during engine Miri verification. Its files,
+compiled artifacts and logs survived recovery, but the interpreter process did
+not. Eight completed engine commands (nine passing executions) are retained;
+the interrupted render-fault case and two remaining structure cases are rerun as
+the unchanged runner's disjoint 9/11, 10/11 and 11/11 engine shards, each retaining
+its exact workload, seed and 900 s watchdog. This is not a claim of an uninterrupted
+whole-engine batch or whole-workspace Miri coverage.
