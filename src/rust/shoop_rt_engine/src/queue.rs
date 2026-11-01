@@ -159,6 +159,10 @@ impl ControlEndpoint {
                 || self.touched_loops.get(index).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::ContentBegin(_)
+            | Request::ContentWrite { .. }
+            | Request::ContentFinish { .. }
+            | Request::ContentRelease { .. } => false,
             Request::StripControl { strip: id, .. } | Request::InjectMidi { strip: id, .. } => {
                 strip(id.0.index, HARD)
             }
@@ -211,6 +215,10 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::ContentBegin(_)
+            | Request::ContentWrite { .. }
+            | Request::ContentFinish { .. }
+            | Request::ContentRelease { .. } => {}
             Request::StripControl { strip: id, .. }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }

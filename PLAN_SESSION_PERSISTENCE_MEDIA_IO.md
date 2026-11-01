@@ -2,7 +2,8 @@
 
 ## Status and delivery
 
-Implementation in progress; Stage 1's app transfer foundation is implemented.
+Implementation in progress; the app transfer foundation and engine content-upload
+foundation are implemented.
 Engine staging and public persistence workflows remain pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -208,6 +209,8 @@ not counted as test passes. Miri remains reserved for the final stage.
 
 ### Stage 2 — prepared RT capture and content/session activation
 
+- [x] Add prepared bounded audio/indexed-MIDI upload, short-chunk buffer reuse,
+  validation, cancellation/disconnect cleanup and explicit resource-budget refusals.
 - [ ] Inventory existing export/import/configuration primitives and integrate the
   smallest missing engine operations. Acquire immutable media and metadata at a
   certified cut; retain them independently of future clears/removals/recordings.
@@ -224,6 +227,21 @@ Verification: offline production-engine tests inspect full samples/events, timin
 opposite-media preservation and old exports after replacement. Fault-inject every
 fallible preparation/publication step, saturate independent pools, and heap-guard
 callback activation, cancellation and bounded reclamation.
+
+Upload milestone: RT protocol v2 advertises the actual prepared chunk limit and
+defines begin/write/finish/release. Eight reusable write buffers and indexed-MIDI
+initial-state owners return through reliable runtime completions. Uploaded sources
+remain inaudible. The production app capability set is unchanged. Imported MIDI
+initial-state preservation, coherent capture and content/session activation are
+still pending; this upload foundation currently initializes MIDI from default state.
+
+Validation: full native runtime/engine/protocol suites and adapter/carrier suites
+pass; heap-guarded upload cases cover uninterrupted existing audio, malformed MIDI,
+32 repeated release/cancel cycles, pipelined writes and 24 loss/reconnect cycles.
+Node/Wasm passes 194 runtime, 23 engine and 4 protocol tests. Warning-denying affected
+builds, formatting, test-attribute policy and whitespace checks pass. A pipelining
+fixture initially skipped the client's disconnect notification/credit reset; it now
+uses the real Goodbye path and preserves the eight simultaneous upload requests.
 
 ### Stage 3 — service-owned coherent session capture and exports
 

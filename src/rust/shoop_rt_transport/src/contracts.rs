@@ -9,6 +9,7 @@ use crate::client::*;
 use shoop_rt_protocol::*;
 
 const LIMITS: Limits = Limits {
+    content_chunk_bytes: 1024,
     strips: 4,
     loops: 16,
     strip_audio_channels: 2,

@@ -5,6 +5,7 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const LIMITS: Limits = Limits {
+    content_chunk_bytes: 1024,
     strips: 4,
     loops: 16,
     strip_audio_channels: 2,
@@ -35,6 +36,19 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::ContentBegin(ContentDescription {
+            id: 1,
+            midi: false,
+            frames: 64,
+            bytes: 512,
+        }),
+        Request::ContentWrite {
+            id: 1,
+            offset: 0,
+            data: ContentChunk::new(&[42; 1024]).unwrap(),
+        },
+        Request::ContentFinish { id: 1 },
+        Request::ContentRelease { id: 1 },
         Request::CreateStrip {
             strip: strip(1),
             shape: StripShape {

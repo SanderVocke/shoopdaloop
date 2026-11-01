@@ -20,6 +20,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod bulk;
 mod cells;
+mod content;
 mod description;
 mod endpoint;
 mod graph;
@@ -277,8 +278,8 @@ pub fn prepare(
             },
             node_pairs: NodePairSettings {
                 candidates: 1,
-                sources: 0,
-                source_packets_per_callback: 0,
+                sources: 2 * loops + 2,
+                source_packets_per_callback: 64,
             },
             observer: Some(Box::new(Observer(cells.clone()))),
         },
@@ -353,6 +354,10 @@ pub fn prepare(
         ],
     };
     let limits = Limits {
+        content_chunk_bytes: description
+            .page_bytes
+            .min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)
+            as u16,
         strips: strips as u32,
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
@@ -427,6 +432,7 @@ pub fn prepare(
         quiet_until: 0,
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
+        uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

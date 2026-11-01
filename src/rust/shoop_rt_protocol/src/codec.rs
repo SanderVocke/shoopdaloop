@@ -382,6 +382,28 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ContentBegin(description) => {
+                w.u8(15)?;
+                w.u64(description.id)?;
+                w.bool(description.midi)?;
+                w.u64(description.frames)?;
+                w.u64(description.bytes)
+            }
+            Self::ContentWrite { id, offset, data } => {
+                w.u8(16)?;
+                w.u64(id)?;
+                w.u64(offset)?;
+                w.u16(data.as_bytes().len() as u16)?;
+                w.bytes(data.as_bytes())
+            }
+            Self::ContentFinish { id } => {
+                w.u8(17)?;
+                w.u64(id)
+            }
+            Self::ContentRelease { id } => {
+                w.u8(18)?;
+                w.u64(id)
+            }
             Self::CreateStrip { strip, shape } => {
                 w.u8(0)?;
                 strip.put(w)?;
@@ -529,6 +551,24 @@ impl Wire for Request {
                 message: MidiMessage::get(r)?,
             },
             14 => Self::SetSmoothing { frames: r.u32()? },
+            15 => Self::ContentBegin(crate::ContentDescription {
+                id: r.u64()?,
+                midi: r.bool()?,
+                frames: r.u64()?,
+                bytes: r.u64()?,
+            }),
+            16 => {
+                let id = r.u64()?;
+                let offset = r.u64()?;
+                let length = usize::from(r.u16()?);
+                if length > crate::content::CONTENT_CHUNK_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                let data = crate::ContentChunk::new(r.bytes(length)?).ok_or(CodecError::Invalid)?;
+                Self::ContentWrite { id, offset, data }
+            }
+            17 => Self::ContentFinish { id: r.u64()? },
+            18 => Self::ContentRelease { id: r.u64()? },
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -591,6 +631,7 @@ impl Wire for HostPort {
 
 impl Wire for Limits {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u16(self.content_chunk_bytes)?;
         w.u32(self.strips)?;
         w.u32(self.loops)?;
         w.u8(self.strip_audio_channels)?;
@@ -606,6 +647,7 @@ impl Wire for Limits {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            content_chunk_bytes: r.u16()?,
             strips: r.u32()?,
             loops: r.u32()?,
             strip_audio_channels: r.u8()?,

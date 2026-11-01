@@ -154,6 +154,18 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ContentBegin(crate::ContentDescription),
+    ContentWrite {
+        id: u64,
+        offset: u64,
+        data: crate::ContentChunk,
+    },
+    ContentFinish {
+        id: u64,
+    },
+    ContentRelease {
+        id: u64,
+    },
     CreateStrip {
         strip: StripId,
         shape: StripShape,
@@ -292,6 +304,7 @@ impl Capabilities {
     pub const MIDI_INJECTION: Self = Self(1);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
+    pub const CONTENT_UPLOAD: Self = Self(1 << 3);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -304,6 +317,8 @@ impl Capabilities {
 /// Current capacities. They may change during a connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Limits {
+    /// Maximum content-upload bytes per request, limited by the prepared page size.
+    pub content_chunk_bytes: u16,
     pub strips: u32,
     pub loops: u32,
     pub strip_audio_channels: u8,
