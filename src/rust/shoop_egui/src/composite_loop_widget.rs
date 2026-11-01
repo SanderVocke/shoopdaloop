@@ -491,7 +491,8 @@ impl CompositeLoopWidget {
                             if event_rect.intersects(timeline_clip_rect) {
                                 let response = ui.interact(
                                     event_rect.intersect(timeline_clip_rect),
-                                    ui.id().with(("composite_event", event_key.instance_id)),
+                                    ui.scope_id()
+                                        .with(("composite_event", event_key.instance_id)),
                                     egui::Sense::click_and_drag(),
                                 );
                                 if response.clicked() {

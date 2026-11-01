@@ -2,6 +2,11 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
+    groups:
+      egui:
+        patterns:
+          - "eframe"
+          - "egui*"
     schedule:
       interval: weekly
   - package-ecosystem: github-actions
