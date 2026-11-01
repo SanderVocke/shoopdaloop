@@ -1,0 +1,41 @@
+[package]
+name = "shoop_host"
+version.workspace = true
+edition = "2021"
+description = "Independent native session service and RT engine composition"
+
+[lints]
+workspace = true
+
+[features]
+default = ["cpal"]
+cpal = ["shoop_rt_host_native/cpal"]
+testing = []
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+getrandom = "0.4"
+directories = { workspace = true }
+tracing = { workspace = true }
+shoop_app = { path = "../shoop_app", default-features = false }
+shoop_app_api = { path = "../shoop_app_api", features = ["serde"] }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_app_client = { path = "../shoop_app_client" }
+shoop_backend = { path = "../shoop_backend", default-features = false }
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
+shoop_transport = { path = "../shoop_transport" }
+shoop_transport_socket = { path = "../shoop_transport_socket" }
+shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
+
+[dev-dependencies]
+shoop_host = { path = ".", default-features = false, features = ["testing"] }
+tempfile = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["user", "process", "signal"] }

@@ -149,6 +149,11 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .saturating_sub(self.requests.outstanding() + self.mutation_completions.len())
     }
 
+    fn close_connection(&mut self) {
+        self.client.close();
+        self.lose("the service closed its engine connection".to_owned());
+    }
+
     fn cancel_media_reads(&mut self) {
         self.reads.clear();
     }

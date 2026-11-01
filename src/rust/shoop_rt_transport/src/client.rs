@@ -23,7 +23,7 @@ pub enum ClientError {
 }
 
 pub struct ProtocolClient<C> {
-    carrier: C,
+    carrier: Option<C>,
     state: ClientState,
     capabilities: Capabilities,
     limits: Option<Limits>,
@@ -36,7 +36,7 @@ pub struct ProtocolClient<C> {
 impl<C: Carrier> ProtocolClient<C> {
     pub fn new(carrier: C) -> Self {
         Self {
-            carrier,
+            carrier: Some(carrier),
             state: ClientState::Idle,
             capabilities: Capabilities::default(),
             limits: None,
@@ -48,10 +48,10 @@ impl<C: Carrier> ProtocolClient<C> {
     }
 
     pub fn into_carrier(self) -> C {
-        self.carrier
+        self.carrier.expect("carrier was closed")
     }
     pub fn carrier_mut(&mut self) -> &mut C {
-        &mut self.carrier
+        self.carrier.as_mut().expect("carrier was closed")
     }
     pub fn state(&self) -> ClientState {
         self.state
@@ -109,13 +109,21 @@ impl<C: Carrier> ProtocolClient<C> {
     }
 
     pub fn disconnect(&mut self) {
-        let _ = self.carrier.send(ClientMessage::Goodbye);
+        if let Some(carrier) = &mut self.carrier {
+            let _ = carrier.send(ClientMessage::Goodbye);
+        }
         self.state = ClientState::Disconnected;
+    }
+
+    /// Release the carrier and its endpoint after an explicit shutdown.
+    pub fn close(&mut self) {
+        self.disconnect();
+        self.carrier = None;
     }
 
     /// Receive one message, updating connection state and credits.
     pub fn poll(&mut self) -> Option<EngineMessage> {
-        let message = self.carrier.receive()?;
+        let message = self.carrier.as_mut()?.receive()?;
         match message {
             EngineMessage::Welcome {
                 version,
@@ -162,11 +170,15 @@ impl<C: Carrier> ProtocolClient<C> {
     }
 
     fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
-        self.carrier.send(message).map_err(|error| {
-            if error == CarrierError::Disconnected {
-                self.state = ClientState::Disconnected;
-            }
-            ClientError::Carrier(error)
-        })
+        self.carrier
+            .as_mut()
+            .ok_or(ClientError::NotConnected)?
+            .send(message)
+            .map_err(|error| {
+                if error == CarrierError::Disconnected {
+                    self.state = ClientState::Disconnected;
+                }
+                ClientError::Carrier(error)
+            })
     }
 }

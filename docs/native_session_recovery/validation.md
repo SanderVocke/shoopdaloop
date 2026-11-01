@@ -218,3 +218,50 @@ transitional and are replaced in Stages 4–6. Final native role packaging/recov
 required full suites, selected Miri, final-head CI and review remain Stage 7. No Miri
 has been run early. The earlier Stage 1 head's CI rerun is green; it does not validate
 these unpushed stage commits.
+
+
+## Stage 4 — independent native host (2026-11-01)
+
+`shoop_host` now owns the app service, persistent RT adapter and native engine. The
+UI attaches through the app protocol; the engine connection remains internal.
+Authenticated data and management listeners run bounded authentication workers,
+separate from the service pump. The sibling launcher uses independent process groups
+and null standard streams, verifies bounded host readiness, then exits without a
+supervisor or inherited lifetime pipe. A ready host survives UI spawn failure.
+
+Registry entries and credential files use owner-only Unix permissions and a Windows
+ACL adapter. Credentials are referenced by path and never sent in argv or logs.
+Discovery can list entries and prune only entries whose recorded process is gone
+and both loopback listeners refuse connections; PID is never attachment authority.
+Explicit endpoint/configuration and credential references are available to host-only
+startup. Data connection greetings verify host/session identity before attachment.
+Closing connections discard their transfer buffers and have bounded retirement.
+
+All app records use one ordered reliable lane. Semantic results remain discrete;
+queued full snapshots coalesce to the latest state. Media chunks can interleave with
+snapshot chunks, using separate bounded client assemblers; semantic state updates
+remain ordered after their snapshot boundary. This avoids bulk transfer starving
+control results without duplicating carrier machinery.
+
+Focused evidence:
+
+- Real socket subprocess tests kill the controlling UI during recording, reattach,
+  verify stable track/loop IDs and names, preserve recording/capture, read actual
+  nonzero recorded media, reject a stale owner's management shutdown, and close the
+  recovered host with confirmed MIDI reset and cleanup.
+- A launcher subprocess exits while its host/UI siblings continue. Later clients
+  recover the recording and close the host without original process handles.
+- Socket busy-owner, bad credential/version/identity, early authenticated disconnect,
+  startup refusal and UI spawn failure cases leave the correct host/session intact.
+- Shared-memory startup, a core rename, second-connection refusal and graceful host
+  exit pass. Shared-memory reattachment remains excluded.
+- Protected credential tests verify bounds, non-overwrite, Unix permissions and
+  symlink refusal. Windows ACL execution awaits Windows CI.
+- Seventeen portable service/client tests pass against the merged no_std stack.
+  Protocol/client/engine-transport suites pass; native and Wasm warning-denying builds
+  and four-target dependency audits pass. The higher-level host is audited separately
+  and has no production Lua/UI/legacy-engine dependency. Formatting, test-attribute
+  and closed tracing inventories pass. No early Miri run.
+
+This is development integration evidence. Packaged platform matrices, final-head CI,
+full retained-stack suites and final performance/fault stress remain Stage 7.

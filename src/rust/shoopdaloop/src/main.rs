@@ -1991,6 +1991,9 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
+        if let Some(path) = &args.host_file {
+            return Self::attach(settings, shoop_host::registry::HostEntry::read(path)?);
+        }
         #[cfg(feature = "native-fx")]
         let (carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
         #[cfg(feature = "native-fx")]
@@ -2128,6 +2131,44 @@ impl Runtime {
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
             _engine_host: engine_host,
+        })
+    }
+
+    fn attach(
+        settings: &shoop_settings::SettingsSnapshot,
+        entry: shoop_host::registry::HostEntry,
+    ) -> anyhow::Result<Self> {
+        #[cfg(feature = "native-fx")]
+        let (carla_ui_service, _) = CarlaMainThreadUiService::new();
+        let (startup_scripts, paths, warnings) = configured_startup_scripts(settings)?;
+        let runtime = ApplicationRuntime::attach(
+            entry,
+            application::ApplicationStartOptions {
+                startup_scripts,
+                startup_warnings: warnings,
+                ..Default::default()
+            },
+        )?;
+        let script_paths = associate_startup_script_paths(runtime.startup_script_ids(), paths);
+        let handle = runtime.handle();
+        let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
+        let (catalog_scan_tx, catalog_scan_rx) = std::sync::mpsc::channel();
+        Ok(Self {
+            _runtime: runtime,
+            handle,
+            #[cfg(feature = "native-fx")]
+            carla_ui_service,
+            script_paths,
+            pending_script_paths: Default::default(),
+            catalog_scan_generation: 1,
+            catalog_scan_tx,
+            catalog_scan_rx,
+            preview_player,
+            pending_preview: None,
+            preview_availability: std::cell::Cell::new(None),
+            applied_audio_settings_revision: settings.revision(),
+            applied_settings_revision: settings.revision(),
+            _engine_host: None,
         })
     }
 
@@ -3300,6 +3341,99 @@ fn create_app(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
+    use shoop_host::{
+        registry::{AppTransport, Registry},
+        serve::StartOptions,
+    };
+    if args.ui_only || args.host_file.is_some() {
+        return Ok(false);
+    }
+    let registry = args
+        .host_registry
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(Registry::default_path)?;
+    if args.list_hosts {
+        if !registry.exists() {
+            return Ok(true);
+        }
+        let registry = Registry::open(&registry)?;
+        registry.prune_stale()?;
+        for (path, entry) in registry.list()? {
+            println!("{}\t{}\t{}", entry.host.0, entry.name, path.display());
+        }
+        return Ok(true);
+    }
+    let executable = std::env::current_exe()?;
+    let companion = shoop_host::launch::companion_path(&executable)?;
+    if args.host_only {
+        let mut command = std::process::Command::new(companion);
+        command
+            .arg("--config")
+            .arg(args.host_config.as_ref().unwrap())
+            .arg("--registry")
+            .arg(registry);
+        if let Some(endpoint) = args.endpoint {
+            command.arg("--endpoint").arg(endpoint.to_string());
+        }
+        if let Some(credential) = &args.credential_file {
+            command.arg("--credential-file").arg(credential);
+        }
+        anyhow::ensure!(
+            command.status()?.success(),
+            "session host exited with an error"
+        );
+        return Ok(true);
+    }
+    let mut builder = SettingsRegistryBuilder::default();
+    register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
+    register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
+    shoop_egui::register_audio_backend_settings(&mut builder)?;
+    let settings = load_settings_manager(builder.finish(), args);
+    let settings = settings.active();
+    let backend = args
+        .audio_backend
+        .unwrap_or(shoop_egui::audio_backend_from_snapshot(&settings).map_err(anyhow::Error::msg)?);
+    let transport = args.selected_engine_transport(&settings, backend)?;
+    if transport == shoop_egui::EngineTransportKind::InProcess {
+        return Ok(false);
+    }
+    let config = shoop_host::config::HostConfig {
+        driver: shoop_egui::selected_audio_driver(&settings)
+            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+            .map_err(anyhow::Error::msg)?,
+        pools: shoop_egui::new_engine_pools_from_snapshot(&settings).map_err(anyhow::Error::msg)?,
+        master_auto_connect: shoop_egui::master_auto_connect(&settings)
+            .map_err(anyhow::Error::msg)?,
+        loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
+            .map_err(anyhow::Error::msg)?,
+        transport: if transport == shoop_egui::EngineTransportKind::Socket {
+            AppTransport::Socket
+        } else {
+            AppTransport::SharedMemory
+        },
+        ..Default::default()
+    };
+    let mut options = StartOptions::new(registry)?;
+    if let Some(endpoint) = args.endpoint {
+        options.endpoint = endpoint;
+    }
+    options.credential = args.credential_file.clone();
+    let original: Vec<_> = std::env::args_os().skip(1).collect();
+    shoop_host::launch::pair(&config, options, &companion, |path| {
+        let mut command = std::process::Command::new(&executable);
+        command
+            .args(&original)
+            .arg("--ui-only")
+            .arg("--host-file")
+            .arg(path);
+        command
+    })?;
+    Ok(true)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     #[cfg(feature = "native-fx")]
     match shoop_backend::run_carla_worker_if_requested(std::env::args_os()) {
@@ -3312,6 +3446,17 @@ fn main() {
     }
 
     let cli = AppArgs::parse();
+    if !cli.probe_engine_transport && !cli.probe_builtins && !cli.tracing_smoke_test {
+        match independent_roles(&cli) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("Session launch failed: {error:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     if cli.probe_engine_transport {
         let result = engine_backend::probe(cli.engine_transport.unwrap());
         match result {

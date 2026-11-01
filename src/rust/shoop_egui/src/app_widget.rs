@@ -714,28 +714,7 @@ const AUDIO_BACKEND_CHOICES: &[(&str, &str)] = &[
     ("new_engine", "New engine (core looping only)"),
 ];
 
-/// Capacities the new engine backend prepares at startup.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NewEnginePools {
-    /// Tracks, including the sync track.
-    pub tracks: u32,
-    /// Loop slots shared by all tracks.
-    pub loops: u32,
-    /// Audio channels per track direction.
-    pub channels: u32,
-    pub loop_memory_mb: u32,
-}
-
-impl Default for NewEnginePools {
-    fn default() -> Self {
-        Self {
-            tracks: 16,
-            loops: 128,
-            channels: 2,
-            loop_memory_mb: 256,
-        }
-    }
-}
+pub use shoop_app_api::NewEnginePools;
 
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,

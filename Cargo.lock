@@ -3061,6 +3061,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.13.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4792,6 +4804,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_host"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "directories",
+ "getrandom 0.4.3",
+ "nix",
+ "serde",
+ "serde_json",
+ "shoop_app",
+ "shoop_app_api",
+ "shoop_app_client",
+ "shoop_app_protocol",
+ "shoop_backend",
+ "shoop_host",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_host_native",
+ "shoop_transport",
+ "shoop_transport_shared_memory",
+ "shoop_transport_socket",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "shoop_latency"
 version = "0.3.0"
 dependencies = [
@@ -5141,6 +5181,7 @@ dependencies = [
  "shoop_common",
  "shoop_egui",
  "shoop_engine",
+ "shoop_host",
  "shoop_plugin_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",

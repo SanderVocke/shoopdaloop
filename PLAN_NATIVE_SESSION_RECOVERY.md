@@ -4,11 +4,11 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stages 0–3 are implemented and committed: ownership/contract inventory, neutral
+Stages 0–4 are implemented: ownership/contract inventory, neutral
 backend contracts, shared carriers, bounded app protocol/client projection, the
-authoritative service, and UI/Lua clients with typed local composition. Stage 4 has
-uncommitted groundwork and is **paused at the user's request**. Independent hosts,
-recovery/exit UX, legacy retirement and final validation remain incomplete.
+authoritative service, UI/Lua clients with typed local composition, and independent
+native hosts with authenticated attachment. Recovery/exit UX, legacy retirement and
+final validation remain incomplete in Stages 5–7.
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -28,8 +28,7 @@ Current checkpoint (2026-11-01):
   [41284581244](https://github.com/SanderVocke/shoopdaloop/actions/runs/41284581244);
   it does not validate the current head or working tree. Final-head CI, review and
   A1–A11 acceptance remain outstanding. Miri has not been run early.
-- Do not resume implementation or push while this pause is in effect; await the
-  user's next instruction.
+- The user has resumed execution through completion, including push and final-head CI.
 
 Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,
@@ -372,32 +371,26 @@ Chromium worklet workflow. Check basic main-thread latency/queue bounds before m
 
 ### Stage 4 — independent native host and portable attachment (after 3)
 
-**In progress, paused; all completion items below remain unchecked.** The working
-tree contains the new `shoop_host` library skeleton, extracted native driver/pool
-configuration, protected registry/credential adapters, socket/shared-memory client
-connection scaffolding, portable management messages and authority checks, and an
-explicit engine-connection close path. Some components passed focused native
-warning-denying builds before the `no_std` merge; the working tree has not completed
-Stage 4 integration validation.
+The independent `shoop_host` executable owns the service, adapter and native engine.
+The external-mode launcher starts independent host/UI siblings and exits after
+bounded authenticated host readiness. Explicit host-only, UI-only and host listing
+roles use protected registry/credential references; socket clients can replace a
+lost UI without rebuilding the adapter. Shared-memory startup uses the common
+carrier and deliberately refuses replacement after its one connection. Management
+requests preserve the last owner's generation fence after data loss. Old engine-only
+probe/reference paths and package wiring are retired in Stage 6; final platform
+package validation remains Stage 7.
 
-There is no new host executable/service loop, host-only/UI-only role wiring,
-authentication worker, sibling launcher, or completed external recovery workflow
-yet. The production external path still uses the UI-owned engine supervisor. Next,
-when the user resumes work, finish those connections and run the socket/subprocess,
-management-fencing, startup/rollback and shared-memory checks below. Update the
-boundary/tracing inventories and validate the restored work against the merged
-`no_std` stack before marking this stage complete.
-
-- [ ] Replace `shoop_rt_host_process` composition with `shoop_host`, owning app
+- [x] Replace `shoop_rt_host_process` composition with `shoop_host`, owning app
   service + RT adapter + native engine host. Move launch duties to the launcher;
   eliminate UI-owned child/supervisor destruction and inherited control pipes.
-- [ ] Add host-only/UI-only roles and explicit endpoint/config/credential-reference
+- [x] Add host-only/UI-only roles and explicit endpoint/config/credential-reference
   arguments. IPC now carries app protocol; the host's RT connection remains internal.
   Preserve shared-memory delivery using common carriers, without adding recovery to it.
-- [ ] Add the portable attachment/lease lifecycle and platform discovery/authentication
+- [x] Add the portable attachment/lease lifecycle and platform discovery/authentication
   adapters. Retain session state across socket connection replacement, clean up stale
   entries, and enforce version/host/session identity checks.
-- [ ] Implement combined sibling launch, readiness/rollback, and independent lifetimes
+- [x] Implement combined sibling launch, readiness/rollback, and independent lifetimes
   across native platforms. Remove control dependency on launcher stdout or process handles.
 
 **Verify:** focused real socket/subprocess tests for host-first/UI-only and combined

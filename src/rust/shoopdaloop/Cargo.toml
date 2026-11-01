@@ -10,7 +10,7 @@ no-default-features = true
 
 [features]
 default = ["native-fx", "cpal"]
-cpal = ["shoop_backend/cpal", "dep:rodio", "shoop_rt_host_native/cpal", "shoop_rt_host_process/cpal"]
+cpal = ["shoop_backend/cpal", "dep:rodio", "shoop_rt_host_native/cpal", "shoop_rt_host_process/cpal", "shoop_host/cpal"]
 native-fx = ["shoop_backend/native-fx"]
 carla-system-tests = ["native-fx", "shoop_engine/carla-system-tests"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
@@ -34,6 +34,7 @@ tracing = { workspace = true }
 ehttp = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_host = { path = "../shoop_host", default-features = false }
 shoop_common = { path = "../shoop_common" }
 shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
 shoop_rt_backend = { path = "../shoop_rt_backend" }

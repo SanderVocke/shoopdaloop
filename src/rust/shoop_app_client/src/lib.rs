@@ -458,6 +458,9 @@ impl Client {
             return Err(Error::Protocol);
         }
         match message {
+            WireMessage::CarrierReady { .. }
+            | WireMessage::ManagementRequest(_)
+            | WireMessage::ManagementReply(_) => Err(Error::Protocol),
             WireMessage::MediaBegin {
                 authority,
                 transfer,

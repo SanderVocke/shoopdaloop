@@ -1138,6 +1138,7 @@ pub trait Backend {
     }
     /// Discard client-owned bulk reads without canceling session mutations.
     fn cancel_media_reads(&mut self) {}
+    fn close_connection(&mut self) {}
 
     fn supports_audio_preview(&self) -> bool {
         false

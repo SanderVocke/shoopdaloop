@@ -65,6 +65,9 @@ impl Port {
     pub fn stream(&self) -> &TcpStream {
         &self.stream
     }
+    pub fn outgoing_empty(&self) -> bool {
+        self.active.is_none() && self.queues.iter().all(VecDeque::is_empty)
+    }
     pub fn close(&mut self) {
         let _ = self.stream.shutdown(Shutdown::Both);
         self.failure = Some(CarrierError::Disconnected);

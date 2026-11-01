@@ -3653,3 +3653,27 @@ impl ControlOperation {
         }
     }
 }
+
+/// Capacities the new engine backend prepares at startup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct NewEnginePools {
+    /// Tracks, including the sync track.
+    pub tracks: u32,
+    /// Loop slots shared by all tracks.
+    pub loops: u32,
+    /// Audio channels per track direction.
+    pub channels: u32,
+    pub loop_memory_mb: u32,
+}
+
+impl Default for NewEnginePools {
+    fn default() -> Self {
+        Self {
+            tracks: 16,
+            loops: 128,
+            channels: 2,
+            loop_memory_mb: 256,
+        }
+    }
+}

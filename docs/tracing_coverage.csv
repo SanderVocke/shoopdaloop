@@ -304,3 +304,13 @@ src/rust/shoop_app/src/service/media.rs,app_session,instrumented_indirect,Client
 src/rust/shoop_app_client/src/runtime.rs,application_ui_and_control,instrumented_direct,Cooperative UI and Lua client tick boundary.
 src/rust/shoop_app_protocol/src/stream.rs,app_session,excluded,Incremental bounded wire record construction; sender owns delivery tracing.
 src/rust/shoopdaloop/src/application.rs,application_ui_and_control,instrumented_indirect,Composition schedules the traced service and client turns.
+src/rust/shoop_app/src/service/management.rs,app_session,instrumented_indirect,Management operations use the authoritative service admission and shutdown boundaries.
+src/rust/shoop_host/src/lib.rs,app_session,excluded,Native composition exports.
+src/rust/shoop_host/src/main.rs,app_session,instrumented_indirect,CLI configuration enters the traced host session boundary.
+src/rust/shoop_host/src/config.rs,app_session,excluded,Bounded host configuration validation.
+src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
+src/rust/shoop_host/src/registry.rs,app_session,excluded,Protected registry metadata and identity helpers; callers own lifecycle tracing.
+src/rust/shoop_host/src/engine.rs,app_session,instrumented_indirect,Native configuration maps settings inside traced engine startup.
+src/rust/shoop_host/src/serve.rs,app_session,instrumented_direct,Independent host session lifecycle boundary.
+src/rust/shoop_host/src/connection.rs,app_session,instrumented_indirect,Connection delivery executes under client and host session boundaries.
+src/rust/shoop_host/src/launch.rs,app_session,excluded,Bounded sibling process launch and readiness orchestration.

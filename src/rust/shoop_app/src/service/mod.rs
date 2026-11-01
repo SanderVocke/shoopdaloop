@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+mod management;
 mod media;
 mod projection;
 
@@ -112,6 +113,8 @@ pub struct Service {
     revision: Revision,
     generation: u64,
     lease: Option<Lease>,
+    last_authority: Option<Authority>,
+    engine_closed: bool,
     actors: BTreeMap<ClientId, u64>,
     updates: VecDeque<ServiceMessage>,
     pending: BTreeMap<OperationId, Pending>,
@@ -156,6 +159,8 @@ impl Service {
             revision: Revision(1),
             generation: 0,
             lease: None,
+            last_authority: None,
+            engine_closed: false,
             actors: BTreeMap::new(),
             updates: VecDeque::new(),
             pending: BTreeMap::new(),
@@ -208,6 +213,8 @@ impl Service {
 
     pub fn is_ready(&self) -> bool {
         !self.closed
+            && self.shutdown.is_none()
+            && !self.engine_closed
             && self.released_notes.is_empty()
             && self.init_error.is_none()
             && self.revision.0 != u64::MAX
@@ -289,6 +296,7 @@ impl Service {
                     generation: ConnectionGeneration(self.generation),
                 };
                 self.updates.clear();
+                self.last_authority = Some(authority);
                 self.lease = Some(Lease {
                     connection,
                     authority,
@@ -375,10 +383,9 @@ impl Service {
         if self.lease.is_none() {
             return;
         }
-        if matches!(message, ServiceMessage::Snapshot { .. })
-            && matches!(self.updates.back(), Some(ServiceMessage::Snapshot { .. }))
-        {
-            self.updates.pop_back();
+        if matches!(message, ServiceMessage::Snapshot { .. }) {
+            self.updates
+                .retain(|update| !matches!(update, ServiceMessage::Snapshot { .. }));
         }
         if self.updates.len() == QUEUE_CAPACITY {
             if let Some(connection) = self.lease.as_ref().map(|lease| lease.connection) {
@@ -403,13 +410,22 @@ impl Service {
         command: Option<Command>,
     ) -> Result<(), Refusal> {
         let lease = self.lease.as_ref().ok_or(Refusal::StaleAuthority)?;
-        if id.client != lease.authority.client || id.sequence == 0 {
-            return Err(Refusal::Identity);
-        }
         if !lease.ready {
             return Err(Refusal::NotReady);
         }
-        let authority = lease.authority;
+        self.admit(lease.authority, id, expected, command)
+    }
+
+    fn admit(
+        &mut self,
+        authority: Authority,
+        id: OperationId,
+        expected: Option<Revision>,
+        command: Option<Command>,
+    ) -> Result<(), Refusal> {
+        if id.client != authority.client || id.sequence == 0 {
+            return Err(Refusal::Identity);
+        }
         if let Some(result) = self.results.iter().find(|result| result.id == id).cloned() {
             self.emit(ServiceMessage::Finished { authority, result });
             return Ok(());
@@ -438,7 +454,9 @@ impl Service {
             return Ok(());
         }
         *watermark = id.sequence;
-        let refused = if !self.is_ready() || self.shutdown.is_some() {
+        let refused = if (!self.is_ready() && !(command.is_none() && self.engine_closed))
+            || self.shutdown.is_some()
+        {
             Some((Refusal::NotReady, "the session is not accepting commands"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
             Some((Refusal::RevisionConflict, "the shared state changed"))
@@ -619,6 +637,19 @@ impl Service {
             }
             self.released_notes.pop_front();
         }
+        if self.engine_closed {
+            let done: Vec<_> = self
+                .pending
+                .values()
+                .filter(|pending| pending.first > pending.last && !self.shutdown_ready)
+                .map(|pending| pending.id)
+                .collect();
+            for id in done {
+                self.finish(id);
+            }
+            self.publish();
+            return;
+        }
         self.backend.advance(elapsed);
         match self.backend.poll() {
             Ok(mut observed) => {
@@ -760,6 +791,9 @@ impl Service {
         self.shutdown_ready = false;
         self.pending.remove(&id);
         self.closed = result.is_ok();
+        if self.engine_closed && !self.closed {
+            self.observed.status.driver_state = BackendDriverState::Failed;
+        }
         if self.closed {
             self.observed.status.driver_state = BackendDriverState::Stopped;
         }

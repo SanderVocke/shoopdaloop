@@ -13,6 +13,30 @@ pub enum SettingsTest {
 #[derive(Clone, Debug, Default, Parser)]
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
 pub struct AppArgs {
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
+    pub host_only: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub host_config: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub host_registry: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub endpoint: Option<std::net::SocketAddr>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub credential_file: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub list_hosts: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub host_file: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "host_file")]
+    pub ui_only: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
     pub session: Option<String>,

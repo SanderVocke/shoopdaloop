@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 use std::sync::Arc;
 
-pub const VERSION: u16 = 3;
+pub const VERSION: u16 = 5;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -420,6 +420,12 @@ pub enum WireMessage {
         transfer: TransferId,
         reason: Refusal,
     },
+    ManagementRequest(ManagementRequest),
+    ManagementReply(ManagementReply),
+    CarrierReady {
+        host: HostId,
+        session: SessionId,
+    },
 }
 
 impl WireMessage {
@@ -428,6 +434,9 @@ impl WireMessage {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::CarrierReady { host, session } => host.0 != 0 && session.0 != 0,
+            Self::ManagementRequest(request) => request.valid(),
+            Self::ManagementReply(reply) => reply.valid(),
             Self::MediaBegin {
                 authority,
                 transfer,
@@ -560,5 +569,83 @@ impl LoopMedia {
             }
         }
         bytes <= MAX_MEDIA_BYTES - 4096
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub enum ManagementRequest {
+    Status {
+        version: u16,
+        host: HostId,
+        session: SessionId,
+    },
+    Shutdown {
+        authority: Authority,
+        operation: OperationId,
+    },
+    Result {
+        authority: Authority,
+        operation: OperationId,
+    },
+}
+impl ManagementRequest {
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Status { host, session, .. } => host.0 != 0 && session.0 != 0,
+            Self::Shutdown {
+                authority,
+                operation,
+            }
+            | Self::Result {
+                authority,
+                operation,
+            } => {
+                authority.is_valid()
+                    && operation_valid(*operation)
+                    && operation.client == authority.client
+            }
+        }
+    }
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub enum ManagementReply {
+    Status {
+        version: u16,
+        host: HostId,
+        session: SessionId,
+        ready: bool,
+        busy: bool,
+        closed: bool,
+    },
+    Refused(Refusal),
+    Accepted {
+        authority: Authority,
+        operation: PendingOperation,
+    },
+    Finished {
+        authority: Authority,
+        result: OperationResult,
+    },
+}
+impl ManagementReply {
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Status { host, session, .. } => host.0 != 0 && session.0 != 0,
+            Self::Refused(_) => true,
+            Self::Accepted {
+                authority,
+                operation,
+            } => {
+                authority.is_valid()
+                    && operation_valid(operation.id)
+                    && operation.id.client == authority.client
+            }
+            Self::Finished { authority, result } => {
+                authority.is_valid()
+                    && operation_valid(result.id)
+                    && result.id.client == authority.client
+                    && result.outcome.bounded()
+            }
+        }
     }
 }

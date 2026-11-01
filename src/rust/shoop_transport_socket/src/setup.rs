@@ -12,10 +12,16 @@ pub struct Listener {
 }
 impl Listener {
     pub fn bind() -> io::Result<Self> {
-        let listener = TcpListener::bind(("127.0.0.1", 0))?;
-        listener.set_nonblocking(true)?;
         let mut token = [0; 32];
         getrandom::fill(&mut token).map_err(io::Error::other)?;
+        Self::bind_with("127.0.0.1:0".parse().expect("loopback address"), token)
+    }
+    pub fn bind_with(address: SocketAddr, token: Token) -> io::Result<Self> {
+        if !address.ip().is_loopback() {
+            return Err(io::Error::other("only loopback endpoints are supported"));
+        }
+        let listener = TcpListener::bind(address)?;
+        listener.set_nonblocking(true)?;
         Ok(Self { listener, token })
     }
     pub fn address(&self) -> io::Result<SocketAddr> {
@@ -53,7 +59,7 @@ impl Listener {
         }
         Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            "local engine connection timed out",
+            "local connection timed out",
         ))
     }
 }
@@ -74,7 +80,7 @@ pub fn connect(
     let mut ack = [0];
     stream.read_exact(&mut ack)?;
     if ack != [1] {
-        return Err(io::Error::other("local engine authentication failed"));
+        return Err(io::Error::other("local authentication failed"));
     }
     stream.set_read_timeout(None)?;
     stream.set_write_timeout(None)?;

@@ -649,20 +649,25 @@ fn a_slow_client_is_reclaimed_while_accepted_work_and_outcomes_remain_bounded() 
     }
     let pending = f.service.snapshot().pending.clone();
     assert_eq!(pending.len(), MAX_PENDING_OPERATIONS);
-    f.service
-        .handle(
-            ConnectionId(1),
-            ClientMessage::Submit {
-                authority,
-                operation: OperationId {
-                    client: authority.client,
-                    sequence: 1000,
+    for sequence in 1000..1000 + QUEUE_CAPACITY as u64 {
+        if !f.service.has_connection(ConnectionId(1)) {
+            break;
+        }
+        f.service
+            .handle(
+                ConnectionId(1),
+                ClientMessage::Submit {
+                    authority,
+                    operation: OperationId {
+                        client: authority.client,
+                        sequence,
+                    },
+                    expected_revision: None,
+                    command: Command::ResetXruns,
                 },
-                expected_revision: None,
-                command: Command::ResetXruns,
-            },
-        )
-        .unwrap();
+            )
+            .unwrap();
+    }
     assert!(!f.service.has_connection(ConnectionId(1)));
     assert_eq!(f.service.snapshot().pending.len(), MAX_PENDING_OPERATIONS);
     f.advance.set(true);

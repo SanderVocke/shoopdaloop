@@ -750,6 +750,9 @@ impl Service {
     }
 
     pub(super) fn prepare_shutdown(&mut self) -> CommandResult {
+        if self.engine_closed {
+            return Ok(Effect::Shutdown);
+        }
         if self
             .backend
             .capabilities()

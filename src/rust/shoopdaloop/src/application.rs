@@ -123,9 +123,11 @@ impl CooperativeApplicationRuntime {
             initialized: false,
         })
     }
+    #[cfg(any(target_arch = "wasm32", test))]
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
         self.client.dispatch(intent).map_err(Into::into)
     }
+    #[cfg(any(target_arch = "wasm32", test))]
     pub fn snapshot(&self) -> Arc<AppSnapshot> {
         self.client.snapshot()
     }
@@ -180,6 +182,63 @@ mod native {
         thread::{self, JoinHandle},
         time::Instant,
     };
+    struct RemoteDelivery(shoop_host::connection::Connection);
+    impl shoop_app_client::runtime::Delivery for RemoteDelivery {
+        fn send(
+            &mut self,
+            message: shoop_app_protocol::ClientMessage,
+        ) -> Result<(), shoop_app_client::Error> {
+            self.0.send(message)
+        }
+        fn poll(&mut self, client: &mut Client) -> Result<usize, shoop_app_client::Error> {
+            self.0.poll(client)
+        }
+    }
+    enum SessionRuntime {
+        Local(CooperativeApplicationRuntime),
+        Remote(ClientRuntime, FileOutputs),
+    }
+    impl SessionRuntime {
+        fn client(&self) -> &ClientRuntime {
+            match self {
+                Self::Local(runtime) => &runtime.client,
+                Self::Remote(runtime, _) => runtime,
+            }
+        }
+        fn client_mut(&mut self) -> &mut ClientRuntime {
+            match self {
+                Self::Local(runtime) => &mut runtime.client,
+                Self::Remote(runtime, _) => runtime,
+            }
+        }
+        fn set_outputs(&mut self, outputs: FileOutputs) {
+            match self {
+                Self::Local(runtime) => runtime.outputs = outputs,
+                Self::Remote(_, current) => *current = outputs,
+            }
+        }
+        fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
+            self.client_mut().dispatch(intent).map_err(Into::into)
+        }
+        fn snapshot(&self) -> Arc<AppSnapshot> {
+            self.client().snapshot()
+        }
+        fn tick(&mut self, elapsed: Duration) {
+            match self {
+                Self::Local(runtime) => runtime.tick(elapsed),
+                Self::Remote(runtime, outputs) => {
+                    runtime.tick(elapsed);
+                    let mut outputs = outputs.lock().unwrap_or_else(|error| error.into_inner());
+                    while outputs.len() < 8 {
+                        let Some(output) = runtime.take_file_output() else {
+                            break;
+                        };
+                        outputs.push_back(output);
+                    }
+                }
+            }
+        }
+    }
     enum Message {
         Intent(AppIntent),
         Detach,
@@ -229,6 +288,46 @@ mod native {
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
         ) -> Result<Self> {
+            Self::start_thread(move || {
+                CooperativeApplicationRuntime::start_with_options_and_midi(
+                    backend,
+                    options,
+                    Box::new(shoop_scripting::NativeMidiService::new()),
+                )
+                .map(SessionRuntime::Local)
+            })
+        }
+        pub fn attach(
+            entry: shoop_host::registry::HostEntry,
+            options: ApplicationStartOptions,
+        ) -> Result<Self> {
+            Self::start_thread(move || {
+                let connection = shoop_host::connection::connect(&entry, Duration::from_secs(3))?;
+                let client = Client::new(
+                    ClientId(shoop_host::registry::identity()?),
+                    entry.host,
+                    entry.session,
+                )
+                .map_err(|error| anyhow!("{error:?}"))?;
+                let mut runtime = ClientRuntime::new(
+                    client,
+                    Box::new(RemoteDelivery(connection)),
+                    Box::new(shoop_scripting::NativeMidiService::new()),
+                    Startup::IfFresh(options.startup_scripts),
+                )
+                .map_err(|error| anyhow!("{error:?}"))?;
+                for warning in entry.warnings {
+                    runtime.notify(warning);
+                }
+                Ok(SessionRuntime::Remote(
+                    runtime,
+                    Arc::new(Mutex::new(VecDeque::new())),
+                ))
+            })
+        }
+        fn start_thread(
+            make: impl FnOnce() -> Result<SessionRuntime> + Send + 'static,
+        ) -> Result<Self> {
             let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
@@ -241,11 +340,7 @@ mod native {
             let join = thread::Builder::new()
                 .name("shoop-application".into())
                 .spawn(move || {
-                    let result = CooperativeApplicationRuntime::start_with_options_and_midi(
-                        backend,
-                        options,
-                        Box::new(shoop_scripting::NativeMidiService::new()),
-                    );
+                    let result = make();
                     let mut runtime = match result {
                         Ok(runtime) => runtime,
                         Err(error) => {
@@ -253,7 +348,7 @@ mod native {
                             return;
                         }
                     };
-                    runtime.outputs = outputs;
+                    runtime.set_outputs(outputs);
                     let mut ready_tx = Some(ready_tx);
                     let mut last = Instant::now();
                     loop {
@@ -261,11 +356,11 @@ mod native {
                             match receiver.try_recv() {
                                 Ok(Message::Intent(intent)) => {
                                     if let Err(error) = runtime.dispatch(intent) {
-                                        runtime.client.notify(error.to_string());
+                                        runtime.client_mut().notify(error.to_string());
                                     }
                                 }
                                 Ok(Message::Detach) | Err(mpsc::TryRecvError::Disconnected) => {
-                                    let _ = runtime.client.detach();
+                                    let _ = runtime.client_mut().detach();
                                     return;
                                 }
                                 Err(mpsc::TryRecvError::Empty) => break,
@@ -276,7 +371,7 @@ mod native {
                         last = now;
                         *snapshot.write().unwrap_or_else(|error| error.into_inner()) =
                             runtime.snapshot();
-                        if runtime.client.state() == shoop_app_client::State::Lost {
+                        if runtime.client().state() == shoop_app_client::State::Lost {
                             if let Some(ready_tx) = ready_tx.take() {
                                 let _ = ready_tx.send(Err(
                                     "session initialization failed; see application diagnostics"
@@ -285,10 +380,10 @@ mod native {
                             }
                             return;
                         }
-                        if runtime.client.state() == shoop_app_client::State::Ready {
+                        if runtime.client().state() == shoop_app_client::State::Ready {
                             if let Some(ready_tx) = ready_tx.take() {
                                 if ready_tx
-                                    .send(Ok(runtime.client.startup_script_ids().to_vec()))
+                                    .send(Ok(runtime.client().startup_script_ids().to_vec()))
                                     .is_err()
                                 {
                                     return;

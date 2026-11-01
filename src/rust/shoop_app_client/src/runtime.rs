@@ -53,6 +53,7 @@ pub struct ApplicationAudioPreview {
 
 pub enum Startup {
     Fresh(Vec<StartupScript>),
+    IfFresh(Vec<StartupScript>),
     Recovered,
 }
 
@@ -203,6 +204,22 @@ impl Runtime {
         let control = self.control_snapshot();
         self.scripts.set_control_snapshot(control);
         if let Some(startup) = self.startup.take() {
+            let startup = match startup {
+                Startup::IfFresh(scripts)
+                    if self
+                        .client
+                        .authority()
+                        .is_some_and(|authority| authority.generation.0 == 1) =>
+                {
+                    Startup::Fresh(scripts)
+                }
+                Startup::IfFresh(_) => {
+                    self.recovered = true;
+                    self.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
+                    Startup::Recovered
+                }
+                startup => startup,
+            };
             if let Startup::Fresh(scripts) = startup {
                 for script in scripts {
                     let result = if let Some(identity) = script.identity {
