@@ -165,6 +165,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Err(unavailable(BackendCapability::SessionContentLoad));
         }
         self.check_session(session)?;
+        if session
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .flat_map(|content| &content.midi)
+            .map(|channel| channel.events.len())
+            .sum::<usize>()
+            > crate::prepared::MAX_MIDI_EVENTS
+        {
+            return Err(anyhow!("session exceeds the one-million-event MIDI budget"));
+        }
         if self.mirror.loops.values().any(|entry| {
             entry.view.mode == shoop_rt_protocol::LoopMode::Recording
                 || entry.view.next_mode == Some(shoop_rt_protocol::LoopMode::Recording)

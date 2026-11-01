@@ -99,11 +99,7 @@ impl Service {
                 for id in &loops {
                     self.loop_entry(*id)?;
                 }
-                let sync = if active {
-                    Some(self.sync_backend()?)
-                } else {
-                    None
-                };
+                let sync = if active { self.sync_backend() } else { None };
                 for id in loops {
                     self.backend
                         .set_loop_sync_source(self.loops[&id].backend, sync)?;

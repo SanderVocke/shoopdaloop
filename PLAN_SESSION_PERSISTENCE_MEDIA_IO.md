@@ -5,8 +5,8 @@
 Implementation in progress; the app transfer foundation and engine content-upload
 foundation are implemented, along with the underlying atomic full-owner replacement
 cut and deferred processor presets.
-Engine and adapter replacement, capture and per-loop content mechanisms are
-implemented; integrated service capture and public persistence workflows remain
+Engine, adapter and service core capture/replacement are implemented. Public file
+workflows, cooperative large-media conversion and final deployment gates remain
 pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -184,7 +184,7 @@ no implementation, runtime validation or new PR is claimed by this checkpoint.
 - [x] Define finite budgets for session metadata, audio/MIDI bytes/events, archive
   entries/expansion, transfer chunks, concurrent stages/captures and retained results.
   Include full-session media larger than 32 MiB and old-plus-new peak memory.
-- [ ] Add neutral capture/stage/commit/result contracts and bounded app/engine
+- [x] Add neutral capture/stage/commit/result contracts and bounded app/engine
   messages as needed. Fence by authority, session/target generation, transfer/job
   identity and expected revision; version codecs and reject incompatible peers.
 - [x] Define command ordering/capture barriers, chunk acknowledgments, cancellation,
@@ -360,11 +360,11 @@ Rust test policy and whitespace checks pass.
 
 ### Stage 3 — service-owned coherent session capture and exports
 
-- [ ] Add service capture jobs that settle prior admitted work, capture matching
+- [x] Add service capture jobs that settle prior admitted work, capture matching
   app/engine state, recheck recording policy and pin exact content revisions.
-- [ ] Capture the core document, live/document ID relationships and connection
-  intent without serializing client drafts or silently omitting unsupported data.
-- [ ] Expose bounded session/selected-loop media reads from retained capture handles,
+- [x] Capture core application metadata, live/source ID relationships and connection
+  intent, including channel annotations. Keep document codec conversion client-side.
+- [x] Expose bounded session/selected-loop media reads from retained capture handles,
   with fair progress beside controls/snapshots and independent cancellation/release.
 - [ ] Integrate client bundle assembly and existing session/audio/MIDI encoders
   off the service/RT path, retaining loss/quantization diagnostics and budget checks.
@@ -373,6 +373,36 @@ Verification: production service/adapter capture compared with reference documen
 mixed audio/MIDI/empty/sync cases, changes during transfer, capture while playing,
 recording refusal, selection changes, cancellation and lost UI. Round-trip encoded
 bytes through `shoop_session`; prove capture completion is not file-output success.
+
+Service-core milestone: one owned job covers upload, preparation, immutable capture,
+retained reads and accepted commit. A capture waits for prior admitted work, freezes
+its application cut and acquires unchanged media while safe controls continue.
+Media-changing work refuses until acquisition completes; view requests defer and
+view cancellation cannot cancel the capture. A selected-loop capture uses a backend
+subset and can finish while another loop records. Committed loads/imports survive
+UI loss and reconcile by operation ID without replay. Complete publication installs
+fresh app mappings and advances the epoch; fixed global/Master commands are fenced
+too. New Session uses the same transaction, and an empty loaded session remains
+usable. Sync-source lookup follows current objects rather than historical IDs.
+
+Canonical import storage now has an aggregate 256 MiB/one-million-event ceiling;
+derived read caches are reclaimable. Media views retain original imported samples,
+offsets and event positions, while render upload uses normalized streams. The
+adapter pipelines eight bounded writes and terminates engine-loss jobs with an
+explicit unknown-outcome error. Large-media wire assembly, validation and backend
+data copying still need cooperative progression before final responsiveness gates.
+
+The dependency checker requires service/protocol/client layers to stay independent
+of file codecs. Neutral application images preserve that boundary; `shoop_session`
+document conversion and native/browser file output belong in the frontend provider.
+Public I/O capabilities stay masked until that complete route is implemented.
+
+Service-core validation: all 27 service and 27 native adapter tests pass; Node/Wasm
+passes all 27 service and 26 portable adapter tests. The expanded deferred-view
+resume assertion also passes natively and in Node. Warning-denying affected builds,
+production dependency boundaries, test-attribute policy, formatting and whitespace
+checks pass. This milestone does not claim file-format, UI, deployment or final
+workspace acceptance.
 
 ### Stage 4 — bounded standalone media import and replacement
 

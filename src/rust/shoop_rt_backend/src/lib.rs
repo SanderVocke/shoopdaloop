@@ -138,6 +138,7 @@ pub struct RtBackend<C, K> {
         shoop_backend::BackendLoopId,
         std::sync::Arc<shoop_backend::BackendLoopContent>,
     >,
+    canonical_imports: std::collections::BTreeSet<shoop_backend::BackendLoopId>,
 }
 
 pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
@@ -174,6 +175,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             replacement: None,
             next_persistence: 1,
             canonical_content: Default::default(),
+            canonical_imports: Default::default(),
         })
     }
 
@@ -392,7 +394,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.requests.clear();
         self.reads.clear();
         if let Some(replacement) = &mut self.replacement {
-            replacement.job.fail(reason);
+            replacement.job.disconnected(reason);
         }
         self.mirror.connection_revision += 1;
     }

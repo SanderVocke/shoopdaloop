@@ -329,3 +329,76 @@ fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_st
         [0.5; 16]
     );
 }
+
+#[shoop_test]
+fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_metadata() {
+    let (mut backend, track, mut session) = fixture();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 4;
+    content.audio[0].samples = vec![0.25; 6];
+    content.audio[0].start_offset = 1;
+    content.midi[0].length = 8;
+    content.midi[0].events = vec![BackendMidiEvent {
+        time: 5,
+        data: vec![0x90, 60, 100],
+    }];
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let selected = mapping.loops[&track.loops[0].raw()];
+    let other = backend
+        .add_loop_to_track(mapping.tracks[&track.track_id.raw()].track_id)
+        .unwrap();
+    backend
+        .transition_loop(other, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    let content = (0..500)
+        .find_map(
+            |_| match backend.capture_loop_content_async(selected).unwrap() {
+                BackendAsyncResult::Ready(content) => Some(content),
+                BackendAsyncResult::Pending(_) => {
+                    backend.clock_mut().render(1);
+                    None
+                }
+            },
+        )
+        .expect("selected capture completion");
+    assert_eq!(content.audio[0].samples, [0.25; 6]);
+    let audio = backend
+        .loop_audio_data_with_metadata(selected)
+        .unwrap()
+        .unwrap();
+    assert_eq!(audio.channels[0].samples.as_ref(), [0.25; 6]);
+    assert_eq!(audio.channels[0].start_offset, 1);
+    let chunk = backend.loop_audio_data_chunk(selected, 0, 1, 2).unwrap();
+    assert_eq!(chunk.start_offset, 1);
+    assert_eq!(chunk.total_samples, 6);
+    assert_eq!(
+        backend.loop_midi_data(selected).unwrap().unwrap().channels[0].events[0].time,
+        5
+    );
+    assert_eq!(
+        backend.poll().unwrap().loops[&other].mode,
+        BackendLoopMode::Recording
+    );
+    assert!(backend
+        .capture_session()
+        .unwrap_err()
+        .to_string()
+        .contains("recording"));
+}
+#[shoop_test]
+fn engine_loss_finishes_a_pending_persistence_job_with_an_honest_unknown_outcome() {
+    let (mut backend, _, mut session) = fixture();
+    session.tracks[0].loops[0].length = 128;
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 128];
+    assert!(matches!(
+        backend.replace_session_async(&session).unwrap(),
+        BackendAsyncResult::Pending(_)
+    ));
+    backend.disconnect();
+    assert!(backend
+        .replace_session_async(&session)
+        .unwrap_err()
+        .to_string()
+        .contains("unknown"));
+}

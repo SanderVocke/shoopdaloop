@@ -7,9 +7,7 @@ type CommandResult = std::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
-            Command::CommitPersistence(_) => Err(CommandError::unsupported(
-                BackendCapability::SessionContentLoad,
-            )),
+            Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {
                 if self.loops.len() == MAX_LOOPS {
@@ -30,8 +28,8 @@ impl Service {
                 self.active_effect = Effect::LoopCreated(track, id);
                 self.tracks.get_mut(&track).unwrap().loops.push(id);
                 if self.global.sync {
-                    let source = self.sync_backend()?;
-                    self.backend.set_loop_sync_source(created, Some(source))?;
+                    let source = self.sync_backend();
+                    self.backend.set_loop_sync_source(created, source)?;
                 }
                 Ok(Effect::LoopCreated(track, id))
             }
@@ -157,39 +155,7 @@ impl Service {
                 Ok(Effect::None)
             }
             Command::Control(operation) => self.control_operation(operation),
-            Command::NewSession => {
-                if self.pending.len() != 1 {
-                    return Err(CommandError::invalid(
-                        "wait for admitted operations before resetting the session",
-                    ));
-                }
-                self.media_pending = None;
-                self.media_loop = None;
-                self.backend.cancel_media_reads();
-                self.prepare_shutdown()?;
-                self.backend.clear_loop(self.sync_backend()?)?;
-                let tracks: Vec<_> = self
-                    .track_order
-                    .iter()
-                    .filter(|id| !self.tracks[id].view.is_sync)
-                    .copied()
-                    .collect();
-                self.active_effect = Effect::SessionReset(tracks.clone());
-                for id in &tracks {
-                    self.backend.remove_track(self.tracks[id].backend)?;
-                }
-                self.global = GlobalControlState::default();
-                self.tracks
-                    .get_mut(&TrackId::from_raw(1))
-                    .unwrap()
-                    .view
-                    .name = "Sync".into();
-                let view = &mut self.loops.get_mut(&LoopId::from_raw(1)).unwrap().view;
-                view.name = "Sync".into();
-                view.selected = false;
-                view.targeted = false;
-                Ok(Effect::SessionReset(tracks))
-            }
+            Command::NewSession => self.new_session_image(),
             Command::ResetXruns => {
                 self.xruns = 0;
                 self.observed.status.xruns = 0;
@@ -212,8 +178,14 @@ impl Service {
         self.track(entry.track)?;
         Ok(entry)
     }
-    fn sync_backend(&self) -> std::result::Result<BackendLoopId, CommandError> {
-        Ok(self.loop_entry(LoopId::from_raw(1))?.backend)
+    fn sync_backend(&self) -> Option<BackendLoopId> {
+        self.track_order
+            .iter()
+            .filter_map(|id| self.tracks.get(id))
+            .find(|track| track.view.is_sync)
+            .and_then(|track| track.loops.first())
+            .and_then(|id| self.loops.get(id))
+            .map(|entry| entry.backend)
     }
 
     fn add_track(&mut self, spec: TrackSpec) -> CommandResult {
@@ -272,10 +244,10 @@ impl Service {
         let (id, loops) = self.insert_track(created, spec.name, audio_channels, midi, false)?;
         self.active_effect = Effect::TrackCreated(id, loops.clone());
         if self.global.sync {
-            let source = self.sync_backend()?;
+            let source = self.sync_backend();
             for loop_id in &loops {
                 self.backend
-                    .set_loop_sync_source(self.loops[loop_id].backend, Some(source))?;
+                    .set_loop_sync_source(self.loops[loop_id].backend, source)?;
             }
         }
         self.connect_track_inputs(id)?;
@@ -512,7 +484,8 @@ impl Service {
         }
         let sync = self
             .loops
-            .get(&LoopId::from_raw(1))
+            .values()
+            .find(|entry| entry.view.sync)
             .map_or(0, |entry| entry.view.length_frames);
         let Some(observed) = self.observed.loops.get(&target.backend) else {
             return 0;
@@ -614,11 +587,7 @@ impl Service {
             }
             GlobalControlAction::SetPlayAfterRecord(value) => self.global.play_after_record = value,
             GlobalControlAction::SetSync(value) => {
-                let source = if value {
-                    Some(self.sync_backend()?)
-                } else {
-                    None
-                };
+                let source = if value { self.sync_backend() } else { None };
                 let targets: Vec<_> = self
                     .loops
                     .values()

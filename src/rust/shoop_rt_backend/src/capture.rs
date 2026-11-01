@@ -24,21 +24,57 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             total: Some(total),
         })
     }
-    pub(crate) fn capture_core(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+    pub(crate) fn capture_core(
+        &mut self,
+        only: Option<BackendLoopId>,
+    ) -> Result<BackendAsyncResult<BackendSessionData>> {
         self.pump();
         self.ready()?;
-        if !self.requests.is_empty() {
+        if only.is_some_and(|id| self.mirror.live_loop(id).is_none()) {
+            bail!("unknown capture loop");
+        }
+        if self
+            .requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+            .any(|pending| match pending.request {
+                shoop_rt_protocol::Request::CreateStrip { .. }
+                | shoop_rt_protocol::Request::RemoveStrip { .. }
+                | shoop_rt_protocol::Request::CreateLoop { .. }
+                | shoop_rt_protocol::Request::RemoveLoop { .. }
+                | shoop_rt_protocol::Request::LoopClear { .. }
+                | shoop_rt_protocol::Request::CancelBulk => true,
+                shoop_rt_protocol::Request::LoopTransition {
+                    loop_id,
+                    mode: LoopMode::Recording,
+                    ..
+                } => only.is_none_or(|id| self.mirror.loops[&id].slot == loop_id),
+                _ => false,
+            })
+        {
             return Ok(self.capture_pending(0, self.mirror.loops.len()));
         }
-        if self.mirror.loops.values().any(|entry| {
-            entry.view.mode == LoopMode::Recording
-                || entry.view.next_mode == Some(LoopMode::Recording)
+        if self.mirror.loops.iter().any(|(id, entry)| {
+            only.is_none_or(|target| target == *id)
+                && (entry.view.mode == LoopMode::Recording
+                    || entry.view.next_mode == Some(LoopMode::Recording))
         }) {
             bail!("stop recording and settle pending recording transitions before saving or exporting");
         }
         self.canonical_content
             .retain(|id, _| self.mirror.loops.contains_key(id));
-        let ids = self.mirror.loops.keys().copied().collect::<Vec<_>>();
+        if let Some(target) = only {
+            self.canonical_content
+                .retain(|id, _| self.canonical_imports.contains(id) || *id == target);
+        }
+        let ids = self
+            .mirror
+            .loops
+            .keys()
+            .copied()
+            .filter(|id| only.is_none_or(|target| *id == target))
+            .collect::<Vec<_>>();
         let mut bytes = 0u64;
         for (index, id) in ids.iter().copied().enumerate() {
             if !self.canonical_content.contains_key(&id) {
@@ -139,11 +175,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .tracks
             .iter_mut()
-            .filter(|(_, track)| track.confirmed && !track.removing)
+            .filter(|(_, track)| {
+                track.confirmed
+                    && !track.removing
+                    && only.is_none_or(|id| track.loops.contains(&id))
+            })
             .map(|(id, track)| {
                 let loops = track
                     .loops
                     .iter()
+                    .filter(|id| only.is_none_or(|target| **id == target))
                     .map(|id| {
                         let entry = &self.mirror.loops[id];
                         let mut content = (*self.canonical_content[id]).clone();

@@ -1415,6 +1415,21 @@ pub trait Backend {
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
         self.capture_session().map(BackendAsyncResult::Ready)
     }
+    fn capture_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<BackendAsyncResult<BackendLoopContent>> {
+        match self.capture_session_async()? {
+            BackendAsyncResult::Pending(progress) => Ok(BackendAsyncResult::Pending(progress)),
+            BackendAsyncResult::Ready(session) => session
+                .tracks
+                .into_iter()
+                .flat_map(|track| track.loops)
+                .find(|content| content.source_id == loop_id.raw())
+                .map(BackendAsyncResult::Ready)
+                .ok_or_else(|| anyhow!("capture omitted loop {loop_id:?}")),
+        }
+    }
     fn replace_session(
         &mut self,
         session: &BackendSessionData,

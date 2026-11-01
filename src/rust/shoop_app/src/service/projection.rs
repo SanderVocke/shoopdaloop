@@ -409,17 +409,6 @@ impl Service {
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
         match effect {
-            Effect::SessionReset(tracks) => {
-                for id in tracks {
-                    if self
-                        .tracks
-                        .get(id)
-                        .is_some_and(|track| !self.observed.tracks.contains_key(&track.backend))
-                    {
-                        self.forget_track(*id);
-                    }
-                }
-            }
             Effect::TrackRemoved(id) => {
                 if success {
                     self.forget_track(*id);

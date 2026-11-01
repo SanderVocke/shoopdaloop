@@ -119,6 +119,37 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if entry.view.mode == LoopMode::Recording {
             return Ok(None);
         }
+        if self.canonical_imports.contains(&loop_id) {
+            let (version, slot) = (entry.content, entry.slot);
+            if let Outcome::Done(data) = self.reads.audio(loop_id, version, slot, channels) {
+                return Ok(Some(data));
+            }
+            let content = &self.canonical_content[&loop_id];
+            if content
+                .audio
+                .iter()
+                .map(|channel| channel.samples.len() as u64 * 4)
+                .sum::<u64>()
+                > 32 * 1024 * 1024
+            {
+                return Err(anyhow!("audio view exceeds 32 MiB; use media export"));
+            }
+            let data = BackendAudioData {
+                channels: content
+                    .audio
+                    .iter()
+                    .map(|channel| shoop_backend::BackendAudioChannelData {
+                        samples: Arc::from(channel.samples.clone()),
+                        start_offset: channel.start_offset,
+                        capture_alignment_frames: channel.capture_alignment_frames,
+                        preplay: channel.preplay,
+                    })
+                    .collect(),
+            };
+            self.reads
+                .remember_audio(loop_id, version, slot, data.clone());
+            return Ok(Some(data));
+        }
         if entry.view.length == 0 {
             return Ok(Some(empty_audio(channels)));
         }
@@ -156,6 +187,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn cancel_media_reads(&mut self) {
         self.reads.clear();
         self.read_cancel_needed = true;
+        self.canonical_content
+            .retain(|id, _| self.canonical_imports.contains(id));
     }
 
     fn capabilities(&self) -> BackendCapabilities {
@@ -461,7 +494,18 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             } else {
                 Vec::new()
             },
-            ..Default::default()
+            start_offset: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.start_offset),
+            capture_alignment_frames: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.capture_alignment_frames),
+            preplay: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.preplay),
         })
     }
 
@@ -472,6 +516,40 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
         let midi = self.mirror.tracks[&entry.track].midi;
+        if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
+            let (version, slot) = (entry.content, entry.slot);
+            if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
+                return Ok(Some(data));
+            }
+            let content = &self.canonical_content[&loop_id];
+            let bytes = content
+                .midi
+                .iter()
+                .flat_map(|channel| &channel.events)
+                .map(|event| 12 + event.data.len() as u64)
+                .sum::<u64>();
+            if bytes > 32 * 1024 * 1024 {
+                return Err(anyhow!("MIDI view exceeds 32 MiB; use media export"));
+            }
+            let data = BackendMidiData {
+                channels: content
+                    .midi
+                    .iter()
+                    .map(|channel| shoop_backend::BackendMidiChannelData {
+                        content_revision: version,
+                        mode: channel.mode,
+                        length: channel.length,
+                        events: channel.events.clone(),
+                        start_offset: channel.start_offset,
+                        capture_alignment_frames: channel.capture_alignment_frames,
+                        preplay: channel.preplay,
+                    })
+                    .collect(),
+            };
+            self.reads
+                .remember_midi(loop_id, version, slot, data.clone());
+            return Ok(Some(data));
+        }
         if !midi || entry.view.length == 0 && entry.view.mode != LoopMode::Recording {
             return Ok(Some(empty_midi(entry.content, midi)));
         }
@@ -586,7 +664,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         for _ in 0..crate::MAX_WAITS {
-            if let BackendAsyncResult::Ready(capture) = self.capture_core()? {
+            if let BackendAsyncResult::Ready(capture) = self.capture_core(None)? {
                 return Ok(capture);
             }
             if !self.clock.wait() {
@@ -599,7 +677,22 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
-        self.capture_core()
+        self.capture_core(None)
+    }
+    fn capture_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<BackendAsyncResult<shoop_backend::BackendLoopContent>> {
+        match self.capture_core(Some(loop_id))? {
+            BackendAsyncResult::Pending(progress) => Ok(BackendAsyncResult::Pending(progress)),
+            BackendAsyncResult::Ready(session) => session
+                .tracks
+                .into_iter()
+                .flat_map(|track| track.loops)
+                .find(|content| content.source_id == loop_id.raw())
+                .map(BackendAsyncResult::Ready)
+                .ok_or_else(|| anyhow!("capture omitted target loop")),
+        }
     }
 
     fn replace_session(

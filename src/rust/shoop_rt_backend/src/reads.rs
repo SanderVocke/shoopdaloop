@@ -104,6 +104,28 @@ fn refusal_text(refusal: Refusal) -> String {
 }
 
 impl Reads {
+    pub fn remember_audio(
+        &mut self,
+        id: BackendLoopId,
+        version: u64,
+        slot: LoopSlotId,
+        data: BackendAudioData,
+    ) {
+        let mut read = Read::new(version, slot, data.channels.len());
+        read.outcome = Outcome::Done(data);
+        self.audio.insert(id, read);
+    }
+    pub fn remember_midi(
+        &mut self,
+        id: BackendLoopId,
+        version: u64,
+        slot: LoopSlotId,
+        data: BackendMidiData,
+    ) {
+        let mut read = Read::new(version, slot, 1);
+        read.outcome = Outcome::Done(data);
+        self.midi.insert(id, read);
+    }
     pub fn set_loop_channels(&mut self, channels: u8) {
         self.loop_channels = usize::from(channels).max(1);
     }

@@ -32,7 +32,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             bail!("unknown loop {loop_id:?}");
         }
         if !self.canonical_content.contains_key(&loop_id) {
-            if let BackendAsyncResult::Pending(progress) = self.capture_core()? {
+            if let BackendAsyncResult::Pending(progress) = self.capture_core(Some(loop_id))? {
                 return Ok(BackendAsyncResult::Pending(progress));
             }
         }
@@ -87,7 +87,38 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if let Some(length) = update.length {
             content.length = length;
         }
-        canonical_bytes(&content)?;
+        let size = canonical_bytes(&content)?;
+        let retained = self
+            .canonical_imports
+            .iter()
+            .filter(|id| **id != loop_id)
+            .try_fold(0u64, |size, id| {
+                size.checked_add(canonical_bytes(&self.canonical_content[id])?)
+                    .ok_or_else(|| anyhow!("retained media size overflow"))
+            })?;
+        if size > MAX_MEDIA_BYTES.saturating_sub(retained) {
+            bail!("retained canonical session media exceeds the 256 MiB budget");
+        }
+        let events = content
+            .midi
+            .iter()
+            .map(|channel| channel.events.len())
+            .sum::<usize>()
+            + self
+                .canonical_imports
+                .iter()
+                .filter(|id| **id != loop_id)
+                .map(|id| {
+                    self.canonical_content[id]
+                        .midi
+                        .iter()
+                        .map(|channel| channel.events.len())
+                        .sum::<usize>()
+                })
+                .sum::<usize>();
+        if events > crate::prepared::MAX_MIDI_EVENTS {
+            bail!("retained canonical MIDI exceeds the one-million-event budget");
+        }
         let content = Arc::new(content);
         let id = self.next_persistence;
         self.next_persistence = id

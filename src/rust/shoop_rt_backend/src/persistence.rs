@@ -1,4 +1,4 @@
-//! One acknowledged persistence request at a time, independent of mutation receipts.
+//! Acknowledged persistence steps and a bounded write pipeline, independent of mutation receipts.
 use crate::{prepared::Upload, requests::Purpose, EngineClock, RtBackend};
 use anyhow::{anyhow, bail, Result};
 use shoop_rt_protocol::{Outcome, Refusal, Request};
@@ -16,7 +16,7 @@ pub(crate) struct Job {
     pub finished: bool,
     pub committed: bool,
     pub completed: usize,
-    active: Option<Request>,
+    active: Vec<Request>,
     uploads: Vec<u64>,
     cleaning: bool,
     retry_after: Option<u64>,
@@ -32,7 +32,7 @@ impl Job {
             finished: false,
             committed: false,
             completed: 0,
-            active: None,
+            active: Vec::with_capacity(8),
             uploads,
             cleaning: false,
             retry_after: None,
@@ -42,6 +42,14 @@ impl Job {
     }
     pub fn fail(&mut self, message: String) {
         self.error.get_or_insert(message);
+    }
+    pub fn disconnected(&mut self, message: String) {
+        self.fail(format!(
+            "{message}; the last engine mutation outcome may be unknown"
+        ));
+        self.active.clear();
+        self.work.clear();
+        self.finished = true;
     }
     pub fn cancel(&mut self) -> Result<()> {
         if self.committed {
@@ -62,11 +70,13 @@ impl Job {
                 .push_back(Work::Request(Request::ContentRelease { id }));
         }
     }
-    pub fn answered(&mut self, outcome: Outcome, callbacks: u64) {
-        let Some(request) = self.active.take() else {
+    pub fn answered(&mut self, request: Request, outcome: Outcome, callbacks: u64) {
+        let Some(index) = self.active.iter().position(|active| *active == request) else {
             return;
         };
+        self.active.swap_remove(index);
         if self.retries < 1024
+            && !matches!(request, Request::ContentWrite { .. })
             && (outcome == Outcome::Refused(Refusal::Overloaded)
                 || (outcome == Outcome::Refused(Refusal::Busy)
                     && matches!(request, Request::ReplacementBegin { .. })))
@@ -84,7 +94,11 @@ impl Job {
                 self.committed = false;
             }
             if !self.cleaning {
-                self.fail(format!("engine refused {request:?}: {refusal:?}"));
+                let operation = match request {
+                    Request::ContentWrite { .. } => "content chunk".to_owned(),
+                    _ => format!("{request:?}"),
+                };
+                self.fail(format!("engine refused {operation}: {refusal:?}"));
             }
         } else if matches!(
             request,
@@ -95,8 +109,34 @@ impl Job {
         self.completed += 1;
     }
     fn next(&mut self, chunk_bytes: usize, callbacks: u64) -> Result<Option<Request>> {
-        if self.finished || self.active.is_some() {
+        if self.finished {
             return Ok(None);
+        }
+        if !self.active.is_empty() {
+            if self.error.is_some() || self.active.len() == 8 {
+                return Ok(None);
+            }
+            let Some(Request::ContentWrite { id, .. }) = self.active.first() else {
+                return Ok(None);
+            };
+            let id = *id;
+            if !self.active.iter().all(|request| matches!(request, Request::ContentWrite { id: active, .. } if *active == id)) { return Ok(None); }
+            let Some(Work::Upload {
+                upload,
+                begun: true,
+            }) = self.work.front_mut()
+            else {
+                return Ok(None);
+            };
+            if upload.description.id != id {
+                return Ok(None);
+            }
+            let Some((offset, data)) = upload.chunk(chunk_bytes) else {
+                return Ok(None);
+            };
+            let request = Request::ContentWrite { id, offset, data };
+            self.active.push(request);
+            return Ok(Some(request));
         }
         if self.error.is_some() && !self.cleaning {
             self.cleanup();
@@ -141,7 +181,7 @@ impl Job {
         ) {
             self.committed = true;
         }
-        self.active = Some(request);
+        self.active.push(request);
         Ok(Some(request))
     }
 }
@@ -172,11 +212,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     entry.view.length = u64::from(content.length);
                 }
                 self.canonical_content.insert(id, content);
+                self.canonical_imports.insert(id);
                 self.reads.forget(id);
             }
             if let Some(image) = replacement.candidate.take() {
                 self.mirror = image;
                 self.canonical_content = std::mem::take(&mut replacement.content);
+                self.canonical_imports = self.canonical_content.keys().copied().collect();
                 self.connection_failures
                     .append(&mut replacement.connection_failures);
                 self.reads.clear();
