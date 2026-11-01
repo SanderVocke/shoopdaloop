@@ -561,6 +561,23 @@ rollback/success and no stale operations reaching newly loaded objects.
 
 ### Stage 6 — public native/browser/Lua workflows and parity accounting
 
+Platform-input milestone: a client owns one input-reader lease. Cancelled native
+reads stop between 64 KiB chunks and URL callbacks stop on their next part/timeout;
+the slot remains reserved until that reader exits. Browser URL cancellation wakes
+the pending future. Losing the UI cancels its lease. Runtime admission holds at
+most one raw file input, and file callbacks retry on queue backpressure. Native
+paths require regular files and check 512 MiB before reading. Browser URL readers
+now recognize the streaming API's normal end-of-stream completion, which differs
+from the callback API's explicit terminal chunk.
+
+Validation: all 70 native frontend tests pass, including real companion-process
+UI loss/recovery and sparse oversized-file/cancelled-read checks. Five production
+file cases and two input-lease/browser-URL cases pass in actual Chrome. The browser
+URL test verifies real Fetch EOF and cancellation wakeup. The browser target and
+warning-denying affected native build pass; test policy and whitespace checks pass.
+An initial companion test failed under restricted local networking and passes
+with local networking enabled, without changing its workload or deadlines.
+
 - [ ] Replace only the relevant refusals in `shoop_app_client/src/runtime.rs`;
   restore existing menus, file/URL loaders, exports, mapping/rate dialogs, progress,
   cancel and error handling through `shoopdaloop`'s platform adapters.

@@ -201,6 +201,18 @@ impl Runtime {
         if self.intents.len() == QUEUE_CAPACITY {
             return Err(Error::Full);
         }
+        if let Some(bytes) = file_input_bytes(&intent) {
+            if bytes > persistence::MAX_SESSION_FILE_BYTES as usize {
+                return Err(Error::Protocol);
+            }
+            if self
+                .intents
+                .iter()
+                .any(|(_, intent)| file_input_bytes(intent).is_some())
+            {
+                return Err(Error::Full);
+            }
+        }
         let epoch = self
             .client
             .snapshot()
@@ -1222,5 +1234,15 @@ impl Runtime {
         self.scripts.advance_timers(elapsed);
         self.scripts.advance_midi(elapsed);
         self.previous = current;
+    }
+}
+
+fn file_input_bytes(intent: &AppIntent) -> Option<usize> {
+    match intent {
+        AppIntent::LoadSessionBytes { bytes, .. }
+        | AppIntent::ImportLoopAudioBytes { bytes, .. }
+        | AppIntent::ImportLoopMidiBytes { bytes, .. }
+        | AppIntent::CompleteIoInput { bytes, .. } => Some(bytes.len()),
+        _ => None,
     }
 }

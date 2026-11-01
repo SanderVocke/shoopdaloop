@@ -63,6 +63,7 @@ mod native_preview;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_recovery_tests;
 mod persistence_io;
+mod platform_input;
 #[cfg(not(target_arch = "wasm32"))]
 mod recovery;
 #[cfg(not(target_arch = "wasm32"))]
@@ -426,6 +427,7 @@ struct UnifiedApp {
     session_url_error: Option<String>,
     session_url_prompt_open: bool,
     session_url_task: Option<shoop_egui::TaskId>,
+    file_input: platform_input::InputSlot,
     session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
@@ -574,6 +576,7 @@ impl UnifiedApp {
             session_url_error: None,
             session_url_prompt_open: false,
             session_url_task: None,
+            file_input: platform_input::InputSlot::default(),
             session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
             browser_settings_test: BrowserSettingsSelfTest::from_args(args),
@@ -693,7 +696,25 @@ impl UnifiedApp {
             self.handle_ui_intent(AppIntent::RequestLoadSessionSource { source: url });
         }
     }
-    fn fetch_session_url_for_task(&self, url: String, task_id: shoop_egui::TaskId) {
+    fn reserve_file_input(
+        &mut self,
+        task_id: shoop_egui::TaskId,
+    ) -> Option<platform_input::InputLease> {
+        match self.file_input.reserve(task_id) {
+            Ok(lease) => Some(lease),
+            Err(error) => {
+                self.handle_ui_intent(AppIntent::FailIoTask {
+                    task_id,
+                    message: error.to_string(),
+                });
+                None
+            }
+        }
+    }
+    fn fetch_session_url_for_task(&mut self, url: String, task_id: shoop_egui::TaskId) {
+        let Some(lease) = self.reserve_file_input(task_id) else {
+            return;
+        };
         let download = SessionDownload {
             task_id,
             name: session_source_name(&url),
@@ -704,6 +725,9 @@ impl UnifiedApp {
             let pending = self.pending_file_intent_tx.clone();
             let download = std::sync::Mutex::new(download);
             ehttp::streaming::fetch(ehttp::Request::get(&url), move |part| {
+                if lease.check().is_err() {
+                    return std::ops::ControlFlow::Break(());
+                }
                 match download
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -727,29 +751,20 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         {
             let pending = Rc::clone(&self.pending_file_intents);
+            let registration = lease.registration();
             wasm_bindgen_futures::spawn_local(async move {
-                use futures_util::StreamExt;
-                let mut download = download;
-                let result: anyhow::Result<()> = async {
-                    let request = ehttp::Request::get(&url);
-                    let stream = ehttp::streaming::fetch_async_streaming(&request)
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e))?;
-                    futures_util::pin_mut!(stream);
-                    while let Some(part) = stream.next().await {
-                        if let Some(intent) = download.part(part)? {
-                            pending.borrow_mut().push_back(intent);
-                            return Ok(());
-                        }
-                    }
-                    anyhow::bail!("session download ended without its completion marker")
-                }
+                let result = futures_util::future::Abortable::new(
+                    read_browser_session_url(&url, download, &lease),
+                    registration,
+                )
                 .await;
-                if let Err(error) = result {
-                    pending.borrow_mut().push_back(AppIntent::FailIoTask {
+                match result {
+                    Ok(Ok(intent)) => pending.borrow_mut().push_back(intent),
+                    Ok(Err(error)) => pending.borrow_mut().push_back(AppIntent::FailIoTask {
                         task_id,
                         message: error.to_string(),
-                    });
+                    }),
+                    Err(_) => {}
                 }
             });
         }
@@ -1450,11 +1465,21 @@ impl UnifiedApp {
         #[cfg(not(target_arch = "wasm32"))]
         let pending: Vec<_> = self.pending_file_intent_rx.try_iter().collect();
         for intent in pending {
-            if let Err(error) = self.runtime.dispatch(intent) {
-                tracing::error!(error = %error, "frontend.egui.file_intent_dispatch_failed");
+            match self.runtime.dispatch(intent.clone()) {
+                Ok(()) => {}
+                Err(application::DispatchError::Full) => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let _ = self.pending_file_intent_tx.send(intent);
+                    #[cfg(target_arch = "wasm32")]
+                    self.pending_file_intents.borrow_mut().push_back(intent);
+                }
+                Err(error) => {
+                    tracing::error!(error = %error, "frontend.egui.file_intent_dispatch_failed")
+                }
             }
         }
         let snapshot = self.runtime.snapshot();
+        self.file_input.reconcile(snapshot.io_task.as_ref());
         #[cfg(not(target_arch = "wasm32"))]
         self.reconcile_audio_settings(&snapshot);
         #[cfg(target_arch = "wasm32")]
@@ -1529,10 +1554,13 @@ impl UnifiedApp {
             self.fetch_session_url_for_task(source.clone(), request.task_id);
             return;
         }
+        let Some(lease) = self.reserve_file_input(request.task_id) else {
+            return;
+        };
         #[cfg(not(target_arch = "wasm32"))]
-        request_file_input(request, self.pending_file_intent_tx.clone());
+        request_file_input(request, self.pending_file_intent_tx.clone(), lease);
         #[cfg(target_arch = "wasm32")]
-        request_file_input(request, Rc::clone(&self.pending_file_intents));
+        request_file_input(request, Rc::clone(&self.pending_file_intents), lease);
     }
 }
 
@@ -1623,26 +1651,41 @@ fn session_source_name(source: &str) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_session_input(path: &Path) -> std::io::Result<Vec<u8>> {
+fn read_session_input(path: &Path, lease: &platform_input::InputLease) -> anyhow::Result<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path)?;
     let limit = shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES;
-    if file.metadata()?.len() > limit {
-        return Err(std::io::Error::other(
-            "file exceeds the 512 MiB input limit",
-        ));
+    let metadata = file.metadata()?;
+    anyhow::ensure!(metadata.is_file(), "session input must be a regular file");
+    if metadata.len() > limit {
+        anyhow::bail!("file exceeds the 512 MiB input limit");
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1).read_to_end(&mut bytes)?;
+    let mut reader = file.take(limit + 1);
+    let mut chunk = [0; 64 * 1024];
+    loop {
+        lease.check()?;
+        let n = reader.read(&mut chunk)?;
+        if n == 0 {
+            break;
+        }
+        anyhow::ensure!(
+            bytes.len() as u64 + n as u64 <= limit,
+            "file exceeds the 512 MiB input limit"
+        );
+        bytes.extend_from_slice(&chunk[..n]);
+    }
     if bytes.len() as u64 > limit {
-        return Err(std::io::Error::other(
-            "file exceeds the 512 MiB input limit",
-        ));
+        anyhow::bail!("file exceeds the 512 MiB input limit");
     }
     Ok(bytes)
 }
 #[cfg(not(target_arch = "wasm32"))]
-fn request_file_input(request: application::ApplicationFileRequest, sender: Sender<AppIntent>) {
+fn request_file_input(
+    request: application::ApplicationFileRequest,
+    sender: Sender<AppIntent>,
+    lease: platform_input::InputLease,
+) {
     use application::ApplicationFileRequestKind as Kind;
     let path = if let Some(source) = request.source {
         Some(std::path::PathBuf::from(source))
@@ -1662,7 +1705,7 @@ fn request_file_input(request: application::ApplicationFileRequest, sender: Send
         return;
     };
     std::thread::spawn(move || {
-        let intent = match read_session_input(&path) {
+        let intent = match read_session_input(&path, &lease) {
             Ok(bytes) => AppIntent::CompleteIoInput {
                 task_id: request.task_id,
                 name: file_name(&path),
@@ -1680,6 +1723,7 @@ fn request_file_input(request: application::ApplicationFileRequest, sender: Send
 fn request_file_input(
     request: application::ApplicationFileRequest,
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
+    lease: platform_input::InputLease,
 ) {
     use application::ApplicationFileRequestKind as Kind;
     wasm_bindgen_futures::spawn_local(async move {
@@ -1697,6 +1741,7 @@ fn request_file_input(
             .pick_file()
             .await;
             let Some(file) = file else { return Ok(None) };
+            lease.check()?;
             let size = file.inner().size() as u64;
             anyhow::ensure!(
                 size <= shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES,
@@ -1705,6 +1750,7 @@ fn request_file_input(
             let mut bytes = Vec::new();
             bytes.try_reserve_exact(size as usize)?;
             for offset in (0..size).step_by(64 * 1024) {
+                lease.check()?;
                 let blob = file
                     .inner()
                     .slice_with_f64_and_f64(offset as f64, (offset + 64 * 1024).min(size) as f64)
@@ -1736,6 +1782,35 @@ fn request_file_input(
         };
         pending.borrow_mut().push_back(intent);
     });
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_browser_session_url(
+    url: &str,
+    mut download: SessionDownload,
+    lease: &platform_input::InputLease,
+) -> anyhow::Result<AppIntent> {
+    use ehttp::streaming::Part;
+    use futures_util::StreamExt;
+    lease.check()?;
+    let request = ehttp::Request::get(url);
+    let stream = ehttp::streaming::fetch_async_streaming(&request)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    futures_util::pin_mut!(stream);
+    while let Some(part) = stream.next().await {
+        lease.check()?;
+        if matches!(&part, Ok(Part::Chunk(chunk)) if chunk.is_empty()) {
+            continue;
+        }
+        if let Some(intent) = download.part(part)? {
+            return Ok(intent);
+        }
+    }
+    lease.check()?;
+    download
+        .part(Ok(Part::Chunk(Vec::new())))?
+        .ok_or_else(|| anyhow::anyhow!("session download did not complete"))
 }
 
 struct SessionDownload {
@@ -5411,6 +5486,32 @@ mod tests {
             .join("missing")
             .join("session.shoop.tmp-8")
             .exists());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_file_input_enforces_cancellation_and_the_file_ceiling() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("input.shoop");
+        std::fs::write(&path, b"input").unwrap();
+        let mut slot = platform_input::InputSlot::default();
+        let lease = slot.reserve(shoop_egui::TaskId::from_raw(1)).unwrap();
+        assert_eq!(read_session_input(&path, &lease).unwrap(), b"input");
+        slot.reconcile(None);
+        assert!(read_session_input(&path, &lease)
+            .unwrap_err()
+            .to_string()
+            .contains("cancelled"));
+        drop(lease);
+        let lease = slot.reserve(shoop_egui::TaskId::from_raw(2)).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES + 1)
+            .unwrap();
+        assert!(read_session_input(&path, &lease)
+            .unwrap_err()
+            .to_string()
+            .contains("512 MiB"));
     }
 
     #[cfg(not(target_arch = "wasm32"))]

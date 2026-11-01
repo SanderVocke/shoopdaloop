@@ -46,6 +46,44 @@ struct Fixture {
     port: local::ServicePort,
     hold: Rc<Cell<bool>>,
 }
+
+#[shoop_test]
+async fn client_queue_holds_one_raw_file_input_without_blocking_controls() {
+    let mut fixture = Fixture::new();
+    fixture.until(|_| true).await;
+    let input = || AppIntent::LoadSessionBytes {
+        name: "invalid.shoop".into(),
+        bytes: vec![0].into(),
+    };
+    fixture.runtime.dispatch(input()).unwrap();
+    assert_eq!(
+        fixture.runtime.dispatch(input()),
+        Err(shoop_app_client::Error::Full)
+    );
+    fixture
+        .runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+        .unwrap();
+    for _ in 0..10_000 {
+        fixture.step();
+        idle().await;
+        let state = fixture.runtime.snapshot();
+        if state.global_controls.solo
+            && state
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed)
+        {
+            break;
+        }
+    }
+    assert!(fixture.runtime.snapshot().global_controls.solo);
+    assert_eq!(
+        fixture.runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Failed
+    );
+    fixture.runtime.dispatch(input()).unwrap();
+}
 impl Fixture {
     fn new() -> Self {
         let (render, client) = OfflineRender::new(&EngineDescription {

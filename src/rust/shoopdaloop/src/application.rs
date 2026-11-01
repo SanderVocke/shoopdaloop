@@ -411,12 +411,24 @@ mod native {
                     let mut ready_tx = Some(ready_tx);
                     let mut last = Instant::now();
                     let started = last;
+                    let mut pending_intent = None;
                     loop {
                         for _ in 0..shoop_app_protocol::MAX_MESSAGES_PER_TURN {
-                            match receiver.try_recv() {
+                            let message = match pending_intent.take() {
+                                Some(intent) => Ok(Message::Intent(intent)),
+                                None => receiver.try_recv(),
+                            };
+                            match message {
                                 Ok(Message::Intent(intent)) => {
-                                    if let Err(error) = runtime.dispatch(intent) {
-                                        runtime.client_mut().notify(error.to_string());
+                                    match runtime.dispatch(intent.clone()) {
+                                        Ok(()) => {}
+                                        Err(DispatchError::Full) => {
+                                            pending_intent = Some(intent);
+                                            break;
+                                        }
+                                        Err(error) => {
+                                            runtime.client_mut().notify(error.to_string())
+                                        }
                                     }
                                 }
                                 Ok(Message::PrepareShutdown(sender)) => {
