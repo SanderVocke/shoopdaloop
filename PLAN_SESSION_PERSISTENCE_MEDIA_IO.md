@@ -3,7 +3,8 @@
 ## Status and delivery
 
 Implementation in progress; the app transfer foundation and engine content-upload
-foundation are implemented.
+foundation are implemented, along with the underlying atomic full-owner replacement
+cut and deferred processor presets.
 Engine staging and public persistence workflows remain pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -211,6 +212,8 @@ not counted as test passes. Miri remains reserved for the final stage.
 
 - [x] Add prepared bounded audio/indexed-MIDI upload, short-chunk buffer reuse,
   validation, cancellation/disconnect cleanup and explicit resource-budget refusals.
+- [x] Provide the loop/runtime full-owner replacement cut and token-scoped processor
+  presets that leave live settings unchanged until graph publication.
 - [ ] Inventory existing export/import/configuration primitives and integrate the
   smallest missing engine operations. Acquire immutable media and metadata at a
   certified cut; retain them independently of future clears/removals/recordings.
@@ -242,6 +245,23 @@ Node/Wasm passes 194 runtime, 23 engine and 4 protocol tests. Warning-denying af
 builds, formatting, test-attribute policy and whitespace checks pass. A pipelining
 fixture initially skipped the client's disconnect notification/credit reset; it now
 uses the real Goodbye path and preserves the eight simultaneous upload requests.
+
+Atomic-cut milestone: `ConfigurationReplace` preflights complete owner/media/graph
+publication at callback start, retires playing owners into fresh stopped identities,
+retains old exports and requests bounded host MIDI cleanup only after success.
+Active/prepared recording and an interior-callback cut are refused unchanged.
+Processor configurations are prepared under the next graph epoch and a token,
+applied during processing only after that epoch publishes, and explicitly discarded
+on cancellation. Preparing settings before publication avoids a control/render race
+that could otherwise expose default or partially restored controls. The engine
+protocol replacement job and service/client integration remain pending.
+
+Cut validation: full native `rt_runtime`, `shoop_loops` and `shoop_rt_engine` suites
+pass. Focused Node/Wasm checks pass for two MIDI-reset cases, two complete-replacement
+cases and the staged/cancelled/live-monitoring DSP case. Warning-denying native and
+`thumbv7em-none-eabihf` runtime/loop builds, loop/runtime dependency boundaries,
+formatting and test-attribute policy pass. These are kernel checks, not file-workflow
+or final acceptance evidence; Miri has not run.
 
 ### Stage 3 — service-owned coherent session capture and exports
 

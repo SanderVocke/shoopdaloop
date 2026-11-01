@@ -776,13 +776,26 @@ impl Planner for LoopPlanner {
                     graph,
                     graph_epoch,
                     topology_epoch,
+                }
+                | Operation::ConfigurationReplace {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
                 } => {
+                    if matches!(operation, Operation::ConfigurationReplace { .. })
+                        && context.frame != context.callback_start
+                    {
+                        return Err(Error::InvalidState.into());
+                    }
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
                         node_pairs,
                         topology,
                         graph,
                         graph_epoch,
                         topology_epoch,
+                        matches!(operation, Operation::ConfigurationReplace { .. }),
                         &mut context.graphs,
                         &mut context.resources,
                     )?;
@@ -1166,6 +1179,7 @@ impl Planner for LoopPlanner {
                 | Operation::NodePairCancel { .. }
                 | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
+                | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
                 | Operation::TopologyGraphActivate { .. }

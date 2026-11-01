@@ -41,7 +41,7 @@ pub mod testing;
 pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::ControlEndpoint;
-pub use node::{EngineNode, EngineOp};
+pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use render::{Phase, Render, Report, Stopped};
 
 use crate::cells::{Cells, Observer};

@@ -17,10 +17,28 @@ use std::sync::Arc;
 /// Most injected MIDI messages a strip holds between callbacks.
 const INJECTED: usize = 16;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NodeConfiguration {
+    pub token: u64,
+    pub epoch: rt_runtime::Epoch,
+    pub inputs: u8,
+    pub outputs: u8,
+    pub bank: u8,
+    pub gain: f32,
+    pub balance: f32,
+    pub monitoring: bool,
+    pub muted: bool,
+}
+
 /// Typed operations of the engine's own processors, delivered by the runtime
 /// immediately before their frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineOp {
+    /// Retain values for the next graph epoch without changing the active processor.
+    Configure(NodeConfiguration),
+    DiscardConfiguration {
+        token: u64,
+    },
     /// Fresh state for a newly occupied slot.
     Reset {
         inputs: u8,
@@ -138,6 +156,7 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
     channels: usize,
@@ -159,6 +178,7 @@ pub struct StripInput {
 /// A strip's output stage: the sum of its loops and monitored input; output gain,
 /// balance, mute and a presence fade, written to two connection banks.
 pub struct StripOutput {
+    configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
     channels: usize,
@@ -176,6 +196,7 @@ pub struct StripOutput {
 /// A loop's playback fader, used to remove a sounding loop without a step, and
 /// its level meter.
 pub struct LoopFader {
+    configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
     channels: usize,
@@ -186,6 +207,7 @@ pub struct LoopFader {
 /// The Master bus: the sum of routed strips; gain, balance, mute and meters,
 /// written to two connection banks.
 pub struct MasterBus {
+    configuration: Option<NodeConfiguration>,
     cells: Arc<Cells>,
     channels: usize,
     ramp: u32,
@@ -214,9 +236,24 @@ pub(crate) struct NodeSettings {
 }
 
 impl StripInput {
+    fn reset(&mut self, inputs: u8) {
+        self.inputs = (inputs as usize).min(self.channels);
+        self.bank = Ramp::at(0.);
+        self.monitor = Ramp::at(0.);
+        self.gains.reset();
+        self.injected = [None; INJECTED];
+        *self.monitored = MidiState::default();
+        self.release = false;
+        let cells = &self.cells.strips[self.slot];
+        cells.input.clear();
+        cells
+            .midi_in
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            configuration: None,
             slot,
             cells: settings.cells.clone(),
             channels: settings.channels,
@@ -236,9 +273,22 @@ impl StripInput {
     }
 }
 impl StripOutput {
+    fn reset(&mut self, outputs: u8) {
+        self.outputs = (outputs as usize).min(self.channels);
+        self.bank = Ramp::at(0.);
+        self.mute = Ramp::at(1.);
+        self.presence = Ramp::at(1.);
+        self.gains.reset();
+        let cells = &self.cells.strips[self.slot];
+        cells.output.clear();
+        cells
+            .midi_out
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            configuration: None,
             slot,
             cells: settings.cells.clone(),
             channels: settings.channels,
@@ -257,6 +307,7 @@ impl StripOutput {
 impl LoopFader {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            configuration: None,
             slot,
             cells: settings.cells.clone(),
             channels: settings.channels,
@@ -268,6 +319,7 @@ impl LoopFader {
 impl MasterBus {
     pub(crate) fn new(settings: &NodeSettings) -> Self {
         Self {
+            configuration: None,
             cells: settings.cells.clone(),
             channels: settings.master_channels,
             ramp: settings.ramp,
@@ -300,18 +352,7 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
         match operation {
             EngineOp::Reset { inputs, .. } => {
-                self.inputs = (inputs as usize).min(self.channels);
-                self.bank = Ramp::at(0.);
-                self.monitor = Ramp::at(0.);
-                self.gains.reset();
-                self.injected = [None; INJECTED];
-                *self.monitored = MidiState::default();
-                self.release = false;
-                let cells = &self.cells.strips[self.slot];
-                cells.input.clear();
-                cells
-                    .midi_in
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                self.reset(inputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
@@ -332,6 +373,8 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
                 *slot = Some(message);
             }
             EngineOp::Mute(_)
+            | EngineOp::Configure(_)
+            | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Presence(_)
             | EngineOp::ReadStart { .. }
             | EngineOp::ReadStop => return Err(Error::InvalidParameter),
@@ -437,16 +480,7 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
         match operation {
             EngineOp::Reset { outputs, .. } => {
-                self.outputs = (outputs as usize).min(self.channels);
-                self.bank = Ramp::at(0.);
-                self.mute = Ramp::at(1.);
-                self.presence = Ramp::at(1.);
-                self.gains.reset();
-                let cells = &self.cells.strips[self.slot];
-                cells.output.clear();
-                cells
-                    .midi_out
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                self.reset(outputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
@@ -457,6 +491,8 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
                 self.bank.set(target, self.ramp);
             }
             EngineOp::Monitor(_)
+            | EngineOp::Configure(_)
+            | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Inject(_)
             | EngineOp::ReadStart { .. }
             | EngineOp::ReadStop => return Err(Error::InvalidParameter),
@@ -612,6 +648,47 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
     }
 }
 
+impl EngineNode {
+    fn configuration(&mut self) -> Option<&mut Option<NodeConfiguration>> {
+        match self {
+            Self::StripInput(node) => Some(&mut node.configuration),
+            Self::StripOutput(node) => Some(&mut node.configuration),
+            Self::Fader(node) => Some(&mut node.configuration),
+            Self::Master(node) => Some(&mut node.configuration),
+            _ => None,
+        }
+    }
+    fn configure(&mut self, configuration: NodeConfiguration) {
+        match self {
+            Self::StripInput(node) => {
+                node.reset(configuration.inputs);
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
+            }
+            Self::StripOutput(node) => {
+                node.reset(configuration.outputs);
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
+            }
+            Self::Fader(node) => {
+                node.presence = Ramp::at(1.);
+                node.cells.loops[node.slot].peaks.clear();
+            }
+            Self::Master(node) => {
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
+            }
+            _ => unreachable!("configuration belongs to an engine control processor"),
+        }
+    }
+}
+
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
     fn ports(&self) -> PortCounts {
         match self {
@@ -634,6 +711,38 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         operation: EngineOp,
         context: OperationContext<'_>,
     ) -> Result<(), Error> {
+        if let EngineOp::DiscardConfiguration { token } = operation {
+            let pending = self.configuration().ok_or(Error::InvalidParameter)?;
+            if pending.is_some_and(|configuration| configuration.token != token) {
+                return Err(Error::InvalidId);
+            }
+            *pending = None;
+            return Ok(());
+        }
+        if let EngineOp::Configure(configuration) = operation {
+            if context.graph_epoch.checked_next()? != configuration.epoch {
+                return Err(Error::StaleEpoch);
+            }
+            if configuration.token == 0
+                || configuration.bank > 1
+                || !configuration.gain.is_finite()
+                || configuration.gain < 0.
+                || !(-1.0..=1.0).contains(&configuration.balance)
+            {
+                return Err(Error::InvalidParameter);
+            }
+            if matches!(self, Self::StripInput(node) if configuration.inputs as usize > node.channels)
+                || matches!(self, Self::StripOutput(node) if configuration.outputs as usize > node.channels)
+            {
+                return Err(Error::InvalidShape);
+            }
+            let pending = self.configuration().ok_or(Error::InvalidParameter)?;
+            if pending.is_some_and(|previous| previous.token != configuration.token) {
+                return Err(Error::Busy);
+            }
+            *pending = Some(configuration);
+            return Ok(());
+        }
         match self {
             Self::Loop(_) => Err(Error::InvalidEvent),
             Self::StripInput(node) => node.operation(operation, context),
@@ -644,6 +753,11 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        if let Some(configuration) = self.configuration().and_then(|pending| {
+            pending.take_if(|configuration| configuration.epoch == block.graph_epoch)
+        }) {
+            self.configure(configuration);
+        }
         match self {
             Self::Loop(node) => node.process(block),
             Self::StripInput(node) => node.process(block),
@@ -652,5 +766,159 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Master(node) => node.process(block),
             Self::Reader(node) => node.process(block),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{testing::OfflineHost, EngineDescription, Segment};
+    use shoop_rt_protocol::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    fn tick(host: &mut OfflineHost) {
+        host.input_mut(0).fill(1.);
+        host.process(16).unwrap();
+    }
+    fn request(host: &mut OfflineHost, request: Request) {
+        let id = host.request(request).unwrap();
+        for _ in 0..1000 {
+            while let Some(message) = host.receive() {
+                if let EngineMessage::Result {
+                    correlation,
+                    outcome,
+                } = message
+                {
+                    if correlation == id {
+                        assert_eq!(outcome, Outcome::Done);
+                        return;
+                    }
+                }
+            }
+            tick(host);
+        }
+        panic!("request did not complete");
+    }
+    #[shoop_test]
+    fn configuration_for_an_unpublished_epoch_leaves_live_monitoring_untouched() {
+        let mut host = OfflineHost::new(&EngineDescription {
+            sample_rate: 1000,
+            max_frames: 16,
+            ramp_frames: 4,
+            segments: vec![Segment {
+                strips: 1,
+                loops: 2,
+            }],
+            resource_pages: 128,
+            page_bytes: 256,
+            midi_events: 64,
+            midi_bytes: 512,
+            ..EngineDescription::default()
+        })
+        .unwrap();
+        host.connect().unwrap();
+        while host.receive().is_some() {}
+        let strip = StripId(SlotId::new(0, 1));
+        request(
+            &mut host,
+            Request::CreateStrip {
+                strip,
+                shape: StripShape {
+                    audio_inputs: 1,
+                    audio_outputs: 1,
+                    midi_input: false,
+                    midi_output: false,
+                },
+            },
+        );
+        for (kind, host_id) in [
+            (PortKind::AudioIn, HostPortId(0)),
+            (PortKind::AudioOut, HostPortId(2)),
+        ] {
+            request(
+                &mut host,
+                Request::Connect {
+                    port: EnginePort::Strip(StripPort {
+                        strip,
+                        kind,
+                        index: 0,
+                    }),
+                    host: host_id,
+                    connected: true,
+                },
+            );
+        }
+        request(
+            &mut host,
+            Request::StripControl {
+                strip,
+                control: StripControl::Monitoring(true),
+            },
+        );
+        for _ in 0..4 {
+            tick(&mut host);
+            while host.receive().is_some() {}
+        }
+        assert_eq!(host.output(0)[..16], [1.; 16]);
+        let epoch = host.endpoint().graph_epoch;
+        let node = host.endpoint().pool.strip_input(0);
+        let at = host.endpoint().at();
+        let configuration = NodeConfiguration {
+            token: 1,
+            epoch: epoch.checked_next().unwrap(),
+            inputs: 1,
+            outputs: 1,
+            bank: 1,
+            gain: 0.5,
+            balance: 0.,
+            monitoring: true,
+            muted: false,
+        };
+        host.endpoint()
+            .submit_op(
+                at,
+                node,
+                EngineOp::Configure(configuration),
+                crate::endpoint::Purpose::Silent,
+            )
+            .unwrap();
+        tick(&mut host);
+        while host.receive().is_some() {}
+        assert_eq!(host.output(0)[..16], [1.; 16]);
+        let at = host.endpoint().at();
+        host.endpoint()
+            .submit_op(
+                at,
+                node,
+                EngineOp::DiscardConfiguration { token: 1 },
+                crate::endpoint::Purpose::Silent,
+            )
+            .unwrap();
+        tick(&mut host);
+        while host.receive().is_some() {}
+        let loop_id = LoopSlotId(SlotId::new(0, 1));
+        request(&mut host, Request::CreateLoop { loop_id, strip });
+        tick(&mut host);
+        assert_eq!(host.output(0)[..16], [1.; 16]);
+        let epoch = host.endpoint().graph_epoch.checked_next().unwrap();
+        let at = host.endpoint().at();
+        host.endpoint()
+            .submit_op(
+                at,
+                node,
+                EngineOp::Configure(NodeConfiguration {
+                    token: 2,
+                    epoch,
+                    ..configuration
+                }),
+                crate::endpoint::Purpose::Silent,
+            )
+            .unwrap();
+        tick(&mut host);
+        while host.receive().is_some() {}
+        assert_eq!(host.output(0)[..16], [1.; 16]);
+        request(&mut host, Request::RemoveLoop { loop_id });
+        tick(&mut host);
+        assert_eq!(host.output(0)[..16], [0.5; 16]);
     }
 }

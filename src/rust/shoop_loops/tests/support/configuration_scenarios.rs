@@ -173,6 +173,191 @@ fn initial(
     }
 }
 
+fn full_replacement(h: &mut Harness) -> (NodePairStageId, StageId, GraphStageId) {
+    let sources = source_pair(h);
+    let node_pairs = begin(h, 0, 2);
+    let at = h.engine.next_frame().0;
+    h.op(
+        at,
+        Operation::NodePairAppend {
+            id: node_pairs,
+            previous: Some(id(0)),
+            initial: Some(NodePairInitial {
+                target: generation(0, 2),
+                frames: 1,
+                audio: None,
+                midi: None,
+                gain: 1.,
+                preserve_input: false,
+            }),
+        },
+    );
+    h.op(
+        at,
+        Operation::NodePairAppend {
+            id: node_pairs,
+            previous: Some(id(1)),
+            initial: Some(initial(generation(1, 2), sources, false)),
+        },
+    );
+    h.step(1);
+    h.drain();
+    let mut candidate = description(false, false);
+    let next = |id: LoopId| generation(id.slot(), 2);
+    for node in &mut candidate.loops {
+        node.id = next(node.id);
+        node.sync_source = node.sync_source.map(next);
+    }
+    for program in &mut candidate.programs {
+        program.source = next(program.source);
+        for section in &mut program.sections {
+            for entry in &mut section.entries {
+                entry.target = next(entry.target);
+            }
+        }
+    }
+    let topology = h.ready(0, &compile(limits(0), &candidate).unwrap());
+    let graph = h.graph(0, 1, true, false);
+    (node_pairs, topology, graph)
+}
+
+#[shoop_test]
+fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_validated_cut() {
+    let mut h = prepared(true, 0, false, 64, false);
+    let (node_pairs, topology, graph) = full_replacement(&mut h);
+    let at = h.engine.next_frame().0;
+    h.op(at, play(0));
+    h.op(at, play(1));
+    h.step(2);
+    h.drain();
+    let at = h.engine.next_frame().0;
+    let refused = h.op(at, configuration(node_pairs, topology, graph, 1, 0));
+    let exported = h.op(
+        at,
+        Operation::Export {
+            target: id(1),
+            selection: Selection::Playback,
+        },
+    );
+    let old = h.op(at, Operation::State { target: id(1) });
+    h.step(1);
+    h.drain();
+    assert!(matches!(h.reply(refused), Reply::Failed(_)));
+    let Reply::State(old) = h.reply(old) else {
+        panic!("old state")
+    };
+    let Reply::Export { id: export, .. } = h.reply(exported) else {
+        panic!("retained old export")
+    };
+    assert_eq!(old.state.mode, Mode::Playing);
+    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
+    let at = h.engine.next_frame().0;
+    let mid_callback = h.op(
+        at + 1,
+        Operation::ConfigurationReplace {
+            node_pairs,
+            topology,
+            graph,
+            graph_epoch: Epoch(1),
+            topology_epoch: Epoch(0),
+        },
+    );
+    h.step(2);
+    h.drain();
+    assert!(matches!(h.reply(mid_callback), Reply::Failed(_)));
+    assert_eq!(h.engine.epoch(), Epoch(1));
+    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
+    let at = h.engine.next_frame().0;
+    let applied = h.op(
+        at,
+        Operation::ConfigurationReplace {
+            node_pairs,
+            topology,
+            graph,
+            graph_epoch: Epoch(1),
+            topology_epoch: Epoch(0),
+        },
+    );
+    let new = h.op(
+        at,
+        Operation::State {
+            target: generation(1, 2),
+        },
+    );
+    let stale = h.op(at, Operation::State { target: id(1) });
+    h.step(1);
+    h.drain();
+    assert!(matches!(
+        h.reply(applied),
+        Reply::ConfigurationActivated {
+            graph_epoch: Epoch(2),
+            topology_epoch: Epoch(1),
+            ..
+        }
+    ));
+    let Reply::State(new) = h.reply(new) else {
+        panic!("new state")
+    };
+    assert_eq!(new.state.mode, Mode::Stopped);
+    assert_eq!(new.state.content_length, 4);
+    assert!(matches!(h.reply(stale), Reply::Failed(_)));
+    assert_eq!(h.engine.midi_recovery_pending(0), Ok(true));
+    let mut sink = MidiBuffer::new(128, 512).unwrap();
+    assert!(assert_no_heap(|| h.engine.drain_midi_recovery(0, &mut sink, 1)).unwrap() > 0);
+    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
+    let expected_audio = [4f32, 40., 8., 80., 12., 120., 16., 160.]
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        h.read_export(export, false, expected_audio.len()),
+        expected_audio
+    );
+    assert_eq!(
+        h.read_export(export, true, encoded_midi().len()),
+        encoded_midi()
+    );
+}
+
+#[shoop_test]
+fn active_recording_refuses_complete_replacement_without_resetting_or_stopping_it() {
+    let mut h = prepared(true, 0, false, 64, false);
+    let (node_pairs, topology, graph) = full_replacement(&mut h);
+    let at = h.engine.next_frame().0;
+    h.op(
+        at,
+        transition(
+            id(1),
+            Transition::Record {
+                monitor_previous: false,
+            },
+        ),
+    );
+    h.step(2);
+    h.drain();
+    let at = h.engine.next_frame().0;
+    let refused = h.op(
+        at,
+        Operation::ConfigurationReplace {
+            node_pairs,
+            topology,
+            graph,
+            graph_epoch: Epoch(1),
+            topology_epoch: Epoch(0),
+        },
+    );
+    let old = h.op(at, Operation::State { target: id(1) });
+    h.step(1);
+    h.drain();
+    assert!(matches!(h.reply(refused), Reply::Failed(_)));
+    let Reply::State(old) = h.reply(old) else {
+        panic!("recording state")
+    };
+    assert_eq!(old.state.mode, Mode::Recording);
+    assert_eq!(old.graph_epoch, Epoch(1));
+    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
+}
+
 #[shoop_test]
 fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_reference() {
     for (parts, journal, reverse) in [

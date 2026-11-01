@@ -30,6 +30,7 @@ impl LoopPlanner {
         graph: GraphStageId,
         graph_epoch: Epoch,
         topology_epoch: Epoch,
+        replace_all: bool,
         graphs: &mut rt_runtime::graph::activation::GraphAccess<'_>,
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<(Epoch, Epoch), Failure> {
@@ -42,6 +43,17 @@ impl LoopPlanner {
         let permit = graphs.prepare_activation(graph, graph_epoch)?;
         let candidate = self.topologies.candidate(topology)?;
         let bank = self.node_pairs.bank(node_pairs)?;
+        if replace_all
+            && self.rows.iter().flatten().any(|row| {
+                row.assigned
+                    && !bank
+                        .edits
+                        .iter()
+                        .any(|edit| edit.previous == Some(row.binding.target))
+            })
+        {
+            return Err(Error::InvalidShape.into());
+        }
         for edit in &bank.edits {
             let row = self
                 .rows
@@ -52,7 +64,8 @@ impl LoopPlanner {
                 return Err(Error::InvalidId.into());
             }
             if let Some(previous) = edit.previous {
-                if self.resolver.state(previous)?.mode != Mode::Stopped {
+                let mode = self.resolver.state(previous)?.mode;
+                if mode != Mode::Stopped && !(replace_all && mode == Mode::Playing) {
                     return Err(crate::Error::InvalidState.into());
                 }
             }
@@ -126,8 +139,12 @@ impl LoopPlanner {
         let media = self
             .ledger
             .prepare_owner_activation(io, &mut bank.changes)?;
-        self.topologies
-            .activate_configuration(topology, topology_epoch, &mut self.resolver)?;
+        self.topologies.activate_configuration(
+            topology,
+            topology_epoch,
+            &mut self.resolver,
+            replace_all,
+        )?;
         media.commit();
         for edit in &bank.edits {
             let slot = edit.slot().expect("validated edit");
@@ -147,7 +164,11 @@ impl LoopPlanner {
             row.overflows = 0;
         }
         self.node_pairs.applied(node_pairs);
-        self.graph_epoch = permit.commit();
+        self.graph_epoch = if replace_all {
+            permit.commit_with_midi_reset()
+        } else {
+            permit.commit()
+        };
         Ok((self.graph_epoch, self.resolver.epoch()))
     }
 }

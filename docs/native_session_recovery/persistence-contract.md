@@ -15,7 +15,7 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
 | FX/synth/dry-wet, composites, non-Master buses | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08/P13 remain open; no flattening or dropped state |
 | Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
-| MIDI control/settings fields | Classify every field against current public state before conversion | Preserve implemented session fields; reject unsupported non-default session fields; machine preferences stay local |
+| MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
 
 ## Finite budgets
@@ -94,10 +94,15 @@ normal service work or silently restart against newer content.
 The current adapter's remove-then-create helper cannot satisfy atomic load. Reuse
 prepared loop node-pair sources, immutable exports and configuration transactions,
 but first establish an engine transaction that preflights complete content, graph,
-timing and retirement ownership. Current configuration activation requires already
-stopped edited owners; a scheduled stop alone is insufficient. Integrating a safe
-cut for live-session replacement is Stage 2 work, not supplied by the transfer
-receiver. No rejected preparation may leave old playback faded/stopped or mappings
+timing and retirement ownership. The existing `ConfigurationActivate` requires
+already-stopped edited owners; a scheduled stop alone is insufficient. Stage 2
+adds `ConfigurationReplace` for a complete fresh-owner cut at callback start:
+media/graph/epoch preflight precedes publication, old playback may retire and MIDI
+cleanup is requested atomically. Active/prepared recording is refused unchanged.
+Engine node presets are prepared under a token/next epoch and become active during
+processing only after that epoch is published; cancellation must discard presets
+before another graph can publish. The wire/service replacement workflow remains
+pending. No rejected preparation may leave old playback faded/stopped or mappings
 partially replaced.
 
 Validation evidence is recorded in the plan as milestones complete. Protocol tests
