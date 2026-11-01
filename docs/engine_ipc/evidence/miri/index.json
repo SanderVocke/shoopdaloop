@@ -1,0 +1,313 @@
+{
+  "passed": true,
+  "commands": 16,
+  "executions": 26,
+  "toolchain": "nightly-2026-05-04",
+  "miri": "miri 0.1.0 (ad3a598ca4 2026-05-03)",
+  "seed": 0,
+  "watchdog_seconds": 900,
+  "verified_against": "0f52c68d0a3ceff1fea5607225871dc93e3450b6",
+  "code_unchanged_since": "de43061e947dcf56cc24548f696f32091b2ce28d",
+  "source_hash_method": "SHA256 of compact JSON sorted [repository path, file SHA256] pairs for Rust sources and Cargo.toml per package.",
+  "source_packages": {
+    "shoop_rt_protocol": {
+      "files": 10,
+      "manifest_sha256": "26517de147a922929a8f86bda48bd345e00845e139c464858063deec34c06353"
+    },
+    "shoop_rt_transport": {
+      "files": 9,
+      "manifest_sha256": "bfcca963588d007972e117222ddcefb52714b743dc1c2a5a327704e0f2a18abf"
+    },
+    "shoop_rt_engine": {
+      "files": 23,
+      "manifest_sha256": "279fe8dff495cc5a7dbee5b40171678d122264df4e3d7c22ca0328c169e995de"
+    },
+    "rt_runtime": {
+      "files": 82,
+      "manifest_sha256": "731c352ed537ee7adf522f1b529902b5f5d9814c0a61e4c93e2f76c65d5352a0"
+    },
+    "shoop_loops": {
+      "files": 72,
+      "manifest_sha256": "83460e6528b6e85c3a613bed4c5936666800642306bc37f11cc7632f6f3d4480"
+    },
+    "shoop_loops_test_support": {
+      "files": 2,
+      "manifest_sha256": "f9d81476fb0e603ee61bd7a8d179d719dd001c6b82b761de9349f495044560ab"
+    },
+    "shoop_wasm_test_support": {
+      "files": 4,
+      "manifest_sha256": "df79c84b4b4430a255bfe87225519c0d8391ce9273fb5fa19660ce7b0a732524"
+    },
+    "shoop_test_macros": {
+      "files": 2,
+      "manifest_sha256": "8bd5fc4f9775e9d55bef3956900e5f6cc49629bf03998da86ef61c4b0b8aa8a3"
+    },
+    "shoop_tracing": {
+      "files": 7,
+      "manifest_sha256": "e080352efa0814f4e673e42566e8d871537ca43f48d87c9a45a5bdc656c72a03"
+    }
+  },
+  "cargo_lock_sha256": "b406c7ceb5f37185aba35fe47ab05a1452a80d559cae153fe4da5f6f66ebf724",
+  "batches": [
+    {
+      "directory": "shoop_rt_protocol",
+      "report": "result.json",
+      "executions": 4,
+      "cases": [
+        {
+          "package": "shoop_rt_protocol",
+          "target": "protocol",
+          "arguments": [],
+          "seed": 0,
+          "passed": 2,
+          "log": "00-protocol-seed0.log",
+          "seconds": 64.29583828400064,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "a6708e6603cb4909e4878c660bb90dc2bd2b741e624e3631f06c58c7d631076d"
+        },
+        {
+          "package": "shoop_rt_protocol",
+          "target": "host",
+          "arguments": [],
+          "seed": 0,
+          "passed": 2,
+          "log": "01-host-seed0.log",
+          "seconds": 1.2205341339995357,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "8422b89d82eacb2ebc238b7f2c19ff3269ec9757c3265a40e2b49a2de2590cc0"
+        }
+      ]
+    },
+    {
+      "directory": "shoop_rt_transport",
+      "report": "result.json",
+      "executions": 10,
+      "cases": [
+        {
+          "package": "shoop_rt_transport",
+          "target": "carriers",
+          "arguments": [],
+          "seed": 0,
+          "passed": 3,
+          "log": "00-carriers-seed0.log",
+          "seconds": 2.422881841999697,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "ff962ad0f53d16838bc8a7ad037a3e09c6cb6294355fdbf8e699f546e04b9100"
+        },
+        {
+          "package": "shoop_rt_transport",
+          "target": "failure",
+          "arguments": [],
+          "seed": 0,
+          "passed": 2,
+          "log": "01-failure-seed0.log",
+          "seconds": 1.224514137999904,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "2541a9fa694849609fee1cc7322acea4cf57b29cc6dd7754b4eb0b93d860e36f"
+        },
+        {
+          "package": "shoop_rt_transport",
+          "target": "lib",
+          "arguments": [],
+          "seed": 0,
+          "passed": 5,
+          "log": "02-lib-seed0.log",
+          "seconds": 1.4187126850001732,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "a6d0e84a0e90264a7f4b83b693889e2aeda0eb0046161cd2448d0f738ea90f1a"
+        }
+      ]
+    },
+    {
+      "directory": "engine-ipc-preserved",
+      "report": "checkpoint.json",
+      "executions": 9,
+      "cases": [
+        {
+          "package": "shoop_rt_engine",
+          "target": "lib",
+          "arguments": [],
+          "seed": 0,
+          "passed": 2,
+          "log": "00-lib-seed0.log",
+          "seconds": 4.132633258999704,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "dbd3c03f46d586337b24d82e80c48a70f5afc13d0a807bb3519363a4af4479c4"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "workflow",
+          "arguments": [],
+          "seed": 0,
+          "passed": 1,
+          "log": "01-workflow-seed0.log",
+          "seconds": 403.3606916459994,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "72a33b4f5c632f0ac171d8f7382012980866aa364209ad52831ad113b54b8eb3"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "telemetry_reports_levels_activity_and_driver_inputs",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "02-control-seed0.log",
+          "seconds": 391.8920627039997,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "da63718aa5bf21bc6200281770a2babcce9d1fe9ab71bba9eb294e888342571b"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "bulk_reads_return_recorded_audio_channels_and_midi",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "03-control-seed0.log",
+          "seconds": 516.496122302,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "dbb11004287261886025143c18942e8a8c162fd43ff29ba460a046b5126e0fa5"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "resync_streams_the_confirmed_state",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "04-control-seed0.log",
+          "seconds": 400.2622147359998,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "fba5277c1acf1f5144708366c416ac3e969c79ea0dcfe4a7c4b57a94bc798e3c"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "credits_limits_and_the_connection_lifecycle_are_enforced",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "05-control-seed0.log",
+          "seconds": 397.2685250350005,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "3714fc6ffc557505370ae88e22c27142846358552d51533a8500fad87781141c"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "06-control-seed0.log",
+          "seconds": 394.17085310899984,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "c1094663a216321a28490d4fedeb69daf177b7aa4d96a927877a34a47279e004"
+        },
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "stopping_monitoring_releases_the_notes_it_passed_through",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "07-control-seed0.log",
+          "seconds": 388.5009212189998,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "5574b28219cf315536e5cc0c9968bb59d1e140ea2ce835df87d7928e7dab265a"
+        }
+      ]
+    },
+    {
+      "directory": "engine-ipc-resume-9",
+      "report": "result.json",
+      "executions": 1,
+      "cases": [
+        {
+          "package": "shoop_rt_engine",
+          "target": "control",
+          "arguments": [
+            "a_render_fault_silences_output_and_ends_the_connection",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "00-control-seed0.log",
+          "seconds": 399.13667870499995,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "88426e5f951701067db6ad84cca73477860b78f622b8626d5f1a1447787ff4cc"
+        }
+      ]
+    },
+    {
+      "directory": "engine-ipc-resume-10",
+      "report": "result.json",
+      "executions": 1,
+      "cases": [
+        {
+          "package": "shoop_rt_engine",
+          "target": "structure",
+          "arguments": [
+            "reused_slots_start_fresh_and_clear_empties_a_loop",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "00-structure-seed0.log",
+          "seconds": 414.438980863,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "d8fe98d6ff8a018cd1c4a4c848b6c3559dd07a3a583f43f1038e98b319cfe6e9"
+        }
+      ]
+    },
+    {
+      "directory": "engine-ipc-resume-11",
+      "report": "result.json",
+      "executions": 1,
+      "cases": [
+        {
+          "package": "shoop_rt_engine",
+          "target": "structure",
+          "arguments": [
+            "edits_keep_other_paths_continuous_and_ramp_removed_paths",
+            "--",
+            "--exact"
+          ],
+          "seed": 0,
+          "passed": 1,
+          "log": "00-structure-seed0.log",
+          "seconds": 491.0397744060001,
+          "miri_flags": "-Zmiri-seed=0",
+          "log_sha256": "e1667d7afaeec09a770112296b0a66412290c8d03694e3a3fbf9d7bb41c37688"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Selected protocol, transport and engine cases only; not the whole 168-command/336-execution inventory.",
+    "Engine interpreter process was lost when the managed workspace went offline. Eight completed commands (nine executions) were verified and retained; the other three ran as disjoint exact 9/11, 10/11 and 11/11 shards.",
+    "Not an uninterrupted engine batch. Workloads, seed and watchdog were unchanged.",
+    "OS mappings, sockets, devices, JavaScript and browser worklets are verified separately outside Miri."
+  ]
+}

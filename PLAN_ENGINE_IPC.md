@@ -4,8 +4,9 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–8 are implemented and verified locally;
-Final browser/platform verification and delivery are in progress. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–8 are implemented; the retained
+native suite, selected Miri cases and new-engine Chrome smoke pass. Final-head CI,
+artifact inspection and review closure remain in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -488,7 +489,7 @@ produce a clear startup error. Both carrier jobs are required, not optional skip
 
 ### Stage 9 — Final end-to-end validation and delivery
 
-- [ ] On the final implementation tree run the complete retained workspace suite,
+- [x] On the final implementation tree run the complete retained workspace suite,
       shared contracts for in-process, MessagePort, socket and shared-memory
       carriers, both IPC backend/subprocess failure suites, release
       host/endpoint heap guards, and affected ownership/model Miri cases.

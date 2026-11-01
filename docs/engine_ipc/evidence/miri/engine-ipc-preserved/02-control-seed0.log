@@ -1,0 +1,9 @@
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+    Finished `test` profile [unoptimized] target(s) in 0.26s
+     Running tests/control.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/control-296b815cf7c4023f)
+
+running 1 test
+test telemetry_reports_levels_activity_and_driver_inputs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 154.10s
+

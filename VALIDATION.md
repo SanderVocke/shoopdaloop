@@ -957,12 +957,12 @@ device, not physical audio hardware or the CPAL mock. Physical audio/MIDI hardwa
 is unavailable; mock MIDI routing and reset coverage is reported separately.
 
 Protocol and portable-transport Miri selections passed 4 and 10 executions.
-The selected engine Miri run is still in progress with the unchanged workload,
-seed and 900 s per-command watchdog. A local Node run was interrupted after an
+The selected engine Miri run subsequently completed as recorded below, retaining
+the workload, seed and 900 s per-command watchdog. A local Node run was interrupted after an
 unintentional overlap with Miri; it is not claimed as a complete local pass.
 The complete Node suite subsequently passed in CI. Remaining heavy local checks
 run sequentially; the overlapping processes remained below the session RAM cap.
-Final source/evidence mapping and the manual Chrome check remain open.
+Final source/evidence mapping and the manual Chrome check were still open at this checkpoint.
 
 
 The following-head CI run `41262115536` exposed two timing assumptions. macOS
@@ -994,3 +994,81 @@ mode for ordinary record traffic. The delayed-token regression and all seven
 socket tests pass, as does the warnings-denied socket build. The initial 100 ms
 cap was independently reproduced and fixed; neither correction adds reconnection
 or alters render timing.
+
+### Stage 9: selected Miri, native and browser completion
+
+The selected Miri campaign passed **16 commands / 26 interpreted executions**:
+protocol 4, portable transport 10 and engine 12. The eight verified engine
+commands preserved across the workspace interruption account for nine executions;
+the remaining three exact shards passed in 399.137, 414.440 and 491.040 seconds.
+The seed remained zero and the per-command watchdog remained 900 seconds.
+[The archived index, reports and logs](docs/engine_ipc/evidence/miri/index.json)
+include log digests and Rust-source/Cargo-manifest fingerprints. Those dependencies
+are unchanged since `de43061e947dcf56cc24548f696f32091b2ce28d`; later changes affect
+native carriers, app integration, test fixtures and documentation. This is selected
+coverage, not an uninterrupted engine batch, all 336 inventory executions or OS
+shared-memory interpretation.
+
+At implementation checkpoint `21dc6759e9d9cbc6abc57a6f6458a4cb7cde4abf`, the
+warnings-denied workspace build passed (peak RSS 1369.8 MiB), and the retained
+native suite passed **2376 tests, 4 skipped** in 119.659 seconds (peak 1896.5 MiB).
+The new backend now refuses unsupported audio preview before probing a UI-side
+default device. Its existing three-mode core workflow asserts that refusal.
+
+The final browser app rebuilt successfully with Trunk 0.21.14 and Node 22.22.2
+(peak RSS 2252.8 MiB). A workspace restart interrupted the first final build;
+the orphan was stopped and the successful build reran with the RSS monitor.
+Both new and legacy worklet artifact/import contracts passed. The actual
+new-engine workflow in Chromium 154.0.8037.57 passed at 900x600 with zero reported
+xruns (peak 1970.0 MiB): sync and immediate audio/MIDI capture/playback,
+controls, waveform/MIDI reads, stop and clear. This uses fake microphone input.
+It is the manual application smoke, not the Chromium-147-pinned full Wasm runner.
+[Browser records and logs](docs/engine_ipc/evidence/browser.json) pin these results.
+
+An additional legacy **debug** Chrome smoke failed its unchanged 240-second
+deadline at `WaitForPianoPress`, with zero synth output while callbacks advanced.
+The same script reproduced the same failure against the base branch's debug
+bundle: PR head `f22dbd1c`, CI run `41182627311`, artifact `13035548996`
+(`shoopdaloop-web-wasm32-debug-dev-fd044144.zip`, SHA256
+`43b3f850bcfcd10bdb3039937c7741895cf938e2b510b65feff771811965cb6e`).
+Both failures are retained; this additional inherited gap is not a passing smoke.
+Required web-release CI's Firefox workflow passed on the implementation checkpoint.
+No legacy synth code or browser test deadline was changed for this milestone.
+
+CI run `41265161972` exposed two more observation assumptions in native fixtures.
+The crash-parent fixture treated admission/idle as confirmation of recording;
+it now waits for the confirmed recording state before crashing. The app workflow
+required seeing a short pending sync transition; it now accepts either the pending
+state or recording already in progress, then still checks recording, playback and
+the exact multiple of the sync length. Deterministic subprocess contracts retain
+the precise transition/frame assertions. Neither change alters production timing
+or adds transport latency mitigation. The four affected tests passed ten stress
+iterations each (**40 executions**, no retries), with four test workers and peak
+RSS 3248.9 MiB under the 3276.8 MiB cap.
+
+After those fixture corrections, implementation commit
+`0f52c68d0a3ceff1fea5607225871dc93e3450b6` again passes the warnings-denied
+workspace build and complete retained native suite: **2376 passed, 4 skipped**,
+121.914 seconds, peak RSS 1864.3 MiB. [Local records](docs/engine_ipc/evidence/local.json)
+retain compressed logs and source pins. Only native test code changed after the
+browser checkpoint; production browser and interpreted Miri sources are unchanged.
+
+### IPC acceptance evidence map
+
+The implementation uses one schema/codec, portable connection implementation,
+application mapper and engine endpoint. Native subprocess and extracted-package
+tests exercise the concrete carriers; browser tests exercise MessagePort.
+
+| Criterion | Evidence |
+| --- | --- |
+| I1 — selection and isolation | `transport_cli_overrides_saved_selection_and_rejects_legacy_ipc`, `browser_rejects_native_ipc_selection`, settings tests and the app's three core workflows; `Pending` launches the separately packaged companion and child-owned native host. No fallback from carrier failure. |
+| I2 — equivalent core behaviour | `both_process_carriers_run_the_backend_contracts_and_stop_gracefully`, `both_carriers_preserve_the_shared_transition_signal_and_playback_contracts`, app workflows, native-reference sample/MIDI/transition trace, chunked reads and capability refusals. Test-only admission barriers preserve exact comparisons without changing production lead. |
+| I3 — genuine carrier choice | Socket/shared-memory subprocess contract tests; socket fragmentation, saturation/order and authentication; shared-memory bounded FIFO/latest-value models, 10,000 coherent records, descriptor rejection, producer death and reclamation. Only shared-memory setup/liveness uses a socket. |
+| I4 — engine-side setup | `device_discovery_and_rejections_are_served_by_the_child`, host-schema round trips/bounds, app settings mapping/fallback tests, `Pending::discover` and child `serve` setup execution. Unsupported preview returns before UI-side device discovery. |
+| I5 — terminal app failure | `idle_is_distinct_from_eof_and_eof_is_delivered_once_without_a_send`, carrier EOF/malformed-input tests, `engine_death_reaches_a_polling_client_without_new_mutations` and `ipc_disconnect_shows_fatal_error_keeps_app_open_and_stops_engine_on_close`. The last test inspects painted fatal text, command refusal and absence of a close command. |
+| I6 — autonomous engine and explicit shutdown | `retiring_a_connection_preserves_the_endpoint_and_running_host`, `data_disconnect_keeps_the_process_running_until_independent_shutdown`, `a_crashed_app_leaves_its_recording_engine_running_without_control`, malformed traffic and device-fault suites. Survivors advance after parent exit; independent explicit stop confirms MIDI reset/cleanup; fixtures externally terminate intentional crash survivors. |
+| I7 — callback and dependency boundaries | Guarded native host/endpoint/render tests, threaded CPAL/MIDI mocks on both carriers, release CI heap guards and selected ownership Miri cases. Four-target production/build boundary audit passes, including direct adapter exclusions. Socket/mapping/process work stays outside endpoint/render calls. |
+| I8 — platforms and delivery | Linux/macOS arm64/Windows x86_64 debug/release subprocess and staged/extracted package gates; local fresh Linux package probes; three-mode real CPAL/JACK virtual-device workflow and mock MIDI routing/reset. Physical audio/MIDI hardware is unavailable. Final PR-head CI/artifact/review closure is recorded below; inherited legacy debug Chrome failure remains explicit. |
+| I9 — shared protocol and crate roles | Shared carrier fixtures run typed local, encoded records, MessagePort, socket and shared memory. `check_rt_engine_boundary.py`, Wasm dependency audits and import-free built-worklet contracts enforce separation. Protocol, portable connection, concrete transport and host roles are documented in `ARCHITECTURE.md` and crate READMEs. |
+
+Final PR-head CI, artifact inspection and review closure are still in progress.

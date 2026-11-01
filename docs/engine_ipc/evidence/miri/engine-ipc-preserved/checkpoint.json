@@ -1,0 +1,115 @@
+{
+  "status": "verified_completed_commands_before_environment_interruption",
+  "commands": [
+    {
+      "package": "shoop_rt_engine",
+      "target": "lib",
+      "arguments": [],
+      "seed": 0,
+      "passed": 2,
+      "log": "00-lib-seed0.log",
+      "seconds": 4.132633258999704,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "workflow",
+      "arguments": [],
+      "seed": 0,
+      "passed": 1,
+      "log": "01-workflow-seed0.log",
+      "seconds": 403.3606916459994,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "telemetry_reports_levels_activity_and_driver_inputs",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "02-control-seed0.log",
+      "seconds": 391.8920627039997,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "bulk_reads_return_recorded_audio_channels_and_midi",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "03-control-seed0.log",
+      "seconds": 516.496122302,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "resync_streams_the_confirmed_state",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "04-control-seed0.log",
+      "seconds": 400.2622147359998,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "credits_limits_and_the_connection_lifecycle_are_enforced",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "05-control-seed0.log",
+      "seconds": 397.2685250350005,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "06-control-seed0.log",
+      "seconds": 394.17085310899984,
+      "miri_flags": "-Zmiri-seed=0"
+    },
+    {
+      "package": "shoop_rt_engine",
+      "target": "control",
+      "arguments": [
+        "stopping_monitoring_releases_the_notes_it_passed_through",
+        "--",
+        "--exact"
+      ],
+      "seed": 0,
+      "passed": 1,
+      "log": "07-control-seed0.log",
+      "seconds": 388.5009212189998,
+      "miri_flags": "-Zmiri-seed=0"
+    }
+  ],
+  "executions": 9,
+  "source_dependencies_unchanged_since": "61a92e75",
+  "verified_against": "08f78aed18f3c8af16b68621caeb8a5475780a52",
+  "limitations": [
+    "Not an uninterrupted whole-engine batch; three remaining commands run as separate exact runner shards."
+  ]
+}

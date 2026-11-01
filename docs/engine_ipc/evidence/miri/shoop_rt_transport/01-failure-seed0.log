@@ -1,0 +1,10 @@
+   Compiling shoop_rt_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_transport)
+    Finished `test` profile [unoptimized] target(s) in 0.17s
+     Running tests/failure.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/failure-83b2779df17a3fb6)
+
+running 2 tests
+test failed_record_server_can_return_its_endpoint_without_dropping_it ... ok
+test idle_is_distinct_from_eof_and_eof_is_delivered_once_without_a_send ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
