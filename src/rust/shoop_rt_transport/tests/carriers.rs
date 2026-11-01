@@ -62,3 +62,52 @@ fn telemetry_keeps_the_latest_records_while_reliable_and_bulk_lanes_refuse() {
         .collect();
     assert_eq!(frames, [3, 4]);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[shoop_test(no_wasm = "native remote carrier synchronization")]
+fn remote_contract_waits_for_bulk_delivery_after_a_reliable_acknowledgment() {
+    use std::collections::VecDeque;
+    struct DelayedBulk {
+        endpoint: ControlledEndpoint,
+        reliable: VecDeque<EngineMessage>,
+        bulk: VecDeque<EngineMessage>,
+        release_bulk: bool,
+    }
+    impl RecordPort for DelayedBulk {
+        fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
+            let message = codec::decode_client(record).unwrap();
+            if matches!(message, ClientMessage::Bulk(BulkRead { id: 0, .. })) {
+                self.release_bulk = true;
+            }
+            let mut out = outbox();
+            self.endpoint.deliver(message, &mut out);
+            while let Some(message) = out.pop() {
+                if matches!(message, EngineMessage::Bulk(_)) {
+                    self.bulk.push_back(message);
+                } else {
+                    self.reliable.push_back(message);
+                }
+            }
+            Ok(())
+        }
+        fn take(&mut self, buffer: &mut [u8]) -> Option<usize> {
+            let message = self.reliable.pop_front().or_else(|| {
+                if !self.release_bulk {
+                    return None;
+                }
+                let next = self.bulk.pop_front();
+                if self.bulk.is_empty() {
+                    self.release_bulk = false;
+                }
+                next
+            })?;
+            Some(codec::encode_engine(&message, buffer).unwrap())
+        }
+    }
+    lifecycle(RemoteCarrier::new(DelayedBulk {
+        endpoint: ControlledEndpoint(TestEndpoint::default()),
+        reliable: VecDeque::new(),
+        bulk: VecDeque::new(),
+        release_bulk: false,
+    }));
+}

@@ -368,6 +368,14 @@ impl Endpoint for ControlledEndpoint {
             self.0.grow |= frames & 8 != 0;
             self.0.poll(out);
             out.push(EngineMessage::Rejected { version: 0 }).unwrap();
+        } else if let ClientMessage::Bulk(BulkRead { id: 0, .. }) = message {
+            out.push(EngineMessage::Bulk(BulkChunk {
+                id: 0,
+                offset: 0,
+                total: 0,
+                payload: BulkPayload::audio(&[]).unwrap(),
+            }))
+            .unwrap();
         } else {
             self.0.deliver(message, out);
         }
@@ -405,8 +413,28 @@ impl<P: RecordPort> RemoteCarrier<P> {
             correlation: 0,
             request: Request::SetSmoothing { frames: flags },
         };
+        self.exchange(control, false, deadline)?;
+        // A reliable acknowledgment cannot fence queued bulk delivery.
+        self.exchange(
+            ClientMessage::Bulk(BulkRead {
+                id: 0,
+                loop_id: loop_id(0),
+                selector: BulkSelector::Audio { channel: 0 },
+                offset: 0,
+            }),
+            true,
+            deadline,
+        )
+    }
+
+    fn exchange(
+        &mut self,
+        message: ClientMessage,
+        bulk: bool,
+        deadline: std::time::Instant,
+    ) -> Result<(), CarrierError> {
         loop {
-            match self.client.send(control) {
+            match self.client.send(message) {
                 Ok(()) => break,
                 Err(CarrierError::Full) => {}
                 Err(error) => return Err(error),
@@ -418,7 +446,13 @@ impl<P: RecordPort> RemoteCarrier<P> {
         }
         loop {
             match self.client.receive() {
-                Some(EngineMessage::Rejected { version: 0 }) => return Ok(()),
+                Some(EngineMessage::Rejected { version: 0 }) if !bulk => return Ok(()),
+                Some(EngineMessage::Bulk(BulkChunk {
+                    id: 0,
+                    offset: 0,
+                    total: 0,
+                    payload: BulkPayload::Audio { len: 0, .. },
+                })) if bulk => return Ok(()),
                 Some(message @ EngineMessage::Disconnected(_)) => {
                     self.pending.push_back(message);
                     return Err(CarrierError::Disconnected);

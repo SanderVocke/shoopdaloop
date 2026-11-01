@@ -65,7 +65,7 @@ ENGINE_CASES = (
     ("shoop_app_client", "projection", ["local_delivery_is_bounded_and_ready_ack_precedes_commands", "--", "--exact"], 1),
     ("shoop_app_client", "projection", ["interrupted_out_of_order_and_oversized_transfers_never_publish_partial_state", "--", "--exact"], 1),
     ("shoop_rt_protocol", "protocol", [], 2),
-    ("shoop_rt_transport", "carriers", [], 3),
+    ("shoop_rt_transport", "carriers", [], 4),
     ("shoop_rt_protocol", "host", [], 2),
     ("shoop_rt_transport", "failure", [], 2),
     ("shoop_transport", "lib", [], 5),

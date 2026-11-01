@@ -54,3 +54,35 @@ The preceding transport commit's full workflow was dispatched as run
 The Rust coverage job failed with exit 100; its diagnostic log/artifact downloads
 returned Forbidden in this environment. That failure is unresolved, not a pass.
 The newer protocol/client candidate needs its own final-head CI evidence.
+
+## Cross-lane fixture barrier correction
+
+The completed log archive of the first workflow became accessible after that run
+was superseded. Coverage ran 2,376 tests, with 2,375 passed and one failure:
+`subprocess_shared_memory_uses_the_same_contract_without_socket_record_traffic`
+expected a bulk chunk immediately after a reliable-lane control acknowledgment.
+Independent lanes permit that acknowledgment to overtake the bulk request/reply.
+The record carrier implementations had moved without changing this behavior.
+
+A deterministic carrier now holds bulk delivery until a bulk-lane barrier. The
+new regression reproduced the original panic before the correction, and passes
+with the correction. The remote test fixture now waits for a bulk-lane marker as
+well as its reliable control acknowledgment, within the existing five-second
+deadline. Production transport scheduling, protocol credits and all media/content
+assertions remain unchanged. This is not a production latency policy change.
+
+- Before correction: actual subprocess case passed 20 unconstrained runs and 20
+  runs with parent/child pinned to one allowed CPU; the deterministic regression
+  failed at the exact original assertion.
+- After correction: full engine transport/socket/shared-memory contracts pass
+  (20 tests), as do all nine host-process tests. Actual subprocess repetition
+  also passed 20 unconstrained runs and 20 runs pinned to one allowed CPU, with no
+  artificial background load.
+- Warning-denying build of the contract-enabled engine transport, formatting,
+  test-attribute policy and relevant Miri-inventory Python tests pass.
+- The carrier Miri target now includes the new deterministic regression; the full
+  selected inventory is 172 commands / 341 executions. Original selections and
+  workloads remain intact. Miri has not been executed.
+
+This correction addresses the observed coverage failure. A successful CI run on
+the corrected head is still required; the overall recovery plan remains incomplete.
