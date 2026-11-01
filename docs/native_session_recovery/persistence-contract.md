@@ -30,6 +30,7 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
 | MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
+| Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump, with one complete ≤1 MiB packet atomic. Event/packet allocation remains bounded by one million events and the media budget |
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
 | Client file input | One platform reader plus one queued raw input, each ≤512 MiB; one codec task. Cancellation fences callbacks and checks file chunks. Browser URL cancellation wakes the pending future; a native reader keeps its slot until it exits or the HTTP timeout fires. A new input refuses while that slot is closing |
 | Archive expansion | At most 4097 entries and `5 × 256 MiB + 8 MiB` expanded bytes; metadata manifests remain 8 MiB. The factor allows decimal MIDI JSON overhead. Check declarations before extraction and actual shapes/counts while decoding |

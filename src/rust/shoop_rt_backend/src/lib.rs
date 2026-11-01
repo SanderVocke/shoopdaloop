@@ -237,6 +237,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// Sends queued requests and reads as credits allow and handles every engine message that
     /// has arrived. Never waits.
     pub fn pump(&mut self) {
+        self.reads.advance();
         for _ in 0..MAX_PUMP_ROUNDS {
             if self.read_cancel_needed
                 && self.is_ready()

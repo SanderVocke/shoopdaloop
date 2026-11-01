@@ -6,12 +6,12 @@
 //! length, further chunks are requested ahead as far as the bulk credits allow. A read belongs
 //! to one version of the loop's content and is replaced when the content changes.
 
+mod assembly;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use shoop_backend::{
     BackendAudioChannelData, BackendAudioData, BackendChannelMode, BackendLoopId,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMidiChannelData, BackendMidiData,
 };
 use shoop_rt_protocol::{
     BulkChunk, BulkPayload, BulkRead, BulkSelector, LoopSlotId, Refusal, BULK_CHUNK_BYTES,
@@ -36,7 +36,9 @@ struct Read<T> {
     /// Frames or bytes received.
     received: u64,
     waiting: BTreeMap<u32, u64>,
-    samples: BTreeMap<u64, Vec<f32>>,
+    audio_data: Option<assembly::Audio>,
+    midi_data: Option<assembly::Midi>,
+    midi_length: u32,
     bytes: BTreeMap<u64, Vec<u8>>,
     outcome: Outcome<T>,
 }
@@ -51,7 +53,9 @@ impl<T> Read<T> {
             total: None,
             received: 0,
             waiting: BTreeMap::new(),
-            samples: BTreeMap::new(),
+            audio_data: None,
+            midi_data: None,
+            midi_length: 0,
             bytes: BTreeMap::new(),
             outcome: Outcome::Reading,
         }
@@ -59,7 +63,7 @@ impl<T> Read<T> {
 
     /// The offset of the next chunk to ask for, if any.
     fn wanted(&self) -> Option<u64> {
-        if !matches!(self.outcome, Outcome::Reading) {
+        if !matches!(self.outcome, Outcome::Reading) || self.waiting.len() >= 16 {
             return None;
         }
         match self.total {
@@ -125,6 +129,41 @@ impl Reads {
         let mut read = Read::new(version, slot, 1);
         read.outcome = Outcome::Done(data);
         self.midi.insert(id, read);
+    }
+    pub fn advance(&mut self) {
+        for read in self.midi.values_mut() {
+            if !matches!(read.outcome, Outcome::Reading)
+                || !read.total.is_some_and(|total| read.received == total)
+            {
+                continue;
+            }
+            let Some(assembly) = read.midi_data.as_mut() else {
+                continue;
+            };
+            match assembly.step(256 * 1024, read.midi_length) {
+                Ok(false) => {}
+                Ok(true) => {
+                    let events = read
+                        .midi_data
+                        .take()
+                        .expect("complete MIDI assembly")
+                        .finish();
+                    read.outcome = Outcome::Done(BackendMidiData {
+                        channels: vec![BackendMidiChannelData {
+                            content_revision: read.version,
+                            mode: BackendChannelMode::Direct,
+                            length: read.midi_length,
+                            events,
+                            start_offset: 0,
+                            capture_alignment_frames: 0,
+                            preplay: 0,
+                        }],
+                    });
+                }
+                Err(message) => read.outcome = Outcome::Failed(message),
+            }
+            break;
+        }
     }
     pub fn set_loop_channels(&mut self, channels: u8) {
         self.loop_channels = usize::from(channels).max(1);
@@ -367,120 +406,114 @@ impl Reads {
             let Some(read) = self.midi.get_mut(&loop_id) else {
                 return;
             };
-            if read.waiting.remove(&chunk.id).is_none() {
+            let Some(expected) = read.waiting.remove(&chunk.id) else {
                 return;
-            }
-            if chunk.total > MAX_READ_BYTES {
-                read.outcome =
-                    Outcome::Failed("MIDI view exceeds the bounded read limit".to_owned());
-                return;
-            }
+            };
             match chunk.payload {
                 BulkPayload::Midi { len, bytes } => {
-                    let data = bytes[..usize::from(len).min(bytes.len())].to_vec();
-                    read.received += data.len() as u64;
-                    read.bytes.insert(chunk.offset, data);
+                    let len = usize::from(len);
+                    if chunk.offset != expected
+                        || read.total.is_some_and(|total| total != chunk.total)
+                        || len > bytes.len()
+                        || chunk.total > MAX_READ_BYTES
+                        || chunk
+                            .offset
+                            .checked_add(len as u64)
+                            .is_none_or(|end| end > chunk.total)
+                        || len as u64 != (chunk.total - chunk.offset).min(BULK_CHUNK_BYTES as u64)
+                    {
+                        read.outcome = Outcome::Failed("inconsistent MIDI read chunk".into());
+                        return;
+                    }
+                    if read.midi_data.is_none() {
+                        match assembly::Midi::new(chunk.total) {
+                            Ok(assembly) => read.midi_data = Some(assembly),
+                            Err(message) => {
+                                read.outcome = Outcome::Failed(message);
+                                return;
+                            }
+                        }
+                        read.midi_length = length(loop_id);
+                    }
+                    if let Err(message) = read
+                        .midi_data
+                        .as_mut()
+                        .unwrap()
+                        .push(chunk.offset, &bytes[..len])
+                    {
+                        read.outcome = Outcome::Failed(message);
+                        return;
+                    }
+                    read.received += len as u64;
                     read.total = Some(chunk.total);
                 }
                 BulkPayload::Refused(refusal) => {
                     read.outcome = Outcome::Failed(refusal_text(refusal))
                 }
-                BulkPayload::Audio { .. } => {
-                    read.outcome = Outcome::Failed("an audio chunk for a MIDI read".to_owned())
-                }
-            }
-            if matches!(read.outcome, Outcome::Reading)
-                && read.total.is_some_and(|total| read.received >= total)
-            {
-                let bytes = std::mem::take(&mut read.bytes)
-                    .into_values()
-                    .collect::<Vec<_>>();
-                read.outcome = match midi_data(&bytes.concat(), read.version, length(loop_id)) {
-                    Ok(data) => Outcome::Done(data),
-                    Err(message) => Outcome::Failed(message),
-                };
+                _ => read.outcome = Outcome::Failed("an audio chunk for a MIDI read".into()),
             }
             return;
         }
         let Some(read) = self.audio.get_mut(&loop_id) else {
             return;
         };
-        if read.waiting.remove(&chunk.id).is_none() {
+        let Some(expected) = read.waiting.remove(&chunk.id) else {
             return;
-        }
-        if chunk
-            .total
-            .checked_mul(loop_channels as u64 * 4)
-            .is_none_or(|bytes| bytes > MAX_READ_BYTES)
-        {
-            read.outcome = Outcome::Failed("audio view exceeds the bounded read limit".to_owned());
-            return;
-        }
+        };
         match chunk.payload {
             BulkPayload::Audio { len, samples } => {
-                let data = samples[..usize::from(len).min(samples.len())].to_vec();
-                read.received += (data.len() / loop_channels) as u64;
-                read.samples.insert(chunk.offset, data);
+                let len = usize::from(len);
+                let frames = len / loop_channels;
+                if chunk.offset != expected
+                    || read.total.is_some_and(|total| total != chunk.total)
+                    || len > samples.len()
+                    || !len.is_multiple_of(loop_channels)
+                    || chunk
+                        .offset
+                        .checked_add(frames as u64)
+                        .is_none_or(|end| end > chunk.total)
+                    || frames as u64
+                        != (chunk.total - chunk.offset)
+                            .min((BULK_CHUNK_SAMPLES / loop_channels).max(1) as u64)
+                {
+                    read.outcome = Outcome::Failed("inconsistent audio read chunk".into());
+                    return;
+                }
+                if read.audio_data.is_none() {
+                    match assembly::Audio::new(chunk.total, loop_channels, read.channels) {
+                        Ok(assembly) => read.audio_data = Some(assembly),
+                        Err(message) => {
+                            read.outcome = Outcome::Failed(message);
+                            return;
+                        }
+                    }
+                }
+                if let Err(message) = read
+                    .audio_data
+                    .as_mut()
+                    .unwrap()
+                    .push(chunk.offset, &samples[..len])
+                {
+                    read.outcome = Outcome::Failed(message);
+                    return;
+                }
+                read.received += frames as u64;
                 read.total = Some(chunk.total);
             }
             BulkPayload::Refused(refusal) => read.outcome = Outcome::Failed(refusal_text(refusal)),
-            BulkPayload::Midi { .. } => {
-                read.outcome = Outcome::Failed("a MIDI chunk for an audio read".to_owned())
-            }
+            _ => read.outcome = Outcome::Failed("a MIDI chunk for an audio read".into()),
         }
         if matches!(read.outcome, Outcome::Reading)
-            && read.total.is_some_and(|total| read.received >= total)
+            && read.total.is_some_and(|total| read.received == total)
         {
-            let frames = read.received as usize;
-            let mut channels = vec![Vec::with_capacity(frames); read.channels];
-            for part in std::mem::take(&mut read.samples).into_values() {
-                for frame in part.chunks_exact(loop_channels) {
-                    for (channel, samples) in channels.iter_mut().enumerate() {
-                        samples.push(frame.get(channel).copied().unwrap_or(0.0));
-                    }
-                }
-            }
-            read.outcome = Outcome::Done(BackendAudioData {
-                channels: channels
-                    .into_iter()
-                    .map(|samples| BackendAudioChannelData {
-                        samples: Arc::from(samples),
-                        ..Default::default()
-                    })
-                    .collect(),
-            });
+            read.outcome = Outcome::Done(
+                read.audio_data
+                    .take()
+                    .expect("complete audio assembly")
+                    .finish(),
+            );
         }
     }
-}
-
-/// Decodes the recorded MIDI records: a little-endian `u64` frame, a little-endian `u32`
-/// length and the message bytes each.
-fn midi_data(bytes: &[u8], version: u64, length: u32) -> Result<BackendMidiData, String> {
-    let mut events = Vec::new();
-    let mut rest = bytes;
-    while !rest.is_empty() {
-        let malformed = || "malformed MIDI content".to_owned();
-        let frame = u64::from_le_bytes(rest.get(..8).ok_or_else(malformed)?.try_into().unwrap());
-        let len = u32::from_le_bytes(rest.get(8..12).ok_or_else(malformed)?.try_into().unwrap());
-        let end = 12 + len as usize;
-        let data = rest.get(12..end).ok_or_else(malformed)?.to_vec();
-        events.push(BackendMidiEvent {
-            frame: u32::try_from(frame).map_err(|_| malformed())?,
-            data: data.into(),
-        });
-        rest = &rest[end..];
-    }
-    Ok(BackendMidiData {
-        channels: vec![BackendMidiChannelData {
-            content_revision: version,
-            mode: BackendChannelMode::Direct,
-            length,
-            events: events.into(),
-            start_offset: 0,
-            capture_alignment_frames: 0,
-            preplay: 0,
-        }],
-    })
 }
 
 /// Content of a loop without recorded material.

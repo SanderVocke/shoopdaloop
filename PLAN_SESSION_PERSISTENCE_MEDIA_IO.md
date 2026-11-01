@@ -542,6 +542,20 @@ reference RT fixture now checks the adapter's four implemented capabilities
 exactly; public service admission remains pending.
 All five production file cases also pass in actual Chrome with the codec worker.
 
+Recorded-read assembly milestone: audio reads now fill their final channel vectors
+as bounded chunks arrive, preserving out-of-order delivery and exact sample bits.
+MIDI reads fill one byte builder and decode complete packets with a 256 KiB pump
+budget, capped by the 1 MiB atomic-packet limit. Finishing a read no longer flattens
+a complete recording or converts an entire event list. Each read has at most 16
+requests in flight; chunks must match their correlation, offsets and total shape.
+Malformed/oversized packets refuse before publishing data. Adapter pre-upload
+validation and aggregate capture admission remain pending.
+
+Validation: native passes 30 adapter, 28 service and all 70 frontend tests,
+including companion-process recovery and the unchanged read-throughput deadline.
+Node passes 29 portable adapter, 28 service and 27 frontend tests. Affected
+warning-denying builds, Rust test policy, formatting and whitespace checks pass.
+
 Portable codec-worker foundation: document conversion and existing codec calls now
 live in `shoop_persistence_codec`, with no backend/engine/device dependency. Its
 bounded worker protocol retains decoded input across dialogs, fences handles,
