@@ -75,6 +75,8 @@ mod browser_worker;
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
+#[cfg(not(target_arch = "wasm32"))]
+mod recovery;
 mod settings;
 use app_args::AppArgs;
 #[cfg(not(target_arch = "wasm32"))]
@@ -409,6 +411,10 @@ fn show_about_dialog(
 }
 
 struct UnifiedApp {
+    #[cfg(not(target_arch = "wasm32"))]
+    exit: recovery::ExitController,
+    #[cfg(not(target_arch = "wasm32"))]
+    host_choices: Option<Vec<(std::path::PathBuf, shoop_host::registry::HostEntry)>>,
     runtime: Runtime,
     widget: AppWidget,
     about_open: bool,
@@ -543,6 +549,10 @@ impl UnifiedApp {
         let runtime = make_runtime(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            exit: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            host_choices: None,
             runtime,
             widget,
             about_open: false,
@@ -1263,15 +1273,79 @@ impl UnifiedApp {
 
     fn show(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
-        if self.runtime.fatal_engine_error() {
-            ui.heading("Fatal engine error");
-            ui.label("The engine connection was lost or the engine failed. Recovery is unavailable for this app run.");
-            ui.label("A healthy disconnected engine keeps playing and recording. Close this application to stop its engine, then start a fresh application.");
-            if ui.button("Close application").clicked() {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        {
+            if let Some(entry) = self.runtime.remote_entry.clone() {
+                self.exit.intercept_close(ui.ctx());
+                ui.horizontal(|ui| {
+                    ui.menu_button("Session", |ui| {
+                        if ui.button("Choose a running host…").clicked() {
+                            let result =
+                                shoop_host::registry::Registry::default_path().and_then(|path| {
+                                    let registry = shoop_host::registry::Registry::open(&path)?;
+                                    registry.prune_stale()?;
+                                    registry.list()
+                                });
+                            match result {
+                                Ok(entries) => self.host_choices = Some(entries),
+                                Err(error) => self.settings.report_action_error(error.to_string()),
+                            }
+                            ui.close();
+                        }
+                        if ui.button("Close UI only (keep host running)").clicked() {
+                            self.exit.close_ui(ui.ctx());
+                        }
+                        if ui.button("Close UI and host…").clicked() {
+                            self.exit.open = true;
+                            ui.close();
+                        }
+                    });
+                    ui.label(&entry.name);
+                });
+                self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
+                if let Some(choices) = self.host_choices.clone() {
+                    egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
+                        if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
+                        for (path, candidate) in choices {
+                            if ui.button(format!("{} — {}", candidate.name, path.display())).clicked() {
+                                match Runtime::attach(&self.settings.active(), candidate) {
+                                    Ok(runtime) => {self.runtime = runtime; self.host_choices = None;},
+                                    Err(error) => self.settings.report_action_error(error.to_string()),
+                                }
+                            }
+                        }
+                        if ui.button("Cancel").clicked() { self.host_choices = None; }
+                    });
+                }
+                let status = self.runtime.handle.status();
+                match status.state {
+                    shoop_app_client::State::Ready => {}
+                    shoop_app_client::State::Lost => {
+                        ui.heading("Session connection lost");
+                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Reattach to check its current state."));
+                        if entry.transport == shoop_host::registry::AppTransport::Socket
+                            && ui.button("Reattach to this host").clicked()
+                        {
+                            match Runtime::attach(&self.settings.active(), entry) {
+                                Ok(runtime) => self.runtime = runtime,
+                                Err(error) => self.settings.report_action_error(error.to_string()),
+                            }
+                        }
+                        ui.ctx().request_repaint_after(Duration::from_millis(100));
+                        return;
+                    }
+                    state => {
+                        ui.spinner();
+                        ui.label(match state {
+                            shoop_app_client::State::Synchronizing => {
+                                "Receiving a coherent session snapshot…"
+                            }
+                            _ => "Attaching to session host…",
+                        });
+                        ui.ctx().request_repaint_after(Duration::from_millis(50));
+                        return;
+                    }
+                }
             }
-            ui.ctx().request_repaint_after(Duration::from_millis(100));
-            return;
         }
         if let Some((source, force_url_session)) = self.startup_session.take() {
             self.process_startup_session_source(source, force_url_session);
@@ -1955,9 +2029,12 @@ struct Runtime {
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
+    applied_user_scripts: shoop_settings::StringToggleList,
+    applied_audio_preferences: (u32, bool),
     /// The new engine backend's host. It is declared after the application runtime so that
     /// it stops after the backend is gone.
     _engine_host: Option<engine_backend::EngineHost>,
+    remote_entry: Option<shoop_host::registry::HostEntry>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2130,7 +2207,13 @@ impl Runtime {
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
+            applied_audio_preferences: (
+                shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+                shoop_egui::master_auto_connect(settings).unwrap_or(true),
+            ),
             _engine_host: engine_host,
+            remote_entry: None,
         })
     }
 
@@ -2140,16 +2223,24 @@ impl Runtime {
     ) -> anyhow::Result<Self> {
         #[cfg(feature = "native-fx")]
         let (carla_ui_service, _) = CarlaMainThreadUiService::new();
-        let (startup_scripts, paths, warnings) = configured_startup_scripts(settings)?;
+        let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
+        let pending_script_paths = startup_scripts
+            .iter()
+            .filter_map(|script| {
+                script
+                    .source_path
+                    .clone()
+                    .map(|path| (script.name.clone(), script.kind, path))
+            })
+            .collect();
         let runtime = ApplicationRuntime::attach(
-            entry,
+            entry.clone(),
             application::ApplicationStartOptions {
                 startup_scripts,
                 startup_warnings: warnings,
                 ..Default::default()
             },
         )?;
-        let script_paths = associate_startup_script_paths(runtime.startup_script_ids(), paths);
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
         let (catalog_scan_tx, catalog_scan_rx) = std::sync::mpsc::channel();
@@ -2158,8 +2249,8 @@ impl Runtime {
             handle,
             #[cfg(feature = "native-fx")]
             carla_ui_service,
-            script_paths,
-            pending_script_paths: Default::default(),
+            script_paths: Default::default(),
+            pending_script_paths,
             catalog_scan_generation: 1,
             catalog_scan_tx,
             catalog_scan_rx,
@@ -2168,7 +2259,13 @@ impl Runtime {
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
+            applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
+            applied_audio_preferences: (
+                shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+                shoop_egui::master_auto_connect(settings).unwrap_or(true),
+            ),
             _engine_host: None,
+            remote_entry: Some(entry),
         })
     }
 
@@ -2259,12 +2356,22 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
+        let preferences = (
+            shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+            shoop_egui::master_auto_connect(settings).unwrap_or(true),
+        );
+        if preferences == self.applied_audio_preferences {
+            self.applied_audio_settings_revision = settings.revision();
+            return Ok(());
+        }
         let handle = self.handle.clone();
         reconcile_loop_smoothing_settings(
             settings,
             &mut self.applied_audio_settings_revision,
             move |intent| handle.dispatch(intent),
-        )
+        )?;
+        self.applied_audio_preferences = preferences;
+        Ok(())
     }
 
     fn reconcile_script_settings(
@@ -2275,6 +2382,11 @@ impl Runtime {
             return Ok(());
         }
         self.request_builtin_rescan(settings);
+        let user_scripts = settings.get(shoop_egui::USER_SCRIPTS)?;
+        if user_scripts == self.applied_user_scripts {
+            self.applied_settings_revision = settings.revision();
+            return Ok(());
+        }
         let mut desired = std::collections::BTreeMap::new();
         let mut warnings = Vec::new();
         for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
@@ -2347,6 +2459,7 @@ impl Runtime {
             }
         }
         self.applied_settings_revision = settings.revision();
+        self.applied_user_scripts = user_scripts;
         Ok(())
     }
 

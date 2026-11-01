@@ -1099,6 +1099,94 @@ fn recovered_clients_do_not_execute_catalog_scripts_until_explicit_user_start() 
 }
 
 #[shoop_test]
+fn management_shutdown_survives_data_loss_and_a_replacement_fences_it() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Recovered,
+    );
+    runtime.dispatch(AppIntent::SetLoopSmoothingMs(7)).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime.fail("injected data loss".into());
+    f.service.detach(ConnectionId(99));
+    assert!(runtime.dispatch(AppIntent::SetLoopSmoothingMs(8)).is_err());
+    let ClientMessage::Shutdown {
+        authority,
+        operation,
+    } = runtime.prepare_shutdown().unwrap()
+    else {
+        unreachable!()
+    };
+    let replacement = attach(&mut f.service, 501, ConnectionId(100), false);
+    assert_ne!(replacement.authority(), Some(authority));
+    assert_eq!(
+        f.service.management(ManagementRequest::Shutdown {
+            authority,
+            operation
+        }),
+        ManagementReply::Refused(Refusal::StaleAuthority)
+    );
+    assert!(f.service.is_ready());
+}
+
+#[shoop_test]
+fn recovered_startup_catalog_is_visible_but_does_not_run_and_shutdown_discards_unsent_commands() {
+    use shoop_app_client::runtime::{Runtime, Startup, StartupScript};
+    let mut f = fixture();
+    let mut first = attach(&mut f.service, 499, ConnectionId(1), false);
+    f.service
+        .handle(ConnectionId(1), first.detach().unwrap())
+        .unwrap();
+    let (delivery, port) = local::channel();
+    let mut runtime = Runtime::new(
+        Client::new(ClientId(500), HOST, SESSION).unwrap(),
+        Box::new(delivery),
+        Box::new(shoop_scripting::NullMidiService),
+        Startup::IfFresh(vec![StartupScript {
+            name: "saved.lua".into(),
+            identity: None,
+            source: "shoop_announce_api_version(1,0); require('shoop_control').set_solo(true)"
+                .into(),
+            source_path: None,
+            kind: ScriptKind::User,
+            enabled: true,
+        }]),
+    )
+    .unwrap();
+    assert!(runtime.dispatch(AppIntent::SetLoopSmoothingMs(5)).is_err());
+    pump_runtime(&mut f.service, &mut runtime, &port, 5);
+    assert_eq!(runtime.snapshot().scripting.scripts.len(), 1);
+    assert!(!runtime.snapshot().scripting.scripts[0].enabled);
+    assert!(!f.service.snapshot().global.solo);
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+        .unwrap();
+    let ClientMessage::Shutdown {
+        authority,
+        operation,
+    } = runtime.prepare_shutdown().unwrap()
+    else {
+        unreachable!()
+    };
+    pump_runtime(&mut f.service, &mut runtime, &port, 2);
+    assert!(!f.service.snapshot().global.solo);
+    assert!(matches!(
+        f.service.management(ManagementRequest::Shutdown {
+            authority,
+            operation
+        }),
+        ManagementReply::Accepted { .. }
+    ));
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+}
+
+#[shoop_test]
 fn script_command_bursts_report_capacity_and_do_not_mutate_the_confirmed_read_view() {
     use std::sync::Arc;
     let mut f = fixture();

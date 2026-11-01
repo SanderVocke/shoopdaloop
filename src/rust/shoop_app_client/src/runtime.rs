@@ -82,6 +82,7 @@ pub struct Runtime {
     requested_media: Option<(LoopId, u64, bool)>,
     media_refusal_notified: bool,
     loss_reported: bool,
+    controls_suspended: bool,
 }
 
 impl Runtime {
@@ -120,6 +121,7 @@ impl Runtime {
             requested_media: None,
             media_refusal_notified: false,
             loss_reported: false,
+            controls_suspended: false,
         };
         if recovered {
             runtime.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
@@ -148,7 +150,7 @@ impl Runtime {
         None
     }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
-        if matches!(self.client.state(), State::Lost | State::Detached) {
+        if self.client.state() != State::Ready || self.controls_suspended {
             return Err(Error::Disconnected);
         }
         if self.intents.len() == QUEUE_CAPACITY {
@@ -184,8 +186,10 @@ impl Runtime {
     }
     pub fn tick(&mut self, elapsed: Duration) {
         let _span = tracing::trace_span!("app.client.tick").entered();
-        if let Err(error) = self.delivery.poll(&mut self.client) {
-            self.lost(error);
+        if self.client.state() != State::Lost {
+            if let Err(error) = self.delivery.poll(&mut self.client) {
+                self.lost(error);
+            }
         }
         if let Some(message) = self.client.ready_message() {
             match self.delivery.send(message) {
@@ -201,6 +205,10 @@ impl Runtime {
             return;
         }
         self.reconcile_results();
+        if self.controls_suspended {
+            self.project();
+            return;
+        }
         let control = self.control_snapshot();
         self.scripts.set_control_snapshot(control);
         if let Some(startup) = self.startup.take() {
@@ -213,10 +221,13 @@ impl Runtime {
                 {
                     Startup::Fresh(scripts)
                 }
-                Startup::IfFresh(_) => {
+                Startup::IfFresh(mut scripts) => {
                     self.recovered = true;
                     self.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
-                    Startup::Recovered
+                    for script in &mut scripts {
+                        script.enabled = false;
+                    }
+                    Startup::Fresh(scripts)
                 }
                 startup => startup,
             };
@@ -345,6 +356,17 @@ impl Runtime {
             return Err(error);
         }
         Ok(operation)
+    }
+    pub fn prepare_shutdown(&mut self) -> Result<ClientMessage, Error> {
+        let message = self.client.management_shutdown()?;
+        self.controls_suspended = true;
+        self.intents.clear();
+        self.commands.clear();
+        self.stop_scripts();
+        Ok(message)
+    }
+    pub fn resume_controls(&mut self) {
+        self.controls_suspended = false;
     }
     fn queue(&mut self, command: Command, creation: Option<(u64, bool)>) -> anyhow::Result<()> {
         if !command.bounded() {

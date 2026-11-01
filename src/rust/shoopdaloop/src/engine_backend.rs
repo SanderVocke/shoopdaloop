@@ -345,8 +345,6 @@ fn start_failure(error: StartError) -> anyhow::Error {
     )
 }
 
-#[cfg(test)]
-use shoop_host::engine::SMOOTHING_LIMIT_FRAMES;
 #[cfg(all(test, feature = "cpal"))]
 use shoop_host::engine::{cpal_config, DEVICE_MAX_FRAMES};
 use shoop_host::engine::{dummy_config, engine_description, inventory, stop_problems};
@@ -367,7 +365,8 @@ fn native_config(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use shoop_rt_host_native::{DummyConfig, RenderPhase, Stats};
+    use shoop_rt_engine::Segment;
+    use shoop_rt_host_native::{RenderPhase, Stats};
 
     /// The dummy driver's input in tests: a constant signal on the first input.
     pub(crate) const DUMMY_SIGNAL: f32 = 0.25;

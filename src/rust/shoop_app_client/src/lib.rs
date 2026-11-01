@@ -46,6 +46,8 @@ pub struct Client {
     session: SessionId,
     state: State,
     authority: Option<Authority>,
+    last_authority: Option<Authority>,
+    refusal: Option<Refusal>,
     snapshot: Option<Arc<SessionSnapshot>>,
     next_operation: u64,
     pending: BTreeMap<OperationId, PendingOperation>,
@@ -70,6 +72,8 @@ impl Client {
             session,
             state: State::Detached,
             authority: None,
+            last_authority: None,
+            refusal: None,
             snapshot: None,
             next_operation: 1,
             pending: BTreeMap::new(),
@@ -90,6 +94,9 @@ impl Client {
     pub fn authority(&self) -> Option<Authority> {
         self.authority
     }
+    pub fn refusal(&self) -> Option<Refusal> {
+        self.refusal
+    }
     pub fn snapshot(&self) -> Option<&Arc<SessionSnapshot>> {
         self.snapshot.as_ref()
     }
@@ -105,6 +112,7 @@ impl Client {
             return Err(Error::Protocol);
         }
         self.state = State::Attaching;
+        self.refusal = None;
         self.authority = None;
         self.snapshot = None;
         self.transfer = None;
@@ -158,12 +166,14 @@ impl Client {
         if self.state != State::Ready {
             return Err(Error::NotReady);
         }
-        if self.pending.len() + self.submitted.len() >= MAX_PENDING_OPERATIONS {
-            return Err(Error::Full);
-        }
+        self.management_shutdown()
+    }
+
+    /// Reserve an operation for the authenticated management path, also after data loss.
+    pub fn management_shutdown(&mut self) -> Result<ClientMessage, Error> {
+        let authority = self.last_authority.ok_or(Error::NotReady)?;
         let sequence = self.next_operation;
         self.next_operation = sequence.checked_add(1).ok_or(Error::Exhausted)?;
-        let authority = self.authority.ok_or(Error::NotReady)?;
         let operation = OperationId {
             client: self.id,
             sequence,
@@ -295,6 +305,7 @@ impl Client {
                     return Err(Error::Identity);
                 }
                 self.authority = Some(authority);
+                self.last_authority = Some(authority);
                 self.state = State::Synchronizing;
             }
             ServiceMessage::Snapshot { authority, state } => {
@@ -353,11 +364,12 @@ impl Client {
                     self.finish(result);
                 }
             }
-            ServiceMessage::Rejected(_) => {
+            ServiceMessage::Rejected(reason) => {
                 if self.state != State::Attaching {
                     return Err(Error::Protocol);
                 }
                 self.disconnect();
+                self.refusal = Some(reason);
             }
             ServiceMessage::Detached { authority } => {
                 self.check(authority)?;

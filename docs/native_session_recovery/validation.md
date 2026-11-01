@@ -265,3 +265,22 @@ Focused evidence:
 
 This is development integration evidence. Packaged platform matrices, final-head CI,
 full retained-stack suites and final performance/fault stress remain Stage 7.
+
+## Stage 5 — recovery controls and explicit shutdown
+
+The native UI shows attaching/snapshot/lost states, offers manual reattachment and
+registered-host selection, and routes both Session menu exits and platform window
+close through a choice with Cancel. UI-only exit detaches; close-both reserves one
+operation on the client thread, suspends unsent controls/Lua, and waits on authenticated
+management results. An uncertain retry checks the same operation; a reported cleanup
+failure permits a fresh retry. No PID kill is part of product shutdown. Last-owner
+authority remains usable after data loss and becomes stale on replacement.
+Recovered scripts are visible but inactive; preference reconciliation avoids applying
+unchanged UI audio preferences or enabling unchanged saved user scripts on recovery.
+
+Development checks: 19 service/client workflow tests passed (including management
+fencing after loss, pre-ready controls, recovered saved Lua and unsent-command
+cancellation); the headless egui platform-close/Cancel/authorized-exit test passed.
+All seven subprocess socket/shared-memory/launcher recovery tests passed. The
+warning-denying native UI build, formatting, test-attribute and closed tracing policies
+passed. Final packaged GUI workflows and other platforms remain Stage 7 gates.

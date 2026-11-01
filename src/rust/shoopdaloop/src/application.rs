@@ -163,7 +163,7 @@ impl CooperativeApplicationRuntime {
             .unwrap_or_else(|error| error.into_inner())
             .pop_front()
     }
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(target_arch = "wasm32")]
     pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
         self.client.take_audio_preview()
     }
@@ -241,16 +241,27 @@ mod native {
     }
     enum Message {
         Intent(AppIntent),
+        PrepareShutdown(mpsc::Sender<Result<shoop_app_protocol::ClientMessage, String>>),
+        ResumeControls,
         Detach,
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConnectionStatus {
+        pub state: shoop_app_client::State,
+        pub error: Option<String>,
     }
     #[derive(Clone)]
     pub struct ApplicationHandle {
         sender: SyncSender<Message>,
         snapshot: Arc<RwLock<Arc<AppSnapshot>>>,
         outputs: FileOutputs,
+        status: Arc<RwLock<ConnectionStatus>>,
     }
     impl ApplicationHandle {
         pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
+            if self.status().state != shoop_app_client::State::Ready {
+                return Err(DispatchError::Disconnected);
+            }
             self.sender
                 .try_send(Message::Intent(intent))
                 .map_err(|error| match error {
@@ -263,6 +274,25 @@ mod native {
                 .read()
                 .unwrap_or_else(|error| error.into_inner())
                 .clone()
+        }
+        pub fn status(&self) -> ConnectionStatus {
+            self.status
+                .read()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        }
+        pub fn prepare_shutdown(&self) -> Result<shoop_app_protocol::ClientMessage> {
+            let (sender, receiver) = mpsc::channel();
+            self.sender
+                .try_send(Message::PrepareShutdown(sender))
+                .map_err(|_| anyhow!("session client is busy or unavailable; retry shutdown"))?;
+            receiver
+                .recv_timeout(Duration::from_secs(3))
+                .map_err(|_| anyhow!("session client did not reserve shutdown; retry"))?
+                .map_err(anyhow::Error::msg)
+        }
+        pub fn resume_controls(&self) {
+            let _ = self.sender.try_send(Message::ResumeControls);
         }
         pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
             self.outputs
@@ -288,7 +318,7 @@ mod native {
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
         ) -> Result<Self> {
-            Self::start_thread(move || {
+            Self::start_thread(true, move || {
                 CooperativeApplicationRuntime::start_with_options_and_midi(
                     backend,
                     options,
@@ -301,7 +331,7 @@ mod native {
             entry: shoop_host::registry::HostEntry,
             options: ApplicationStartOptions,
         ) -> Result<Self> {
-            Self::start_thread(move || {
+            Self::start_thread(false, move || {
                 let connection = shoop_host::connection::connect(&entry, Duration::from_secs(3))?;
                 let client = Client::new(
                     ClientId(shoop_host::registry::identity()?),
@@ -319,6 +349,9 @@ mod native {
                 for warning in entry.warnings {
                     runtime.notify(warning);
                 }
+                for warning in options.startup_warnings {
+                    runtime.notify(warning);
+                }
                 Ok(SessionRuntime::Remote(
                     runtime,
                     Arc::new(Mutex::new(VecDeque::new())),
@@ -326,16 +359,22 @@ mod native {
             })
         }
         fn start_thread(
+            wait_ready: bool,
             make: impl FnOnce() -> Result<SessionRuntime> + Send + 'static,
         ) -> Result<Self> {
             let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
             let outputs: FileOutputs = Arc::new(Mutex::new(VecDeque::new()));
+            let status = Arc::new(RwLock::new(ConnectionStatus {
+                state: shoop_app_client::State::Attaching,
+                error: None,
+            }));
             let handle = ApplicationHandle {
                 sender,
                 snapshot: Arc::clone(&snapshot),
                 outputs: Arc::clone(&outputs),
+                status: Arc::clone(&status),
             };
             let join = thread::Builder::new()
                 .name("shoop-application".into())
@@ -344,6 +383,11 @@ mod native {
                     let mut runtime = match result {
                         Ok(runtime) => runtime,
                         Err(error) => {
+                            *status.write().unwrap_or_else(|error| error.into_inner()) =
+                                ConnectionStatus {
+                                    state: shoop_app_client::State::Lost,
+                                    error: Some(error.to_string()),
+                                };
                             let _ = ready_tx.send(Err(error.to_string()));
                             return;
                         }
@@ -359,6 +403,16 @@ mod native {
                                         runtime.client_mut().notify(error.to_string());
                                     }
                                 }
+                                Ok(Message::PrepareShutdown(sender)) => {
+                                    let result =
+                                        runtime.client_mut().prepare_shutdown().map_err(|error| {
+                                            format!("Cannot close this host: {error:?}")
+                                        });
+                                    let _ = sender.send(result);
+                                }
+                                Ok(Message::ResumeControls) => {
+                                    runtime.client_mut().resume_controls()
+                                }
                                 Ok(Message::Detach) | Err(mpsc::TryRecvError::Disconnected) => {
                                     let _ = runtime.client_mut().detach();
                                     return;
@@ -371,6 +425,16 @@ mod native {
                         last = now;
                         *snapshot.write().unwrap_or_else(|error| error.into_inner()) =
                             runtime.snapshot();
+                        status
+                            .write()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .state = runtime.client().state();
+                        if let Some(reason) = runtime.client().client().refusal() {
+                            status
+                                .write()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .error = Some(format!("Host refused attachment: {reason:?}"));
+                        }
                         if runtime.client().state() == shoop_app_client::State::Lost {
                             if let Some(ready_tx) = ready_tx.take() {
                                 let _ = ready_tx.send(Err(
@@ -378,21 +442,23 @@ mod native {
                                         .to_owned(),
                                 ));
                             }
-                            return;
                         }
                         if runtime.client().state() == shoop_app_client::State::Ready {
                             if let Some(ready_tx) = ready_tx.take() {
-                                if ready_tx
-                                    .send(Ok(runtime.client().startup_script_ids().to_vec()))
-                                    .is_err()
-                                {
-                                    return;
-                                }
+                                let _ = ready_tx
+                                    .send(Ok(runtime.client().startup_script_ids().to_vec()));
                             }
                         }
                         thread::sleep(Duration::from_millis(4));
                     }
                 })?;
+            if !wait_ready {
+                return Ok(Self {
+                    handle,
+                    join: Some(join),
+                    startup_ids: Vec::new(),
+                });
+            }
             match ready_rx.recv_timeout(Duration::from_secs(10)) {
                 Ok(Ok(startup_ids)) => Ok(Self {
                     handle,
@@ -400,6 +466,7 @@ mod native {
                     startup_ids,
                 }),
                 Ok(Err(message)) => {
+                    let _ = handle.sender.try_send(Message::Detach);
                     let _ = join.join();
                     Err(anyhow!(message))
                 }

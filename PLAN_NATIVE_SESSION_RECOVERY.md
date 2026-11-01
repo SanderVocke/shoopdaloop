@@ -4,11 +4,11 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stages 0–4 are implemented: ownership/contract inventory, neutral
+Stages 0–5 are implemented: ownership/contract inventory, neutral
 backend contracts, shared carriers, bounded app protocol/client projection, the
 authoritative service, UI/Lua clients with typed local composition, and independent
-native hosts with authenticated attachment. Recovery/exit UX, legacy retirement and
-final validation remain incomplete in Stages 5–7.
+native hosts with authenticated attachment, recovery controls and explicit shutdown.
+Legacy retirement and final validation remain incomplete in Stages 6–7.
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -23,7 +23,10 @@ Current checkpoint (2026-11-01):
   conflicts. Its native affected-crate warning-denying build, all 361 affected tests,
   formatting and Rust test-attribute policy passed. The paused Stage 4 changes were
   restored afterward; these merge checks do not validate that unfinished work.
-- Stage 2/3 commits and the merge have not been pushed. The last verified green CI
+- Stage 4: `3f9ab204` — independent authenticated app/engine host and sibling launcher.
+- Stage 5: attachment/recovery UI and explicit authenticated shutdown implemented;
+  focused evidence is in the incremental validation document.
+- Stage 2–5 commits and the merge have not been pushed. The last verified green CI
   is the earlier Stage 1 head `2ec1abec`, run
   [41284581244](https://github.com/SanderVocke/shoopdaloop/actions/runs/41284581244);
   it does not validate the current head or working tree. Final-head CI, review and
@@ -400,14 +403,14 @@ startup/core/exit smoke checks the migrated composition; no long stress or Miri 
 
 ### Stage 5 — recovery UX and explicit shutdown (after 4)
 
-- [ ] Add host discovery/explicit selection, attachment progress and failure states,
+- [x] Add host discovery/explicit selection, attachment progress and failure states,
   user-driven reattachment, and coherent snapshot-to-live subscription handling.
-- [ ] Add both close menu actions and window/platform quit choice with Cancel for
+- [x] Add both close menu actions and window/platform quit choice with Cancel for
   external hosts. Document mode limits; local/browser close cannot preserve its host.
-- [ ] UI-only exit releases control. Close-both uses authenticated current authority,
+- [x] UI-only exit releases control. Close-both uses authenticated current authority,
   including the management path after data loss, and waits for reset/cleanup results.
   Offer retry/UI-only exit on failure; deny stale/non-owner shutdown.
-- [ ] Show Lua unavailability after recovery and allow explicit user script startup.
+- [x] Show Lua unavailability after recovery and allow explicit user script startup.
   Never run scripts or mutate the session merely because a new UI attached.
 
 **Verify:** targeted GUI/application tests for fresh/recovered/disconnected clients,

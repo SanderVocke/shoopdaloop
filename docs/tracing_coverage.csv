@@ -314,3 +314,4 @@ src/rust/shoop_host/src/engine.rs,app_session,instrumented_indirect,Native confi
 src/rust/shoop_host/src/serve.rs,app_session,instrumented_direct,Independent host session lifecycle boundary.
 src/rust/shoop_host/src/connection.rs,app_session,instrumented_indirect,Connection delivery executes under client and host session boundaries.
 src/rust/shoop_host/src/launch.rs,app_session,excluded,Bounded sibling process launch and readiness orchestration.
+src/rust/shoopdaloop/src/recovery.rs,native_ui,instrumented_indirect,Authenticated shutdown runs through instrumented session management; client status and bounded outcome errors expose exit progress.
