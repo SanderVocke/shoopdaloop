@@ -120,14 +120,79 @@ impl SharedPages {
     }
 
     pub fn retain(&mut self, lease: LeaseId) -> Result<LeaseId, Error> {
+        self.preflight_retain(lease, 1)?;
+        let page = self.page(lease)?;
+        Ok(self.acquire(page))
+    }
+
+    pub fn available_leases(&self) -> usize {
+        self.free_leases.len()
+    }
+
+    pub fn preflight_retain(&self, lease: LeaseId, count: usize) -> Result<(), Error> {
         let page = self.page(lease)?;
         self.references[page]
-            .checked_add(1)
+            .checked_add(count)
             .ok_or(Error::Exhausted)?;
-        if self.free_leases.is_empty() {
+        if self.free_leases.len() < count {
             return Err(Error::Capacity);
         }
-        Ok(self.acquire(page))
+        Ok(())
+    }
+
+    /// Reuse exclusively owned storage, invalidating the previous lease before
+    /// exposing the new contents. Shared pages must instead be forked.
+    pub fn replace_audio(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+        samples: &[f32],
+    ) -> Result<LeaseId, Error> {
+        self.check_store(store)?;
+        let page = self.page(lease)?;
+        if self.references[page] != 1 {
+            return Err(Error::Busy);
+        }
+        let generation = lease.generation.checked_add(1).ok_or(Error::Exhausted)?;
+        let page_bytes = store.config.limits().page_bytes;
+        if samples.len() != page_bytes / 4 {
+            return Err(Error::InvalidShape);
+        }
+        store.charge_external(page_bytes, 0)?;
+        for (sample, output) in samples
+            .iter()
+            .zip(store.data[page * page_bytes..(page + 1) * page_bytes].chunks_exact_mut(4))
+        {
+            output.copy_from_slice(&sample.to_le_bytes());
+        }
+        self.leases[lease.slot as usize].generation = generation;
+        Ok(LeaseId {
+            generation,
+            ..lease
+        })
+    }
+
+    /// Spend one maintenance step to release a lease and, for its final owner,
+    /// return the page immediately. No retirement queue is scanned.
+    pub fn reclaim_lease(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+    ) -> Result<bool, Error> {
+        self.check_store(store)?;
+        let page = self.page(lease)?;
+        let remaining = self.references[page]
+            .checked_sub(1)
+            .ok_or(Error::InvalidState)?;
+        store.charge_external(0, 1)?;
+        self.references[page] = remaining;
+        if remaining == 0 {
+            store.pages[page] = Page::default();
+            store.free_pages.push(page);
+            store.work.reclaimed_pages += 1;
+        }
+        release(&mut self.leases, &mut self.free_leases, lease.slot as usize);
+        Ok(remaining == 0)
     }
 
     pub fn bytes<'a>(&self, store: &'a ResourceStore, lease: LeaseId) -> Result<&'a [u8], Error> {

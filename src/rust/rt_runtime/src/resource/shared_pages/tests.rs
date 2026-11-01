@@ -266,3 +266,56 @@ fn reference_and_lease_generations_exhaust_without_wrapping() {
         assert_eq!(store.usage().free_pages, 3);
     });
 }
+
+#[shoop_test]
+fn exclusive_reuse_invalidates_old_handles_and_reclamation_obeys_the_step_budget() {
+    let mut store = store();
+    let baseline = store.usage();
+    let mut pages = SharedPages::prepare(&store, 2).unwrap();
+    assert_no_heap(|| {
+        store.begin_callback();
+        let original = pages.insert_audio(&mut store, &[0., 1., 2., 3.]).unwrap();
+        let peer = pages.retain(original).unwrap();
+        let physical = pages.page(original).unwrap();
+        assert_eq!(
+            pages.replace_audio(&mut store, original, &[4.; 4]),
+            Err(Error::Busy)
+        );
+        assert_eq!(samples(&pages, &store, peer), [0., 1., 2., 3.]);
+        pages.release(&mut store, peer).unwrap();
+        assert_eq!(
+            pages.replace_audio(&mut store, original, &[4.; 4]),
+            Err(Error::Budget)
+        );
+        assert_eq!(samples(&pages, &store, original), [0., 1., 2., 3.]);
+        store.begin_callback();
+        let reused = pages
+            .replace_audio(&mut store, original, &[4., 5., 6., 7.])
+            .unwrap();
+        assert_eq!(pages.page(reused).unwrap(), physical);
+        assert_eq!(pages.bytes(&store, original), Err(Error::InvalidId));
+        assert_eq!(samples(&pages, &store, reused), [4., 5., 6., 7.]);
+        assert_eq!(store.work().copied_bytes, 16);
+        pages.leases[reused.slot as usize].generation = u32::MAX;
+        let last = LeaseId {
+            generation: u32::MAX,
+            ..reused
+        };
+        store.begin_callback();
+        assert_eq!(
+            pages.replace_audio(&mut store, last, &[8.; 4]),
+            Err(Error::Exhausted)
+        );
+        assert_eq!(store.work().copied_bytes, 0);
+        assert_eq!(samples(&pages, &store, last), [4., 5., 6., 7.]);
+        store.charge_external(0, 1).unwrap();
+        assert_eq!(pages.reclaim_lease(&mut store, last), Err(Error::Budget));
+        assert_eq!(samples(&pages, &store, last), [4., 5., 6., 7.]);
+        store.begin_callback();
+        assert_eq!(pages.reclaim_lease(&mut store, last), Ok(true));
+        assert_eq!(store.work().validation_steps, 1);
+        assert_eq!(store.work().reclaimed_pages, 1);
+        assert_eq!(pages.bytes(&store, last), Err(Error::InvalidId));
+        assert_eq!(store.usage(), baseline);
+    });
+}

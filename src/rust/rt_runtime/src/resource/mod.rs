@@ -23,6 +23,8 @@ use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod render;
 mod request;
+#[allow(dead_code)] // Prepared history storage; engine integration is staged separately.
+mod rolling_history;
 #[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
 mod shared_pages;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
