@@ -163,6 +163,9 @@ impl Client {
     pub fn pending(&self) -> &BTreeMap<OperationId, PendingOperation> {
         &self.pending
     }
+    pub fn has_unfinished_operations(&self) -> bool {
+        !self.pending.is_empty() || !self.submitted.is_empty()
+    }
     pub fn results(&self) -> &BTreeMap<OperationId, Outcome> {
         &self.results
     }

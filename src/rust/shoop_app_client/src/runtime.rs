@@ -13,6 +13,38 @@ pub trait Delivery {
     fn send(&mut self, message: ClientMessage) -> Result<(), Error>;
     fn poll(&mut self, client: &mut Client) -> Result<usize, Error>;
 }
+
+/// Client-local file tasks. The application supplies codecs without coupling the
+/// session client or service to file formats or platform APIs.
+pub trait PersistenceIo {
+    fn handles(&self, intent: &AppIntent) -> bool;
+    fn apply(
+        &mut self,
+        intent: AppIntent,
+        state: &SessionSnapshot,
+        session_scripts: bool,
+    ) -> anyhow::Result<()>;
+    fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool);
+    fn dismiss_completed(&mut self);
+    fn task(&self) -> Option<IoTaskState>;
+    fn take_output(&mut self) -> Option<ApplicationFileOutput>;
+    fn take_request(&mut self) -> Option<ApplicationFileRequest>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApplicationFileRequestKind {
+    Session,
+    SessionUrl,
+    Audio,
+    Midi,
+    SessionSource,
+}
+#[derive(Clone, Debug)]
+pub struct ApplicationFileRequest {
+    pub task_id: TaskId,
+    pub kind: ApplicationFileRequestKind,
+    pub source: Option<String>,
+}
 impl Delivery for local::ClientPort {
     fn send(&mut self, message: ClientMessage) -> Result<(), Error> {
         self.commands
@@ -69,8 +101,8 @@ pub struct Runtime {
     reset_operation: Option<OperationId>,
     reset_queued: bool,
     io_task: Option<IoTaskState>,
-    intents: VecDeque<AppIntent>,
-    commands: VecDeque<(Command, Option<(u64, bool)>)>,
+    intents: VecDeque<(u64, AppIntent)>,
+    commands: VecDeque<(u64, Command, Option<(u64, bool)>)>,
     creations: BTreeMap<OperationId, (u64, bool)>,
     seen_results: BTreeSet<OperationId>,
     track_results: VecDeque<TrackCreationResult>,
@@ -83,6 +115,8 @@ pub struct Runtime {
     media_refusal_notified: bool,
     loss_reported: bool,
     controls_suspended: bool,
+    persistence_io: Option<Box<dyn PersistenceIo>>,
+    command_epoch: Option<u64>,
 }
 
 impl Runtime {
@@ -122,11 +156,17 @@ impl Runtime {
             media_refusal_notified: false,
             loss_reported: false,
             controls_suspended: false,
+            persistence_io: None,
+            command_epoch: None,
         };
         if recovered {
             runtime.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
         }
         Ok(runtime)
+    }
+    pub fn with_persistence_io(mut self, provider: Box<dyn PersistenceIo>) -> Self {
+        self.persistence_io = Some(provider);
+        self
     }
     pub fn state(&self) -> State {
         self.client.state()
@@ -144,7 +184,12 @@ impl Runtime {
         !self.intents.is_empty() || !self.commands.is_empty()
     }
     pub fn take_file_output(&mut self) -> Option<ApplicationFileOutput> {
-        self.outputs.pop_front()
+        self.outputs
+            .pop_front()
+            .or_else(|| self.persistence_io.as_mut()?.take_output())
+    }
+    pub fn take_file_request(&mut self) -> Option<ApplicationFileRequest> {
+        self.persistence_io.as_mut()?.take_request()
     }
     pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
         None
@@ -156,7 +201,12 @@ impl Runtime {
         if self.intents.len() == QUEUE_CAPACITY {
             return Err(Error::Full);
         }
-        self.intents.push_back(intent);
+        let epoch = self
+            .client
+            .snapshot()
+            .ok_or(Error::NotReady)?
+            .persistence_epoch;
+        self.intents.push_back((epoch, intent));
         Ok(())
     }
     pub fn fail(&mut self, message: String) {
@@ -201,6 +251,14 @@ impl Runtime {
             }
         }
         if self.client.state() != State::Ready {
+            if let Some(provider) = &mut self.persistence_io {
+                let session_scripts = self
+                    .scripts
+                    .states()
+                    .iter()
+                    .any(|script| script.kind == ScriptKind::Session);
+                provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
+            }
             self.project();
             return;
         }
@@ -263,22 +321,42 @@ impl Runtime {
             }
         }
         for _ in 0..MAX_MESSAGES_PER_TURN {
-            let Some(intent) = self.intents.pop_front() else {
+            let Some((epoch, intent)) = self.intents.pop_front() else {
                 break;
             };
+            if self
+                .client
+                .snapshot()
+                .is_some_and(|s| s.persistence_epoch != epoch)
+                && !matches!(
+                    intent,
+                    AppIntent::CompleteIoInput { .. }
+                        | AppIntent::CompleteIoOutput { .. }
+                        | AppIntent::ConfirmSampleRateConversion { .. }
+                        | AppIntent::ConfirmAudioChannelMapping { .. }
+                        | AppIntent::ConfirmAudioChannelSelection { .. }
+                        | AppIntent::CancelIoTask { .. }
+                        | AppIntent::FailIoTask { .. }
+                )
+            {
+                self.notify("Discarded an intent from the previous session");
+                continue;
+            }
+            self.command_epoch = Some(epoch);
             if let Err(error) = self.apply_intent(intent) {
                 self.notify(error.to_string());
             }
+            self.command_epoch = None;
             self.queue_script_operations();
         }
         self.advance_scripting(elapsed);
         self.queue_script_operations();
         for _ in 0..MAX_MESSAGES_PER_TURN {
-            let Some((command, creation)) = self.commands.front().cloned() else {
+            let Some((epoch, command, creation)) = self.commands.front().cloned() else {
                 break;
             };
             let resetting = matches!(command, Command::NewSession);
-            let message = match self.client.command(command, None) {
+            let mut message = match self.client.command(command, None) {
                 Ok(message) => message,
                 Err(Error::Full) => break,
                 Err(error) => {
@@ -286,10 +364,16 @@ impl Runtime {
                     break;
                 }
             };
-            let ClientMessage::Submit { operation, .. } = &message else {
+            let ClientMessage::Submit {
+                operation,
+                session_epoch,
+                ..
+            } = &mut message
+            else {
                 unreachable!()
             };
             let operation = *operation;
+            *session_epoch = epoch;
             match self.delivery.send(message) {
                 Ok(()) => {
                     self.commands.pop_front();
@@ -311,6 +395,14 @@ impl Runtime {
                     break;
                 }
             }
+        }
+        if let Some(provider) = &mut self.persistence_io {
+            let session_scripts = self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session);
+            provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
         }
         self.update_media();
         self.project();
@@ -392,7 +484,11 @@ impl Runtime {
             });
             self.next_notice = self.next_notice.saturating_add(1);
         }
-        self.commands.push_back((command, creation));
+        let epoch = self
+            .command_epoch
+            .or_else(|| self.client.snapshot().map(|s| s.persistence_epoch))
+            .ok_or_else(|| anyhow::anyhow!("session is not ready"))?;
+        self.commands.push_back((epoch, command, creation));
         Ok(())
     }
     fn queue_script_operations(&mut self) {
@@ -477,6 +573,19 @@ impl Runtime {
             .unwrap_or_default();
         view.details = self.details();
         view.io_task = self.io_task.clone();
+        if let Some(provider) = &self.persistence_io {
+            if let Some(task) = provider.task() {
+                view.io_task = Some(task);
+            }
+        } else {
+            for capability in [
+                BackendCapability::SessionCapture,
+                BackendCapability::SessionContentLoad,
+                BackendCapability::LoopContentImport,
+            ] {
+                view.capabilities = view.capabilities.with(capability, false);
+            }
+        }
         view.revision = self.snapshot.revision.saturating_add(1);
         view.notifications = self
             .notifications
@@ -711,6 +820,48 @@ impl Runtime {
         })
     }
     fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
+        if matches!(intent, AppIntent::RequestNewSession) {
+            if self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session)
+            {
+                anyhow::bail!(
+                    "Remove or convert session-owned scripts before replacing the session (P16)"
+                );
+            }
+            if self
+                .persistence_io
+                .as_ref()
+                .and_then(|provider| provider.task())
+                .is_some_and(|task| {
+                    !matches!(
+                        task.status,
+                        IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                    )
+                })
+            {
+                anyhow::bail!("Finish the active file workflow before starting a new session");
+            }
+            if let Some(provider) = &mut self.persistence_io {
+                provider.dismiss_completed();
+            }
+        }
+        if let Some(provider) = &mut self.persistence_io {
+            if provider.handles(&intent) {
+                let state = self
+                    .client
+                    .snapshot()
+                    .ok_or_else(|| anyhow::anyhow!("session is not ready"))?;
+                let session_scripts = self
+                    .scripts
+                    .states()
+                    .iter()
+                    .any(|script| script.kind == ScriptKind::Session);
+                return provider.apply(intent, state, session_scripts);
+            }
+        }
         let command = match intent {
             AppIntent::AddTrack(spec) => Command::AddTrack(spec.into()),
             AppIntent::AddTrackWithTopology(spec) => {

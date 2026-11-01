@@ -18,7 +18,8 @@ use std::{
 };
 
 pub use shoop_app_client::runtime::{
-    ApplicationAudioPreview, ApplicationFileOutput, StartupScript,
+    ApplicationAudioPreview, ApplicationFileOutput, ApplicationFileRequest,
+    ApplicationFileRequestKind, StartupScript,
 };
 
 #[derive(Clone, Debug)]
@@ -61,7 +62,27 @@ impl From<shoop_app_client::Error> for DispatchError {
     }
 }
 static NEXT_LOCAL_ID: AtomicU64 = AtomicU64::new(1);
-type FileOutputs = Arc<Mutex<VecDeque<ApplicationFileOutput>>>;
+#[derive(Default)]
+struct FileMailbox {
+    outputs: VecDeque<ApplicationFileOutput>,
+    requests: VecDeque<ApplicationFileRequest>,
+}
+impl FileMailbox {
+    fn collect(&mut self, runtime: &mut ClientRuntime) {
+        while self.outputs.len() < 8 {
+            let Some(output) = runtime.take_file_output() else {
+                break;
+            };
+            self.outputs.push_back(output);
+        }
+        if self.requests.is_empty() {
+            if let Some(request) = runtime.take_file_request() {
+                self.requests.push_back(request);
+            }
+        }
+    }
+}
+type FileOutputs = Arc<Mutex<FileMailbox>>;
 
 pub struct CooperativeApplicationRuntime {
     service: Service,
@@ -96,7 +117,8 @@ impl CooperativeApplicationRuntime {
             midi,
             Startup::Fresh(options.startup_scripts),
         )
-        .map_err(|error| anyhow!("{error:?}"))?;
+        .map_err(|error| anyhow!("{error:?}"))?
+        .with_persistence_io(Box::new(crate::persistence_io::Provider::new()));
         for warning in options.startup_warnings {
             client.notify(warning);
         }
@@ -104,7 +126,7 @@ impl CooperativeApplicationRuntime {
             service,
             port,
             client,
-            outputs: Arc::new(Mutex::new(VecDeque::new())),
+            outputs: Arc::new(Mutex::new(FileMailbox::default())),
             initialized: false,
         })
     }
@@ -138,18 +160,22 @@ impl CooperativeApplicationRuntime {
             .outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        while outputs.len() < 8 {
-            let Some(output) = self.client.take_file_output() else {
-                break;
-            };
-            outputs.push_back(output);
-        }
+        outputs.collect(&mut self.client);
     }
     #[cfg(target_arch = "wasm32")]
     pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
         self.outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .outputs
+            .pop_front()
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn take_file_request(&self) -> Option<ApplicationFileRequest> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .requests
             .pop_front()
     }
     #[cfg(target_arch = "wasm32")]
@@ -218,12 +244,7 @@ mod native {
                 Self::Remote(runtime, outputs) => {
                     runtime.tick(elapsed);
                     let mut outputs = outputs.lock().unwrap_or_else(|error| error.into_inner());
-                    while outputs.len() < 8 {
-                        let Some(output) = runtime.take_file_output() else {
-                            break;
-                        };
-                        outputs.push_back(output);
-                    }
+                    outputs.collect(runtime);
                 }
             }
         }
@@ -287,6 +308,14 @@ mod native {
             self.outputs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
+                .outputs
+                .pop_front()
+        }
+        pub fn take_file_request(&self) -> Option<ApplicationFileRequest> {
+            self.outputs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .requests
                 .pop_front()
         }
         pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
@@ -330,7 +359,8 @@ mod native {
                     Box::new(shoop_scripting::NativeMidiService::new()),
                     Startup::IfFresh(options.startup_scripts),
                 )
-                .map_err(|error| anyhow!("{error:?}"))?;
+                .map_err(|error| anyhow!("{error:?}"))?
+                .with_persistence_io(Box::new(crate::persistence_io::Provider::new()));
                 for warning in entry.warnings {
                     runtime.notify(warning);
                 }
@@ -339,7 +369,7 @@ mod native {
                 }
                 Ok(SessionRuntime::Remote(
                     runtime,
-                    Arc::new(Mutex::new(VecDeque::new())),
+                    Arc::new(Mutex::new(FileMailbox::default())),
                 ))
             })
         }
@@ -350,7 +380,7 @@ mod native {
             let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
-            let outputs: FileOutputs = Arc::new(Mutex::new(VecDeque::new()));
+            let outputs: FileOutputs = Arc::new(Mutex::new(FileMailbox::default()));
             let status = Arc::new(RwLock::new(ConnectionStatus {
                 state: shoop_app_client::State::Attaching,
                 error: None,

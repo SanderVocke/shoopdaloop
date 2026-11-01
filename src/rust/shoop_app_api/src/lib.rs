@@ -1430,6 +1430,13 @@ pub enum IoTaskStatus {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileOutputOutcome {
+    Saved,
+    DownloadHandedOff,
+    Cancelled,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampleRateWarning {
     pub source_rate: u32,
@@ -2487,9 +2494,21 @@ pub enum AppIntent {
     RequestSaveSession,
     RequestLoadSessionPicker,
     RequestLoadSessionUrl,
+    RequestLoadSessionSource {
+        source: String,
+    },
     LoadSessionBytes {
         name: String,
         bytes: Arc<[u8]>,
+    },
+    CompleteIoInput {
+        task_id: TaskId,
+        name: String,
+        bytes: Arc<[u8]>,
+    },
+    CompleteIoOutput {
+        task_id: TaskId,
+        outcome: FileOutputOutcome,
     },
     ConfirmSampleRateConversion {
         task_id: TaskId,
@@ -2750,6 +2769,9 @@ impl AppIntent {
             Self::LoadSessionBytes { .. } => "session.load_bytes",
             Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
+            Self::CompleteIoInput { .. } => "io.input_complete",
+            Self::RequestLoadSessionSource { .. } => "session.load_source",
+            Self::CompleteIoOutput { .. } => "io.output_complete",
             Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
             Self::CancelIoTask { .. } => "io.cancel",
             Self::FailIoTask { .. } => "io.fail",

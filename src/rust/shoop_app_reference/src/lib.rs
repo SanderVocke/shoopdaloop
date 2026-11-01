@@ -1953,6 +1953,11 @@ impl ApplicationModel {
             return;
         }
         let result = match intent {
+            AppIntent::CompleteIoInput { .. }
+            | AppIntent::CompleteIoOutput { .. }
+            | AppIntent::RequestLoadSessionSource { .. } => {
+                Err("task-scoped file callbacks require the production session client".to_owned())
+            }
             AppIntent::SetLoopSmoothingMs(milliseconds) => backend
                 .set_loop_smoothing_ms(milliseconds)
                 .map_err(|error| error.to_string()),

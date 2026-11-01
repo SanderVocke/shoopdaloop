@@ -109,7 +109,12 @@ These criteria and the goals above require explicit user approval to change.
 
 - The app service owns shared state, admission and mutating jobs. The client owns
   dialogs, file/URL access, encoding/decoding orchestration and platform output;
-  native workers and cooperative browser work must not block the service/audio.
+  native codec threads and a dedicated browser client codec worker must not block
+  the service/audio. Browser worker delivery and service progression stay bounded
+  and cooperative. The existing synchronous archive/MIDI/resampling helpers cannot
+  yield within one call; isolating those client codecs preserves their semantics
+  while keeping the authoritative browser service on the main thread. This is a
+  design-rule refinement, with the acceptance criteria unchanged.
   The RT adapter translates neutral contracts; the engine knows no session-file,
   UI, script or filesystem semantics. Keep the browser service on the main thread.
 - Extend the existing `shoop_backend` capture/replace/content contracts and typed
@@ -415,6 +420,25 @@ conversion and wire assembly still require bounded progression; this change alon
 does not establish the final responsiveness criterion.
 
 ### Stage 4 — bounded standalone media import and replacement
+
+Client-file foundation: a frontend codec provider implements neutral image/document
+conversion, native codec jobs, rate and channel dialogs, bounded wire capture reads,
+staging and confirmed mutation results. Pickers and URL fetches now use task-scoped
+callbacks; native reads and streamed URL input enforce the 512 MiB file ceiling.
+Output remains running until the platform reports saved, cancelled, failed or
+browser handoff. Native post-rename directory-sync failures explicitly say the
+replacement already completed. Runtime command queues retain their creation epoch.
+
+The initial production-path tests pass for WAV and exact-MIDI import followed by
+save/load/save, stopped fresh identities, late picker callbacks and rate decline.
+They and the held-command epoch regression pass natively and in Node/Wasm (three
+production file tests). All 27 service and 11 client tests, the warning-denying
+frontend build, production dependency boundaries, parity inventory, formatting,
+test-attribute policy and whitespace checks pass. Browser codec isolation,
+cooperative host assembly/validation,
+complete quota preflight and public capability admission remain pending; the
+browser implementation still contains a temporary synchronous codec path. These
+tests are foundation evidence, not final file/deployment acceptance.
 
 - [ ] Restore WAV/loop-audio/exact-MIDI/SMF decoding and channel mapping/selection
   using existing semantics, with bounded expansion and clear malformed-file errors.

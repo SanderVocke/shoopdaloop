@@ -62,6 +62,7 @@ mod engine_backend;
 mod native_preview;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_recovery_tests;
+mod persistence_io;
 #[cfg(not(target_arch = "wasm32"))]
 mod recovery;
 #[cfg(not(target_arch = "wasm32"))]
@@ -424,6 +425,7 @@ struct UnifiedApp {
     session_url_input: String,
     session_url_error: Option<String>,
     session_url_prompt_open: bool,
+    session_url_task: Option<shoop_egui::TaskId>,
     session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
@@ -571,6 +573,7 @@ impl UnifiedApp {
             session_url_input: String::new(),
             session_url_error: None,
             session_url_prompt_open: false,
+            session_url_task: None,
             session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
             browser_settings_test: BrowserSettingsSelfTest::from_args(args),
@@ -612,7 +615,7 @@ impl UnifiedApp {
             StartupSessionAction::FetchUrl(source) => self.fetch_session_url(source),
             StartupSessionAction::LoadPath(source) => {
                 #[cfg(not(target_arch = "wasm32"))]
-                load_session_path(source, self.pending_file_intent_tx.clone());
+                self.handle_ui_intent(AppIntent::RequestLoadSessionSource { source });
                 #[cfg(target_arch = "wasm32")]
                 tracing::warn!(source = %source, "frontend.session.filesystem_path_unavailable");
             }
@@ -641,6 +644,7 @@ impl UnifiedApp {
             if cancel {
                 self.session_url_prompt_open = false;
                 self.session_url_error = None;
+                self.cancel_session_url_task();
             } else if submit {
                 let source = self.session_url_input.trim().to_owned();
                 if is_http_url(&source) {
@@ -672,28 +676,81 @@ impl UnifiedApp {
                 self.fetch_session_url(url);
             } else if cancel {
                 self.session_url_confirmation = None;
+                self.cancel_session_url_task();
             }
         }
     }
 
-    fn fetch_session_url(&self, url: String) {
+    fn cancel_session_url_task(&mut self) {
+        if let Some(task_id) = self.session_url_task.take() {
+            self.handle_ui_intent(AppIntent::CancelIoTask { task_id });
+        }
+    }
+    fn fetch_session_url(&mut self, url: String) {
+        if let Some(task_id) = self.session_url_task.take() {
+            self.fetch_session_url_for_task(url, task_id);
+        } else {
+            self.handle_ui_intent(AppIntent::RequestLoadSessionSource { source: url });
+        }
+    }
+    fn fetch_session_url_for_task(&self, url: String, task_id: shoop_egui::TaskId) {
+        let download = SessionDownload {
+            task_id,
+            name: session_source_name(&url),
+            bytes: Vec::new(),
+        };
         #[cfg(not(target_arch = "wasm32"))]
         {
             let pending = self.pending_file_intent_tx.clone();
-            let name = session_source_name(&url);
-            ehttp::fetch(ehttp::Request::get(&url), move |result| {
-                let _ = pending.send(session_fetch_result(name, result));
+            let download = std::sync::Mutex::new(download);
+            ehttp::streaming::fetch(ehttp::Request::get(&url), move |part| {
+                match download
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .part(part)
+                {
+                    Ok(None) => std::ops::ControlFlow::Continue(()),
+                    Ok(Some(intent)) => {
+                        let _ = pending.send(intent);
+                        std::ops::ControlFlow::Break(())
+                    }
+                    Err(error) => {
+                        let _ = pending.send(AppIntent::FailIoTask {
+                            task_id,
+                            message: error.to_string(),
+                        });
+                        std::ops::ControlFlow::Break(())
+                    }
+                }
             });
         }
         #[cfg(target_arch = "wasm32")]
         {
             let pending = Rc::clone(&self.pending_file_intents);
-            let name = session_source_name(&url);
             wasm_bindgen_futures::spawn_local(async move {
-                let result = ehttp::fetch_async(ehttp::Request::get(&url)).await;
-                pending
-                    .borrow_mut()
-                    .push_back(session_fetch_result(name, result));
+                use futures_util::StreamExt;
+                let mut download = download;
+                let result: anyhow::Result<()> = async {
+                    let request = ehttp::Request::get(&url);
+                    let stream = ehttp::streaming::fetch_async_streaming(&request)
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    futures_util::pin_mut!(stream);
+                    while let Some(part) = stream.next().await {
+                        if let Some(intent) = download.part(part)? {
+                            pending.borrow_mut().push_back(intent);
+                            return Ok(());
+                        }
+                    }
+                    anyhow::bail!("session download ended without its completion marker")
+                }
+                .await;
+                if let Err(error) = result {
+                    pending.borrow_mut().push_back(AppIntent::FailIoTask {
+                        task_id,
+                        message: error.to_string(),
+                    });
+                }
             });
         }
     }
@@ -1436,6 +1493,9 @@ impl UnifiedApp {
         );
         self.show_file_drop_overlay(ui.ctx());
         self.show_session_url_dialogs(ui.ctx());
+        while let Some(request) = self.runtime.take_file_request() {
+            self.handle_file_request(request);
+        }
         while let Some(output) = self.runtime.take_file_output() {
             #[cfg(not(target_arch = "wasm32"))]
             save_file_output(output, self.pending_file_intent_tx.clone());
@@ -1445,173 +1505,34 @@ impl UnifiedApp {
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
         let kind = intent.kind();
         let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
-        let intent = match intent {
-            AppIntent::RequestLoadSessionPicker => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Shoop session", &["shoop"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::LoadSessionBytes {
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                            });
-                        }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::LoadSession,
-                                message,
-                            });
-                        }
-                    });
-                }
-                None
-            }
-            AppIntent::RequestLoadSessionUrl => {
-                self.session_url_prompt_open = true;
-                None
-            }
-            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Loop audio", &["shoop-audio", "wav"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::ImportLoopAudioBytes {
-                                loop_id,
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                        }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::ImportLoopAudio,
-                                message,
-                            });
-                        }
-                    });
-                }
-                None
-            }
-            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Loop MIDI", &["shoop-midi", "mid"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::ImportLoopMidiBytes {
-                                loop_id,
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                        }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::ImportLoopMidi,
-                                message,
-                            });
-                        }
-                    });
-                }
-                None
-            }
-            other => Some(other),
-        };
-        if let Some(intent) = intent {
-            if let Err(error) = self.runtime.dispatch(intent) {
-                tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
-            }
+        if let Err(error) = self.runtime.dispatch(intent) {
+            tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn handle_ui_intent(&mut self, intent: AppIntent) {
-        let kind = intent.kind();
-        let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
-        match intent {
-            AppIntent::RequestLoadSessionPicker => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Shoop session", &["shoop"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending.borrow_mut().push_back(AppIntent::LoadSessionBytes {
-                            name,
-                            bytes: std::sync::Arc::from(bytes),
-                        });
-                    }
-                });
-            }
-            AppIntent::RequestLoadSessionUrl => {
-                self.session_url_prompt_open = true;
-            }
-            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Loop audio", &["shoop-audio", "wav"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending
-                            .borrow_mut()
-                            .push_back(AppIntent::ImportLoopAudioBytes {
-                                loop_id,
-                                name,
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                    }
-                });
-            }
-            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Loop MIDI", &["shoop-midi", "mid"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending
-                            .borrow_mut()
-                            .push_back(AppIntent::ImportLoopMidiBytes {
-                                loop_id,
-                                name,
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                    }
-                });
-            }
-            other => {
-                if let Err(error) = self.runtime.dispatch(other) {
-                    tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
-                }
-            }
+    fn handle_file_request(&mut self, request: application::ApplicationFileRequest) {
+        use application::ApplicationFileRequestKind as Kind;
+        if self.runtime.snapshot().io_task.as_ref().is_none_or(|task| {
+            task.id != request.task_id || task.status != shoop_egui::IoTaskStatus::Running
+        }) {
+            return;
         }
+        if request.kind == Kind::SessionUrl {
+            self.session_url_task = Some(request.task_id);
+            self.session_url_prompt_open = true;
+            return;
+        }
+        if let Some(source) = request.source.as_ref().filter(|source| is_http_url(source)) {
+            self.fetch_session_url_for_task(source.clone(), request.task_id);
+            return;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        request_file_input(request, self.pending_file_intent_tx.clone());
+        #[cfg(target_arch = "wasm32")]
+        request_file_input(request, Rc::clone(&self.pending_file_intents));
     }
 }
 
@@ -1650,15 +1571,24 @@ fn save_file_output(output: application::ApplicationFileOutput, sender: Sender<A
         .set_file_name(&output.suggested_name)
         .save_file()
     else {
+        let _ = sender.send(AppIntent::CompleteIoOutput {
+            task_id: output.task_id,
+            outcome: shoop_egui::FileOutputOutcome::Cancelled,
+        });
         return;
     };
     std::thread::spawn(move || {
-        if let Err(error) = atomic_replace(&path, &output.bytes, output.task_id.raw()) {
-            let _ = sender.send(AppIntent::FailIoTask {
+        let result = match atomic_replace(&path, &output.bytes, output.task_id.raw()) {
+            Ok(()) => AppIntent::CompleteIoOutput {
+                task_id: output.task_id,
+                outcome: shoop_egui::FileOutputOutcome::Saved,
+            },
+            Err(error) => AppIntent::FailIoTask {
                 task_id: output.task_id,
                 message: format!("Could not save {}: {error}", path.display()),
-            });
-        }
+            },
+        };
+        let _ = sender.send(result);
     });
 }
 
@@ -1692,42 +1622,166 @@ fn session_source_name(source: &str) -> String {
         .to_owned()
 }
 
-fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) -> AppIntent {
-    match result {
-        Ok(response) if response.ok => AppIntent::LoadSessionBytes {
-            name,
-            bytes: std::sync::Arc::from(response.bytes),
-        },
-        Ok(response) => AppIntent::FailIoWorkflow {
-            kind: shoop_egui::IoTaskKind::LoadSession,
-            message: format!("Could not fetch session: HTTP {}", response.status),
-        },
-        Err(error) => AppIntent::FailIoWorkflow {
-            kind: shoop_egui::IoTaskKind::LoadSession,
-            message: format!("Could not fetch session: {error}"),
-        },
+#[cfg(not(target_arch = "wasm32"))]
+fn read_session_input(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let limit = shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES;
+    if file.metadata()?.len() > limit {
+        return Err(std::io::Error::other(
+            "file exceeds the 512 MiB input limit",
+        ));
     }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(std::io::Error::other(
+            "file exceeds the 512 MiB input limit",
+        ));
+    }
+    Ok(bytes)
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn request_file_input(request: application::ApplicationFileRequest, sender: Sender<AppIntent>) {
+    use application::ApplicationFileRequestKind as Kind;
+    let path = if let Some(source) = request.source {
+        Some(std::path::PathBuf::from(source))
+    } else {
+        let dialog = rfd::FileDialog::new();
+        match request.kind {
+            Kind::Audio => dialog.add_filter("Loop audio", &["shoop-audio", "wav"]),
+            Kind::Midi => dialog.add_filter("Loop MIDI", &["shoop-midi", "mid"]),
+            _ => dialog.add_filter("Shoop session", &["shoop"]),
+        }
+        .pick_file()
+    };
+    let Some(path) = path else {
+        let _ = sender.send(AppIntent::CancelIoTask {
+            task_id: request.task_id,
+        });
+        return;
+    };
+    std::thread::spawn(move || {
+        let intent = match read_session_input(&path) {
+            Ok(bytes) => AppIntent::CompleteIoInput {
+                task_id: request.task_id,
+                name: file_name(&path),
+                bytes: bytes.into(),
+            },
+            Err(error) => AppIntent::FailIoTask {
+                task_id: request.task_id,
+                message: format!("Could not read {}: {error}", path.display()),
+            },
+        };
+        let _ = sender.send(intent);
+    });
+}
+#[cfg(target_arch = "wasm32")]
+fn request_file_input(
+    request: application::ApplicationFileRequest,
+    pending: Rc<RefCell<VecDeque<AppIntent>>>,
+) {
+    use application::ApplicationFileRequestKind as Kind;
+    wasm_bindgen_futures::spawn_local(async move {
+        let result: anyhow::Result<Option<(String, Vec<u8>)>> = async {
+            anyhow::ensure!(
+                request.source.is_none(),
+                "filesystem paths are unavailable in the browser; choose a file instead"
+            );
+            let dialog = rfd::AsyncFileDialog::new();
+            let file = match request.kind {
+                Kind::Audio => dialog.add_filter("Loop audio", &["shoop-audio", "wav"]),
+                Kind::Midi => dialog.add_filter("Loop MIDI", &["shoop-midi", "mid"]),
+                _ => dialog.add_filter("Shoop session", &["shoop"]),
+            }
+            .pick_file()
+            .await;
+            let Some(file) = file else { return Ok(None) };
+            let size = file.inner().size() as u64;
+            anyhow::ensure!(
+                size <= shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES,
+                "file exceeds the 512 MiB input limit"
+            );
+            let mut bytes = Vec::new();
+            bytes.try_reserve_exact(size as usize)?;
+            for offset in (0..size).step_by(64 * 1024) {
+                let blob = file
+                    .inner()
+                    .slice_with_f64_and_f64(offset as f64, (offset + 64 * 1024).min(size) as f64)
+                    .map_err(|e| anyhow::anyhow!("could not read file slice: {e:?}"))?;
+                let buffer = wasm_bindgen_futures::JsFuture::from(blob.array_buffer())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("could not read file: {e:?}"))?;
+                let chunk = js_sys::Uint8Array::new(&buffer);
+                let start = bytes.len();
+                bytes.resize(start + chunk.length() as usize, 0);
+                chunk.copy_to(&mut bytes[start..]);
+            }
+            Ok(Some((file.file_name(), bytes)))
+        }
+        .await;
+        let intent = match result {
+            Ok(Some((name, bytes))) => AppIntent::CompleteIoInput {
+                task_id: request.task_id,
+                name,
+                bytes: bytes.into(),
+            },
+            Ok(None) => AppIntent::CancelIoTask {
+                task_id: request.task_id,
+            },
+            Err(error) => AppIntent::FailIoTask {
+                task_id: request.task_id,
+                message: error.to_string(),
+            },
+        };
+        pending.borrow_mut().push_back(intent);
+    });
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn load_session_path(source: String, sender: Sender<AppIntent>) {
-    std::thread::spawn(move || {
-        let path = Path::new(&source);
-        match std::fs::read(path) {
-            Ok(bytes) => {
-                let _ = sender.send(AppIntent::LoadSessionBytes {
-                    name: file_name(path),
-                    bytes: std::sync::Arc::from(bytes),
-                });
+struct SessionDownload {
+    task_id: shoop_egui::TaskId,
+    name: String,
+    bytes: Vec<u8>,
+}
+impl SessionDownload {
+    fn part(
+        &mut self,
+        part: ehttp::Result<ehttp::streaming::Part>,
+    ) -> anyhow::Result<Option<AppIntent>> {
+        use ehttp::streaming::Part;
+        let limit = shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES;
+        match part.map_err(|e| anyhow::anyhow!("Could not fetch session: {e}"))? {
+            Part::Response(response) => {
+                anyhow::ensure!(
+                    response.ok,
+                    "Could not fetch session: HTTP {}",
+                    response.status
+                );
+                if let Some(length) = response
+                    .headers
+                    .get("content-length")
+                    .and_then(|s| s.parse::<u64>().ok())
+                {
+                    anyhow::ensure!(length <= limit, "download exceeds the 512 MiB input limit");
+                }
+                Ok(None)
             }
-            Err(error) => {
-                let _ = sender.send(AppIntent::FailIoWorkflow {
-                    kind: shoop_egui::IoTaskKind::LoadSession,
-                    message: format!("Could not read {}: {error}", path.display()),
-                });
+            Part::Chunk(chunk) if chunk.is_empty() => Ok(Some(AppIntent::CompleteIoInput {
+                task_id: self.task_id,
+                name: std::mem::take(&mut self.name),
+                bytes: std::mem::take(&mut self.bytes).into(),
+            })),
+            Part::Chunk(chunk) => {
+                anyhow::ensure!(
+                    (self.bytes.len() as u64).saturating_add(chunk.len() as u64) <= limit,
+                    "download exceeds the 512 MiB input limit"
+                );
+                self.bytes.try_reserve(chunk.len())?;
+                self.bytes.extend_from_slice(&chunk);
+                Ok(None)
             }
         }
-    });
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1746,7 +1800,13 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
         std::fs::rename(&temporary, path)?;
         #[cfg(unix)]
         if let Some(parent) = path.parent() {
-            std::fs::File::open(parent)?.sync_all()?;
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| {
+                    std::io::Error::other(format!(
+                        "file replacement completed, but directory synchronization failed: {error}"
+                    ))
+                })?;
         }
         Ok(())
     })();
@@ -1762,18 +1822,28 @@ fn save_file_output(
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
 ) {
     wasm_bindgen_futures::spawn_local(async move {
-        if let Some(file) = rfd::AsyncFileDialog::new()
+        let result = if let Some(file) = rfd::AsyncFileDialog::new()
             .set_file_name(&output.suggested_name)
             .save_file()
             .await
         {
-            if let Err(error) = file.write(&output.bytes).await {
-                pending.borrow_mut().push_back(AppIntent::FailIoTask {
+            match file.write(&output.bytes).await {
+                Ok(()) => AppIntent::CompleteIoOutput {
+                    task_id: output.task_id,
+                    outcome: shoop_egui::FileOutputOutcome::DownloadHandedOff,
+                },
+                Err(error) => AppIntent::FailIoTask {
                     task_id: output.task_id,
                     message: format!("Could not save browser file: {error}"),
-                });
+                },
             }
-        }
+        } else {
+            AppIntent::CompleteIoOutput {
+                task_id: output.task_id,
+                outcome: shoop_egui::FileOutputOutcome::Cancelled,
+            }
+        };
+        pending.borrow_mut().push_back(result);
     });
 }
 
@@ -2442,6 +2512,9 @@ impl Runtime {
     fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
         self.handle.take_file_output()
     }
+    fn take_file_request(&self) -> Option<application::ApplicationFileRequest> {
+        self.handle.take_file_request()
+    }
 
     fn process_audio_previews(&mut self) {
         let state = self.handle.snapshot();
@@ -3103,6 +3176,9 @@ impl Runtime {
 
     fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
         self.runtime.as_ref()?.take_file_output()
+    }
+    fn take_file_request(&self) -> Option<application::ApplicationFileRequest> {
+        self.runtime.as_ref()?.take_file_request()
     }
 
     fn audio_preview_available(&self) -> bool {
