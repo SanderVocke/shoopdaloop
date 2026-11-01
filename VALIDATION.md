@@ -916,3 +916,10 @@ absent from the intended no-default-features browser graph and worklet.
 - Architecture, user setup/lifecycle limitations and crate READMEs now describe
   the actual shared schema/codec, transport families and host boundaries. Native
   platform CI execution, final browser smoke and review remain Stage 9 gates.
+
+
+Stage 9 delivery checkpoint: PR [#897](https://github.com/SanderVocke/shoopdaloop/pull/897)
+targets the still-open integration branch. Existing workflows filtered PRs to
+`master`, so their PR filters now also include `feat/loop-execution-layer` to run
+required build/test, documentation and CodeQL checks on this PR. Push/deployment
+filters remain unchanged.

@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master"]
+    branches: ["master", "feat/loop-execution-layer"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
