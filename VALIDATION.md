@@ -8,7 +8,7 @@ The current session-service milestone is tracked by
 [PLAN_NATIVE_SESSION_RECOVERY.md](PLAN_NATIVE_SESSION_RECOVERY.md), its
 [A1–A11 acceptance index](docs/native_session_recovery/acceptance.md), and the
 [feature parity handoff](docs/native_session_recovery/feature-parity.md).
-Implementation through `d69dea15` is pushed in
+The complete code/test candidate `929ed71b4800e208620262f1bafd12acd970735d` is pushed in
 [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899).
 
 Local gates pass: warning-denying workspace build, 2404 native tests, 2026 Node
@@ -17,10 +17,18 @@ workflows, packaged Linux companion workflows, policies and 35 selected Miri
 executions run after ordinary integration gates. The acceptance index records
 source provenance, workloads, timing/resource measurements and hardware limits.
 The 16 parity gaps remain OPEN with retained implementation/UI/tests and concrete
-completion criteria. Windows ACL module lookup and the packaged web artifact path
-are corrected and their CI probes pass. A macOS release heap-fixture scheduling
-failure received a deterministic-frame correction. Final full CI is pending;
-no final delivery or code-review approval is claimed yet.
+completion criteria. The full CI matrix is green at
+[41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452):
+all eight native/web debug/release jobs, coverage and bare-metal checks pass. Its
+Node run confirms 2026 tests across 31 packages. All CodeQL analyses, Codecov and
+documentation checks also pass. Windows ACL module lookup, the packaged web path
+and native driver fixture timing/counter assumptions are corrected.
+
+The final documentation-only completion changes no executable source, test,
+manifest, asset or workflow. [Current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
+are the delivery gate for that head. No independent code reviewer or verdict was
+available; code-review approval is not claimed. The acceptance index retains the
+exact source pins, selected Miri reports and physical-hardware limitations.
 
 ## Evidence boundary
 

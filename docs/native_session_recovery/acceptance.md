@@ -1,10 +1,13 @@
 # Native session recovery acceptance
 
-Implementation source: `d69dea15301e1ddfcc9b4c75a2d11e496ce39b8f` on
+Completed code/test candidate: `929ed71b4800e208620262f1bafd12acd970735d` on
 `plan/native-session-recovery`, pushed to origin in
 [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899), based on
-`feat/engine-ipc`, with platform corrections through `a6f73a18` and the subsequent
-native heap-fixture correction. Final platform CI is **pending**, not accepted yet.
+`feat/engine-ipc`. All A1–A11 have evidence below; the full platform matrix is green
+in [run 41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452).
+The final documentation-only completion retains the exact executable sources;
+[current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
+are required before delivery.
 The [plan](../../PLAN_NATIVE_SESSION_RECOVERY.md) retains the fixed A1–A11 contract.
 The [feature parity ledger](feature-parity.md) is the mandatory next-workstream
 handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
@@ -23,7 +26,7 @@ handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
 | A8 — explicit exit | Egui window-close/Cancel/choice tests and real frontend subprocess tests exercise both exits. Service/host tests verify MIDI release, render stop, actual cleanup before confirmation, uncertain retry and cleanup refusal. UI destruction has no host-stop path. |
 | A9 — browser execution | Actual Chromium main-thread client/service plus RT AudioWorklet core, 64-command burst, waveform/MIDI reads, mocked Web MIDI and settings workflows pass. Worklet contracts/heap guards pass. Typed local delivery does not run a codec or wait synchronously. |
 | A10 — portable/bounded | Portable service/client/protocol native and Node tests cover queue/operation/history/media limits, interrupted transfers, overload and departed-client reclamation. Four-target graphs exclude UI/Lua/app semantics from engine/worklet. Selected Miri cases below pass. |
-| A11 — delivery | Local Linux debug/release packages and public companion workflows pass. CI run [41304560598](https://github.com/SanderVocke/shoopdaloop/actions/runs/41304560598) passes Windows debug, both Linux profiles, macOS debug, coverage, bare-metal and web release (including direct-file HTML and Firefox). macOS release's heap-fixture scheduling assumption is corrected below; Windows release/Node were stopped to obtain logs and need a complete final run. |
+| A11 — delivery | Full CI run [41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452) passes all eight Linux/macOS/Windows/web debug/release jobs, coverage and bare-metal checks. Public packaged companion probes, real frontend recovery/exit tests, all 31 Node packages, hosted/direct-file Chromium and Firefox pass. CodeQL/docs/Codecov pass; no independent code-review verdict is available. |
 
 ## Full local gates and provenance
 
@@ -103,7 +106,7 @@ seeds and interpreter flags were not weakened.
 | `shoop_rt_protocol` | protocol and host targets | 4 |
 | `shoop_rt_transport` | carrier and failure targets | 6 |
 
-## Delivery and review
+## Platform correction history
 
 PR #899 is open against `feat/engine-ipc`; no merge is requested. The failed
 candidate run was stopped while its last Node job was running so GitHub would
@@ -112,12 +115,12 @@ Windows package probes refused ACL validation. Diagnostic run
 [41304154241](https://github.com/SanderVocke/shoopdaloop/actions/runs/41304154241)
 identified an inherited PowerShell 7 module search path preventing Windows
 PowerShell from loading its security module. The adapter clears `PSModulePath`
-for that child; ownership and ACL checks remain enforced. Candidate CI failures are being corrected before
-final acceptance. Codecov reports 82.33%
+for that child; ownership and ACL checks remain enforced. These candidate failures
+are resolved by the completed checkpoint below. Codecov reports 82.33%
 patch coverage / 89.43% project coverage on `d69dea15`, satisfying the configured
 80% patch floor and project tolerance. No code-review verdict has been received;
-absence of feedback is not approval. Final status will name the final branch head
-and its CI run rather than treating an earlier green head as proof.
+absence of feedback is not approval. Delivery checks for the documentation-only
+completion use the current PR head, retaining this executable-source evidence.
 
 The next run at `a6f73a18` passed Windows debug and all its native host suites.
 macOS release ran 1676 native tests: 1675 passed; the driver heap fixture received
@@ -126,14 +129,15 @@ control thread less than one millisecond per deadline; successful edits are not
 guaranteed under arbitrary OS preemption. The fixture now requests each render
 quantum after pumping control, executes the identical create/route/record/play/
 remove sequence and exactly 960 recording frames (20 ms at 48 kHz), and retains
-every `Done`, MIDI-reset, cleanup, guarded-cycle and zero-heap assertion. Other
-automatic-driver timing and telemetry tests are unchanged.
+every `Done`, MIDI-reset, cleanup, guarded-cycle and zero-heap assertion. Independent
+automatic-driver tests continue to exercise real-time pacing and telemetry.
 
 The original case passed 20 unconstrained local release repetitions, 20 pinned to
 one CPU and 20 with two CPU competitors on that CPU; the CI failure was not locally
 reproduced. The corrected case passes the same 60 repetitions and all seven release
 dummy-driver tests. This removes a wall-clock assumption from an allocation test;
-it does not claim a production scheduling or latency fix. Final CI must confirm it.
+it does not claim a production scheduling or latency fix. The completed integration
+checkpoint below confirms the corrected fixture on all three native platforms.
 
 A subsequent full native rerun passed 2403/2404 tests and caught the automatic
 driver test comparing independently published counters during a callback
@@ -143,3 +147,24 @@ exact counter/frame equality and real-time pacing. Recorded workload/provenance
 is retained in [native-heap-fixture.json](evidence/native-heap-fixture.json).
 The complete corrected native suite passes **2404/2404**, with the same four
 intentional failure canaries skipped; the release dummy-driver suite passes 7/7.
+
+## Completed integration checkpoint
+
+At `929ed71b`, all build/test jobs pass in
+[41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452).
+CI independently confirms **31 Node packages / 2026 tests / zero failures**, both
+hosted core and capture-denial/retry Chromium workflows with zero xruns, and the
+release direct-file/Firefox workflows. Linux/macOS/Windows debug and release
+package and native test jobs pass. The scheduled/manual CPAL-free nightly job is
+intentionally skipped for this pull-request event; local CPAL-free builds pass.
+The compact [CI evidence](evidence/ci-929ed71b.json) records source/run/job provenance.
+
+All four CodeQL languages pass in
+[41306455509](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455509),
+documentation passes in
+[41306455459](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455459),
+and both Codecov checks pass. PR #899 has no review requests or code-review verdicts;
+no independent reviewer was available in this execution and no approval is inferred.
+The final completion commit changes documentation/evidence only. Its
+[current-head checks](https://github.com/SanderVocke/shoopdaloop/pull/899/checks)
+remain the final delivery gate; the pinned executable evidence above is unchanged.

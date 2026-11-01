@@ -391,3 +391,21 @@ reported 51 callbacks but 50 completed buffers. The test waits within its existi
 deadline for a completed-callback observation, then retains the exact equality,
 driver-state and real-time pacing assertions. This changes neither telemetry's
 publication contract nor production rendering.
+
+## Completed code/test candidate
+
+`929ed71b4800e208620262f1bafd12acd970735d` passes the full workflow
+[41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452):
+all eight debug/release platform jobs, coverage and bare-metal checks are green.
+The Node log independently confirms 2026 tests across 31 packages with no failures;
+both hosted core and microphone-denial/retry Chromium workflows pass with zero xruns.
+The release direct-file HTML and Firefox workflows pass. All native matrices,
+independent hosts, dependency/tracing/test policies and release measurements pass.
+CodeQL, documentation and both Codecov checks pass. No code-review verdict or
+review request was available; absence of review is not approval.
+
+The [A1–A11 index](acceptance.md) and [compact CI record](evidence/ci-929ed71b.json)
+retain exact source/run provenance. The final documentation-only completion changes
+no executable source; its current-head CI is linked from the index and must pass
+before delivery. The 16 parity gaps remain OPEN, and physical hardware limitations
+and the selected Miri scope remain explicit.

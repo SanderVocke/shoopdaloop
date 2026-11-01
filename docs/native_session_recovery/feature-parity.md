@@ -5,8 +5,8 @@ parity work. These are temporary implementation gaps, not decisions to remove
 features from ShoopDaLoop. Full parity is outside the recovery milestone; preserving
 this backlog and its evidence is part of that milestone.
 
-Status: sole production stack and recovery implementation delivered through
-`d69dea15`; final platform CI is in progress. Recheck the production capability set and client/service
+Status: recovery milestone complete on code/test candidate `929ed71b`, with a green
+full platform matrix and all 16 parity gaps still OPEN. Recheck the production capability set and client/service
 handlers whenever implementation changes. A green recovery CI does not close these
 rows. Every row remains **OPEN** until its completion evidence is linked here.
 
@@ -62,7 +62,8 @@ what is missing rather than assume the whole feature needs a new engine primitiv
   preview and broad dummy UI scenarios that currently require unsupported features.
   Their runnable model-level counterparts remain in `shoop_app_reference`.
 - Complete source provenance before this retirement is commit `925db5b2`:
-  `src/rust/shoop_app/src/legacy.rs` and `src/rust/shoopdaloop/src/main.rs`.
+  [the old app model](https://github.com/SanderVocke/shoopdaloop/blob/925db5b2f05d4fac9fd34fbcc8cdd4d0aa488819/src/rust/shoop_app/src/legacy.rs)
+  and [the original frontend](https://github.com/SanderVocke/shoopdaloop/blob/925db5b2f05d4fac9fd34fbcc8cdd4d0aa488819/src/rust/shoopdaloop/src/main.rs).
   The latter preserves original frontend canaries, notably
   `native_application_builtin_fx_save_reload_smoke`,
   `confirmed_driver_switch_is_saved_once_and_completed_after_persistence`,

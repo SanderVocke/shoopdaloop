@@ -9,11 +9,12 @@ backend contracts, shared carriers, bounded app protocol/client projection, the
 authoritative service, UI/Lua clients with typed local composition, and independent
 native hosts with authenticated attachment, recovery controls and explicit shutdown.
 Production legacy retirement and the parity handoff are implemented.
-Final validation is in progress in Stage 7. Native, all 31 Node packages, browser
-ordinary gates and 35 selected Miri executions passed. Windows ACL lookup and the
-packaged HTML path are corrected; a native heap fixture now uses deterministic
-render progress. Final-head CI remains open; see the
-[acceptance index](docs/native_session_recovery/acceptance.md).
+Stages 0–7 are complete on code/test candidate `929ed71b`. Native, all 31 Node
+packages, browser workflows and 35 selected Miri executions passed. The complete
+platform CI matrix, coverage, CodeQL and documentation checks are green; see the
+[acceptance index](docs/native_session_recovery/acceptance.md). The final
+documentation-only completion retains those executable sources; delivery checks
+for the current branch head are linked from [PR #899](https://github.com/SanderVocke/shoopdaloop/pull/899/checks).
 See [incremental validation](docs/native_session_recovery/validation.md).
 
 Current checkpoint (2026-11-01):
@@ -32,7 +33,7 @@ Current checkpoint (2026-11-01):
 - Stage 5: attachment/recovery UI and explicit authenticated shutdown implemented;
   focused evidence is in the incremental validation document.
 - Stage 6: sole production stack, migrated settings/packages/CI and explicit parity
-  ledger implemented. Focused validation is recorded; final gates remain Stage 7.
+  ledger implemented. Focused validation is recorded; the final gates are in Stage 7.
 - Stages 2–7 through `d69dea15` and the no_std merge are pushed to origin.
   PR [#899](https://github.com/SanderVocke/shoopdaloop/pull/899) targets
   `feat/engine-ipc`. Candidate CI run
@@ -47,8 +48,16 @@ Current checkpoint (2026-11-01):
   frame progress, retains every successful-edit/heap/cleanup assertion, and checks
   exactly 20 ms of recording. The automatic timing test also waits for a completed
   callback before comparing independently published counters. The corrected full
-  native suite passes all 2404 tests; final full CI must validate these corrections.
+  native suite passes all 2404 tests; the completed full CI run below validates
+  both corrections.
 - The user has resumed execution through completion, including push and final-head CI.
+- Stage 7: `929ed71b4800e208620262f1bafd12acd970735d` passes the full build/test
+  workflow [41306455452](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455452),
+  CodeQL [41306455509](https://github.com/SanderVocke/shoopdaloop/actions/runs/41306455509),
+  documentation and Codecov checks. The CI Node run confirms 2026 tests across 31
+  packages; all eight Linux/macOS/Windows/web debug/release jobs pass. Independent
+  code-review approval is unavailable: no review requests or verdicts were present.
+  No approval is inferred from that absence. All 16 parity gaps remain OPEN.
 
 Originally written under
 [write_plan.md](.agents/prompts/write_plan.md) on `plan/native-session-recovery`,
@@ -476,7 +485,7 @@ Queue the complete retained-stack suites for the integration push, not every edi
 
 ### Stage 7 — final validation, Miri, CI, and review (after 6)
 
-- [ ] On a complete candidate, run formatting, full warning-denying build, full retained
+- [x] On a complete candidate, run formatting, full warning-denying build, full retained
   native and Node suites, required browser/AudioWorklet workflows, dependency/tracing/
   test-usage policies, and updated Linux/macOS/Windows debug/release package matrices.
   Adapt obsolete feature flags without weakening coverage for surviving behavior.
@@ -498,14 +507,14 @@ Queue the complete retained-stack suites for the integration push, not every edi
   stable: affected portable ownership/queue/codec lifetimes and applicable existing
   runtime/transport cases. Preserve established seeds/workloads/watchdogs. After fixes,
   rerun affected checks; avoid repeating unrelated Miri batches.
-- [ ] Record final-head evidence in `VALIDATION.md` and an A1–A11 evidence index,
+- [x] Record final-head evidence in `VALIDATION.md` and an A1–A11 evidence index,
   including package/performance/Miri results, remaining capabilities, and review status.
   Reconcile the parity ledger against final production behavior, reference suites and
   retired files/tests; link it from the acceptance index and user documentation.
 - [x] Push the implementation branch and create/update the PR against `feat/engine-ipc`
   while #897 is unmerged, or its merged successor. Use batched integration pushes;
   satisfy pre-push suite requirements and keep the PR focused on the final scope.
-- [ ] Work required CI to green on the final head. Check automated review and address
+- [x] Work required CI to green on the final head. Check automated review and address
   applicable feedback iteratively until approval if a reviewer is available. Record
   unavailable review honestly; absence of feedback is not approval. Do not merge.
 
