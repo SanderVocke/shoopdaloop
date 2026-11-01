@@ -5,6 +5,20 @@ use shoop_app_protocol::{persistence::*, persistence_image as image};
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
 
+fn codec_limits() -> CodecLimits {
+    CodecLimits {
+        file_bytes: MAX_SESSION_FILE_BYTES,
+        metadata_bytes: MAX_SESSION_METADATA_BYTES,
+        expanded_bytes: MAX_SESSION_MEDIA_BYTES * 5 + MAX_SESSION_METADATA_BYTES,
+        media_bytes: MAX_SESSION_MEDIA_BYTES,
+        entries: MAX_SESSION_OBJECTS as usize + 1,
+        midi_events: MAX_SESSION_MIDI_EVENTS,
+        packet_bytes: 1024 * 1024,
+        initial_packets: 16_384,
+        audio_channels: 256,
+    }
+}
+
 pub enum Decoded {
     Remote(crate::worker::Summary),
     Session(SessionBundle),
@@ -124,21 +138,24 @@ impl Work {
                     "file exceeds the 512 MiB input limit"
                 );
                 let decoded = match kind {
-                    IoTaskKind::LoadSession => Decoded::Session(decode_session_with_limits(
-                        &bytes,
-                        DecodeLimits {
-                            max_entries: MAX_SESSION_OBJECTS as usize + 1,
-                            max_uncompressed_bytes: MAX_SESSION_FILE_BYTES,
-                        },
-                    )?),
+                    IoTaskKind::LoadSession => {
+                        Decoded::Session(decode_session_bounded(&bytes, codec_limits(), |doc| {
+                            document::requirements(doc)
+                                .map_err(|e| SessionError::Validation(e.to_string()))
+                        })?)
+                    }
                     IoTaskKind::ImportLoopAudio if bytes.starts_with(b"RIFF") => {
-                        Decoded::Audio(decode_wav(&bytes)?)
+                        Decoded::Audio(decode_wav_bounded(&bytes, codec_limits())?)
                     }
-                    IoTaskKind::ImportLoopAudio => Decoded::Audio(decode_loop_audio(&bytes)?),
+                    IoTaskKind::ImportLoopAudio => {
+                        Decoded::Audio(decode_loop_audio_bounded(&bytes, codec_limits())?)
+                    }
                     IoTaskKind::ImportLoopMidi if bytes.starts_with(b"MThd") => {
-                        Decoded::Midi(decode_standard_midi(&bytes, rate)?)
+                        Decoded::Midi(decode_standard_midi_bounded(&bytes, rate, codec_limits())?)
                     }
-                    IoTaskKind::ImportLoopMidi => Decoded::Midi(decode_exact_midi(&bytes)?),
+                    IoTaskKind::ImportLoopMidi => {
+                        Decoded::Midi(decode_exact_midi_bounded(&bytes, codec_limits())?)
+                    }
                     _ => anyhow::bail!("unexpected file task"),
                 };
                 decoded.bytes()?;
@@ -279,7 +296,11 @@ impl Work {
                     (
                         "session.shoop",
                         "application/x-shoop-session",
-                        encode_session(&document::to_bundle(&image)?, env!("CARGO_PKG_VERSION"))?,
+                        encode_session_bounded(
+                            &document::to_bundle(&image)?,
+                            env!("CARGO_PKG_VERSION"),
+                            codec_limits(),
+                        )?,
                     )
                 } else {
                     let image::Manifest::Loop {
@@ -349,7 +370,7 @@ impl Work {
                             (
                                 "loop.shoop-audio",
                                 "application/x-shoop-audio",
-                                encode_loop_audio(&audio)?,
+                                encode_loop_audio_bounded(&audio, codec_limits())?,
                             )
                         }
                     } else {
@@ -408,7 +429,7 @@ impl Work {
                             (
                                 "loop.shoop-midi",
                                 "application/x-shoop-midi",
-                                encode_exact_midi(&midi)?,
+                                encode_exact_midi_bounded(&midi, codec_limits())?,
                             )
                         }
                     }

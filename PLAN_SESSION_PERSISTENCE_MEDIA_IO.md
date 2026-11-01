@@ -503,6 +503,24 @@ in actual Chrome. Warning-denying affected builds, dependency boundaries, Rust
 test policy, formatting and whitespace checks pass. Codec expansion quotas, public
 capability split/admission and final deployment validation remain pending.
 
+Codec-budget milestone: production codec calls now use explicit file, metadata,
+expanded ZIP, decoded-media, packet, event, initial-state and source-channel limits.
+Session document policy runs after migration and before media/script extraction.
+Exact MIDI streams from ZIP into budgeted builders; WAV checks decoded PCM size
+before allocation and deinterleaves directly. SMF uses lazy tracks/events with
+bounded source metadata and cumulative tempo lookups. Archive writers enforce
+file/manifest ceilings while writing, with bounded MIDI JSON payload scratch.
+Shared document media references retain immutable ownership and are counted again
+as logical channels during image validation. The detailed scratch/expansion limits
+are recorded in the persistence contract. Final adapter progression and deployment
+validation remain pending.
+
+Validation: all 39 session and six codec tests pass natively and in Node. Four
+production file cases pass natively and in actual Chrome, including shared media
+references and save/load/save. Warning-denying affected builds, production
+dependency boundaries (now including the portable codec), Rust test policy,
+formatting and whitespace checks pass.
+
 ### Stage 5 — transactional core session load
 
 Portable codec-worker foundation: document conversion and existing codec calls now

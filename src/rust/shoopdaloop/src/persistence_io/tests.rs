@@ -236,6 +236,41 @@ async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
     f.dispatch(AppIntent::RequestSaveSession);
     let file = f.output().await;
     let before = shoop_session::decode_session(&file.bytes).unwrap();
+    let mut shared = before.clone();
+    let track = shared
+        .document
+        .track_groups
+        .iter_mut()
+        .flat_map(|group| &mut group.tracks)
+        .find(|track| track.name == "Files")
+        .unwrap();
+    let mut repeated = track.loops[0].clone();
+    repeated.id = track.loops[1].id;
+    for (channel, empty) in repeated.channels.iter_mut().zip(&track.loops[1].channels) {
+        channel.id = empty.id;
+    }
+    track.loops[1] = repeated;
+    let shoop_persistence_codec::codec::Value::Image(shared) =
+        (shoop_persistence_codec::codec::Work::Prepare {
+            decoded: shoop_persistence_codec::codec::Decoded::Session(shared),
+            mapping: Vec::new(),
+            update_length: false,
+        })
+        .run()
+        .unwrap()
+    else {
+        panic!()
+    };
+    let audio_payloads = shared
+        .payloads
+        .iter()
+        .filter_map(|p| match p {
+            shoop_app_protocol::persistence_image::Payload::Audio(samples) => Some(samples),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(audio_payloads.len(), 2);
+    assert!(std::sync::Arc::ptr_eq(audio_payloads[0], audio_payloads[1]));
     assert!(before.media.values().any(|p| matches!(p, shoop_session::MediaPayload::Audio(a) if a.samples == audio.channels[0].samples)));
     assert!(before
         .media

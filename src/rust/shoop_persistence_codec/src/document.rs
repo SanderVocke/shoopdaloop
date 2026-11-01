@@ -339,11 +339,9 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
     Ok(bundle)
 }
 
-pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>> {
-    validate_bundle(&bundle)?;
-    let doc = &bundle.document;
+pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     let mut unsupported = BTreeSet::new();
-    if !doc.scripts.is_empty() || !bundle.scripts.is_empty() {
+    if !doc.scripts.is_empty() {
         unsupported.insert("session scripts/resources (P16)");
     }
     if !doc.fx_states.is_empty() {
@@ -419,6 +417,40 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         "Session requires unsupported features: {}",
         unsupported.into_iter().collect::<Vec<_>>().join(", ")
     );
+    Ok(())
+}
+pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
+    requirements(&bundle.document)?;
+    ensure!(bundle.scripts.is_empty(), "session scripts/resources (P16)");
+    validate_bundle(&bundle)?;
+    let media = bundle
+        .media
+        .into_iter()
+        .map(|(id, payload)| {
+            let (payload, initial) = match payload {
+                MediaPayload::Audio(audio) => {
+                    (image::Payload::Audio(Arc::new(audio.samples)), Vec::new())
+                }
+                MediaPayload::Midi(midi) => (
+                    image::Payload::Midi(
+                        midi.events
+                            .into_iter()
+                            .map(|event| {
+                                Ok(MidiEventState {
+                                    frame: u32::try_from(event.frame)?,
+                                    data: event.data.into(),
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?
+                            .into(),
+                    ),
+                    midi.start_state,
+                ),
+            };
+            Ok((id, (payload, initial)))
+        })
+        .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+    let mut used_media = BTreeSet::new();
     let doc = bundle.document;
     let master = doc.buses.into_iter().next().unwrap();
     ensure!(
@@ -500,32 +532,15 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                 );
                 let mut initial = Vec::new();
                 let object = if let Some(id) = &channel.media_id {
-                    let payload = bundle
-                        .media
-                        .remove(id)
-                        .ok_or_else(|| anyhow!("missing or reused media {id}"))?;
-                    payloads.push(match payload {
-                        MediaPayload::Audio(audio) if !is_midi => {
-                            image::Payload::Audio(audio.samples.into())
-                        }
-                        MediaPayload::Midi(midi) if is_midi => {
-                            initial = midi.start_state;
-                            ensure!(midi.events.len() <= 1_000_000, "MIDI event budget exceeded");
-                            image::Payload::Midi(
-                                midi.events
-                                    .into_iter()
-                                    .map(|event| {
-                                        Ok(MidiEventState {
-                                            frame: u32::try_from(event.frame)?,
-                                            data: event.data.into(),
-                                        })
-                                    })
-                                    .collect::<Result<Vec<_>>>()?
-                                    .into(),
-                            )
-                        }
-                        _ => bail!("media type mismatch"),
-                    });
+                    let (payload, state) =
+                        media.get(id).ok_or_else(|| anyhow!("missing media {id}"))?;
+                    ensure!(
+                        matches!(payload, image::Payload::Midi(_)) == is_midi,
+                        "media type mismatch"
+                    );
+                    used_media.insert(id.clone());
+                    initial = state.clone();
+                    payloads.push(payload.clone());
                     Some(payloads.len() as u32)
                 } else {
                     None
@@ -582,8 +597,19 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         });
     }
     ensure!(
-        bundle.media.is_empty(),
+        used_media.len() == media.len(),
         "unreferenced media cannot be preserved"
+    );
+    ensure!(
+        doc.global_ports.len() <= 1
+            && doc
+                .global_ports
+                .iter()
+                .all(|p| p.name == "Global FX Control MIDI In"
+                    && p.data_type == DataTypeDocument::Midi
+                    && p.direction == PortDirectionDocument::Input
+                    && p.role == PortRoleDocument::MidiInput),
+        "unsupported global port model (P08)"
     );
     let mut global_ports = doc
         .global_ports
