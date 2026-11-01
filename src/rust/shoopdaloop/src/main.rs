@@ -2423,6 +2423,9 @@ impl Runtime {
     }
 
     fn audio_preview_available(&self) -> bool {
+        if self._engine_host.is_some() {
+            return false;
+        }
         if let Some((checked, available)) = self.preview_availability.get() {
             if checked.elapsed() < Duration::from_secs(1) {
                 return available;
@@ -6892,6 +6895,7 @@ mod tests {
             snapshot.capabilities,
             BackendCapabilities::NONE.with(BackendCapability::MidiInjection, true)
         );
+        assert!(!runtime.audio_preview_available());
         assert_eq!(snapshot.status.sample_rate, 48_000);
         assert!(
             snapshot.notifications.is_empty(),
