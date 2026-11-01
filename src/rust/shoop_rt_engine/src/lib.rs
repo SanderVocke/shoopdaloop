@@ -30,6 +30,7 @@ mod node;
 mod pool;
 mod queue;
 mod render;
+mod replacement;
 mod resync;
 mod ring;
 mod stream;
@@ -433,6 +434,7 @@ pub fn prepare(
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
+        replacement: replacement::Replacement::new(strips, loops),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

@@ -84,6 +84,9 @@ impl LoopPlanner {
                 {
                     return Err(Error::InvalidState.into());
                 }
+                if replace_all {
+                    io.capture().check_idle_group(group)?;
+                }
             }
             if let Some(initial) = edit.initial {
                 if initial.preserve_input && !row.assigned {
@@ -149,10 +152,18 @@ impl LoopPlanner {
         for edit in &bank.edits {
             let slot = edit.slot().expect("validated edit");
             let row = self.rows[slot].as_mut().expect("prepared node_pair");
+            if replace_all {
+                for group in row.groups.into_iter().flatten() {
+                    io.capture()
+                        .clear_idle_group(group)
+                        .expect("prevalidated idle capture group");
+                }
+            }
             row.assigned = edit.initial.is_some();
             if let Some(initial) = edit.initial {
                 row.binding.target = initial.target;
                 row.binding.gain = initial.gain;
+                row.balance = initial.balance;
                 row.reset_input |= !initial.preserve_input;
                 if row.reset_input {
                     self.inputs[slot] = MidiState::default();

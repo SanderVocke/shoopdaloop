@@ -41,6 +41,7 @@ pub(crate) enum Step {
     ClearStop,
     ClearApply,
     Smoothing,
+    Configure,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -56,6 +57,8 @@ enum Phase {
     ClearStop,
     ClearApply,
     Smoothing,
+    Configure,
+    Prepared,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,6 +67,7 @@ enum Kind {
     Batch(usize),
     Clear(LoopSlotId),
     Smoothing(u32),
+    Replacement,
 }
 
 pub(crate) fn smoothing(frames: u32) -> Smoothing {
@@ -91,6 +95,9 @@ pub(crate) struct Job {
     graph: Option<GraphStageId>,
     faded: bool,
     activated: bool,
+    configured: bool,
+    committed: bool,
+    cancelled: bool,
 }
 
 impl Job {
@@ -113,10 +120,40 @@ impl Job {
             graph: None,
             faded: false,
             activated: false,
+            configured: false,
+            committed: false,
+            cancelled: false,
         }
     }
     pub(crate) fn batch(len: usize) -> Self {
         Self::new(Kind::Batch(len))
+    }
+    pub(crate) fn replacement(correlation: u64) -> Self {
+        let mut job = Self::new(Kind::Replacement);
+        job.correlation = Some(correlation);
+        job
+    }
+    fn replacing(&self) -> bool {
+        self.kind == Kind::Replacement
+    }
+    pub(crate) fn idle(&self) -> bool {
+        self.phase == Phase::Prepared && self.outstanding == 0
+    }
+    pub(crate) fn commit_replacement(&mut self, correlation: u64) -> Result<(), Refusal> {
+        if !self.idle() || !self.replacing() || self.cancelled {
+            return Err(Refusal::Busy);
+        }
+        self.committed = true;
+        self.correlation = Some(correlation);
+        self.phase = Phase::Activate;
+        Ok(())
+    }
+    pub(crate) fn cancel_replacement(&mut self, correlation: u64) -> Result<Option<u64>, Refusal> {
+        if self.committed || !self.replacing() || self.cancelled {
+            return Err(Refusal::Busy);
+        }
+        self.cancelled = true;
+        Ok(self.correlation.replace(correlation))
     }
     pub(crate) fn clear(id: LoopSlotId) -> Self {
         Self::new(Kind::Clear(id))
@@ -130,6 +167,105 @@ impl Job {
 }
 
 impl ControlEndpoint {
+    fn configuration_nodes(&self) -> usize {
+        1 + 2 * self.next.strips.iter().flatten().count() + self.next.loops.iter().flatten().count()
+    }
+    fn configure_replacement(&mut self, job: &mut Job) -> bool {
+        if job.configured {
+            self.replacement.state = crate::replacement::State::Prepared;
+            job.phase = Phase::Prepared;
+            self.answer_job(job, Outcome::Done);
+            return true;
+        }
+        if !self.room(self.configuration_nodes()) {
+            return false;
+        }
+        let Ok(epoch) = self.graph_epoch.checked_next() else {
+            job.fail(Refusal::Capacity);
+            return true;
+        };
+        let base = crate::NodeConfiguration {
+            token: self.replacement.id.expect("live replacement"),
+            epoch,
+            inputs: 0,
+            outputs: 0,
+            bank: 0,
+            gain: 1.,
+            balance: 0.,
+            monitoring: false,
+            muted: false,
+        };
+        job.configured = true;
+        for slot in 0..self.next.strips.len() {
+            let Some(strip) = self.next.strips[slot] else {
+                continue;
+            };
+            let controls = strip.controls;
+            self.submit_configuration(
+                job,
+                self.pool.strip_input(slot),
+                crate::NodeConfiguration {
+                    inputs: strip.shape.audio_inputs,
+                    bank: strip.inputs.active as u8,
+                    gain: controls.input_gain,
+                    balance: controls.input_balance,
+                    monitoring: controls.monitoring,
+                    ..base
+                },
+            );
+            self.submit_configuration(
+                job,
+                self.pool.strip_output(slot),
+                crate::NodeConfiguration {
+                    outputs: strip.shape.audio_outputs,
+                    bank: strip.outputs.active as u8,
+                    gain: controls.output_gain,
+                    balance: controls.output_balance,
+                    muted: controls.output_mute,
+                    ..base
+                },
+            );
+        }
+        for slot in 0..self.next.loops.len() {
+            if self.next.loops[slot].is_some() {
+                self.submit_configuration(job, self.pool.fader(slot), base);
+            }
+        }
+        let master = self.next.master;
+        self.submit_configuration(
+            job,
+            self.pool.master(),
+            crate::NodeConfiguration {
+                bank: self.next.master_outputs.active as u8,
+                gain: master.gain,
+                balance: master.balance,
+                muted: master.mute,
+                ..base
+            },
+        );
+        true
+    }
+    fn submit_configuration(
+        &mut self,
+        job: &mut Job,
+        node: NodeId,
+        configuration: crate::NodeConfiguration,
+    ) {
+        self.submit_job(
+            job,
+            Command::Schedule {
+                at: Frame(0),
+                action: rt_runtime::schedule::Action::Processor {
+                    node,
+                    operation: EngineOp::Configure(configuration),
+                },
+                payload: Box::new([]),
+            },
+            Step::Configure,
+            true,
+        );
+    }
+
     pub(crate) fn advance_job(&mut self) {
         for _ in 0..16 {
             let Some(mut job) = self.job.take() else {
@@ -143,6 +279,12 @@ impl ControlEndpoint {
             if job.phase != Phase::Finishing || job.outstanding > 0 {
                 self.job = Some(job);
             } else {
+                if job.replacing() {
+                    if job.cancelled {
+                        self.answer_job(&mut job, Outcome::Done);
+                    }
+                    self.replacement.clear();
+                }
                 self.clear_touched();
             }
             if !progressed {
@@ -166,6 +308,9 @@ impl ControlEndpoint {
     pub(crate) fn forget_job_answers(&mut self) {
         if let Some(job) = &mut self.job {
             job.correlation = None;
+            if job.replacing() && !job.committed {
+                job.cancelled = true;
+            }
         }
         for entry in self.batch.iter_mut() {
             entry.0 = None;
@@ -228,6 +373,10 @@ impl ControlEndpoint {
 
     /// Run the next phase of `job`; returns whether it can continue immediately.
     fn step_job(&mut self, job: &mut Job) -> bool {
+        if job.cancelled && !matches!(job.phase, Phase::Cleanup | Phase::Finishing) {
+            job.phase = Phase::Cleanup;
+            return true;
+        }
         if job.failure.is_some()
             && !matches!(
                 job.phase,
@@ -260,11 +409,17 @@ impl ControlEndpoint {
                         Step::TopologyValidate,
                     );
                 } else {
-                    job.phase = Phase::Activate;
+                    job.phase = if job.replacing() {
+                        Phase::Configure
+                    } else {
+                        Phase::Activate
+                    };
                 }
                 true
             }
             Phase::Activate => self.activate(job),
+            Phase::Configure => self.configure_replacement(job),
+            Phase::Prepared => false,
             Phase::Activating => self.activated(job),
             Phase::Query => self.retire_media(job),
             Phase::Cleanup => self.cleanup(job),
@@ -347,7 +502,7 @@ impl ControlEndpoint {
                 );
                 true
             }
-            Kind::Batch(_) => self.prepare_batch(job),
+            Kind::Batch(_) | Kind::Replacement => self.prepare_batch(job),
         }
     }
 
@@ -380,7 +535,11 @@ impl ControlEndpoint {
                 };
                 shape(model.strips[slot]) != shape(next.strips[slot])
             });
-        if job.edits > 0 {
+        if job.replacing() {
+            job.topology_needed = true;
+            job.graph_needed = true;
+        }
+        if job.edits > 0 || job.replacing() {
             self.submit_job_loop(
                 job,
                 Frame(0),
@@ -393,11 +552,18 @@ impl ControlEndpoint {
         }
         if job.topology_needed {
             let next = &self.next;
+            let initial = &self.replacement.initial;
+            let replacing = job.replacing();
             let records = self.work.encoder.encode(
                 |slot| {
                     next.loops[slot].map(|entry| TopologyLoop {
                         id: loop_id(entry.id),
                         sync: loop_id(entry.sync.unwrap_or(entry.id)),
+                        length: if replacing {
+                            initial[slot].map_or(0, |initial| initial.frames)
+                        } else {
+                            0
+                        },
                     })
                 },
                 &mut self.work.image,
@@ -472,20 +638,51 @@ impl ControlEndpoint {
                 if before == after {
                     continue;
                 }
+                let initial = match after {
+                    None => None,
+                    Some(created) if job.replacing() => {
+                        let data =
+                            self.replacement.initial[slot].expect("validated candidate loop");
+                        let audio = data
+                            .audio
+                            .map(|id| self.uploads.source(id, false, data.frames))
+                            .transpose();
+                        let midi = data
+                            .midi
+                            .map(|id| self.uploads.source(id, true, data.frames))
+                            .transpose();
+                        let (Ok(audio), Ok(midi)) = (audio, midi) else {
+                            job.fail(Refusal::InvalidValue);
+                            return true;
+                        };
+                        let entry = self.next.loops[slot].expect("candidate loop");
+                        Some(NodePairInitial {
+                            target: loop_id(created),
+                            frames: data.frames,
+                            audio,
+                            midi,
+                            gain: entry.gain,
+                            balance: entry.balance,
+                            preserve_input: false,
+                        })
+                    }
+                    Some(created) => Some(NodePairInitial {
+                        target: loop_id(created),
+                        frames: 0,
+                        audio: None,
+                        midi: None,
+                        gain: 1.,
+                        balance: 0.,
+                        preserve_input: false,
+                    }),
+                };
                 self.submit_job_loop(
                     job,
                     Frame(0),
                     Operation::NodePairAppend {
                         id,
                         previous: before.map(loop_id),
-                        initial: after.map(|created| NodePairInitial {
-                            target: loop_id(created),
-                            frames: 0,
-                            audio: None,
-                            midi: None,
-                            gain: 1.,
-                            preserve_input: false,
-                        }),
+                        initial,
                     },
                     Step::NodePairAppend,
                 );
@@ -538,6 +735,25 @@ impl ControlEndpoint {
     }
 
     fn activate(&mut self, job: &mut Job) -> bool {
+        if job.replacing() {
+            if !self.room(1) {
+                return false;
+            }
+            self.submit_job_loop(
+                job,
+                Frame(0),
+                Operation::ConfigurationReplace {
+                    node_pairs: job.node_pairs.expect("prepared node pairs"),
+                    topology: job.topology.expect("prepared topology"),
+                    graph: job.graph.expect("prepared graph"),
+                    graph_epoch: self.graph_epoch,
+                    topology_epoch: self.topology_epoch,
+                },
+                Step::Activation,
+            );
+            job.phase = Phase::Activating;
+            return true;
+        }
         let faded = self.collect_fades();
         let removed = |slot: usize, model: &crate::model::Model, next: &crate::model::Model| {
             model.loops[slot].is_some_and(|entry| next.find_loop(entry.id).is_none())
@@ -768,6 +984,42 @@ impl ControlEndpoint {
     }
 
     fn cleanup(&mut self, job: &mut Job) -> bool {
+        if job.replacing() && job.configured && !job.activated {
+            let count = self.configuration_nodes();
+            if !self.room(count + 3) {
+                return false;
+            }
+            let token = self.replacement.id.expect("live replacement");
+            for slot in 0..self.next.strips.len() {
+                if self.next.strips[slot].is_some() {
+                    for node in [self.pool.strip_input(slot), self.pool.strip_output(slot)] {
+                        self.submit_job_op(
+                            job,
+                            Frame(0),
+                            node,
+                            EngineOp::DiscardConfiguration { token },
+                        );
+                    }
+                }
+            }
+            for slot in 0..self.next.loops.len() {
+                if self.next.loops[slot].is_some() {
+                    self.submit_job_op(
+                        job,
+                        Frame(0),
+                        self.pool.fader(slot),
+                        EngineOp::DiscardConfiguration { token },
+                    );
+                }
+            }
+            self.submit_job_op(
+                job,
+                Frame(0),
+                self.pool.master(),
+                EngineOp::DiscardConfiguration { token },
+            );
+            job.configured = false;
+        }
         if !self.room(3) {
             return false;
         }
@@ -778,6 +1030,25 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn job_result(&mut self, step: Step, result: RuntimeResult) {
+        if step == Step::NodePairAppend {
+            if let RuntimeResult::Execution(execution) = &result {
+                if execution_outcome(execution) == Outcome::Done {
+                    if let rt_runtime::schedule::Action::Planner {
+                        operation:
+                            Operation::NodePairAppend {
+                                initial: Some(initial),
+                                ..
+                            },
+                        ..
+                    } = execution.action
+                    {
+                        for source in [initial.audio, initial.midi].into_iter().flatten() {
+                            self.uploads.consumed(source);
+                        }
+                    }
+                }
+            }
+        }
         let (refusal, reply, done, graph) = match result {
             RuntimeResult::Completion(outcome, command, retired) => {
                 let graph = match &command {

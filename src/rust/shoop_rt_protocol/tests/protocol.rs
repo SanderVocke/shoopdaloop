@@ -36,6 +36,72 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::ReplacementBegin { id: 1 },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Strip {
+                strip: strip(0),
+                shape: StripShape {
+                    audio_inputs: 2,
+                    audio_outputs: 2,
+                    midi_input: true,
+                    midi_output: true,
+                },
+                controls: StripPreset {
+                    input_gain: 0.5,
+                    input_balance: -0.25,
+                    monitoring: false,
+                    output_gain: 1.,
+                    output_balance: 0.25,
+                    output_mute: true,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Loop {
+                loop_id: loop_id(0),
+                strip: strip(0),
+                sync: Some(loop_id(1)),
+                frames: u64::MAX,
+                audio: Some(2),
+                midi: None,
+                gain: 0.5,
+                balance: 0.25,
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Connect {
+                port: EnginePort::Strip(StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 0,
+                }),
+                host: HostPortId(2),
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Route {
+                port: StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 1,
+                },
+                bus: BusPort {
+                    bus: BusId::Master,
+                    index: 1,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Master(BusControl::Mute(true)),
+        },
+        Request::ReplacementPrepare { id: 1 },
+        Request::ReplacementCommit { id: 1 },
+        Request::ReplacementCancel { id: 1 },
         Request::ContentBegin(ContentDescription {
             id: 1,
             midi: false,

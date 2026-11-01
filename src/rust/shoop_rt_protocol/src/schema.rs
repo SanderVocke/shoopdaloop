@@ -154,6 +154,22 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ReplacementBegin {
+        id: u64,
+    },
+    ReplacementEdit {
+        id: u64,
+        edit: crate::ReplacementEdit,
+    },
+    ReplacementPrepare {
+        id: u64,
+    },
+    ReplacementCommit {
+        id: u64,
+    },
+    ReplacementCancel {
+        id: u64,
+    },
     ContentBegin(crate::ContentDescription),
     ContentWrite {
         id: u64,
@@ -305,6 +321,7 @@ impl Capabilities {
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
     pub const CONTENT_UPLOAD: Self = Self(1 << 3);
+    pub const COMPLETE_REPLACEMENT: Self = Self(1 << 4);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

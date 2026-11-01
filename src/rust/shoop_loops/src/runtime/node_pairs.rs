@@ -59,6 +59,7 @@ pub struct NodePairInitial {
     pub audio: Option<NodePairSourceId>,
     pub midi: Option<NodePairSourceId>,
     pub gain: f32,
+    pub balance: f32,
     pub preserve_input: bool,
 }
 #[derive(Clone, Copy)]
@@ -370,6 +371,7 @@ impl NodePairs {
         }
         let mut change = if let Some(initial) = edit.initial {
             if !initial.gain.is_finite()
+                || !(-1.0..=1.0).contains(&initial.balance)
                 || (initial.audio.is_some() && initial.audio == initial.midi)
             {
                 return Err(Error::InvalidShape);

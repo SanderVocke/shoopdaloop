@@ -141,6 +141,57 @@ fn group_claims_are_atomic_and_reject_legacy_mutation_until_released() {
     });
 }
 #[shoop_test]
+fn clearing_idle_content_preserves_snapshot_owners_revision_and_prepared_group_reuse() {
+    let mut store = store(1);
+    let samples = [1f32, 2., 3., 4.]
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect::<Vec<_>>();
+    assert_no_heap(|| {
+        let resource = store.create().unwrap();
+        let upload = store
+            .begin_upload(
+                resource,
+                Revision(0),
+                Description {
+                    format: Format::Audio { channels: 2 },
+                    frames: 2,
+                    bytes: samples.len(),
+                },
+            )
+            .unwrap();
+        store.begin_callback();
+        store.write_upload(upload, 0, &samples).unwrap();
+        store.finish_upload(upload).unwrap();
+        store.commit(upload).unwrap();
+        let snapshot = store.snapshot(resource, Frame(0)).unwrap();
+        let group = store.bind_capture_group(&[audio(resource)]).unwrap();
+        store.check_idle_capture_group(group).unwrap();
+        store.clear_idle_capture_group(group).unwrap();
+        store.clear_idle_capture_group(group).unwrap();
+        assert_eq!(store.revision(resource), Ok(Revision(1)));
+        assert_eq!(store.snapshot(resource, Frame(0)), Err(Error::InvalidState));
+        store.begin_callback();
+        let mut cursor = store.cursor(snapshot.id).unwrap();
+        let mut bytes = [0; 16];
+        assert_eq!(store.read(&mut cursor, &mut bytes), Ok(16));
+        assert_eq!(&bytes, &samples[..]);
+        let take = store.prepare_capture_take(group, &[]).unwrap();
+        assert_eq!(
+            store.clear_idle_capture_group(group),
+            Err(Error::InvalidState)
+        );
+        store.cancel_capture_take(take).unwrap();
+        store.release_snapshot(snapshot.id).unwrap();
+        store.release_capture_group(group).unwrap();
+        store.remove(resource).unwrap();
+        reclaim(&mut store);
+        assert_eq!(store.usage().free_versions, 8);
+        assert_eq!(store.usage().free_pages, 64);
+    });
+}
+
+#[shoop_test]
 fn promised_activation_and_empty_freeze_survive_all_unrelated_credit_saturation() {
     let mut store = store(1);
     let mut initial = MidiState::default();

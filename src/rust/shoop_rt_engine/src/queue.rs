@@ -21,7 +21,7 @@ pub(crate) const SOFT: u8 = 1;
 /// A pending transaction creates or removes the slot's occupant.
 pub(crate) const HARD: u8 = 2;
 
-enum Staged {
+pub(crate) enum Staged {
     Change(Change),
     Done,
     Refused(Refusal),
@@ -91,6 +91,16 @@ impl ControlEndpoint {
         staging: &mut bool,
         open: &mut bool,
     ) -> bool {
+        if matches!(
+            request,
+            Request::ReplacementBegin { .. }
+                | Request::ReplacementEdit { .. }
+                | Request::ReplacementPrepare { .. }
+                | Request::ReplacementCommit { .. }
+                | Request::ReplacementCancel { .. }
+        ) {
+            return self.start(correlation, request).is_ok();
+        }
         if self.blocked_all || self.blocked(request) {
             return false;
         }
@@ -98,7 +108,7 @@ impl ControlEndpoint {
             if !*open {
                 return false;
             }
-            return match self.stage(request) {
+            return match self.stage(request, false) {
                 Staged::Change(change) => {
                     if self.batch_len == self.batch.len() {
                         return false;
@@ -159,6 +169,11 @@ impl ControlEndpoint {
                 || self.touched_loops.get(index).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => false,
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentFinish { .. }
@@ -215,6 +230,11 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => {}
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentFinish { .. }
@@ -304,7 +324,7 @@ impl ControlEndpoint {
     }
 
     /// Validate a structural request against the staged model.
-    fn stage(&self, request: Request) -> Staged {
+    pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
         let next = &self.next;
         match request {
             Request::CreateStrip { strip, shape } => {
@@ -320,7 +340,7 @@ impl ControlEndpoint {
                     || shape.audio_outputs as usize > self.settings.channels
                 {
                     Staged::Refused(Refusal::Capacity)
-                } else if self.model.strips[slot].is_some() {
+                } else if !replacing && self.model.strips[slot].is_some() {
                     Staged::Wait
                 } else {
                     Staged::Change(Change::CreateStrip { strip, shape })
@@ -341,7 +361,7 @@ impl ControlEndpoint {
                     || next.strip(strip).is_none()
                 {
                     Staged::Refused(Refusal::InvalidId)
-                } else if self.model.loops[slot].is_some() {
+                } else if !replacing && self.model.loops[slot].is_some() {
                     Staged::Wait
                 } else {
                     Staged::Change(Change::CreateLoop { loop_id, strip })

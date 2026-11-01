@@ -7,11 +7,13 @@ pub mod content;
 pub mod host;
 pub mod ids;
 pub mod message;
+pub mod replacement;
 pub mod schema;
 
 pub use content::{ContentChunk, ContentDescription};
 pub use ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 pub use message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
+pub use replacement::{ReplacementEdit, StripPreset};
 pub use schema::*;
 
 /// Version spoken by this crate; both sides must agree exactly.

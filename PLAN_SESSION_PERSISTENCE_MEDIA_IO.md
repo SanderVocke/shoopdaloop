@@ -5,7 +5,8 @@
 Implementation in progress; the app transfer foundation and engine content-upload
 foundation are implemented, along with the underlying atomic full-owner replacement
 cut and deferred processor presets.
-Engine staging and public persistence workflows remain pending. Written under
+The engine private replacement job is implemented; integrated capture, per-loop
+replacement and public persistence workflows remain pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
 P11 in the [feature parity ledger](docs/native_session_recovery/feature-parity.md).
@@ -214,6 +215,8 @@ not counted as test passes. Miri remains reserved for the final stage.
   validation, cancellation/disconnect cleanup and explicit resource-budget refusals.
 - [x] Provide the loop/runtime full-owner replacement cut and token-scoped processor
   presets that leave live settings unchanged until graph publication.
+- [x] Expose a private engine replacement image with bounded edits, resource
+  preparation, explicit commit/cancel and host-owned completion after disconnect.
 - [ ] Inventory existing export/import/configuration primitives and integrate the
   smallest missing engine operations. Acquire immutable media and metadata at a
   certified cut; retain them independently of future clears/removals/recordings.
@@ -262,6 +265,24 @@ cases and the staged/cancelled/live-monitoring DSP case. Warning-denying native 
 `thumbv7em-none-eabihf` runtime/loop builds, loop/runtime dependency boundaries,
 formatting and test-attribute policy pass. These are kernel checks, not file-workflow
 or final acceptance evidence; Miri has not run.
+
+Engine-job milestone: protocol capability `COMPLETE_REPLACEMENT` exposes private
+begin/edit/prepare/commit/cancel messages. Preparation validates fresh generations,
+sync references, source ownership/shape, graph capacity and all processor presets.
+Only commit changes the live model; all restored loops start stopped. Pre-commit
+disconnect cancels, whereas an admitted commit finishes without its client. Idle
+capture-group roots are released at the validated replacement cut so displaced
+recordings do not consume the next upload's storage; retained snapshot leases and
+resource revisions remain valid. MIDI initial-state upload is still pending.
+
+Job validation: full native runtime/loop/engine/protocol suites pass; seven
+heap-guarded replacement cases cover old playback, exact content/controls, in-flight
+and prepared cancellation, active-recording rejection, empty images, tight-pool
+reuse and disconnect on both sides of commit. A direct runtime test covers retained
+snapshot readability and prepared-group reuse after idle content reclamation.
+Node/Wasm passes all 31 engine and four protocol tests plus the runtime reclamation
+case. Warning-denying affected native and runtime/loop embedded builds, dependency
+boundaries, formatting, Rust test policy and whitespace checks pass.
 
 ### Stage 3 — service-owned coherent session capture and exports
 

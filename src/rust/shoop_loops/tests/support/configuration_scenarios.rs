@@ -169,6 +169,7 @@ fn initial(
         audio: Some(sources[0]),
         midi: Some(sources[1]),
         gain: 1.,
+        balance: 0.,
         preserve_input,
     }
 }
@@ -188,6 +189,7 @@ fn full_replacement(h: &mut Harness) -> (NodePairStageId, StageId, GraphStageId)
                 audio: None,
                 midi: None,
                 gain: 1.,
+                balance: 0.,
                 preserve_input: false,
             }),
         },
@@ -822,6 +824,7 @@ fn timing_initial(target: LoopId, frames: u64) -> NodePairInitial {
         audio: None,
         midi: None,
         gain: 1.,
+        balance: 0.,
         preserve_input: false,
     }
 }

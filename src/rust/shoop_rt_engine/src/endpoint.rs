@@ -187,6 +187,7 @@ pub struct ControlEndpoint {
     pub(crate) resync: Option<Resync>,
     pub(crate) bulk: Bulk,
     pub(crate) uploads: crate::content::Uploads,
+    pub(crate) replacement: crate::replacement::Replacement,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -289,7 +290,7 @@ impl ControlEndpoint {
     /// the last structural change has finished.
     pub fn is_idle(&self) -> bool {
         self.queue.len() == 0
-            && self.job.is_none()
+            && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
             && self.bulk.idle()
             && self.uploads.idle()
@@ -320,6 +321,7 @@ impl ControlEndpoint {
         Capabilities::MIDI_INJECTION
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
+            .union(Capabilities::COMPLETE_REPLACEMENT)
     }
 
     fn free_pending(&self) -> usize {
@@ -720,6 +722,11 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => self.replacement_request(correlation, request),
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentFinish { .. }

@@ -54,6 +54,37 @@ pub(crate) struct Uploads {
     last_id: u64,
 }
 impl Uploads {
+    pub(crate) fn source(
+        &self,
+        id: u64,
+        midi: bool,
+        frames: u64,
+    ) -> Result<NodePairSourceId, Refusal> {
+        let entry = self.slots[self.index(id)?]
+            .as_ref()
+            .expect("located upload");
+        if let Some(failure) = entry.failure {
+            return Err(failure);
+        }
+        if entry.phase != Phase::Ready || entry.abandoned {
+            return Err(Refusal::Busy);
+        }
+        if entry.description.midi != midi || entry.description.frames != frames {
+            return Err(Refusal::InvalidValue);
+        }
+        entry.source.ok_or(Refusal::InvalidId)
+    }
+    pub(crate) fn consumed(&mut self, source: NodePairSourceId) {
+        if let Some(entry) = self
+            .slots
+            .iter_mut()
+            .flatten()
+            .find(|entry| entry.source == Some(source))
+        {
+            entry.source = None;
+            entry.abandoned = true;
+        }
+    }
     pub(crate) fn idle(&self) -> bool {
         self.slots.iter().flatten().all(|entry| {
             entry.pending == 0
