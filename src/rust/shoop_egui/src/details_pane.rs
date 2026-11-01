@@ -1101,7 +1101,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn vertical_wheel_zooms_and_consumes_scrolling_while_horizontal_wheel_pans() {
+    fn normalized_wheel_input_zooms_consumes_scrolling_and_pans_horizontally() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let view = MediaView {
@@ -1119,18 +1119,12 @@ mod tests {
             let mut result = None;
             let mut output = context.run_ui(
                 egui::RawInput {
-                    events: vec![
-                        egui::Event::PointerMoved(rect.center()),
-                        egui::Event::MouseWheel {
-                            unit: egui::MouseWheelUnit::Point,
-                            delta,
-                            phase: egui::TouchPhase::Move,
-                            modifiers: egui::Modifiers::NONE,
-                        },
-                    ],
+                    events: vec![egui::Event::PointerMoved(rect.center())],
                     ..Default::default()
                 },
                 |ui| {
+                    ui.ctx()
+                        .input_mut(|input| input.smooth_scroll_delta = delta);
                     let (rect, response) = ui.allocate_exact_size(
                         egui::vec2(200.0, 60.0),
                         egui::Sense::click_and_drag(),
