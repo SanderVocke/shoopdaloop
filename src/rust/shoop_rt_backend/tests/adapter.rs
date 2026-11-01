@@ -141,7 +141,7 @@ fn engine_refusals_arrive_as_mutation_failures() {
 }
 
 #[shoop_test]
-fn a_new_backend_uses_newer_generations_after_reconnecting() {
+fn a_new_backend_uses_newer_generations_after_explicit_session_cleanup() {
     let mut description = description();
     description.segments = vec![Segment {
         strips: 2,
@@ -152,7 +152,8 @@ fn a_new_backend_uses_newer_generations_after_reconnecting() {
         let created = backend.create_direct_track(track(1, false, 2)).unwrap();
         backend.remove_track(created.track_id).unwrap();
     }
-    backend.create_direct_track(track(1, false, 1)).unwrap();
+    let last = backend.create_direct_track(track(1, false, 1)).unwrap();
+    backend.remove_track(last.track_id).unwrap();
     backend.wait_idle();
     assert!(backend.poll().unwrap().mutation_failures.is_empty());
     backend.disconnect();
@@ -230,7 +231,7 @@ fn loop_content_is_read_asynchronously() {
 }
 
 #[shoop_test]
-fn connecting_removes_engine_structure_the_application_does_not_know() {
+fn a_fresh_adapter_refuses_to_delete_another_services_live_structure() {
     let mut description = description();
     description.segments = vec![Segment {
         strips: 1,
@@ -266,15 +267,43 @@ fn connecting_removes_engine_structure_the_application_does_not_know() {
     client.disconnect();
     while client.poll().is_some() {}
 
-    let mut backend = RtBackend::connect(client, clock).unwrap();
-    let created = backend.create_direct_track(track(1, false, 1)).unwrap();
-    backend.wait_idle();
-    let snapshot = backend.poll().unwrap();
+    let mut backend = RtBackend::begin(client, clock).unwrap();
+    for _ in 0..100 {
+        backend.pump();
+        backend.clock_mut().render(1);
+        if backend.poll().unwrap().status.driver_state == BackendDriverState::Failed {
+            break;
+        }
+    }
     assert_eq!(
-        snapshot.tracks.keys().copied().collect::<Vec<_>>(),
-        [created.track_id]
+        backend.poll().unwrap().status.driver_state,
+        BackendDriverState::Failed
     );
-    assert!(snapshot.mutation_failures.is_empty());
+    assert_eq!(
+        backend.mutation_cursor(),
+        0,
+        "reattachment must not queue cleanup"
+    );
+    let (mut client, mut clock) = backend.into_parts();
+    client.disconnect();
+    while client.poll().is_some() {}
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    client.resync().unwrap();
+    let mut preserved = false;
+    for _ in 0..100 {
+        clock.render(1);
+        while let Some(message) = client.poll() {
+            preserved |= matches!(message, EngineMessage::State(shoop_rt_protocol::StateRecord::Strip { strip, .. }) if strip == leftover);
+        }
+        if preserved {
+            break;
+        }
+    }
+    assert!(
+        preserved,
+        "the engine-owned strip must survive a refused adapter"
+    );
 }
 
 #[shoop_test]
@@ -326,4 +355,60 @@ fn xruns_are_reported_since_the_previous_poll() {
     backend.clock_mut().render(16);
     assert_eq!(backend.poll().unwrap().status.xruns, 2);
     assert_eq!(backend.poll().unwrap().status.xruns, 0);
+}
+
+#[shoop_test]
+fn mutation_outcomes_are_bounded_and_keep_submission_identity_through_refusal_and_loss() {
+    let mut backend = stack(&description());
+    let created = backend.create_direct_track(track(1, false, 2)).unwrap();
+    let created_through = backend.mutation_cursor();
+    assert!(backend.mutations_pending_through(created_through));
+    backend.wait_idle();
+    assert!(!backend.mutations_pending_through(created_through));
+    let outcomes = backend.poll().unwrap().mutation_completions;
+    assert_eq!(outcomes.len() as u64, created_through);
+    assert!(outcomes.iter().all(|outcome| outcome.result.is_ok()));
+    backend
+        .set_loop_sync_source(created.loops[1], Some(created.loops[0]))
+        .unwrap();
+    backend.wait_idle();
+    backend.poll().unwrap();
+    backend
+        .set_loop_sync_source(created.loops[0], Some(created.loops[1]))
+        .unwrap();
+    let refused_sequence = backend.mutation_cursor();
+    backend.wait_idle();
+    let outcomes = backend.poll().unwrap().mutation_completions;
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].sequence, refused_sequence);
+    assert!(outcomes[0].result.is_err());
+    backend.set_loop_gain(created.loops[0], 0.25).unwrap();
+    let lost_sequence = backend.mutation_cursor();
+    backend.disconnect();
+    let outcomes = backend.poll().unwrap().mutation_completions;
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].sequence, lost_sequence);
+    assert!(outcomes[0].result.is_err());
+}
+
+#[shoop_test]
+fn tracking_capacity_refuses_before_admission_and_returns_after_outcomes_are_consumed() {
+    let mut backend = stack(&description());
+    for _ in 0..shoop_rt_backend::MAX_TRACKED_MUTATIONS {
+        backend.set_loop_smoothing_ms(0).unwrap();
+    }
+    let cursor = backend.mutation_cursor();
+    assert_eq!(backend.mutation_capacity(), 0);
+    assert!(backend.set_loop_smoothing_ms(0).is_err());
+    assert!(backend.create_direct_track(track(1, false, 1)).is_err());
+    assert_eq!(backend.mutation_cursor(), cursor);
+    backend.wait_idle();
+    let outcomes = backend.poll().unwrap().mutation_completions;
+    assert_eq!(outcomes.len(), shoop_rt_backend::MAX_TRACKED_MUTATIONS);
+    assert!(outcomes.iter().all(|outcome| outcome.result.is_ok()));
+    assert_eq!(
+        backend.mutation_capacity(),
+        shoop_rt_backend::MAX_TRACKED_MUTATIONS
+    );
+    backend.set_loop_smoothing_ms(0).unwrap();
 }

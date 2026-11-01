@@ -4,8 +4,9 @@
 
 Implementation started on 2026-11-01; Stage 0 inventory and contract are recorded in
 [ownership-and-contract.md](docs/native_session_recovery/ownership-and-contract.md).
-Stages 0–1 are implemented: ownership/contract inventory, neutral backend contracts,
-shared carriers, bounded app protocol and client projection. Stages 2–7 remain pending;
+Stages 0–2 are implemented: ownership/contract inventory, neutral backend contracts,
+shared carriers, bounded app protocol/client projection, and the authoritative service.
+Stages 3–7 remain pending;
 the production application does not yet use the new app service/client architecture.
 See [incremental validation](docs/native_session_recovery/validation.md).
 Originally written under
@@ -316,13 +317,13 @@ for changed portable crates. Run existing carrier tests affected by extraction.
 
 ### Stage 2 — authoritative service and persistent engine adapter (after 1)
 
-- [ ] Extract `shoop_app` service state and handlers using the ownership inventory;
+- [x] Extract `shoop_app` service state and handlers using the ownership inventory;
   retain its RT adapter/mappings and pending operations for the session lifetime.
-- [ ] Move naming/order, selection/target, global policies and shared operation
+- [x] Move naming/order, selection/target, global policies and shared operation
   resolution into the service. Separate UI/file-dialog and Lua-local workflows.
-- [ ] Implement confirmed revisions, session-owned accepted operations, engine
+- [x] Implement confirmed revisions, session-owned accepted operations, engine
   outcome reconciliation, bounded result retention, and snapshot/update subscriptions.
-- [ ] Initialize the session/sync track exactly once. Remove UI attachment from
+- [x] Initialize the session/sync track exactly once. Remove UI attachment from
   RT adapter construction and unknown-strip cleanup; retain valid engine invariants.
 
 **Verify:** service tests with a deterministic backend/clock cover state ownership,

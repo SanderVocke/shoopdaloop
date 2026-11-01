@@ -42,6 +42,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         initial_loops: usize,
     ) -> Result<BackendTrackCreation> {
         self.ready()?;
+        self.require_mutation_capacity(
+            initial_loops
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("too many initial loops"))?,
+        )?;
         let limits = self.limits();
         if audio_channels > u32::from(limits.strip_audio_channels) {
             return Err(anyhow!(

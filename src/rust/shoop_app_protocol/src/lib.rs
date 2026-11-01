@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 use std::sync::Arc;
 
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_PENDING_OPERATIONS: usize = 128;
@@ -168,8 +168,23 @@ pub enum Refusal {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Outcome {
-    Confirmed { revision: Revision },
-    Refused { reason: Refusal, message: String },
+    Confirmed {
+        revision: Revision,
+    },
+    Refused {
+        reason: Refusal,
+        message: String,
+    },
+    TrackCreated {
+        revision: Revision,
+        track: TrackId,
+        loops: Vec<LoopId>,
+    },
+    LoopCreated {
+        revision: Revision,
+        track: TrackId,
+        loop_id: LoopId,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -191,6 +206,8 @@ pub struct SessionSnapshot {
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
     pub global: GlobalControlState,
+    pub master_auto_connect: bool,
+    pub loop_smoothing_ms: u32,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
     pub capabilities: BackendCapabilities,
@@ -224,6 +241,10 @@ impl Outcome {
     pub fn bounded(&self) -> bool {
         match self {
             Self::Confirmed { .. } => true,
+            Self::TrackCreated { track, loops, .. } => {
+                track.is_valid() && loops.len() <= 128 && loops.iter().all(|id| id.is_valid())
+            }
+            Self::LoopCreated { track, loop_id, .. } => track.is_valid() && loop_id.is_valid(),
             Self::Refused { message, .. } => message.len() <= 512,
         }
     }

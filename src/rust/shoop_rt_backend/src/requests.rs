@@ -32,8 +32,6 @@ pub(crate) enum Purpose {
     BusControl(BackendBusControl),
     InjectMidi(BackendTrackId),
     Smoothing(u32),
-    /// Removal of engine structure the application does not know.
-    Cleanup,
 }
 
 #[derive(Clone, Debug)]

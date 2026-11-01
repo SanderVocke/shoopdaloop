@@ -36,8 +36,8 @@ pub use clock::{EngineClock, NoWait};
 use anyhow::{anyhow, Result};
 use shoop_app_api::BackendCapability;
 use shoop_backend::{
-    BackendConnectionFailure, BackendMixerFailure, BackendMutationFailure,
-    BackendSessionReplacement,
+    BackendConnectionFailure, BackendMixerFailure, BackendMutationCompletion,
+    BackendMutationFailure, BackendSessionReplacement,
 };
 use shoop_rt_protocol::{Capabilities, DriverStatus, Limits, StateRecord};
 use shoop_rt_transport::carrier::{Carrier, CarrierError};
@@ -49,6 +49,7 @@ use crate::requests::Requests;
 
 /// Waits through the clock before `connect` or `wait_idle` gives up.
 const MAX_WAITS: usize = 10_000;
+pub const MAX_TRACKED_MUTATIONS: usize = 4096;
 /// Rounds of sending and receiving in one pump.
 const MAX_PUMP_ROUNDS: usize = 1_000;
 
@@ -114,6 +115,7 @@ pub struct RtBackend<C, K> {
     reads: Reads,
     resync: Option<Vec<StateRecord>>,
     mutation_failures: Vec<BackendMutationFailure>,
+    mutation_completions: Vec<BackendMutationCompletion>,
     connection_failures: Vec<BackendConnectionFailure>,
     mixer_failures: Vec<BackendMixerFailure>,
     failure_sequence: u64,
@@ -147,6 +149,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             reads: Reads::default(),
             resync: None,
             mutation_failures: Vec::new(),
+            mutation_completions: Vec::new(),
             connection_failures: Vec::new(),
             mixer_failures: Vec::new(),
             failure_sequence: 0,
@@ -221,10 +224,24 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn ready(&self) -> Result<()> {
         match &self.link {
-            Link::Ready => Ok(()),
+            Link::Ready => self.require_mutation_capacity(1),
             Link::Connecting | Link::Resyncing => Err(anyhow!("the engine is not connected yet")),
             Link::Disconnected(reason) => Err(anyhow!("the engine is disconnected: {reason}")),
         }
+    }
+
+    fn require_mutation_capacity(&self, count: usize) -> Result<()> {
+        let used = self.requests.outstanding() + self.mutation_completions.len();
+        if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
+            || self
+                .requests
+                .last_sequence()
+                .checked_add(count as u64)
+                .is_none()
+        {
+            return Err(anyhow!("engine mutation outcome tracking is full"));
+        }
+        Ok(())
     }
 
     fn limits(&self) -> Limits {
@@ -302,6 +319,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
+        for pending in self
+            .requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+        {
+            self.mutation_completions.push(BackendMutationCompletion {
+                sequence: pending.sequence,
+                result: Err(reason.clone()),
+            });
+        }
         self.requests.clear();
         self.reads.clear();
         if let Some(replacement) = &mut self.replacement {

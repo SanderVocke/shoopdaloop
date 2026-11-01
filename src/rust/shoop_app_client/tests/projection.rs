@@ -24,6 +24,8 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         }],
         buses: Arc::from([]),
         global: Default::default(),
+        master_auto_connect: true,
+        loop_smoothing_ms: 4,
         status: Default::default(),
         audio_drivers: Default::default(),
         capabilities: BackendCapabilities::NONE,

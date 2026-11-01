@@ -5087,6 +5087,7 @@ impl Backend for NativeBackend {
             connections: runtime.take_connection_snapshot(),
             mixer: runtime.mixer_snapshot(),
             mutation_failures: Vec::new(),
+            mutation_completions: Vec::new(),
         })
     }
 

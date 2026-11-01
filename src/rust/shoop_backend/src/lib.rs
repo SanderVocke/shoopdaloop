@@ -1102,6 +1102,13 @@ pub struct BackendMutationFailure {
     pub message: String,
 }
 
+/// One admitted mutation's engine outcome, distinct from telemetry publication.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendMutationCompletion {
+    pub sequence: u64,
+    pub result: Result<(), String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
@@ -1113,9 +1120,24 @@ pub struct BackendSnapshot {
     pub connections: BackendConnectionSnapshot,
     pub mixer: BackendMixerSnapshot,
     pub mutation_failures: Vec<BackendMutationFailure>,
+    pub mutation_completions: Vec<BackendMutationCompletion>,
 }
 
 pub trait Backend {
+    /// Synchronous backends use cursor zero and complete before returning.
+    fn mutation_cursor(&self) -> u64 {
+        0
+    }
+    fn mutations_pending_through(&self, _sequence: u64) -> bool {
+        false
+    }
+    /// Available outcome-tracking slots, reserved before submitting a shared operation.
+    fn mutation_capacity(&self) -> usize {
+        usize::MAX
+    }
+    /// Discard client-owned bulk reads without canceling session mutations.
+    fn cancel_media_reads(&mut self) {}
+
     fn supports_audio_preview(&self) -> bool {
         false
     }

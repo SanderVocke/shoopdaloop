@@ -241,6 +241,7 @@ fn invalid_midi_values_do_not_bypass_domain_invariants_during_decode() {
 #[shoop_test]
 fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
     let mut record = vec![0, 0, b'S', b'A', b'P', b'P', 1, 0, 4, 1, 0, 253];
+    record[6..8].copy_from_slice(&VERSION.to_le_bytes());
     record.extend_from_slice(&u64::MAX.to_le_bytes());
     let length = record.len() as u16;
     record[..2].copy_from_slice(&length.to_le_bytes());

@@ -118,3 +118,42 @@ This completes the Stage 1 boundary extraction, not Stage 6 production retiremen
 Native production UI/Lua composition still owns the old application model. No
 session-service recovery, independent app host roles or recovery UX is implemented
 by this boundary refactor. Stages 2–7 and all final acceptance evidence remain open.
+
+
+## Stage 2 — authoritative service (2026-11-01)
+
+The portable `shoop_app::Service` owns names/order, sync identity, selection/target,
+shared policies, routing intent, stable mappings, admitted operations and retained
+results. The same RT adapter survives every client attachment. A separate connection
+identity and generation fence every mutation, detach and shutdown. The service never
+waits for global engine idleness; typed delivery pumps bounded work cooperatively.
+
+The RT adapter now reports bounded sequence-correlated outcomes, including requests
+whose object mapping disappeared after another refusal. Tracking is reserved before
+submission. A fresh adapter refuses unknown live structure and never deletes it.
+Service history is bounded at 256 results/128 pending operations; retained actor
+watermarks prevent replay after result eviction. Routing intent retains terminal
+errors rather than displaying refused requests as perpetually pending.
+
+Focused evidence on this stage's working tree:
+
+- Ten service integration tests use the real RT engine and a controllable clock:
+  typed/encoded synchronization; ordered selection/target and policy ownership;
+  loss before create/remove/routing confirmation; lost replies and no replay;
+  partial creation refusal with manageable survivors; snapshot/publication races;
+  stale-client fencing; bounded slow-client reclamation; audio/MIDI capture and
+  playback across detachment; shutdown confirmation/cleanup failure and retry.
+  A carrier injects one explicit loop-creation refusal; other behavior executes
+  against the real engine. The clock asserts no service synchronous waits.
+- Seventeen RT-adapter tests cover contracts, refusals, correlated outcomes,
+  bounded tracking, retained live structure, asynchronous media and existing
+  latency/throughput workloads.
+- Native and Wasm warning-denying service builds pass without the temporary
+  migration feature. The default migration-feature native build also passes.
+- App protocol/client tests, test attribute policy, tracing inventory, and four-target
+  dependency audit pass. The audit includes the service's complete dependency tree.
+
+The old application runtime remains behind a temporary `legacy` feature for direct
+consumer migration. Production UI/Lua wiring, independent hosts, recovery/exit UX,
+legacy retirement, final suites/Miri and final CI are still stages 3–7. This evidence
+is not final A1–A11 acceptance. Miri has not been run early.

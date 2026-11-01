@@ -6553,6 +6553,7 @@ impl Backend for EngineBackend {
             connections: self.connection_snapshot(),
             mixer: self.mixer_snapshot(),
             mutation_failures: Vec::new(),
+            mutation_completions: Vec::new(),
         })
     }
 
@@ -10250,6 +10251,7 @@ impl Backend for FakeBackend {
             connections: self.connection_snapshot(),
             mixer: self.mixer.clone(),
             mutation_failures: Vec::new(),
+            mutation_completions: Vec::new(),
         })
     }
 

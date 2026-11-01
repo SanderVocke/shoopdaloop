@@ -18,7 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
-    "shoop_backend", "shoop_app_protocol", "shoop_app_client",
+    "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
@@ -33,6 +33,12 @@ FORBIDDEN = {
 
 def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
+    if package == "shoop_app":
+        forbidden = {"shoop_engine", "shoop_egui", "shoopdaloop", "shoop_scripting",
+                     "shoop_session", "rt_runtime", "shoop_rt_engine", "cpal", "midir",
+                     "web-sys", "js-sys", "iceoryx2"}
+        return sorted(name for name in names if name in forbidden or name.startswith(
+            ("shoop_rt_host_", "shoop_rt_transport_", "shoop_transport_")))
     if package in {"shoop_app_protocol", "shoop_app_client"}:
         forbidden = {"shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop",
                      "shoop_engine", "shoop_scripting", "shoop_session", "rt_runtime",
@@ -70,7 +76,7 @@ def main() -> int:
         for target in args.target or RUNTIME.TARGETS:
             result = subprocess.run(
                 ["cargo", "tree", "--locked", "-p", package,
-                 *(["--no-default-features"] if package == "shoop_backend" else ["--all-features"]),
+                 *(["--no-default-features"] if package in {"shoop_app", "shoop_backend"} else ["--all-features"]),
                  "--target", target, "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
                 cwd=ROOT, text=True, capture_output=True, check=False,
             )

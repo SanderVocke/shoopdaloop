@@ -9,7 +9,7 @@ use shoop_backend::{
 };
 use shoop_rt_protocol::{
     BusControl, BusId, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode,
-    Outcome, Refusal, Request, StateRecord, StripControl, Telemetry,
+    Outcome, Refusal, StateRecord, StripControl, Telemetry,
 };
 use shoop_rt_transport::carrier::Carrier;
 
@@ -213,8 +213,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
     }
 
-    /// Adopts the engine's confirmed state. Engine structure the application does not know is
-    /// removed; known structure takes the engine's values.
+    /// Reconciles known mappings without deleting engine-owned session objects.
     fn apply_resync(&mut self, records: Vec<StateRecord>) {
         let mut host_ports = Vec::new();
         let mut strips = BTreeSet::new();
@@ -236,19 +235,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         self.mirror.host_ports = host_ports;
-        for strip in &strips {
-            if !self.mirror.strip_tracks.contains_key(strip) {
-                self.requests
-                    .push(Request::RemoveStrip { strip: *strip }, Purpose::Cleanup);
-                self.mirror.strip_slots.release(strip.0);
-            }
-        }
-        for record in &records {
-            if let StateRecord::Loop { loop_id, strip, .. } = record {
-                if !self.mirror.strip_tracks.contains_key(strip) {
-                    self.mirror.loop_slots.release(loop_id.0);
-                }
-            }
+        if strips
+            .iter()
+            .any(|strip| !self.mirror.strip_tracks.contains_key(strip))
+        {
+            self.lose("the engine already has a live session owned by another service".to_owned());
+            return;
         }
         let vanished = self
             .mirror
@@ -365,6 +357,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let Pending {
             sequence, purpose, ..
         } = pending;
+        self.mutation_completions
+            .push(shoop_backend::BackendMutationCompletion {
+                sequence,
+                result: match outcome {
+                    Outcome::Done => Ok(()),
+                    Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
+                },
+            });
         let refusal = match outcome {
             Outcome::Done => None,
             Outcome::Refused(refusal) => Some(refusal),
@@ -609,7 +609,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     refusal_text(refusal)
                 ),
             ),
-            (Purpose::InjectMidi(_) | Purpose::Smoothing(_) | Purpose::Cleanup, _) => {}
+            (Purpose::InjectMidi(_) | Purpose::Smoothing(_), _) => {}
         }
     }
 }

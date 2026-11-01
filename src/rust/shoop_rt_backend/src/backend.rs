@@ -138,6 +138,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 }
 
 impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
+    fn mutation_cursor(&self) -> u64 {
+        self.requests.last_sequence()
+    }
+    fn mutations_pending_through(&self, sequence: u64) -> bool {
+        !self.requests.answered_through(sequence)
+    }
+    fn mutation_capacity(&self) -> usize {
+        crate::MAX_TRACKED_MUTATIONS
+            .saturating_sub(self.requests.outstanding() + self.mutation_completions.len())
+    }
+
+    fn cancel_media_reads(&mut self) {
+        self.reads.clear();
+    }
+
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE.with(
             BackendCapability::MidiInjection,
@@ -324,6 +339,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .ok_or_else(|| anyhow!("invalid MIDI input injection event"))
             })
             .collect::<Result<Vec<_>>>()?;
+        self.require_mutation_capacity(messages.len())?;
         for message in messages {
             self.requests.push(
                 Request::InjectMidi { strip, message },
@@ -727,6 +743,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             connections,
             mixer,
             mutation_failures: std::mem::take(&mut self.mutation_failures),
+            mutation_completions: std::mem::take(&mut self.mutation_completions),
         })
     }
 
