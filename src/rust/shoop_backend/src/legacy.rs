@@ -3226,7 +3226,7 @@ impl EngineBackend {
                             .ok_or_else(|| anyhow!("missing audio channel"))?;
                         Ok(BackendAudioContent {
                             mode: *mode,
-                            samples: channel.data(),
+                            samples: channel.data().into(),
                             gain: channel.gain(),
                             start_offset: channel.start_offset(),
                             capture_alignment_frames: channel.capture_alignment_frames(),
@@ -7069,7 +7069,7 @@ impl FakeConnectionControl {
 fn empty_audio_content(mode: BackendChannelMode) -> BackendAudioContent {
     BackendAudioContent {
         mode,
-        samples: Vec::new(),
+        samples: Vec::new().into(),
         gain: 1.0,
         start_offset: 0,
         capture_alignment_frames: 0,
@@ -9048,7 +9048,7 @@ impl Backend for FakeBackend {
         if let Some(content) = self.loop_content.get_mut(&loop_id) {
             content.length = 0;
             for channel in &mut content.audio {
-                channel.samples.clear();
+                channel.samples = Arc::from([]);
                 channel.capture_alignment_frames = 0;
             }
             for channel in &mut content.midi {
@@ -12081,7 +12081,7 @@ mod tests {
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![0.0; 6],
+                        samples: vec![0.0; 6].into(),
                         start_offset: None,
                         capture_alignment_frames: Some(2),
                         preplay: None,
@@ -12167,8 +12167,8 @@ mod tests {
             .unwrap();
         let mut captured = backend.capture_session().unwrap();
         captured.tracks[0].loops[0].length = 2;
-        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5];
-        captured.tracks[0].loops[0].audio[2].samples = vec![0.75, -1.0];
+        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5].into();
+        captured.tracks[0].loops[0].audio[2].samples = vec![0.75, -1.0].into();
         assert_eq!(
             captured.tracks[0].topology,
             captured.tracks[0].state.topology
@@ -12249,14 +12249,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![1.0, 2.0, 3.0],
+                            samples: vec![1.0, 2.0, 3.0].into(),
                             start_offset: Some(-1),
                             capture_alignment_frames: None,
                             preplay: Some(4),
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
-                            samples: vec![10.0, 20.0, 30.0],
+                            samples: vec![10.0, 20.0, 30.0].into(),
                             start_offset: Some(-2),
                             capture_alignment_frames: None,
                             preplay: Some(5),
@@ -12292,8 +12292,8 @@ mod tests {
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == target.raw())
             .unwrap();
-        assert_eq!(target_content.audio[0].samples, [1.0, 2.0, 3.0]);
-        assert_eq!(target_content.audio[1].samples, [10.0, 20.0, 30.0]);
+        assert_eq!(target_content.audio[0].samples, [1.0, 2.0, 3.0].into());
+        assert_eq!(target_content.audio[1].samples, [10.0, 20.0, 30.0].into());
         assert_eq!(target_content.audio[0].start_offset, -1);
         assert_eq!(target_content.audio[1].preplay, 5);
         assert_eq!(target_content.midi[0].events[0].time, 2);
@@ -12309,14 +12309,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![1.0, 2.0, 3.0],
+                            samples: vec![1.0, 2.0, 3.0].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
-                            samples: vec![10.0, 20.0, 30.0],
+                            samples: vec![10.0, 20.0, 30.0].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
@@ -12373,7 +12373,7 @@ mod tests {
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![99.0],
+                        samples: vec![99.0].into(),
                         start_offset: None,
                         capture_alignment_frames: None,
                         preplay: None,
@@ -12405,8 +12405,11 @@ mod tests {
             .flat_map(|track| &track.loops)
             .find(|loop_| loop_.source_id == target.raw())
             .unwrap();
-        assert_eq!(lengthened_content.audio[0].samples, [1.0, 2.0, 3.0]);
-        assert_eq!(lengthened_content.audio[1].samples, [10.0, 20.0, 30.0]);
+        assert_eq!(lengthened_content.audio[0].samples, [1.0, 2.0, 3.0].into());
+        assert_eq!(
+            lengthened_content.audio[1].samples,
+            [10.0, 20.0, 30.0].into()
+        );
 
         let before_invalid = backend.capture_session().unwrap();
         assert!(backend
@@ -12416,14 +12419,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![99.0],
+                            samples: vec![99.0].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![100.0],
+                            samples: vec![100.0].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
@@ -12585,7 +12588,7 @@ mod tests {
                     audio: (0..4)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 8],
+                            samples: vec![0.0; 8].into(),
                             start_offset: Some(0),
                             capture_alignment_frames: Some(0),
                             preplay: None,
@@ -12643,14 +12646,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![0.0; 6],
+                            samples: vec![0.0; 6].into(),
                             start_offset: Some(1),
                             capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
-                            samples: vec![0.0; 6],
+                            samples: vec![0.0; 6].into(),
                             start_offset: Some(1),
                             capture_alignment_frames: None,
                             preplay: None,
@@ -12718,7 +12721,7 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 8],
+                            samples: vec![0.0; 8].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
@@ -12814,7 +12817,7 @@ mod tests {
             .find(|loop_| loop_.source_id == created.loops[0].raw())
             .unwrap();
         loop_.length = 4;
-        loop_.audio[0].samples = vec![0.25, -0.5, 0.75, -1.0];
+        loop_.audio[0].samples = vec![0.25, -0.5, 0.75, -1.0].into();
         loop_.audio[0].gain = 0.5;
         loop_.audio[0].start_offset = -2;
         loop_.audio[0].preplay = 3;
@@ -12868,7 +12871,7 @@ mod tests {
         assert_eq!(loop_.length, 4);
         assert_eq!(loop_.gain, 0.75);
         assert_eq!(loop_.balance, -0.25);
-        assert_eq!(loop_.audio[0].samples, vec![0.25, -0.5, 0.75, -1.0]);
+        assert_eq!(loop_.audio[0].samples, vec![0.25, -0.5, 0.75, -1.0].into());
         assert_eq!(loop_.audio[0].start_offset, -2);
         assert_eq!(loop_.audio[0].preplay, 3);
         assert_eq!(loop_.midi[0].events[0].time, 2);
@@ -13134,7 +13137,7 @@ mod tests {
         let audio = (0..dry_audio_channels + wet_audio_channels)
             .map(|channel| BackendAudioChannelUpdate {
                 channel,
-                samples: vec![0.0; 24],
+                samples: vec![0.0; 24].into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(if channel < dry_audio_channels {
                     2
@@ -13513,7 +13516,7 @@ mod tests {
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![0.0; 8],
+                        samples: vec![0.0; 8].into(),
                         start_offset: Some(0),
                         capture_alignment_frames: Some(2),
                         preplay: None,
@@ -15290,7 +15293,7 @@ mod tests {
         let loop_ = &mut session.tracks[0].loops[0];
         loop_.length = 128;
         for (channel, value) in loop_.audio.iter_mut().zip([0.1, 0.2, 0.3, 0.4]) {
-            channel.samples = vec![value; 128];
+            channel.samples = vec![value; 128].into();
         }
         let source_loop_id = loop_.source_id;
         let replacement = backend.replace_session(&session).unwrap();

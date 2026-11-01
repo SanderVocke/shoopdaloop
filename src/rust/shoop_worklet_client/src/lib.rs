@@ -5421,7 +5421,7 @@ mod tests {
         let loop_update = BackendLoopContentUpdate {
             audio: vec![shoop_backend::BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.25; 128],
+                samples: vec![0.25; 128].into(),
                 start_offset: None,
                 capture_alignment_frames: None,
                 preplay: None,

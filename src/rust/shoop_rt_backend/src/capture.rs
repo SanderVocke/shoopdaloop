@@ -121,7 +121,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         .into_iter()
                         .map(|channel| BackendAudioContent {
                             mode: BackendChannelMode::Direct,
-                            samples: channel.samples.to_vec(),
+                            samples: channel.samples,
                             gain: 1.,
                             start_offset: channel.start_offset,
                             capture_alignment_frames: channel.capture_alignment_frames,

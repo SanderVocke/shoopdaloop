@@ -404,6 +404,16 @@ production dependency boundaries, test-attribute policy, formatting and whitespa
 checks pass. This milestone does not claim file-format, UI, deployment or final
 workspace acceptance.
 
+Immutable-audio ownership milestone: neutral backend capture/update contracts now
+share `Arc<[f32]>` samples. Service preparation and adapter capture retain this
+ownership instead of copying full PCM buffers. Retained legacy fixtures convert at
+their existing mutable/FFI boundaries. A pointer-identity assertion covers the
+production adapter load/capture round-trip. All-target workspace checks with
+legacy fixtures, all 27 service and 27 native adapter tests, warning-denying core
+builds, formatting and the test-attribute policy pass. Payload validation, MIDI
+conversion and wire assembly still require bounded progression; this change alone
+does not establish the final responsiveness criterion.
+
 ### Stage 4 — bounded standalone media import and replacement
 
 - [ ] Restore WAV/loop-audio/exact-MIDI/SMF decoding and channel mapping/selection

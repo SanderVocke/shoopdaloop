@@ -38,7 +38,7 @@ fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media()
     content.length = 4;
     content.gain = 0.75;
     content.balance = -0.5;
-    content.audio[0].samples = vec![0., 0.25, 0.5, 0.75, 1., 0.125];
+    content.audio[0].samples = vec![0., 0.25, 0.5, 0.75, 1., 0.125].into();
     content.audio[0].start_offset = 1;
     content.audio[0].gain = 0.5;
     content.midi[0].length = 8;
@@ -65,6 +65,10 @@ fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media()
     expected.source_id = new.raw();
     let saved = backend.capture_session().unwrap();
     assert_eq!(saved.tracks[0].loops[0], expected);
+    assert!(std::sync::Arc::ptr_eq(
+        &saved.tracks[0].loops[0].audio[0].samples,
+        &expected.audio[0].samples
+    ));
     assert_eq!(saved.tracks[0].port_name_base, "music");
 }
 #[shoop_test]
@@ -72,7 +76,7 @@ fn cancelled_or_invalid_replacement_preserves_all_live_identities_and_media() {
     let (mut backend, old, mut session) = fixture();
     let before = backend.capture_session().unwrap();
     session.tracks[0].loops[0].length = 4;
-    session.tracks[0].loops[0].audio[0].samples = vec![1.; 4];
+    session.tracks[0].loops[0].audio[0].samples = vec![1.; 4].into();
     assert!(matches!(
         backend.replace_session_async(&session).unwrap(),
         BackendAsyncResult::Pending(_)
@@ -158,7 +162,7 @@ fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
     let (mut backend, track, mut session) = fixture();
     let content = &mut session.tracks[0].loops[0];
     content.length = 4;
-    content.audio[0].samples = vec![0.25; 6];
+    content.audio[0].samples = vec![0.25; 6].into();
     content.audio[0].start_offset = 1;
     content.audio[0].gain = 0.75;
     content.midi[0].length = 6;
@@ -185,7 +189,7 @@ fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
         &BackendLoopContentUpdate {
             audio: vec![BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.5; 8],
+                samples: vec![0.5; 8].into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(0),
                 preplay: None,
@@ -298,7 +302,7 @@ fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_st
     backend.wait_idle();
     let mut session = backend.capture_session().unwrap();
     session.tracks[0].loops[0].length = 1024;
-    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 1024];
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 1024].into();
     let mapping = loaded(&mut backend, &session).unwrap();
     let old = mapping.loops[&track.loops[0].raw()];
     backend
@@ -308,7 +312,7 @@ fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_st
     let before = backend.capture_session().unwrap();
     let mut oversized = before.clone();
     oversized.tracks[0].loops[0].length = 1536;
-    oversized.tracks[0].loops[0].audio[0].samples = vec![0.5; 1536];
+    oversized.tracks[0].loops[0].audio[0].samples = vec![0.5; 1536].into();
     for _ in 0..8 {
         assert!(loaded(&mut backend, &oversized)
             .unwrap_err()
@@ -322,11 +326,11 @@ fn exhausted_old_plus_new_headroom_preserves_old_playback_and_reclaims_failed_st
     }
     let mut small = before;
     small.tracks[0].loops[0].length = 16;
-    small.tracks[0].loops[0].audio[0].samples = vec![0.5; 16];
+    small.tracks[0].loops[0].audio[0].samples = vec![0.5; 16].into();
     loaded(&mut backend, &small).unwrap();
     assert_eq!(
         backend.capture_session().unwrap().tracks[0].loops[0].audio[0].samples,
-        [0.5; 16]
+        [0.5; 16].into()
     );
 }
 
@@ -335,7 +339,7 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
     let (mut backend, track, mut session) = fixture();
     let content = &mut session.tracks[0].loops[0];
     content.length = 4;
-    content.audio[0].samples = vec![0.25; 6];
+    content.audio[0].samples = vec![0.25; 6].into();
     content.audio[0].start_offset = 1;
     content.midi[0].length = 8;
     content.midi[0].events = vec![BackendMidiEvent {
@@ -362,7 +366,7 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
             },
         )
         .expect("selected capture completion");
-    assert_eq!(content.audio[0].samples, [0.25; 6]);
+    assert_eq!(content.audio[0].samples, [0.25; 6].into());
     let audio = backend
         .loop_audio_data_with_metadata(selected)
         .unwrap()
@@ -390,7 +394,7 @@ fn selected_capture_ignores_other_recordings_and_imported_views_retain_original_
 fn engine_loss_finishes_a_pending_persistence_job_with_an_honest_unknown_outcome() {
     let (mut backend, _, mut session) = fixture();
     session.tracks[0].loops[0].length = 128;
-    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 128];
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 128].into();
     assert!(matches!(
         backend.replace_session_async(&session).unwrap(),
         BackendAsyncResult::Pending(_)

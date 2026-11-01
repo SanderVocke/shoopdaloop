@@ -4542,7 +4542,7 @@ mod tests {
             }]
         );
         session.tracks[0].loops[0].length = 4;
-        session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];
+        session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4].into();
         session.tracks[0].loops[0].midi[0] = shoop_backend::BackendMidiContent {
             mode: shoop_backend::BackendChannelMode::Direct,
             length: 4,
@@ -4661,14 +4661,14 @@ mod tests {
             audio: vec![
                 shoop_backend::BackendAudioChannelUpdate {
                     channel: 0,
-                    samples: vec![0.25; 8_192],
+                    samples: vec![0.25; 8_192].into(),
                     start_offset: Some(-1),
                     capture_alignment_frames: None,
                     preplay: Some(2),
                 },
                 shoop_backend::BackendAudioChannelUpdate {
                     channel: 1,
-                    samples: vec![0.5; 8_192],
+                    samples: vec![0.5; 8_192].into(),
                     start_offset: Some(-2),
                     capture_alignment_frames: None,
                     preplay: Some(3),
@@ -4765,11 +4765,11 @@ mod tests {
         assert_eq!(captured.tracks[0].loops[0].source_id, 1);
         assert_eq!(
             captured.tracks[0].loops[0].audio[0].samples,
-            vec![0.25; 8_192]
+            vec![0.25; 8_192].into()
         );
         assert_eq!(
             captured.tracks[0].loops[0].audio[1].samples,
-            vec![0.5; 8_192]
+            vec![0.5; 8_192].into()
         );
         assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].time, 512);
         assert!(matches!(

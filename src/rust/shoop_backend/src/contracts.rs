@@ -395,7 +395,7 @@ pub(crate) fn attempt_capability(
             &BackendLoopContentUpdate {
                 audio: vec![BackendAudioChannelUpdate {
                     channel: 0,
-                    samples: vec![0.0; 4],
+                    samples: vec![0.0; 4].into(),
                     start_offset: None,
                     capture_alignment_frames: None,
                     preplay: None,
@@ -707,7 +707,7 @@ fn session_track(
             audio: (0..audio_channels)
                 .map(|_| BackendAudioContent {
                     mode: BackendChannelMode::Direct,
-                    samples: Vec::new(),
+                    samples: Vec::new().into(),
                     gain: 1.0,
                     start_offset: 0,
                     capture_alignment_frames: 0,
@@ -879,7 +879,7 @@ pub fn new_session_contract(backend: &mut dyn Backend, profile: &ContractProfile
         let mut with_content = document.clone();
         let loop_ = &mut with_content.tracks[0].loops[0];
         loop_.length = 4;
-        loop_.audio[0].samples = vec![0.5; 4];
+        loop_.audio[0].samples = vec![0.5; 4].into();
         assert!(backend.replace_session(&with_content).is_err());
         assert_eq!(session_structure(backend), before);
     }

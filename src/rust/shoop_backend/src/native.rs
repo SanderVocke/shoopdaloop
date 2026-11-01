@@ -1701,7 +1701,7 @@ impl NativeRuntime {
                         let state = channel.get_state()?;
                         Ok(BackendAudioContent {
                             mode: *mode,
-                            samples: channel.get_data(),
+                            samples: channel.get_data().into(),
                             gain: state.gain,
                             start_offset: state.start_offset,
                             capture_alignment_frames: state.capture_alignment_frames,
@@ -6153,7 +6153,7 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 8],
+                            samples: vec![0.0; 8].into(),
                             start_offset: Some(0),
                             capture_alignment_frames: Some(0),
                             preplay: None,
@@ -6534,7 +6534,7 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 7],
+                            samples: vec![0.0; 7].into(),
                             start_offset: Some(if channel == 0 { 1 } else { 3 }),
                             capture_alignment_frames: Some(if channel == 0 { 2 } else { 0 }),
                             preplay: None,
@@ -6597,7 +6597,7 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 9],
+                            samples: vec![0.0; 9].into(),
                             start_offset: None,
                             capture_alignment_frames: None,
                             preplay: None,
@@ -6763,7 +6763,7 @@ mod tests {
             .external_connections
             .push("removed:stale_midi".to_owned());
         captured.tracks[0].loops[0].length = 512;
-        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
+        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75].into();
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
             mode: BackendChannelMode::Direct,
             length: 512,
@@ -6804,7 +6804,7 @@ mod tests {
         assert_eq!(restored.tracks[0].loops[0].balance, -0.25);
         assert_eq!(
             restored.tracks[0].loops[0].audio[0].samples,
-            vec![0.25, -0.5, 0.75]
+            vec![0.25, -0.5, 0.75].into()
         );
         assert_eq!(restored.tracks[0].loops[0].midi[0].length, 512);
         assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].time, 100);
@@ -6878,14 +6878,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![0.0; 20],
+                            samples: vec![0.0; 20].into(),
                             start_offset: Some(0),
                             capture_alignment_frames: Some(2),
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
-                            samples: vec![0.0; 20],
+                            samples: vec![0.0; 20].into(),
                             start_offset: Some(0),
                             capture_alignment_frames: Some(7),
                             preplay: None,
@@ -7471,14 +7471,14 @@ mod tests {
                     audio: vec![
                         BackendAudioChannelUpdate {
                             channel: 0,
-                            samples: vec![1.0, 2.0, 3.0, 4.0],
+                            samples: vec![1.0, 2.0, 3.0, 4.0].into(),
                             start_offset: Some(-1),
                             capture_alignment_frames: None,
                             preplay: Some(2),
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
-                            samples: vec![5.0, 6.0, 7.0, 8.0],
+                            samples: vec![5.0, 6.0, 7.0, 8.0].into(),
                             start_offset: Some(-2),
                             capture_alignment_frames: None,
                             preplay: Some(3),
@@ -7573,7 +7573,7 @@ mod tests {
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[1].audio[0].samples,
-            [1.0, 2.0, 3.0, 4.0]
+            [1.0, 2.0, 3.0, 4.0].into()
         );
         let cycles_after_capture = {
             let runtime = backend.runtime_mut().unwrap();
@@ -7601,14 +7601,14 @@ mod tests {
                         audio: vec![
                             BackendAudioChannelUpdate {
                                 channel: 0,
-                                samples: vec![sample; 16_384],
+                                samples: vec![sample; 16_384].into(),
                                 start_offset: None,
                                 capture_alignment_frames: None,
                                 preplay: None,
                             },
                             BackendAudioChannelUpdate {
                                 channel: 1,
-                                samples: vec![-sample; 16_384],
+                                samples: vec![-sample; 16_384].into(),
                                 start_offset: None,
                                 capture_alignment_frames: None,
                                 preplay: None,
@@ -7699,8 +7699,8 @@ mod tests {
             .unwrap();
         let mut captured = backend.capture_session().unwrap();
         captured.tracks[0].loops[0].length = 2;
-        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5];
-        captured.tracks[0].loops[0].audio[2].samples = vec![0.75, -1.0];
+        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5].into();
+        captured.tracks[0].loops[0].audio[2].samples = vec![0.75, -1.0].into();
         assert_eq!(
             captured.tracks[0].loops[0]
                 .audio
@@ -7751,11 +7751,11 @@ mod tests {
         assert_eq!(restored.tracks[0].topology, captured.tracks[0].topology);
         assert_eq!(
             restored.tracks[0].loops[0].audio[0].samples,
-            vec![0.25, -0.5]
+            vec![0.25, -0.5].into()
         );
         assert_eq!(
             restored.tracks[0].loops[0].audio[2].samples,
-            vec![0.75, -1.0]
+            vec![0.75, -1.0].into()
         );
         assert!(restored.tracks[0]
             .ports
@@ -7974,7 +7974,7 @@ mod tests {
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[0].audio[2].samples,
-            vec![1.0, 2.0, 3.0, 4.0]
+            vec![1.0, 2.0, 3.0, 4.0].into()
         );
         assert_eq!(captured.tracks[0].processor_state.as_deref(), Some(""));
         let mut restored = NativeBackend::new(config).unwrap();
@@ -8089,8 +8089,8 @@ mod tests {
             .unwrap()
             .loops[0];
         assert_eq!(target_loop.length, FRAMES);
-        assert_eq!(target_loop.audio[0].samples, dry_left);
-        assert_eq!(target_loop.audio[1].samples, dry_right);
+        assert_eq!(target_loop.audio[0].samples, dry_left.into());
+        assert_eq!(target_loop.audio[1].samples, dry_right.into());
         assert_eq!(
             target_loop.midi[0].events,
             vec![

@@ -768,7 +768,7 @@ pub enum BackendChannelMode {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioContent {
     pub mode: BackendChannelMode,
-    pub samples: Vec<f32>,
+    pub samples: Arc<[f32]>,
     pub gain: f32,
     pub start_offset: i32,
     #[serde(default)]
@@ -889,7 +889,7 @@ pub struct BackendLoopContent {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioChannelUpdate {
     pub channel: usize,
-    pub samples: Vec<f32>,
+    pub samples: Arc<[f32]>,
     pub start_offset: Option<i32>,
     #[serde(default)]
     pub capture_alignment_frames: Option<i32>,

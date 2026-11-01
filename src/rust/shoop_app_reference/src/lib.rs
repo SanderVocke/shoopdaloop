@@ -10926,7 +10926,7 @@ impl ApplicationModel {
                         media.insert(
                             media_id.clone(),
                             MediaPayload::Audio(AudioPayload {
-                                samples: audio.samples.clone(),
+                                samples: audio.samples.to_vec(),
                             }),
                         );
                     }
@@ -12103,7 +12103,7 @@ impl ApplicationModel {
                 .enumerate()
                 .map(|(channel, source)| BackendAudioChannelUpdate {
                     channel,
-                    samples: source.samples.clone(),
+                    samples: source.samples.clone().into(),
                     start_offset: Some(0),
                     capture_alignment_frames: Some(0),
                     preplay: None,
@@ -12184,7 +12184,7 @@ impl ApplicationModel {
             audio: (0..target_channels)
                 .map(|channel| BackendAudioChannelUpdate {
                     channel,
-                    samples: samples.clone(),
+                    samples: samples.clone().into(),
                     start_offset: Some(0),
                     capture_alignment_frames: Some(0),
                     preplay: Some(0),
@@ -13456,7 +13456,7 @@ fn session_bundle_to_backend(
                         };
                         audio.push(BackendAudioContent {
                             mode: backend_channel_mode(channel.mode)?,
-                            samples,
+                            samples: samples.into(),
                             gain: channel.gain,
                             start_offset: i32::try_from(channel.start_offset_frames)
                                 .map_err(|_| "audio offset exceeds engine range".to_owned())?,
@@ -13517,7 +13517,7 @@ fn session_bundle_to_backend(
                     .copied()
                     .map(|mode| BackendAudioContent {
                         mode,
-                        samples: Vec::new(),
+                        samples: Vec::new().into(),
                         gain: 1.0,
                         start_offset: 0,
                         capture_alignment_frames: 0,
@@ -15820,7 +15820,7 @@ mod tests {
         let source_update = BackendLoopContentUpdate {
             audio: vec![BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.25, -0.5, 0.75, -1.0],
+                samples: vec![0.25, -0.5, 0.75, -1.0].into(),
                 start_offset: Some(-2),
                 capture_alignment_frames: Some(2),
                 preplay: Some(3),
@@ -15850,7 +15850,7 @@ mod tests {
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![1.0, 1.0],
+                        samples: vec![1.0, 1.0].into(),
                         start_offset: Some(0),
                         capture_alignment_frames: None,
                         preplay: Some(0),
@@ -21298,7 +21298,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![0.25; 24],
+                        samples: vec![0.25; 24].into(),
                         start_offset: Some(-3),
                         capture_alignment_frames: Some(3),
                         preplay: Some(4),
@@ -25350,7 +25350,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![channel as f32 + 0.25; 128],
+                            samples: vec![channel as f32 + 0.25; 128].into(),
                             start_offset: Some(11),
                             capture_alignment_frames: None,
                             preplay: Some(12),
