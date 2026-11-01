@@ -4,7 +4,7 @@
 is a raw Wasm module for `wasm32-unknown-unknown` with no Wasm imports, like the
 legacy worklet, and contains no engine or application semantics: it owns the
 [`shoop_rt_engine`](../shoop_rt_engine) owners, serves the engine's control
-endpoint through the protocol's `RecordServer` and copies audio, records and MIDI
+endpoint through the shared transport's `RecordServer` and copies audio, records and MIDI
 between module memory and the processor script. It depends only on the engine,
 the protocol and `rt_runtime`'s buffer types; `scripts/check_rt_engine_boundary.py`
 enforces that it reaches no application crate.
@@ -234,7 +234,9 @@ timestamp conversion and the host port names.
 The integration tests drive `WorkletHost` the way the processor script does: a
 `ProtocolClient` on the main thread exchanges `postMessage` batches with a
 processor stand-in that copies bytes into the module's buffers as space allows.
-They create a strip and a loop, record and play it back, and check telemetry,
+Record batching, buffers and browser port delivery live in
+`shoop_rt_transport_message_port`/`shoop_rt_transport`; this host retains audio,
+MIDI and the worklet ABI. They create a strip and a loop, record and play it back, and check telemetry,
 xruns and load, timestamped MIDI in and out, bounded delivery per quantum,
 framing errors and reconnection. Every module call is heap-guarded. A separate
 test exercises the exported functions.

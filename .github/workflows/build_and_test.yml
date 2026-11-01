@@ -171,10 +171,10 @@ jobs:
           python3 scripts/check_macos_compatibility.py --root .carla-component --arch x86_64 --minimum-os 10.15 | tee carla-compatibility.txt
       - name: Build without CPAL or Rodio
         if: matrix.flavor != 'macos-intel-10.15'
-        run: cargo build --locked -p shoopdaloop --no-default-features --features native-fx --target ${{ env.NATIVE_BUILD_TARGET }}
+        run: cargo build --locked -p shoopdaloop -p shoop_rt_host_process --no-default-features --features shoopdaloop/native-fx --target ${{ env.NATIVE_BUILD_TARGET }}
       - name: Build Intel release targeting Catalina
         if: matrix.flavor == 'macos-intel-10.15'
-        run: cargo build --locked --release -p shoopdaloop --no-default-features --features native-fx --target x86_64-apple-darwin
+        run: cargo build --locked --release -p shoopdaloop -p shoop_rt_host_process --no-default-features --features shoopdaloop/native-fx --target x86_64-apple-darwin
       - name: Package portable Catalina distribution
         if: matrix.flavor == 'macos-intel-10.15'
         run: |
@@ -512,7 +512,7 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
+        run: cargo build --locked -p shoopdaloop -p shoop_rt_host_process ${{ matrix.cargo_args }}
 
       - name: Reject a fake Carla library with missing descriptors
         if: (matrix.target == 'linux' || matrix.target == 'macos') && matrix.profile == 'debug'
@@ -739,6 +739,12 @@ jobs:
           $leaked = Get-Process | Where-Object { $_.ProcessName -like 'carla-plugin*' }
           if ($leaked) { throw "Leaked Carla UI helpers: $($leaked.ProcessName -join ', ')" }
 
+      - name: Exercise bundled engine transports from extracted paths
+        if: matrix.target != 'web'
+        shell: bash
+        run: |
+          python3 scripts/smoke_engine_package.py --platform '${{ matrix.target }}' --artifacts artifacts
+
       - name: Test native application path
         if: matrix.target != 'web' && (matrix.target != 'linux' || matrix.profile != 'debug')
         env:
@@ -757,6 +763,11 @@ jobs:
             -p shoop_egui \
             -p shoopdaloop \
             -p shoop_rt_protocol \
+            -p shoop_rt_transport \
+            -p shoop_rt_transport_message_port \
+            -p shoop_rt_transport_socket \
+            -p shoop_rt_transport_shared_memory \
+            -p shoop_rt_host_process \
             -p shoop_rt_engine \
             -p shoop_rt_backend \
             -p shoop_rt_host_native \
@@ -1004,7 +1015,8 @@ jobs:
             --package shoop_backend --package shoop_egui --package shoop_engine \
             --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
             --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
-            --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_scripting \
+            --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_rt_transport \
+            --package shoop_rt_transport_message_port --package shoop_scripting \
             --package shoop_session --package shoop_settings \
             --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
             --package shoop_worklet_client --package shoopdaloop

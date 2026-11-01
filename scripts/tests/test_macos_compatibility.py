@@ -80,6 +80,7 @@ class MacOSPackageMetadataTests(unittest.TestCase):
             root = Path(directory)
             binary = root / "shoopdaloop"
             binary.write_bytes(macho())
+            binary.with_name("shoop_rt_host_process").write_bytes(macho())
             stage = root / "stage"
             stage.mkdir()
             with patch.object(package_artifacts, "stage_carla_runtime"):

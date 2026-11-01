@@ -1,23 +1,23 @@
-# Shared-memory record transport
+# Shared-memory transport
 
-`Port::create` creates six per-launch services (one per direction/lane);
-`Port::open` validates and joins their descriptor. Both implement the common
-record port and use the same codec/client/server as sockets and MessagePort.
+Both native ends exchange encoded records through six iceoryx2 0.10.0 queues:
+reliable, telemetry and bulk in each direction. Fixed 1280-byte payloads contain
+bounded codec records, never Rust pointers/owners. Reliable/bulk backpressure is
+refusal/retry; telemetry uses safe oldest-drop overflow. `client`/`server` reuse
+the common record adapters without another message implementation.
 
-The descriptor identifies the layout version, fixed 1280-byte record storage,
-exact queue capacities and a random session. It travels over private launch
-bootstrap, not the engine schema. `iceoryx2 = 0.10.0` owns mapping/alignment,
-relative addressing, publication/recycling and sample lifetimes; no Rust engine
-owner or raw pointer crosses the mapping. Reliable/bulk queues reject full sends;
-telemetry safely replaces its oldest queued sample. This copies encoded records,
-not zero-copy engine media. The threadsafe service variant permits moving a port
-between control threads; its local synchronization never reaches rendering.
+A private `Descriptor` carries version, record width, queue capacities and a fresh
+session namespace. `Port::create` and `open` validate the descriptor and negotiated
+layout. The safe threadsafe IPC API owns mapping alignment, relative addressing,
+publication and recycling. An optional TCP handle detects liveness only; ordinary
+protocol records never cross that handle. Namespace-scoped dead-peer cleanup
+reclaims abandoned resources without touching the live engine's runtime memory.
+No separately running shared-memory service is required.
 
-Attach a private socket with `with_liveness`: an empty queue is idle, whereas EOF
-is terminal. No normal protocol record is forwarded through that socket. Drop
-removes this peer's handles; `cleanup_dead_peer` invokes the dependency's dead-node
-cleanup within the session namespace. No application session reconnect is supplied.
+Native subprocess tests cover shared contracts, bounded queue models, 10,000
+coherent full-width publications, bad layouts, producer death and reclamation.
+These are OS IPC tests; Miri tests portable record/buffer ownership separately.
 
-`cargo test -p shoop_rt_transport_shared_memory` covers descriptor rejection,
-bounded FIFO/latest-value models and recycling, the shared subprocess contract,
-10,000 coherent concurrent payloads, and peer kill/reclamation during publication.
+```sh
+cargo test -p shoop_rt_transport_shared_memory
+```

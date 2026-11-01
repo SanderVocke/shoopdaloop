@@ -885,3 +885,34 @@ runtime or supervisor. Explicit close uses independent engine shutdown.
   suite also uncovered a package-import path bug in the retained host runner;
   it now supports package and standalone invocation. Miri inventory expectations
   include the added portable cases (336 executions total).
+
+
+### Stage 8: packaging, crate documentation and CI wiring
+
+Native packaging builds and requires `shoop_rt_host_process` beside the app,
+checks its architecture/execute bits, and probes both carriers before archiving.
+The extracted-archive smoke runs both carriers from a temporary path containing
+spaces and Unicode. CI builds/tests/packages both binaries on Linux/macOS/Windows,
+includes every new carrier/process crate in native matrices, and adds the two
+portable transport packages to Node discovery. Native IPC dependencies remain
+absent from the intended no-default-features browser graph and worklet.
+
+- Created and verified a fresh Linux debug archive from the Stage 7 binaries;
+  both staged and extracted socket/shared-memory probes passed capture/playback,
+  chunked stereo audio/MIDI reads and explicit shutdown. The independent companion
+  is required and resolved beside the app, outside the source checkout/cwd/PATH.
+- Reused the unchanged, verified Carla runtime component from base-branch CI run
+  `41182627311`, artifact `13035653789`; its checksums/runtime lock were validated
+  before repackaging. No Carla binary or dependency pin changed. This is a fresh
+  app/engine package smoke, not a fresh Carla build. Archive size about 186 MiB;
+  package verifier peak RSS 489.5 MiB.
+- GitHub connector artifact/log access works; direct shell downloads from GitHub's
+  Azure artifact redirect were blocked by the execution proxy. Artifact/log
+  verification therefore uses the connected GitHub capability.
+- All 134 Python checks pass, including package metadata, native runner invocation,
+  additive Miri inventory partitioning and dependency policies. The workflow YAML,
+  documentation links/navigation, closed tracing inventory, test attributes and
+  formatting pass. Six relevant portable/host Wasm test dependency audits pass.
+- Architecture, user setup/lifecycle limitations and crate READMEs now describe
+  the actual shared schema/codec, transport families and host boundaries. Native
+  platform CI execution, final browser smoke and review remain Stage 9 gates.

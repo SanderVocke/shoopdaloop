@@ -84,6 +84,10 @@ def executable_name(platform: str) -> str:
     return "shoopdaloop.exe" if platform == "windows" else "shoopdaloop"
 
 
+def engine_executable_name(platform: str) -> str:
+    return "shoop_rt_host_process.exe" if platform == "windows" else "shoop_rt_host_process"
+
+
 def stage_carla_runtime(platform: str, component: Path, root: Path) -> None:
     verify_component(component, platform)
     if platform == "macos":
@@ -129,6 +133,13 @@ def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage:
         if platform == "linux":
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         shutil.copytree(BUILTINS, root / "builtins")
+    companion = binary.with_name(engine_executable_name(platform))
+    if not companion.is_file():
+        raise RuntimeError(f"companion engine executable does not exist: {companion}")
+    engine = target.with_name(engine_executable_name(platform))
+    shutil.copy2(companion, engine)
+    if platform != "windows":
+        engine.chmod(engine.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     stage_carla_runtime(platform, carla_runtime, root)
 
 
@@ -175,6 +186,11 @@ def package_native(args: argparse.Namespace) -> list[Path]:
             cwd=stage,
             check=True,
         )
+        for transport in ("socket", "shared_memory"):
+            subprocess.run(
+                [str(staged_executable), "--probe-engine-transport", "--engine-transport", transport],
+                cwd=stage, check=True, timeout=60,
+            )
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
@@ -403,6 +419,8 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         required = metadata | fonts | {executable}
         builtins_prefix = f"{root}builtins/"
         component_manifest_path = f"{root}carla-runtime/manifest.json"
+    companion = str(PurePosixPath(executable).with_name(engine_executable_name(platform)))
+    required.add(companion)
     if source_tree_marker in names:
         raise RuntimeError("native archive contains a source-tree marker")
     try:
@@ -436,6 +454,9 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         )
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
+    if platform != "windows" and modes.get(companion, 0) & 0o111 == 0:
+        raise RuntimeError(f"companion has no execute bit: {companion}")
+    require_native_architecture(payloads[companion], platform, "engine companion", arch)
     binary = payloads[executable]
     require_native_architecture(binary, platform, "native executable", arch)
     carla_library = payloads[carla_archive_path(platform, component_manifest["library"])]

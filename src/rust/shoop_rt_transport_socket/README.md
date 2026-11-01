@@ -1,18 +1,18 @@
-# Socket record transport
+# Socket transport
 
-`Port` implements the common `RecordPort` with a nonblocking TCP stream, prepared
-queues per lane, bounded reads/writes and retained partial-write offsets. Reliable
-and bulk records backpressure; queued telemetry can discard its oldest record.
-`client::Client` and `server::Server<E>` are the shared record adapters specialized
-to this port, not separate protocol implementations.
+Native `client` and `server` aliases compose one bounded `Port` with the common
+record client/server. It adapts loopback TCP streams to canonical protocol records
+with fixed-capacity reliable/telemetry/bulk queues, retained partial writes and
+incremental length-prefix parsing. Reliable and bulk queues refuse when full;
+telemetry may replace an older queued record. EOF and malformed/truncated records
+are terminal errors, distinct from idle. All socket work runs outside rendering.
 
-`setup::Listener` binds an ephemeral loopback address with a random launch token;
-`setup::connect` authenticates a launched peer. Pass the token over a private
-launch channel, never arguments/logs. Physical connect/accept direction does not
-determine logical engine/client roles. Host configuration and process supervision
-are outside this crate.
+`setup::Listener` binds an ephemeral loopback endpoint. The peer authenticates
+with a fresh token passed privately by its host; tokens are never command-line
+arguments. Each host decides connection and engine lifetime. This carrier has no
+engine, application or process-management dependency. Remote-network deployment
+is outside this milestone.
 
-`cargo test -p shoop_rt_transport_socket` runs the shared lifecycle/credit/bulk
-contract across a subprocess, plus framing, authentication, EOF and real socket
-backpressure/retry tests. No transport-specific musical scheduling or latency
-compensation is performed.
+```sh
+cargo test -p shoop_rt_transport_socket
+```

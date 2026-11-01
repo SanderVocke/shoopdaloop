@@ -2,8 +2,9 @@
 
 `shoop_rt_protocol` is the transport-neutral protocol between an application
 adapter ([`shoop_rt_backend`](../shoop_rt_backend)) and the engine
-([`shoop_rt_engine`](../shoop_rt_engine)). It defines plain data, the connection
-lifecycle, credit limits and a binary codec. It has no semantics and no
+([`shoop_rt_engine`](../shoop_rt_engine)). It defines plain data, lifecycle messages, credit limits, the separate `host` setup schema
+and their canonical bounded binary codec. Shared connection machinery lives in
+[`shoop_rt_transport`](../shoop_rt_transport). It has no semantics and no
 dependencies: what a request does is the engine's business, what it means to the
 application is the adapter's.
 

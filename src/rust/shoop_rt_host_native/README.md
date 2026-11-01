@@ -2,8 +2,10 @@
 
 `shoop_rt_host_native` runs the [engine](../shoop_rt_engine) natively. It opens a
 driver, prepares the engine for the opened device, renders it on the driver's
-real-time thread and hands the control endpoint to the caller inside an
-in-process protocol client. It contains no engine or application semantics and
+real-time thread. `start` returns an in-process protocol client; `start_endpoint`
+returns the independently owned endpoint/outbox for a host to attach any carrier.
+Connection retirement retains that endpoint and host to keep music running;
+explicit shutdown drops the endpoint before stopping the host for MIDI cleanup. It contains no engine or application semantics and
 depends on no application crate; `scripts/check_rt_engine_boundary.py` enforces
 that.
 

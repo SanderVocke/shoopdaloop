@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-Execution in progress on `feat/engine-ipc`: Stages 0–7 are verified locally;
-Packaging, browser/platform verification and delivery are in progress. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
+Execution in progress on `feat/engine-ipc`: Stages 0–8 are implemented and verified locally;
+Final browser/platform verification and delivery are in progress. Platform runtime verification remains in Stage 9. Scope agreed on 2026-10-31:
 the native app supervises one engine child process on the same system, with a
 choice of socket or shared-memory IPC. There is no reconnect capability and no
 new mitigation for increased transport latency. This is the implementation plan
@@ -470,13 +470,13 @@ automatic restart occurs after loss.
 
 ### Stage 8 — Packaging, documentation and CI
 
-- [ ] Build and package the companion executable next to the app, including required
+- [x] Build and package the companion executable next to the app, including required
       native runtime dependencies; resolve it without depending on cwd or `PATH`.
-- [ ] Extend Linux/macOS/Windows CI with both subprocess carrier suites, CPAL/midir
+- [x] Extend Linux/macOS/Windows CI with both subprocess carrier suites, CPAL/midir
       mocks and extracted-package dummy smokes. Retain browser and legacy gates;
       discover tests in the new portable/MessagePort crates and extend native
       dependency audits without pulling IPC into Wasm checks.
-- [ ] Update `ARCHITECTURE.md`, `PLAN.md`, user setup/limitations, new crate READMEs,
+- [x] Update `ARCHITECTURE.md`, `PLAN.md`, user setup/limitations, new crate READMEs,
       tracing inventory and `VALIDATION.md` with actual implementation status,
       fatal app errors, autonomous disconnected engines and external termination
       after app crashes.

@@ -64,6 +64,39 @@ cargo run -p shoopdaloop -- \
 cargo run -p shoopdaloop -- --audio-backend new_engine
 ```
 
+For a separate native engine process, choose **Settings > Audio > Engine transport**
+with the new engine selected, or override it for one run:
+
+```sh
+cargo build -p shoopdaloop -p shoop_rt_host_process
+cargo run -p shoopdaloop -- --audio-backend new_engine --engine-transport socket
+# Alternatively: --engine-transport shared_memory
+```
+
+The default remains `in_process`. Both IPC choices use the same logical commands;
+sockets carry bounded binary records over loopback TCP, while shared memory carries
+all three record lanes through process-shared queues. Audio/MIDI devices belong to
+the engine process. Transport changes require a restart. IPC is available only for
+the native new engine; there is no carrier fallback, reconnect or automatic restart.
+Carrier latency may delay immediate actions or miss a musical scheduling boundary;
+there is no added latency compensation.
+
+If the connection is lost, the app displays a fatal error and stays open without
+recovery. A healthy engine keeps playing and recording without control. Explicitly
+closing the app stops its engine through a separate shutdown signal. After an app
+crash the surviving `shoop_rt_host_process` must be terminated externally (for
+example with the system process manager); a fresh app starts a fresh engine.
+A killed engine cannot perform MIDI cleanup.
+
+Native archives bundle `shoop_rt_host_process` beside the app executable (inside
+`ShoopDaLoop.app/Contents/MacOS` on macOS). Development builds must build that binary
+too. Missing/incompatible companions fail startup visibly. Both binaries require
+the native audio libraries provided by the supported host environment; IPC adds no
+separately installed shared-memory service. Test an extracted package without a
+window using `shoopdaloop --probe-engine-transport --engine-transport socket` and
+again with `shared_memory`; this exercises capture, playback, audio/MIDI reads and
+explicit shutdown on the dummy host.
+
 The new engine backend supports the core looping workflow only and presents everything else as unavailable. It runs the preferred dummy or CPAL driver with its settings; JACK is replaced by CPAL's JACK host, or CPAL's default devices where that host is absent, and a device driver that fails to start is replaced by the dummy driver. Such fallbacks and the host's warnings, such as missing MIDI ports, appear as notifications. Its track, loop, channel and loop-memory capacities are prepared at startup from the **New engine** settings; exceeding them is refused with a notification. Driver, capacity and backend changes apply after a restart.
 
 An opt-in test runs the core workflow on the default CPAL devices; without its variable it skips:

@@ -42,7 +42,7 @@ architecture, or turn Milestone 1's smoke-only consolidation into full acceptanc
 | [Replacement loop book](#replacement-loop-book) | Draft opening only | User decision on continuation/adoption; not a replacement for existing guides yet |
 | [Composable loop boundary](#composable-loop-boundary) | **Delivered**: `shoop_loops` offers parts for an application-owned runtime; the example DSP uses scheduled processor operations; A1–A12 met and verified locally, including a CI replay | Remote CI/review need a PR; composing several planners in one runtime remains future work |
 | [New engine backend](#new-engine-backend) | **Validated locally** under [its own plan](PLAN_RT_BACKEND.md): Stages 0–10 done; B1 and B3–B12 met, B2 verified on Linux and in the browser ([evidence](VALIDATION.md#new-engine-backend-evidence)) | Core looping on the new stack, natively and in the browser, selectable instead of the legacy backend, which stays the default. Open: macOS and Windows runs (CI on push), real MIDI hardware, a manual Chrome check, remote CI and review. Save/load and the other [parity gaps](#remaining-parity-gaps) stay with the legacy backend |
-| [Native engine IPC](#native-engine-ipc) | **Execution in progress**, under [its own plan](PLAN_ENGINE_IPC.md); Stages 0–7 locally verified | One supervised engine child, socket and shared-memory options, engine-side device setup; no reconnect or new latency mitigation. Packaging and final platform/browser verification are in progress |
+| [Native engine IPC](#native-engine-ipc) | **Execution in progress**, under [its own plan](PLAN_ENGINE_IPC.md); Stages 0–8 locally verified | One supervised engine child, socket and shared-memory options, engine-side device setup; no reconnect or new latency mitigation. Final platform/browser verification and PR delivery are in progress |
 | [Common transport / application integration](#proposed-next-work) | The new engine backend's protocol is its first concrete instance, with in-process and MessagePort carriers; native IPC now has a bounded milestone plan | Cross-machine deployment and any common framework beyond that protocol remain proposals; no production parity claim |
 | Native bus-FX switching | Bugfix delivery recorded, PR #873 | Historical result, not an open implementation queue |
 | Plan-linked execution tooling | Architectural review complete; replacement executor only proposed | No extension implementation authorized by the review or this migration |
@@ -488,7 +488,7 @@ schemas and the common codec stay in `shoop_rt_protocol`. The in-process path
 passes typed messages without requiring serialization. Shared host setup messages
 and carrier-private bootstrap have separate ownership.
 
-Status: Stages 0–7 locally verified, including both IPC application workflows and fatal disconnect; packaging/platform/browser delivery gates remain. This does
+Status: Stages 0–8 locally verified, including both IPC application workflows, fatal disconnect and extracted Linux packaging; final platform/browser delivery gates remain. This does
 not close the previous backend milestone's platform/hardware or historical gaps.
 
 ## Proposed next work

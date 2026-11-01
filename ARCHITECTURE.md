@@ -614,8 +614,9 @@ restart-required setting and an application-argument override choose it at start
 instead of the legacy backend, which stays the default. Its goals, criteria and
 stages are in its [plan](PLAN_RT_BACKEND.md); its status and parity gaps are in
 [PLAN.md](PLAN.md#new-engine-backend). The engine, protocol, adapter, native host and
-worklet module are implemented; the composition roots that select it and the
-browser's main-thread half are not complete.
+worklet module and application composition roots are implemented. Native deployment
+also offers a supervised child process over socket or shared-memory IPC; its
+acceptance/evidence is tracked in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md).
 
 Here **Runtime** means `rt_runtime` only, **Engine** the application's real-time
 composition, **Host** environment glue (the worklet is one host) and **Backend** the
@@ -624,18 +625,18 @@ application adapter.
 ### Layers and transports
 
 ```text
-Application side                            Engine side (same process or worklet; later another process or machine)
+Application side                            Engine side (same process, worklet or native child process)
 shoop_egui / shoop_app
   │ Backend trait
 shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
   │ protocol client
-  ═══ T2: carrier (in-process call │ MessagePort records │ later IPC │ later network) ═══╗
+  ═══ T2: carrier (in-process call │ MessagePort records │ socket │ shared memory) ═══╗
                                                                                        ║ carrier server
                         shoop_rt_engine control endpoint (protocol → runtime commands, telemetry, bulk reads)
                                 │ T1: rt_runtime control/completion queues
                         shoop_rt_engine render owner (one runtime process call per callback)
                                 │
-                        host: dummy, CPAL/midir │ AudioWorkletProcessor │ later a process main
+                        host: dummy, CPAL/midir │ AudioWorkletProcessor │ process main
 ```
 
 | Layer | Crate | Responsibility |
@@ -643,8 +644,10 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Runtime | `rt_runtime` | Generic graph, scheduling, resources and the T1 queues |
 | Loop parts | `shoop_loops` | Musical timing, media and capture; the resolver keeps musical authority |
 | Engine | `shoop_rt_engine` | Node enum over the loop nodes and its own processors (gain, balance, mute, monitoring, meters, summing into Master), prepared pools, structural transactions, the control endpoint and the render owner |
-| Protocol | `shoop_rt_protocol` | Schema, capabilities and limits, connection lifecycle, lanes, carriers and the record codec. No semantics |
-| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` (later a process host) | Own the engine, open devices, pump audio, MIDI and messages. No semantics |
+| Protocol | `shoop_rt_protocol` | Logical engine/host messages, capabilities, limits and canonical codec; no dependencies |
+| Shared transport | `shoop_rt_transport` | Client lifecycle, credits, outboxes, interfaces, typed in-process and encoded record adapters |
+| Concrete transports | `shoop_rt_transport_message_port`, `shoop_rt_transport_socket`, `shoop_rt_transport_shared_memory` | Both ends of each carrier plus carrier-private bootstrap; no engine/application dependency |
+| Hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet`, `shoop_rt_host_process` | Own the engine, open devices, pump audio, MIDI and messages. No semantics |
 | Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
 
 The composition root (the native binary or the browser bootstrap) chooses a host and
@@ -673,32 +676,39 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   record port. The worklet host serves it over its `MessagePort` and runs the control
   endpoint on the audio thread between render quanta; this is why the endpoint is
   bounded and allocation-free in every environment.
-- IPC and network carriers are additive later work. The host opens devices where the
-  engine runs, so no audio crosses a carrier, and synchronized commands are in
-  musical time, so carrier latency only delays immediate actions.
+- Socket and shared-memory carriers use the same record client/server as MessagePort.
+  Socket traffic uses bounded loopback TCP record queues. Shared memory uses six
+  fixed-payload iceoryx2 queues (three lanes in each direction); its socket is only
+  bootstrap/liveness. No Rust pointer or owner crosses independent memory. OS I/O,
+  mappings and process supervision stay off the render/endpoint boundary.
+- The host owns audio/MIDI devices where the engine runs; audio is not streamed over
+  the carrier. Carrier latency can delay immediate actions or miss a musical
+  scheduling boundary. No additional lookahead or latency compensation is applied.
 
-The next native deployment milestone is scoped in [PLAN_ENGINE_IPC.md](PLAN_ENGINE_IPC.md):
-one supervised engine process with socket and shared-memory carrier choices,
-engine-side setup, no reconnect and no new latency mitigation. It is planning
-only; these carriers and the process host are not implemented yet. Commands that
-arrive after a musical scheduling boundary can miss that boundary; the IPC plan
-does not change scheduling or compensate for that delivery delay.
-The planned disconnect policy keeps the app open with a fatal error and leaves
-a healthy engine running without control, even after an app crash. Explicit
-normal app shutdown still stops its engine gracefully; a crash survivor requires
-external termination. Disconnect must retain the control endpoint, whose drop
-would otherwise silence rendering.
+The native process host authenticates one launched peer using a private stdin
+secret and an ephemeral loopback listener. Bounded `shoop_rt_protocol::host`
+records describe discovery, configuration, warnings and readiness; mapping
+negotiation belongs to the shared-memory carrier. The companion executable lives
+beside the app (inside `Contents/MacOS` on macOS), resolved independently of cwd
+and `PATH`. Driver/capacity/transport changes require restart.
 
-The crate refactor is in progress: logical schemas and codec remain in
-`shoop_rt_protocol`; shared connection/client/record machinery has moved to
-`shoop_rt_transport`. Concrete implementations use
-`shoop_rt_transport_message_port`, `shoop_rt_transport_socket` and
-`shoop_rt_transport_shared_memory`, each containing both ends of its carrier.
-`shoop_rt_host_<environment>` crates own engine hosting rather than communication.
-All paths share logical engine messages and the engine handler; in-process
-delivery may skip encoding, while independent-memory carriers reuse the codec.
-Common host setup vocabulary belongs to the protocol, carrier-private bootstrap
-to the carrier, and engine lifetime to the host independently of connection loss.
+A process serves one connection lifetime. EOF, malformed records or a second
+handshake retire control permanently. The app displays a fatal error and stays
+open without recovery; its backend refuses engine operations. The child retains
+its control endpoint, render owner and devices and drains abandoned completions,
+so a healthy engine keeps playing/recording even after an app crash. Closing the
+app explicitly sends an independent stop signal, drops the endpoint for MIDI
+reset, stops rendering and reclaims resources. Startup rollback and bounded
+shutdown reap the child. An engine orphaned by an app crash needs external
+termination; a killed/failed engine may be unable to reset MIDI. No reconnect,
+automatic restart or adoption of a surviving engine is implemented.
+
+All deployments share logical messages and one engine handler. In-process calls
+skip encoding; MessagePort/socket/shared-memory reuse the codec and record
+client/server. Portable protocol/transport depend on no engine, concrete carrier,
+host or app; concrete transports depend on no engine/app. Host crates compose
+engine execution with a carrier. The production dependency audit enforces this
+role separation, including all native targets and Wasm.
 
 Environment bridges belong to hosts: midir ports natively; Web MIDI exists only on
 the browser's main thread, whose half of the browser host forwards timestamped MIDI
@@ -727,7 +737,8 @@ to the worklet on its own lane beside the protocol records.
   does not know.
 - **Disconnect.** The client's `Goodbye` ends the connection: queued requests are
   discarded, transactions in progress complete without results, and the engine keeps
-  its state and keeps rendering. A new `Hello` reconnects and resynchronizes. The
+  its state and keeps rendering. Generic in-process/worklet endpoints can accept a
+  new `Hello`; the process host prohibits a second handshake. The
   engine ends a connection with a reason: shutdown, a render fault (output silenced
   after a MIDI reset) or a protocol error (malformed framing). The adapter then
   reports the driver as failed and refuses later operations. A dropped control
@@ -738,9 +749,10 @@ to the worklet on its own lane beside the protocol records.
   numbered from the inventory; Master is a named bus. The adapter reserves IDs on its
   side; the engine validates them against its confirmed state.
 
-Driver status and the host port inventory are protocol data. Device discovery and
-driver configuration are local to the native host and its composition root; an
-engine in another process needs them added to the protocol.
+Driver status and host-port inventory are engine protocol data. The separate
+`host` schema provides paginated discovery and checked initial configuration.
+The process host dispatches it before constructing the native engine/device host;
+the UI process opens no selected IPC audio/MIDI devices.
 
 ### Capabilities
 
@@ -776,7 +788,7 @@ bounded at every instant, not for the engine's lifetime.
   slot, and limits and IDs already allow it, so growth in the engine and the adapter
   is additive.
 - Whether limits can grow is an engine capability that depends on the host. Native
-  hosts, including a later separate process, can grow; the browser worklet stays
+  hosts, including a separate process, can grow; the browser worklet stays
   bounded by its preallocated maximum.
 - This milestone prepares all segments at startup, from settings natively and from
   the worklet's preparation record, and announces no growth. Growing `rt_runtime`'s

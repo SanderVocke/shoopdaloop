@@ -13,7 +13,10 @@ import subprocess
 import sys
 import urllib.request
 
-import run_rt_runtime_hosts as harness
+if __package__:
+    from . import run_rt_runtime_hosts as harness
+else:
+    import run_rt_runtime_hosts as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/loops_host"
