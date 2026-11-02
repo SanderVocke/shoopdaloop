@@ -105,6 +105,12 @@ cd ../../..
 python3 scripts/serve_web.py src/rust/shoopdaloop/dist --port 8080
 ```
 
+The `browser_tracing_smoke.mjs` harness waits for the active Worker or
+AudioWorklet trace to deliver more than 8,192 records before saving. Rebuilt
+AudioWorklets must meet this threshold in their new segment. A 60-second capture
+deadline saves the available trace and reports the received record count on
+failure; dropped records and import errors remain CI failures.
+
 The same startup options are available as query parameters. For example, `?session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1` fetches that trusted startup URL without confirmation. URL sessions opened later from the application still require confirmation.
 
 For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. The browser permissions dialog opens at app startup, reports exceptional audio, microphone, and Web MIDI permission states, and can be reopened from **Settings → Audio**. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and configure microphone and destination channels as visible host ports around the AudioWorklet. Click **Enable output-only audio** to skip microphone capture; destination host ports remain available while capture inventory is empty, and microphone access can be requested later from the dialog. Click **Enable Web MIDI + SysEx** independently to request MIDI and SysEx access. Granted capabilities remain visible as disabled green **Granted** buttons. Permission denial, unsupported APIs, and driver failure leave the application responsive and expose truthful retry or unavailable state.

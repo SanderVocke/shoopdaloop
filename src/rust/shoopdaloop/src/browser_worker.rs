@@ -246,6 +246,14 @@ impl BrowserWorkerDriver {
         self.trace.borrow().is_some()
     }
 
+    pub fn trace_received_records(&self) -> usize {
+        self.trace
+            .borrow()
+            .as_ref()
+            .filter(|trace| !trace.stopped())
+            .map_or(0, crate::browser_trace::RealmTraceState::received_records)
+    }
+
     pub fn trace_stopped(&self) -> bool {
         self.trace
             .borrow()
