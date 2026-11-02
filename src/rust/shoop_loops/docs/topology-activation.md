@@ -26,9 +26,19 @@ Whole, single-frame and split music callbacks agree. A zero call at publication 
 | `GraphActivate` | Signal routes; fixed primitive node pairs/decision bindings | Immediate delivery; preserves domain/media state, including continuing recording. |
 | `TopologyGraphActivate` | Timing topology and routes; fixed logical IDs/node pairs | Immediate delivery; changed programs already stopped. |
 | `ConfigurationActivate` | Stopped logical owner edits, initial media, matching topology and routes | Edited old owners/changed programs already stopped at delivery; clean capture rows/Idle groups. |
+| `ConfigurationReplace` | Complete logical owner replacement, initial media, topology and routes | Callback start only; all old owners replaced by fresh identities; playing owners may retire, active/prepared recording is refused; requests host MIDI cleanup atomically. |
 | `ProgramGraphActivate` | One selected program/nominal length and routes; fixed logical IDs/node pairs | Pending owning transaction at stopped or actual zero entry; graph rechecked at the cut. |
 
 All require empty payloads and normal-lane admission. Topology header/chunk operations are the separate payload-bearing preparation path. Scheduled admission, runtime execution and typed domain success remain separate results.
+
+`ConfigurationReplace` is the full replacement path for retiring live playback.
+It preflights every owner, media source, graph and epoch before publication; failed
+validation keeps old music and graph/media ownership intact. New owners start
+stopped, while retained old exports remain readable. The host must drain the
+runtime's bounded MIDI recovery sink. Restricting this operation to callback start
+keeps that cleanup aligned with publication instead of suppressing earlier MIDI
+from a partially rendered callback. It does not prepare application/processor state
+or implement an application session-file loader.
 
 ## 1. Prepare independent banks and physical templates
 

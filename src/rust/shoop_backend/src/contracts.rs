@@ -179,8 +179,8 @@ pub fn direct_track_contract(backend: &mut dyn Backend) {
     let injected = backend.inject_midi_input(
         created.track_id,
         &[BackendMidiEvent {
-            time: 0,
-            data: vec![0x90, 60, 100],
+            frame: 0,
+            data: vec![0x90, 60, 100].into(),
         }],
     );
     if backend
@@ -395,7 +395,7 @@ pub(crate) fn attempt_capability(
             &BackendLoopContentUpdate {
                 audio: vec![BackendAudioChannelUpdate {
                     channel: 0,
-                    samples: vec![0.0; 4],
+                    samples: vec![0.0; 4].into(),
                     start_offset: None,
                     capture_alignment_frames: None,
                     preplay: None,
@@ -404,6 +404,10 @@ pub(crate) fn attempt_capability(
                 length: Some(4),
             },
         ),
+        BackendCapability::LoopDuplication | BackendCapability::ClickTrackInsertion => backend
+            .capabilities()
+            .require(capability)
+            .map_err(anyhow::Error::msg),
         BackendCapability::LoopTimingEdits => backend.set_loop_length(loop_id, 4),
         BackendCapability::BusManagement => backend
             .create_bus(BackendBusRequest {
@@ -418,8 +422,8 @@ pub(crate) fn attempt_capability(
         BackendCapability::MidiInjection => backend.inject_midi_input(
             track_id,
             &[BackendMidiEvent {
-                time: 0,
-                data: vec![0x90, 60, 100],
+                frame: 0,
+                data: vec![0x90, 60, 100].into(),
             }],
         ),
     }
@@ -707,7 +711,7 @@ fn session_track(
             audio: (0..audio_channels)
                 .map(|_| BackendAudioContent {
                     mode: BackendChannelMode::Direct,
-                    samples: Vec::new(),
+                    samples: Vec::new().into(),
                     gain: 1.0,
                     start_offset: 0,
                     capture_alignment_frames: 0,
@@ -719,7 +723,7 @@ fn session_track(
                     mode: BackendChannelMode::Direct,
                     length: 0,
                     start_state: Vec::new(),
-                    events: Vec::new(),
+                    events: Vec::new().into(),
                     start_offset: 0,
                     capture_alignment_frames: 0,
                     preplay: 0,
@@ -850,6 +854,19 @@ fn session_structure(backend: &mut dyn Backend) -> SessionStructure {
 /// Replacing the session with a structure-only document of the core set yields exactly that
 /// session. Documents the backend cannot apply are rejected whole.
 pub fn new_session_contract(backend: &mut dyn Backend, profile: &ContractProfile) {
+    for id in backend
+        .poll()
+        .unwrap()
+        .loops
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
+    {
+        backend
+            .transition_loop(id, BackendLoopMode::Stopped, None)
+            .unwrap();
+    }
+    backend.wait_idle();
     let previous = create_track(backend, "contract_session_previous", 1, false, 1);
     let input = port_with_role(&previous, BackendPortRole::AudioInput).id;
     backend
@@ -866,7 +883,7 @@ pub fn new_session_contract(backend: &mut dyn Backend, profile: &ContractProfile
         let mut with_content = document.clone();
         let loop_ = &mut with_content.tracks[0].loops[0];
         loop_.length = 4;
-        loop_.audio[0].samples = vec![0.5; 4];
+        loop_.audio[0].samples = vec![0.5; 4].into();
         assert!(backend.replace_session(&with_content).is_err());
         assert_eq!(session_structure(backend), before);
     }

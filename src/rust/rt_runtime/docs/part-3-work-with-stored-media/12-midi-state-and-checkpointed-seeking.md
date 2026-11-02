@@ -60,6 +60,26 @@ Pass that value to `begin_indexed_midi_upload`. It is source history, not a synt
 
 The stream preserves both frame-one packets in that order. `begin_indexed_midi_capture` supplies the same initial-state concept for single-resource recording; coordinated groups belong in [Recording resources together](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md).
 
+### Stream initial state through owning commands
+
+For a running store, `Request::BeginIndexedMidiUpload` carries a prepared boxed
+`MidiState`. Its owning completion returns the box for control-side reuse. Before
+writing any event bytes, `Request::MidiInitial { upload, packet, len }` can apply
+additional short channel packets or System Reset to the initial checkpoint.
+`packet` has three bytes of
+storage and `len` identifies the used prefix. Each packet is validated before any
+state update; invalid packets and attempts after the first event bytes refuse.
+These packets establish history, not frame-zero records, and do not advance the
+upload's event count or byte offset. Finish and Commit still govern publication.
+
+Obtain per-channel initial state from one retained source cut. If reconstructing
+it in parts, preserve `system_reset_seen()` too: `MidiState::from_channels`
+reassembles copied channel states and that marker without inventing an event.
+A later System Reset clears earlier untracked parameter history. Ordinary event
+packets retain their order and remain separate from initial-state delivery. The
+[MIDI index tests](../../tests/midi_index.rs) cover streamed initial state and
+refusal after writing begins.
+
 ## 3. Seek without consuming equal-time originals
 
 Acquire a snapshot and `ReadIndex`, then seek through required access:

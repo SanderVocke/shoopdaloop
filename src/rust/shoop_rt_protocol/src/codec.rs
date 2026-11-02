@@ -195,6 +195,15 @@ impl Wire for u32 {
     }
 }
 
+impl Wire for u64 {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(*self)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        r.u64()
+    }
+}
+
 impl Wire for Name {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         let bytes = self.as_str().as_bytes();
@@ -382,6 +391,67 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::CancelBulk => w.u8(26),
+            Self::ReplacementBegin { id } => {
+                w.u8(19)?;
+                w.u64(id)
+            }
+            Self::ReplacementEdit { id, edit } => {
+                w.u8(20)?;
+                w.u64(id)?;
+                edit.put(w)
+            }
+            Self::ReplacementPrepare { id } => {
+                w.u8(21)?;
+                w.u64(id)
+            }
+            Self::ReplacementCommit { id } => {
+                w.u8(22)?;
+                w.u64(id)
+            }
+            Self::ReplacementCancel { id } => {
+                w.u8(23)?;
+                w.u64(id)
+            }
+            Self::ContentBegin(description) => {
+                w.u8(15)?;
+                w.u64(description.id)?;
+                w.bool(description.midi)?;
+                w.u64(description.frames)?;
+                w.u64(description.bytes)
+            }
+            Self::ContentWrite { id, offset, data } => {
+                w.u8(16)?;
+                w.u64(id)?;
+                w.u64(offset)?;
+                w.u16(data.as_bytes().len() as u16)?;
+                w.bytes(data.as_bytes())
+            }
+            Self::ContentFinish { id } => {
+                w.u8(17)?;
+                w.u64(id)
+            }
+            Self::ContentInitial { id, message } => {
+                w.u8(24)?;
+                w.u64(id)?;
+                message.put(w)
+            }
+            Self::ContentApply {
+                loop_id,
+                frames,
+                audio,
+                midi,
+            } => {
+                w.u8(25)?;
+                loop_id.put(w)?;
+                w.u64(frames)?;
+                audio.put(w)?;
+                midi.put(w)
+            }
+            Self::ContentRelease { id } => {
+                w.u8(18)?;
+                w.u64(id)
+            }
             Self::CreateStrip { strip, shape } => {
                 w.u8(0)?;
                 strip.put(w)?;
@@ -529,6 +599,135 @@ impl Wire for Request {
                 message: MidiMessage::get(r)?,
             },
             14 => Self::SetSmoothing { frames: r.u32()? },
+            15 => Self::ContentBegin(crate::ContentDescription {
+                id: r.u64()?,
+                midi: r.bool()?,
+                frames: r.u64()?,
+                bytes: r.u64()?,
+            }),
+            16 => {
+                let id = r.u64()?;
+                let offset = r.u64()?;
+                let length = usize::from(r.u16()?);
+                if length > crate::content::CONTENT_CHUNK_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                let data = crate::ContentChunk::new(r.bytes(length)?).ok_or(CodecError::Invalid)?;
+                Self::ContentWrite { id, offset, data }
+            }
+            17 => Self::ContentFinish { id: r.u64()? },
+            18 => Self::ContentRelease { id: r.u64()? },
+            19 => Self::ReplacementBegin { id: r.u64()? },
+            20 => Self::ReplacementEdit {
+                id: r.u64()?,
+                edit: crate::ReplacementEdit::get(r)?,
+            },
+            21 => Self::ReplacementPrepare { id: r.u64()? },
+            22 => Self::ReplacementCommit { id: r.u64()? },
+            23 => Self::ReplacementCancel { id: r.u64()? },
+            26 => Self::CancelBulk,
+            24 => Self::ContentInitial {
+                id: r.u64()?,
+                message: MidiMessage::get(r)?,
+            },
+            25 => Self::ContentApply {
+                loop_id: LoopSlotId::get(r)?,
+                frames: r.u64()?,
+                audio: Option::<u64>::get(r)?,
+                midi: Option::<u64>::get(r)?,
+            },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for crate::ReplacementEdit {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Strip {
+                strip,
+                shape,
+                controls,
+            } => {
+                w.u8(0)?;
+                strip.put(w)?;
+                shape.put(w)?;
+                w.f32(controls.input_gain)?;
+                w.f32(controls.input_balance)?;
+                w.bool(controls.monitoring)?;
+                w.f32(controls.output_gain)?;
+                w.f32(controls.output_balance)?;
+                w.bool(controls.output_mute)
+            }
+            Self::Loop {
+                loop_id,
+                strip,
+                sync,
+                frames,
+                audio,
+                midi,
+                gain,
+                balance,
+            } => {
+                w.u8(1)?;
+                loop_id.put(w)?;
+                strip.put(w)?;
+                sync.put(w)?;
+                w.u64(frames)?;
+                audio.put(w)?;
+                midi.put(w)?;
+                w.f32(gain)?;
+                w.f32(balance)
+            }
+            Self::Connect { port, host } => {
+                w.u8(2)?;
+                port.put(w)?;
+                host.put(w)
+            }
+            Self::Route { port, bus } => {
+                w.u8(3)?;
+                port.put(w)?;
+                bus.put(w)
+            }
+            Self::Master(control) => {
+                w.u8(4)?;
+                control.put(w)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Strip {
+                strip: StripId::get(r)?,
+                shape: StripShape::get(r)?,
+                controls: crate::StripPreset {
+                    input_gain: r.f32()?,
+                    input_balance: r.f32()?,
+                    monitoring: r.bool()?,
+                    output_gain: r.f32()?,
+                    output_balance: r.f32()?,
+                    output_mute: r.bool()?,
+                },
+            },
+            1 => Self::Loop {
+                loop_id: LoopSlotId::get(r)?,
+                strip: StripId::get(r)?,
+                sync: Option::get(r)?,
+                frames: r.u64()?,
+                audio: Option::get(r)?,
+                midi: Option::get(r)?,
+                gain: r.f32()?,
+                balance: r.f32()?,
+            },
+            2 => Self::Connect {
+                port: EnginePort::get(r)?,
+                host: HostPortId::get(r)?,
+            },
+            3 => Self::Route {
+                port: StripPort::get(r)?,
+                bus: BusPort::get(r)?,
+            },
+            4 => Self::Master(BusControl::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -591,6 +790,7 @@ impl Wire for HostPort {
 
 impl Wire for Limits {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u16(self.content_chunk_bytes)?;
         w.u32(self.strips)?;
         w.u32(self.loops)?;
         w.u8(self.strip_audio_channels)?;
@@ -606,6 +806,7 @@ impl Wire for Limits {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            content_chunk_bytes: r.u16()?,
             strips: r.u32()?,
             loops: r.u32()?,
             strip_audio_channels: r.u8()?,
@@ -829,6 +1030,10 @@ impl Wire for BulkSelector {
             }
             Self::Midi => w.u8(1),
             Self::AudioFrames => w.u8(2),
+            Self::MidiInitial { channel } => {
+                w.u8(3)?;
+                w.u8(*channel)
+            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
@@ -836,6 +1041,7 @@ impl Wire for BulkSelector {
             0 => Self::Audio { channel: r.u8()? },
             1 => Self::Midi,
             2 => Self::AudioFrames,
+            3 => Self::MidiInitial { channel: r.u8()? },
             _ => return Err(CodecError::Invalid),
         })
     }

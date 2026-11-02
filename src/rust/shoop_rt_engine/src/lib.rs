@@ -20,6 +20,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod bulk;
 mod cells;
+mod content;
 mod description;
 mod endpoint;
 mod graph;
@@ -29,6 +30,7 @@ mod node;
 mod pool;
 mod queue;
 mod render;
+mod replacement;
 mod resync;
 mod ring;
 mod stream;
@@ -40,7 +42,7 @@ pub mod testing;
 pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::ControlEndpoint;
-pub use node::{EngineNode, EngineOp};
+pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use render::{Phase, Render, Report, Stopped};
 
 use crate::cells::{Cells, Observer};
@@ -194,8 +196,12 @@ pub fn prepare(
             commands: slots,
             events: slots,
             subranges: 0,
-            transfer_bytes: payload + (2 + stream::READ_PAGES) * page_bytes,
-            validation_steps: 3 * pool.nodes() + edges + 2 * loops + 64,
+            transfer_bytes: payload
+                + (2 + stream::READ_PAGES) * page_bytes
+                + content::RUNTIME_UPLOAD_BUFFERS
+                    * page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES),
+            validation_steps: (3 * pool.nodes() + edges + 2 * loops + 64)
+                .max(page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)),
             publications: slots,
         },
     }
@@ -277,8 +283,8 @@ pub fn prepare(
             },
             node_pairs: NodePairSettings {
                 candidates: 1,
-                sources: 0,
-                source_packets_per_callback: 0,
+                sources: 2 * loops + 2,
+                source_packets_per_callback: 64,
             },
             observer: Some(Box::new(Observer(cells.clone()))),
         },
@@ -352,7 +358,16 @@ pub fn prepare(
             Some(PreparedPlan::with_capacity(config)?),
         ],
     };
+    let mut content_chunk_bytes = description
+        .page_bytes
+        .min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)
+        .min(config.limits().budgets.validation_steps)
+        .max(1);
+    while description.page_bytes % content_chunk_bytes != 0 {
+        content_chunk_bytes -= 1;
+    }
     let limits = Limits {
+        content_chunk_bytes: content_chunk_bytes as u16,
         strips: strips as u32,
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
@@ -427,6 +442,8 @@ pub fn prepare(
         quiet_until: 0,
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
+        uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
+        replacement: replacement::Replacement::new(strips, loops),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

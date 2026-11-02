@@ -278,6 +278,9 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
     ) -> Result<usize, Error> {
         self.runtime.drain_midi_recovery(port, sink, frames)
     }
+    pub fn midi_recovery_pending(&self, port: usize) -> Result<bool, Error> {
+        self.runtime.midi_recovery_pending(port)
+    }
     /// Consume off-render after callbacks stop, keeping the planner's ledger with its store.
     pub fn into_stopped(self) -> StoppedLoops {
         let (planner, resources) = self.runtime.into_planner_and_resources();

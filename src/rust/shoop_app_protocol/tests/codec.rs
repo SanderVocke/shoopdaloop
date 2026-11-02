@@ -117,6 +117,7 @@ fn lifecycle_commands_and_results_roundtrip_and_reject_every_truncation() {
         Command::Piano(PianoAction::Press(MidiNote::new(127).unwrap())),
     ] {
         roundtrip(WireMessage::Client(ClientMessage::Submit {
+            session_epoch: 1,
             authority: AUTHORITY,
             operation,
             expected_revision: Some(Revision(8)),
@@ -194,6 +195,7 @@ fn bulk_and_command_storage_are_bounded_before_encoding() {
     assert_eq!(
         codec::encode(
             &WireMessage::Client(ClientMessage::Submit {
+                session_epoch: 1,
                 authority: AUTHORITY,
                 operation: OperationId {
                     client: AUTHORITY.client,
@@ -224,6 +226,7 @@ fn bulk_and_command_storage_are_bounded_before_encoding() {
 fn invalid_midi_values_do_not_bypass_domain_invariants_during_decode() {
     let mut buffer = [0; MAX_RECORD_BYTES];
     let message = WireMessage::Client(ClientMessage::Submit {
+        session_epoch: 1,
         authority: AUTHORITY,
         operation: OperationId {
             client: AUTHORITY.client,

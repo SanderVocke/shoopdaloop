@@ -344,9 +344,9 @@ pub struct BackendMixerSnapshot {
 }
 
 pub const GLOBAL_FX_PORT_ID: BackendPortId = BackendPortId::from_raw(9_007_199_254_740_991);
-pub const MASTER_BUS_NAME: &str = "Master";
+pub use shoop_app_api::MASTER_BUS_NAME;
 pub const MASTER_BUS_ID: BackendBusId = BackendBusId::from_raw(1);
-pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+pub use shoop_app_api::MASTER_BUS_CHANNEL_LABELS;
 pub const MASTER_BUS_CHANNEL_IDS: [BackendBusChannelId; 2] = [
     BackendBusChannelId::from_raw(1),
     BackendBusChannelId::from_raw(2),
@@ -768,7 +768,7 @@ pub enum BackendChannelMode {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioContent {
     pub mode: BackendChannelMode,
-    pub samples: Vec<f32>,
+    pub samples: Arc<Vec<f32>>,
     pub gain: f32,
     pub start_offset: i32,
     #[serde(default)]
@@ -778,7 +778,7 @@ pub struct BackendAudioContent {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendAudioChannelData {
-    pub samples: Arc<[f32]>,
+    pub samples: Arc<Vec<f32>>,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
     pub preplay: u32,
@@ -842,18 +842,14 @@ pub enum BackendOxiSynthParameter {
     ChorusSend,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct BackendMidiEvent {
-    pub time: u32,
-    pub data: Vec<u8>,
-}
+pub use shoop_app_api::MidiEventState as BackendMidiEvent;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendMidiContent {
     pub mode: BackendChannelMode,
     pub length: u32,
     pub start_state: Vec<Vec<u8>>,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: i32,
     #[serde(default)]
     pub capture_alignment_frames: i32,
@@ -865,7 +861,7 @@ pub struct BackendMidiChannelData {
     pub content_revision: u64,
     pub mode: BackendChannelMode,
     pub length: u32,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
     pub preplay: u32,
@@ -889,7 +885,7 @@ pub struct BackendLoopContent {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioChannelUpdate {
     pub channel: usize,
-    pub samples: Vec<f32>,
+    pub samples: Arc<Vec<f32>>,
     pub start_offset: Option<i32>,
     #[serde(default)]
     pub capture_alignment_frames: Option<i32>,
@@ -901,7 +897,7 @@ pub struct BackendMidiChannelUpdate {
     pub channel: usize,
     pub length: u32,
     pub start_state: Vec<Vec<u8>>,
-    pub events: Vec<BackendMidiEvent>,
+    pub events: Arc<Vec<BackendMidiEvent>>,
     pub start_offset: Option<i32>,
     #[serde(default)]
     pub capture_alignment_frames: Option<i32>,
@@ -1323,7 +1319,7 @@ pub trait Backend {
                 channels: channels
                     .into_iter()
                     .map(|samples| BackendAudioChannelData {
-                        samples,
+                        samples: samples.to_vec().into(),
                         ..Default::default()
                     })
                     .collect(),
@@ -1344,7 +1340,7 @@ pub trait Backend {
         let channel_data = channels.get(channel);
         let samples = channel_data
             .map(|channel| Arc::clone(&channel.samples))
-            .unwrap_or_else(|| Arc::from([]));
+            .unwrap_or_else(|| Arc::new(Vec::new()));
         let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
         let capture_alignment_frames =
             channel_data.map_or(0, |channel| channel.capture_alignment_frames);
@@ -1415,6 +1411,21 @@ pub trait Backend {
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
         self.capture_session().map(BackendAsyncResult::Ready)
     }
+    fn capture_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<BackendAsyncResult<BackendLoopContent>> {
+        match self.capture_session_async()? {
+            BackendAsyncResult::Pending(progress) => Ok(BackendAsyncResult::Pending(progress)),
+            BackendAsyncResult::Ready(session) => session
+                .tracks
+                .into_iter()
+                .flat_map(|track| track.loops)
+                .find(|content| content.source_id == loop_id.raw())
+                .map(BackendAsyncResult::Ready)
+                .ok_or_else(|| anyhow!("capture omitted loop {loop_id:?}")),
+        }
+    }
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
@@ -1433,6 +1444,16 @@ pub trait Backend {
     }
     fn cancel_session_replacement(&mut self) -> Result<()> {
         Ok(())
+    }
+    fn replace_session_with_sync_async(
+        &mut self,
+        session: &BackendSessionData,
+        sync: &BTreeMap<u64, u64>,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if !sync.is_empty() {
+            return Err(anyhow!("atomic session sync restoration is unavailable"));
+        }
+        self.replace_session_async(session)
     }
     fn replace_loop_content_async(
         &mut self,

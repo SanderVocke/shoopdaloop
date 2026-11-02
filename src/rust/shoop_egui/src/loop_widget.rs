@@ -332,6 +332,7 @@ impl LoopWidget {
                 &[
                     BackendCapability::SessionCapture,
                     BackendCapability::LoopContentImport,
+                    BackendCapability::LoopDuplication,
                 ],
                 egui::Button::new("Clone"),
             );
@@ -362,9 +363,12 @@ impl LoopWidget {
             ui.separator();
         }
         if can_generate_click_track(state) {
-            if add_with_capability(
+            if add_with_capabilities(
                 ui,
-                BackendCapability::LoopContentImport,
+                &[
+                    BackendCapability::LoopContentImport,
+                    BackendCapability::ClickTrackInsertion,
+                ],
                 egui::Button::new("Generate click track…"),
             )
             .clicked()
@@ -1676,39 +1680,46 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn context_menu_disables_items_the_backend_cannot_perform() {
-        let context = egui::Context::default();
-        crate::initialize(&context);
-        crate::set_backend_capabilities(&context, crate::BackendCapabilities::NONE);
-        let mut widget = LoopWidget::default();
-        let primitive = state();
-        let _ = context_menu_frame(&context, &mut widget, &primitive, 1.0, Vec::new());
-        let items = [
-            widget.test_convert_rect.expect("conversion menu item"),
-            widget.test_duplicate_rect.expect("clone menu item"),
-        ];
-        for (index, item) in items.into_iter().enumerate() {
-            let time = 2.0 + index as f64;
-            let press = |pressed| egui::Event::PointerButton {
-                pos: item.center(),
-                button: egui::PointerButton::Primary,
-                pressed,
-                modifiers: egui::Modifiers::NONE,
-            };
-            let _ = context_menu_frame(
-                &context,
-                &mut widget,
-                &primitive,
-                time,
-                vec![pointer(item.center()), press(true)],
-            );
-            let response = context_menu_frame(
-                &context,
-                &mut widget,
-                &primitive,
-                time + 0.1,
-                vec![pointer(item.center()), press(false)],
-            );
-            assert!(response.actions.is_empty());
+        for capabilities in [
+            crate::BackendCapabilities::NONE,
+            crate::BackendCapabilities::NONE
+                .with(BackendCapability::SessionCapture, true)
+                .with(BackendCapability::LoopContentImport, true),
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            crate::set_backend_capabilities(&context, capabilities);
+            let mut widget = LoopWidget::default();
+            let primitive = state();
+            let _ = context_menu_frame(&context, &mut widget, &primitive, 1.0, Vec::new());
+            let items = [
+                widget.test_convert_rect.expect("conversion menu item"),
+                widget.test_duplicate_rect.expect("clone menu item"),
+            ];
+            for (index, item) in items.into_iter().enumerate() {
+                let time = 2.0 + index as f64;
+                let press = |pressed| egui::Event::PointerButton {
+                    pos: item.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                };
+                let _ = context_menu_frame(
+                    &context,
+                    &mut widget,
+                    &primitive,
+                    time,
+                    vec![pointer(item.center()), press(true)],
+                );
+                let response = context_menu_frame(
+                    &context,
+                    &mut widget,
+                    &primitive,
+                    time + 0.1,
+                    vec![pointer(item.center()), press(false)],
+                );
+                assert!(response.actions.is_empty());
+            }
         }
     }
 

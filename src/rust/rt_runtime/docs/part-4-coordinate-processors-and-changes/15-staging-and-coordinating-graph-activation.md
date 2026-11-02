@@ -139,4 +139,21 @@ This audio-only example does not exercise pending injection. The runtime neverth
 
 Neither path synthesizes note/pedal cleanup or transfers arbitrary media/node-pair ownership. The application must preflight those responsibilities separately. Generic permits also cannot construct new processors or resize prepared port shapes. The loop library's constrained graph/media/configuration transactions build on this machinery; they are not guarantees supplied by the permit alone.
 
+### Request device MIDI cleanup with a complete replacement
+
+After the same fallible activation preflight, `permit.commit_with_midi_reset()`
+performs the graph/epoch swap and requests runtime MIDI recovery on the prepared
+outputs at that same cut. Dropping the permit, a stale epoch, or a refused domain
+preflight requests no reset. The displaced plan remains Taken with the same
+explicit release lifecycle as `commit()`.
+
+This is for retiring an entire MIDI-producing graph. It requests device cleanup;
+it does not claim all cleanup packets have already reached an external device.
+Output capacity and recovery delivery remain runtime responsibilities. It does
+not relax pending-injection checks or reset arbitrary application state. Ordinary
+route edits retain `commit()`; the loop library uses the reset variant only after
+preflighting its complete fresh-owner replacement. See its
+[configuration chapter](../../../shoop_loops/docs-new/part-6-content-and-graph/12-editing-the-graph-around-loops.md)
+for that larger transaction.
+
 [Next: Recording resources together](16-recording-resources-together.md)

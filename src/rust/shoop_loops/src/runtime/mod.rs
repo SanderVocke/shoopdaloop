@@ -141,6 +141,15 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    /// Replace all owners at one cut, stopping playback and resetting host MIDI.
+    /// Active/prepared recording and retained logical identities are refused.
+    ConfigurationReplace {
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     GraphStatus {
         id: GraphStageId,
     },
@@ -206,6 +215,12 @@ pub enum Operation {
         timing: Timing,
         media: media::MediaId,
         preserve_position: bool,
+    },
+    Adopt {
+        target: LoopId,
+        frames: u64,
+        audio: Option<NodePairSourceId>,
+        midi: Option<NodePairSourceId>,
     },
     Gain {
         target: LoopId,
@@ -334,6 +349,9 @@ pub enum Reply {
         completion: crate::Completion,
     },
     Done,
+    Adopted {
+        media: media::MediaId,
+    },
     Failed(Failure),
     Transition(crate::Completion),
     State(Cut),

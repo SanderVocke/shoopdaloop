@@ -51,7 +51,7 @@ impl Service {
                     .channels
                     .into_iter()
                     .map(|channel| AudioMediaChannel {
-                        samples: channel.samples,
+                        samples: channel.samples.to_vec().into(),
                         start_offset: channel.start_offset,
                         capture_alignment_frames: channel.capture_alignment_frames,
                         preplay: channel.preplay,
@@ -63,9 +63,10 @@ impl Service {
                     .map(|channel| MidiMediaChannel {
                         events: channel
                             .events
-                            .into_iter()
+                            .iter()
+                            .cloned()
                             .map(|event| MidiMediaEvent {
-                                frame: event.time,
+                                frame: event.frame,
                                 data: event.data.into(),
                             })
                             .collect::<Vec<_>>()

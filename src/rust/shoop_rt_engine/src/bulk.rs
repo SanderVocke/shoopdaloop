@@ -29,6 +29,7 @@ enum Waiting {
     Start,
     Stop,
     Release,
+    Initial,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -46,6 +47,7 @@ struct Session {
     streaming: bool,
     /// The single channel being read, if not interleaved.
     channel: Option<u8>,
+    initial: Option<u8>,
 }
 
 pub(crate) struct Bulk {
@@ -61,6 +63,9 @@ pub(crate) struct Bulk {
     scratch: Box<[u8]>,
     ready: Ring<BulkChunk>,
     channels: usize,
+    cancelled: bool,
+    cancel_correlation: Option<u64>,
+    initial: Box<[u8]>,
 }
 
 impl Bulk {
@@ -77,6 +82,9 @@ impl Bulk {
             scratch: vec![0; BULK_CHUNK_SAMPLES * 4 * channels.max(1)].into_boxed_slice(),
             ready: Ring::new(capacity),
             channels,
+            cancelled: false,
+            cancel_correlation: None,
+            initial: vec![0; shoop_loops::midi_restore::RESTORE_MAX_EVENTS * 4].into_boxed_slice(),
         }
     }
     pub(crate) fn idle(&self) -> bool {
@@ -84,14 +92,40 @@ impl Bulk {
             && self.queue.len() == 0
             && self.ready.len() == 0
             && self.waiting == Waiting::None
+            && !self.cancelled
+            && self.cancel_correlation.is_none()
     }
     fn in_flight(&self) -> usize {
         self.queue.len() + usize::from(self.active.is_some()) + self.ready.len()
     }
     pub(crate) fn disconnect(&mut self) {
+        self.active = None;
+        self.filled = 0;
         self.queue.clear();
         self.respond = false;
         self.ready.clear();
+        self.cancelled = true;
+        self.cancel_correlation = None;
+    }
+    pub(crate) fn cancel(&mut self, correlation: u64) -> Result<(), Refusal> {
+        if self.cancel_correlation.is_some() {
+            return Err(Refusal::Overloaded);
+        }
+        self.cancel_correlation = Some(correlation);
+        if let Some(read) = self.active.take() {
+            self.ready
+                .push(refused(read, Refusal::Busy))
+                .expect("reserved bulk credit");
+        }
+        while let Some(read) = self.queue.pop() {
+            self.ready
+                .push(refused(read, Refusal::Busy))
+                .expect("reserved bulk credit");
+        }
+        self.cancelled = true;
+        self.respond = false;
+        self.filled = 0;
+        Ok(())
     }
     fn frame_bytes(&self) -> u64 {
         self.channels as u64 * 4
@@ -101,7 +135,7 @@ impl Bulk {
         match read.selector {
             BulkSelector::Audio { .. } => BULK_CHUNK_SAMPLES as u64,
             BulkSelector::AudioFrames => (BULK_CHUNK_SAMPLES / self.channels.max(1)) as u64,
-            BulkSelector::Midi => BULK_CHUNK_BYTES as u64,
+            BulkSelector::Midi | BulkSelector::MidiInitial { .. } => BULK_CHUNK_BYTES as u64,
         }
     }
     /// The medium byte range of `read`'s chunk.
@@ -134,7 +168,16 @@ impl Bulk {
             _ => None,
         };
         session.loop_id == read.loop_id
-            && session.midi == (read.selector == BulkSelector::Midi)
+            && session.midi
+                == matches!(
+                    read.selector,
+                    BulkSelector::Midi | BulkSelector::MidiInitial { .. }
+                )
+            && session.initial
+                == match read.selector {
+                    BulkSelector::MidiInitial { channel } => Some(channel),
+                    _ => None,
+                }
             && (session.position == 0 || session.channel == channel)
             && self.range(session, read).0 >= session.position
     }
@@ -142,7 +185,7 @@ impl Bulk {
     /// active chunk.
     fn absorb(&mut self, read: BulkRead, position: u64, data: &[u8]) {
         match read.selector {
-            BulkSelector::Midi => {
+            BulkSelector::Midi | BulkSelector::MidiInitial { .. } => {
                 self.bytes[self.filled..self.filled + data.len()].copy_from_slice(data);
                 self.filled += data.len();
             }
@@ -186,6 +229,8 @@ impl ControlEndpoint {
         } else if matches!(read.selector, BulkSelector::Audio { channel } if channel as usize >= self.settings.channels)
         {
             Some(Refusal::InvalidValue)
+        } else if matches!(read.selector, BulkSelector::MidiInitial { channel } if channel >= 16) {
+            Some(Refusal::InvalidValue)
         } else {
             self.bulk
                 .queue
@@ -228,7 +273,7 @@ impl ControlEndpoint {
         let Some(session) = self.bulk.session else {
             return;
         };
-        if session.streaming && session.position < session.bytes {
+        if session.initial.is_none() && session.streaming && session.position < session.bytes {
             self.submit_reader(EngineOp::ReadStop, Waiting::Stop);
             return;
         }
@@ -245,6 +290,17 @@ impl ControlEndpoint {
         for _ in 0..self.bulk.queue.len() + 4 {
             if self.bulk.waiting != Waiting::None || self.bulk.ready.is_full() {
                 return;
+            }
+            if self.bulk.cancelled {
+                if self.bulk.session.is_some() {
+                    self.end_session();
+                    return;
+                }
+                self.bulk.cancelled = false;
+                self.bulk.respond = true;
+                if let Some(correlation) = self.bulk.cancel_correlation.take() {
+                    self.answer(correlation, Outcome::Done);
+                }
             }
             if self.bulk.active.is_none() {
                 self.bulk.active = self.bulk.queue.pop();
@@ -274,6 +330,31 @@ impl ControlEndpoint {
             if self.bulk.filled == 0 && !self.bulk.continues(&session, read) {
                 self.end_session();
                 return;
+            }
+            if let Some(channel) = session.initial {
+                if !session.streaming {
+                    self.submit_bulk_loop(
+                        Operation::MidiInitial {
+                            export: session.export,
+                            channel,
+                        },
+                        Waiting::Initial,
+                    );
+                    return;
+                }
+                let start = read.offset.min(session.total) as usize;
+                let end = (start + BULK_CHUNK_BYTES).min(session.total as usize);
+                self.bulk.bytes[..end - start].copy_from_slice(&self.bulk.initial[start..end]);
+                self.bulk.filled = end - start;
+                session.position = end as u64;
+                self.bulk.session = Some(session);
+                let chunk = self.bulk.chunk(&session, read);
+                self.finish_read(chunk);
+                if session.position >= session.bytes {
+                    self.end_session();
+                    return;
+                }
+                continue;
             }
             if session.position == 0 && self.bulk.filled == 0 {
                 session.channel = match read.selector {
@@ -364,7 +445,11 @@ impl ControlEndpoint {
                     );
                     return;
                 };
-                let midi = read.selector == BulkSelector::Midi;
+                let initial = match read.selector {
+                    BulkSelector::MidiInitial { channel } => Some(channel),
+                    _ => None,
+                };
+                let midi = read.selector == BulkSelector::Midi || initial.is_some();
                 let source = if midi {
                     media.view.midi
                 } else {
@@ -388,7 +473,49 @@ impl ControlEndpoint {
                     position: 0,
                     streaming: false,
                     channel: None,
+                    initial,
                 });
+                if initial.is_some() && source.is_none() {
+                    let session = self.bulk.session.as_mut().expect("new session");
+                    session.streaming = true;
+                    session.bytes = 0;
+                    session.total = 0;
+                }
+            }
+            (
+                Waiting::Initial,
+                Ok(Some(Reply::MidiInitial {
+                    channel,
+                    state,
+                    system_reset_seen,
+                })),
+            ) => {
+                let mut length = 0;
+                if channel == 0 && system_reset_seen {
+                    self.bulk.initial[..2].copy_from_slice(&[1, 0xff]);
+                    length = 2;
+                }
+                let report =
+                    shoop_loops::midi_restore::restore_channel(&state, channel, |packet| {
+                        let end = length + 1 + packet.len();
+                        if end > self.bulk.initial.len() {
+                            return Err(rt_runtime::Error::Capacity);
+                        }
+                        self.bulk.initial[length] = packet.len() as u8;
+                        self.bulk.initial[length + 1..end].copy_from_slice(packet);
+                        length = end;
+                        Ok(())
+                    });
+                if report.first_error.is_some() || report.parameter_history_untracked {
+                    if let Some(read) = read {
+                        self.finish_read(refused(read, Refusal::Unsupported));
+                    }
+                    self.end_session();
+                } else if let Some(session) = &mut self.bulk.session {
+                    session.total = length as u64;
+                    session.bytes = length as u64;
+                    session.streaming = true;
+                }
             }
             (Waiting::Cursor, Ok(Some(Reply::Cursor(cursor)))) => self.start_reader(cursor),
             (Waiting::Start, Ok(_)) => {

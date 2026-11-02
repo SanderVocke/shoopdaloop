@@ -13,13 +13,31 @@ pub enum Request {
         expected_revision: Revision,
         description: Description,
     },
+    BeginIndexedMidiUpload {
+        resource: ResourceId,
+        expected_revision: Revision,
+        description: Description,
+        initial: Box<crate::midi_state::MidiState>,
+    },
     Write {
         upload: UploadId,
         offset: usize,
         bytes: Box<[u8]>,
     },
+    /// Write a prefix while returning the complete reusable buffer to control.
+    WritePrefix {
+        upload: UploadId,
+        offset: usize,
+        bytes: Box<[u8]>,
+        used: usize,
+    },
     Finish {
         upload: UploadId,
+    },
+    MidiInitial {
+        upload: UploadId,
+        packet: [u8; 3],
+        len: u8,
     },
     Commit {
         upload: UploadId,
@@ -101,10 +119,17 @@ impl ResourceCommand {
         )
     }
     pub(crate) fn envelope(&self, config: PreparedConfig) -> Result<(), Error> {
-        if let Request::Write { bytes, .. } | Request::Read { bytes, .. } = &self.request {
+        if let Request::Write { bytes, .. }
+        | Request::WritePrefix { bytes, .. }
+        | Request::Read { bytes, .. } = &self.request
+        {
             if bytes.len() > config.limits().page_bytes {
                 return Err(Error::Capacity);
             }
+        }
+        if matches!(&self.request, Request::WritePrefix { bytes, used, .. } if *used == 0 || *used > bytes.len())
+        {
+            return Err(Error::InvalidShape);
         }
         Ok(())
     }
@@ -122,6 +147,17 @@ impl ResourceCommand {
                 expected_revision,
                 description,
             } => Reply::Upload(store.begin_upload(*resource, *expected_revision, *description)?),
+            Request::BeginIndexedMidiUpload {
+                resource,
+                expected_revision,
+                description,
+                initial,
+            } => Reply::Upload(store.begin_indexed_midi_upload(
+                *resource,
+                *expected_revision,
+                *description,
+                initial,
+            )?),
             Request::Write {
                 upload,
                 offset,
@@ -130,8 +166,26 @@ impl ResourceCommand {
                 store.write_upload(*upload, *offset, bytes)?;
                 Reply::Done
             }
+            Request::WritePrefix {
+                upload,
+                offset,
+                bytes,
+                used,
+            } => {
+                store.write_upload(*upload, *offset, &bytes[..*used])?;
+                Reply::Done
+            }
             Request::Finish { upload } => {
                 store.finish_upload(*upload)?;
+                Reply::Done
+            }
+            Request::MidiInitial {
+                upload,
+                packet,
+                len,
+            } => {
+                let bytes = packet.get(..usize::from(*len)).ok_or(Error::InvalidShape)?;
+                store.upload_midi_initial(*upload, bytes)?;
                 Reply::Done
             }
             Request::Commit { upload } => Reply::Revision(store.commit(*upload)?),

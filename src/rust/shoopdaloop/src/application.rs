@@ -18,7 +18,8 @@ use std::{
 };
 
 pub use shoop_app_client::runtime::{
-    ApplicationAudioPreview, ApplicationFileOutput, StartupScript,
+    ApplicationAudioPreview, ApplicationFileOutput, ApplicationFileRequest,
+    ApplicationFileRequestKind, StartupScript,
 };
 
 #[derive(Clone, Debug)]
@@ -61,7 +62,27 @@ impl From<shoop_app_client::Error> for DispatchError {
     }
 }
 static NEXT_LOCAL_ID: AtomicU64 = AtomicU64::new(1);
-type FileOutputs = Arc<Mutex<VecDeque<ApplicationFileOutput>>>;
+#[derive(Default)]
+struct FileMailbox {
+    outputs: VecDeque<ApplicationFileOutput>,
+    requests: VecDeque<ApplicationFileRequest>,
+}
+impl FileMailbox {
+    fn collect(&mut self, runtime: &mut ClientRuntime) {
+        while self.outputs.len() < 8 {
+            let Some(output) = runtime.take_file_output() else {
+                break;
+            };
+            self.outputs.push_back(output);
+        }
+        if self.requests.is_empty() {
+            if let Some(request) = runtime.take_file_request() {
+                self.requests.push_back(request);
+            }
+        }
+    }
+}
+type FileOutputs = Arc<Mutex<FileMailbox>>;
 
 pub struct CooperativeApplicationRuntime {
     service: Service,
@@ -96,7 +117,8 @@ impl CooperativeApplicationRuntime {
             midi,
             Startup::Fresh(options.startup_scripts),
         )
-        .map_err(|error| anyhow!("{error:?}"))?;
+        .map_err(|error| anyhow!("{error:?}"))?
+        .with_persistence_io(Box::new(crate::persistence_io::Provider::new()));
         for warning in options.startup_warnings {
             client.notify(warning);
         }
@@ -104,7 +126,7 @@ impl CooperativeApplicationRuntime {
             service,
             port,
             client,
-            outputs: Arc::new(Mutex::new(VecDeque::new())),
+            outputs: Arc::new(Mutex::new(FileMailbox::default())),
             initialized: false,
         })
     }
@@ -138,23 +160,121 @@ impl CooperativeApplicationRuntime {
             .outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        while outputs.len() < 8 {
-            let Some(output) = self.client.take_file_output() else {
-                break;
-            };
-            outputs.push_back(output);
-        }
+        outputs.collect(&mut self.client);
     }
     #[cfg(target_arch = "wasm32")]
     pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
         self.outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .outputs
+            .pop_front()
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn take_file_request(&self) -> Option<ApplicationFileRequest> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .requests
             .pop_front()
     }
     #[cfg(target_arch = "wasm32")]
     pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
         self.client.take_audio_preview()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct BrowserApplicationRuntime {
+    inner: std::rc::Rc<std::cell::RefCell<BrowserPump>>,
+    window: web_sys::Window,
+    interval: i32,
+    _callback: wasm_bindgen::closure::Closure<dyn FnMut()>,
+}
+#[cfg(target_arch = "wasm32")]
+struct BrowserPump {
+    runtime: CooperativeApplicationRuntime,
+    last: web_time::Instant,
+}
+#[cfg(target_arch = "wasm32")]
+impl BrowserPump {
+    fn tick(&mut self) {
+        let now = web_time::Instant::now();
+        let elapsed = now.saturating_duration_since(self.last);
+        self.last = now;
+        self.runtime.tick(elapsed);
+    }
+}
+#[cfg(target_arch = "wasm32")]
+impl BrowserApplicationRuntime {
+    pub fn start_with_options_and_midi(
+        backend: Box<dyn Backend>,
+        options: ApplicationStartOptions,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<Self> {
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().ok_or_else(|| anyhow!("browser window is unavailable"))?;
+        let inner = std::rc::Rc::new(std::cell::RefCell::new(BrowserPump {
+            runtime: CooperativeApplicationRuntime::start_with_options_and_midi(
+                backend, options, midi,
+            )?,
+            last: web_time::Instant::now(),
+        }));
+        let weak = std::rc::Rc::downgrade(&inner);
+        let callback = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                inner.borrow_mut().tick();
+            }
+        });
+        let interval = window
+            .set_interval_with_callback_and_timeout_and_arguments_0(
+                callback.as_ref().unchecked_ref(),
+                4,
+            )
+            .map_err(|error| anyhow!("could not schedule the application pump: {error:?}"))?;
+        Ok(Self {
+            inner,
+            window,
+            interval,
+            _callback: callback,
+        })
+    }
+    pub fn wake(&self) -> std::rc::Rc<dyn Fn()> {
+        let weak = std::rc::Rc::downgrade(&self.inner);
+        std::rc::Rc::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                if let Ok(mut pump) = inner.try_borrow_mut() {
+                    pump.tick();
+                }
+            }
+        })
+    }
+    pub fn is_ready(&self) -> bool {
+        self.inner.borrow().runtime.is_ready()
+    }
+    pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
+        self.inner.borrow_mut().runtime.dispatch(intent)
+    }
+    pub fn snapshot(&self) -> Arc<AppSnapshot> {
+        self.inner.borrow().runtime.snapshot()
+    }
+    pub fn tick(&mut self, _elapsed: Duration) {
+        self.inner.borrow_mut().tick();
+    }
+    pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
+        self.inner.borrow().runtime.take_file_output()
+    }
+    pub fn take_file_request(&self) -> Option<ApplicationFileRequest> {
+        self.inner.borrow().runtime.take_file_request()
+    }
+    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
+        self.inner.borrow().runtime.take_audio_preview()
+    }
+}
+#[cfg(target_arch = "wasm32")]
+impl Drop for BrowserApplicationRuntime {
+    fn drop(&mut self) {
+        self.window.clear_interval_with_handle(self.interval);
     }
 }
 
@@ -218,12 +338,7 @@ mod native {
                 Self::Remote(runtime, outputs) => {
                     runtime.tick(elapsed);
                     let mut outputs = outputs.lock().unwrap_or_else(|error| error.into_inner());
-                    while outputs.len() < 8 {
-                        let Some(output) = runtime.take_file_output() else {
-                            break;
-                        };
-                        outputs.push_back(output);
-                    }
+                    outputs.collect(runtime);
                 }
             }
         }
@@ -248,7 +363,12 @@ mod native {
     }
     impl ApplicationHandle {
         pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
-            if self.status().state != shoop_app_client::State::Ready {
+            if self.status().state != shoop_app_client::State::Ready
+                && !matches!(
+                    intent,
+                    AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+                )
+            {
                 return Err(DispatchError::Disconnected);
             }
             self.sender
@@ -287,6 +407,14 @@ mod native {
             self.outputs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
+                .outputs
+                .pop_front()
+        }
+        pub fn take_file_request(&self) -> Option<ApplicationFileRequest> {
+            self.outputs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .requests
                 .pop_front()
         }
         pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
@@ -330,7 +458,8 @@ mod native {
                     Box::new(shoop_scripting::NativeMidiService::new()),
                     Startup::IfFresh(options.startup_scripts),
                 )
-                .map_err(|error| anyhow!("{error:?}"))?;
+                .map_err(|error| anyhow!("{error:?}"))?
+                .with_persistence_io(Box::new(crate::persistence_io::Provider::new()));
                 for warning in entry.warnings {
                     runtime.notify(warning);
                 }
@@ -339,7 +468,7 @@ mod native {
                 }
                 Ok(SessionRuntime::Remote(
                     runtime,
-                    Arc::new(Mutex::new(VecDeque::new())),
+                    Arc::new(Mutex::new(FileMailbox::default())),
                 ))
             })
         }
@@ -350,7 +479,7 @@ mod native {
             let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
-            let outputs: FileOutputs = Arc::new(Mutex::new(VecDeque::new()));
+            let outputs: FileOutputs = Arc::new(Mutex::new(FileMailbox::default()));
             let status = Arc::new(RwLock::new(ConnectionStatus {
                 state: shoop_app_client::State::Attaching,
                 error: None,
@@ -381,12 +510,24 @@ mod native {
                     let mut ready_tx = Some(ready_tx);
                     let mut last = Instant::now();
                     let started = last;
+                    let mut pending_intent = None;
                     loop {
                         for _ in 0..shoop_app_protocol::MAX_MESSAGES_PER_TURN {
-                            match receiver.try_recv() {
+                            let message = match pending_intent.take() {
+                                Some(intent) => Ok(Message::Intent(intent)),
+                                None => receiver.try_recv(),
+                            };
+                            match message {
                                 Ok(Message::Intent(intent)) => {
-                                    if let Err(error) = runtime.dispatch(intent) {
-                                        runtime.client_mut().notify(error.to_string());
+                                    match runtime.dispatch(intent.clone()) {
+                                        Ok(()) => {}
+                                        Err(DispatchError::Full) => {
+                                            pending_intent = Some(intent);
+                                            break;
+                                        }
+                                        Err(error) => {
+                                            runtime.client_mut().notify(error.to_string())
+                                        }
                                     }
                                 }
                                 Ok(Message::PrepareShutdown(sender)) => {
@@ -501,3 +642,84 @@ mod native {
 }
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::{ApplicationHandle, ApplicationRuntime};
+
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+mod browser_tests {
+    use super::*;
+    use shoop_rt_backend::{EngineClock, RtBackend};
+    use shoop_rt_engine::{testing::OfflineRender, EngineDescription, HostPorts, Segment};
+
+    struct Clock(OfflineRender);
+    impl EngineClock for Clock {
+        fn advance(&mut self, elapsed: Duration) {
+            self.0.run_for(elapsed, |_, _| 0.).unwrap();
+        }
+        fn wait(&mut self) -> bool {
+            self.0.run(16, |_, _| 0.).unwrap();
+            true
+        }
+    }
+    async fn pause() {
+        let promise = js_sys::Promise::new(&mut |resolve, _| {
+            web_sys::window()
+                .unwrap()
+                .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 4)
+                .unwrap();
+        });
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    async fn service_and_client_progress_without_ui_paints_and_release_their_pump() {
+        let (render, client) = OfflineRender::new(&EngineDescription {
+            sample_rate: 1000,
+            max_frames: 16,
+            host: HostPorts::numbered(2, 2, 1),
+            segments: vec![Segment {
+                strips: 8,
+                loops: 80,
+            }],
+            strip_channels: 2,
+            resource_pages: 1024,
+            page_bytes: 256,
+            midi_events: 64,
+            midi_bytes: 512,
+            ..Default::default()
+        })
+        .unwrap();
+        let backend = RtBackend::connect(client, Clock(render)).unwrap();
+        let mut app = BrowserApplicationRuntime::start_with_options_and_midi(
+            Box::new(backend),
+            ApplicationStartOptions {
+                master_auto_connect: false,
+                loop_smoothing_ms: 0,
+                ..Default::default()
+            },
+            Box::new(shoop_scripting::NullMidiService),
+        )
+        .unwrap();
+        for _ in 0..250 {
+            if app.is_ready() {
+                break;
+            }
+            pause().await;
+        }
+        assert!(app.is_ready());
+        app.dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSolo(
+            true,
+        )))
+        .unwrap();
+        for _ in 0..250 {
+            if app.snapshot().global_controls.solo {
+                break;
+            }
+            pause().await;
+        }
+        assert!(app.snapshot().global_controls.solo);
+        let weak = std::rc::Rc::downgrade(&app.inner);
+        let wake = app.wake();
+        drop(app);
+        assert!(weak.upgrade().is_none());
+        wake();
+        pause().await;
+    }
+}

@@ -14,6 +14,7 @@ pub(crate) const RECORD_BYTES: usize = 64;
 pub(crate) struct TopologyLoop {
     pub id: LoopId,
     pub sync: LoopId,
+    pub length: u64,
 }
 
 /// Prepared scratch for encoding images of up to `loops` loops.
@@ -106,6 +107,7 @@ impl Encoder {
             let record = records.next().expect("sized image");
             put_id(record, 0, node.id);
             record[9] = 1;
+            record[16..24].copy_from_slice(&node.length.to_le_bytes());
             put_id(record, 24, node.sync);
         }
         for index in 0..count {
@@ -169,7 +171,11 @@ mod tests {
                     loops
                         .iter()
                         .find(|(id, _)| id.slot() as usize == slot)
-                        .map(|&(id, sync)| TopologyLoop { id, sync })
+                        .map(|&(id, sync)| TopologyLoop {
+                            id,
+                            sync,
+                            length: 0,
+                        })
                 },
                 &mut image,
             )
@@ -192,10 +198,12 @@ mod tests {
                 0 => Some(TopologyLoop {
                     id: id(0, 1),
                     sync: id(1, 1),
+                    length: 0,
                 }),
                 1 => Some(TopologyLoop {
                     id: id(1, 1),
                     sync: id(0, 1),
+                    length: 0,
                 }),
                 _ => None,
             },

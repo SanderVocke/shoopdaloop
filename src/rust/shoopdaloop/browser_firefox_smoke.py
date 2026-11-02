@@ -53,6 +53,13 @@ def new_engine_workflow(driver) -> None:
     last_step = None
     while time.monotonic() < deadline:
         state = status_of(driver)
+        outputs = driver.find_elements(By.ID, "rfd-output")
+        if outputs:
+            if state["self_test"] == "CancelSaving":
+                buttons = driver.find_elements(By.CSS_SELECTOR, "#rfd-card .rfd-button")
+                next(button for button in buttons if button.text == "Cancel").click()
+            else:
+                outputs[0].click()
         if state["self_test"] != last_step:
             last_step = state["self_test"]
             print(f"new engine self-test: {last_step} ({state['status']})", flush=True)

@@ -229,7 +229,7 @@ impl Topologies {
                 return Err(Error::InvalidShape.into());
             }
         }
-        self.activate_configuration(id, expected, resolver)
+        self.activate_configuration(id, expected, resolver, false)
     }
     pub(super) fn candidate(&self, id: StageId) -> Result<&PreparedTopology, Failure> {
         let slot = &self.slots[self.slot(id)?];
@@ -243,12 +243,18 @@ impl Topologies {
         id: StageId,
         expected: Epoch,
         resolver: &mut Resolver,
+        stop_playback: bool,
     ) -> Result<Epoch, Failure> {
         self.candidate(id)?;
         let index = self.slot(id)?;
         let slot = &mut self.slots[index];
         let candidate = slot.ready.take().expect("validated candidate");
-        match resolver.replace_topology(expected, candidate) {
+        let replacement = if stop_playback {
+            resolver.replace_topology_stopping_playback(expected, candidate)
+        } else {
+            resolver.replace_topology(expected, candidate)
+        };
+        match replacement {
             Ok(retired) => slot.retired = Some(retired),
             Err((error, candidate)) => {
                 slot.ready = Some(candidate);

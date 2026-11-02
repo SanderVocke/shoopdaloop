@@ -887,6 +887,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                                         &mut self.epoch,
                                         event.lane == Lane::Normal,
                                         &|candidate| activation_compatible(&self.slots, candidate),
+                                        &mut self.recovery,
                                     ),
                                     callback_start: audio.frame,
                                     token: event.token,
@@ -947,6 +948,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                                     .operation(
                                         operation,
                                         crate::processor::OperationContext {
+                                            graph_epoch: self.epoch,
                                             frame: at,
                                             requested_frame: event.requested_frame,
                                             sequence: event.token.sequence(),
@@ -997,6 +999,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                         &mut self.epoch,
                         true,
                         &|candidate| activation_compatible(&self.slots, candidate),
+                        &mut self.recovery,
                     ),
                     callback_start: audio.frame,
                     frame: at,
@@ -1106,6 +1109,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 Err(_) => None,
             };
             let mut block = ProcessBlock {
+                graph_epoch: self.epoch,
                 frame,
                 frames,
                 audio: AudioPorts::new(&buffers.input, &mut buffers.output, stride, start, frames)?,

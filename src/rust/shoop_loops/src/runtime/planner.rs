@@ -776,13 +776,26 @@ impl Planner for LoopPlanner {
                     graph,
                     graph_epoch,
                     topology_epoch,
+                }
+                | Operation::ConfigurationReplace {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
                 } => {
+                    if matches!(operation, Operation::ConfigurationReplace { .. })
+                        && context.frame != context.callback_start
+                    {
+                        return Err(Error::InvalidState.into());
+                    }
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
                         node_pairs,
                         topology,
                         graph,
                         graph_epoch,
                         topology_epoch,
+                        matches!(operation, Operation::ConfigurationReplace { .. }),
                         &mut context.graphs,
                         &mut context.resources,
                     )?;
@@ -1063,6 +1076,38 @@ impl Planner for LoopPlanner {
                     self.ledger.retire(&mut context.resources, media)?;
                     Ok(Disposition::Complete(Reply::Done))
                 }
+                Operation::Adopt {
+                    target,
+                    frames,
+                    audio,
+                    midi,
+                } => {
+                    let row = self.row(target)?;
+                    let state = self.resolver.state(target)?;
+                    if state.mode == crate::Mode::Recording {
+                        return Err(Error::Busy.into());
+                    }
+                    let revision = state
+                        .revision_watermark
+                        .checked_next()
+                        .map_err(|_| Error::Exhausted)?;
+                    let description = media::Description {
+                        owner: target,
+                        revision,
+                        frames,
+                        channels: row.binding.channels as u32,
+                        midi: row.binding.midi,
+                    };
+                    let media = self.node_pairs.adopt(
+                        description,
+                        audio,
+                        midi,
+                        row.binding.packet_bytes,
+                        &mut self.ledger,
+                        &mut context.resources,
+                    )?;
+                    Ok(Disposition::Complete(Reply::Adopted { media }))
+                }
                 Operation::MidiInitial { export, channel } => {
                     if channel >= 16 {
                         return Err(Error::InvalidShape.into());
@@ -1166,6 +1211,7 @@ impl Planner for LoopPlanner {
                 | Operation::NodePairCancel { .. }
                 | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
+                | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
                 | Operation::TopologyGraphActivate { .. }

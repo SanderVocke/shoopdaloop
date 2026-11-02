@@ -100,6 +100,7 @@ impl Controls {
 }
 
 pub(crate) struct Track {
+    pub port_name_base: String,
     pub strip: StripId,
     pub audio_channels: u32,
     pub midi: bool,
@@ -199,7 +200,7 @@ impl Default for Master {
 }
 
 /// Slot reservations with the generation last used for each slot.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Slots {
     generations: Vec<u32>,
     used: Vec<bool>,
@@ -216,7 +217,11 @@ impl Slots {
     }
 
     pub fn free(&self) -> usize {
-        self.used.iter().filter(|used| !**used).count()
+        self.used
+            .iter()
+            .zip(&self.generations)
+            .filter(|(used, generation)| !**used && (**generation).max(self.floor) < u32::MAX)
+            .count()
     }
 
     pub fn capacity(&self) -> usize {
@@ -224,7 +229,11 @@ impl Slots {
     }
 
     pub fn reserve(&mut self) -> Option<SlotId> {
-        let index = self.used.iter().position(|used| !used)?;
+        let index = self
+            .used
+            .iter()
+            .zip(&self.generations)
+            .position(|(used, generation)| !used && (*generation).max(self.floor) < u32::MAX)?;
         self.used[index] = true;
         self.generations[index] = self.generations[index].max(self.floor) + 1;
         Some(SlotId::new(index as u32, self.generations[index]))
@@ -265,6 +274,7 @@ pub(crate) struct Mirror {
     pub strip_tracks: BTreeMap<StripId, BackendTrackId>,
     pub slot_loops: BTreeMap<LoopSlotId, BackendLoopId>,
     pub links: BTreeSet<BackendConfirmedLink>,
+    pub desired_links: BTreeSet<BackendConfirmedLink>,
     pub routes: BTreeSet<BackendMixerLink>,
     pub master: Master,
     pub host_ports: Vec<HostPort>,
@@ -278,6 +288,33 @@ pub(crate) struct Mirror {
 }
 
 impl Mirror {
+    pub fn replacement_image(&self) -> Self {
+        let mut image = Self::new();
+        image.strip_slots = self.strip_slots.clone();
+        image.loop_slots = self.loop_slots.clone();
+        image.strip_slots.used.fill(false);
+        image.loop_slots.used.fill(false);
+        image.host_ports = self.host_ports.clone();
+        image.next_track = self.next_track;
+        image.next_loop = self.next_loop;
+        image.next_port = self.next_port;
+        image.connection_revision = self.connection_revision + 1;
+        image.mixer_revision = self.mixer_revision + 1;
+        image
+    }
+    pub fn reserve_image_identities(&mut self, image: &Self) {
+        for (old, next) in [
+            (&mut self.strip_slots, &image.strip_slots),
+            (&mut self.loop_slots, &image.loop_slots),
+        ] {
+            for (old, next) in old.generations.iter_mut().zip(&next.generations) {
+                *old = (*old).max(*next);
+            }
+        }
+        self.next_track = self.next_track.max(image.next_track);
+        self.next_loop = self.next_loop.max(image.next_loop);
+        self.next_port = self.next_port.max(image.next_port);
+    }
     pub fn new() -> Self {
         let mut ports = BTreeMap::new();
         ports.insert(
@@ -317,6 +354,7 @@ impl Mirror {
             strip_tracks: BTreeMap::new(),
             slot_loops: BTreeMap::new(),
             links: BTreeSet::new(),
+            desired_links: BTreeSet::new(),
             routes: BTreeSet::new(),
             master: Master::default(),
             host_ports: Vec::new(),
@@ -424,6 +462,8 @@ impl Mirror {
         }
         let links = self.links.len();
         self.links
+            .retain(|link| !track.ports.contains(&link.application_port_id));
+        self.desired_links
             .retain(|link| !track.ports.contains(&link.application_port_id));
         let routes = self.routes.len();
         self.routes

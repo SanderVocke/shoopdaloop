@@ -14,6 +14,7 @@ pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
 }
 
 pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
+    pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub frames: usize,
     pub audio: AudioPorts<'a>,
@@ -25,6 +26,7 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 pub struct OperationContext<'a> {
+    pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,
     pub sequence: crate::Sequence,

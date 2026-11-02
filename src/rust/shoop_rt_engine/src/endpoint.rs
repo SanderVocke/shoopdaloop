@@ -79,6 +79,11 @@ pub(crate) enum Purpose {
     Silent,
     Job(Step),
     Bulk,
+    Content {
+        slot: usize,
+        step: crate::content::Step,
+        correlation: Option<u64>,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,6 +186,8 @@ pub struct ControlEndpoint {
     pub(crate) quiet_until: u64,
     pub(crate) resync: Option<Resync>,
     pub(crate) bulk: Bulk,
+    pub(crate) uploads: crate::content::Uploads,
+    pub(crate) replacement: crate::replacement::Replacement,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -283,9 +290,10 @@ impl ControlEndpoint {
     /// the last structural change has finished.
     pub fn is_idle(&self) -> bool {
         self.queue.len() == 0
-            && self.job.is_none()
+            && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
             && self.bulk.idle()
+            && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
     }
 
@@ -310,7 +318,11 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::MIDI_INJECTION.union(Capabilities::BULK_MIDI)
+        Capabilities::MIDI_INJECTION
+            .union(Capabilities::BULK_MIDI)
+            .union(Capabilities::CONTENT_UPLOAD)
+            .union(Capabilities::COMPLETE_REPLACEMENT)
+            .union(Capabilities::WIDE_CONTENT_UPLOAD)
     }
 
     fn free_pending(&self) -> usize {
@@ -381,6 +393,15 @@ impl ControlEndpoint {
     }
     pub(crate) fn reclaim(&mut self, command: EngineCommand) {
         match command {
+            Command::Resource(command) => match command.into_request() {
+                rt_runtime::resource::Request::WritePrefix { bytes, .. } => {
+                    self.uploads.return_buffer(bytes)
+                }
+                rt_runtime::resource::Request::BeginIndexedMidiUpload { initial, .. } => {
+                    self.uploads.return_initial(initial)
+                }
+                _ => {}
+            },
             Command::Schedule { payload, .. } => {
                 if !payload.is_empty() {
                     self.work.return_payload(payload);
@@ -421,11 +442,13 @@ impl ControlEndpoint {
                 Purpose::Reply(correlation) | Purpose::Transition { correlation, .. } => {
                     *correlation = None
                 }
+                Purpose::Content { correlation, .. } => *correlation = None,
                 _ => {}
             }
         }
         self.forget_job_answers();
         self.bulk.disconnect();
+        self.uploads.disconnect();
     }
 
     fn drain_runtime(&mut self) {
@@ -497,6 +520,11 @@ impl ControlEndpoint {
             }
             Purpose::Job(step) => self.job_result(step, result),
             Purpose::Bulk => self.bulk_result(result),
+            Purpose::Content {
+                slot,
+                step,
+                correlation,
+            } => self.content_result(slot, step, correlation, finished, result),
         }
     }
 
@@ -695,6 +723,47 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => self.replacement_request(correlation, request),
+            Request::ContentBegin(_)
+            | Request::ContentWrite { .. }
+            | Request::ContentInitial { .. }
+            | Request::ContentFinish { .. }
+            | Request::ContentRelease { .. } => self.content_request(correlation, request),
+            Request::ContentApply {
+                loop_id: id,
+                frames,
+                audio,
+                midi,
+            } => {
+                if self.model.find_loop(id).is_none() {
+                    Err(Refusal::InvalidId)
+                } else {
+                    let sources = audio
+                        .map(|id| self.uploads.source(id, false, frames))
+                        .transpose()
+                        .and_then(|audio| {
+                            midi.map(|id| self.uploads.source(id, true, frames))
+                                .transpose()
+                                .map(|midi| (audio, midi))
+                        });
+                    match sources {
+                        Err(refusal) => Err(refusal),
+                        Ok((audio, midi)) => {
+                            if self.job.is_some() {
+                                return Err(());
+                            }
+                            self.touched_loops[id.0.index as usize] = crate::queue::HARD;
+                            return self
+                                .begin_job(correlation, Job::content(id, frames, audio, midi));
+                        }
+                    }
+                }
+            }
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }
@@ -1076,6 +1145,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_job();
         self.process_queue(true);
         self.advance_bulk();
+        self.advance_content();
         self.flush(out);
         self.telemetry(out);
     }

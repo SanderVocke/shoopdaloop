@@ -6,13 +6,16 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod codec;
 pub mod local;
+pub mod persistence;
+pub mod persistence_image;
+pub mod persistence_transfer;
 pub mod stream;
 
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 use std::sync::Arc;
 
-pub const VERSION: u16 = 6;
+pub const VERSION: u16 = 8;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -21,6 +24,7 @@ pub const MAX_RETAINED_RESULTS: usize = 256;
 pub const QUEUE_CAPACITY: usize = 256;
 pub const MAX_MESSAGES_PER_TURN: usize = 64;
 pub const MAX_COMMANDS_PER_TURN: usize = 16;
+pub const MAX_PERSISTENCE_RECORDS_PER_TURN: usize = 64;
 
 macro_rules! identity {
     ($name:ident, $value:ty) => {
@@ -102,6 +106,7 @@ pub enum Command {
     ResetXruns,
     Control(ControlOperation),
     NewSession,
+    CommitPersistence(persistence::Key),
 }
 
 impl Command {
@@ -109,6 +114,7 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
+            Self::CommitPersistence(key) => key.valid(),
             Self::Control(operation) => operation.bounded(),
             Self::AddTrack(spec) => {
                 name(&spec.name)
@@ -208,6 +214,7 @@ pub struct OperationResult {
 /// Ordinary shared state, without Lua, file workflows, editor drafts or media reads.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
+    pub persistence_epoch: u64,
     pub revision: Revision,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
@@ -226,7 +233,8 @@ pub struct SessionSnapshot {
 
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
-        self.pending.len() <= MAX_PENDING_OPERATIONS
+        self.persistence_epoch != 0
+            && self.pending.len() <= MAX_PENDING_OPERATIONS
             && self.results.len() <= MAX_RETAINED_RESULTS
             && self
                 .pending
@@ -259,6 +267,15 @@ impl Outcome {
 /// Typed delivery uses these values directly; it never invokes the wire codec.
 #[derive(Clone, Debug)]
 pub enum ServiceMessage {
+    CapturedImage {
+        authority: Authority,
+        key: persistence::Key,
+        image: Arc<persistence_image::Image>,
+    },
+    Persistence {
+        authority: Authority,
+        reply: persistence::Reply,
+    },
     Attached {
         authority: Authority,
         host: HostId,
@@ -298,6 +315,8 @@ pub enum ServiceMessage {
 impl ServiceMessage {
     pub fn valid(&self) -> bool {
         match self {
+            Self::CapturedImage { authority, key, .. } => authority.is_valid() && key.valid(),
+            Self::Persistence { authority, reply } => authority.is_valid() && reply.valid(),
             Self::Media {
                 authority,
                 transfer,
@@ -331,6 +350,10 @@ impl ServiceMessage {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum ClientMessage {
+    Persistence {
+        authority: Authority,
+        request: persistence::Request,
+    },
     Attach {
         version: u16,
         host: HostId,
@@ -343,6 +366,7 @@ pub enum ClientMessage {
     },
     Submit {
         authority: Authority,
+        session_epoch: u64,
         operation: OperationId,
         expected_revision: Option<Revision>,
         command: Command,
@@ -362,11 +386,28 @@ pub enum ClientMessage {
     CancelMedia {
         authority: Authority,
     },
+    #[serde(skip)]
+    StageImage {
+        authority: Authority,
+        key: persistence::Key,
+        target: persistence::Target,
+        image: Arc<persistence_image::Image>,
+    },
+    #[serde(skip)]
+    CaptureImage {
+        authority: Authority,
+        key: persistence::Key,
+        target: persistence::Target,
+    },
 }
 
 /// Snapshot chunks share the same bounded record format as commands and results.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum WireMessage {
+    Persistence {
+        authority: Authority,
+        reply: persistence::Reply,
+    },
     Client(ClientMessage),
     Attached {
         authority: Authority,
@@ -434,6 +475,13 @@ impl WireMessage {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::Client(ClientMessage::StageImage { .. } | ClientMessage::CaptureImage { .. }) => {
+                false
+            }
+            Self::Persistence { authority, reply } => authority.is_valid() && reply.valid(),
+            Self::Client(ClientMessage::Persistence { authority, request }) => {
+                authority.is_valid() && request.valid()
+            }
             Self::CarrierReady { host, session } => host.0 != 0 && session.0 != 0,
             Self::ManagementRequest(request) => request.valid(),
             Self::ManagementReply(reply) => reply.valid(),
@@ -470,10 +518,11 @@ impl WireMessage {
             }) => host.0 != 0 && session.0 != 0 && client.0 != 0,
             Self::Client(ClientMessage::Submit {
                 authority,
+                session_epoch,
                 operation,
                 command,
                 ..
-            }) => operation_valid(authority, operation) && command.bounded(),
+            }) => *session_epoch != 0 && operation_valid(authority, operation) && command.bounded(),
             Self::Client(ClientMessage::Shutdown {
                 authority,
                 operation,

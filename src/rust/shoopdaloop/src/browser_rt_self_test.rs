@@ -3,7 +3,7 @@
 //! `data-new-engine-self-test` on `#runtime_status`: the current step, `passed` or
 //! `failed: <step>: <reason>`.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use shoop_egui::{
     AppIntent, AppSnapshot, ApplicationPortOwner, BusAction, BusChannelId, DirectTrackSpec,
@@ -17,6 +17,7 @@ use crate::Runtime;
 
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_RECORDING: Duration = Duration::from_millis(600);
+const LARGE_FRAMES: usize = 33 * 1024 * 1024 / 4;
 const NOTE_HOLD: Duration = Duration::from_millis(100);
 /// Recorded or monitored capture is louder than this when a microphone is connected.
 const SIGNAL_DB: f32 = -80.0;
@@ -44,7 +45,18 @@ enum Step {
     Waveform,
     MidiDetail,
     ImmediateStop,
+    CancelSaving,
+    Saving,
     Cleared,
+    Loaded,
+    Resaving,
+    RestoredPlayback,
+    LargeMapping,
+    LargeImport,
+    LargeSaving,
+    LargeLoaded,
+    LargeResaving,
+    LargePlayback,
     Passed,
     Failed,
 }
@@ -59,6 +71,7 @@ struct Ids {
 
 pub struct NewEngineSelfTest {
     stress: bool,
+    large: bool,
     step: Step,
     since: Instant,
     ids: Ids,
@@ -66,10 +79,13 @@ pub struct NewEngineSelfTest {
     routes: Vec<(PortId, BusChannelId)>,
     sync_length: u64,
     position: Option<f32>,
+    saved_file: Option<Arc<Vec<u8>>>,
+    saved_bundle: Option<shoop_session::SessionBundle>,
+    resaved_bundle: Option<shoop_session::SessionBundle>,
 }
 
 impl NewEngineSelfTest {
-    pub fn new(enabled: bool, stress: bool) -> Self {
+    pub fn new(enabled: bool, stress: bool, large: bool) -> Self {
         let step = if enabled {
             Step::Startup
         } else {
@@ -78,6 +94,7 @@ impl NewEngineSelfTest {
         report(&format!("{step:?}"));
         Self {
             stress,
+            large,
             step,
             since: Instant::now(),
             ids: Ids::default(),
@@ -85,6 +102,26 @@ impl NewEngineSelfTest {
             routes: Vec::new(),
             sync_length: 0,
             position: None,
+            saved_file: None,
+            saved_bundle: None,
+            resaved_bundle: None,
+        }
+    }
+
+    pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
+        if !matches!(
+            self.step,
+            Step::Saving | Step::Resaving | Step::LargeSaving | Step::LargeResaving
+        ) {
+            return;
+        }
+        match shoop_session::decode_session(&output.bytes) {
+            Ok(bundle) if matches!(self.step, Step::Saving | Step::LargeSaving) => {
+                self.saved_file = Some(Arc::clone(&output.bytes));
+                self.saved_bundle = Some(bundle);
+            }
+            Ok(bundle) => self.resaved_bundle = Some(bundle),
+            Err(error) => self.fail(format!("saved file could not be decoded: {error}")),
         }
     }
 
@@ -104,8 +141,22 @@ impl NewEngineSelfTest {
                     report("passed");
                 }
             }
-            Ok(None) if waiting < STEP_TIMEOUT => {}
-            Ok(None) => self.fail("timed out".to_owned()),
+            Ok(None)
+                if waiting
+                    < if matches!(
+                        self.step,
+                        Step::LargeMapping
+                            | Step::LargeImport
+                            | Step::LargeSaving
+                            | Step::LargeLoaded
+                            | Step::LargeResaving
+                            | Step::LargePlayback
+                    ) {
+                        Duration::from_secs(120)
+                    } else {
+                        STEP_TIMEOUT
+                    } => {}
+            Ok(None) => self.fail(format!("timed out; file task: {:?}", snapshot.io_task)),
             Err(reason) => self.fail(reason),
         }
     }
@@ -130,6 +181,13 @@ impl NewEngineSelfTest {
             .collect::<Vec<_>>();
         if !errors.is_empty() && self.step != Step::Startup {
             return Err(format!("error notifications: {errors:?}"));
+        }
+        if let Some(task) = snapshot
+            .io_task
+            .as_ref()
+            .filter(|task| task.status == IoTaskStatus::Failed)
+        {
+            return Err(format!("file task failed: {}", task.message));
         }
         let running = runtime.audio_running();
         let signal = runtime.new_engine_microphone();
@@ -480,6 +538,24 @@ impl NewEngineSelfTest {
                 if first_loop(snapshot, ids.audio)?.mode != LoopMode::Stopped {
                     return Ok(None);
                 }
+                send(AppIntent::RequestSaveSession)?;
+                Step::CancelSaving
+            }
+            Step::CancelSaving => {
+                if !snapshot
+                    .io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Cancelled)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::RequestSaveSession)?;
+                Step::Saving
+            }
+            Step::Saving => {
+                if self.saved_file.is_none() || !output_completed(snapshot)? {
+                    return Ok(None);
+                }
                 send(AppIntent::Global(GlobalControlAction::ClearRecordings {
                     include_sync: false,
                 }))?;
@@ -496,6 +572,221 @@ impl NewEngineSelfTest {
                 }
                 if first_loop(snapshot, ids.sync)?.mode != LoopMode::Playing {
                     return Err("clearing stopped the sync loop".to_owned());
+                }
+                send(AppIntent::LoadSessionBytes {
+                    name: "browser-roundtrip.shoop".into(),
+                    bytes: Arc::clone(self.saved_file.as_ref().unwrap()),
+                })?;
+                Step::Loaded
+            }
+            Step::Loaded => {
+                if !snapshot.io_task.as_ref().is_some_and(|task| {
+                    task.kind == shoop_egui::IoTaskKind::LoadSession
+                        && task.status == IoTaskStatus::Completed
+                }) {
+                    return Ok(None);
+                }
+                if snapshot.tracks.len() != 3
+                    || snapshot.tracks[1].id == ids.audio.unwrap().0
+                    || snapshot.tracks[1].loops[0].id == ids.audio.unwrap().1
+                    || snapshot
+                        .tracks
+                        .iter()
+                        .flat_map(|track| &track.loops)
+                        .any(|entry| entry.mode != LoopMode::Stopped)
+                    || snapshot.tracks[1].controls.output_gain_db != -6.0
+                    || snapshot.buses[0].gain_db != -3.0
+                    || snapshot.tracks[0].loops[0].length_frames != self.sync_length
+                {
+                    return Err(
+                        "loaded session did not restore controls, lengths and fresh stopped owners"
+                            .into(),
+                    );
+                }
+                self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
+                self.ids.audio = Some((snapshot.tracks[1].id, snapshot.tracks[1].loops[0].id));
+                self.ids.keys = Some((snapshot.tracks[2].id, snapshot.tracks[2].loops[0].id));
+                send(AppIntent::RequestSaveSession)?;
+                Step::Resaving
+            }
+            Step::Resaving => {
+                let Some(after) = self.resaved_bundle.as_ref() else {
+                    return Ok(None);
+                };
+                if !output_completed(snapshot)? {
+                    return Ok(None);
+                }
+                let before = self.saved_bundle.as_ref().unwrap();
+                if before.media.values().collect::<Vec<_>>()
+                    != after.media.values().collect::<Vec<_>>()
+                {
+                    return Err("save/load/save changed recorded PCM or exact MIDI".into());
+                }
+                send(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+                send(loop_intent(ids.audio, LoopAction::PlayClicked)?)?;
+                self.position = None;
+                Step::RestoredPlayback
+            }
+            Step::RestoredPlayback => {
+                let entry = first_loop(snapshot, ids.audio)?;
+                if entry.mode != LoopMode::Playing || entry.length_frames == 0 {
+                    return Ok(None);
+                }
+                match self.position {
+                    None => {
+                        self.position = Some(entry.position);
+                        return Ok(None);
+                    }
+                    Some(position) if position == entry.position => return Ok(None),
+                    _ => {}
+                }
+                if !self.large {
+                    return Ok(Some(Step::Passed));
+                }
+                self.saved_file = None;
+                self.saved_bundle = None;
+                self.resaved_bundle = None;
+                let audio = shoop_session::LoopAudio {
+                    sample_rate: snapshot.status.sample_rate,
+                    channels: vec![shoop_session::LoopAudioChannel {
+                        label: "Large mono".into(),
+                        role: "direct".into(),
+                        samples: (0..LARGE_FRAMES)
+                            .map(|i| if i % 2 == 0 { 0.25 } else { -0.5 })
+                            .collect(),
+                    }],
+                };
+                let bytes = shoop_session::encode_float_wav(&audio).map_err(|e| e.to_string())?;
+                if bytes.len() <= 32 * 1024 * 1024 {
+                    return Err("large browser fixture is too small".into());
+                }
+                send(AppIntent::ImportLoopAudioBytes {
+                    loop_id: ids.audio.unwrap().1,
+                    name: "large.wav".into(),
+                    bytes: bytes.into(),
+                    update_loop_length: true,
+                })?;
+                Step::LargeMapping
+            }
+            Step::LargeMapping => {
+                let Some(task) = snapshot
+                    .io_task
+                    .as_ref()
+                    .filter(|t| t.status == IoTaskStatus::AwaitingChannelMapping)
+                else {
+                    return Ok(None);
+                };
+                send(AppIntent::ConfirmAudioChannelMapping {
+                    task_id: task.id,
+                    source_for_destination: vec![0, 0],
+                })?;
+                Step::LargeImport
+            }
+            Step::LargeImport => {
+                if !snapshot.io_task.as_ref().is_some_and(|t| {
+                    t.kind == shoop_egui::IoTaskKind::ImportLoopAudio
+                        && t.status == IoTaskStatus::Completed
+                }) {
+                    return Ok(None);
+                }
+                if first_loop(snapshot, ids.audio)?.length_frames != LARGE_FRAMES as u64 {
+                    return Err("large import length changed".into());
+                }
+                send(AppIntent::RequestSaveSession)?;
+                Step::LargeSaving
+            }
+            Step::LargeSaving => {
+                let Some(bundle) = self.saved_bundle.as_ref() else {
+                    return Ok(None);
+                };
+                if !output_completed(snapshot)? {
+                    return Ok(None);
+                }
+                let large = bundle
+                    .media
+                    .values()
+                    .filter_map(|media| match media {
+                        shoop_session::MediaPayload::Audio(audio)
+                            if audio.samples.len() == LARGE_FRAMES =>
+                        {
+                            Some(audio)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if large.len() != 2
+                    || large.iter().any(|audio| {
+                        audio
+                            .samples
+                            .iter()
+                            .enumerate()
+                            .any(|(i, sample)| *sample != if i % 2 == 0 { 0.25 } else { -0.5 })
+                    })
+                {
+                    return Err("large browser save changed mapped PCM".into());
+                }
+                send(AppIntent::LoadSessionBytes {
+                    name: "large.shoop".into(),
+                    bytes: Arc::clone(self.saved_file.as_ref().unwrap()),
+                })?;
+                Step::LargeLoaded
+            }
+            Step::LargeLoaded => {
+                if !snapshot.io_task.as_ref().is_some_and(|t| {
+                    t.kind == shoop_egui::IoTaskKind::LoadSession
+                        && t.status == IoTaskStatus::Completed
+                }) {
+                    return Ok(None);
+                }
+                if snapshot.tracks[1].loops[0].id == ids.audio.unwrap().1
+                    || snapshot
+                        .tracks
+                        .iter()
+                        .flat_map(|t| &t.loops)
+                        .any(|l| l.mode != LoopMode::Stopped)
+                    || snapshot.tracks[1].loops[0].length_frames != LARGE_FRAMES as u64
+                {
+                    return Err("large load did not restore fresh stopped content".into());
+                }
+                self.ids.audio = Some((snapshot.tracks[1].id, snapshot.tracks[1].loops[0].id));
+                send(AppIntent::RequestSaveSession)?;
+                self.resaved_bundle = None;
+                Step::LargeResaving
+            }
+            Step::LargeResaving => {
+                let Some(after) = self.resaved_bundle.as_ref() else {
+                    return Ok(None);
+                };
+                if !output_completed(snapshot)? {
+                    return Ok(None);
+                }
+                if self
+                    .saved_bundle
+                    .as_ref()
+                    .unwrap()
+                    .media
+                    .values()
+                    .collect::<Vec<_>>()
+                    != after.media.values().collect::<Vec<_>>()
+                {
+                    return Err("large browser roundtrip changed PCM or MIDI".into());
+                }
+                send(loop_intent(ids.audio, LoopAction::PlayClicked)?)?;
+                self.position = None;
+                Step::LargePlayback
+            }
+            Step::LargePlayback => {
+                let entry = first_loop(snapshot, ids.audio)?;
+                if entry.mode != LoopMode::Playing {
+                    return Ok(None);
+                }
+                match self.position {
+                    None => {
+                        self.position = Some(entry.position);
+                        return Ok(None);
+                    }
+                    Some(position) if position == entry.position => return Ok(None),
+                    _ => {}
                 }
                 Step::Passed
             }
@@ -582,4 +873,23 @@ fn host_ports(snapshot: &AppSnapshot, data_type: PortDataType, prefix: &str) -> 
         .collect::<Vec<_>>();
     ports.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     ports
+}
+
+fn output_completed(snapshot: &AppSnapshot) -> Result<bool, String> {
+    let Some(task) = snapshot.io_task.as_ref() else {
+        return Ok(false);
+    };
+    if task.status == IoTaskStatus::Failed || task.status == IoTaskStatus::Cancelled {
+        return Err(format!("platform output failed: {}", task.message));
+    }
+    if task.status != IoTaskStatus::Completed {
+        return Ok(false);
+    }
+    if !task.message.contains("Download handed to the browser") {
+        return Err(format!(
+            "browser output claimed an unexpected completion: {}",
+            task.message
+        ));
+    }
+    Ok(true)
 }

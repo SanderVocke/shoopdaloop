@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -815,6 +815,9 @@ jobs:
           node --experimental-websocket browser_smoke.mjs
           if [ '${{ matrix.profile }}' = release ]; then
             SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
+              node --experimental-websocket browser_smoke.mjs
+            LARGE_MEDIA=1 node --experimental-websocket browser_smoke.mjs
+            LARGE_MEDIA=1 SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
               node --experimental-websocket browser_smoke.mjs
           else
             DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs

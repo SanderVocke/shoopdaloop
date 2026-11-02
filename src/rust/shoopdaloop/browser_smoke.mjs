@@ -30,6 +30,7 @@ if (directFileMicrophone && !selfContained) {
 }
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
+const largeMedia = process.env.LARGE_MEDIA === '1';
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -172,6 +173,7 @@ try {
   let nextId = 1;
   const pending = new Map();
   const failures = [];
+  let profiledUpload = false;
   websocket.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.id && pending.has(message.id)) {
@@ -180,6 +182,23 @@ try {
       request.resolve(message);
       pending.delete(message.id);
       return;
+    }
+    if (process.env.UPLOAD_DIAGNOSTICS === '1' && message.method === 'Runtime.consoleAPICalled') {
+      for (const argument of message.params.args) {
+        if (typeof argument.value === 'string' && (argument.value.includes('backend.rt.content_write') || argument.value.includes('ContentBegin') || argument.value.includes('ContentFinish'))) {
+          console.log(`${new Date(message.params.timestamp).toISOString()} ${argument.value}`);
+          if (process.env.UPLOAD_PROFILE && !profiledUpload && argument.value.includes('bytes: 69206016')) {
+            profiledUpload = true;
+            (async () => {
+              await call('Profiler.enable');
+              await call('Profiler.start');
+              await delay(2000);
+              const response = await call('Profiler.stop');
+              await writeFile(process.env.UPLOAD_PROFILE, JSON.stringify(response.result.profile));
+            })().catch(error => console.error(error));
+          }
+        }
+      }
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
@@ -232,8 +251,22 @@ try {
   async function waitFor(predicate, description, timeout = 30_000) {
     const deadline = Date.now() + timeout;
     let state;
+    let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      if (process.env.UPLOAD_DIAGNOSTICS === '1' && Date.now() >= diagnosticAt) {
+        console.log('Timer diagnostic', await evaluate('({time:performance.now(),ticks:globalThis.shoopTimerProbe?.ticks,visibility:document.visibilityState})'));
+        diagnosticAt = Date.now() + 10000;
+      }
+      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving'].includes(state?.newEngineSelfTest)) {
+        await evaluate(`(() => {
+          const output = document.getElementById('rfd-output');
+          if (!output) return;
+          if (document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test') === 'CancelSaving') {
+            [...document.querySelectorAll('#rfd-card .rfd-button')].find(button => button.textContent === 'Cancel')?.click();
+          } else output.click();
+        })()`);
+      }
       if (predicate(state)) return state;
       if (state?.driver === 'Failed') {
         throw new Error(`${description}: ${JSON.stringify({ state, failures })}`);
@@ -258,6 +291,9 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
+  if (process.env.UPLOAD_DIAGNOSTICS === '1') {
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: 'globalThis.shoopTimerProbe={ticks:0};setInterval(()=>shoopTimerProbe.ticks++,4)' });
+  }
   if (webMidi) {
     await call('Page.addScriptToEvaluateOnNewDocument', {
       source: `(() => {
@@ -365,7 +401,7 @@ try {
     });
   }
   let entryUrl;
-  const newEngineQuery = `?new-engine-self-test=1${stress ? '&stress=1' : ''}`;
+  const newEngineQuery = `?new-engine-self-test=1${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
       ? `${pathToFileURL(selfContainedPath).href}${newEngineQuery}`
@@ -507,7 +543,7 @@ try {
         return candidate.newEngineSelfTest === 'passed';
       },
       'the new engine workflow did not finish',
-      300_000,
+      largeMedia ? 600_000 : 300_000,
     );
     if (state.newEngine !== 'Running' || (!outputOnly && state.newEngineMicrophone !== 'Connected') || state.quantum !== 128) {
       throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);

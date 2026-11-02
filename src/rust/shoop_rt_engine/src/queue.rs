@@ -21,7 +21,7 @@ pub(crate) const SOFT: u8 = 1;
 /// A pending transaction creates or removes the slot's occupant.
 pub(crate) const HARD: u8 = 2;
 
-enum Staged {
+pub(crate) enum Staged {
     Change(Change),
     Done,
     Refused(Refusal),
@@ -59,6 +59,7 @@ impl ControlEndpoint {
         self.blocked_loops.fill(false);
         self.blocked_master = false;
         self.blocked_all = false;
+        self.uploads.clear_blocked();
         let mut open = staging;
         for _ in 0..self.queue.len() {
             let Some((correlation, request)) = self.queue.pop() else {
@@ -91,6 +92,17 @@ impl ControlEndpoint {
         staging: &mut bool,
         open: &mut bool,
     ) -> bool {
+        if matches!(
+            request,
+            Request::CancelBulk
+                | Request::ReplacementBegin { .. }
+                | Request::ReplacementEdit { .. }
+                | Request::ReplacementPrepare { .. }
+                | Request::ReplacementCommit { .. }
+                | Request::ReplacementCancel { .. }
+        ) {
+            return self.start(correlation, request).is_ok();
+        }
         if self.blocked_all || self.blocked(request) {
             return false;
         }
@@ -98,7 +110,7 @@ impl ControlEndpoint {
             if !*open {
                 return false;
             }
-            return match self.stage(request) {
+            return match self.stage(request, false) {
                 Staged::Change(change) => {
                     if self.batch_len == self.batch.len() {
                         return false;
@@ -122,7 +134,7 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::LoopClear { .. } | Request::SetSmoothing { .. }
+            Request::LoopClear { .. } | Request::SetSmoothing { .. } | Request::ContentApply { .. }
         ) {
             if !*open || self.batch_len > 0 {
                 return false;
@@ -133,7 +145,9 @@ impl ControlEndpoint {
             if self.job.is_some() {
                 *staging = false;
                 *open = false;
-                if let Request::LoopClear { loop_id } = request {
+                if let Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } =
+                    request
+                {
                     self.touched_loops[loop_id.0.index as usize] = HARD;
                 }
             }
@@ -159,6 +173,17 @@ impl ControlEndpoint {
                 || self.touched_loops.get(index).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::CancelBulk => false,
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => false,
+            Request::ContentBegin(_) => false,
+            Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.blocked(id),
             Request::StripControl { strip: id, .. } | Request::InjectMidi { strip: id, .. } => {
                 strip(id.0.index, HARD)
             }
@@ -176,7 +201,9 @@ impl ControlEndpoint {
             Request::LoopGain { loop_id, .. } | Request::LoopBalance { loop_id, .. } => {
                 loop_(loop_id.0.index, HARD)
             }
-            Request::LoopClear { loop_id } => loop_(loop_id.0.index, SOFT),
+            Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
+                loop_(loop_id.0.index, SOFT)
+            }
             Request::BusControl { .. } => self.blocked_master,
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. } => strip(id.0.index, WAITING),
@@ -211,6 +238,17 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::CancelBulk => {}
+            Request::ReplacementBegin { .. }
+            | Request::ReplacementEdit { .. }
+            | Request::ReplacementPrepare { .. }
+            | Request::ReplacementCommit { .. }
+            | Request::ReplacementCancel { .. } => {}
+            Request::ContentBegin(_) => {}
+            Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.block(id),
             Request::StripControl { strip: id, .. }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
@@ -237,6 +275,7 @@ impl ControlEndpoint {
             | Request::LoopTransition { loop_id, .. }
             | Request::LoopGain { loop_id, .. }
             | Request::LoopBalance { loop_id, .. }
+            | Request::ContentApply { loop_id, .. }
             | Request::LoopClear { loop_id } => {
                 if let Some(blocked) = self.blocked_loops.get_mut(loop_id.0.index as usize) {
                     *blocked = true;
@@ -296,7 +335,7 @@ impl ControlEndpoint {
     }
 
     /// Validate a structural request against the staged model.
-    fn stage(&self, request: Request) -> Staged {
+    pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
         let next = &self.next;
         match request {
             Request::CreateStrip { strip, shape } => {
@@ -312,7 +351,7 @@ impl ControlEndpoint {
                     || shape.audio_outputs as usize > self.settings.channels
                 {
                     Staged::Refused(Refusal::Capacity)
-                } else if self.model.strips[slot].is_some() {
+                } else if !replacing && self.model.strips[slot].is_some() {
                     Staged::Wait
                 } else {
                     Staged::Change(Change::CreateStrip { strip, shape })
@@ -333,7 +372,7 @@ impl ControlEndpoint {
                     || next.strip(strip).is_none()
                 {
                     Staged::Refused(Refusal::InvalidId)
-                } else if self.model.loops[slot].is_some() {
+                } else if !replacing && self.model.loops[slot].is_some() {
                     Staged::Wait
                 } else {
                     Staged::Change(Change::CreateLoop { loop_id, strip })

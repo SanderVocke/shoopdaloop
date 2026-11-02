@@ -69,6 +69,14 @@ pub struct AppArgs {
     /// Exercise session attachment, recovery, media and host shutdown without a window.
     #[arg(long, requires = "engine_transport")]
     pub probe_engine_transport: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Exercise large session files and persistence lifetime through the companion.
+    #[arg(
+        long,
+        requires = "engine_transport",
+        conflicts_with = "probe_engine_transport"
+    )]
+    pub probe_persistence: bool,
     #[cfg(target_arch = "wasm32")]
     /// Disable browser audio (the session remains unavailable).
     #[arg(long)]
@@ -86,6 +94,9 @@ pub struct AppArgs {
     #[cfg(target_arch = "wasm32")]
     #[arg(long, hide = true)]
     pub new_engine_self_test: bool,
+    #[cfg(target_arch = "wasm32")]
+    #[arg(long, hide = true)]
+    pub persistence_large: bool,
     #[cfg(target_arch = "wasm32")]
     #[arg(long, value_enum)]
     pub settings_test: Option<SettingsTest>,

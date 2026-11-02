@@ -84,89 +84,116 @@ pub fn restore(state: &MidiState, mut sink: impl FnMut(&[u8]) -> Result<(), Erro
         result.send(&mut sink, &[0xff]);
     }
     for channel in 0..16 {
-        let state = state.channel(channel).expect("MIDI channel");
-        result.parameter_history_untracked |= state.parameter_history_untracked();
-        if state.reset_controllers_seen() {
-            result.send(&mut sink, &[0xb0 | channel, 121, 0]);
-        }
-        let bank = state.program_bank();
-        if let Some(program) = state.program() {
-            for (cc, value) in [0, 32].into_iter().zip(bank) {
-                if let Some(value) = value {
-                    result.send(&mut sink, &[0xb0 | channel, cc, value]);
-                }
-            }
-            result.send(&mut sink, &[0xc0 | channel, program]);
-        }
-        for (cc, selected) in [0, 32].into_iter().zip(bank) {
-            if state.program().is_none() || state.controller(cc) != selected {
-                control(&mut result, &mut sink, state, channel, cc);
-            }
-        }
-        for (cc, value) in state.known_controllers() {
-            if !matches!(
-                cc,
-                0 | 6 | 32 | 38 | 64 | 66 | 69 | 96..=101 | 120 | 121 | 123
-            ) {
-                result.send(&mut sink, &[0xb0 | channel, cc, value]);
-            }
-        }
-        if state.controller(6).is_some() || state.controller(38).is_some() {
-            for cc in [101, 100, 99, 98] {
-                result.send(&mut sink, &[0xb0 | channel, cc, 127]);
-            }
-            for cc in [6, 38] {
-                control(&mut result, &mut sink, state, channel, cc);
-            }
-        }
-        let families = match state.parameter_family() {
-            Some(ParameterFamily::Nrpn) => [ParameterFamily::Rpn, ParameterFamily::Nrpn],
-            _ => [ParameterFamily::Nrpn, ParameterFamily::Rpn],
-        };
-        for family in families {
-            selectors(&mut result, &mut sink, state, channel, family);
-        }
-        let pitch = state.pitch_bend();
-        result.send(
+        restore_channel_into(
+            &mut result,
+            state.channel(channel).expect("MIDI channel"),
+            channel,
             &mut sink,
-            &[0xe0 | channel, (pitch & 127) as u8, (pitch >> 7) as u8],
         );
-        if let Some(pressure) = state.pressure() {
-            result.send(&mut sink, &[0xd0 | channel, pressure]);
-        }
-        for cc in [64, 69] {
-            control(&mut result, &mut sink, state, channel, cc);
-        }
-        let sostenuto = state.controller(66).unwrap_or(0);
-        result.send(
-            &mut sink,
-            &[
-                0xb0 | channel,
-                66,
-                if sostenuto >= 64 { 0 } else { sostenuto },
-            ],
-        );
-        if sostenuto >= 64 {
-            for (key, note) in state.projected_notes() {
-                if note.sostenuto() && note.velocity() != 0 {
-                    result.send(&mut sink, &[0x90 | channel, key, note.velocity()]);
-                }
-            }
-            result.send(&mut sink, &[0xb0 | channel, 66, sostenuto]);
-        }
-        for (key, note) in state.projected_notes() {
-            if note.velocity() != 0 && !(sostenuto >= 64 && note.sostenuto()) {
-                result.send(&mut sink, &[0x90 | channel, key, note.velocity()]);
-            }
-        }
-        for (key, note) in state.projected_notes() {
-            if note.velocity() != 0 && !note.held() {
-                result.send(&mut sink, &[0x80 | channel, key, 0]);
-            }
-            if let Some(pressure) = note.pressure() {
-                result.send(&mut sink, &[0xa0 | channel, key, pressure]);
-            }
-        }
     }
     result
+}
+
+/// Emit one channel's projected state in restoration order.
+pub fn restore_channel(
+    state: &ChannelState,
+    channel: u8,
+    mut sink: impl FnMut(&[u8]) -> Result<(), Error>,
+) -> Emission {
+    let mut result = Emission::default();
+    if channel >= 16 {
+        result.first_error = Some(Error::InvalidShape);
+        return result;
+    }
+    restore_channel_into(&mut result, state, channel, &mut sink);
+    result
+}
+fn restore_channel_into(
+    result: &mut Emission,
+    state: &ChannelState,
+    channel: u8,
+    sink: &mut impl FnMut(&[u8]) -> Result<(), Error>,
+) {
+    result.parameter_history_untracked |= state.parameter_history_untracked();
+    if state.reset_controllers_seen() {
+        result.send(sink, &[0xb0 | channel, 121, 0]);
+    }
+    let bank = state.program_bank();
+    if let Some(program) = state.program() {
+        for (cc, value) in [0, 32].into_iter().zip(bank) {
+            if let Some(value) = value {
+                result.send(sink, &[0xb0 | channel, cc, value]);
+            }
+        }
+        result.send(sink, &[0xc0 | channel, program]);
+    }
+    for (cc, selected) in [0, 32].into_iter().zip(bank) {
+        if state.program().is_none() || state.controller(cc) != selected {
+            control(result, sink, state, channel, cc);
+        }
+    }
+    for (cc, value) in state.known_controllers() {
+        if !matches!(
+            cc,
+            0 | 6 | 32 | 38 | 64 | 66 | 69 | 96..=101 | 120 | 121 | 123
+        ) {
+            result.send(sink, &[0xb0 | channel, cc, value]);
+        }
+    }
+    if state.controller(6).is_some() || state.controller(38).is_some() {
+        for cc in [101, 100, 99, 98] {
+            result.send(sink, &[0xb0 | channel, cc, 127]);
+        }
+        for cc in [6, 38] {
+            control(result, sink, state, channel, cc);
+        }
+    }
+    let families = match state.parameter_family() {
+        Some(ParameterFamily::Nrpn) => [ParameterFamily::Rpn, ParameterFamily::Nrpn],
+        _ => [ParameterFamily::Nrpn, ParameterFamily::Rpn],
+    };
+    for family in families {
+        selectors(result, sink, state, channel, family);
+    }
+    let pitch = state.pitch_bend();
+    result.send(
+        sink,
+        &[0xe0 | channel, (pitch & 127) as u8, (pitch >> 7) as u8],
+    );
+    if let Some(pressure) = state.pressure() {
+        result.send(sink, &[0xd0 | channel, pressure]);
+    }
+    for cc in [64, 69] {
+        control(result, sink, state, channel, cc);
+    }
+    let sostenuto = state.controller(66).unwrap_or(0);
+    result.send(
+        sink,
+        &[
+            0xb0 | channel,
+            66,
+            if sostenuto >= 64 { 0 } else { sostenuto },
+        ],
+    );
+    if sostenuto >= 64 {
+        for (key, note) in state.projected_notes() {
+            if note.sostenuto() && note.velocity() != 0 {
+                result.send(sink, &[0x90 | channel, key, note.velocity()]);
+            }
+        }
+        result.send(sink, &[0xb0 | channel, 66, sostenuto]);
+    }
+    for (key, note) in state.projected_notes() {
+        if note.velocity() != 0 && !(sostenuto >= 64 && note.sostenuto()) {
+            result.send(sink, &[0x90 | channel, key, note.velocity()]);
+        }
+    }
+    for (key, note) in state.projected_notes() {
+        if note.velocity() != 0 && !note.held() {
+            result.send(sink, &[0x80 | channel, key, 0]);
+        }
+        if let Some(pressure) = note.pressure() {
+            result.send(sink, &[0xa0 | channel, key, pressure]);
+        }
+    }
 }

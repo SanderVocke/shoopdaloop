@@ -634,7 +634,7 @@ pub enum CompositeKind {
     Script,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalControlState {
     pub default_recording_action: DefaultRecordingAction,
@@ -1128,6 +1128,9 @@ pub struct HostPortState {
     pub direction: PortDirection,
 }
 
+pub const MASTER_BUS_NAME: &str = "Master";
+pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+
 pub const MAX_BUS_NAME_BYTES: usize = 128;
 pub const MAX_BUSES: usize = 64;
 pub const MAX_BUS_CHANNELS: usize = 64;
@@ -1320,7 +1323,7 @@ impl Default for WaveformChannelState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MidiEventState {
     pub frame: u32,
@@ -1428,6 +1431,13 @@ pub enum IoTaskStatus {
     Completed,
     Cancelled,
     Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileOutputOutcome {
+    Saved,
+    DownloadHandedOff,
+    Cancelled,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1776,7 +1786,7 @@ pub enum BackendCapability {
     BusFx,
     LatencyCompensation,
     TakeAlignment,
-    /// Replacing loop content from imports, generated click tracks and duplication.
+    /// Replacing loop content from standalone audio/MIDI imports.
     LoopContentImport,
     /// Editing loop length, start offset and pre-play.
     LoopTimingEdits,
@@ -1784,10 +1794,12 @@ pub enum BackendCapability {
     BusManagement,
     AudioDriverSwitching,
     MidiInjection,
+    LoopDuplication,
+    ClickTrackInsertion,
 }
 
 impl BackendCapability {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::SessionCapture,
         Self::SessionContentLoad,
         Self::CompositeLoops,
@@ -1804,6 +1816,8 @@ impl BackendCapability {
         Self::BusManagement,
         Self::AudioDriverSwitching,
         Self::MidiInjection,
+        Self::LoopDuplication,
+        Self::ClickTrackInsertion,
     ];
 
     const fn bit(self) -> u32 {
@@ -1836,6 +1850,8 @@ impl BackendCapability {
                 "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
+            Self::LoopDuplication => "The session engine does not yet support loop duplication.",
+            Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
         }
     }
 }
@@ -2487,9 +2503,21 @@ pub enum AppIntent {
     RequestSaveSession,
     RequestLoadSessionPicker,
     RequestLoadSessionUrl,
+    RequestLoadSessionSource {
+        source: String,
+    },
     LoadSessionBytes {
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
+    },
+    CompleteIoInput {
+        task_id: TaskId,
+        name: String,
+        bytes: Arc<Vec<u8>>,
+    },
+    CompleteIoOutput {
+        task_id: TaskId,
+        outcome: FileOutputOutcome,
     },
     ConfirmSampleRateConversion {
         task_id: TaskId,
@@ -2547,7 +2575,7 @@ pub enum AppIntent {
     ImportLoopAudioBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
     RequestLoopMidiExport {
@@ -2560,7 +2588,7 @@ pub enum AppIntent {
     ImportLoopMidiBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
 }
@@ -2750,6 +2778,9 @@ impl AppIntent {
             Self::LoadSessionBytes { .. } => "session.load_bytes",
             Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
+            Self::CompleteIoInput { .. } => "io.input_complete",
+            Self::RequestLoadSessionSource { .. } => "session.load_source",
+            Self::CompleteIoOutput { .. } => "io.output_complete",
             Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
             Self::CancelIoTask { .. } => "io.cancel",
             Self::FailIoTask { .. } => "io.fail",

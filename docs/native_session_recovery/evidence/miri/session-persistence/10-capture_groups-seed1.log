@@ -1,0 +1,7 @@
+    Finished `test` profile [unoptimized] target(s) in 0.13s
+     Running tests/capture_groups.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/capture_groups-7bf1c1e90b32cf02)
+
+running 1 test
+test clearing_idle_content_preserves_snapshot_owners_revision_and_prepared_group_reuse ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.76s

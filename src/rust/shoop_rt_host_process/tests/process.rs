@@ -301,7 +301,10 @@ fn both_carriers_preserve_the_shared_transition_signal_and_playback_contracts() 
     assert_eq!(reference.audio[1][0].len(), 32);
     assert_eq!(reference.audio[1][0][0], 0.073);
     assert_eq!(
-        reference.midi[0].iter().map(|e| e.time).collect::<Vec<_>>(),
+        reference.midi[0]
+            .iter()
+            .map(|e| e.frame)
+            .collect::<Vec<_>>(),
         vec![8, 12]
     );
     for transport in [Transport::Socket, Transport::SharedMemory] {
@@ -649,8 +652,8 @@ fn trace(stack: &mut impl TraceStack) -> TraceResult {
         .inject_midi_input(
             midi.track_id,
             &[BackendMidiEvent {
-                time: 0,
-                data: vec![0x90, 60, 100],
+                frame: 0,
+                data: vec![0x90, 60, 100].into(),
             }],
         )
         .unwrap();
@@ -660,8 +663,8 @@ fn trace(stack: &mut impl TraceStack) -> TraceResult {
         .inject_midi_input(
             midi.track_id,
             &[BackendMidiEvent {
-                time: 0,
-                data: vec![0x80, 60, 0],
+                frame: 0,
+                data: vec![0x80, 60, 0].into(),
             }],
         )
         .unwrap();
@@ -721,8 +724,8 @@ fn trace(stack: &mut impl TraceStack) -> TraceResult {
         .expect("MIDI export")
         .channels
         .into_iter()
-        .map(|c| c.events)
-        .collect();
+        .map(|c| c.events.as_ref().clone())
+        .collect::<Vec<_>>();
     TraceResult {
         states,
         audio: audio_data,

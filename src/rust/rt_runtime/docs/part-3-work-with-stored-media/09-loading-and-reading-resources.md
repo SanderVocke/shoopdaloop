@@ -64,6 +64,23 @@ Finish checks completeness; it does **not** publish. `commit(upload)` checks the
 
 For running-host uploads, use `Command::resource(Request::BeginUpload/Write/Finish/Commit)` and inspect their owning completions. Read/write buffers larger than `page_bytes` are refused before queue admission. MIDI upload chunks also need parser validation allowance, discussed in [Seeking and reading MIDI events](../part-3-work-with-stored-media/11-seeking-and-reading-midi-events.md).
 
+### Reuse a full buffer for a shorter write
+
+`Request::WritePrefix { upload, offset, bytes, used }` writes only `bytes[..used]`
+and returns the entire owning buffer in the reliable completion, including on
+refusal or cancellation. Require `0 < used <= bytes.len()`; the full buffer must
+fit `page_bytes`, even when the used prefix is shorter. The prefix must still fit
+the current page remainder, declared upload length, and callback copy/validation
+allowances. Unused buffer bytes are neither validated nor appended. This permits
+a fixed control-side buffer pool without allocating a new short buffer for the
+last chunk.
+
+Recover the buffer before reuse and advance the offset only after an Applied
+completion. A rejected prefix leaves the upload position unchanged, although
+validation work already performed remains charged. Queue depth does not replenish
+callback budgets. The [resource execution tests](../../tests/resource_execution.rs)
+exercise a shorter final prefix, unchanged trailing bytes, and refusal/reuse.
+
 ## 3. Pin and read the intended revision
 
 Acquire a snapshot before replacement, then derive a `ReadIndex`. After publishing the second revision, the example checks:

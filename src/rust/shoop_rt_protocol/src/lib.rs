@@ -3,17 +3,21 @@
 #![forbid(unsafe_code)]
 
 pub mod codec;
+pub mod content;
 pub mod host;
 pub mod ids;
 pub mod message;
+pub mod replacement;
 pub mod schema;
 
+pub use content::{ContentChunk, ContentDescription};
 pub use ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 pub use message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
+pub use replacement::{ReplacementEdit, StripPreset};
 pub use schema::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 /// Longest host port or device name, in UTF-8 bytes.
 pub const MAX_NAME_BYTES: usize = 64;
 /// Most audio channels per strip direction reported in telemetry.
