@@ -560,13 +560,11 @@ fn decode_standard_midi_inner(
                 if let Some(budget) = &mut budget {
                     budget.event()?;
                 }
-                let mut data = Vec::new();
-                let mut writer = crate::limits::LimitedWriter::new(
-                    &mut data,
-                    limits.map_or(u64::MAX, |l| l.packet_bytes),
-                );
+                let mut writer =
+                    crate::limits::OutputCursor::new(limits.map_or(u64::MAX, |l| l.packet_bytes));
                 live.write_std(&mut writer)
-                    .map_err(|error| SessionError::Archive(error.to_string()))?;
+                    .map_err(|e| SessionError::Archive(e.to_string()))?;
+                let data = writer.into_inner();
                 if let Some(budget) = &mut budget {
                     budget.charge(data.len() as u64)?;
                 }

@@ -1786,7 +1786,7 @@ pub enum BackendCapability {
     BusFx,
     LatencyCompensation,
     TakeAlignment,
-    /// Replacing loop content from imports, generated click tracks and duplication.
+    /// Replacing loop content from standalone audio/MIDI imports.
     LoopContentImport,
     /// Editing loop length, start offset and pre-play.
     LoopTimingEdits,
@@ -1794,10 +1794,12 @@ pub enum BackendCapability {
     BusManagement,
     AudioDriverSwitching,
     MidiInjection,
+    LoopDuplication,
+    ClickTrackInsertion,
 }
 
 impl BackendCapability {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::SessionCapture,
         Self::SessionContentLoad,
         Self::CompositeLoops,
@@ -1814,6 +1816,8 @@ impl BackendCapability {
         Self::BusManagement,
         Self::AudioDriverSwitching,
         Self::MidiInjection,
+        Self::LoopDuplication,
+        Self::ClickTrackInsertion,
     ];
 
     const fn bit(self) -> u32 {
@@ -1846,6 +1850,8 @@ impl BackendCapability {
                 "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
+            Self::LoopDuplication => "The session engine does not yet support loop duplication.",
+            Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
         }
     }
 }

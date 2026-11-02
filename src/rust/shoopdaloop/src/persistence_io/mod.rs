@@ -4,7 +4,15 @@ use shoop_app_api::*;
 use shoop_app_client::{runtime::*, Client, Error, State};
 use shoop_app_protocol::{persistence as transfer, persistence_image as image, *};
 use shoop_persistence_codec::codec::{Decoded, Value, Work};
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
+
+static NEXT_FILE_TASK: AtomicU64 = AtomicU64::new(1 << 32);
 
 mod jobs;
 use jobs::{CodecExecutor, CodecJob};
@@ -40,7 +48,6 @@ struct Task {
     output_warning: String,
 }
 pub(super) struct Provider {
-    next: u64,
     task: Option<Task>,
     phase: Phase,
     worker: Option<CodecJob>,
@@ -53,7 +60,6 @@ pub(super) struct Provider {
 impl Provider {
     pub fn new() -> Self {
         Self {
-            next: 1 << 32,
             task: None,
             phase: Phase::Idle,
             worker: None,
@@ -120,11 +126,21 @@ impl Provider {
                 0,
             )
         };
-        let id = self.next;
-        self.next = self
-            .next
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("file task identity exhausted"))?;
+        let mut id = NEXT_FILE_TASK.load(Ordering::Relaxed);
+        loop {
+            let next = id
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("file task identity exhausted"))?;
+            match NEXT_FILE_TASK.compare_exchange_weak(
+                id,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(current) => id = current,
+            }
+        }
         self.task = Some(Task {
             view: IoTaskState {
                 id: TaskId::from_raw(id),
@@ -151,6 +167,14 @@ impl Provider {
         Ok(())
     }
     fn work(&mut self, work: Work) -> Result<()> {
+        let kind = match &work {
+            Work::Assemble(_) => "assemble",
+            Work::Decode { .. } => "decode",
+            Work::Resample { .. } => "resample",
+            Work::Prepare { .. } => "prepare",
+            Work::Encode { .. } => "encode",
+        };
+        tracing::debug!(kind, "frontend.persistence.codec_start");
         ensure!(
             self.worker.is_none(),
             "file codec worker is still reclaiming an earlier task"
@@ -166,6 +190,11 @@ impl Provider {
             self.worker = None;
         }
         if let Some(task) = &mut self.task {
+            tracing::debug!(
+                task = task.view.id.raw(),
+                ?status,
+                "frontend.persistence.finished"
+            );
             task.view.status = status;
             task.view.message = message.into();
             task.view.progress = 1.;
@@ -342,13 +371,7 @@ impl Provider {
                 if matches!(self.phase, Phase::Committed(_) | Phase::Output) { self.task.as_mut().unwrap().view.message = "Already handed off; awaiting the actual operation or file-output result".into(); }
                 else { self.finish(IoTaskStatus::Cancelled, "Cancelled before commit; session unchanged"); }
             }
-            AppIntent::FailIoTask { task_id, message } if self.matches(task_id) && !matches!(self.phase, Phase::Committed(_)) => self.finish(IoTaskStatus::Failed, message),
-            AppIntent::CompleteIoOutput { task_id, outcome } if self.matches(task_id) && matches!(self.phase, Phase::Output) => {
-                let (status, message) = match outcome { FileOutputOutcome::Saved => (IoTaskStatus::Completed, "File saved"), FileOutputOutcome::DownloadHandedOff => (IoTaskStatus::Completed, "Download handed to the browser; disk completion is controlled by the browser"), FileOutputOutcome::Cancelled => (IoTaskStatus::Cancelled, "File output cancelled") };
-                let warning = &self.task.as_ref().unwrap().output_warning;
-                let message = if status == IoTaskStatus::Completed && !warning.is_empty() { format!("{message}. {warning}") } else { message.to_owned() };
-                self.finish(status, message);
-            }
+            intent @ (AppIntent::FailIoTask { .. } | AppIntent::CompleteIoOutput { .. }) => self.complete_platform(intent),
             AppIntent::FailIoWorkflow { kind, message } if self.task.as_ref().is_some_and(|t| t.view.kind == kind) && matches!(self.phase, Phase::Input) => self.finish(IoTaskStatus::Failed, message),
             _ => {}
         }
@@ -386,7 +409,31 @@ impl PersistenceIo for Provider {
                 | AppIntent::FailIoWorkflow { .. }
         )
     }
+    fn complete_platform(&mut self, intent: AppIntent) {
+        match intent {
+            AppIntent::FailIoTask { task_id, message }
+                if self.matches(task_id) && !matches!(self.phase, Phase::Committed(_)) =>
+            {
+                self.finish(IoTaskStatus::Failed, message)
+            }
+            AppIntent::CompleteIoOutput { task_id, outcome }
+                if self.matches(task_id) && matches!(self.phase, Phase::Output) =>
+            {
+                let (status, message) = match outcome { FileOutputOutcome::Saved => (IoTaskStatus::Completed, "File saved"), FileOutputOutcome::DownloadHandedOff => (IoTaskStatus::Completed, "Download handed to the browser; disk completion is controlled by the browser"), FileOutputOutcome::Cancelled => (IoTaskStatus::Cancelled, "File output cancelled") };
+                let warning = &self.task.as_ref().unwrap().output_warning;
+                let message = if status == IoTaskStatus::Completed && !warning.is_empty() {
+                    format!("{message}. {warning}")
+                } else {
+                    message.to_owned()
+                };
+                self.finish(status, message);
+            }
+            _ => {}
+        }
+    }
     fn apply(&mut self, intent: AppIntent, state: &SessionSnapshot, scripts: bool) -> Result<()> {
+        let _span =
+            tracing::debug_span!("frontend.persistence.intent", intent = intent.kind()).entered();
         let starting = matches!(
             intent,
             AppIntent::RequestSaveSession
@@ -459,6 +506,11 @@ impl PersistenceIo for Provider {
         Ok(())
     }
     fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool) {
+        let _span = tracing::trace_span!(
+            "frontend.persistence.pump",
+            task = self.task.as_ref().map_or(0, |t| t.view.id.raw())
+        )
+        .entered();
         if session_scripts
             && self.task.as_ref().is_some_and(|task| {
                 matches!(

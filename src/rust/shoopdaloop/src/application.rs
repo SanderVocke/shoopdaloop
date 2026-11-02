@@ -269,7 +269,12 @@ mod native {
     }
     impl ApplicationHandle {
         pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
-            if self.status().state != shoop_app_client::State::Ready {
+            if self.status().state != shoop_app_client::State::Ready
+                && !matches!(
+                    intent,
+                    AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+                )
+            {
                 return Err(DispatchError::Disconnected);
             }
             self.sender

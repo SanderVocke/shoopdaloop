@@ -2357,7 +2357,8 @@ impl ApplicationModel {
                 | LoopAction::ComposeIntoParallel(_) => require(Capability::CompositeLoops),
                 LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
                     require(Capability::SessionCapture)?;
-                    require(Capability::LoopContentImport)
+                    require(Capability::LoopContentImport)?;
+                    require(Capability::LoopDuplication)
                 }
                 _ => Ok(()),
             },
@@ -2439,8 +2440,11 @@ impl ApplicationModel {
             AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::ImportLoopAudioBytes { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. }
-            | AppIntent::ImportLoopMidiBytes { .. }
-            | AppIntent::GenerateClickTrack { .. } => require(Capability::LoopContentImport),
+            | AppIntent::ImportLoopMidiBytes { .. } => require(Capability::LoopContentImport),
+            AppIntent::GenerateClickTrack { .. } => {
+                require(Capability::LoopContentImport)?;
+                require(Capability::ClickTrackInsertion)
+            }
             _ => Ok(()),
         }
     }
@@ -26261,6 +26265,21 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     name: "take.wav".to_owned(),
                     bytes: Arc::new(Vec::new()),
                     update_loop_length: true,
+                },
+            ),
+            (
+                BackendCapability::LoopDuplication,
+                AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::Duplicate,
+                },
+            ),
+            (
+                BackendCapability::ClickTrackInsertion,
+                AppIntent::GenerateClickTrack {
+                    loop_id,
+                    request: Default::default(),
                 },
             ),
             (

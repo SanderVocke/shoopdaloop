@@ -458,10 +458,9 @@ impl Service {
                 return Err(CommandError::unsupported(BackendCapability::CompositeLoops))
             }
             LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
-                return Err(CommandError {
-                    reason: Refusal::Unsupported,
-                    message: "Loop content duplication is unavailable in this backend".to_owned(),
-                })
+                return Err(CommandError::unsupported(
+                    BackendCapability::LoopDuplication,
+                ))
             }
         }
         Ok(Effect::None)

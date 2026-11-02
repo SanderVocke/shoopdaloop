@@ -42,13 +42,20 @@ impl OutputCursor {
 }
 impl std::io::Write for OutputCursor {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if self
+        let end = self
             .inner
             .position()
             .checked_add(bytes.len() as u64)
-            .is_none_or(|n| n > self.limit)
-        {
-            return Err(std::io::Error::other("output file budget exceeded"));
+            .filter(|n| *n <= self.limit)
+            .and_then(|n| usize::try_from(n).ok())
+            .ok_or_else(|| std::io::Error::other("output file budget exceeded"))?;
+        let buffer = self.inner.get_mut();
+        if end > buffer.capacity() {
+            let maximum = usize::try_from(self.limit).unwrap_or(usize::MAX);
+            let capacity = end.max(buffer.capacity().saturating_mul(2)).min(maximum);
+            buffer
+                .try_reserve_exact(capacity - buffer.len())
+                .map_err(std::io::Error::other)?;
         }
         self.inner.write(bytes)
     }
@@ -349,5 +356,23 @@ impl<'de> Visitor<'de> for EventSeed<'_> {
             order: order.ok_or_else(|| de::Error::missing_field("order"))?,
             data: data.ok_or_else(|| de::Error::missing_field("data"))?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Seek, SeekFrom, Write};
+    #[shoop_wasm_test_support::shoop_test]
+    fn output_capacity_never_grows_past_its_byte_budget() {
+        let mut output = OutputCursor::new(70);
+        output.write_all(&[1; 45]).unwrap();
+        output.write_all(&[2; 20]).unwrap();
+        assert!(output.inner.get_ref().capacity() <= 70);
+        assert!(output.write_all(&[3; 6]).is_err());
+        assert_eq!(output.inner.get_ref().len(), 65);
+        output.seek(SeekFrom::Start(u64::MAX)).unwrap();
+        assert!(output.write_all(&[4]).is_err());
+        assert_eq!(output.inner.get_ref().len(), 65);
     }
 }

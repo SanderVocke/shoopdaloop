@@ -69,12 +69,16 @@ impl Service {
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             status: status(&self.observed.status),
             audio_drivers: self.observed.audio_drivers.clone(),
-            capabilities: BackendCapabilities::NONE.with(
+            capabilities: [
                 BackendCapability::MidiInjection,
-                self.backend
-                    .capabilities()
-                    .supports(BackendCapability::MidiInjection),
-            ),
+                BackendCapability::SessionCapture,
+                BackendCapability::SessionContentLoad,
+                BackendCapability::LoopContentImport,
+            ]
+            .into_iter()
+            .fold(BackendCapabilities::NONE, |caps, capability| {
+                caps.with(capability, self.backend.capabilities().supports(capability))
+            }),
             connections: Arc::new(connections),
             track_processors: Arc::from([]),
             bus_processors: Arc::from([]),

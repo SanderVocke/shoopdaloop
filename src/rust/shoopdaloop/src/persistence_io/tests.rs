@@ -84,6 +84,280 @@ async fn client_queue_holds_one_raw_file_input_without_blocking_controls() {
     );
     fixture.runtime.dispatch(input()).unwrap();
 }
+
+#[shoop_test]
+async fn public_core_file_capabilities_keep_duplication_and_click_insertion_refused() {
+    let mut fixture = Fixture::new();
+    let state = fixture.runtime.snapshot();
+    for capability in [
+        BackendCapability::SessionCapture,
+        BackendCapability::SessionContentLoad,
+        BackendCapability::LoopContentImport,
+    ] {
+        assert!(state.capabilities.supports(capability));
+    }
+    assert!(!state
+        .capabilities
+        .supports(BackendCapability::LoopDuplication));
+    assert!(!state
+        .capabilities
+        .supports(BackendCapability::ClickTrackInsertion));
+    let track = &state.tracks[0];
+    fixture.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: track.loops[0].id,
+        action: LoopAction::Duplicate,
+    });
+    fixture.dispatch(AppIntent::GenerateClickTrack {
+        loop_id: track.loops[0].id,
+        request: Default::default(),
+    });
+    for _ in 0..8 {
+        fixture.step();
+        idle().await;
+    }
+    let state = fixture.runtime.snapshot();
+    for capability in [
+        BackendCapability::LoopDuplication,
+        BackendCapability::ClickTrackInsertion,
+    ] {
+        assert!(
+            state
+                .notifications
+                .iter()
+                .any(|notice| notice.message.contains(capability.unavailable_reason())),
+            "{:?}",
+            state.notifications
+        );
+    }
+    assert!(fixture.runtime.take_file_request().is_none());
+    assert!(fixture.runtime.take_file_output().is_none());
+}
+
+#[shoop_test]
+async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_public_route() {
+    use shoop_session::*;
+    let mut f = Fixture::new();
+    f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Mapped".into(),
+        audio_channels: 2,
+        midi: true,
+    }));
+    let state = f
+        .until(|s| s.tracks.len() == 2 && s.tracks[1].loops.len() == 8)
+        .await;
+    let loop_id = state.tracks[1].loops[0].id;
+    let source = LoopAudio {
+        sample_rate: 2000,
+        channels: vec![
+            LoopAudioChannel {
+                label: "Left".into(),
+                role: "direct".into(),
+                samples: vec![0.25; 128],
+            },
+            LoopAudioChannel {
+                label: "Right".into(),
+                role: "direct".into(),
+                samples: vec![-0.5; 128],
+            },
+        ],
+    };
+    let converted = resample_loop_audio(&source, 1000).unwrap();
+    f.dispatch(AppIntent::ImportLoopAudioBytes {
+        loop_id,
+        name: "source.shoop-audio".into(),
+        bytes: encode_loop_audio(&source).unwrap().into(),
+        update_loop_length: true,
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingSampleRateConfirmation)
+        })
+        .await;
+    assert_eq!(state.tracks[1].loops[0].length_frames, 0);
+    f.dispatch(AppIntent::ConfirmSampleRateConversion {
+        task_id: state.io_task.as_ref().unwrap().id,
+        accept: true,
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingChannelMapping)
+        })
+        .await;
+    f.dispatch(AppIntent::ConfirmAudioChannelMapping {
+        task_id: state.io_task.as_ref().unwrap().id,
+        source_for_destination: vec![1, 0],
+    });
+    f.until(|s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|t| t.status == IoTaskStatus::Completed)
+    })
+    .await;
+    let midi = ExactMidi {
+        sample_rate: 2000,
+        length_frames: 128,
+        start_state: Vec::new(),
+        events: vec![
+            ExactMidiEvent {
+                frame: 32,
+                order: 0,
+                data: vec![0x90, 60, 100],
+            },
+            ExactMidiEvent {
+                frame: 96,
+                order: 1,
+                data: vec![0xf0, 0x7d, 1, 2, 3, 4, 0xf7],
+            },
+        ],
+    };
+    let smf = encode_standard_midi(&midi).unwrap();
+    let expected_midi = decode_standard_midi(&smf.bytes, 1000).unwrap();
+    f.dispatch(AppIntent::ImportLoopMidiBytes {
+        loop_id,
+        name: "source.mid".into(),
+        bytes: smf.bytes.into(),
+        update_loop_length: false,
+    });
+    f.until(|s| {
+        s.io_task.as_ref().is_some_and(|t| {
+            t.kind == IoTaskKind::ImportLoopMidi && t.status == IoTaskStatus::Completed
+        })
+    })
+    .await;
+    assert_eq!(
+        f.runtime.snapshot().tracks[1].loops[0].length_frames,
+        converted.channels[0].samples.len() as u64
+    );
+    f.dispatch(AppIntent::RequestSaveSession);
+    let file = f.output().await;
+    let saved = decode_session(&file.bytes).unwrap();
+    assert_eq!(saved.document.sample_rate, 1000);
+    let audio = saved
+        .media
+        .values()
+        .filter_map(|p| match p {
+            MediaPayload::Audio(a) => Some(&a.samples),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        audio,
+        [
+            &converted.channels[1].samples,
+            &converted.channels[0].samples
+        ]
+    );
+    assert!(saved
+        .media
+        .values()
+        .any(|p| matches!(p, MediaPayload::Midi(m) if m == &expected_midi)));
+    assert_eq!(f.runtime.snapshot().tracks[1].loops[0].id, loop_id);
+}
+
+#[shoop_test]
+async fn callbacks_from_a_replaced_client_runtime_cannot_load_into_the_new_runtime() {
+    let mut old = Fixture::new();
+    old.dispatch(AppIntent::RequestLoadSessionPicker);
+    let old_id = old.runtime.take_file_request().unwrap().task_id;
+    drop(old);
+    let mut current = Fixture::new();
+    current.dispatch(AppIntent::RequestLoadSessionPicker);
+    let current_id = current.runtime.take_file_request().unwrap().task_id;
+    assert_ne!(old_id, current_id);
+    let epoch = current
+        .runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .persistence_epoch;
+    let bytes: Arc<Vec<u8>> = shoop_session::encode_session(
+        &shoop_session::SessionBundle::new(shoop_session::SessionDocument::empty(1000)),
+        "test",
+    )
+    .unwrap()
+    .into();
+    current.dispatch(AppIntent::CompleteIoInput {
+        task_id: old_id,
+        name: "late.shoop".into(),
+        bytes: Arc::clone(&bytes),
+    });
+    for _ in 0..8 {
+        current.step();
+        idle().await;
+    }
+    assert_eq!(
+        current
+            .runtime
+            .client()
+            .snapshot()
+            .unwrap()
+            .persistence_epoch,
+        epoch
+    );
+    assert_eq!(
+        current.runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Running
+    );
+    current.dispatch(AppIntent::CompleteIoInput {
+        task_id: current_id,
+        name: "current.shoop".into(),
+        bytes,
+    });
+    current
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::Completed)
+        })
+        .await;
+    assert_eq!(
+        current
+            .runtime
+            .client()
+            .snapshot()
+            .unwrap()
+            .persistence_epoch,
+        epoch + 1
+    );
+}
+#[shoop_test]
+async fn platform_output_reports_its_real_completion_after_the_backend_connection_is_lost() {
+    let mut f = Fixture::new();
+    f.dispatch(AppIntent::RequestSaveSession);
+    let output = f.output().await;
+    f.service.detach(ConnectionId(1));
+    f.runtime.fail("backend connection lost".into());
+    f.runtime.tick(STEP);
+    assert_eq!(
+        f.runtime.snapshot().io_task.as_ref().unwrap().status,
+        IoTaskStatus::Running
+    );
+    f.runtime
+        .dispatch(AppIntent::CompleteIoOutput {
+            task_id: output.task_id,
+            outcome: FileOutputOutcome::Saved,
+        })
+        .unwrap();
+    let state = f.runtime.snapshot();
+    assert_eq!(
+        state.io_task.as_ref().unwrap().status,
+        IoTaskStatus::Completed
+    );
+    assert!(state
+        .io_task
+        .as_ref()
+        .unwrap()
+        .message
+        .to_ascii_lowercase()
+        .contains("saved"));
+    assert_eq!(f.runtime.client().state(), shoop_app_client::State::Lost);
+}
+
 impl Fixture {
     fn new() -> Self {
         let (render, client) = OfflineRender::new(&EngineDescription {

@@ -576,6 +576,7 @@ impl TrackWidget {
                         &[
                             BackendCapability::SessionCapture,
                             BackendCapability::LoopContentImport,
+                            BackendCapability::LoopDuplication,
                         ],
                         egui::Button::new("Clone into"),
                     )
@@ -913,9 +914,12 @@ impl TrackWidget {
                 menu.response.on_hover_text("Track options");
 
                 if state.is_sync {
-                    let click_track = add_with_capability(
+                    let click_track = add_with_capabilities(
                         ui,
-                        BackendCapability::LoopContentImport,
+                        &[
+                            BackendCapability::LoopContentImport,
+                            BackendCapability::ClickTrackInsertion,
+                        ],
                         egui::Button::new(egui::RichText::new("C")),
                     )
                     .on_hover_text("Generate a click track");
@@ -1604,6 +1608,15 @@ mod tests {
         assert_eq!(
             click(&context, &mut widget, &sync, shortcut).click_track_requested,
             Some(loop_id)
+        );
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::FULL.with(BackendCapability::ClickTrackInsertion, false),
+        );
+        let _ = frame(&context, &mut widget, &sync, Vec::new());
+        assert_eq!(
+            click(&context, &mut widget, &sync, shortcut).click_track_requested,
+            None
         );
         assert!(widget.test_fx_rect.is_none());
     }

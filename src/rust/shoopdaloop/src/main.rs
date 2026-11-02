@@ -428,6 +428,7 @@ struct UnifiedApp {
     session_url_prompt_open: bool,
     session_url_task: Option<shoop_egui::TaskId>,
     file_input: platform_input::InputSlot,
+    file_output: platform_input::OutputSlot,
     session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
@@ -577,6 +578,7 @@ impl UnifiedApp {
             session_url_prompt_open: false,
             session_url_task: None,
             file_input: platform_input::InputSlot::default(),
+            file_output: platform_input::OutputSlot::default(),
             session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
             browser_settings_test: BrowserSettingsSelfTest::from_args(args),
@@ -1522,10 +1524,24 @@ impl UnifiedApp {
             self.handle_file_request(request);
         }
         while let Some(output) = self.runtime.take_file_output() {
+            let lease = match self.file_output.reserve() {
+                Ok(lease) => lease,
+                Err(error) => {
+                    let intent = AppIntent::FailIoTask {
+                        task_id: output.task_id,
+                        message: error.to_string(),
+                    };
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let _ = self.pending_file_intent_tx.send(intent);
+                    #[cfg(target_arch = "wasm32")]
+                    self.pending_file_intents.borrow_mut().push_back(intent);
+                    continue;
+                }
+            };
             #[cfg(not(target_arch = "wasm32"))]
-            save_file_output(output, self.pending_file_intent_tx.clone());
+            save_file_output(output, self.pending_file_intent_tx.clone(), lease);
             #[cfg(target_arch = "wasm32")]
-            save_file_output(output, Rc::clone(&self.pending_file_intents));
+            save_file_output(output, Rc::clone(&self.pending_file_intents), lease);
         }
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
     }
@@ -1594,7 +1610,11 @@ fn load_ephemeral_script_path(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save_file_output(output: application::ApplicationFileOutput, sender: Sender<AppIntent>) {
+fn save_file_output(
+    output: application::ApplicationFileOutput,
+    sender: Sender<AppIntent>,
+    lease: std::sync::Arc<()>,
+) {
     let Some(path) = rfd::FileDialog::new()
         .set_file_name(&output.suggested_name)
         .save_file()
@@ -1606,6 +1626,7 @@ fn save_file_output(output: application::ApplicationFileOutput, sender: Sender<A
         return;
     };
     std::thread::spawn(move || {
+        let _lease = lease;
         let result = match atomic_replace(&path, &output.bytes, output.task_id.raw()) {
             Ok(()) => AppIntent::CompleteIoOutput {
                 task_id: output.task_id,
@@ -1650,6 +1671,21 @@ fn session_source_name(source: &str) -> String {
         .to_owned()
 }
 
+fn reserve_file_bytes(bytes: &mut Vec<u8>, additional: usize, limit: u64) -> anyhow::Result<()> {
+    let required = bytes
+        .len()
+        .checked_add(additional)
+        .filter(|n| *n as u64 <= limit)
+        .ok_or_else(|| anyhow::anyhow!("file input exceeds its byte budget"))?;
+    if required > bytes.capacity() {
+        let capacity = required
+            .max(bytes.capacity().saturating_mul(2))
+            .min(usize::try_from(limit).unwrap_or(usize::MAX));
+        bytes.try_reserve_exact(capacity - bytes.len())?;
+    }
+    Ok(())
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn read_session_input(path: &Path, lease: &platform_input::InputLease) -> anyhow::Result<Vec<u8>> {
     use std::io::Read;
@@ -1673,6 +1709,7 @@ fn read_session_input(path: &Path, lease: &platform_input::InputLease) -> anyhow
             bytes.len() as u64 + n as u64 <= limit,
             "file exceeds the 512 MiB input limit"
         );
+        reserve_file_bytes(&mut bytes, n, limit)?;
         bytes.extend_from_slice(&chunk[..n]);
     }
     if bytes.len() as u64 > limit {
@@ -1851,7 +1888,7 @@ impl SessionDownload {
                     (self.bytes.len() as u64).saturating_add(chunk.len() as u64) <= limit,
                     "download exceeds the 512 MiB input limit"
                 );
-                self.bytes.try_reserve(chunk.len())?;
+                reserve_file_bytes(&mut self.bytes, chunk.len(), limit)?;
                 self.bytes.extend_from_slice(&chunk);
                 Ok(None)
             }
@@ -1861,20 +1898,49 @@ impl SessionDownload {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(1);
     let extension = path.extension().unwrap_or_default().to_string_lossy();
-    let temporary = path.with_extension(format!("{extension}.tmp-{task_id}"));
-    let _ = std::fs::remove_file(&temporary);
-    let result = (|| {
-        let mut file = std::fs::OpenOptions::new()
+    let mut opened = None;
+    for _ in 0..16 {
+        let serial = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
+        let temporary = path.with_extension(format!(
+            "{extension}.tmp-{task_id}-{}-{serial}",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(&temporary)?;
+            .open(&temporary)
+        {
+            Ok(file) => {
+                opened = Some((temporary, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let (temporary, mut file) = opened.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "could not reserve a unique temporary output file",
+        )
+    })?;
+    let mut renamed = false;
+    let result = (|| {
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
         std::fs::rename(&temporary, path)?;
+        renamed = true;
         #[cfg(unix)]
         if let Some(parent) = path.parent() {
+            let parent = if parent.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                parent
+            };
             std::fs::File::open(parent)
                 .and_then(|directory| directory.sync_all())
                 .map_err(|error| {
@@ -1885,7 +1951,7 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
         }
         Ok(())
     })();
-    if result.is_err() {
+    if result.is_err() && !renamed {
         let _ = std::fs::remove_file(&temporary);
     }
     result
@@ -1895,8 +1961,10 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
 fn save_file_output(
     output: application::ApplicationFileOutput,
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
+    lease: std::sync::Arc<()>,
 ) {
     wasm_bindgen_futures::spawn_local(async move {
+        let _lease = lease;
         let result = if let Some(file) = rfd::AsyncFileDialog::new()
             .set_file_name(&output.suggested_name)
             .save_file()
@@ -4422,7 +4490,11 @@ mod tests {
         });
         assert_eq!(
             snapshot.capabilities,
-            BackendCapabilities::NONE.with(BackendCapability::MidiInjection, true)
+            BackendCapabilities::NONE
+                .with(BackendCapability::MidiInjection, true)
+                .with(BackendCapability::SessionCapture, true)
+                .with(BackendCapability::SessionContentLoad, true)
+                .with(BackendCapability::LoopContentImport, true)
         );
         assert!(!runtime.audio_preview_available());
         assert_eq!(snapshot.status.sample_rate, 48_000);
@@ -5468,15 +5540,27 @@ mod tests {
         assert!(!script_kind_has_file_identity(ScriptKind::Ephemeral));
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn file_input_capacity_stays_within_the_limit_when_growth_would_double_it() {
+        let mut bytes = vec![1; 45];
+        reserve_file_bytes(&mut bytes, 20, 70).unwrap();
+        bytes.extend_from_slice(&[2; 20]);
+        assert!(bytes.capacity() <= 70);
+        assert!(reserve_file_bytes(&mut bytes, 6, 70).is_err());
+        assert_eq!(bytes.len(), 65);
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("session.shoop");
         std::fs::write(&target, b"old").unwrap();
+        let unrelated = directory.path().join("session.shoop.tmp-7");
+        std::fs::write(&unrelated, b"unrelated").unwrap();
         atomic_replace(&target, b"new", 7).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
-        assert!(!directory.path().join("session.shoop.tmp-7").exists());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"unrelated");
 
         let missing_target = directory.path().join("missing").join("session.shoop");
         assert!(atomic_replace(&missing_target, b"partial", 8).is_err());
@@ -5486,6 +5570,12 @@ mod tests {
             .join("missing")
             .join("session.shoop.tmp-8")
             .exists());
+        let blocked = directory.path().join("blocked.shoop");
+        std::fs::create_dir(&blocked).unwrap();
+        std::fs::write(blocked.join("keep"), b"keep").unwrap();
+        assert!(atomic_replace(&blocked, b"partial", 9).is_err());
+        assert_eq!(std::fs::read(blocked.join("keep")).unwrap(), b"keep");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -404,6 +404,10 @@ pub(crate) fn attempt_capability(
                 length: Some(4),
             },
         ),
+        BackendCapability::LoopDuplication | BackendCapability::ClickTrackInsertion => backend
+            .capabilities()
+            .require(capability)
+            .map_err(anyhow::Error::msg),
         BackendCapability::LoopTimingEdits => backend.set_loop_length(loop_id, 4),
         BackendCapability::BusManagement => backend
             .create_bus(BackendBusRequest {

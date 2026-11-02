@@ -879,10 +879,10 @@ pub(crate) fn encode_zip_bounded<T: Serialize>(
 }
 
 fn limited_json(value: &impl Serialize, limit: u64) -> Result<Vec<u8>, SessionError> {
-    let mut bytes = Vec::new();
-    serde_json::to_writer(LimitedWriter::new(&mut bytes, limit), value)
+    let mut bytes = OutputCursor::new(limit);
+    serde_json::to_writer(&mut bytes, value)
         .map_err(|e| SessionError::ResourceLimit(e.to_string()))?;
-    Ok(bytes)
+    Ok(bytes.into_inner())
 }
 
 fn inspect_central_directory(bytes: &[u8], limits: DecodeLimits) -> Result<(), SessionError> {

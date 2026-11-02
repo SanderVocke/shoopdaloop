@@ -5,6 +5,22 @@ use std::sync::{
 };
 
 #[derive(Default)]
+pub struct OutputSlot {
+    active: Weak<()>,
+}
+impl OutputSlot {
+    pub fn reserve(&mut self) -> anyhow::Result<Arc<()>> {
+        anyhow::ensure!(
+            self.active.upgrade().is_none(),
+            "A file save is still finishing; retry when it completes"
+        );
+        let lease = Arc::new(());
+        self.active = Arc::downgrade(&lease);
+        Ok(lease)
+    }
+}
+
+#[derive(Default)]
 pub struct InputSlot {
     active: Option<Weak<State>>,
 }
@@ -75,6 +91,14 @@ impl InputLease {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn output_handoff_keeps_its_slot_until_the_platform_writer_finishes() {
+        let mut slot = OutputSlot::default();
+        let lease = slot.reserve().unwrap();
+        assert!(slot.reserve().is_err());
+        drop(lease);
+        assert!(slot.reserve().is_ok());
+    }
     #[shoop_wasm_test_support::shoop_test]
     fn cancellation_keeps_the_slot_reserved_until_the_reader_releases_it() {
         let mut slot = InputSlot::default();

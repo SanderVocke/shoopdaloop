@@ -5,8 +5,9 @@
 Implementation in progress; the app transfer foundation and engine content-upload
 foundation are implemented, along with the underlying atomic full-owner replacement
 cut and deferred processor presets.
-Engine, adapter and service core capture/replacement are implemented. Public file
-workflows, cooperative large-media conversion and final deployment gates remain
+Engine, adapter, service and public client core file workflows are implemented.
+Cooperative media preparation, bounded codecs and callback lifetime fencing are
+in place. Packaged deployment, loss/reconciliation coverage and final gates remain
 pending. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -467,14 +468,14 @@ whitespace checks pass. Packaged AudioWorklet workflows, adapter preparation/MID
 copy progression, complete codec quotas, capability admission and final gates are
 still pending.
 
-- [ ] Restore WAV/loop-audio/exact-MIDI/SMF decoding and channel mapping/selection
+- [x] Restore WAV/loop-audio/exact-MIDI/SMF decoding and channel mapping/selection
   using existing semantics, with bounded expansion and clear malformed-file errors.
-- [ ] Restore sample-rate confirmation/resampling and revalidate target, host rate,
+- [x] Restore sample-rate confirmation/resampling and revalidate target, host rate,
   topology/content revision and capacity after dialogs/background work finish.
 - [x] Upload/stage media through the service and commit one validated replacement.
   Preserve opposite media, loop identity and unaffected metadata; apply only the
   reference-prescribed offset resets and requested loop-length update.
-- [ ] Separate restored import support from still-refused duplication/click actions
+- [x] Separate restored import support from still-refused duplication/click actions
   when exposing capabilities. Leave their explicit ledger follow-ups intact.
 
 Verification: actual client -> service -> adapter -> RT imports, exact export/import
@@ -588,12 +589,12 @@ with legacy fixtures and warning-denying frontend/codec builds pass. The worker'
 repeated end-of-stream response is also tested natively. Browser worker execution,
 cooperative assembly/validation and complete codec quota preflight remain pending.
 
-- [ ] Decode/migrate/validate the complete bundle and inventory all required
+- [x] Decode/migrate/validate the complete bundle and inventory all required
   capabilities before staging. Reject unsupported documents as a whole, with all
   useful diagnostics; preserve future-format and corruption checks.
-- [ ] Confirm rate conversion, resample media and timing with existing helpers,
+- [x] Confirm rate conversion, resample media and timing with existing helpers,
   then revalidate the current host/session before service admission.
-- [ ] Stage complete core topology, content and app state. Atomically publish the
+- [x] Stage complete core topology, content and app state. Atomically publish the
   engine candidate and corresponding service mappings/projection using a session
   epoch; resolve selection/target, sync, routes, controls and external connection
   intent without exposing old/new mixtures or retargeting queued old-session work.
@@ -626,15 +627,15 @@ warning-denying affected native build pass; test policy and whitespace checks pa
 An initial companion test failed under restricted local networking and passes
 with local networking enabled, without changing its workload or deadlines.
 
-- [ ] Replace only the relevant refusals in `shoop_app_client/src/runtime.rs`;
+- [x] Replace only the relevant refusals in `shoop_app_client/src/runtime.rs`;
   restore existing menus, file/URL loaders, exports, mapping/rate dialogs, progress,
   cancel and error handling through `shoopdaloop`'s platform adapters.
-- [ ] Keep files, URLs and dialogs client-local. Handle native failed/cancelled
+- [x] Keep files, URLs and dialogs client-local. Handle native failed/cancelled
   writes without corrupting the existing file; distinguish browser download
   handoff from a guarantee that bytes reached disk. Ignore stale task callbacks.
-- [ ] Verify the same workflows through existing public Lua entry points where
+- [x] Verify the same workflows through existing public Lua entry points where
   exposed; keep Lua VM execution and script/resource workflows in their proper scope.
-- [ ] Update user/developer docs and the ledger with restored subitems and precise
+- [x] Update user/developer docs and the ledger with restored subitems and precise
   remaining P01/P02/P11 dependencies. Add production UI tests alongside retained
   reference fixtures; expose capabilities only after the complete route works.
 - [x] Add `feat/backend-replacement` to the PR base filters in build/test, CodeQL
@@ -647,6 +648,31 @@ Verification: native typed/socket/shared-memory workflows and browser main-threa
 service/AudioWorklet scenarios, including actual file output/input, URL failure,
 cancel/failed-save/retry and Lua completion/refusal behavior. Run the parity checker
 and workflow/config checks; confirm feature-branch PRs run checks without deployment.
+
+Public-admission milestone: production file menus now expose session capture/load
+and standalone loop import/export. Separate duplication and click-insertion flags
+keep those P11 actions explicitly unavailable. The ledger preserves every open
+row and names restored core behavior and remaining dependencies.
+
+Platform callbacks use process-wide file task identities. Native codecs share a
+bounded two-worker/eight-queued-job pool; dropped runtimes cancel queued work and
+discard draining results. Input/output leases survive runtime changes. Output
+completion is client-local even after backend loss. Native atomic replacement
+owns a unique sibling temporary file and never removes another writer's file.
+Encoded output and input vector growth also respect their capacity ceilings.
+
+Lua inventory: the public `shoop_control` function table has no session-file,
+New Session, import or export entry point. Its existing controls continue through
+the shared client command route. The complete Lua API-shape/invocation and client
+control suites pass; script-local resource reads retain their separate behavior.
+No new file API or session-owned script persistence is implied (P16 remains open).
+
+Validation: all 2477 native tests pass (four platform/optional skips), including
+nine production file regressions covering
+resampling, channel reorder, SMF import, stale callbacks across runtimes and actual
+output completion after backend loss. The warning-denying workspace build, tracing
+and parity inventories and Rust test policy pass. Node passes 11 client, six codec, 40 session and 33 frontend tests.
+Packaged deployment checks and final CI remain pending.
 
 ### Stage 7 — final end-to-end validation and PR
 

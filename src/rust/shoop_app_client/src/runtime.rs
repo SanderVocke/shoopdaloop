@@ -18,6 +18,7 @@ pub trait Delivery {
 /// session client or service to file formats or platform APIs.
 pub trait PersistenceIo {
     fn handles(&self, intent: &AppIntent) -> bool;
+    fn complete_platform(&mut self, intent: AppIntent);
     fn apply(
         &mut self,
         intent: AppIntent,
@@ -195,6 +196,25 @@ impl Runtime {
         None
     }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
+        if matches!(
+            intent,
+            AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+        ) {
+            let handled = self
+                .persistence_io
+                .as_ref()
+                .is_some_and(|provider| provider.handles(&intent));
+            if handled {
+                self.persistence_io
+                    .as_mut()
+                    .unwrap()
+                    .complete_platform(intent);
+            } else if let AppIntent::FailIoTask { message, .. } = intent {
+                self.notify(message);
+            }
+            self.project();
+            return Ok(());
+        }
         if self.client.state() != State::Ready || self.controls_suspended {
             return Err(Error::Disconnected);
         }
@@ -1068,8 +1088,8 @@ impl Runtime {
                     AppIntent::RequestLoopAudioImportPicker { .. }
                     | AppIntent::ImportLoopAudioBytes { .. }
                     | AppIntent::RequestLoopMidiImportPicker { .. }
-                    | AppIntent::ImportLoopMidiBytes { .. }
-                    | AppIntent::GenerateClickTrack { .. } => BackendCapability::LoopContentImport,
+                    | AppIntent::ImportLoopMidiBytes { .. } => BackendCapability::LoopContentImport,
+                    AppIntent::GenerateClickTrack { .. } => BackendCapability::ClickTrackInsertion,
                     AppIntent::SetLoopTimeline { .. } => BackendCapability::LoopTimingEdits,
                     AppIntent::SetTrackLatency { .. } => BackendCapability::LatencyCompensation,
                     AppIntent::SetTakeAlignment { .. }

@@ -25,6 +25,7 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Metadata | 8 MiB, including the persistence manifest |
 | Decoded media | 256 MiB aggregate audio/MIDI, independent of the old 32 MiB media-view message |
 | Input/output file | 512 MiB compressed/encoded bytes; reject before decoding/output allocation beyond this budget |
+| Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; fixed stereo Master and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
@@ -35,7 +36,9 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
 | Client file input | One platform reader plus one queued raw input, each ≤512 MiB; one codec task. Cancellation fences callbacks and checks file chunks. Browser URL cancellation wakes the pending future; a native reader keeps its slot until it exits or the HTTP timeout fires. A new input refuses while that slot is closing |
 | Archive expansion | At most 4097 entries and `5 × 256 MiB + 8 MiB` expanded bytes; metadata manifests remain 8 MiB. The factor allows decimal MIDI JSON overhead. Check declarations before extraction and actual shapes/counts while decoding |
-| Codec scratch | One codec job. Retain at most one 512 MiB input/output, 256 MiB decoded image, 256 MiB conversion image and the expanded-byte ceiling of encoded payload scratch. Exact MIDI JSON streams from ZIP into charged packet/event builders; JSON strings are capped at 8 MiB. PCM extraction uses at most one additional 256 MiB entry; WAV deinterleaves directly into its final channels |
+| Native codec lifetime | One active task per client; process-wide pool of two workers with eight queued jobs. Dropped clients cancel queued work and discard draining results. Overload refuses explicitly |
+| Platform output | One outstanding writer/download per UI root, retained across runtime changes; task IDs remain unique across client runtimes and completion is client-local even after backend loss |
+| Codec scratch | Per codec job: Retain at most one 512 MiB input/output, 256 MiB decoded image, 256 MiB conversion image and the expanded-byte ceiling of encoded payload scratch. Exact MIDI JSON streams from ZIP into charged packet/event builders; JSON strings are capped at 8 MiB. PCM extraction uses at most one additional 256 MiB entry; WAV deinterleaves directly into its final channels |
 | Source audio shape | At most 256 channels before mapping to the current core; empty and wider sources refuse explicitly. Source labels/roles share the metadata budget |
 | MIDI file decoding | Packet ≤1 MiB, event ≤1 million, initial packets ≤16,384 per channel, all charged before vector growth. Lazy SMF parsing also bounds source tracks and meta events; tempo lookups use a sorted cumulative map |
 | RT content and activation | Preflight currently free pages/leases/indexes, logical/physical slots, graph/topology candidates and reliable receipts; count retained old content and capture pins |
@@ -111,8 +114,8 @@ Engine node presets are prepared under a token/next epoch and become active duri
 processing only after that epoch is published; cancellation must discard presets
 before another graph can publish. The engine wire job and adapter replacement are
 implemented, along with service capture, retained reads, fenced admission and
-host-owned completion. Client file conversion and platform workflows remain
-pending. No rejected preparation may
+host-owned completion. Client file conversion and platform workflows use the public service route;
+packaged deployment and final integration validation remain pending. No rejected preparation may
 leave old playback faded/stopped or mappings
 partially replaced.
 
