@@ -276,7 +276,7 @@ impl SettingsDialog {
         let mut open = self.open;
         let mut close_without_save = false;
         egui::Window::new("Settings")
-            .id(egui::Id::new("settings_dialog"))
+            .id(egui::Id::unique("settings_dialog"))
             .open(&mut open)
             .resizable(true)
             .default_size([660.0, 560.0])
@@ -828,7 +828,7 @@ impl SettingsDialog {
             return;
         }
         egui::Window::new("Confirm audio driver switch")
-            .id(egui::Id::new(("audio_driver_confirmation", audio.switch.request_id)))
+            .id(egui::Id::unique(("audio_driver_confirmation", audio.switch.request_id)))
             .collapsible(false)
             .resizable(false)
             .show(context, |ui| {
@@ -1427,7 +1427,7 @@ impl SettingsDialog {
             };
             let mut open = true;
             egui::Window::new(format!("{} — Log", script.name))
-                .id(egui::Id::new(("script_log", script_id)))
+                .id(egui::Id::unique(("script_log", script_id)))
                 .open(&mut open)
                 .default_size([520.0, 300.0])
                 .show(context, |ui| show_script_log(ui, script));
@@ -1452,7 +1452,7 @@ impl SettingsDialog {
             };
             let mut open = true;
             egui::Window::new(format!("{} — Documentation", script.name))
-                .id(egui::Id::new(("script_documentation", script_id)))
+                .id(egui::Id::unique(("script_documentation", script_id)))
                 .open(&mut open)
                 .default_size([640.0, 500.0])
                 .show(context, |ui| {
@@ -1496,7 +1496,7 @@ impl SettingsDialog {
             };
             let mut open = true;
             egui::Window::new(format!("{} — Status", script.name))
-                .id(egui::Id::new(("script_status", script_id)))
+                .id(egui::Id::unique(("script_status", script_id)))
                 .open(&mut open)
                 .default_width(420.0)
                 .resizable(true)
@@ -1856,7 +1856,7 @@ mod tests {
         crate::initialize(&context);
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
-        let window_id = egui::Id::new("settings_dialog");
+        let window_id = egui::Id::unique("settings_dialog");
         let mut widths = Vec::new();
         for _ in 0..12 {
             let mut ignored_output_1 = context.run_ui(

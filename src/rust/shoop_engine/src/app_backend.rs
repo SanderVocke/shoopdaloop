@@ -853,7 +853,7 @@ impl CpalBackend {
                 let cb_xruns_in = xruns.clone();
                 let cb_capture_overruns = capture_overruns.clone();
                 input_stream = Some(input_device.build_input_stream(
-                    &input_config,
+                    input_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
                         crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
                             let _driver_kind = shoop_tracing::realtime_span!(
@@ -985,7 +985,7 @@ impl CpalBackend {
         let mut engine = engine;
 
         let output_stream = output_device.build_output_stream(
-            &output_config,
+            output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
                     let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);

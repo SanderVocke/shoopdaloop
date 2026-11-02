@@ -1758,7 +1758,7 @@ impl AppWidget {
         let mut accept = false;
         let mut cancel = false;
         egui::Window::new("Run Lua script?")
-            .id(egui::Id::new("ephemeral_script_confirmation"))
+            .id(egui::Id::unique("ephemeral_script_confirmation"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .collapsible(false)
             .resizable(false)
@@ -1813,7 +1813,7 @@ impl AppWidget {
         let mut accept = false;
         let mut cancel = false;
         let modal =
-            egui::Modal::new(egui::Id::new("new_session_confirmation")).show(context, |ui| {
+            egui::Modal::new(egui::Id::unique("new_session_confirmation")).show(context, |ui| {
                 ui.heading("Create a new session?");
                 ui.label("All tracks and unsaved session data will be discarded.");
                 ui.add_space(6.0);
@@ -1887,7 +1887,7 @@ impl AppWidget {
         let mut submit = false;
         let mut cancel = false;
         egui::Window::new("Add bus")
-            .id(egui::Id::new("add_bus_dialog"))
+            .id(egui::Id::unique("add_bus_dialog"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -2135,7 +2135,7 @@ impl AppWidget {
             return;
         }
         egui::Window::new("Session and loop I/O")
-            .id(egui::Id::new(("io_task", task.id.raw())))
+            .id(egui::Id::unique(("io_task", task.id.raw())))
             .collapsible(false)
             .resizable(false)
             .show(context, |ui| {
@@ -2319,7 +2319,7 @@ impl AppWidget {
         let mut accepted = false;
         let mut cancelled = false;
         egui::Window::new("Add track")
-            .id(egui::Id::new("add_track_dialog"))
+            .id(egui::Id::unique("add_track_dialog"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
@@ -2744,7 +2744,7 @@ impl AppWidget {
         let mut open = true;
         let mut acknowledged = false;
         egui::Window::new("Tracing stopped")
-            .id(egui::Id::new("tracing_stopped"))
+            .id(egui::Id::unique("tracing_stopped"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -3351,6 +3351,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn active_tracing_status_offers_save_action() {
         let context = egui::Context::default();
+        crate::initialize(&context);
         let mut widget = AppWidget::default();
         widget.set_tracing_status(TracingStatus {
             available: true,

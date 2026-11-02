@@ -52,6 +52,7 @@ src/rust/shoop_engine/src/builtin_fx/drive.rs,realtime_processing,instrumented_i
 src/rust/shoop_engine/src/builtin_fx/eq.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
 src/rust/shoop_engine/src/builtin_fx/modulation.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
 src/rust/shoop_engine/src/builtin_fx/reverb.rs,realtime_processing,instrumented_indirect,Runs only within the traced enabled Built-in FX rack boundary.
+src/rust/shoop_engine/src/carla_completion.rs,realtime_processing,instrumented_indirect,Completion waits run within traced Carla transport boundaries.
 src/rust/shoop_engine/src/carla_native.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/carla_processor.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/carla_shared_memory.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

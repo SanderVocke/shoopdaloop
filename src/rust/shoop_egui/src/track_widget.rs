@@ -561,7 +561,7 @@ impl TrackWidget {
         if target != target_state.id {
             return;
         }
-        let popup_id = ui.id().with(("loop_drop_menu", target));
+        let popup_id = ui.scope_id().with(("loop_drop_menu", target));
         let source_is_in_track = self.loop_widgets.contains_key(&source);
         let mut action = None;
         let mut confirm_clone = false;
@@ -627,7 +627,7 @@ impl TrackWidget {
             .unwrap_or("target loop");
         let mut confirmed = false;
         let mut cancelled = false;
-        let modal = egui::Modal::new(egui::Id::new(("clone_loop_confirmation", state.id))).show(
+        let modal = egui::Modal::new(egui::Id::unique(("clone_loop_confirmation", state.id))).show(
             context,
             |ui| {
                 ui.heading("Replace loop data?");
@@ -978,7 +978,7 @@ impl TrackWidget {
         }
         let mut open = self.latency_dialog_open;
         let _window = egui::Window::new(format!("{} — Latency compensation", state.name))
-            .id(egui::Id::new(("track_latency_compensation", state.id)))
+            .id(egui::Id::unique(("track_latency_compensation", state.id)))
             .open(&mut open)
             .resizable(true)
             .default_width(360.0)
@@ -1198,7 +1198,7 @@ impl TrackWidget {
         }
         let mut open = self.fx_logs_open;
         egui::Window::new(format!("{} FX logs", state.name))
-            .id(egui::Id::new(("track_fx_logs", state.id)))
+            .id(egui::Id::unique(("track_fx_logs", state.id)))
             .open(&mut open)
             .resizable(true)
             .show(context, |ui| {

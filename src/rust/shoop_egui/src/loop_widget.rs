@@ -14,7 +14,7 @@ use crate::{
 const TOUCH_MODE_ID: &str = "shoop_touch_mode";
 
 pub(crate) fn set_touch_mode(context: &egui::Context, enabled: bool) {
-    context.data_mut(|data| data.insert_temp(egui::Id::new(TOUCH_MODE_ID), enabled));
+    context.data_mut(|data| data.insert_temp(egui::Id::unique(TOUCH_MODE_ID), enabled));
 }
 
 #[derive(Debug, Default)]
@@ -127,7 +127,7 @@ fn paint_drag_preview(
     let rect = egui::Rect::from_center_size(pointer, size);
     let layer_id = egui::LayerId::new(
         egui::Order::Tooltip,
-        ui.id().with(("loop_drag_preview", state.id)),
+        ui.scope_id().with(("loop_drag_preview", state.id)),
     );
     let mut painter = ui.ctx().layer_painter(layer_id);
     painter.set_opacity(0.62);
@@ -178,7 +178,7 @@ fn loop_icon_button(
     color: egui::Color32,
     tooltip: &str,
 ) -> egui::Response {
-    let response = ui.interact(rect, ui.id().with(id_salt), egui::Sense::click());
+    let response = ui.interact(rect, ui.scope_id().with(id_salt), egui::Sense::click());
     paint_loop_button_background(ui, &response, rect);
     paint_icon(ui.painter(), rect.center(), icon, icon_size, color);
     tooltip_above(response, tooltip)
@@ -446,7 +446,7 @@ impl LoopWidget {
         response.dnd_set_drag_payload(LoopDragPayload { loop_id: state.id });
         let popup_id = egui::Popup::default_response_id(&response);
         let touch_mode = ui.ctx().data(|data| {
-            data.get_temp::<bool>(egui::Id::new(TOUCH_MODE_ID))
+            data.get_temp::<bool>(egui::Id::unique(TOUCH_MODE_ID))
                 .unwrap_or(false)
         });
         let hover_allowed = hover_allowed && !touch_mode;
@@ -648,7 +648,7 @@ impl LoopWidget {
         };
         let icon_response = ui.interact(
             icon_click_rect,
-            ui.id().with("loop_state_icon"),
+            ui.scope_id().with("loop_state_icon"),
             egui::Sense::click(),
         );
         context_requested |= icon_response.secondary_clicked();
@@ -748,8 +748,11 @@ impl LoopWidget {
                 result.actions.push(LoopWidgetAction::PlayClicked);
             }
             if primitive {
-                let record_response =
-                    ui.interact(record_rect, ui.id().with("record"), egui::Sense::click());
+                let record_response = ui.interact(
+                    record_rect,
+                    ui.scope_id().with("record"),
+                    egui::Sense::click(),
+                );
                 paint_loop_button_background(ui, &record_response, record_rect);
                 paint_icon(
                     ui.painter(),
@@ -808,7 +811,7 @@ impl LoopWidget {
         }
 
         if show_play_popup {
-            let popup = egui::Area::new(ui.id().with("play_dry_popup"))
+            let popup = egui::Area::new(ui.scope_id().with("play_dry_popup"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(play_popup_rect.min)
                 .constrain(false)
@@ -845,7 +848,7 @@ impl LoopWidget {
             }
         }
         if show_record_popup {
-            let popup = egui::Area::new(ui.id().with("record_variants_popup"))
+            let popup = egui::Area::new(ui.scope_id().with("record_variants_popup"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(record_popup_rect.min)
                 .constrain(false)
@@ -907,7 +910,7 @@ impl LoopWidget {
         if let Some(dial_rect) = dial_rect {
             let dial_response = ui.interact(
                 dial_rect,
-                ui.id().with("loop_gain"),
+                ui.scope_id().with("loop_gain"),
                 egui::Sense::click_and_drag(),
             );
             context_requested |= dial_response.secondary_clicked();
@@ -950,7 +953,7 @@ impl LoopWidget {
                     && hover_allowed
                     && (balance_hovered || now < self.balance_popup_until)
                 {
-                    let popup = egui::Area::new(ui.id().with("loop_balance_popup"))
+                    let popup = egui::Area::new(ui.scope_id().with("loop_balance_popup"))
                         .order(egui::Order::Foreground)
                         .fixed_pos(balance_rect.min)
                         .constrain(false)
