@@ -21,7 +21,8 @@
 #define configCHECK_FOR_STACK_OVERFLOW 2
 #define configUSE_MALLOC_FAILED_HOOK 1
 #define configUSE_IDLE_HOOK 0
-#define configUSE_TICK_HOOK 0
+#define configUSE_TICK_HOOK 1
+#define configSTACK_DEPTH_TYPE uint32_t
 #define configUSE_TIMERS 1
 #define configTIMER_TASK_PRIORITY 4
 #define configTIMER_QUEUE_LENGTH 32

@@ -338,7 +338,7 @@ fn file_wait(
         std::thread::sleep(Duration::from_millis(2));
     }
 }
-fn file_done(
+pub(crate) fn file_done(
     handle: &crate::application::ApplicationHandle,
     kind: shoop_egui::IoTaskKind,
 ) -> Result<std::sync::Arc<shoop_egui::AppSnapshot>> {
@@ -357,7 +357,7 @@ fn file_done(
     println!("Persistence file task: {kind:?} confirmed");
     Ok(state)
 }
-fn file_save(
+pub(crate) fn file_save(
     handle: &crate::application::ApplicationHandle,
     path: &std::path::Path,
 ) -> Result<shoop_session::SessionBundle> {

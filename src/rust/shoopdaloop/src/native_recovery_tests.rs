@@ -275,14 +275,33 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
 
 #[shoop_wasm_test_support::shoop_test]
 fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_shutdown() {
+    remote_profile_ui_workflow(None);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+#[ignore = "requires the QEMU firmware integration runner"]
+fn zynq_firmware_ui_workflow() {
+    remote_profile_ui_workflow(Some(
+        std::env::var_os("SHOOP_ZYNQ_PROFILE")
+            .expect("firmware profile")
+            .into(),
+    ));
+}
+
+fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("lan"), b"1").unwrap();
     shoop_host::remote::create_credential(&root.path().join("host.key")).unwrap();
-    let mut host = peer("host_peer", root.path());
-    let path = root.path().join("profile.json");
+    let is_external = external.is_some();
+    let mut host = if is_external {
+        None
+    } else {
+        Some(peer("host_peer", root.path()))
+    };
+    let path = external.unwrap_or_else(|| root.path().join("profile.json"));
     let deadline = Instant::now() + Duration::from_secs(15);
     while !path.exists() {
-        assert!(host.0.try_wait().unwrap().is_none());
+        assert!(host.as_mut().unwrap().0.try_wait().unwrap().is_none());
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -384,7 +403,9 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     output.textures_delta.clear();
     drop(app);
     std::thread::sleep(Duration::from_millis(100));
-    assert!(host.0.try_wait().unwrap().is_none());
+    if let Some(host) = &mut host {
+        assert!(host.0.try_wait().unwrap().is_none());
+    }
     let mut app = open();
     let state = wait(&app.runtime, |state| {
         state.tracks.len() == 2 && state.status.processed_frames > before
@@ -396,6 +417,33 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     wait(&app.runtime, |state| {
         state.tracks[1].loops[0].mode == LoopMode::Playing
     });
+    if is_external {
+        let saved = root.path().join("firmware.shoop");
+        let before = crate::session_probe::file_save(&app.runtime.handle, &saved).unwrap();
+        app.runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "firmware.shoop".into(),
+                bytes: std::fs::read(&saved).unwrap().into(),
+            })
+            .unwrap();
+        crate::session_probe::file_done(&app.runtime.handle, shoop_egui::IoTaskKind::LoadSession)
+            .unwrap();
+        let after = crate::session_probe::file_save(
+            &app.runtime.handle,
+            &root.path().join("reloaded.shoop"),
+        )
+        .unwrap();
+        assert!(
+            before.media.values().eq(after.media.values()),
+            "UI file round trip changed firmware media"
+        );
+        let state = app.runtime.snapshot();
+        assert_eq!(state.tracks[1].name, "LAN recording");
+        loop_action(&mut app.runtime, &state, LoopAction::PlayClicked);
+        wait(&app.runtime, |state| {
+            state.tracks[1].loops[0].mode == LoopMode::Playing
+        });
+    }
     app.exit.open = true;
     app.exit.start(
         app.runtime.remote_entry.clone().unwrap(),
@@ -416,9 +464,11 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     }
     drop(app);
     let deadline = Instant::now() + Duration::from_secs(5);
-    while host.0.try_wait().unwrap().is_none() {
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(5));
+    if let Some(host) = &mut host {
+        while host.0.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
     assert!(path.exists() && root.path().join("host.key").exists());
 }

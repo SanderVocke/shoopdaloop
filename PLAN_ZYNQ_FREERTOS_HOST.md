@@ -24,7 +24,7 @@ recovery/resource CI.
 - Preserve the trusted-LAN branch's endpoint ownership, fresh synchronization,
   exclusive authority, accepted-work lifetime and confirmed-shutdown semantics.
 - Deliver documented development commands, reproducible evidence and a green PR
-  against the starting branch.
+  against `feat/backend-replacement`.
 
 Physical audio/codec/FPGA integration, physical-board certification, flash/SD
 production boot packaging, SMP/AMP, plugins, new engine features, network audio,
@@ -153,8 +153,8 @@ the 1 GiB ceiling and acceptance criteria above remain fixed.
 | PS DDR allocation | Initial maximum |
 | --- | ---: |
 | Firmware, BSP/C/FreeRTOS heaps, task/exception stacks, DMA and all lwIP pools | 128 MiB |
-| Rust arena, including engine recording pages and all service/staging allocations | 512 MiB |
-| Unassigned headroom, unavailable to either allocator | 384 MiB |
+| Rust arena, including engine recording pages and all service/staging allocations | 768 MiB |
+| Unassigned headroom, unavailable to either allocator | 128 MiB |
 | Total | 1024 MiB |
 
 Start with 8 tracks, 32 loop slots, 2 channels and a **128 MiB recording-page
@@ -218,21 +218,21 @@ versions, command line, ELF/map and probe results as CI artifacts.
 
 Depends on Gate 1; complete before exposing unrestricted persistence ingress.
 
-- [ ] Link the Rust static library into the proven C runtime. Implement allocator
+- [x] Link the Rust static library into the proven C runtime. Implement allocator
   synchronization/alignment, panic/OOM/assert reporting, monotonic time and the
   narrow FFI/task handoff. Audit cache/DMA regions and FPU/task context settings.
-- [ ] Prepare the real engine, bounded buffers and MIDI cleanup outputs. Run its
+- [x] Prepare the real engine, bounded buffers and MIDI cleanup outputs. Run its
   render owner in the timer-notified task; expose driver status, frames, xruns
   and cleanup completion. Provide a FreeRTOS-aware `EngineClock` where waiting
   is needed, without busy-waiting and starving render/network tasks.
-- [ ] Implement the initial memory profile and explicit configurable admission
+- [x] Implement the initial memory profile and explicit configurable admission
   limits across ingress, service capture/assembly and backend preparation. Preserve
   native defaults. Reject excessive declarations and cumulative object/event
   growth before allocation, including capture/export and replacement overlap.
-- [ ] Add fixture-only deterministic input, frame control and output inspection;
+- [x] Add fixture-only deterministic input, frame control and output inspection;
   guard allocation/deallocation during rendering and report heap/stack usage.
   Keep both periodic-production and controlled-test modes exercised.
-- [ ] Verify prepared render calls, scheduling progress and actual sample/MIDI
+- [x] Verify prepared render calls, scheduling progress and actual sample/MIDI
   processing under task switching. Test allocator alignment, time wrap, pool
   exhaustion and failed preparation leaving the current session intact. Commit.
 
@@ -245,24 +245,24 @@ rather than relying on a fatal allocator failure.
 
 Depends on Stage 2.
 
-- [ ] Implement the nonblocking lwIP `ByteIo` adapter and bounded accept/auth
+- [x] Implement the nonblocking lwIP `ByteIo` adapter and bounded accept/auth
   progression. Integrate the existing stream, handshake, session and management
   pumps with their greetings, authority, heartbeat and scheduling contracts.
-- [ ] Compose `shoop_app`, `shoop_rt_backend` and the in-process engine endpoint;
+- [x] Compose `shoop_app`, `shoop_rt_backend` and the in-process engine endpoint;
   implement target initialization, settings/status reporting, detach and confirmed
   stop/cleanup. Provide explicit token/profile generation for development without
   requiring a guest filesystem or native PID registry.
-- [ ] Add a headless native integration client using the public app protocol/client
+- [x] Add a headless native integration client using the public app protocol/client
   path, not only the lower-level engine protocol. Verify attach, coherent snapshot,
   track/loop creation, controls, deterministic record/playback, exact media and
   management queries. Check dummy output samples/MIDI as well as reported state.
-- [ ] Demonstrate the existing native UI connecting via a remote profile, editing
+- [x] Demonstrate the existing native UI connecting via a remote profile, editing
   loops, displaying host settings and saving/loading a supported session. Keep
   settings local/remote ownership and unsupported-capability reporting intact.
-- [ ] Round-trip 40 MiB of audio plus MIDI through actual firmware TCP persistence
+- [x] Round-trip 40 MiB of audio plus MIDI through actual firmware TCP persistence
   and compare exact content and supported session structure. Verify controls and
   heartbeats continue during transfers; run the production dummy-host smoke.
-- [ ] Document build/run/connect/shutdown commands and the supported core feature
+- [x] Document build/run/connect/shutdown commands and the supported core feature
   set, initial limits and measured memory. Commit Gate 2 evidence.
 
 Verification: all Gate 2 acceptance criteria have actual firmware/client evidence;
@@ -274,31 +274,31 @@ present in the production image.
 
 Depends on Gate 2; extend the Stage 1 CI job to the complete firmware.
 
-- [ ] Test bad tokens, protocol versions, slow handshakes, competing controllers,
+- [x] Test bad tokens, protocol versions, slow handshakes, competing controllers,
   stale requests and bounded listener/closing-socket exhaustion. Prove an existing
   healthy owner remains usable and resources recover after peers close.
-- [ ] Drop/blackhole one and both TCP directions while recording and during
+- [x] Drop/blackhole one and both TCP directions while recording and during
   upload/download. Verify heartbeat expiry, continued engine progress, fresh
   reattachment, released pre-commit staging and host-owned post-commit completion.
   Cover lost confirmations, host restart at the same endpoints and no replay.
-- [ ] Test authenticated shutdown and ownerless shutdown under existing authority
+- [x] Test authenticated shutdown and ownerless shutdown under existing authority
   rules, including cleanup failure reporting and retry behavior. Prove stopped
   rendering and dummy MIDI/resource cleanup rather than inferring them from exit.
-- [ ] Exercise oversized declarations, inconsistent totals, many small objects,
+- [x] Exercise oversized declarations, inconsistent totals, many small objects,
   MIDI limits, full recording pools, replacement overlap and capture/export
   pressure. Assert explicit refusals, unchanged usable playback and reclaimed
   resources; guard render allocations during active control/transfers.
-- [ ] Run at least 100 small attach/transfer/detach or cancelled-load cycles with
+- [x] Run at least 100 small attach/transfer/detach or cancelled-load cycles with
   warmed-up post-cleanup heap/object/socket counters; reject retained live-resource
   growth. Keep a longer optional soak separate from bounded PR tests.
-- [ ] Keep deterministic protocol/content assertions independent of host wall
+- [x] Keep deterministic protocol/content assertions independent of host wall
   speed. Use guest monotonic time for network expiry and bounded host deadlines
   for hangs; do not assert physical audio latency or desktop fixture throughput
   against TCG. Preserve the existing portable latency fixture separately.
-- [ ] Add firmware hard-float linking and dependency/boundary checks alongside
+- [x] Add firmware hard-float linking and dependency/boundary checks alongside
   existing bare-metal gates. Enable applicable build/test, CodeQL and docs PR
   filters for `feat/backend-replacement`; retain native and browser coverage.
-- [ ] Archive firmware/map, pins, serial logs, QEMU/QMP launch facts, test summaries
+- [x] Archive firmware/map, pins, serial logs, QEMU/QMP launch facts, test summaries
   and heap/stack maxima on failures; retain compact pass evidence. Cache only
   reproducible builds, enforce job timeouts and clean up QEMU/forwarded ports.
   Commit Gate 3 implementation and evidence.
@@ -315,13 +315,13 @@ Depends on all three gates; use the repository-prescribed build environment.
 - [ ] Rebuild from clean inputs and execute the entire QEMU suite at `-m 1G`.
   Repeat the native UI workflow: attach, create/record/play, close UI only,
   reconnect to ongoing state, save/load, query settings and confirm host shutdown.
-- [ ] Run `cargo fmt --all` and the warning-denying build before Rust commits;
+- [x] Run `cargo fmt --all` and the warning-denying build before Rust commits;
   final checks include `cargo fmt --all -- --check`,
   `RUSTFLAGS='-D warnings' cargo build --workspace`, firmware build/link and the
   existing Cortex-A bare-metal library builds. Run
   `python3 scripts/check_shoop_test_usage.py` if Rust tests changed, relevant
   boundary audits and `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run the complete Rust suite with
+- [x] Run the complete Rust suite with
   `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`,
   plus affected native LAN/persistence and browser regression gates. Use no
   missing-backend allowance to substitute for the actual embedded integration.
@@ -380,3 +380,58 @@ documentation links are background, not reproducible build inputs.
   interrupt-status patch resolves a double read of a clear-on-read register.
   Stage 0 commit: `ba4e2adf`. Gate 1 scripts and the pinned-container CI job
   are implemented; live PR CI and Gates 2/3 remain pending.
+
+- Measured design revision during Stage 2: the prepared 8-track/32-loop engine
+  uses 344,480,048 Rust-heap bytes (328.52 MiB) before transfers. A 512 MiB arena
+  does not leave a conservative allowance for retained media plus ingress and
+  assembly. Enlarge the Rust arena to 768 MiB and reduce unassigned headroom to
+  128 MiB; the platform remains capped at 128 MiB and QEMU remains at 1 GiB.
+  The recording pool remains 128 MiB. The original 64 KiB render task stack had
+  only 249 words free; enlarge it to 256 KiB and remeasure with active media.
+  These revise design subdivisions, not goals or acceptance criteria.
+
+- Portable admission milestone: `64360a1c` adds host-local limits with unchanged
+  native defaults. Limits cover declarations, cumulative assembly, canonical
+  content, normalized replacement bytes and capture/export, including source
+  metadata/object/event admission. The board profile is 64 MiB media, 1 MiB
+  metadata, 512 objects and 65,536 MIDI events.
+- Gate 2 execution: actual firmware recorded exact stereo PCM and note-on/off
+  events with a 512-frame separation; rendered playback reached the dummy outputs
+  with exact samples and MIDI bytes. A segmented session containing 41,943,040
+  audio bytes plus MIDI round-tripped exactly. Initial transfer peak was
+  407,465,916 Rust bytes. Native UI execution painted the connected host panel,
+  kept local preferences separate, recorded across UI close/reconnect, played,
+  saved/loaded/saved a client-side session and confirmed host cleanup.
+- Resource execution: the real 128 MiB page pool was filled while unrelated audio
+  played. A settled recording above the 64 MiB export budget was refused; a
+  replacement recording exhausted the pool while retaining prior playback.
+  A 100-cycle measured attach/stage/cancel/detach soak after ten warm-up cycles
+  retained exactly the same Rust heap usage and C heap/socket counts. MIDI output
+  counters checked both note payloads; all render calls retained the allocation
+  and deallocation guard. Cleanup-failure injection retained the stopped owner
+  for retry, and final teardown reported zero Rust allocations, socket slots and
+  netconns. All FreeRTOS task stack watermarks are archived; the render watermark
+  is saved before task deletion.
+- TCP lifecycle finding: packet capture showed a reused client source port
+  colliding with normal lwIP TIME_WAIT state. The broker now drains and waits
+  briefly for peer FIN before forcing close, and the fixture client closes its
+  TCP side before reconnecting. Normal cycling consequently leaves no guest
+  TIME_WAIT accumulation. No TCP safety setting or QEMU bypass was introduced.
+- Runtime checks passed on QEMU: allocator alignment through 4096 bytes, 64-bit
+  atomic carry, and two FPU canaries across task switches and deliberately
+  clobbering timer interrupts. Production builds reject fixture symbols/markers.
+  The launcher provisions a fresh boot nonce; restarting the same ELF at the
+  same TCP endpoints refuses previous-boot authority.
+- Regression evidence so far: all 2,517 native tests passed (five intentionally
+  skipped, including the external firmware UI test executed by its harness).
+  The affected Node suites and hosted Chromium core workflow passed; Cortex-A9
+  soft/hard-float and AArch64 no_std library builds, warning-denying workspace
+  build, tracing inventory and boundary audits passed. The full final QEMU run,
+  live PR CI and automated-review handoff remain pending.
+
+- Host/CI milestone: final short fixture also compares supported session structure,
+  admits 512 small objects, refuses 65,537 MIDI events, and completes the exact
+  100-cycle retained-heap comparison plus stopped-owner cleanup retry. The native
+  suite is 2,517/2,517; affected Node suites are 81/81 and hosted Chromium reports
+  the core audio/MIDI/file workflow passed with zero xruns. All-gates rerun and
+  live PR CI remain outstanding.

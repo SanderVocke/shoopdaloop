@@ -6,7 +6,7 @@
 #define LWIP_SOCKET 1
 #define LWIP_NETCONN 1
 #define LWIP_COMPAT_SOCKETS 0
-#define LWIP_PROVIDE_ERRNO 1
+#define LWIP_ERRNO_STDINCLUDE 1
 #define LWIP_DHCP 0
 #define LWIP_DNS 0
 #define LWIP_IPV6 0

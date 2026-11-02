@@ -518,7 +518,9 @@ impl Service {
                         validation,
                     })
                 }
-                Ok(true) => match validation.finish().and_then(Source::from_validated) {
+                Ok(true) => match validation.finish().and_then(|image| {
+                    Source::from_validated_with_limits(image, self.resource_limits)
+                }) {
                     Ok(source) => {
                         let image = Arc::clone(source.image());
                         let reply = (!local)

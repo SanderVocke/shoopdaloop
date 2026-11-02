@@ -54,7 +54,7 @@ jobs:
       - name: Install Rust stable with bare-metal target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf, armv7a-none-eabi, aarch64-unknown-none
+          targets: thumbv7em-none-eabihf, armv7a-none-eabi, armv7a-none-eabihf, aarch64-unknown-none
 
       - name: Build libraries without a standard library
         env:
@@ -65,9 +65,9 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: |
-          for target in armv7a-none-eabi aarch64-unknown-none; do
+          for target in armv7a-none-eabi armv7a-none-eabihf aarch64-unknown-none; do
             cargo build --locked --lib --no-default-features \
-              -p shoop_rt_engine -p shoop_app -p shoop_app_connection -p shoop_rt_backend -p shoop_script_resources \
+              -p shoop_rt_engine -p shoop_app -p shoop_app_connection -p shoop_rt_backend -p shoop_script_resources -p shoop_host_freertos \
               --target "$target"
           done
 

@@ -28,6 +28,9 @@ def run(args, **kwargs):
 def build():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fetch", action="store_true")
+    parser.add_argument("--app", choices=["echo", "host"], default="echo")
+    parser.add_argument("--credential-file", type=Path)
+    parser.add_argument("--fixture", action="store_true")
     args = parser.parse_args()
     if args.fetch:
         SOURCE.parent.mkdir(parents=True, exist_ok=True)
@@ -57,14 +60,6 @@ def build():
         includes.append(directory)
         sources.extend(p for p in directory.glob("*.c") if not p.name.endswith("_g.c"))
     includes.append(drivers / "common/src")
-    patched = BUILD / "patched"
-    original = drivers / "emacps/src/xemacps_intr.c"
-    patched_source = patched / original.relative_to(SOURCE)
-    patched_source.parent.mkdir(parents=True, exist_ok=True)
-    patched_source.write_bytes(original.read_bytes())
-    patch = PLATFORM / "patches/emacps-read-clear.patch"
-    run(["patch", "--batch", "--forward", "-p1", "-d", patched, "-i", patch], stdout=subprocess.DEVNULL)
-    sources = [patched_source if p == original else p for p in sources]
     sources += [bsp / "common" / f for f in ("xil_assert.c", "xil_printf.c", "xil_sutil.c", "xplatform_info.c", "xil_sleepcommon.c")]
     sources += [bsp / "arm/common" / f for f in ("xil_exception.c", "vectors.c", "xil_spinlock.c")]
     sources += [bsp / "arm/cortexa9" / f for f in ("xil_cache.c", "xil_mmu.c", "xtime_l.c", "sleep.c", "usleep.c")]
@@ -79,7 +74,39 @@ def build():
     sources += list((lwip / "src/api").glob("*.c"))
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
-    sources += [PLATFORM / "platform.c", PLATFORM / "echo.c"]
+    sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
+    if args.app == "host":
+        sources.append(PLATFORM / "sockets.c")
+    if args.fixture:
+        sources.append(PLATFORM / "fixture.c")
+    patches = {}
+    for original, patch_name in [
+        (drivers / "emacps/src/xemacps_intr.c", "emacps-read-clear.patch"),
+        (kernel / "portable/GCC/ARM_CA9/portZynq7000.c", "freertos-fpu-irq.patch"),
+    ]:
+        patched = BUILD / "patched"
+        patched_source = patched / original.relative_to(SOURCE)
+        patched_source.parent.mkdir(parents=True, exist_ok=True)
+        patched_source.write_bytes(original.read_bytes())
+        patch = PLATFORM / "patches" / patch_name
+        run(["patch", "--batch", "--forward", "-p1", "-d", patched, "-i", patch], stdout=subprocess.DEVNULL)
+        sources = [patched_source if p == original else p for p in sources]
+        patches[patch_name] = hashlib.sha256(patch.read_bytes()).hexdigest()
+    rust_library = None
+    if args.app == "host":
+        if args.credential_file is None or len(args.credential_file.read_bytes()) != 32:
+            raise SystemExit("Host requires --credential-file containing exactly 32 bytes")
+        credential = BUILD / "credential.c"
+        credential.write_text("const unsigned char shoop_credential[32] = {" +
+                              ",".join(str(b) for b in args.credential_file.read_bytes()) + "};\n")
+        sources.append(credential)
+        manifest = PLATFORM / "firmware/Cargo.toml"
+        rust_flags = "-D warnings -C target-cpu=cortex-a9"
+        cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
+        if args.fixture:
+            cargo += ["--features", "fixture"]
+        run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags})
+        rust_library = PLATFORM / "firmware/target/armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
     cc = os.environ.get("ARM_CC", "arm-none-eabi-gcc")
     version = subprocess.check_output([cc, "-dumpfullversion"], text=True).strip()
     if version != PINS["gcc"]:
@@ -88,6 +115,8 @@ def build():
              "-ffunction-sections", "-fdata-sections", "-D__FREERTOS__", "-DPLATFORM_ZYNQ",
              "-DPROCESSOR_LITTLE_ENDIAN", "-D_DEFAULT_SOURCE"]
     flags += ["-include", str(PLATFORM / "include/xparameters.h")]
+    if args.fixture:
+        flags += ["-DSHOOP_FIXTURE"]
     flags += ["-I" + str(p) for p in includes]
     BUILD.mkdir(parents=True, exist_ok=True)
 
@@ -105,11 +134,15 @@ def build():
     if errors:
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
-    elf = BUILD / "echo.elf"
-    run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-Map=" + str(elf.with_suffix(".map")),
-         "-T", PLATFORM / "link.ld", "-o", elf, *objects,
+    elf = BUILD / (args.app + ("-fixture" if args.fixture else "") + ".elf")
+    run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-z,noexecstack", "-Wl,-Map=" + str(elf.with_suffix(".map")),
+         "-T", PLATFORM / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
          "-Wl,--start-group", "-lc", "-lm", "-lgcc", "-lnosys", "-Wl,--end-group"])
     image = elf.read_bytes()
+    nm = subprocess.check_output([cc, "-print-prog-name=nm"], text=True).strip()
+    symbols = subprocess.check_output([nm, "-g", elf], text=True)
+    if not args.fixture and ("shoop_fixture_" in symbols or b"SHOOP_FPU_PASS" in image):
+        raise SystemExit("Fixture hooks leaked into production firmware")
     if image[:6] != b"\x7fELF\x01\x01":
         raise SystemExit("Expected little-endian ELF32")
     phoff = struct.unpack_from("<I", image, 28)[0]
@@ -121,16 +154,20 @@ def build():
             continue
         if address != physical or stored > size or not (
             0x00100000 <= address < address + size <= 0x08000000 or
-            0x08000000 <= address < address + size <= 0x28000000
+            0x08000000 <= address < address + size <= 0x38000000
         ):
             raise SystemExit(f"Invalid load region {address:#x}+{size:#x}")
         regions.append([address, address + size])
     for first, second in zip(sorted(regions), sorted(regions)[1:]):
         if first[1] > second[0]:
             raise SystemExit("Overlapping ELF load regions")
-    (BUILD / "build.json").write_text(json.dumps({"embeddedsw": REVISION,
+    elf.with_suffix(".json").write_text(json.dumps({"embeddedsw": REVISION,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
-        "sources": len(sources), "patch_sha256": hashlib.sha256(patch.read_bytes()).hexdigest(),
+        "sources": len(sources), "patch_sha256": patches,
+        "elf_sha256": hashlib.sha256(image).hexdigest(),
+        "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "rust_target": "armv7a-none-eabihf" if rust_library else None,
+        "fixture": args.fixture,
         "ram_bytes": 1 << 30, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     print(elf)
 

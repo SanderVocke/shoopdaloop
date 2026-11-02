@@ -303,6 +303,8 @@ src/rust/shoop_app_protocol/src/stream.rs,app_session,excluded,Incremental bound
 src/rust/shoopdaloop/src/application.rs,application_ui_and_control,instrumented_indirect,Composition schedules the traced service and client turns.
 src/rust/shoop_app/src/service/management.rs,app_session,instrumented_indirect,Management operations use the authoritative service admission and shutdown boundaries.
 src/rust/shoop_host/src/lib.rs,app_session,excluded,Native composition exports.
+src/rust/shoop_host_freertos/src/lib.rs,embedded_host,excluded,no_std platform composition exports and finite board profile constants.
+src/rust/shoop_host_freertos/src/embedded.rs,embedded_host,excluded,UART lifecycle and heap diagnostics at the platform boundary; the render owner must not trace or allocate and portable service instrumentation remains available independently.
 src/rust/shoop_host/src/main.rs,app_session,instrumented_indirect,CLI configuration enters the traced host session boundary.
 src/rust/shoop_host/src/config.rs,app_session,excluded,Bounded host configuration validation.
 src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.

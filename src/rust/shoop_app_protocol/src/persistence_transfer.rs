@@ -37,6 +37,36 @@ impl Source {
             media_bytes,
         })
     }
+    pub fn from_validated_with_limits(
+        validated: ValidatedImage,
+        limits: shoop_app_api::HostResourceLimits,
+    ) -> Result<Self, Refusal> {
+        if !limits.is_valid() {
+            return Err(Refusal::Invalid);
+        }
+        let image = validated.image();
+        let events = image
+            .payloads
+            .iter()
+            .try_fold(0usize, |total, payload| {
+                total.checked_add(match payload {
+                    Payload::Midi(events) => events.len(),
+                    _ => 0,
+                })
+            })
+            .ok_or(Refusal::Overloaded)?;
+        if validated.media_bytes() > limits.media_bytes
+            || image.payloads.len() >= limits.objects as usize
+            || events > limits.midi_events
+        {
+            return Err(Refusal::Overloaded);
+        }
+        let source = Self::from_validated(validated)?;
+        if source.metadata.len() as u64 > limits.metadata_bytes {
+            return Err(Refusal::Overloaded);
+        }
+        Ok(source)
+    }
     pub fn description(&self, key: Key, target: Target) -> Description {
         Description {
             key,

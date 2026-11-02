@@ -9,6 +9,8 @@
 #include "netif/xtopology.h"
 #include <sys/stat.h>
 #include <errno.h>
+#include <string.h>
+static char *c_heap_next;
 
 XScuGic_Config XScuGic_ConfigTable[] = {{ .DeviceId = 0, .CpuBaseAddress = 0xf8f00100, .DistBaseAddress = 0xf8f01000 }};
 XScuTimer_Config XScuTimer_ConfigTable[] = {{ .DeviceId = 0, .BaseAddr = 0xf8f00600 }};
@@ -28,6 +30,7 @@ void vApplicationAssert(const char *file, unsigned long line) {
     for (;;) { __asm__ volatile("wfi"); }
 }
 void vApplicationMallocFailedHook(void) { vApplicationAssert("FreeRTOS heap", 0); }
+__attribute__((weak)) void vApplicationTickHook(void) {}
 void shoop_task_return(void) { vApplicationAssert("task returned", 0); }
 void vApplicationStackOverflowHook(TaskHandle_t task, char *name) {
     (void)task;
@@ -42,18 +45,28 @@ int _write(int fd, const void *bytes, size_t count) {
     return (int)count;
 }
 int _close(int fd) { (void)fd; errno = EBADF; return -1; }
+int _isatty(int fd) { return fd >= 0 && fd <= 2; }
+int _fstat(int fd, struct stat *status) {
+    if (!_isatty(fd)) { errno = EBADF; return -1; }
+    memset(status, 0, sizeof(*status));
+    status->st_mode = S_IFCHR;
+    return 0;
+}
 int _read(int fd, void *bytes, size_t count) {
     (void)fd; (void)bytes; (void)count; errno = EBADF; return -1;
 }
 off_t _lseek(int fd, off_t offset, int whence) {
     (void)fd; (void)offset; (void)whence; errno = EBADF; return -1;
 }
+int _getpid(void) { return 1; }
+int _kill(int process, int signal) { (void)process; (void)signal; errno = ENOSYS; return -1; }
+void _exit(int status) { vApplicationAssert("exit", (unsigned long)status); for (;;) {} }
 void __malloc_lock(struct _reent *r) { (void)r; vTaskSuspendAll(); }
 void __malloc_unlock(struct _reent *r) { (void)r; xTaskResumeAll(); }
 void *_sbrk(ptrdiff_t increment) {
     extern char _heap[], _heap_end[];
-    static char *next;
-    if (!next) next = _heap;
-    if (increment < 0 || (size_t)increment > (size_t)(_heap_end - next)) { errno = ENOMEM; return (void *)-1; }
-    void *result = next; next += increment; return result;
+    if (!c_heap_next) c_heap_next = _heap;
+    if (increment < 0 || (size_t)increment > (size_t)(_heap_end - c_heap_next)) { errno = ENOMEM; return (void *)-1; }
+    void *result = c_heap_next; c_heap_next += increment; return result;
 }
+size_t shoop_c_heap_committed(void) { extern char _heap[]; return c_heap_next ? (size_t)(c_heap_next - _heap) : 0; }

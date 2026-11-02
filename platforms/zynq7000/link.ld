@@ -1,7 +1,7 @@
 ENTRY(_vector_table)
 MEMORY {
   platform (rwx) : ORIGIN = 0x00100000, LENGTH = 0x07f00000
-  rust (rw) : ORIGIN = 0x08000000, LENGTH = 0x20000000
+  rust (rw) : ORIGIN = 0x08000000, LENGTH = 0x30000000
 }
 SECTIONS {
   .text : { KEEP(*(.vectors)) KEEP(*(.boot)) *(.text*) *(.rodata*) *(.glue*) *(.vfp11_veneer) } > platform
@@ -31,7 +31,7 @@ SECTIONS {
     . += 0x100000; __stack = .; _stack = .;
   } > platform
   .dma (NOLOAD) : { . = ALIGN(0x100000); _end = .; . += 0x200000; __platform_end = .; } > platform
-  .rust_heap (NOLOAD) : { __rust_heap = .; . += 0x20000000; __rust_heap_end = .; } > rust
+  .rust_heap (NOLOAD) : { __rust_heap = .; . += 0x30000000; __rust_heap_end = .; } > rust
   ASSERT(__platform_end <= 0x08000000, "platform exceeds 128 MiB")
-  ASSERT(__rust_heap_end <= 0x28000000, "Rust exceeds 512 MiB arena")
+  ASSERT(__rust_heap_end <= 0x38000000, "Rust exceeds 768 MiB arena")
 }
