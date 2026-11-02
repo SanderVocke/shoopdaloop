@@ -466,3 +466,10 @@ documentation links are background, not reproducible build inputs.
   after capture 500, so the service correctly refused Identity before preparation.
   Use fresh transfer 501 to test the intended budget refusal. The matching
   portable pool/replacement test passes; rerun the affected firmware fixture.
+
+- Automated CodeQL review reported two nullable-pointer dereferences in the
+  fixture allocator alignment probe. Replace the compound raw-pointer assertion
+  with `NonNull::new(...).expect(...)` before obtaining its pointer. No suppression
+  or coverage-threshold change is used. Warning-denying native/bare-metal builds
+  and the actual QEMU allocator/atomic self-test pass with this change; await the
+  repeated CodeQL scan. Codecov patch status passed at 91.66% (80% required).

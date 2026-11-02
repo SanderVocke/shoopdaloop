@@ -64,8 +64,10 @@ pub unsafe extern "C" fn shoop_rust_main() {
         let baseline = (*ALLOCATOR.0.get()).used();
         for alignment in [8, 32, 4096] {
             let layout = Layout::from_size_align(513, alignment).unwrap();
-            let buffer = ALLOCATOR.alloc(layout);
-            assert!(!buffer.is_null() && buffer.addr().is_multiple_of(alignment));
+            let allocation = core::ptr::NonNull::new(ALLOCATOR.alloc(layout))
+                .expect("allocator alignment probe allocation");
+            let buffer = allocation.as_ptr();
+            assert!(buffer.addr().is_multiple_of(alignment));
             buffer.write_volatile(0x5a);
             buffer.add(512).write_volatile(0xa5);
             assert_eq!(buffer.read_volatile(), 0x5a);
