@@ -432,3 +432,13 @@ CI/review gates and leave the PR unmerged.
 - Hosted Chromium smoke passes with zero xruns. Cross-platform dependency audits,
   both Cortex-A library builds, formatting/test policy/tracing checks and the
   warning-denying workspace build pass. Production code is ready for final-head CI.
+
+### Release-profile CI correction
+
+- Linux release CI exposed the new stream test installing `AllocDisabler` even
+  though that dependency disables its allocator instrumentation in release builds.
+  The allocator declaration now follows the existing engine tests' debug-only
+  configuration. Debug runs retain the allocation guard; release runs still
+  exercise the same prepared stream progression without instrumentation.
+- All nine transport tests pass in both debug and release locally. Formatting,
+  test-attribute policy and the warning-denying workspace build pass.

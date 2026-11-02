@@ -161,7 +161,7 @@ fn token_handshake_handles_partial_io_and_remaining_deadlines() {
     );
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
 #[global_allocator]
 static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
 
