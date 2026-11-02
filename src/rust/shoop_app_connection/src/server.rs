@@ -5,6 +5,7 @@ use shoop_app_protocol::{codec, stream::StreamEncoder, *};
 use shoop_transport::{CarrierError, RecordPort, MAX_RECORD_BYTES};
 
 pub struct Session<P> {
+    heartbeat: Option<crate::Heartbeat>,
     pub id: ConnectionId,
     pub port: P,
     age: Duration,
@@ -21,6 +22,7 @@ pub struct Session<P> {
 impl<P: RecordPort> Session<P> {
     pub fn new(id: ConnectionId, port: P) -> Self {
         Self {
+            heartbeat: None,
             id,
             port,
             age: Duration::ZERO,
@@ -35,6 +37,14 @@ impl<P: RecordPort> Session<P> {
             replies: VecDeque::new(),
         }
     }
+    pub fn with_heartbeat(
+        mut self,
+        config: crate::HeartbeatConfig,
+        seed: u64,
+    ) -> Result<Self, CarrierError> {
+        self.heartbeat = Some(crate::Heartbeat::new(config, seed)?);
+        Ok(self)
+    }
     pub fn retire(&mut self) {
         self.closing = true;
         self.closing_since.get_or_insert(self.age);
@@ -44,8 +54,20 @@ impl<P: RecordPort> Session<P> {
     }
     pub fn advance(&mut self, elapsed: Duration) {
         self.age = self.age.saturating_add(elapsed);
+        if let Some(heartbeat) = self.heartbeat.as_mut() {
+            heartbeat.advance(elapsed);
+        }
     }
     pub fn receive(&mut self, service: &mut Service) {
+        if self
+            .heartbeat
+            .as_ref()
+            .is_some_and(|heartbeat| heartbeat.expired())
+        {
+            service.detach(self.id);
+            self.retire();
+            return;
+        }
         if self.closing {
             return;
         }
@@ -58,7 +80,17 @@ impl<P: RecordPort> Session<P> {
             let Some(length) = self.port.take(&mut bytes) else {
                 break;
             };
-            let result = match codec::decode(&bytes[..length]) {
+            let decoded = codec::decode(&bytes[..length]);
+            if let Ok(message) = &decoded {
+                if self
+                    .heartbeat
+                    .as_mut()
+                    .is_some_and(|heartbeat| heartbeat.receive(message))
+                {
+                    continue;
+                }
+            }
+            let result = match decoded {
                 Ok(WireMessage::Client(message)) => {
                     if !matches!(message, ClientMessage::Persistence { .. }) {
                         commands += 1;
@@ -87,6 +119,12 @@ impl<P: RecordPort> Session<P> {
         }
     }
     pub fn write(&mut self, service: &mut Service) {
+        if let Some(heartbeat) = self.heartbeat.as_mut() {
+            if heartbeat.pump(&mut self.port).is_err() {
+                self.retire();
+                return;
+            }
+        }
         let mut records = 0;
         for _ in 0..2 * MAX_MESSAGES_PER_TURN {
             if records == MAX_MESSAGES_PER_TURN {
@@ -150,6 +188,14 @@ impl<P: RecordPort> Session<P> {
         }
     }
     pub fn alive(&mut self, service: &Service) -> bool {
+        if self
+            .heartbeat
+            .as_ref()
+            .is_some_and(|heartbeat| heartbeat.expired())
+        {
+            return false;
+        }
+
         if self
             .closing_since
             .is_some_and(|started| self.age.saturating_sub(started) > Duration::from_secs(2))

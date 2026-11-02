@@ -105,12 +105,16 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
     Ok(Connection {
         port,
         upload: shoop_app_connection::Upload::new(),
+        heartbeat: None,
+        last: Instant::now(),
     })
 }
 
 pub struct Connection {
     pub port: Port,
     upload: shoop_app_connection::Upload,
+    heartbeat: Option<shoop_app_connection::Heartbeat>,
+    last: Instant,
 }
 fn client_error(error: shoop_app_connection::Error) -> ClientError {
     match error {
@@ -120,12 +124,33 @@ fn client_error(error: shoop_app_connection::Error) -> ClientError {
     }
 }
 impl Connection {
+    pub fn with_heartbeat(mut self, config: shoop_app_connection::HeartbeatConfig) -> Result<Self> {
+        let seed = (crate::registry::identity()? as u64).max(1);
+        self.heartbeat = Some(
+            shoop_app_connection::Heartbeat::new(config, seed)
+                .map_err(|_| anyhow!("invalid heartbeat configuration"))?,
+        );
+        Ok(self)
+    }
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
         self.upload
             .send(&mut self.port, message)
             .map_err(client_error)
     }
     pub fn poll(&mut self, client: &mut Client) -> Result<usize, ClientError> {
+        let now = Instant::now();
+        if let Some(heartbeat) = self.heartbeat.as_mut() {
+            heartbeat.advance(now.saturating_duration_since(self.last));
+            if heartbeat.expired() {
+                client.disconnect();
+                return Err(ClientError::Disconnected);
+            }
+            if heartbeat.pump(&mut self.port).is_err() {
+                client.disconnect();
+                return Err(ClientError::Disconnected);
+            }
+        }
+        self.last = now;
         self.upload.pump(&mut self.port).map_err(client_error)?;
         let mut count = 0;
         let mut bytes = [0; MAX_RECORD_BYTES];
@@ -134,6 +159,13 @@ impl Connection {
                 break;
             };
             let message = codec::decode(&bytes[..n]).map_err(|_| ClientError::Protocol)?;
+            if self
+                .heartbeat
+                .as_mut()
+                .is_some_and(|heartbeat| heartbeat.receive(&message))
+            {
+                continue;
+            }
             self.upload.received(&message);
             client.receive_wire(message)?;
             count += 1;

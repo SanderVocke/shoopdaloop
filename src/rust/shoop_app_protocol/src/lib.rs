@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 9;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -414,6 +414,8 @@ pub enum ClientMessage {
 /// Snapshot chunks share the same bounded record format as commands and results.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum WireMessage {
+    Ping(u64),
+    Pong(u64),
     Persistence {
         authority: Authority,
         reply: persistence::Reply,
@@ -485,6 +487,7 @@ impl WireMessage {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::Ping(sequence) | Self::Pong(sequence) => *sequence != 0,
             Self::Client(ClientMessage::StageImage { .. } | ClientMessage::CaptureImage { .. }) => {
                 false
             }

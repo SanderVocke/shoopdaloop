@@ -635,7 +635,9 @@ impl Client {
                 transfer,
                 reason,
             }),
-            WireMessage::Client(_) => return Err(Error::Protocol),
+            WireMessage::Client(_) | WireMessage::Ping(_) | WireMessage::Pong(_) => {
+                return Err(Error::Protocol)
+            }
             WireMessage::Attached { authority, host } => {
                 self.receive(ServiceMessage::Attached { authority, host })
             }

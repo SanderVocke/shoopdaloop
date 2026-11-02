@@ -58,6 +58,8 @@ fn a_peer_withholding_acknowledgments_bounds_uploads_without_blocking_controls_o
             shoop_transport_socket::Port::from_stream(stream, Default::default()).unwrap(),
         ),
         upload: shoop_app_connection::Upload::new(),
+        heartbeat: None,
+        last: Instant::now(),
     };
     let mut client = Client::new(ClientId(1), HostId(1), SessionId(1)).unwrap();
     let authority = Authority {

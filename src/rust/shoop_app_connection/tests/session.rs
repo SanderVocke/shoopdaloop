@@ -121,3 +121,54 @@ fn portable_host_driven_connection_attaches_confirms_and_detaches() {
     session.receive(&mut service);
     assert!(!service.has_connection(ConnectionId(1)));
 }
+
+#[shoop_test]
+fn timed_out_connection_releases_only_its_authority_and_cannot_evict_replacement() {
+    let mut service = service();
+    let mut session = Session::new(ConnectionId(1), Memory::default());
+    let mut client = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    session
+        .port
+        .send(WireMessage::Client(client.attach().unwrap()));
+    for _ in 0..128 {
+        step(&mut session, &mut service, &mut client);
+        if client.state() == State::Ready {
+            break;
+        }
+    }
+    let old = client.authority().unwrap();
+    session = session.with_heartbeat(Default::default(), 1).unwrap();
+    session.advance(Duration::from_secs(1));
+    session.write(&mut service);
+    session.port.output.clear();
+    session.advance(Duration::from_secs(5));
+    session.receive(&mut service);
+    assert!(!session.alive(&service));
+    assert!(!service.has_connection(ConnectionId(1)));
+    assert!(service.is_ready());
+    let mut replacement = Session::new(ConnectionId(2), Memory::default());
+    let mut next = Client::new(ClientId(4), HostId(1), SessionId(2)).unwrap();
+    replacement
+        .port
+        .send(WireMessage::Client(next.attach().unwrap()));
+    for _ in 0..128 {
+        step(&mut replacement, &mut service, &mut next);
+        if next.state() == State::Ready {
+            break;
+        }
+    }
+    assert!(next.authority().unwrap().generation > old.generation);
+    assert!(matches!(
+        service.management(ManagementRequest::Shutdown {
+            authority: old,
+            operation: OperationId {
+                client: old.client,
+                sequence: 1
+            }
+        }),
+        ManagementReply::Refused(Refusal::StaleAuthority)
+    ));
+    session.port.send(WireMessage::Pong(1));
+    session.receive(&mut service);
+    assert!(service.has_connection(ConnectionId(2)));
+}

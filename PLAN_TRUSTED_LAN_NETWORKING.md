@@ -342,3 +342,14 @@ planning deliverable.
 - Both new Cortex-A library builds, workspace warning-denying build, dependency
   audit, twelve boundary-policy tests and test-attribute check pass. CI includes
   the portable connection crate in the existing bare-metal gate.
+
+### Stage 3 heartbeat milestone
+
+- Wire version 9 adds connection-consumed Ping/Pong records. The portable
+  heartbeat uses injected elapsed time and validates configurable interval/timeout.
+- Fake-clock tests cover matching/stale/late replies, full carriers, one-way
+  blackholes, a suspended peer and expiration followed by replacement authority.
+- All focused client/protocol/connection/host tests pass, including nine native
+  recovery tests. Workspace warning-denying build and test-attribute checks pass.
+- LAN profile wiring and end-to-end remaining-deadline handling follow in stage 4;
+  existing local-only transports retain their original behavior.
