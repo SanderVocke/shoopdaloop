@@ -7,8 +7,8 @@ Execution in progress on `feat/trusted-lan-networking`. Written under
 
 - Integration branch: `feat/backend-replacement`, refreshed and inspected at
   `202fe46f766cba9bc7e63969e93e0932917430bd` on 2026-11-02.
-- Implementation branch: create `feat/trusted-lan-networking` from the latest
-  integration head. Compare any intervening changes with this baseline first.
+- Implementation branch: `feat/trusted-lan-networking`, created from that
+  integration head. PR: https://github.com/SanderVocke/shoopdaloop/pull/912.
 - Deliver a PR into **`feat/backend-replacement`**, with passing final-head CI.
   Do not target `master` or merge the PR without instructions.
 
@@ -260,10 +260,10 @@ stages must preserve earlier contracts.
 
 ### Stage 6 — final end-to-end validation and delivery
 
-- [ ] Run a native two-process remote-profile workflow: create/route/record/play,
+- [x] Run a native two-process remote-profile workflow: create/route/record/play,
   inspect media, save/load and import/export audio/MIDI including a segmented image
   above 32 MiB. Compare exact samples and exact MIDI events/order/frame positions.
-- [ ] Inject loss before upload completion, before and after commit admission,
+- [x] Inject loss before upload completion, before and after commit admission,
   after commit but before its result, during snapshot synchronization and during
   shutdown. Confirm playback continuity, cleanup, bounded retained resources and
   correct reconciliation through a replacement UI. Verify a healthy owner cannot
@@ -272,7 +272,7 @@ stages must preserve earlier contracts.
   builds, existing local/shared-memory recovery and persistence probes, browser
   regression workflows and RT heap/boundary guards. Record which physical/mixed-OS
   pairings were actually exercised; RTOS runtime validation remains future work.
-- [ ] Run required repository checks in its selected build environment:
+- [x] Run required repository checks in its selected build environment:
   `cargo fmt --all -- --check`, `RUSTFLAGS="-D warnings" cargo build --workspace`,
   the complete nextest suite from `.agents/info/test.md`,
   `python3 scripts/check_shoop_test_usage.py`, boundary audits and their tests,
@@ -299,8 +299,8 @@ stages must preserve earlier contracts.
 Routine implementation choices, reversible fixes, stage commits, pushing this work
 branch, creating its PR and addressing CI/review feedback are part of execution.
 No additional checkpoint approval is needed unless a goal or acceptance criterion
-must change. Implement only when execution is requested; this document is the
-planning deliverable.
+must change. Execution was authorized by the user; complete the remaining final-head
+CI/review gates and leave the PR unmerged.
 
 ## Execution evidence
 
@@ -423,3 +423,12 @@ planning deliverable.
 - The initial local native checkpoint was 2504 tests; the next checkpoint with
   snapshot/shutdown additions passed 2506. Final native and final-head platform
   gates are being rerun after the atomic-publication fix.
+
+### Final code-head local gate
+
+- Full native suite after the atomic-publication correction: **2507 passed; four
+  intentional canaries skipped**. Snapshot interruption, missing shutdown reply
+  and concurrent complete-profile publication regressions pass.
+- Hosted Chromium smoke passes with zero xruns. Cross-platform dependency audits,
+  both Cortex-A library builds, formatting/test policy/tracing checks and the
+  warning-denying workspace build pass. Production code is ready for final-head CI.
