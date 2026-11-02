@@ -49,11 +49,9 @@ arc-swap = "1.7"
 rtrb = "0.4"
 jack = "0.13"
 jack-sys = { version = "0.5", features = ["dynamic_loading"] }
-# Pinned to what rodio (used by the application) already brings in: cpal declares
-# links = "alsa", so two versions cannot coexist in one workspace.
 # Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`
 # surfaces every available backend (ALSA, JACK, WASAPI, ASIO, CoreAudio).
-cpal = { version = "0.17", features = ["jack", "asio"] }
+cpal = { version = "0.18", features = ["jack", "asio"] }
 midir = "0.11"
 rubato = "5.0"
 thiserror = "2.0"

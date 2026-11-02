@@ -11,33 +11,15 @@
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceDescription,
-    DeviceDescriptionBuilder, DeviceDirection, DeviceId, DeviceIdError, DeviceNameError,
-    DeviceType, DevicesError, InputCallbackInfo, InputStreamTimestamp, InterfaceType,
-    OutputCallbackInfo, OutputStreamTimestamp, PauseStreamError, PlayStreamError, SampleFormat,
-    StreamConfig, StreamError, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
+    BufferSize, Data, DeviceDescription, DeviceDescriptionBuilder, DeviceDirection, DeviceId,
+    DeviceType, Error, ErrorKind, InputCallbackInfo, InputStreamTimestamp, InterfaceType,
+    OutputCallbackInfo, OutputStreamTimestamp, SampleFormat, StreamConfig, StreamInstant,
+    SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
-
-/// Mirror of `cpal::Data`'s layout, declared `#[repr(C)]` so the field offsets are
-/// guaranteed and `transmute_copy` to `Data` is sound.
-///
-/// cpal's `Data` has private fields and no `#[repr]` attribute, so its layout is the
-/// default Rust layout: for a struct of three Copy fields with the alignments
-/// observed here (8, 8, 1) the source-order layout coincides with `#[repr(C)]` on
-/// every platform cpal targets. If a future release adds a `#[repr]` or
-/// reorders fields, the tests will start failing loudly in the audio callback -- the
-/// desired failure mode for a layout mismatch.
-#[repr(C)]
-struct DataLayout {
-    data: *mut (),
-    len: usize,
-    sample_format: SampleFormat,
-}
+use std::time::{Duration, Instant};
 
 /// A host with a default output device and a default input device, both stereo at
 /// 48 kHz.
@@ -70,7 +52,7 @@ impl HostTrait for MockHost {
         true
     }
 
-    fn devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn devices(&self) -> Result<Self::Devices, Error> {
         Ok(MockDevices {
             items: vec![self.output_device.clone(), self.input_device.clone()],
             index: 0,
@@ -109,7 +91,7 @@ impl HostTrait for MockHostNoOutput {
         true
     }
 
-    fn devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn devices(&self) -> Result<Self::Devices, Error> {
         Ok(MockDevices {
             items: vec![self.input_device.clone()],
             index: 0,
@@ -141,7 +123,7 @@ impl Iterator for MockDevices {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MockDevice {
     name: String,
     direction: Direction,
@@ -149,10 +131,16 @@ pub struct MockDevice {
     sample_rate: u32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Direction {
     Input,
     Output,
+}
+
+impl std::fmt::Display for MockDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
 }
 
 impl MockDevice {
@@ -242,7 +230,7 @@ impl DeviceTrait for MockDevice {
     type SupportedOutputConfigs = MockSupportedOutputConfigs;
     type Stream = MockStream;
 
-    fn description(&self) -> Result<DeviceDescription, DeviceNameError> {
+    fn description(&self) -> Result<DeviceDescription, Error> {
         let direction = match self.direction {
             Direction::Input => DeviceDirection::Input,
             Direction::Output => DeviceDirection::Output,
@@ -254,35 +242,31 @@ impl DeviceTrait for MockDevice {
             .build())
     }
 
-    fn id(&self) -> Result<DeviceId, DeviceIdError> {
-        Ok(DeviceId(cpal::default_host().id(), self.name.clone()))
+    fn id(&self) -> Result<DeviceId, Error> {
+        Ok(DeviceId::new(cpal::default_host().id(), &self.name))
     }
 
-    fn supported_input_configs(
-        &self,
-    ) -> Result<Self::SupportedInputConfigs, SupportedStreamConfigsError> {
+    fn supported_input_configs(&self) -> Result<Self::SupportedInputConfigs, Error> {
         Ok(MockSupportedInputConfigs { yielded: false })
     }
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, Error> {
         Ok(MockSupportedOutputConfigs { yielded: false })
     }
 
-    fn default_input_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_input_config(&self) -> Result<SupportedStreamConfig, Error> {
         if self.direction == Direction::Input {
             Ok(self.supported_config())
         } else {
-            Err(DefaultStreamConfigError::StreamTypeNotSupported)
+            Err(Error::new(ErrorKind::UnsupportedOperation))
         }
     }
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, Error> {
         if self.direction == Direction::Output {
             Ok(self.supported_config())
         } else {
-            Err(DefaultStreamConfigError::StreamTypeNotSupported)
+            Err(Error::new(ErrorKind::UnsupportedOperation))
         }
     }
 
@@ -296,15 +280,15 @@ impl DeviceTrait for MockDevice {
     /// callback -- so the production code's path is exercised exactly.
     fn build_output_stream_raw<D, E>(
         &self,
-        config: &StreamConfig,
+        config: StreamConfig,
         sample_format: SampleFormat,
         mut data_callback: D,
         _error_callback: E,
         _timeout: Option<Duration>,
-    ) -> Result<Self::Stream, BuildStreamError>
+    ) -> Result<Self::Stream, Error>
     where
         D: FnMut(&mut Data, &OutputCallbackInfo) + Send + 'static,
-        E: FnMut(StreamError) + Send + 'static,
+        E: FnMut(Error) + Send + 'static,
     {
         assert_eq!(
             sample_format,
@@ -314,7 +298,7 @@ impl DeviceTrait for MockDevice {
 
         let channels = config.channels as usize;
         let sample_rate = config.sample_rate;
-        let frames_per_cycle = self.frames_per_cycle(config);
+        let frames_per_cycle = self.frames_per_cycle(&config);
         let buffer_len = frames_per_cycle * channels;
 
         let stop = Arc::new(AtomicBool::new(false));
@@ -322,10 +306,7 @@ impl DeviceTrait for MockDevice {
 
         let cycle_interval = Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
 
-        let info = OutputCallbackInfo::new(OutputStreamTimestamp {
-            callback: StreamInstant::new(0, 0),
-            playback: StreamInstant::new(0, 0),
-        });
+        let clock_origin = Instant::now();
 
         let thread = std::thread::Builder::new()
             .name("engine-cpal-mock-output".to_string())
@@ -334,6 +315,11 @@ impl DeviceTrait for MockDevice {
                 // Allocated once outside the loop so the audio path does not allocate.
                 let mut buffer: Vec<f32> = vec![0.0; buffer_len];
                 while !stop_thread.load(Ordering::Relaxed) {
+                    let now = stream_instant(clock_origin);
+                    let info = OutputCallbackInfo::new(OutputStreamTimestamp {
+                        callback: now,
+                        playback: now,
+                    });
                     let mut data = unsafe { make_data(&mut buffer, sample_format) };
                     data_callback(&mut data, &info);
                     std::thread::sleep(cycle_interval);
@@ -344,6 +330,8 @@ impl DeviceTrait for MockDevice {
         Ok(MockStream {
             stop: Some(stop),
             thread: Some(thread),
+            frames_per_cycle: frames_per_cycle as cpal::FrameCount,
+            clock_origin,
         })
     }
 
@@ -356,15 +344,15 @@ impl DeviceTrait for MockDevice {
     /// activity.
     fn build_input_stream_raw<D, E>(
         &self,
-        config: &StreamConfig,
+        config: StreamConfig,
         sample_format: SampleFormat,
         mut data_callback: D,
         _error_callback: E,
         _timeout: Option<Duration>,
-    ) -> Result<Self::Stream, BuildStreamError>
+    ) -> Result<Self::Stream, Error>
     where
         D: FnMut(&Data, &InputCallbackInfo) + Send + 'static,
-        E: FnMut(StreamError) + Send + 'static,
+        E: FnMut(Error) + Send + 'static,
     {
         assert_eq!(
             sample_format,
@@ -374,7 +362,7 @@ impl DeviceTrait for MockDevice {
 
         let channels = config.channels as usize;
         let sample_rate = config.sample_rate;
-        let frames_per_cycle = self.frames_per_cycle(config);
+        let frames_per_cycle = self.frames_per_cycle(&config);
         let buffer_len = frames_per_cycle * channels;
 
         let stop = Arc::new(AtomicBool::new(false));
@@ -382,10 +370,7 @@ impl DeviceTrait for MockDevice {
 
         let cycle_interval = Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
 
-        let info = InputCallbackInfo::new(InputStreamTimestamp {
-            callback: StreamInstant::new(0, 0),
-            capture: StreamInstant::new(0, 0),
-        });
+        let clock_origin = Instant::now();
 
         let thread = std::thread::Builder::new()
             .name("engine-cpal-mock-input".to_string())
@@ -393,6 +378,11 @@ impl DeviceTrait for MockDevice {
                 shoop_tracing::prewarm_realtime_thread("engine-cpal-mock-input");
                 let buffer: Vec<f32> = vec![0.0; buffer_len];
                 while !stop_thread.load(Ordering::Relaxed) {
+                    let now = stream_instant(clock_origin);
+                    let info = InputCallbackInfo::new(InputStreamTimestamp {
+                        callback: now,
+                        capture: now,
+                    });
                     let data = unsafe { make_data_const(&buffer, sample_format) };
                     data_callback(&data, &info);
                     std::thread::sleep(cycle_interval);
@@ -403,45 +393,33 @@ impl DeviceTrait for MockDevice {
         Ok(MockStream {
             stop: Some(stop),
             thread: Some(thread),
+            frames_per_cycle: frames_per_cycle as cpal::FrameCount,
+            clock_origin,
         })
     }
 }
 
-/// Construct an output [`cpal::Data`] pointing into a mutable f32 buffer.
-///
-/// `cpal::Data` has private fields and no public constructor, so the only
-/// way to get one is to lay out the fields ourselves and `transmute_copy`. The
-/// `DataLayout` struct above mirrors the field order with `#[repr(C)]` so the
-/// layouts match.
-///
-/// SAFETY: the caller must guarantee:
-/// - `buffer` lives at least as long as the returned `Data` is used
-/// - `buffer.len()` matches the number of samples the consumer expects
-/// - `sample_format` matches the buffer's sample type
+/// # Safety
+/// The buffer must outlive every use of the returned data.
 unsafe fn make_data(buffer: &mut [f32], sample_format: SampleFormat) -> Data {
-    debug_assert!(sample_format == SampleFormat::F32);
-    let layout = DataLayout {
-        data: buffer.as_mut_ptr() as *mut (),
-        len: buffer.len(),
-        sample_format,
-    };
-    // `Data` is POD (no Drop, all fields Copy), so transmuting from a same-sized
-    // `#[repr(C)]` value with matching field layout is sound as long as DataLayout
-    // matches Data's actual layout -- see the comment on `DataLayout`.
-    std::mem::transmute_copy::<DataLayout, Data>(&layout)
+    assert_eq!(sample_format, SampleFormat::F32);
+    Data::from_parts(buffer.as_mut_ptr().cast(), buffer.len(), sample_format)
 }
 
-/// Construct an input [`cpal::Data`] pointing into an immutable f32 buffer.
-///
-/// See [`make_data`] for the layout contract.
+/// # Safety
+/// The buffer must outlive every use of the returned data, which must remain read-only.
 unsafe fn make_data_const(buffer: &[f32], sample_format: SampleFormat) -> Data {
-    debug_assert!(sample_format == SampleFormat::F32);
-    let layout = DataLayout {
-        data: buffer.as_ptr() as *const () as *mut (),
-        len: buffer.len(),
+    assert_eq!(sample_format, SampleFormat::F32);
+    Data::from_parts(
+        buffer.as_ptr().cast_mut().cast(),
+        buffer.len(),
         sample_format,
-    };
-    std::mem::transmute_copy::<DataLayout, Data>(&layout)
+    )
+}
+
+fn stream_instant(origin: Instant) -> StreamInstant {
+    let elapsed = origin.elapsed();
+    StreamInstant::new(elapsed.as_secs(), elapsed.subsec_nanos())
 }
 
 /// A stream backed by a single thread that fires the data callback at a steady rate.
@@ -452,13 +430,23 @@ unsafe fn make_data_const(buffer: &[f32], sample_format: SampleFormat) -> Data {
 pub struct MockStream {
     stop: Option<Arc<AtomicBool>>,
     thread: Option<JoinHandle<()>>,
+    frames_per_cycle: cpal::FrameCount,
+    clock_origin: Instant,
 }
 
 impl StreamTrait for MockStream {
-    fn play(&self) -> Result<(), PlayStreamError> {
+    fn buffer_size(&self) -> Result<cpal::FrameCount, Error> {
+        Ok(self.frames_per_cycle)
+    }
+
+    fn now(&self) -> StreamInstant {
+        stream_instant(self.clock_origin)
+    }
+
+    fn play(&self) -> Result<(), Error> {
         Ok(())
     }
-    fn pause(&self) -> Result<(), PauseStreamError> {
+    fn pause(&self) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -473,6 +461,75 @@ impl Drop for MockStream {
             // If it cannot finish, the test has hit a real deadlock; we swallow the
             // error rather than panic in Drop.
             let _ = thread.join();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mock_device_identity_is_stable_and_distinguishes_directions() {
+        let output = MockDevice::output();
+        let input = MockDevice::input();
+        let devices =
+            std::collections::HashSet::from([output.clone(), output.clone(), input.clone()]);
+        assert_eq!(devices.len(), 2);
+        assert_eq!(output.to_string(), "mock-output");
+        assert_eq!(input.to_string(), "mock-input");
+        assert_eq!(output.id().unwrap(), output.clone().id().unwrap());
+        assert_ne!(output.id().unwrap(), input.id().unwrap());
+        assert_eq!(
+            output.default_input_config().unwrap_err().kind(),
+            ErrorKind::UnsupportedOperation
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mock_streams_report_callback_size_and_share_the_callback_clock() {
+        for buffer_size in [BufferSize::Default, BufferSize::Fixed(128)] {
+            for direction in [Direction::Input, Direction::Output] {
+                let device = match direction {
+                    Direction::Input => MockDevice::input(),
+                    Direction::Output => MockDevice::output(),
+                };
+                let mut config = device.supported_config().config();
+                config.buffer_size = buffer_size;
+                let expected_frames = device.frames_per_cycle(&config);
+                let (tx, rx) = mpsc::channel();
+                let stream = match direction {
+                    Direction::Input => device.build_input_stream(
+                        config,
+                        move |data: &[f32], info| {
+                            assert!(data.iter().all(|sample| *sample == 0.0));
+                            let _ = tx.send((data.len(), info.timestamp().callback));
+                        },
+                        |error| panic!("mock input stream: {error}"),
+                        None,
+                    ),
+                    Direction::Output => device.build_output_stream(
+                        config,
+                        move |data: &mut [f32], info| {
+                            data.fill(0.5);
+                            let _ = tx.send((data.len(), info.timestamp().callback));
+                        },
+                        |error| panic!("mock output stream: {error}"),
+                        None,
+                    ),
+                }
+                .unwrap();
+                stream.play().unwrap();
+                assert_eq!(stream.buffer_size().unwrap() as usize, expected_frames);
+                let (samples, first) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                let (_, second) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                assert_eq!(samples, expected_frames * 2);
+                assert!(second >= first);
+                let now = stream.now();
+                assert!(now >= second);
+                assert!(now.duration_since(second) < Duration::from_secs(5));
+            }
         }
     }
 }
