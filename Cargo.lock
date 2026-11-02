@@ -4738,6 +4738,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_carla_native"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "assert_no_alloc",
+ "base64",
+ "libc",
+ "libloading 0.9.0",
+ "rfd",
+ "serde_json",
+ "shoop_dsp",
+ "shoop_tracing",
+ "shoop_wasm_test_support",
+ "tracing",
+]
+
+[[package]]
 name = "shoop_common"
 version = "0.3.0"
 dependencies = [
@@ -4754,6 +4771,14 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "shoop_dsp"
+version = "0.3.0"
+dependencies = [
+ "assert_no_alloc",
+ "shoop_wasm_test_support",
 ]
 
 [[package]]
@@ -4788,19 +4813,16 @@ dependencies = [
  "fundsp",
  "jack",
  "jack-sys",
- "libc",
- "libloading 0.9.0",
  "log",
  "memmap2",
  "midir",
  "num_enum",
  "oxisynth",
  "regex",
- "rfd",
  "rtrb",
  "rubato",
- "serde_json",
  "sha2",
+ "shoop_carla_native",
  "shoop_common",
  "shoop_latency",
  "shoop_plugin_protocol",

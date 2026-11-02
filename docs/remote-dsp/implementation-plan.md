@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: planned; implementation and benchmark runs have not started.
+Status: Stage 1 implemented and verified; Stages 2–3 and sweeps are pending.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -170,32 +170,32 @@ Do not make the generic interface depend on `shoop_engine` or its worker protoco
 
 - [x] Create remote branch `feat/network-dsp-host` directly from the recorded
       `feat/backend-replacement` SHA using the GitHub connector.
-- [ ] Fetch that branch into a clean checkout/worktree before implementation.
+- [x] Fetch that branch into a clean checkout/worktree before implementation.
       Reconcile any base-branch movement against the recorded SHA.
-- [ ] Read the target branch's `AGENTS.md`, `.agents/index.md`, mandates, style,
+- [x] Read the target branch's `AGENTS.md`, `.agents/index.md`, mandates, style,
       build and test guidance; establish the required native/Carla baseline.
 - [x] Add this plan on the implementation branch; code and benchmark steps remain
       unchecked. Record exact package/test commands as the components land.
 
 ## Stage 1 — Generic DSP, known-delay reference and native Carla extraction
 
-- [ ] Define the prepared DSP interface, metadata, error/overflow rules and
+- [x] Define the prepared DSP interface, metadata, error/overflow rules and
       control/processing ownership. Implement delay-copy first with preallocated
       per-channel history and explicit reset. Support delay zero and delays not
       divisible by either packet or processing frames.
-- [ ] Verify delay-copy independently using impulses and reproducible multichannel
+- [x] Verify delay-copy independently using impulses and reproducible multichannel
       sample sequences, including `A = 0, 1, C-1, C, C+3`, wraparound, arbitrary
       preparation limits and reset. Use an independent sample-index reference.
-- [ ] Extract the native Carla adapter into its own optional dependency. Preserve
+- [x] Extract the native Carla adapter into its own optional dependency. Preserve
       library/resource resolution, descriptor validation, state formats, MIDI and
       main-thread UI behavior. Keep legacy callers working through thin adapters.
-- [ ] Implement the same DSP interface for Carla. Configure its fixed `C` once;
+- [x] Implement the same DSP interface for Carla. Configure its fixed `C` once;
       populate source-derived frame/transport context without fabricating tempo
       or transport fields absent from the source. Represent latency as unknown.
-- [ ] Verify allocator-guarded core processing, the delay-copy-only dependency
+- [x] Verify allocator-guarded core processing, the delay-copy-only dependency
       graph, existing Carla ABI/fake/native tests and a real pinned-runtime audio
       plus state-round-trip smoke test. Exercise existing UI lifecycle coverage.
-- [ ] Commit this milestone after its checks pass.
+- [x] Commit this milestone after its checks pass.
 
 ## Stage 2 — Standalone service, requester and block adaptation
 
@@ -302,3 +302,23 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution evidence
+
+### Stage 1
+
+- Exact base preserved; local checkout is `feat/network-dsp-host`.
+- Debian workspace toolchain activated through `/workspace/.setup/activate.sh`;
+  baseline warning-denying workspace build passed, and 12 baseline native Carla
+  tests passed (runtime-optional probes were supplemented below).
+- Built Carla 2.5.10 from the lock file's source archive; SHA-256 matches
+  `ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661`.
+- `SHOOP_REQUIRE_CARLA_TESTS=1 cargo test -p shoop_dsp -p shoop_carla_native`:
+  16 tests passed, including real internal Audio Gain processing at gain 0.5,
+  state save/restore, source-time snapshots and UI lifecycle tests.
+- `cargo tree -p shoop_dsp --edges normal`: no dependencies.
+- `cargo nextest run -p shoop_engine --features carla -E 'test(carla) | test(native_dummy_bus_fx)'`:
+  21 existing bridge/session/worker regressions passed using the compatibility layer.
+- `cargo fmt --all`, warning-denying workspace build and shared test policy passed.
+- Extraction retains ABI/state/UI implementation and moves its tests with it;
+  native tests use shared source fixtures and no legacy-engine dependency.
