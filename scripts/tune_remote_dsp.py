@@ -106,7 +106,8 @@ def modes(manifest: dict) -> dict:
     result = dict(MODES)
     for probe in manifest["priority_probes"]:
         if probe["available"]:
-            result[f"spin-pinned-{probe['name']}"] = ("spin", "spin", True, 200)
+            # FIFO peers need cooperative handoff to keep control responsive.
+            result[f"yield-pinned-{probe['name']}"] = ("yield", "yield", True, 200)
     return result
 
 
@@ -221,7 +222,7 @@ def report(output):
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     fields = ["case", "suite", "mode", "P", "k", "N", "gap_timeout_us", "seconds", "repetition", "status", "on_time", "late", "missing", "concealed", "retired", "verified_samples", "correctness_errors", "pair_cpu_cores", "throttled_usec", "client_max_gap_ns", "server_max_gap_ns"]
     with (output / "summary.csv").open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for row in data:
             record = dict(row) | row["requested"]

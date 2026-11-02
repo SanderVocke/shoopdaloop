@@ -195,6 +195,9 @@ missing. Timing misses never fail CI on a wall-clock percentile threshold.
 
 ## Scheduling and polling comparisons
 
+See the [recorded scheduling results](tuning-results.md) alongside the
+[original sweep](localhost-results.md).
+
 Both `serve` and `client` accept `--polling yield|spin`. The default keeps the
 original yielding behavior. Spinning avoids voluntary scheduler handoff; it does
 not reserve CPU time or prevent preemption. The yielding mode also polls actively,
@@ -215,9 +218,10 @@ python3 scripts/tune_remote_dsp.py --report-only --output work/remote-dsp-tuning
 
 The default campaign randomizes three short repetitions of eight configurations
 and seven conditions, then runs fresh yielding baselines and selected alternatives
-for 60 seconds each. Priority conditions are added only when the probe confirms
-the requested setting took effect. Refused priority requests are preserved in the
-manifest. `--profile smoke` checks the workflow; `screen` and `followup` split the
+for 60 seconds each. Priority conditions use cooperative yielding and are added
+only when the probe confirms the requested setting took effect. Refused priority
+requests are preserved in the manifest. `--profile smoke` checks the workflow;
+`screen` and `followup` split the
 campaign. Use a new output directory for a changed binary or runner.
 
 Reports include child-process CPU time and cgroup-counter deltas. CPU cost covers

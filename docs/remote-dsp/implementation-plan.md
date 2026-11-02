@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: Stages 1–3, local validation and measurements are complete. Published as [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915); remote CI and automated review are in progress.
+Status: Stages 1–3 and both measurement campaigns are complete. Published as [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915); final CI and automated review are in progress.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -275,15 +275,15 @@ campaign as published and add independent, reproducible evidence.
 
 - [x] Add explicit yielding/spinning polling modes and bounded service-gap counters.
       Verify both modes, native Carla compatibility and portable-core boundaries.
-- [ ] Run randomized, repeated comparisons of unpinned/pinned processes, independent
+- [x] Run randomized, repeated comparisons of unpinned/pinned processes, independent
       requester/worker polling, and 200/1000-microsecond input-gap policies. Probe
       elevated priority; record permission failures rather than assuming success.
-- [ ] Measure CPU cost and cgroup throttling alongside exact samples, input
+- [x] Measure CPU cost and cgroup throttling alongside exact samples, input
       concealment, sender overruns, output misses and stream retirement. Keep
       timings separate from correctness; run no builds/tests during measurements.
-- [ ] Repeat matched baseline and selected alternatives for longer runs. Retain all
+- [x] Repeat matched baseline and selected alternatives for longer runs. Retain all
       outcomes and document selection, environment limits and reproducible commands.
-- [ ] Publish an additional report/artifacts on PR #915 alongside the unchanged
+- [x] Publish an additional report/artifacts on PR #915 alongside the unchanged
       original evidence and explain the measured outcome to the user.
 
 ## Final end-to-end validation and delivery
@@ -310,7 +310,7 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - [ ] Monitor CI to green; inspect failures before targeted fixes. Check for
       automated review, address justified feedback, rerun affected checks and
       continue until approval when an automated reviewer participates.
-- [ ] Confirm the final diff stays within Stages 1–3, attach reproducible evidence,
+- [x] Confirm the final diff stays within Stages 1–3 and the requested scheduling follow-up, attach reproducible evidence,
       and update this plan with completed steps, remaining limits and final status.
 
 ## Execution contract
@@ -461,3 +461,32 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - This environment permits affinity changes but denies FIFO/RR priority and
   negative niceness. The full campaign records those refused settings explicitly;
   completed measurements will be published separately from the original results.
+
+### Completed scheduling/polling follow-up
+
+- Frozen source `e21ca5ee566f97724dbd11af79504e5a4ae45c80` and executable hash
+  `36d952b0f15d49368913ab7b12cdf693e25bd1978bb3146432312ffdae6a4b89`.
+  The source tree was clean; no builds/tests ran during measurement.
+- Completed 168 randomized short comparisons (eight configurations, seven modes,
+  three repetitions) and 16 randomized 60-second baseline/alternative runs.
+  Verified 124441600 samples over 4495600 measured slots: zero mismatches,
+  unverified samples, missing responses or retirements; 6813 late responses.
+- Audited every configuration/repetition, process exit, packet/sample count,
+  histogram/quantile, actual affinity and resource delta. Report regeneration
+  preserved the decompressed archive hash. Original artifacts/report are unchanged.
+- Reviewed comparisons, CPU costs, source-deadline lower bounds and priority
+  denials appear in `docs/remote-dsp/tuning-results.md`; reproducible artifacts
+  and a regenerated figure are in `docs/remote-dsp/tuning-evidence/`.
+- Affinity/spinning helped selected 8-frame cases but did not establish reliable
+  audio. Wider gap allowances reduced some concealment counts without consistently
+  improving deadlines. Both polling modes used approximately two CPU cores per
+  localhost pair. Elevated priority was unavailable and is not claimed as tested.
+- The base advanced to `3aabf43789708a5640a8f5b368f737651ef1d29d` during execution.
+  Reconciled its dependency/Carla completion changes, retaining native `libc` for
+  completion waits and the extracted Carla dependency/compatibility adapter.
+  The updated workspace build and complete 2553-test suite passed (four skips),
+  as did the required 33-test DSP/Carla checks, portable-core build, WebAssembly
+  check and reconciled-runner smoke checks. Final external gates remain pending.
+- The later priority-runner refinement uses cooperative yielding for any permitted
+  FIFO/RR/niceness conditions, avoiding a spinning FIFO peer starving control.
+  It does not change the seven conditions actually measured on this host.
