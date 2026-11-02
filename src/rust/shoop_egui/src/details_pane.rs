@@ -378,6 +378,7 @@ pub struct DetailsPane {
     grid_divider: Option<u32>,
     snap_enabled: bool,
     grid_origins: BTreeMap<ChannelId, i64>,
+    fallback_grid_length: Option<u64>,
     lane_heights: BTreeMap<ChannelId, f32>,
 }
 
@@ -400,6 +401,7 @@ impl Default for DetailsPane {
             grid_divider: Some(8),
             snap_enabled: true,
             grid_origins: BTreeMap::new(),
+            fallback_grid_length: None,
             lane_heights: BTreeMap::new(),
         }
     }
@@ -421,6 +423,7 @@ impl DetailsPane {
             self.waveforms.clear();
             self.midi_sequences.clear();
             self.grid_origins.clear();
+            self.fallback_grid_length = None;
             self.lane_heights.clear();
         }
         ui.heading(&details.title);
@@ -445,7 +448,19 @@ impl DetailsPane {
             self.media_view.fit(bounds, width);
             self.view_initialized = !details.loading && !details.midi_loading;
         }
-        self.toolbar(ui, bounds, width);
+        if self.fallback_grid_length.is_none() {
+            self.fallback_grid_length = lane_timings(details)
+                .map(|(_, _, _, length, _)| length)
+                .find(|length| *length > 0)
+                .or_else(|| {
+                    lane_timings(details)
+                        .map(|(_, _, _, _, length)| length)
+                        .max()
+                        .filter(|length| *length > 0)
+                });
+        }
+        let grid_length = self.grid_length(details);
+        self.toolbar(ui, bounds, width, grid_length, details.sync_loop_length > 0);
         for (id, start, ..) in lane_timings(details) {
             self.grid_origins.entry(id).or_insert(start);
         }
@@ -469,7 +484,7 @@ impl DetailsPane {
                         ui,
                         channel,
                         view,
-                        details.sync_loop_length,
+                        grid_length,
                         self.grid_divider,
                         self.grid_origins[&channel.id],
                         self.edit_tool.is_some(),
@@ -490,7 +505,7 @@ impl DetailsPane {
                         ui,
                         channel,
                         view,
-                        details.sync_loop_length,
+                        grid_length,
                         self.grid_divider,
                         self.grid_origins[&channel.id],
                         self.edit_tool.is_some(),
@@ -565,31 +580,42 @@ impl DetailsPane {
         edit_intent.into_iter().collect()
     }
 
-    fn toolbar(&mut self, ui: &mut egui::Ui, bounds: (f64, f64), width: f32) {
+    fn toolbar(
+        &mut self,
+        ui: &mut egui::Ui,
+        bounds: (f64, f64),
+        width: f32,
+        grid_length: u64,
+        has_sync: bool,
+    ) {
+        ui.scope(|ui| {
+        let height = ui.spacing().interact_size.y.max(24.0);
+        ui.spacing_mut().interact_size = egui::vec2(0.0, height);
+        ui.spacing_mut().button_padding = egui::vec2(5.0, 2.0);
+        ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
         ui.horizontal_wrapped(|ui| {
             ui.horizontal(|ui| {
-                if ui
-                    .small_button(ICON_ZOOM_OUT.rich_text().size(17.0))
+                if toolbar_icon(ui, ICON_ZOOM_OUT, height)
                     .on_hover_text("Zoom out")
                     .clicked()
                 {
                     self.media_view.zoom_by(0.8, width, 0.5);
                 }
-                if ui
-                    .small_button(ICON_ZOOM_IN.rich_text().size(17.0))
+                if toolbar_icon(ui, ICON_ZOOM_IN, height)
                     .on_hover_text("Zoom in")
                     .clicked()
                 {
                     self.media_view.zoom_by(1.25, width, 0.5);
                 }
                 if ui
-                    .small_button("Fit")
+                    .add(egui::Button::new("Fit").min_size(egui::vec2(0.0, height)))
                     .on_hover_text("Show all stored content and the loop range")
                     .clicked()
                 {
                     self.media_view.fit(bounds, width);
                 }
-                ui.menu_button(ICON_SEARCH.rich_text().size(17.0), |ui| {
+                let zoom_button = toolbar_icon(ui, ICON_SEARCH, height).on_hover_text("Zoom slider");
+                egui::Popup::menu(&zoom_button).show(|ui| {
                     let previous = self.media_view.frames_per_pixel;
                     let mut value = previous;
                     if ui
@@ -606,15 +632,13 @@ impl DetailsPane {
                         self.media_view
                             .zoom_by((previous / value) as f32, width, 0.5);
                     }
-                })
-                .response
-                .on_hover_text("Zoom slider");
+                });
             });
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label("Tool:");
                 egui::ComboBox::from_id_salt("details_tool")
-                    .width(100.0)
+                    .width(96.0)
                     .selected_text(tool_label(self.edit_tool))
                     .show_ui(ui, |ui| {
                         for tool in [
@@ -635,7 +659,7 @@ impl DetailsPane {
                         self.scope
                     };
                     egui::ComboBox::from_id_salt("details_scope")
-                        .width(65.0)
+                        .width(64.0)
                         .selected_text(if scope == ChannelScope::All {
                             "All"
                         } else {
@@ -660,7 +684,7 @@ impl DetailsPane {
             ui.horizontal(|ui| {
                 ui.label("Grid:");
                 egui::ComboBox::from_id_salt("details_grid_divider")
-                    .width(55.0)
+                    .width(52.0)
                     .selected_text(grid_divider_label(self.grid_divider))
                     .show_ui(ui, |ui| {
                         for choice in GRID_DIVIDER_CHOICES {
@@ -670,25 +694,42 @@ impl DetailsPane {
                                 grid_divider_label(choice),
                             );
                         }
+                    }).response.on_hover_text(if has_sync {
+                        "Grid divisions use the Sync loop length"
+                    } else {
+                        "Sync is empty: grid divisions use this loop's initial range or stored content"
                     });
-                ui.toggle_value(&mut self.snap_enabled, "Snap");
-                ui.menu_button(ICON_MORE_HORIZ.rich_text().size(17.0), |ui| {
+                if ui.add_enabled(grid_interval(grid_length, self.grid_divider).is_some(),
+                    egui::Button::new("Snap").selected(self.snap_enabled).min_size(egui::vec2(0.0, height)))
+                    .on_hover_text("Snap the preview and click to the grid")
+                    .on_disabled_hover_text("Choose a grid division and record or load loop content to enable snapping")
+                    .clicked() { self.snap_enabled = !self.snap_enabled; }
+                let grid_button = toolbar_icon(ui, ICON_MORE_HORIZ, height)
+                    .on_hover_text("Grid reference stays fixed while editing");
+                egui::Popup::menu(&grid_button).show(|ui| {
                     if ui.button("Re-anchor grid to current starts").clicked() {
                         self.grid_origins.clear();
                         ui.close();
                     }
-                })
-                .response
-                .on_hover_text("Grid reference stays fixed while editing");
+                });
             });
         });
+        });
+    }
+
+    fn grid_length(&self, details: &LoopDetailsState) -> u64 {
+        if details.sync_loop_length > 0 {
+            details.sync_loop_length
+        } else {
+            self.fallback_grid_length.unwrap_or(0)
+        }
     }
 
     fn snap_frame(&self, details: &LoopDetailsState, channel_id: ChannelId, frame: i64) -> i64 {
         if !self.snap_enabled {
             return frame;
         }
-        let Some(interval) = grid_interval(details.sync_loop_length, self.grid_divider) else {
+        let Some(interval) = grid_interval(self.grid_length(details), self.grid_divider) else {
             return frame;
         };
         snap_frame_to_grid(
@@ -697,6 +738,22 @@ impl DetailsPane {
             interval,
         )
     }
+}
+
+fn toolbar_icon(
+    ui: &mut egui::Ui,
+    icon: egui_material_icons::MaterialIcon,
+    height: f32,
+) -> egui::Response {
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = egui::Vec2::splat(2.0);
+        ui.add_sized(
+            egui::Vec2::splat(height),
+            egui::Button::new(icon.rich_text().size(height - 8.0))
+                .min_size(egui::Vec2::splat(height)),
+        )
+    })
+    .inner
 }
 
 pub(crate) fn paint_lane_label(ui: &egui::Ui, rect: egui::Rect, label: &str) {
@@ -1251,5 +1308,91 @@ mod tests {
         assert_eq!(snap_frame_to_grid(104, 100, 8), 108);
         assert_eq!(snap_frame_to_grid(95, 100, 8), 92);
         assert_eq!(snap_frame_to_grid(-5, 0, 8), -8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn empty_sync_uses_a_stable_loop_grid_for_paint_hover_and_click() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut pane = DetailsPane {
+            edit_tool: Some(TimelineEditTool::LoopStart),
+            grid_divider: Some(1),
+            ..Default::default()
+        };
+        let mut details = details();
+        details.sync_loop_length = 0;
+        let mut output = context.run_ui(Default::default(), |ui| {
+            pane.show(ui, Some(&details));
+        });
+        output.textures_delta.clear();
+        assert_eq!(pane.grid_length(&details), 40);
+        let rect = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(shape)
+                    if shape.fill == colors::WAVEFORM_BACKGROUND
+                        && shape.rect.height() == DEFAULT_AUDIO_LANE_HEIGHT =>
+                {
+                    Some(shape.rect)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let view = pane.media_view.view(rect.width());
+        let snapped_x = view.frame_to_x(100.0, rect);
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if stroke.color == colors::WAVEFORM_SYNC_MARKER
+                    && (points[0].x - snapped_x).abs() < 0.01 && points[0].y == rect.top())));
+        let position = egui::pos2(view.frame_to_x(96.0, rect), rect.center().y);
+        let mut output = context.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::PointerMoved(position)],
+                ..Default::default()
+            },
+            |ui| {
+                assert!(pane.show(ui, Some(&details)).is_empty());
+            },
+        );
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if stroke.color == egui::Color32::WHITE
+                    && (points[0].x - snapped_x).abs() < 0.01 && points[0].y == rect.top())));
+        let mut emitted = Vec::new();
+        for pressed in [true, false] {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    events: vec![egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ui| {
+                    emitted.extend(pane.show(ui, Some(&details)));
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let [AppIntent::SetLoopChannelTimings { updates, .. }] = emitted.as_slice() else {
+            panic!("expected one channel timing edit");
+        };
+        assert_eq!(updates[0].start_offset, Some(100));
+        details.channels[0].start_offset = 100;
+        for channel in &mut details.channels {
+            channel.loop_length = 200;
+        }
+        let mut output = context.run_ui(Default::default(), |ui| {
+            pane.show(ui, Some(&details));
+        });
+        output.textures_delta.clear();
+        assert_eq!(pane.grid_length(&details), 40);
+        assert_eq!(pane.snap_frame(&details, details.channels[0].id, 96), 100);
+        details.sync_loop_length = 80;
+        assert_eq!(pane.grid_length(&details), 80);
     }
 }
