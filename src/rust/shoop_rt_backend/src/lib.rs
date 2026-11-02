@@ -251,12 +251,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             if self.read_cancel_needed
                 && self.is_ready()
                 && self.require_mutation_capacity(1).is_ok()
-                && !self
-                    .requests
-                    .outgoing
-                    .iter()
-                    .chain(self.requests.in_flight.values())
-                    .any(|pending| pending.purpose == crate::requests::Purpose::CancelReads)
+                && !self.read_cancel_outstanding()
             {
                 self.requests.push(
                     shoop_rt_protocol::Request::CancelBulk,
@@ -377,6 +372,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
         }
+        if self.read_cancel_needed || self.read_cancel_outstanding() {
+            return sent;
+        }
         while let Some((loop_id, midi, read)) = self.reads.next() {
             match self.client.bulk(read) {
                 Ok(()) => {
@@ -392,6 +390,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         sent
+    }
+
+    fn read_cancel_outstanding(&self) -> bool {
+        self.requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+            .any(|pending| pending.purpose == crate::requests::Purpose::CancelReads)
     }
 
     fn lose(&mut self, reason: String) {

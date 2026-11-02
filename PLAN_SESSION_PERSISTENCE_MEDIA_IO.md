@@ -777,6 +777,23 @@ checks the upload plateau, sends an independent control, cancels and reuses the
 connection. Earlier Node/Chrome and Miri evidence remains valid for its unchanged
 portable/browser scope; native deployment and final-head CI are being repeated.
 
+Both Linux native file transports pass on `14eb86d8`, including exact resave and
+socket-loss reconciliation. Actual macOS playback still exposed insufficient upload
+throughput, timing out later in load or opposite-media replacement. The final
+prepared pool uses 32 runtime upload buffers and adds up to 32 KiB of dedicated
+upload copy allowance to each prepared callback budget, preserving existing
+render/read reservations and media capacity. This supersedes the eight-buffer
+implementation described in the earlier milestones. The eight-record legacy and
+64-record negotiated client windows remain unchanged; no workload or timeout changes.
+All 2483 native tests pass, including the original repeated upload/heap guards.
+
+Release single-file CI also exposed a media-view cancellation race. A later
+cancellation could consume a newly queued MIDI read, returning Busy permanently
+for that selection. A deterministic eight-cycle regression fails with that exact
+refusal before the fix and passes after it. New bulk reads now wait for every
+queued cancellation to finish, while ordinary controls continue. Affected Wasm,
+browser and selected Miri checks are repeated after these portable changes.
+
 ### Stage 7 — final end-to-end validation and PR
 
 - [ ] Exercise packaged native and hosted/self-contained browser workflows: record
@@ -789,7 +806,7 @@ portable/browser scope; native deployment and final-head CI are being repeated.
   retained reference fixtures, Python boundary/parity/tracing/test-policy checks,
   all Node/Wasm packages and applicable Chromium/Firefox browser gates following
   repository testing guidance. Record hardware/mock and platform limitations.
-- [x] Run selected Miri on changed portable ownership/protocol/staging paths only
+- [ ] Run selected Miri on changed portable ownership/protocol/staging paths only
   after ordinary gates stabilize. Rerun affected checks after fixes; retain earlier
   evidence only with exact source provenance and a justified unchanged scope.
 - [ ] Reconcile each acceptance criterion and ledger subitem with test/evidence

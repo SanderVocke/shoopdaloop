@@ -9,6 +9,8 @@ use shoop_rt_protocol::{
     content::MAX_CONTENT_BYTES, ContentDescription, Outcome, Refusal, Request,
 };
 
+pub(crate) const RUNTIME_UPLOAD_BUFFERS: usize = 32;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Step {
     Create,
@@ -119,7 +121,7 @@ impl Uploads {
     pub(crate) fn new(slots: usize, chunk_bytes: usize) -> Self {
         Self {
             slots: vec![None; slots].into_boxed_slice(),
-            buffers: (0..shoop_rt_protocol::content::LEGACY_CONTENT_WRITE_WINDOW)
+            buffers: (0..RUNTIME_UPLOAD_BUFFERS)
                 .map(|_| vec![0; chunk_bytes].into_boxed_slice())
                 .collect(),
             initials: (0..8)

@@ -307,6 +307,56 @@ fn a_fresh_adapter_refuses_to_delete_another_services_live_structure() {
 }
 
 #[shoop_test]
+fn a_new_media_read_waits_for_all_prior_cancellations_without_losing_its_result() {
+    let mut backend = stack(&description());
+    backend.clock_mut().capture = |_| 0.25;
+    let created = backend.create_direct_track(track(1, true, 1)).unwrap();
+    let loop_id = created.loops[0];
+    backend
+        .set_port_connected(created.ports[0].id, "audio_in_1", true)
+        .unwrap();
+    backend
+        .transition_loop(loop_id, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .inject_midi_input(
+            created.track_id,
+            &[BackendMidiEvent {
+                frame: 0,
+                data: vec![0x90, 60, 100].into(),
+            }],
+        )
+        .unwrap();
+    backend.advance(std::time::Duration::from_millis(300));
+    backend
+        .transition_loop(loop_id, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    for _ in 0..8 {
+        backend.cancel_media_reads();
+        backend.wait_idle();
+        assert!(backend.loop_audio_data(loop_id).unwrap().is_none());
+        backend.clock_mut().render(1);
+        backend.pump();
+        backend.cancel_media_reads();
+        assert!(backend.loop_audio_data(loop_id).unwrap().is_none());
+        backend.cancel_media_reads();
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        backend
+            .set_track_control(
+                created.track_id,
+                BackendTrackControl::InputMonitoring(false),
+            )
+            .unwrap();
+        backend.wait_idle();
+        let midi = backend.loop_midi_data(loop_id).unwrap().unwrap();
+        assert_eq!(midi.channels[0].events.len(), 1);
+        assert_eq!(midi.channels[0].events[0].data.as_ref(), &[0x90, 60, 100]);
+    }
+}
+
+#[shoop_test]
 fn a_disconnected_engine_is_reported_failed_and_operations_are_refused() {
     let mut backend = stack(&description());
     let created = backend.create_direct_track(track(1, false, 1)).unwrap();
