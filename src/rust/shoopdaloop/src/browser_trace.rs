@@ -373,6 +373,10 @@ impl RealmTraceState {
         !matches!(self.terminal, TerminalState::Active)
     }
 
+    pub fn received_records(&self) -> usize {
+        self.records.len() / RECORD_BYTES
+    }
+
     pub fn label(&self) -> &str {
         &self.label
     }

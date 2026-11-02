@@ -809,13 +809,27 @@ impl UnifiedApp {
                 status = self.tracing.status();
             }
         }
-        if self.args.tracing_smoke_test && status.active && self.runtime.tracing_realm_ready() {
-            let started = self.tracing_smoke_started.get_or_insert_with(|| {
-                tracing::info!("frontend.egui.tracing_smoke_realm_ready");
-                Instant::now()
-            });
-            if started.elapsed() >= Duration::from_secs(3) && self.pending_tracing_action.is_none()
+        if self.args.tracing_smoke_test && status.active {
+            let started = self.tracing_smoke_started.get_or_insert_with(Instant::now);
+            let received_records = self.runtime.trace_received_records();
+            let ready = self.runtime.tracing_realm_ready() && received_records > 8192;
+            let timed_out = started.elapsed() >= Duration::from_secs(60);
+            if let Some(body) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.body())
             {
+                let _ = body
+                    .set_attribute("data-perfetto-trace-records", &received_records.to_string());
+                if timed_out && !ready {
+                    let _ = body.set_attribute(
+                        "data-perfetto-trace-error",
+                        &format!(
+                            "Timed out waiting for an active realm with more than 8192 trace records; received {received_records}"
+                        ),
+                    );
+                }
+            }
+            if (ready || timed_out) && self.pending_tracing_action.is_none() {
                 tracing::info!("frontend.egui.tracing_smoke_stop_requested");
                 self.pending_tracing_action = Some(PendingTracingAction::Stop { save: true });
                 self.args.tracing_smoke_test = false;
@@ -2705,6 +2719,13 @@ impl Runtime {
             BrowserRuntimeMode::Worker(driver) => {
                 driver.state() == shoop_backend::BackendDriverState::Dummy
             }
+        }
+    }
+
+    fn trace_received_records(&self) -> usize {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => controller.trace_received_records(),
+            BrowserRuntimeMode::Worker(driver) => driver.trace_received_records(),
         }
     }
 

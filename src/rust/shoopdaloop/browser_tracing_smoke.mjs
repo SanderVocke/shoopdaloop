@@ -159,6 +159,8 @@ try {
         title: document.title,
         body: document.body?.innerText,
         status: document.getElementById('browser_status')?.textContent,
+        receivedRecords: document.body?.getAttribute('data-perfetto-trace-records'),
+        traceError: document.body?.getAttribute('data-perfetto-trace-error'),
         saved: document.body?.getAttribute('data-perfetto-trace-saved')
       })`,
       returnByValue: true,
@@ -177,6 +179,13 @@ try {
   if (!trace) throw new Error('browser trace download is missing');
   await copyFile(path.join(downloads, trace), output);
   console.log(`browser ${realm} Perfetto capture: ${output}`);
+  const captureError = await command('Runtime.evaluate', {
+    expression: 'document.body?.getAttribute("data-perfetto-trace-error")',
+    returnByValue: true,
+  });
+  if (captureError.result.value) {
+    throw new Error(`${captureError.result.value}; console=${JSON.stringify(consoleMessages)}`);
+  }
 } finally {
   socket?.close();
   for (const child of processes.reverse()) child.kill('SIGTERM');
