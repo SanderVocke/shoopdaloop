@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Build a provisioned production host and keep QEMU alive for native UI use."""
 import argparse
-import json
 from pathlib import Path
 import subprocess
 import sys
 import time
 from qemu import Qemu, ROOT
+from remote_profile import write_profile
 
 
 def main():
@@ -23,9 +23,7 @@ def main():
     directory = ROOT / "work/zynq/interactive"
     directory.mkdir(parents=True, exist_ok=True)
     profile = directory / "profile.json"
-    profile.write_text(json.dumps({"version": 10, "name": "Zynq QEMU", "credential": str(credential),
-        "endpoint": f"127.0.0.1:{args.port_base}", "management": f"127.0.0.1:{args.port_base+1}",
-        "network": {"heartbeat_interval_ms": 1000, "heartbeat_timeout_ms": 5000, "snapshot_hz": 30}}, indent=2) + "\n")
+    write_profile(profile, credential, args.port_base)
     with Qemu(ROOT / "work/zynq/build/host.elf", directory,
               [(args.port_base, 15400), (args.port_base+1, 15401)]) as emulator:
         emulator.ready("SHOOP_HOST_READY", timeout=60)

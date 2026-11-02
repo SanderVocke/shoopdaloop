@@ -10,6 +10,10 @@ Implemented on `feat/zynq-freertos-rt-host` in
 The final documentation head must pass the same checks before handoff.
 The user retargeted delivery after networking merged as `540e863f`; this is the
 implementation base. Its tree matches the investigated networking head.
+The target subsequently advanced to `3aabf437`; that revision is merged into the
+implementation branch. Its session protocol is version 11. Both firmware
+launchers derive profile versions from the workspace protocol definition, so
+future compatible rebuilds do not retain a stale version number.
 
 The hardware assumption is **1 GiB of PS DDR (1024 MiB, 1,073,741,824 bytes)**.
 Configure QEMU explicitly with `-m 1G`; its default is not the memory contract.
@@ -373,8 +377,8 @@ documentation links are background, not reproducible build inputs.
 ## Execution evidence
 
 - Delivery: [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914), base
-  `feat/backend-replacement` at `540e863f`. A final fetch confirmed no base
-  movement. The base tree equals investigated `5aeadd0b`.
+  `feat/backend-replacement`, originally at `540e863f` (the investigated
+  `5aeadd0b` tree). Target movement to `3aabf437` is merged and requalified.
 - Milestones: `ba4e2adf` establishes pins/layout; `ddd7cd4e` proves echo;
   `64360a1c` introduces configurable admission; `dee441c3` integrates the complete
   host and CI. Subsequent fixes cover the runner container's checkout ownership,
@@ -464,7 +468,7 @@ All required/applicable checks passed on implementation head `9d1003cc`:
 The complete check list includes 19 successful checks; only the scheduled/manual
 CPAL-free nightly is intentionally skipped for a PR. Codecov patch status is
 91.66% against its unchanged 80% floor. CodeQL's two review threads are resolved;
-no additional substantive automated review arrived at final inspection.
+no additional substantive automated review arrived on that head.
 
 The clean CI firmware suite completed all seven phases in 16 minutes 21 seconds.
 Its [verified execution artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522777971/artifacts/13178787967)
@@ -481,6 +485,20 @@ the exact Overloaded refusal. The corrected complete firmware CI passes.
 The final workflow artifact paths additionally include nested restart logs,
 QMP facts and failure diagnostics. Final-documentation-head checks must pass
 before handoff and remain visible on the PR's current check list.
+
+The target branch subsequently merged master and advanced its application
+protocol from 10 to 11. CI correctly rejected the stale launcher-generated
+profile. The target update is merged; interactive and test launchers now share
+profile generation using the workspace's authoritative protocol constant.
+The complete firmware suite and native regressions are rerun after this update;
+the PR's final head must pass the same complete CI set before handoff.
+On the merged target, the warning-denying workspace build, formatting, Rust
+test-attribute policy and closed 356-module tracing inventory pass. All 2,537
+native tests pass (five intentionally skipped).
+The merged-target local firmware suite passes all seven phases in 14 minutes
+27 seconds, including both production boots, native UI, recovery, the full
+40 MiB media gate, recording-pool exhaustion and 100 warmed reconnect cycles.
+Peak Rust use is 407,460,812 bytes; final Rust use, sockets and netconns are zero.
 
 Physical audio/FPGA wiring, silicon cache/DMA validation, physical real-time
 performance and production boot packaging remain outside the agreed scope.

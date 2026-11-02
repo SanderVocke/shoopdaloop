@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from qemu import Qemu, ROOT
+from remote_profile import write_profile
 
 
 def main():
@@ -30,9 +31,7 @@ def main():
         stream.write(os.urandom(32))
     credential.chmod(0o600)
     profile = directory / "profile.json"
-    profile.write_text(json.dumps({"version": 10, "name": "Zynq QEMU", "endpoint": f"127.0.0.1:{args.port_base}",
-        "management": f"127.0.0.1:{args.port_base+1}", "credential": str(credential), "network": {
-            "heartbeat_interval_ms": 1000, "heartbeat_timeout_ms": 5000, "snapshot_hz": 30}}, indent=2) + "\n")
+    write_profile(profile, credential, args.port_base)
     build = [sys.executable, "platforms/zynq7000/build.py", "--app", "host", "--credential-file", str(credential)]
     if args.fixture:
         build += ["--fixture"]
