@@ -148,42 +148,58 @@ fn lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints() {
         &mut connection,
         shoop_app_protocol::Command::SetLoopSmoothingMs(9),
     );
-    let mut wrong = profile.clone();
-    wrong.host = HostId(101);
-    assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
-    assert!(connection::management(
-        &wrong,
-        ManagementRequest::Status {
-            version: VERSION,
-            host: wrong.host,
-            session: wrong.session
-        },
-        Duration::from_secs(5)
-    )
-    .is_err());
-    let mut wrong = profile.clone();
-    wrong.version = VERSION + 1;
-    assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
-    let bad_key = host._root.path().join("wrong.key");
-    create_credential(&bad_key).unwrap();
-    let mut wrong = profile.clone();
-    wrong.credential = bad_key;
-    assert!(connection::connect(&wrong, Duration::from_secs(2)).is_err());
-    connection.poll(&mut client).unwrap();
-    assert!(matches!(
-        status(&profile),
-        ManagementReply::Status { busy: true, .. }
-    ));
-    let mut busy = connection::connect(&profile, Duration::from_secs(5)).unwrap();
-    let mut other = Client::new(ClientId(2), profile.host, profile.session).unwrap();
-    busy.send(other.attach().unwrap()).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while other.state() != State::Lost {
-        let _ = busy.poll(&mut other);
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(2));
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct StopPump<'a>(&'a AtomicBool);
+    impl Drop for StopPump<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
     }
-    assert_eq!(other.refusal(), Some(Refusal::Busy));
+    let stop = AtomicBool::new(false);
+    thread::scope(|scope| {
+        let _stop = StopPump(&stop);
+        scope.spawn(|| {
+            while !stop.load(Ordering::Acquire) {
+                connection.poll(&mut client).unwrap();
+                thread::sleep(Duration::from_millis(2));
+            }
+        });
+        let mut wrong = profile.clone();
+        wrong.host = HostId(101);
+        assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
+        assert!(connection::management(
+            &wrong,
+            ManagementRequest::Status {
+                version: VERSION,
+                host: wrong.host,
+                session: wrong.session
+            },
+            Duration::from_secs(5)
+        )
+        .is_err());
+        let mut wrong = profile.clone();
+        wrong.version = VERSION + 1;
+        assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
+        let bad_key = host._root.path().join("wrong.key");
+        create_credential(&bad_key).unwrap();
+        let mut wrong = profile.clone();
+        wrong.credential = bad_key;
+        assert!(connection::connect(&wrong, Duration::from_secs(2)).is_err());
+        assert!(matches!(
+            status(&profile),
+            ManagementReply::Status { busy: true, .. }
+        ));
+        let mut busy = connection::connect(&profile, Duration::from_secs(5)).unwrap();
+        let mut other = Client::new(ClientId(2), profile.host, profile.session).unwrap();
+        busy.send(other.attach().unwrap()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while other.state() != State::Lost {
+            let _ = busy.poll(&mut other);
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(other.refusal(), Some(Refusal::Busy));
+    });
     drop(connection);
     thread::sleep(Duration::from_millis(100));
     let (mut replacement, mut connection) = attach(&profile, 3);

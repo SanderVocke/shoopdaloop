@@ -454,6 +454,10 @@ permission checks remain mandatory and credential errors have their own context.
 After this correction, the full native suite again passes 2507 tests (four
 intentional canaries skipped), and both LAN workflow and >32 MiB persistence
 probes pass, including exact resave and connection-loss reconciliation.
+Windows debug CI additionally caught the refusal fixture suspending its healthy
+owner across several slow ACL checks, correctly expiring the default heartbeat.
+The fixture now pumps that owner concurrently while probing identity/token and
+busy-controller refusals; the heartbeat settings and refusal assertions are intact.
 
 | Criterion | Evidence |
 | --- | --- |
