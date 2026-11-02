@@ -6,8 +6,13 @@
 //! length, further chunks are requested ahead as far as the bulk credits allow. A read belongs
 //! to one version of the loop's content and is replaced when the content changes.
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use alloc::borrow::ToOwned;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 
 use shoop_backend::{
     BackendAudioChannelData, BackendAudioData, BackendChannelMode, BackendLoopId,
@@ -269,7 +274,7 @@ impl Reads {
             if matches!(read.outcome, Outcome::Reading)
                 && read.total.is_some_and(|total| read.received >= total)
             {
-                let bytes = std::mem::take(&mut read.bytes)
+                let bytes = core::mem::take(&mut read.bytes)
                     .into_values()
                     .collect::<Vec<_>>();
                 read.outcome = match midi_data(&bytes.concat(), read.version, length(loop_id)) {
@@ -310,7 +315,7 @@ impl Reads {
         {
             let frames = read.received as usize;
             let mut channels = vec![Vec::with_capacity(frames); read.channels];
-            for part in std::mem::take(&mut read.samples).into_values() {
+            for part in core::mem::take(&mut read.samples).into_values() {
                 for frame in part.chunks_exact(loop_channels) {
                     for (channel, samples) in channels.iter_mut().enumerate() {
                         samples.push(frame.get(channel).copied().unwrap_or(0.0));

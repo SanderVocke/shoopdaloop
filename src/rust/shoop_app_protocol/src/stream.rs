@@ -1,4 +1,6 @@
 //! Incremental encoding of one ordered service update. The sender retains an unsent record.
+use alloc::vec::Vec;
+
 use crate::*;
 use shoop_transport::CodecError;
 
@@ -77,7 +79,7 @@ impl StreamEncoder {
         Ok(Self { state })
     }
     pub fn next_message(&mut self) -> Option<WireMessage> {
-        let state = std::mem::replace(&mut self.state, State::Empty);
+        let state = core::mem::replace(&mut self.state, State::Empty);
         match state {
             State::Empty => None,
             State::One(message) => Some(message),

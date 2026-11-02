@@ -1,6 +1,10 @@
 //! Logical engine messages, identifiers, limits and their canonical binary codec.
 //! Connections and carriers are provided by `shoop_rt_transport`.
+#![no_std]
 #![forbid(unsafe_code)]
+
+#[cfg(test)]
+extern crate std;
 
 pub mod codec;
 pub mod host;

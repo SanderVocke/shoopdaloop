@@ -9,8 +9,9 @@ browser-feature = "wasm-test-browser"
 features = ["legacy"]
 
 [features]
+std = ["anyhow/std", "serde/std"]
 default = []
-legacy = ["dep:shoop_engine", "dep:shoop_settings", "dep:shoop_tracing"]
+legacy = ["std", "dep:shoop_engine", "dep:shoop_settings", "dep:shoop_tracing"]
 contracts = ["legacy"]
 native-drivers = ["legacy", "shoop_engine/app_backend"]
 cpal = ["native-drivers", "shoop_engine/cpal"]

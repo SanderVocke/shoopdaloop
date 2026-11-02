@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -45,7 +45,7 @@ env:
 jobs:
   no_std_core:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
-    name: Bare-metal runtime and loops
+    name: Bare-metal runtime and session service
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -54,12 +54,22 @@ jobs:
       - name: Install Rust stable with bare-metal target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf
+          targets: thumbv7em-none-eabihf, armv7a-none-eabi, aarch64-unknown-none
 
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
         run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+
+      - name: Build Cortex-A engine and session service without a standard library
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          for target in armv7a-none-eabi aarch64-unknown-none; do
+            cargo build --locked --lib --no-default-features \
+              -p shoop_rt_engine -p shoop_app -p shoop_rt_backend -p shoop_script_resources \
+              --target "$target"
+          done
 
   rust_coverage:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'

@@ -16,19 +16,19 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 [dependencies]
 shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port", features = ["browser"] }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
 clap = { workspace = true }
 eframe = { workspace = true }
-shoop_app = { path = "../shoop_app", default-features = false }
+shoop_app = { path = "../shoop_app", default-features = false, features = ["std"] }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
 shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }
 shoop_script_resources = { path = "../shoop_script_resources" }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 ehttp = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

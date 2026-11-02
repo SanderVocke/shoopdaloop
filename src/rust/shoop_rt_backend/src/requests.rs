@@ -1,6 +1,7 @@
 //! Requests waiting for credits and requests waiting for their outcome.
 
-use std::collections::{BTreeMap, VecDeque};
+use alloc::collections::{BTreeMap, VecDeque};
+use alloc::string::String;
 
 use shoop_backend::{
     BackendBusControl, BackendLoopId, BackendMixerLink, BackendPortId, BackendTrackControl,

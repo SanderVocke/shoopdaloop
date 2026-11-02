@@ -1,8 +1,12 @@
 //! The engine's node type: the loop library's playback and capture nodes next
 //! to the engine's own strip stages, loop faders and the Master bus.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::cells::{Cells, Peak};
 use crate::stream::BulkReader;
+use alloc::sync::Arc;
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
 use rt_runtime::midi_state::MidiState;
@@ -12,7 +16,6 @@ use rt_runtime::resource::Cursor;
 use rt_runtime::Error;
 use shoop_loops::runtime::{LoopNode, LoopPlanner};
 use shoop_rt_protocol::MidiMessage;
-use std::sync::Arc;
 
 /// Most injected MIDI messages a strip holds between callbacks.
 const INJECTED: usize = 16;
@@ -311,7 +314,7 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
                 cells.input.clear();
                 cells
                     .midi_in
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                    .store(false, core::sync::atomic::Ordering::Relaxed);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
@@ -419,7 +422,7 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
         if active {
             cells
                 .midi_in
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+                .store(true, core::sync::atomic::Ordering::Relaxed);
         }
         Ok(())
     }
@@ -446,7 +449,7 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
                 cells.output.clear();
                 cells
                     .midi_out
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                    .store(false, core::sync::atomic::Ordering::Relaxed);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
@@ -505,7 +508,7 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
             if copy_midi(input, output, frames)? {
                 cells
                     .midi_out
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                    .store(true, core::sync::atomic::Ordering::Relaxed);
             }
         }
         Ok(())

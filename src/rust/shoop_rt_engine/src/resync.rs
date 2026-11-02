@@ -49,11 +49,11 @@ impl ControlEndpoint {
                 PortKind::AudioOut => (strip.shape.audio_outputs as usize, strip.outputs.current()),
                 PortKind::MidiIn => (
                     usize::from(strip.shape.midi_input),
-                    std::slice::from_ref(&strip.midi_inputs),
+                    core::slice::from_ref(&strip.midi_inputs),
                 ),
                 PortKind::MidiOut => (
                     usize::from(strip.shape.midi_output),
-                    std::slice::from_ref(&strip.midi_outputs),
+                    core::slice::from_ref(&strip.midi_outputs),
                 ),
             };
             while cursor.channel < channels {

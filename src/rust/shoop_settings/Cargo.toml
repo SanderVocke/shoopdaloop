@@ -13,9 +13,9 @@ native-store = ["dep:anyhow", "dep:directories", "dep:tempfile"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
-anyhow = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true, features = ["std"] }
 directories = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 

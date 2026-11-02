@@ -18,8 +18,8 @@ name = "carla_bridge_benchmark"
 required-features = ["carla"]
 
 [dependencies]
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+thiserror = { workspace = true, features = ["std"] }
+anyhow = { workspace = true, features = ["std"] }
 log = { workspace = true }
 regex = { workspace = true }
 arc-swap = { workspace = true }
@@ -42,7 +42,7 @@ assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_latency = { path = "../shoop_latency" }
 shoop_settings = { path = "../shoop_settings" }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 oxisynth = { workspace = true }

@@ -1,8 +1,20 @@
+#![no_std]
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
-use std::fmt;
-use std::sync::Arc;
+use alloc::sync::Arc;
+use core::fmt;
 
 macro_rules! entity_id {
     ($name:ident) => {
@@ -1527,7 +1539,7 @@ pub fn ephemeral_script_display_name<'a>(
 ) -> String {
     let existing_names = existing_names
         .into_iter()
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<alloc::collections::BTreeSet<_>>();
     if !existing_names.contains(source_name) {
         return source_name.to_owned();
     }
@@ -2775,6 +2787,7 @@ pub type AppAction = AppIntent;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[shoop_wasm_test_support::shoop_test]
     fn backend_capabilities_toggle_each_capability_independently() {
@@ -2851,7 +2864,7 @@ mod tests {
             "controller.lua"
         ));
         assert_eq!(
-            ephemeral_script_display_name("controller.lua", std::iter::empty()),
+            ephemeral_script_display_name("controller.lua", core::iter::empty()),
             "controller.lua"
         );
         assert_eq!(
@@ -2918,7 +2931,7 @@ mod tests {
             spec.validate(&[]),
             Err(TrackSpecError::ProcessorUnavailable)
         );
-        assert!(spec.validate(std::slice::from_ref(&processor)).is_ok());
+        assert!(spec.validate(core::slice::from_ref(&processor)).is_ok());
         assert_eq!(
             spec.topology.channel_roles(),
             vec![
@@ -2942,7 +2955,7 @@ mod tests {
             ..spec.clone()
         };
         assert_eq!(
-            unsupported.validate(std::slice::from_ref(&processor)),
+            unsupported.validate(core::slice::from_ref(&processor)),
             Err(TrackSpecError::UnsupportedShape)
         );
 
@@ -3227,7 +3240,7 @@ mod tests {
         let labels = BuiltInFxParameter::ALL
             .into_iter()
             .map(BuiltInFxParameter::label)
-            .collect::<std::collections::BTreeSet<_>>();
+            .collect::<alloc::collections::BTreeSet<_>>();
         assert_eq!(labels.len(), BuiltInFxParameter::ALL.len());
         assert_eq!(BuiltInFxState::default().midi_cc_assignments.len(), 0);
     }

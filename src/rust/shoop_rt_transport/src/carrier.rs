@@ -4,7 +4,9 @@
 //! messages by direct call. [`RecordClient`] and [`RecordServer`] exchange encoded
 //! records over a [`RecordPort`], such as a `MessagePort` bridge.
 
-use std::collections::VecDeque;
+use alloc::boxed::Box;
+use alloc::collections::VecDeque;
+use alloc::vec;
 
 use shoop_rt_protocol::codec;
 use shoop_rt_protocol::message::{ClientMessage, DisconnectReason, EngineMessage, Lane};

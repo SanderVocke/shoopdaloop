@@ -1,5 +1,9 @@
 # Shared engine transport
 
+The production connection and record machinery supports `no_std` with `alloc`.
+The `contracts` feature enables `std` for desktop test-peer coordination. Concrete
+OS carriers remain separate and can be replaced by any `RecordPort` implementation.
+
 Portable connection machinery for `shoop_rt_protocol`: `ProtocolClient` owns
 handshake, correlation and credits; `carrier::{Endpoint, Carrier, Outbox}` define
 the boundary. `in_process::InProcess` delivers typed messages directly without

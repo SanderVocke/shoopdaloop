@@ -2,15 +2,18 @@
 //! exported medium and copies several pages per callback into a byte ring, within
 //! the resource copy budget. The control endpoint cuts chunks from the ring.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::cells::Cells;
 use crate::node::EngineOp;
+use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use rt_runtime::graph::PortCounts;
 use rt_runtime::processor::{OperationContext, ProcessBlock, Processor};
 use rt_runtime::resource::Cursor;
 use rt_runtime::Error;
 use shoop_loops::runtime::LoopPlanner;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::Arc;
 
 /// Pages the reader may copy per callback.
 pub(crate) const READ_PAGES: usize = 4;

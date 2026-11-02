@@ -1,5 +1,9 @@
 # Application session protocol
 
+With `--no-default-features`, messages, validation, codecs and streaming use
+`no_std` with `alloc`. The default `std` feature adds the `local` channel adapter.
+The wire format is the same in both builds.
+
 The app and RT engine protocols serve different connections. This crate defines
 portable host/session/client/generation/operation identities, shared commands,
 operation acceptance/results, structural snapshots, attachment and explicit exit

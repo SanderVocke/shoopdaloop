@@ -6,6 +6,9 @@
 //! a forest; each loop is its own component, ordered by repeatedly taking the
 //! lowest ready identity.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use shoop_loops::{Limits, LoopId};
 
 pub(crate) const RECORD_BYTES: usize = 64;

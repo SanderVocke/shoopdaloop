@@ -2,7 +2,10 @@
 //! checked completely before anything changes, so one that needs anything else is rejected
 //! whole.
 
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::borrow::ToOwned;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::format;
+use alloc::vec::Vec;
 
 use anyhow::{anyhow, Result};
 use shoop_app_api::BackendCapability;

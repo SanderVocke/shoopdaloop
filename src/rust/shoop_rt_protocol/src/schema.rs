@@ -27,12 +27,12 @@ impl Name {
         })
     }
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.bytes[..self.len as usize]).unwrap_or("")
+        core::str::from_utf8(&self.bytes[..self.len as usize]).unwrap_or("")
     }
 }
 
-impl std::fmt::Debug for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for Name {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_str().fmt(f)
     }
 }

@@ -1,5 +1,10 @@
 # New engine backend: the adapter
 
+With `--no-default-features`, the adapter uses `no_std` with `alloc` and `libm`
+for amplitude/dB conversion. `EngineClock` and `NoWait` remain available. The
+default `std` feature adds the native `Sleep` clock; embedded hosts provide their
+own clock or use `begin` and pump the adapter without blocking.
+
 `shoop_rt_backend` implements the application's `Backend` trait (from
 `shoop_backend`) over the [`shoop_rt_protocol`](../shoop_rt_protocol) client. It is
 the only place where application concepts (tracks, ports, the Master bus, sessions)

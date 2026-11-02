@@ -322,7 +322,7 @@ fn a_disconnected_engine_is_reported_failed_and_operations_are_refused() {
     backend.wait_idle();
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 #[shoop_test]
 fn the_native_stack_can_move_to_the_application_thread() {
     fn send<T: Send>() {}

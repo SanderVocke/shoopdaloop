@@ -18,7 +18,18 @@
 //! report the state of the next frame to render. Delays the application derives from a
 //! position and the sync loop's length can therefore come out one cycle later when a request
 //! falls within one callback of a wrap.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 mod backend;
 mod clock;
@@ -29,7 +40,7 @@ mod reads;
 mod requests;
 mod session;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub use clock::Sleep;
 pub use clock::{EngineClock, NoWait};
 

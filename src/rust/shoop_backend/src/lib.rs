@@ -1,3 +1,15 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -16,15 +28,15 @@ pub use shoop_app_api::{
     MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES, MAX_TOTAL_BUS_CHANNELS,
 };
 
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::sync::Arc;
 use anyhow::{anyhow, Result};
+use core::time::Duration;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverRuntimeState, ResolvedAudioDriverConfig, TrackFxState,
     TrackProcessorDescriptor, MAX_BUS_GAIN_DB, MIN_BUS_GAIN_DB,
 };
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
-use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BackendLoopId(u64);

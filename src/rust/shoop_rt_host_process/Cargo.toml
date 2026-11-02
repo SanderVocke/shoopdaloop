@@ -10,8 +10,8 @@ default = ["cpal"]
 cpal = ["shoop_rt_host_native/cpal", "dep:cpal"]
 testing = []
 [dependencies]
-anyhow = { workspace = true }
-tracing = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["std"] }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

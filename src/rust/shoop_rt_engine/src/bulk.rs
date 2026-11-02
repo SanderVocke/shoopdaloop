@@ -8,6 +8,9 @@
 //! another loop, another channel or medium, or seeking backwards starts a new
 //! one. A session ends, releasing its export, when its medium has been taken.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::endpoint::RuntimeResult;
 use crate::endpoint::{completion_refusal, execution_outcome, ControlEndpoint, Purpose};
 use crate::node::EngineOp;
@@ -313,7 +316,7 @@ impl ControlEndpoint {
                 let wanted = ((end - session.position) as usize)
                     .min(self.bulk.scratch.len())
                     .min(available);
-                let mut scratch = std::mem::take(&mut self.bulk.scratch);
+                let mut scratch = core::mem::take(&mut self.bulk.scratch);
                 let count = self.cells.bulk.take(&mut scratch[..wanted]);
                 self.bulk.absorb(read, session.position, &scratch[..count]);
                 self.bulk.scratch = scratch;

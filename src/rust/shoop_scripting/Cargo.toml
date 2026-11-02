@@ -12,7 +12,7 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
 omnilua = { workspace = true }
 regex = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }

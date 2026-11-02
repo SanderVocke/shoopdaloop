@@ -1,5 +1,24 @@
 # New engine backend: the engine
 
+This crate uses `no_std` with `alloc`, including its optional offline testing host.
+Targets must support pointer-width, 32-bit and 64-bit atomics. Hosts provide an
+allocator, panic handling and audio/MIDI I/O; preparation and cleanup stay outside
+render callbacks. The engine does not supply RTOS startup or scheduling.
+
+The portable engine and complete session-service stack can be checked for
+Cortex-A without a standard library:
+
+```sh
+cargo build --locked --lib --no-default-features \
+  -p shoop_rt_engine -p shoop_app -p shoop_rt_backend -p shoop_script_resources \
+  --target aarch64-unknown-none
+```
+
+Use `armv7a-none-eabi` for 32-bit Cortex-A; CI builds both targets.
+
+The session service may allocate while handling commands, projections and media.
+Run it separately from the render callback with an appropriate memory budget.
+
 `shoop_rt_engine` is the application's real-time composition for the new engine
 backend. It is compiled once for every environment: native hosts, the browser's
 AudioWorklet and separate native processes all run this crate. It speaks only

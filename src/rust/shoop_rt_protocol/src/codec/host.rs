@@ -8,7 +8,7 @@ impl Wire for Text {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let len = r.u16()? as usize;
-        let value = std::str::from_utf8(r.bytes(len)?).map_err(|_| CodecError::Invalid)?;
+        let value = core::str::from_utf8(r.bytes(len)?).map_err(|_| CodecError::Invalid)?;
         Self::new(value).ok_or(CodecError::Invalid)
     }
 }

@@ -1,5 +1,8 @@
 //! Allocation-free construction of the active graph from a model.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::model::{Model, Strip};
 use crate::pool::Pool;
 use rt_runtime::graph::{Connection, Endpoint, NodeStep, PortType, PreparedPlan};

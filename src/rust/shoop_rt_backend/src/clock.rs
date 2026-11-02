@@ -1,6 +1,6 @@
 //! How engine time passes, as seen from the adapter.
 
-use std::time::Duration;
+use core::time::Duration;
 
 /// Supplied by the composition root together with the carrier. A host that renders on its
 /// own thread passes time by itself; an offline host renders when asked.
@@ -26,13 +26,13 @@ impl EngineClock for NoWait {
 }
 
 /// For hosts that render on their own thread: waiting sleeps for `interval`.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 #[derive(Clone, Copy, Debug)]
 pub struct Sleep {
     pub interval: Duration,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 impl Default for Sleep {
     fn default() -> Self {
         Self {
@@ -41,7 +41,7 @@ impl Default for Sleep {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 impl EngineClock for Sleep {
     fn wait(&mut self) -> bool {
         std::thread::sleep(self.interval);

@@ -19,7 +19,7 @@ egui = { workspace = true }
 egui_material_icons = { workspace = true }
 egui_commonmark = { workspace = true }
 image = { workspace = true }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

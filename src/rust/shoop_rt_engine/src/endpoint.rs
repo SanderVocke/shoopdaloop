@@ -8,6 +8,9 @@
 //! against the confirmed state. All storage is prepared; delivering and polling
 //! do not allocate.
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::bulk::Bulk;
 use crate::cells::{mode_from_code, Cells};
 use crate::graph::{Builder, Shape};
@@ -19,6 +22,8 @@ use crate::resync::Resync;
 use crate::ring::Ring;
 use crate::topology::Encoder;
 use crate::{EngineCommand, EngineControl, EngineExecution};
+use alloc::sync::Arc;
+use core::sync::atomic::Ordering;
 use rt_runtime::executor::Command;
 use rt_runtime::graph::PreparedPlan;
 use rt_runtime::planner::PlannerSpec;
@@ -33,8 +38,6 @@ use shoop_rt_protocol::{
     Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
 };
 use shoop_rt_transport::carrier::{Endpoint, Outbox};
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 /// Planned delayed transitions retained per loop.
 pub(crate) const PLANNED: usize = 8;

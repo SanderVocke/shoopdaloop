@@ -1,6 +1,9 @@
 //! The engine's structural and control state, kept on the control side. The
 //! confirmed model changes only when the runtime reports an activation.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use shoop_rt_protocol::{
     BusControl, LoopSlotId, PortKind, StripControl, StripId, StripPort, StripShape,
     MAX_STRIP_CHANNELS,

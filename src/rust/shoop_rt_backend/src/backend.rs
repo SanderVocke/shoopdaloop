@@ -1,8 +1,10 @@
 //! The `Backend` trait in terms of the mirror and queued requests. Everything outside the
 //! core set is refused with the capability's explanation.
 
-use std::sync::Arc;
-use std::time::Duration;
+use alloc::borrow::ToOwned;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::time::Duration;
 
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
@@ -708,13 +710,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             ..Default::default()
         };
         let mirror = &mut self.mirror;
-        let mut tracks = std::collections::BTreeMap::new();
+        let mut tracks = alloc::collections::BTreeMap::new();
         for (id, track) in mirror.tracks.iter_mut() {
             if track.confirmed {
                 tracks.insert(*id, Mirror::track_state(track));
             }
         }
-        let mut loops = std::collections::BTreeMap::new();
+        let mut loops = alloc::collections::BTreeMap::new();
         for (id, entry) in mirror.loops.iter_mut() {
             let Some(track) = mirror.tracks.get(&entry.track) else {
                 continue;
@@ -729,14 +731,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             application_ports: mirror.application_ports(),
             host_ports: mirror.host_descriptors(),
             confirmed_links: mirror.links.clone(),
-            failures: std::mem::take(&mut self.connection_failures),
+            failures: core::mem::take(&mut self.connection_failures),
         };
         let master = mirror.master_state();
         let mixer = BackendMixerSnapshot {
             revision: mirror.mixer_revision,
             buses: [(MASTER_BUS_ID, master)].into_iter().collect(),
             confirmed_links: mirror.routes.clone(),
-            failures: std::mem::take(&mut self.mixer_failures),
+            failures: core::mem::take(&mut self.mixer_failures),
         };
         Ok(BackendSnapshot {
             status,
@@ -747,8 +749,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             removed_composites: Vec::new(),
             connections,
             mixer,
-            mutation_failures: std::mem::take(&mut self.mutation_failures),
-            mutation_completions: std::mem::take(&mut self.mutation_completions),
+            mutation_failures: core::mem::take(&mut self.mutation_failures),
+            mutation_completions: core::mem::take(&mut self.mutation_completions),
         })
     }
 
