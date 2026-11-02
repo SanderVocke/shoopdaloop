@@ -94,6 +94,8 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
         upload: None,
         upload_validation: None,
         upload_pending: None,
+        upload_outstanding: 0,
+        upload_finished: false,
     })
 }
 
@@ -105,6 +107,8 @@ pub struct Connection {
         shoop_app_protocol::persistence_transfer::UploadStream,
     )>,
     upload_pending: Option<ClientMessage>,
+    upload_outstanding: usize,
+    upload_finished: bool,
     upload_validation: Option<(
         shoop_app_protocol::Authority,
         shoop_app_protocol::persistence::Key,
@@ -113,6 +117,13 @@ pub struct Connection {
     )>,
 }
 impl Connection {
+    fn clear_upload(&mut self) {
+        self.upload = None;
+        self.upload_validation = None;
+        self.upload_pending = None;
+        self.upload_outstanding = 0;
+        self.upload_finished = false;
+    }
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
         match message {
             ClientMessage::StageImage {
@@ -142,16 +153,12 @@ impl Connection {
             }
             ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key) || self.upload_validation.as_ref().is_some_and(|(_, staged, _, _)| staged == key)) =>
             {
-                self.upload = None;
-                self.upload_validation = None;
-                self.upload_pending = None;
+                self.clear_upload();
             }
             ClientMessage::Detach { .. }
             | ClientMessage::Shutdown { .. }
             | ClientMessage::Attach { .. } => {
-                self.upload = None;
-                self.upload_validation = None;
-                self.upload_pending = None;
+                self.clear_upload();
             }
             _ => {}
         }
@@ -186,6 +193,11 @@ impl Connection {
             }
         }
         for _ in 0..shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN {
+            if self.upload_finished
+                || self.upload_outstanding >= shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN
+            {
+                break;
+            }
             if self.upload_pending.is_none() {
                 let Some((authority, _, stream)) = self.upload.as_mut() else {
                     break;
@@ -198,7 +210,7 @@ impl Connection {
                         })
                     }
                     None => {
-                        self.upload = None;
+                        self.upload_finished = true;
                         break;
                     }
                 }
@@ -209,7 +221,10 @@ impl Connection {
                 .expect("pending upload record")
                 .clone();
             match self.send_wire(message) {
-                Ok(()) => self.upload_pending = None,
+                Ok(()) => {
+                    self.upload_pending = None;
+                    self.upload_outstanding += 1;
+                }
                 Err(ClientError::Full) => break,
                 Err(error) => return Err(error),
             }
@@ -221,8 +236,27 @@ impl Connection {
                 break;
             };
             let message = codec::decode(&bytes[..length]).map_err(|_| ClientError::Protocol)?;
+            if let WireMessage::Persistence { authority, reply } = &message {
+                if self
+                    .upload
+                    .as_ref()
+                    .is_some_and(|(owner, key, _)| owner == authority && *key == reply.key())
+                {
+                    if matches!(
+                        reply,
+                        shoop_app_protocol::persistence::Reply::Refused { .. }
+                    ) {
+                        self.clear_upload();
+                    } else {
+                        self.upload_outstanding = self.upload_outstanding.saturating_sub(1);
+                    }
+                }
+            }
             client.receive_wire(message)?;
             count += 1;
+        }
+        if self.upload_finished && self.upload_outstanding == 0 {
+            self.clear_upload();
         }
         if self.port.failure().is_some() {
             client.disconnect();
@@ -231,6 +265,9 @@ impl Connection {
         Ok(count)
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 pub fn management(
     entry: &HostEntry,

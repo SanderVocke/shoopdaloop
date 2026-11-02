@@ -461,7 +461,11 @@ impl Data {
         }
     }
     fn write(&mut self, service: &mut Service) {
-        for index in 0..MAX_MESSAGES_PER_TURN {
+        let mut records = 0;
+        for _ in 0..2 * MAX_MESSAGES_PER_TURN {
+            if records == MAX_MESSAGES_PER_TURN {
+                break;
+            }
             if self.pending.is_none() {
                 if self.semantic.is_none() {
                     let update = self
@@ -484,7 +488,7 @@ impl Data {
                     }
                 }
                 let from_media = self.media.is_some()
-                    && (self.semantic.is_none() || (self.snapshot && index % 4 == 3));
+                    && (self.semantic.is_none() || (self.snapshot && records % 4 == 3));
                 let stream = if from_media {
                     &mut self.media
                 } else {
@@ -509,6 +513,7 @@ impl Data {
             match self.port.post(self.pending.as_ref().unwrap()) {
                 Ok(()) => {
                     self.pending = None;
+                    records += 1;
                 }
                 Err(CarrierError::Full) => break,
                 Err(_) => {

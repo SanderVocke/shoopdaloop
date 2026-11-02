@@ -768,6 +768,15 @@ persistence records (≤64 KiB of media), while ordinary commands retain their
 buffers, reducing the fixture, or changing a watchdog. Final-head platform checks
 remain pending.
 
+The first batching retry exposed reply backpressure: the sender could outrun
+acknowledgments, and empty encoder cleanup consumed outbound record slots. Uploads
+now retain at most 64 unacknowledged records and keep their ownership through the
+final reply; cancel/refusal releases the window. Outbound turns count actual records
+and separately bound cleanup. A native slow-peer regression withholds replies,
+checks the upload plateau, sends an independent control, cancels and reuses the
+connection. Earlier Node/Chrome and Miri evidence remains valid for its unchanged
+portable/browser scope; native deployment and final-head CI are being repeated.
+
 ### Stage 7 — final end-to-end validation and PR
 
 - [ ] Exercise packaged native and hosted/self-contained browser workflows: record
@@ -780,7 +789,7 @@ remain pending.
   retained reference fixtures, Python boundary/parity/tracing/test-policy checks,
   all Node/Wasm packages and applicable Chromium/Firefox browser gates following
   repository testing guidance. Record hardware/mock and platform limitations.
-- [ ] Run selected Miri on changed portable ownership/protocol/staging paths only
+- [x] Run selected Miri on changed portable ownership/protocol/staging paths only
   after ordinary gates stabilize. Rerun affected checks after fixes; retain earlier
   evidence only with exact source provenance and a justified unchanged scope.
 - [ ] Reconcile each acceptance criterion and ledger subitem with test/evidence
@@ -795,3 +804,23 @@ remain pending.
 
 Verification: green checks tied to the final implementation head, reviewed diff,
 complete acceptance evidence and an open PR targeting the integration feature branch.
+
+Selected Miri passes on `0f369f654cc5271782167640ee705d795eb99d8d`, after
+the full ordinary native/Node/Chrome gates stabilized. Five unchanged portable cases
+ran with both seeds 0 and 1 on `nightly-2026-05-04`, using only
+`-Zmiri-seed=<seed>` and the default borrow/isolation checks: exact segmented image
+reconstruction, aggregate/order/finish validation, stale authority/epoch/overflow,
+indexed MIDI initial packets, and clearing idle capture groups while immutable
+snapshot owners survive. All ten executions pass. Subsequent changes are confined
+to native transport backpressure/diagnostics and documentation; these portable
+paths and workloads are unchanged.
+
+Latest ordinary gates: 2482 native tests pass (four optional/platform skips),
+including the slow-peer socket window regression; 2102 tests across all 32 Node
+packages and all 37 frontend Chrome tests pass. The latter runs cover the portable
+and browser code before the subsequent native-only transport fixes. All 142 Python
+tests, warning-denying workspace/bare-metal builds, production boundaries, formatting,
+test policy and closed parity/tracing inventories pass. The Linux socket canary on
+`e1bd41c7` passes the complete large-media and loss/reconciliation workflow. The
+acceptance mapping is in [session-persistence evidence](docs/native_session_recovery/evidence/session-persistence.md).
+Final-head native packaging and applicable platform/browser CI remain pending.
