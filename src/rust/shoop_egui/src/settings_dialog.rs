@@ -301,6 +301,7 @@ impl SettingsDialog {
                     return;
                 }
 
+                ui.label("Edit preferences below, then Save. Cancel or close to discard unsaved edits.");
                 let active_category = self.active_category.clone().unwrap_or_default();
                 let footer_height = 32.0;
                 let body_size = egui::vec2(
@@ -335,6 +336,7 @@ impl SettingsDialog {
                                             } else if active_category == "Appearance" {
                                                 self.show_appearance(ui);
                                             } else if active_category == "Scripts" {
+                                                ui.label("Script controls act immediately. Cancel discards preference edits, but does not undo script start, stop, or reload actions.");
                                                 self.show_script_runtime(
                                                     ui,
                                                     scripting,
@@ -384,11 +386,7 @@ impl SettingsDialog {
                             .draft
                             .as_ref()
                             .is_some_and(|draft| draft.base_revision() != state.active.revision());
-                        let save_label = if active_category == "Appearance" {
-                            "Apply and save"
-                        } else {
-                            "Save"
-                        };
+                        let save_label = "Save";
                         let valid = self
                             .draft
                             .as_ref()
@@ -574,7 +572,7 @@ impl SettingsDialog {
                 }
             });
             ui.label(definition.help());
-            ui.weak("Applied only when settings are explicitly saved.");
+            ui.weak("Applies to this app and future launches after Save.");
             let (min, max) = match definition.editor() {
                 SettingEditor::Number { min, max } => (*min, *max),
                 _ => {
@@ -592,8 +590,16 @@ impl SettingsDialog {
             if ui
                 .add(
                     egui::Slider::new(&mut scale, min..=max)
-                        .fixed_decimals(2)
                         .step_by(0.05)
+                        .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
+                        .custom_parser(|text| {
+                            text.trim()
+                                .trim_end_matches('%')
+                                .trim()
+                                .parse::<f64>()
+                                .ok()
+                                .map(|value| value / 100.0)
+                        })
                         .show_value(true),
                 )
                 .changed()
@@ -624,7 +630,7 @@ impl SettingsDialog {
                 }
             });
             ui.label(definition.help());
-            ui.weak(definition.effect().label());
+            ui.weak(setting_apply_help(&definition));
             let Some(draft) = &mut self.draft else {
                 return;
             };
@@ -709,6 +715,7 @@ impl SettingsDialog {
             .audio_target
             .unwrap_or_else(|| active_kind.unwrap_or(AudioDriverKind::Dummy));
         ui.heading("Audio driver");
+        ui.label("Save stores driver profiles without changing running audio. Switch audio driver applies a profile now and selects it for startup. Cancel does not undo a confirmed switch.");
         ui.horizontal_wrapped(|ui| {
             for driver in audio.catalog.iter() {
                 let button = egui::Button::selectable(selected == driver.kind, driver.kind.label());
@@ -787,7 +794,7 @@ impl SettingsDialog {
                     | crate::AudioDriverSwitchStatus::Persisting
             );
         if ui
-            .add_enabled(can_switch, egui::Button::new("Switch"))
+            .add_enabled(can_switch, egui::Button::new("Switch audio driver"))
             .clicked()
         {
             if let (Ok(config), Some(draft)) = (config, self.draft.clone()) {
@@ -869,7 +876,7 @@ impl SettingsDialog {
     ) {
         ui.heading("New track defaults");
         ui.label(
-            "These fields match the Add Track dialog. Track names remain generated from their position.",
+            "After Save, these defaults are used the next time Add Track opens. Existing tracks and any Add Track dialog already open are unchanged. Track names are generated automatically.",
         );
         ui.add_space(6.0);
         let Some(draft) = &mut self.draft else {
@@ -917,7 +924,7 @@ impl SettingsDialog {
                     }
                 });
                 ui.label(definition.help());
-                ui.weak(definition.effect().label());
+                ui.weak(setting_apply_help(&definition));
                 if let Some(draft) = &mut self.draft {
                     let Some(value) = draft.value(definition.key()).cloned() else {
                         ui.colored_label(colors::ERROR, "Missing draft value");
@@ -1555,6 +1562,28 @@ impl SettingsDialog {
     #[cfg(test)]
     pub(crate) fn ownership_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
         self.ownership_rects.get(&script_id).copied()
+    }
+}
+
+fn setting_apply_help(definition: &shoop_settings::ErasedSettingDefinition) -> &'static str {
+    if definition.key() == crate::MASTER_AUTO_CONNECT.id() {
+        "After Save, applies to new sessions. Existing connections are unchanged."
+    } else if definition.key().starts_with("audio.dummy.")
+        || definition.key().starts_with("audio.jack.")
+        || definition.key().starts_with("audio.cpal.")
+    {
+        "Saved for future launches. Use Switch audio driver to apply now."
+    } else {
+        match definition.effect() {
+            shoop_settings::SettingEffect::Immediate => "Applies after Save.",
+            shoop_settings::SettingEffect::NextUse => {
+                "After Save, applies the next time this feature opens."
+            }
+            shoop_settings::SettingEffect::ExplicitApply => "Applies after Save.",
+            shoop_settings::SettingEffect::RestartRequired => {
+                "After Save, takes effect when the app restarts."
+            }
+        }
     }
 }
 

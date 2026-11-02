@@ -217,6 +217,7 @@ impl DetailsPane {
         &mut self,
         ui: &mut egui::Ui,
         details: Option<&LoopDetailsState>,
+        tracks: &[crate::TrackState],
     ) -> Vec<AppIntent> {
         let Some(details) = details else {
             ui.label("Make a selection to show additional details here.");
@@ -232,7 +233,7 @@ impl DetailsPane {
 
         ui.heading(&details.title);
         if let Some(composite) = &details.composite {
-            return self.composite.show(ui, details.loop_id, composite);
+            return self.composite.show(ui, details.loop_id, composite, tracks);
         }
         if details.loading {
             ui.label("Audio waveform data is loading.");
@@ -359,7 +360,7 @@ mod tests {
             ..Default::default()
         };
         let mut ignored_output_0 = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         ignored_output_0.textures_delta.clear();
         assert_eq!(pane.composite.shown_loop_id(), loop_id);
@@ -428,7 +429,7 @@ mod tests {
             ..Default::default()
         };
         let mut ignored_output_1 = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&midi_only));
+            pane.show(ui, Some(&midi_only), &[]);
         });
         ignored_output_1.textures_delta.clear();
         assert!(pane.waveforms.is_empty());
@@ -446,7 +447,7 @@ mod tests {
             ..Default::default()
         };
         let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&mixed));
+            pane.show(ui, Some(&mixed), &[]);
         });
         ignored_output_2.textures_delta.clear();
         assert_eq!(pane.waveforms.len(), 1);

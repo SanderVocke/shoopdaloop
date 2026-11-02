@@ -73,6 +73,39 @@ struct PackedTrack {
     events: Vec<PackedEvent>,
 }
 
+fn loop_drop_feedback(
+    target: LoopId,
+    source: LoopId,
+    tracks: &[crate::TrackState],
+    iteration: Option<u64>,
+) -> Result<String, &'static str> {
+    if source == target {
+        return Err("A composite cannot contain itself. Drag a different loop.");
+    }
+    let iteration = iteration.ok_or("Drop inside a cycle column, below the ruler.")?;
+    let source_track = tracks.iter().find_map(|track| {
+        track
+            .loops
+            .iter()
+            .find(|loop_state| loop_state.id == source)
+            .map(|loop_state| (track, loop_state))
+    });
+    let cycle = iteration.saturating_add(1);
+    Ok(match source_track {
+        Some((track, loop_state)) if loop_state.composite_kind == crate::CompositeKind::None => {
+            format!(
+                "{} · track: {} · starts at cycle {cycle}",
+                loop_state.name, track.name
+            )
+        }
+        Some((_, loop_state)) => format!(
+            "{} · starts at cycle {cycle} · keeps its source tracks",
+            loop_state.name
+        ),
+        None => format!("Starts at cycle {cycle} · source tracks preserved"),
+    })
+}
+
 fn pack_swimlanes(details: &CompositeDetailsState) -> Vec<PackedTrack> {
     let mut by_track = BTreeMap::<TrackId, Vec<usize>>::new();
     for (index, event) in details.events.iter().enumerate() {
@@ -258,6 +291,7 @@ impl CompositeLoopWidget {
         ui: &mut egui::Ui,
         loop_id: LoopId,
         details: &CompositeDetailsState,
+        tracks: &[crate::TrackState],
     ) -> Vec<AppIntent> {
         if self.loop_id != loop_id {
             self.loop_id = loop_id;
@@ -338,11 +372,17 @@ impl CompositeLoopWidget {
             }
         });
 
+        if details.events.is_empty() {
+            ui.label(egui::RichText::new("Drag a loop here to arrange it.").strong());
+            ui.label(
+                "Drop on a cycle column to choose when it starts. Loops keep their source tracks.",
+            );
+        }
         let mut drop_iteration = None;
         let (_drop_zone, dropped) = ui.dnd_drop_zone::<LoopDragPayload, _>(
             egui::Frame::new().inner_margin(egui::Margin::same(3)),
             |ui| {
-                drop_iteration = self.show_timeline(ui, details, &mut intents);
+                drop_iteration = self.show_timeline(ui, details, tracks, &mut intents);
             },
         );
         #[cfg(test)]
@@ -366,6 +406,7 @@ impl CompositeLoopWidget {
         &mut self,
         ui: &mut egui::Ui,
         details: &CompositeDetailsState,
+        tracks: &[crate::TrackState],
         intents: &mut Vec<AppIntent>,
     ) -> Option<u64> {
         let packed = pack_swimlanes(details);
@@ -421,19 +462,6 @@ impl CompositeLoopWidget {
 
                 painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
                 self.paint_grid(&painter, clip_rect, rect, timeline_left, displayed_cycles);
-
-                if details.events.is_empty() {
-                    painter.text(
-                        egui::pos2(
-                            timeline_left + timeline_width * 0.5,
-                            rect.top() + HEADER_HEIGHT + TRACK_GAP + rows_height * 0.5,
-                        ),
-                        egui::Align2::CENTER_CENTER,
-                        "The composite schedule is empty. Drag a loop here to add it.",
-                        egui::FontId::proportional(12.0),
-                        colors::MUTED_FOREGROUND,
-                    );
-                }
 
                 let mut event_rects = Vec::with_capacity(details.events.len());
                 let mut clicked_event = None;
@@ -755,16 +783,28 @@ impl CompositeLoopWidget {
                         }
                     }
                 }
+                let drop_body = egui::Rect::from_min_max(
+                    egui::pos2(timeline_left, rect.top() + HEADER_HEIGHT + TRACK_GAP),
+                    rect.max,
+                );
+                if details.events.is_empty() {
+                    painter.rect_stroke(
+                        drop_body,
+                        2.0,
+                        egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
+                        egui::StrokeKind::Inside,
+                    );
+                }
                 let pointer = ui.ctx().pointer_hover_pos();
                 let valid_payload = loop_payload
+                    .as_ref()
                     .is_some_and(|payload| payload.loop_id != self.loop_id)
                     || event_payload.is_some();
                 let hovered_iteration = pointer
                     .filter(|pointer| {
                         valid_payload
-                            && rect.contains(*pointer)
+                            && drop_body.contains(*pointer)
                             && clip_rect.contains(*pointer)
-                            && pointer.x >= timeline_left
                     })
                     .map(|pointer| ((pointer.x - timeline_left) / self.cycle_width).floor() as u64)
                     .filter(|iteration| *iteration < displayed_cycles);
@@ -787,6 +827,57 @@ impl CompositeLoopWidget {
                     {
                         self.highlighted_iteration = Some(iteration);
                         self.highlighted_rect = Some(column_rect);
+                    }
+                }
+                if let Some(pointer) = pointer
+                    .filter(|pointer| rect.contains(*pointer) && clip_rect.contains(*pointer))
+                {
+                    if let Some(payload) = &loop_payload {
+                        let feedback = loop_drop_feedback(
+                            self.loop_id,
+                            payload.loop_id,
+                            tracks,
+                            hovered_iteration,
+                        );
+                        if feedback.is_err() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::NotAllowed);
+                        }
+                        egui::Tooltip::always_open(
+                            ui.ctx().clone(),
+                            ui.layer_id(),
+                            ui.scope_id().with("loop_drop_feedback"),
+                            egui::PopupAnchor::Position(pointer + egui::vec2(16.0, 24.0)),
+                        )
+                        .show(|ui| match feedback {
+                            Ok(message) => {
+                                ui.label(message);
+                            }
+                            Err(reason) => {
+                                ui.colored_label(colors::WARNING, reason);
+                            }
+                        });
+                    } else if let Some((iteration, payload)) =
+                        hovered_iteration.zip(event_payload.as_ref())
+                    {
+                        egui::Tooltip::always_open(
+                            ui.ctx().clone(),
+                            ui.layer_id(),
+                            ui.scope_id().with("event_drop_feedback"),
+                            egui::PopupAnchor::Pointer,
+                        )
+                        .show(|ui| {
+                            ui.label(format!(
+                                "{} selection to cycle {} · source tracks preserved",
+                                if ui.input(|input| input.modifiers.ctrl) {
+                                    "Copy"
+                                } else {
+                                    "Move"
+                                },
+                                iteration
+                                    .saturating_sub(payload.grabbed_offset)
+                                    .saturating_add(1)
+                            ));
+                        });
                     }
                 }
                 if ui.input(|input| input.pointer.any_released()) {
@@ -1078,7 +1169,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| intents = widget.show(ui, loop_id, state),
+            |ui| intents = widget.show(ui, loop_id, state, &[]),
         );
         ignored_output_0.textures_delta.clear();
         intents
@@ -1506,6 +1597,35 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn drop_feedback_names_the_source_track_and_explains_invalid_targets() {
+        let source = LoopId::from_raw(9);
+        let target = LoopId::from_raw(8);
+        let mut tracks = vec![crate::TrackState {
+            name: "Bass".to_owned(),
+            loops: vec![crate::LoopState {
+                id: source,
+                name: "Verse".to_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        assert_eq!(
+            loop_drop_feedback(target, source, &tracks, Some(2)).unwrap(),
+            "Verse · track: Bass · starts at cycle 3"
+        );
+        tracks[0].loops[0].composite_kind = crate::CompositeKind::Regular;
+        assert!(loop_drop_feedback(target, source, &tracks, Some(2))
+            .unwrap()
+            .contains("keeps its source tracks"));
+        assert!(loop_drop_feedback(target, target, &tracks, Some(2))
+            .unwrap_err()
+            .contains("cannot contain itself"));
+        assert!(loop_drop_feedback(target, source, &tracks, None)
+            .unwrap_err()
+            .contains("below the ruler"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn timeline_accepts_typed_loop_drops_and_ignores_self_or_outside_drops() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -1559,6 +1679,17 @@ mod tests {
 
         for (payload, position) in [
             (LoopDragPayload { loop_id: target }, drop_center),
+            (
+                LoopDragPayload { loop_id: source },
+                egui::pos2(
+                    drop_center.x,
+                    widget.timeline_rect.unwrap().top() + HEADER_HEIGHT * 0.5,
+                ),
+            ),
+            (
+                LoopDragPayload { loop_id: source },
+                egui::pos2(widget.timeline_left.unwrap() - 10.0, drop_center.y),
+            ),
             (
                 LoopDragPayload { loop_id: source },
                 egui::pos2(490.0, 210.0),
@@ -1678,11 +1809,15 @@ mod tests {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
         let mut output = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(8), &details(Vec::new()));
+            widget.show(ui, LoopId::from_raw(8), &details(Vec::new()), &[]);
         });
         output.textures_delta.clear();
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
-            egui::Shape::Text(text) => text.galley.job.text.contains("schedule is empty"),
+            egui::Shape::Text(text) => text
+                .galley
+                .job
+                .text
+                .contains("Drag a loop here to arrange it."),
             _ => false,
         }));
         assert!(widget.rendered_events.is_empty());
@@ -1699,6 +1834,7 @@ mod tests {
                 ui,
                 LoopId::from_raw(8),
                 &details(vec![forced.clone()]),
+                &[],
             );
         });
         output.textures_delta.clear();
@@ -1743,7 +1879,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                widget.show(ui, LoopId::from_raw(9), &state);
+                widget.show(ui, LoopId::from_raw(9), &state, &[]);
             },
         );
         output.textures_delta.clear();
@@ -1761,13 +1897,13 @@ mod tests {
         let initial_width = widget.rendered_events[0].1.width();
         widget.cycle_width = DEFAULT_CYCLE_WIDTH * 2.0;
         let mut ignored_output_1 = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(9), &state);
+            widget.show(ui, LoopId::from_raw(9), &state, &[]);
         });
         ignored_output_1.textures_delta.clear();
         assert!(widget.rendered_events[0].1.width() > initial_width * 1.9);
         widget.cycle_width = MAX_CYCLE_WIDTH + 100.0;
         let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(9), &state);
+            widget.show(ui, LoopId::from_raw(9), &state, &[]);
         });
         ignored_output_2.textures_delta.clear();
         assert!(widget.cycle_width <= MAX_CYCLE_WIDTH);
@@ -1806,7 +1942,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    widget.show(ui, LoopId::from_raw(10), &state);
+                    widget.show(ui, LoopId::from_raw(10), &state, &[]);
                 },
             );
             output.textures_delta.clear();
@@ -1864,7 +2000,7 @@ mod tests {
         script.kind = CompositeKind::Script;
         script.events[0].mode = Some("recording".to_owned());
         let mut output = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, loop_id, &script);
+            widget.show(ui, loop_id, &script, &[]);
         });
         output.textures_delta.clear();
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
