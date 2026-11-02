@@ -442,16 +442,16 @@ pub fn encode_standard_midi(midi: &ExactMidi) -> Result<StandardMidiExport, Sess
     let arena = midly::Arena::new();
     let mut all = Vec::new();
     for (order, data) in midi.start_state.iter().enumerate() {
-        all.push((0_u64, order as u32, data));
+        all.push((0_u64, 0_u8, order as u32, data));
     }
     for event in &midi.events {
-        all.push((event.frame, event.order, &event.data));
+        all.push((event.frame, 1_u8, event.order, &event.data));
     }
-    all.sort_by_key(|(frame, order, _)| (*frame, *order));
+    all.sort_by_key(|(frame, phase, order, _)| (*frame, *phase, *order));
     let mut track = midly::Track::new();
     let mut previous_tick = 0_u64;
     let mut max_error = 0.0_f64;
-    for (frame, _, data) in all {
+    for (frame, _, _, data) in all {
         let event = midly::live::LiveEvent::parse(data)
             .map_err(|error| SessionError::Validation(format!("invalid MIDI bytes: {error}")))?;
         let exact_tick = frame as f64 * TICKS_PER_SECOND / midi.sample_rate as f64;

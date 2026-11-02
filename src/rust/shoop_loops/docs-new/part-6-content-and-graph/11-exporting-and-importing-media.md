@@ -57,4 +57,31 @@ The reverse direction happens before rendering: upload content into the resource
 
 `Operation::Select { target, timing, media, preserve_position }` makes a loop switch to a previously exported media id — the same way `coordinated_loop.rs` re-selects its exported original after experimenting. The `media` id must belong to that loop's owner.
 
+## 4. Prepare imported content while rendering continues
+
+File decoding and resampling belong to the host. Upload the resulting canonical
+audio/MIDI through the runtime's resource commands; Finish and Commit make a
+resource version available, not audible. For MIDI, preserve the initial projection
+separately from the original timestamped packets, as explained in
+[chapter 9](../part-4-midi/08-midi-state-and-restoration.md).
+
+With node-pair sources enabled in `Options`, `Operation::NodePairSnapshot`
+acquires an owned source from the uploaded resource. Its status can be Validating,
+Ready, or Failed. Advance `NodePairSourceValidate` across callbacks until Ready;
+`source_packets_per_callback` is a shared callback allowance, not a fresh allowance
+per query. A source also checks the largest MIDI packet against the destination's
+prepared packet capacity. A successful byte upload alone is not that proof.
+
+`Operation::Adopt { target, frames, audio, midi }` creates target-owned media from
+Ready source handles. Successful adoption consumes the source ownership; select
+the returned media to publish playback, then retire the temporary ledger owner.
+On refusal, the caller still owns the sources and must release them with
+`NodePairSourceRelease`. Do not release consumed sources a second time. An adopted
+medium that was never selected still needs explicit retirement.
+
+Adopt/Select updates an existing owner. Replacing the entire set of owners,
+including timing and graph bindings, instead uses the private configuration bank
+in [chapter 13](12-editing-the-graph-around-loops.md). Neither path reads files or
+provides application-level save/load operation tracking.
+
 [Previous: Programs](../part-5-composites-and-programs/10-programs.md) · [Next: Editing the graph around loops](12-editing-the-graph-around-loops.md)

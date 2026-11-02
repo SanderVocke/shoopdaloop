@@ -14,6 +14,13 @@ Declared duration is independent of last event time. Positive empty MIDI extends
 
 Upload chunks are contiguous and at most one page; each Write is owning and returns its buffer. Finish validates completeness; Commit separately publishes the new revision. Old pinned versions remain old. A rejected malformed indexed chunk publishes no partial parser/state/index update. Physical data revisions are not musical take revisions or graph epochs.
 
+`WritePrefix` returns the full reusable buffer while consuming only its nonempty
+`used` prefix; admission still bounds the full allocation by a page. Indexed MIDI
+can receive short initial-state packets through `MidiInitial` before any event
+bytes are written. These update checkpoint zero, not the original event stream.
+See [resource uploads](../part-3-work-with-stored-media/09-loading-and-reading-resources.md)
+and [initial state](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md).
+
 ## Lease and identity discipline
 
 | Value | Ownership/lifetime |
@@ -52,6 +59,12 @@ The lifecycle is Idle → Prepared → PreparedReserved → Reserved → Recordi
 Cancel a PreparedReserved interval before its take; cancellation returns to Prepared without discarding final-lease promises. Freeze a Recording take at its actual common next frame into empty output slots, publishing promised final leases and returning Idle. Claims persist until explicit Idle group release; that release preserves active frozen data and outside leases. Legacy mutation cannot bypass claims.
 
 `PlannerResourceIo::capture()` is frame/ceiling-stamped lifecycle authority. Ordinary consumer ResourceIo/RenderIo can stage required data but cannot reserve/activate/commit/freeze the shared store. Direct standalone `planner_io(frame, ceiling)` callers own stamp correctness. Missing/duplicate/malformed/over-bound contributions are interface faults, not permission to publish partial members or roll back emitted audio.
+
+For complete owner replacement, `check_idle_group` preflights settled members and
+`clear_idle_group` detaches their active content without releasing the group or
+invalidating retained snapshot leases. Prepared/active takes refuse; this is not
+a cancellation mechanism. The [capture chapter](../part-4-coordinate-processors-and-changes/16-recording-resources-together.md)
+describes the preflight/publication ordering and subsequent reclamation.
 
 ## Work and stopped ownership
 

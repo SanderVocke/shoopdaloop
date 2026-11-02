@@ -25,6 +25,17 @@ pub enum Decoded {
     Audio(LoopAudio),
     Midi(ExactMidi),
 }
+fn midi_bytes(m: &ExactMidi) -> u64 {
+    m.events
+        .iter()
+        .map(|e| e.data.len() as u64 + 12)
+        .sum::<u64>()
+        + m.start_state
+            .iter()
+            .map(|p| p.len() as u64 + 4)
+            .sum::<u64>()
+}
+
 impl Decoded {
     pub fn rate(&self) -> u32 {
         match self {
@@ -55,16 +66,6 @@ impl Decoded {
         }
     }
     fn bytes(&self) -> Result<u64> {
-        fn media_bytes(m: &ExactMidi) -> u64 {
-            m.events
-                .iter()
-                .map(|e| e.data.len() as u64 + 12)
-                .sum::<u64>()
-                + m.start_state
-                    .iter()
-                    .map(|p| p.len() as u64 + 4)
-                    .sum::<u64>()
-        }
         let (bytes, events) = match self {
             Self::Remote(_) => anyhow::bail!("decoded input belongs to the browser codec worker"),
             Self::Session(b) => {
@@ -73,7 +74,7 @@ impl Decoded {
                     .fold((0, 0), |(bytes, events), payload| match payload {
                         MediaPayload::Audio(a) => (bytes + a.samples.len() as u64 * 4, events),
                         MediaPayload::Midi(m) => {
-                            (bytes + media_bytes(m), events + m.events.len() as u64)
+                            (bytes + midi_bytes(m), events + m.events.len() as u64)
                         }
                     })
             }
@@ -81,13 +82,84 @@ impl Decoded {
                 a.channels.iter().map(|c| c.samples.len() as u64 * 4).sum(),
                 0,
             ),
-            Self::Midi(m) => (media_bytes(m), m.events.len() as u64),
+            Self::Midi(m) => (midi_bytes(m), m.events.len() as u64),
         };
         ensure!(
             bytes <= MAX_SESSION_MEDIA_BYTES && events <= MAX_SESSION_MIDI_EVENTS,
             "decoded media exceeds 256 MiB or one million MIDI events"
         );
         Ok(bytes)
+    }
+    fn check_conversion_budget(&self, rate: u32, limit: u64) -> Result<()> {
+        self.bytes()?;
+        ensure!(self.rate() > 0 && rate > 0, "sample rates must be non-zero");
+        let audio_bytes = |frames: u64| -> Result<u128> {
+            Ok(u128::from(scale_duration(frames, self.rate(), rate)?) * 4)
+        };
+        let estimate = match self {
+            Self::Remote(_) => anyhow::bail!("decoded input belongs to the browser codec worker"),
+            Self::Midi(midi) => u128::from(midi_bytes(midi)),
+            Self::Audio(audio) => audio.channels.iter().try_fold(0u128, |bytes, channel| {
+                Ok::<_, anyhow::Error>(bytes + audio_bytes(channel.samples.len() as u64)?)
+            })?,
+            Self::Session(bundle) => {
+                let source = bundle.document.sample_rate;
+                let mut lengths = std::collections::BTreeMap::new();
+                let mut bytes = 0u128;
+                for (id, payload) in &bundle.media {
+                    match payload {
+                        MediaPayload::Audio(audio) => {
+                            lengths.insert(
+                                id.as_str(),
+                                scale_duration(audio.samples.len() as u64, source, rate)?,
+                            );
+                        }
+                        MediaPayload::Midi(midi) => bytes += u128::from(midi_bytes(midi)),
+                    }
+                }
+                for content in bundle
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|g| &g.tracks)
+                    .flat_map(|t| &t.loops)
+                {
+                    for channel in &content.channels {
+                        if channel.capture_alignment_frames == 0 {
+                            continue;
+                        }
+                        let Some(length) = channel
+                            .media_id
+                            .as_deref()
+                            .and_then(|id| lengths.get_mut(id))
+                        else {
+                            continue;
+                        };
+                        let required =
+                            i128::from(scale_signed_nearest(
+                                channel.start_offset_frames,
+                                source,
+                                rate,
+                            )?) + i128::from(scale_signed_nearest(
+                                channel.capture_alignment_frames,
+                                source,
+                                rate,
+                            )?) + i128::from(scale_duration(content.length_frames, source, rate)?);
+                        *length = (*length).max(u64::try_from(required)?);
+                    }
+                }
+                bytes
+                    + lengths
+                        .values()
+                        .map(|frames| u128::from(*frames) * 4)
+                        .sum::<u128>()
+            }
+        };
+        ensure!(
+            estimate <= u128::from(limit),
+            "converted media would exceed the 256 MiB budget"
+        );
+        Ok(())
     }
 }
 pub enum Work {
@@ -162,12 +234,7 @@ impl Work {
                 Ok(Value::Decoded(decoded))
             }
             Self::Resample { decoded, rate } => {
-                let estimate = (u128::from(decoded.bytes()?) * u128::from(rate))
-                    .div_ceil(u128::from(decoded.rate()));
-                ensure!(
-                    estimate <= u128::from(MAX_SESSION_MEDIA_BYTES),
-                    "converted media would exceed the 256 MiB budget"
-                );
+                decoded.check_conversion_budget(rate, MAX_SESSION_MEDIA_BYTES)?;
                 let decoded = match decoded {
                     Decoded::Remote(_) => {
                         anyhow::bail!("decoded input belongs to the browser codec worker")

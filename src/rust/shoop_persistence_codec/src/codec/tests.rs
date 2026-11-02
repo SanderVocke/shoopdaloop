@@ -24,6 +24,120 @@ fn content() -> image::Loop {
     }
 }
 #[shoop_test]
+fn standard_midi_export_places_all_initial_state_before_frame_zero_events() {
+    let initial = vec![vec![0xb0, 0, 1], vec![0xb0, 32, 2], vec![0xc0, 12]];
+    let events = vec![
+        MidiEventState {
+            frame: 0,
+            data: vec![0x90, 60, 100].into(),
+        },
+        MidiEventState {
+            frame: 0,
+            data: vec![0xb0, 7, 90].into(),
+        },
+        MidiEventState {
+            frame: 2,
+            data: vec![0x80, 60, 0].into(),
+        },
+    ];
+    let mut content = content();
+    content.midi.push(image::MidiChannel {
+        channel: channel(1, 4, 0),
+        initial: initial.clone(),
+    });
+    let image = Arc::new(image::Image {
+        manifest: image::Manifest::Loop {
+            sample_rate: 1000,
+            content,
+        },
+        payloads: vec![image::Payload::Midi(Arc::new(events.clone()))],
+    });
+    let Value::File { bytes, warning, .. } = (Work::Encode {
+        image,
+        kind: IoTaskKind::ExportLoopMidi,
+        wav: false,
+        standard: true,
+        channels: Vec::new(),
+    })
+    .run()
+    .unwrap() else {
+        panic!("expected MIDI file")
+    };
+    assert!(warning.contains("quantizes timing"));
+    let exported = decode_standard_midi(&bytes, 1000).unwrap();
+    let expected = initial
+        .into_iter()
+        .chain(events.iter().map(|e| e.data.to_vec()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        exported
+            .events
+            .iter()
+            .map(|e| e.data.clone())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        exported.events.iter().map(|e| e.frame).collect::<Vec<_>>(),
+        [0, 0, 0, 0, 0, 2]
+    );
+}
+
+#[shoop_test]
+fn conversion_budget_keeps_midi_bytes_and_rounds_each_audio_channel() {
+    let midi = ExactMidi {
+        sample_rate: 24000,
+        length_frames: 4,
+        start_state: vec![vec![0xc0, 12]],
+        events: vec![ExactMidiEvent {
+            frame: 1,
+            order: 0,
+            data: vec![0x90, 60, 100],
+        }],
+    };
+    let decoded = Decoded::Midi(midi.clone());
+    let bytes = decoded.bytes().unwrap();
+    decoded.check_conversion_budget(48000, bytes).unwrap();
+    assert!(decoded.check_conversion_budget(48000, bytes - 1).is_err());
+    let Value::Decoded(Decoded::Midi(converted)) = (Work::Resample {
+        decoded,
+        rate: 48000,
+    })
+    .run()
+    .unwrap() else {
+        panic!("expected converted MIDI")
+    };
+    assert_eq!(converted.start_state, midi.start_state);
+    assert_eq!(converted.events[0].data, midi.events[0].data);
+    assert_eq!(converted.events[0].frame, 2);
+    assert_eq!(converted.length_frames, 8);
+
+    let mut bundle = SessionBundle::new(SessionDocument::empty(24000));
+    bundle.media.insert("midi".into(), MediaPayload::Midi(midi));
+    bundle.media.insert(
+        "audio".into(),
+        MediaPayload::Audio(AudioPayload {
+            samples: vec![0.; 3],
+        }),
+    );
+    let mixed = Decoded::Session(bundle);
+    mixed.check_conversion_budget(48000, bytes + 24).unwrap();
+    assert!(mixed.check_conversion_budget(48000, bytes + 23).is_err());
+
+    let audio = Decoded::Audio(LoopAudio {
+        sample_rate: 48000,
+        channels: (0..2)
+            .map(|_| LoopAudioChannel {
+                label: String::new(),
+                role: "direct".into(),
+                samples: vec![0.; 3],
+            })
+            .collect(),
+    });
+    audio.check_conversion_budget(24000, 16).unwrap();
+    assert!(audio.check_conversion_budget(24000, 15).is_err());
+}
+#[shoop_test]
 fn exact_audio_export_maps_the_logical_window_without_baking_in_gain() {
     let mut content = content();
     content.audio.push(channel(1, 2, -1));

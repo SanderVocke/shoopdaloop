@@ -126,7 +126,8 @@ processing only after that epoch is published; cancellation must discard presets
 before another graph can publish. The engine wire job and adapter replacement are
 implemented, along with service capture, retained reads, fenced admission and
 host-owned completion. Client file conversion and platform workflows use the public service route;
-packaged deployment and final integration validation remain pending. No rejected preparation may
+packaged native and browser deployment validation is recorded in the
+[acceptance evidence](evidence/session-persistence.md). No rejected preparation may
 leave old playback faded/stopped or mappings
 partially replaced.
 
