@@ -34,6 +34,10 @@ pub struct Port {
 impl Port {
     pub fn from_stream(stream: TcpStream, config: Config) -> io::Result<Self> {
         stream.set_nodelay(true)?;
+        if config.reliable <= 8 {
+            socket2::SockRef::from(&stream)
+                .set_send_buffer_size(8 * shoop_transport::MAX_RECORD_BYTES)?;
+        }
         stream.set_nonblocking(true)?;
         Ok(Self {
             core: Stream::new(NativeStream(stream), config)

@@ -10,6 +10,7 @@ pub type Token = [u8; 32];
 pub struct Listener {
     listener: TcpListener,
     token: Token,
+    lan: bool,
 }
 impl Listener {
     pub fn bind() -> io::Result<Self> {
@@ -21,12 +22,33 @@ impl Listener {
         if !address.ip().is_loopback() {
             return Err(io::Error::other("only loopback endpoints are supported"));
         }
+        Self::bind_policy(address, token, false)
+    }
+    pub fn bind_lan(address: SocketAddr, token: Token) -> io::Result<Self> {
+        Self::bind_policy(address, token, true)
+    }
+    fn bind_policy(address: SocketAddr, token: Token, lan: bool) -> io::Result<Self> {
         let listener = TcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
-        Ok(Self { listener, token })
+        Ok(Self {
+            listener,
+            token,
+            lan,
+        })
     }
     pub fn address(&self) -> io::Result<SocketAddr> {
         self.listener.local_addr()
+    }
+    pub fn accept_stream(&self) -> io::Result<Option<TcpStream>> {
+        match self.listener.accept() {
+            Ok((stream, peer)) if self.lan || peer.ip().is_loopback() => {
+                stream.set_nonblocking(true)?;
+                Ok(Some(stream))
+            }
+            Ok(_) => Ok(None),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error),
+        }
     }
     pub fn token(&self) -> &Token {
         &self.token
@@ -36,7 +58,7 @@ impl Listener {
         while Instant::now() < deadline {
             match self.listener.accept() {
                 Ok((stream, peer)) => {
-                    if !peer.ip().is_loopback() {
+                    if !self.lan && !peer.ip().is_loopback() {
                         continue;
                     }
                     let remaining = deadline.saturating_duration_since(Instant::now());
@@ -66,6 +88,14 @@ pub fn connect(
     if !address.ip().is_loopback() {
         return Err(io::Error::other("only loopback endpoints are supported"));
     }
+    connect_lan(address, token, config, timeout)
+}
+pub fn connect_lan(
+    address: SocketAddr,
+    token: &Token,
+    config: Config,
+    timeout: Duration,
+) -> io::Result<Port> {
     let deadline = Instant::now() + timeout;
     let stream = TcpStream::connect_timeout(&address, timeout)?;
     let stream = authenticate(

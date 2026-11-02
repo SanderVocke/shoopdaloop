@@ -1334,13 +1334,49 @@ impl UnifiedApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_remote_profile(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Remote host profile", &["json"])
+            .pick_file()
+        {
+            match shoop_host::remote::RemoteProfile::read(&path)
+                .and_then(|profile| Runtime::attach(&self.settings.active(), profile))
+            {
+                Ok(runtime) => {
+                    self.runtime = runtime;
+                    self.exit = Default::default();
+                    self.host_choices = None;
+                }
+                Err(error) => self.settings.report_action_error(error.to_string()),
+            }
+        }
+    }
     fn show(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            if self.runtime.remote_entry.is_none() {
+                ui.menu_button("Session", |ui| {
+                    if ui.button("Open remote profile…").clicked() {
+                        self.open_remote_profile();
+                        ui.close();
+                    }
+                });
+            }
             if let Some(entry) = self.runtime.remote_entry.clone() {
                 self.exit.intercept_close(ui.ctx());
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
+                        if ui
+                            .add_enabled(
+                                !self.exit.open && !self.exit.is_pending(),
+                                egui::Button::new("Open remote profile…"),
+                            )
+                            .clicked()
+                        {
+                            self.open_remote_profile();
+                            ui.close();
+                        }
                         if ui
                             .add_enabled(
                                 !self.exit.open && !self.exit.is_pending(),
@@ -2327,7 +2363,7 @@ struct Runtime {
     /// The new engine backend's host. It is declared after the application runtime so that
     /// it stops after the backend is gone.
     _engine_host: Option<engine_backend::EngineHost>,
-    remote_entry: Option<shoop_host::registry::HostEntry>,
+    remote_entry: Option<shoop_host::remote::Target>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2351,6 +2387,9 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
+        if let Some(path) = &args.remote_profile {
+            return Self::attach(settings, shoop_host::remote::RemoteProfile::read(path)?);
+        }
         if let Some(path) = &args.host_file {
             return Self::attach(settings, shoop_host::registry::HostEntry::read(path)?);
         }
@@ -2439,8 +2478,9 @@ impl Runtime {
 
     fn attach(
         settings: &shoop_settings::SettingsSnapshot,
-        entry: shoop_host::registry::HostEntry,
+        entry: impl Into<shoop_host::remote::Target>,
     ) -> anyhow::Result<Self> {
+        let entry = entry.into();
         let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
         let pending_script_paths = startup_scripts
             .iter()
@@ -3498,12 +3538,15 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         serve::StartOptions,
     };
     if args.shutdown_host {
-        let entry = shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?;
+        let entry: shoop_host::remote::Target = match args.remote_profile.as_ref() {
+            Some(path) => shoop_host::remote::RemoteProfile::read(path)?.into(),
+            None => shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?.into(),
+        };
         shoop_host::connection::shutdown_ownerless(&entry, Duration::from_secs(15))?;
         println!("Host cleanup confirmed");
         return Ok(true);
     }
-    if args.ui_only || args.host_file.is_some() {
+    if args.ui_only || args.host_file.is_some() || args.remote_profile.is_some() {
         return Ok(false);
     }
     let registry = args
@@ -3533,6 +3576,34 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
             .arg(registry);
         if let Some(endpoint) = args.endpoint {
             command.arg("--endpoint").arg(endpoint.to_string());
+        }
+        if args.lan {
+            command.arg("--lan");
+        }
+        if let Some(endpoint) = args.management_endpoint {
+            command
+                .arg("--management-endpoint")
+                .arg(endpoint.to_string());
+        }
+        for (flag, value) in [
+            ("--advertise-data", &args.advertise_data),
+            ("--advertise-management", &args.advertise_management),
+        ] {
+            if let Some(value) = value {
+                command.arg(flag).arg(value);
+            }
+        }
+        if let Some(path) = &args.export_profile {
+            command.arg("--export-profile").arg(path);
+        }
+        for (flag, value) in [
+            ("--heartbeat-interval-ms", args.heartbeat_interval_ms),
+            ("--heartbeat-timeout-ms", args.heartbeat_timeout_ms),
+            ("--snapshot-hz", args.snapshot_hz.map(u64::from)),
+        ] {
+            if let Some(value) = value {
+                command.arg(flag).arg(value.to_string());
+            }
         }
         if let Some(credential) = &args.credential_file {
             command.arg("--credential-file").arg(credential);

@@ -222,14 +222,16 @@ impl<P: RecordPort> Session<P> {
 }
 
 pub struct Management<P> {
+    greeting: Option<WireMessage>,
     pub port: P,
     age: Duration,
     pending: Option<WireMessage>,
     sent: bool,
 }
 impl<P: RecordPort> Management<P> {
-    pub fn new(port: P) -> Self {
+    pub fn new(port: P, host: HostId, session: SessionId) -> Self {
         Self {
+            greeting: Some(WireMessage::CarrierReady { host, session }),
             port,
             age: Duration::ZERO,
             pending: None,
@@ -242,6 +244,16 @@ impl<P: RecordPort> Management<P> {
             return false;
         }
         let mut bytes = [0; MAX_RECORD_BYTES];
+        if let Some(message) = self.greeting.as_ref() {
+            let Ok(n) = codec::encode(message, &mut bytes) else {
+                return false;
+            };
+            match self.port.post(&bytes[..n]) {
+                Ok(()) => self.greeting = None,
+                Err(CarrierError::Full) => return true,
+                Err(_) => return false,
+            }
+        }
         if self.pending.is_none() && !self.sent {
             if let Some(n) = self.port.take(&mut bytes) {
                 let reply = match codec::decode(&bytes[..n]) {

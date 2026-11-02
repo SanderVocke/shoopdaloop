@@ -26,6 +26,12 @@ use std::{
 pub struct StartOptions {
     pub registry: PathBuf,
     pub endpoint: SocketAddr,
+    pub management_endpoint: SocketAddr,
+    pub lan: bool,
+    pub advertised_endpoint: Option<String>,
+    pub advertised_management: Option<String>,
+    pub export_profile: Option<PathBuf>,
+    pub network: crate::remote::NetworkOptions,
     pub credential: Option<PathBuf>,
     pub host: HostId,
     pub session: SessionId,
@@ -36,6 +42,12 @@ impl StartOptions {
         Ok(Self {
             registry,
             endpoint: "127.0.0.1:0".parse()?,
+            management_endpoint: "127.0.0.1:0".parse()?,
+            lan: false,
+            advertised_endpoint: None,
+            advertised_management: None,
+            export_profile: None,
+            network: Default::default(),
             credential: None,
             host: HostId(identity()?),
             session: SessionId(identity()?),
@@ -50,21 +62,65 @@ struct Acceptor {
     ports: Receiver<shoop_transport_socket::Port>,
 }
 impl Acceptor {
-    fn new(listener: Listener) -> Result<Self> {
+    fn new(listener: Listener, lan: bool) -> Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = Arc::clone(&stop);
         let (sender, ports) = mpsc::sync_channel(4);
         let join = thread::Builder::new()
             .name("shoop-auth".into())
             .spawn(move || {
+                let mut pending: Vec<(
+                    shoop_transport_socket::NativeStream,
+                    shoop_transport::handshake::Handshake,
+                )> = Vec::with_capacity(4);
+                let mut last = Instant::now();
                 while !stopping.load(Ordering::Acquire) {
-                    match listener.accept(Default::default(), Duration::from_millis(100)) {
-                        Ok(port) => {
-                            let _ = sender.try_send(port);
+                    let now = Instant::now();
+                    let elapsed = now.saturating_duration_since(last);
+                    last = now;
+                    for _ in 0..4 {
+                        match listener.accept_stream() {
+                            Ok(Some(stream)) if pending.len() < 4 => pending.push((
+                                shoop_transport_socket::NativeStream(stream),
+                                shoop_transport::handshake::Handshake::new(
+                                    *listener.token(),
+                                    true,
+                                    Duration::from_secs(5),
+                                ),
+                            )),
+                            Ok(Some(_)) => {}
+                            Ok(None) => break,
+                            Err(_) => return,
                         }
-                        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {}
-                        Err(_) => break,
                     }
+                    let mut index = 0;
+                    while index < pending.len() {
+                        let (io, handshake) = &mut pending[index];
+                        match handshake.advance(io, elapsed) {
+                            Ok(false) => index += 1,
+                            Ok(true) => {
+                                let (io, _) = pending.swap_remove(index);
+                                let config = if lan {
+                                    shoop_transport_socket::Config {
+                                        reliable: 8,
+                                        telemetry: 1,
+                                        bulk: 8,
+                                    }
+                                } else {
+                                    Default::default()
+                                };
+                                if let Ok(port) =
+                                    shoop_transport_socket::Port::from_stream(io.0, config)
+                                {
+                                    let _ = sender.try_send(port);
+                                }
+                            }
+                            Err(_) => {
+                                pending.swap_remove(index);
+                            }
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(1));
                 }
             })?;
         Ok(Self {
@@ -84,13 +140,15 @@ impl Drop for Acceptor {
 }
 
 struct Registration {
-    registry: Registry,
+    registry: Option<Registry>,
     entry: HostEntry,
 }
 impl Drop for Registration {
     fn drop(&mut self) {
-        if let Err(error) = self.registry.remove(&self.entry) {
-            tracing::warn!(%error, "host.registry.cleanup_failed");
+        if let Some(registry) = self.registry.as_ref() {
+            if let Err(error) = registry.remove(&self.entry) {
+                tracing::warn!(%error, "host.registry.cleanup_failed");
+            }
         }
     }
 }
@@ -100,6 +158,15 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         tracing::info_span!("host.session", host = %options.host.0, session = %options.session.0)
             .entered();
     config.validate()?;
+    options.network.validate()?;
+    ensure!(
+        !options.lan || config.transport == AppTransport::Socket,
+        "LAN hosts require socket delivery"
+    );
+    ensure!(
+        !options.lan || (options.credential.is_some() && options.export_profile.is_some()),
+        "LAN hosts require --credential-file and --export-profile"
+    );
     ensure!(
         options.host.0 != 0 && options.session.0 != 0 && options.name.len() <= 128,
         "invalid host identity or name"
@@ -171,8 +238,38 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             token
         }
     };
-    let data = Listener::bind_with(options.endpoint, token)?;
-    let management = Listener::bind_with("127.0.0.1:0".parse()?, token)?;
+    let bind = if options.lan {
+        Listener::bind_lan
+    } else {
+        Listener::bind_with
+    };
+    let data = bind(options.endpoint, token)?;
+    let management = bind(options.management_endpoint, token)?;
+    if options.lan {
+        let profile = crate::remote::RemoteProfile {
+            version: VERSION,
+            host: options.host,
+            session: options.session,
+            name: options.name.clone(),
+            endpoint: options
+                .advertised_endpoint
+                .clone()
+                .unwrap_or(data.address()?.to_string()),
+            management: options
+                .advertised_management
+                .clone()
+                .unwrap_or(management.address()?.to_string()),
+            credential: PathBuf::from(
+                options
+                    .credential
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .context("credential filename unavailable")?,
+            ),
+            network: options.network,
+        };
+        profile.write(options.export_profile.as_ref().unwrap())?;
+    }
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
             512, 32, 32,
@@ -206,11 +303,13 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
             warnings,
         },
-        registry,
+        registry: if options.lan { None } else { Some(registry) },
     };
-    registration.registry.publish(&registration.entry)?;
-    let data = Acceptor::new(data)?;
-    let management = Acceptor::new(management)?;
+    if let Some(registry) = registration.registry.as_ref() {
+        registry.publish(&registration.entry)?;
+    }
+    let data = Acceptor::new(data, options.lan)?;
+    let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();
     let mut next_connection = 1u64;
@@ -247,16 +346,21 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             {
                 continue;
             }
-            clients.push(Data::new(ConnectionId(next_connection), port, shared_port));
+            clients.push(Data::new(
+                ConnectionId(next_connection),
+                port,
+                shared_port,
+                options.lan.then_some(options.network),
+            )?);
             next_connection = next_connection
                 .checked_add(1)
                 .context("connection generation exhausted")?;
         }
         for _ in 0..4 {
             match management.ports.try_recv() {
-                Ok(port) if managers.len() < 4 => {
-                    managers.push(shoop_app_connection::Management::new(port))
-                }
+                Ok(port) if managers.len() < 4 => managers.push(
+                    shoop_app_connection::Management::new(port, options.host, options.session),
+                ),
                 Ok(_) => {}
                 Err(_) => break,
             }
@@ -346,11 +450,19 @@ impl Data {
         id: ConnectionId,
         port: shoop_transport_socket::Port,
         shared: Option<shoop_transport_shared_memory::Port>,
-    ) -> Self {
-        Self {
-            core: shoop_app_connection::Session::new(id, Port::Socket(port)),
-            shared,
-        }
+        network: Option<crate::remote::NetworkOptions>,
+    ) -> Result<Self> {
+        let core = shoop_app_connection::Session::new(id, Port::Socket(port));
+        let core = match network {
+            Some(network) => core
+                .with_heartbeat(
+                    network.heartbeat(),
+                    (crate::registry::identity()? as u64).max(1),
+                )
+                .map_err(|_| anyhow!("invalid heartbeat settings"))?,
+            None => core,
+        };
+        Ok(Self { core, shared })
     }
     fn receive(&mut self, service: &mut Service) {
         if self.shared.is_some() {

@@ -225,19 +225,19 @@ stages must preserve earlier contracts.
 
 ### Stage 4 — LAN endpoints and remote profiles
 
-- [ ] Add explicit LAN opt-in and independently configurable data/management bind
+- [x] Add explicit LAN opt-in and independently configurable data/management bind
   and advertised endpoints to `shoop_host` and the application host-only wrapper.
   Keep default/local engine socket guards; reject remote shared-memory profiles.
-- [ ] Introduce versioned remote profiles, separate from `HostEntry` and the local
+- [x] Introduce versioned remote profiles, separate from `HostEntry` and the local
   registry. Include addresses, expected host/session identities and a client-local
   token-file reference. Supply a profile template/export path and token generation
   instructions so users do not need to hand-author identity integers.
-- [ ] Share native DNS/connection deadline handling across attach, reattach and
+- [x] Share native DNS/connection deadline handling across attach, reattach and
   management. Bound resolver admission and discard late results; do not spawn
   unbounded resolver threads on retries. Bound pending handshakes and total
   connections. Keep credential-file protection checks; remote profiles never
   participate in PID pruning.
-- [ ] **Verify:** two-process connections use a real non-loopback interface in
+- [x] **Verify:** two-process connections use a real non-loopback interface in
   required Linux CI; exercise IPv4, IPv6 and DNS paths without silently skipping
   unavailable required coverage. Other native jobs run the same portable/native
   contracts with recorded address-family coverage. Test wildcard publication,
@@ -353,3 +353,19 @@ planning deliverable.
   recovery tests. Workspace warning-denying build and test-attribute checks pass.
 - LAN profile wiring and end-to-end remaining-deadline handling follow in stage 4;
   existing local-only transports retain their original behavior.
+
+### Stage 4 evidence
+
+- Explicit LAN listeners and separate data/management endpoints are implemented;
+  local-only setup and discovery policies are unchanged. Both endpoints issue an
+  identity greeting before accepting management authority or session attachment.
+- Profiles carry no PID or server credential path. Native resolution uses one
+  bounded worker and four queued requests; late results are discarded. Setup,
+  authentication and greeting share the caller's remaining deadline. Four pending
+  handshakes per listener progress cooperatively without serial blocking.
+- Four LAN tests pass, including actual non-loopback Linux traffic, IPv6, DNS,
+  identity/version/token refusal, busy-controller refusal, replacement fencing,
+  wildcard/shared-memory refusal and ownerless shutdown. All nine local recovery
+  tests and the canonical heartbeat wire fixture pass.
+- CLI and Session-menu profile opening are wired into existing recovery/file UI.
+  Native application tests compile; workspace build and test-attribute check pass.

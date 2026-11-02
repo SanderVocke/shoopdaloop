@@ -8,3 +8,5 @@ pub mod launch;
 mod private;
 pub mod registry;
 pub mod serve;
+
+pub mod remote;

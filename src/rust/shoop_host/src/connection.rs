@@ -1,4 +1,7 @@
-use crate::registry::{AppTransport, HostEntry};
+use crate::{
+    registry::AppTransport,
+    remote::{remaining, ConnectionTarget, Target as HostTarget},
+};
 use anyhow::{anyhow, Context, Result};
 use shoop_app_client::{Client, Error as ClientError};
 use shoop_app_protocol::{
@@ -48,41 +51,72 @@ impl RecordPort for Port {
     }
 }
 
-pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
+fn open(
+    entry: &HostTarget,
+    address: &str,
+    deadline: Instant,
+) -> Result<shoop_transport_socket::Port> {
     let token = entry.token()?;
-    let mut port =
-        shoop_transport_socket::setup::connect(entry.endpoint, &token, Default::default(), timeout)
-            .context("authenticate session data connection")?;
-    let deadline = Instant::now() + timeout;
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / ((addresses.len() - index) as u32);
+        let config = if entry.network.is_some() {
+            shoop_transport_socket::Config {
+                reliable: 8,
+                telemetry: 1,
+                bulk: 8,
+            }
+        } else {
+            Default::default()
+        };
+        let result = if entry.network.is_some() {
+            shoop_transport_socket::setup::connect_lan(*address, &token, config, budget)
+        } else {
+            shoop_transport_socket::setup::connect(*address, &token, config, budget)
+        };
+        match result {
+            Ok(port) => return Ok(port),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last
+        .map(anyhow::Error::from)
+        .unwrap_or_else(|| anyhow!("no usable endpoint")))
+}
+fn greeting(port: &mut impl RecordPort, entry: &HostTarget, deadline: Instant) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
     loop {
         if let Some(length) = port.take(&mut bytes) {
-            match codec::decode(&bytes[..length])
-                .map_err(|_| anyhow!("invalid session endpoint greeting"))?
+            return match codec::decode(&bytes[..length])
+                .map_err(|_| anyhow!("invalid session greeting"))?
             {
                 WireMessage::CarrierReady { host, session }
                     if host == entry.host && session == entry.session =>
                 {
-                    break
+                    Ok(())
                 }
                 WireMessage::Rejected(reason) => {
-                    return Err(anyhow!("session endpoint refused: {reason:?}"))
+                    Err(anyhow!("session endpoint refused: {reason:?}"))
                 }
-                _ => {
-                    return Err(anyhow!(
-                        "session endpoint identity differs from its registration"
-                    ))
-                }
-            }
+                _ => Err(anyhow!(
+                    "session endpoint identity differs from its profile"
+                )),
+            };
         }
         if port.failure().is_some() {
             return Err(anyhow!("session endpoint closed during greeting"));
         }
-        if Instant::now() >= deadline {
-            return Err(anyhow!("session endpoint greeting timed out"));
-        }
+        remaining(deadline)?;
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
+    let entry = entry.target();
+    let deadline = Instant::now() + timeout;
+    let mut port =
+        open(&entry, &entry.endpoint, deadline).context("authenticate session data connection")?;
+    greeting(&mut port, &entry, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
         AppTransport::SharedMemory => {
@@ -102,12 +136,16 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
             )
         }
     };
-    Ok(Connection {
+    let connection = Connection {
         port,
         upload: shoop_app_connection::Upload::new(),
         heartbeat: None,
         last: Instant::now(),
-    })
+    };
+    match entry.network {
+        Some(network) => connection.with_heartbeat(network.heartbeat()),
+        None => Ok(connection),
+    }
 }
 
 pub struct Connection {
@@ -182,24 +220,20 @@ impl Connection {
 mod tests;
 
 pub fn management(
-    entry: &HostEntry,
+    entry: &impl ConnectionTarget,
     request: ManagementRequest,
     timeout: Duration,
 ) -> Result<ManagementReply> {
-    let token = entry.token()?;
-    let mut port = shoop_transport_socket::setup::connect(
-        entry.management,
-        &token,
-        Default::default(),
-        timeout,
-    )
-    .context("authenticate session management connection")?;
+    let entry = entry.target();
+    let deadline = Instant::now() + timeout;
+    let mut port = open(&entry, &entry.management, deadline)
+        .context("authenticate session management connection")?;
+    greeting(&mut port, &entry, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode(&WireMessage::ManagementRequest(request), &mut bytes)
         .map_err(|_| anyhow!("invalid management request"))?;
     port.post(&bytes[..length])
         .map_err(|_| anyhow!("management connection closed before submission"))?;
-    let deadline = Instant::now() + timeout;
     loop {
         if let Some(length) = port.take(&mut bytes) {
             let reply = codec::decode(&bytes[..length])
@@ -220,7 +254,8 @@ pub fn management(
 }
 
 /// Explicitly acquire shutdown authority for an ownerless host. Never evicts a live UI.
-pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
+pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> Result<()> {
+    let entry = entry.target();
     use shoop_app_protocol::{ClientId, OperationId, Outcome, VERSION};
     let operation = OperationId {
         client: ClientId(crate::registry::identity()?),
@@ -234,7 +269,11 @@ pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
     };
     let deadline = Instant::now() + timeout;
     loop {
-        match management(entry, request, Duration::from_secs(2))? {
+        match management(
+            &entry,
+            request,
+            remaining(deadline)?.min(Duration::from_secs(2)),
+        )? {
             ManagementReply::Accepted {
                 authority,
                 operation: pending,

@@ -265,3 +265,18 @@ fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
     .unwrap();
     assert_eq!(message.data(), [0x90, 60, 100]);
 }
+
+#[shoop_test]
+fn heartbeat_records_have_a_canonical_cross_platform_representation() {
+    let mut bytes = [0; 1280];
+    let n = codec::encode(&WireMessage::Ping(42), &mut bytes).unwrap();
+    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 9, 0, 0, 42]);
+    let n = codec::encode(&WireMessage::Pong(0x1122334455667788), &mut bytes).unwrap();
+    assert_eq!(
+        &bytes[..n],
+        &[
+            18, 0, b'S', b'A', b'P', b'P', 9, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
+            0x11
+        ]
+    );
+}

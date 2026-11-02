@@ -1,7 +1,7 @@
 use crate::application::ApplicationHandle;
 use eframe::egui;
 use shoop_app_protocol::{ClientMessage, ManagementReply, ManagementRequest, Outcome};
-use shoop_host::{connection, registry::HostEntry};
+use shoop_host::{connection, remote::Target as HostEntry};
 use std::{
     sync::mpsc,
     time::{Duration, Instant},
@@ -37,7 +37,8 @@ impl ExitController {
         self.authorized = true;
         context.send_viewport_cmd(egui::ViewportCommand::Close);
     }
-    pub(crate) fn start(&mut self, entry: HostEntry, handle: ApplicationHandle) {
+    pub(crate) fn start(&mut self, entry: impl Into<HostEntry>, handle: ApplicationHandle) {
+        let entry = entry.into();
         self.error = None;
         let ticket = self.ticket.clone();
         let (sender, receiver) = mpsc::channel();
@@ -128,7 +129,10 @@ impl ExitController {
     }
 }
 
-pub(crate) fn shutdown(entry: &HostEntry, ticket: ClientMessage) -> (Result<(), String>, bool) {
+pub(crate) fn shutdown(
+    entry: &impl shoop_host::remote::ConnectionTarget,
+    ticket: ClientMessage,
+) -> (Result<(), String>, bool) {
     let ClientMessage::Shutdown {
         authority,
         operation,

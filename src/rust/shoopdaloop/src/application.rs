@@ -441,9 +441,10 @@ mod native {
             })
         }
         pub fn attach(
-            entry: shoop_host::registry::HostEntry,
+            entry: impl Into<shoop_host::remote::Target>,
             options: ApplicationStartOptions,
         ) -> Result<Self> {
+            let entry = entry.into();
             Self::start_thread(false, move || {
                 let connection = shoop_host::connection::connect(&entry, Duration::from_secs(3))?;
                 let client = Client::new(
