@@ -26,6 +26,19 @@ route coverage; retained reference fixtures also run in the complete native suit
 
 ## Deployment scope
 
+Implementation validation is recorded against
+`957975a6c52db5185e151ff41742a547b586dde4`. The native suite passes 2486 tests
+(four optional/platform skips); CI's complete Node suite passes 2106 tests across
+32 packages; the frontend Chrome suite passes 39 tests. The completion regressions
+also withhold a confirmed load/New Session projection and verify readiness waits
+for that revision, while known commit results survive connection loss.
+
+The [selected Miri report](miri/session-persistence/result.json) and its twelve
+hashed logs cover six complete protocol/resource/codec cases with seeds 0 and 1.
+They use nightly-2026-05-04 and default borrow/isolation checks. The
+[additional engine report](miri/session-persistence/extended-engine.json) preserves
+the earlier full engine staging pass and its unchanged-source provenance.
+
 Local native validation uses Linux and the production dummy companion, including
 bounded regular-file input and atomic file replacement. Local Chrome 147 uses fake
 microphone input and a real AudioWorklet; download completion means the user clicked

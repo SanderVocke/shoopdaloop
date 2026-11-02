@@ -2,12 +2,17 @@
 
 ## Status and delivery
 
-Stages 0–6 are implemented. Core file workflows, atomic replacement, cooperative
-media preparation, bounded codecs and callback lifetime fencing are in place.
-Packaged Linux socket/shared-memory and hosted/self-contained release Chrome
-workflows pass, including media above 32 MiB and socket-loss reconciliation.
-Final validation and cross-platform CI corrections are in progress in
-[PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906).
+Implementation and local acceptance are complete on `957975a6`. Core file workflows,
+atomic replacement, bounded codecs, cooperative media preparation and callback
+lifetime fencing are implemented. Packaged Linux/macOS/Windows and hosted/single-file
+browser file canaries pass, including media above 32 MiB and socket-loss reconciliation.
+All 16 parity rows remain OPEN with their remaining dependencies.
+[PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906) targets the integration
+feature branch. Windows debug recovery fixtures hit startup timeouts in both CI
+attempts; exclusive scheduling of those process-heavy fixtures is under final
+validation, with their workloads and deadlines unchanged. Final CI delivery remains
+pending. Earlier milestone notes below
+retain their status at the time; the current evidence is recorded at the end.
 Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -824,48 +829,70 @@ the full native and affected Wasm gates.
 
 ### Stage 7 — final end-to-end validation and PR
 
-- [ ] Exercise packaged native and hosted/self-contained browser workflows: record
+- [x] Exercise packaged native and hosted/self-contained browser workflows: record
   audio/MIDI, save/export, mutate, reload/import, compare content/state and play it
   back. Include >32 MiB media, near-budget refusal and malformed/unsupported files.
 - [x] Repeat socket UI-loss/reattach during upload, capture and accepted load/import;
   verify exactly-once mutation, complete projection, resource cleanup and responsive
   audio/control delivery. Cover shared-memory operation without claiming reattach.
-- [ ] Run formatting, warning-denying workspace build, full native nextest with
+- [x] Run formatting, warning-denying workspace build, full native nextest with
   retained reference fixtures, Python boundary/parity/tracing/test-policy checks,
   all Node/Wasm packages and applicable Chromium/Firefox browser gates following
   repository testing guidance. Record hardware/mock and platform limitations.
-- [ ] Run selected Miri on changed portable ownership/protocol/staging paths only
+- [x] Run selected Miri on changed portable ownership/protocol/staging paths only
   after ordinary gates stabilize. Rerun affected checks after fixes; retain earlier
   evidence only with exact source provenance and a justified unchanged scope.
-- [ ] Reconcile each acceptance criterion and ledger subitem with test/evidence
+- [x] Reconcile each acceptance criterion and ledger subitem with test/evidence
   links and final commit IDs. Commit milestones, push with this branch's own origin
   upstream, and create the PR with `--base feat/backend-replacement`.
 - [ ] Inspect actual final-head checks with raw `gh`/git. Ensure Linux/macOS/Windows
   and web debug/release matrices, coverage, CodeQL and docs pass; fix failures and
   rerun. Use workflow dispatch if needed, without treating a missing check as a pass.
-- [ ] Inspect automated review if present, address actionable feedback and repeat
+- [x] Inspect automated review if present, address actionable feedback and repeat
   until approval. Record absence of a reviewer/verdict honestly; do not invent one.
   Update the plan/PR with final evidence and leave the PR open for the user.
 
 Verification: green checks tied to the final implementation head, reviewed diff,
 complete acceptance evidence and an open PR targeting the integration feature branch.
 
-Selected Miri passes on `0f369f654cc5271782167640ee705d795eb99d8d`, after
-the full ordinary native/Node/Chrome gates stabilized. Five unchanged portable cases
-ran with both seeds 0 and 1 on `nightly-2026-05-04`, using only
-`-Zmiri-seed=<seed>` and the default borrow/isolation checks: exact segmented image
-reconstruction, aggregate/order/finish validation, stale authority/epoch/overflow,
-indexed MIDI initial packets, and clearing idle capture groups while immutable
-snapshot owners survive. All ten executions pass. Subsequent changes are confined
-to native transport backpressure/diagnostics and documentation; these portable
-paths and workloads are unchanged.
+Current acceptance evidence is tied to implementation commit
+`957975a6c52db5185e151ff41742a547b586dde4` and
+[CI run 41390268085](https://github.com/SanderVocke/shoopdaloop/actions/runs/41390268085).
+The [acceptance mapping](docs/native_session_recovery/evidence/session-persistence.md)
+links all nine criteria to the production routes and regressions.
 
-Latest ordinary gates: 2482 native tests pass (four optional/platform skips),
-including the slow-peer socket window regression; 2102 tests across all 32 Node
-packages and all 37 frontend Chrome tests pass. The latter runs cover the portable
-and browser code before the subsequent native-only transport fixes. All 142 Python
-tests, warning-denying workspace/bare-metal builds, production boundaries, formatting,
-test policy and closed parity/tracing inventories pass. The Linux socket canary on
-`e1bd41c7` passes the complete large-media and loss/reconciliation workflow. The
-acceptance mapping is in [session-persistence evidence](docs/native_session_recovery/evidence/session-persistence.md).
-Final-head native packaging and applicable platform/browser CI remain pending.
+| Gate | Result and scope |
+| --- | --- |
+| Native | 2486 tests pass locally, four optional/platform skips; retained reference fixtures remain. Linux debug/release, macOS debug/release and Windows release CI pass. Windows debug packaging passes; recovery-host startup timeouts repeated under concurrent fixture startup, so exclusive fixture scheduling is under final validation. |
+| Wasm and browser | All 2106 tests across 32 Node packages pass in CI. All 39 frontend Chrome tests pass locally. Release CI passes hosted/single-file large-media workflows and Firefox; debug CI passes the normal and denied-first microphone workflows. |
+| Files and recovery | All native packaged socket/shared-memory probes pass on Linux, macOS and Windows. A 33 MiB WAV and exact MIDI survive save/load/save; output/input, corrupt refusal, fresh stopped IDs and playback are exercised. Socket loss covers partial upload/capture and exactly-once accepted-load reconciliation. Shared-memory reattachment is not claimed. |
+| Policy and architecture | Formatting, warning-denying workspace and bare-metal builds, production dependency boundaries, all 142 Python tests, test attributes and closed tracing/parity inventories pass. Coverage, CodeQL and docs checks pass. |
+| Miri | Six full selected protocol/resource/codec cases pass with both seeds 0 and 1 on nightly-2026-05-04, using only `-Zmiri-seed=<seed>` and default borrow/isolation checks. The [report and logs](docs/native_session_recovery/evidence/miri/session-persistence/result.json) record all twelve executions. |
+
+The additional full engine staging Miri case passes with seed 0 on `d17355df`,
+whose engine sources remain unchanged through the implementation head; its
+[separate report](docs/native_session_recovery/evidence/miri/session-persistence/extended-engine.json)
+records exact provenance. A separate extended adapter interpreter run was stopped
+without a verdict and is not counted as a pass. Full engine and cancellation
+workloads pass in native and affected Node suites.
+
+Local native deployment uses the production dummy companion; Chrome 147 uses fake
+microphone input with a real AudioWorklet. Actual macOS/Windows and Firefox evidence
+comes from CI. No physical-device, host/page-crash recovery, simultaneous-client or
+shared-memory reattachment coverage is claimed. Browser output means download
+handoff; native output follows atomic replacement and its reported synchronization
+result. These limits and all deferred P01/P02/P11 dependencies remain explicit.
+
+Recovery CI scheduling: the Windows debug rerun again timed out before host
+readiness, with several complete engine processes preparing concurrently. Ten
+local baseline runs of both affected tests pass (20 executions); the complete host
+suite also passes on two CPUs with four test threads. CI now reserves all test
+threads for each `shoop_host::recovery` case, following the existing exclusive
+fixture convention. Pool sizes, 32 recovery cycles, assertions, retry policy and
+the original ten-second startup deadline are unchanged. This addresses fixture
+contention; it is not a claim that the Windows failure reproduced locally. The
+complete native suite and final-head CI verify the scheduling change.
+
+Review inspection: PR #906 has no formal review or approval verdict. The only
+automated comment is the Codecov coverage report; its project and patch statuses
+pass. No reviewer approval is claimed. Final-head checks remain the delivery gate.
