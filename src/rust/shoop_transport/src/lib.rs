@@ -12,6 +12,8 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod buffer;
 pub mod framing;
+pub mod handshake;
+pub mod stream;
 
 /// Largest record accepted by the shared carriers, including its length prefix.
 pub const MAX_RECORD_BYTES: usize = 1280;

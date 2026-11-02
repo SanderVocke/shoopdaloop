@@ -183,13 +183,13 @@ stages must preserve earlier contracts.
 
 ### Stage 1 — portable byte-stream and token-handshake core
 
-- [ ] Move stream framing, partial-write retention and queue progression into
+- [x] Move stream framing, partial-write retention and queue progression into
   `shoop_transport`; add a bounded cooperative token-handshake state machine.
   Preserve current local carrier behavior and the 1280-byte record ceiling.
-- [ ] Make `shoop_transport_socket::Port` a thin native adapter over that core.
+- [x] Make `shoop_transport_socket::Port` a thin native adapter over that core.
   Preserve lane/backpressure semantics and shared-memory liveness access. Keep
   entropy, TCP setup/options and error diagnostics outside the portable core.
-- [ ] **Verify:** use a scripted adapter to exercise fragmented/coalesced frames,
+- [x] **Verify:** use a scripted adapter to exercise fragmented/coalesced frames,
   partial token/ack writes, would-block, interruption, EOF, malformed lengths,
   queue saturation and deadline expiry. Assert finite per-step work and no stream
   pump allocation after preparation. Run existing socket/shared-memory tests and
@@ -322,3 +322,11 @@ planning deliverable.
   existing RT guards/boundary audits; AC5 uses fake-clock liveness/recovery tests;
   AC7 uses the deterministic throttled-link fixture; AC8 uses native CI, wire
   fixtures, bare-metal gates and browser/local regression workflows.
+
+### Stage 1 evidence
+
+- Portable stream/framing and cooperative token/ack state now back the native
+  socket carrier; existing local-only connection policy remains unchanged.
+- Nine transport tests (including allocator-guarded prepared progression), seven
+  socket tests and seven shared-memory tests pass. Both Cortex-A stream builds,
+  the warning-denying workspace build and test-attribute checks pass.

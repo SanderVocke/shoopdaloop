@@ -1,7 +1,8 @@
 //! Authenticated loopback connection setup; credentials stay outside logical protocols.
-use crate::{Config, Port};
+use crate::{Config, NativeStream, Port};
+use shoop_transport::handshake::Handshake;
 use std::{
-    io::{self, Read, Write},
+    io,
     net::{SocketAddr, TcpListener, TcpStream},
     time::{Duration, Instant},
 };
@@ -34,22 +35,15 @@ impl Listener {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             match self.listener.accept() {
-                Ok((mut stream, peer)) => {
+                Ok((stream, peer)) => {
                     if !peer.ip().is_loopback() {
                         continue;
                     }
-                    stream.set_nonblocking(false)?;
                     let remaining = deadline.saturating_duration_since(Instant::now());
-                    stream.set_read_timeout(Some(remaining.max(Duration::from_millis(1))))?;
-                    stream.set_write_timeout(Some(remaining.max(Duration::from_millis(1))))?;
-                    let mut token = [0; 32];
-                    if stream.read_exact(&mut token).is_err() || token != self.token {
-                        continue;
+                    match authenticate(stream, self.token, true, remaining) {
+                        Ok(stream) => return Port::from_stream(stream, config),
+                        Err(_) => continue,
                     }
-                    stream.write_all(&[1])?;
-                    stream.set_read_timeout(None)?;
-                    stream.set_write_timeout(None)?;
-                    return Port::from_stream(stream, config);
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                     std::thread::sleep(Duration::from_millis(1))
@@ -72,17 +66,45 @@ pub fn connect(
     if !address.ip().is_loopback() {
         return Err(io::Error::other("only loopback endpoints are supported"));
     }
-    let mut stream = TcpStream::connect_timeout(&address, timeout)?;
-    stream.set_nonblocking(false)?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    stream.write_all(token)?;
-    let mut ack = [0];
-    stream.read_exact(&mut ack)?;
-    if ack != [1] {
-        return Err(io::Error::other("local authentication failed"));
-    }
-    stream.set_read_timeout(None)?;
-    stream.set_write_timeout(None)?;
+    let deadline = Instant::now() + timeout;
+    let stream = TcpStream::connect_timeout(&address, timeout)?;
+    let stream = authenticate(
+        stream,
+        *token,
+        false,
+        deadline.saturating_duration_since(Instant::now()),
+    )?;
     Port::from_stream(stream, config)
+}
+
+pub fn authenticate(
+    stream: TcpStream,
+    token: Token,
+    server: bool,
+    timeout: Duration,
+) -> io::Result<TcpStream> {
+    stream.set_nodelay(true)?;
+    stream.set_nonblocking(true)?;
+    let mut io = NativeStream(stream);
+    let mut handshake = Handshake::new(token, server, timeout);
+    let mut last = Instant::now();
+    loop {
+        let now = Instant::now();
+        match handshake.advance(&mut io, now.saturating_duration_since(last)) {
+            Ok(true) => return Ok(io.0),
+            Ok(false) => {}
+            Err(error) => {
+                return Err(io::Error::new(
+                    if error == shoop_transport::handshake::Error::Timeout {
+                        io::ErrorKind::TimedOut
+                    } else {
+                        io::ErrorKind::PermissionDenied
+                    },
+                    format!("connection authentication failed: {error:?}"),
+                ))
+            }
+        }
+        last = now;
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
