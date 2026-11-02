@@ -279,7 +279,7 @@ stages must preserve earlier contracts.
   and `python3 scripts/check_tracing_coverage.py --require-closed`.
   Before committing Rust changes, run `cargo fmt --all` and the warning-denying
   build; run targeted verification at each earlier stage too.
-- [ ] Document trusted-LAN setup, both ports, manual credential provisioning,
+- [x] Document trusted-LAN setup, both ports, manual credential provisioning,
   identity/version expectations, heartbeat settings, file ownership and the
   future RTOS adapter contract. Record AC1–AC8 evidence and limitations.
 - [ ] Push milestone commits and open/update the PR against
@@ -442,3 +442,32 @@ CI/review gates and leave the PR unmerged.
   exercise the same prepared stream progression without instrumentation.
 - All nine transport tests pass in both debug and release locally. Formatting,
   test-attribute policy and the warning-denying workspace build pass.
+
+### Final acceptance evidence
+
+Windows release package CI also exposed local credential ACL validation consuming
+the network connection's three-second budget. Windows launches PowerShell for
+this pre-existing permission check. Credential validation now completes before
+the network deadline begins; DNS, TCP setup, token exchange and greeting still
+share one remaining deadline on both data and management connections. File
+permission checks remain mandatory and credential errors have their own context.
+After this correction, the full native suite again passes 2507 tests (four
+intentional canaries skipped), and both LAN workflow and >32 MiB persistence
+probes pass, including exact resave and connection-loss reconciliation.
+
+| Criterion | Evidence |
+| --- | --- |
+| AC1 | Native LAN tests cover both endpoints, non-loopback Linux traffic, IPv6 and DNS; CLI/Session-menu profile opening and the real host-only wrapper probe pass. |
+| AC2 | LAN identity/credential/version and occupied-controller refusals, ownerless shutdown and complete/no-clobber profile publication pass; profile/credential setup is documented. |
+| AC3 | Scripted stream/handshake adapters, portable service tests and both complete Cortex-A library builds pass. |
+| AC4 | Native suite allocation guards, four-target dependency audit, 17 boundary-policy tests and tracing inventory pass; networking remains on the control task. |
+| AC5 | Fake-clock matching/stale/late replies and full/one-way links pass; native silent blackhole retains recording and permits a fenced replacement. |
+| AC6 | Packaged LAN workflow and >32 MiB exact audio/MIDI persistence pass, including abandoned transfers and accepted-commit reconciliation; UI close/reattach and lost shutdown-reply tests pass. |
+| AC7 | Prepared stream progression is allocation-guarded in debug; deterministic real-service upload/download meets the 250 ms control budget (40/20 ms), eight-record backlog and 30 Hz periodic snapshot limit. |
+| AC8 | Local native suite: 2507 passed, four intentional canaries skipped; Chromium: zero xruns. Final native/browser platform CI and canonical wire fixtures are tracked by PR #912's current-head checks. |
+
+No physical mixed-OS machine pairing, actual audio/MIDI hardware session or RTOS
+board execution was performed. Native CI supplies same-OS two-process coverage on
+Linux/macOS/Windows; bare-metal builds establish the portable library boundary,
+not an RTOS implementation or hard-real-time network guarantee. Missing local
+audio/MIDI devices use the repository's explicit missing-backend allowance.

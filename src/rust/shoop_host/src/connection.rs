@@ -54,9 +54,9 @@ impl RecordPort for Port {
 fn open(
     entry: &HostTarget,
     address: &str,
+    token: &[u8; 32],
     deadline: Instant,
 ) -> Result<shoop_transport_socket::Port> {
-    let token = entry.token()?;
     let addresses = crate::remote::resolve(address, deadline)?;
     let mut last = None;
     for (index, address) in addresses.iter().enumerate() {
@@ -71,9 +71,9 @@ fn open(
             Default::default()
         };
         let result = if entry.network.is_some() {
-            shoop_transport_socket::setup::connect_lan(*address, &token, config, budget)
+            shoop_transport_socket::setup::connect_lan(*address, token, config, budget)
         } else {
-            shoop_transport_socket::setup::connect(*address, &token, config, budget)
+            shoop_transport_socket::setup::connect(*address, token, config, budget)
         };
         match result {
             Ok(port) => return Ok(port),
@@ -113,9 +113,10 @@ fn greeting(port: &mut impl RecordPort, entry: &HostTarget, deadline: Instant) -
 }
 pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
     let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
     let deadline = Instant::now() + timeout;
-    let mut port =
-        open(&entry, &entry.endpoint, deadline).context("authenticate session data connection")?;
+    let mut port = open(&entry, &entry.endpoint, &token, deadline)
+        .context("authenticate session data connection")?;
     greeting(&mut port, &entry, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
@@ -225,8 +226,9 @@ pub fn management(
     timeout: Duration,
 ) -> Result<ManagementReply> {
     let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.management, deadline)
+    let mut port = open(&entry, &entry.management, &token, deadline)
         .context("authenticate session management connection")?;
     greeting(&mut port, &entry, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];

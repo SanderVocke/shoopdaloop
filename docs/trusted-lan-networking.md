@@ -41,6 +41,7 @@ addresses and zero ports are not usable profile destinations. IPv6 destinations
 use bracket notation, for example `[fd00::50]:15400`. Native clients can also use
 DNS hostnames. DNS, TCP setup, token exchange and endpoint greeting share the
 connection deadline; resolver concurrency and pending requests are bounded.
+Local credential-file permission validation precedes this network deadline.
 
 ## Connect a UI
 
@@ -69,7 +70,7 @@ shoopdaloop --ui-only --remote-profile remote.json
 
 The UI checks the data endpoint's host/session identity before attachment. The
 management endpoint receives the same identity check before any shutdown request.
-A healthy controlling UI is refused without eviction if another UI tries to join.
+An additional UI is refused while the existing controlling UI remains healthy.
 Remote profiles are separate from local registrations: listing/pruning local
 hosts never consults a remote PID or deletes a remote profile or credential.
 
