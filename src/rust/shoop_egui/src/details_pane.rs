@@ -1102,7 +1102,7 @@ mod tests {
         let mut pane = DetailsPane::default();
         let mut details = details();
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         let scale = pane.media_view.frames_per_pixel;
@@ -1111,7 +1111,7 @@ mod tests {
         details.channels[0].start_offset = -33;
         details.channels[0].preplay_samples = 200;
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         assert_eq!(pane.snap_frame(&details, ChannelId::from_raw(1), 35), 40);
@@ -1131,13 +1131,13 @@ mod tests {
         let details = details();
         for _ in 0..2 {
             let mut output = context.run_ui(Default::default(), |ui| {
-                pane.show(ui, Some(&details));
+                pane.show(ui, Some(&details), &[]);
             });
             output.textures_delta.clear();
             pane.lane_heights.insert(ChannelId::from_raw(3), 180.0);
         }
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         assert_eq!(pane.lane_heights[&ChannelId::from_raw(3)], 180.0);
@@ -1215,7 +1215,7 @@ mod tests {
         };
         let details = details();
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         let rect = output
@@ -1254,7 +1254,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                assert!(pane.show(ui, Some(&details)).is_empty());
+                assert!(pane.show(ui, Some(&details), &[]).is_empty());
             },
         );
         output.textures_delta.clear();
@@ -1296,7 +1296,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    emitted.extend(pane.show(ui, Some(&details)));
+                    emitted.extend(pane.show(ui, Some(&details), &[]));
                 },
             );
             output.textures_delta.clear();
@@ -1323,7 +1323,7 @@ mod tests {
         let mut details = details();
         details.sync_loop_length = 0;
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         assert_eq!(pane.grid_length(&details), 40);
@@ -1353,7 +1353,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                assert!(pane.show(ui, Some(&details)).is_empty());
+                assert!(pane.show(ui, Some(&details), &[]).is_empty());
             },
         );
         output.textures_delta.clear();
@@ -1374,7 +1374,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    emitted.extend(pane.show(ui, Some(&details)));
+                    emitted.extend(pane.show(ui, Some(&details), &[]));
                 },
             );
             output.textures_delta.clear();
@@ -1388,7 +1388,7 @@ mod tests {
             channel.loop_length = 200;
         }
         let mut output = context.run_ui(Default::default(), |ui| {
-            pane.show(ui, Some(&details));
+            pane.show(ui, Some(&details), &[]);
         });
         output.textures_delta.clear();
         assert_eq!(pane.grid_length(&details), 40);
