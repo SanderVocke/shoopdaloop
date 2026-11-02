@@ -6,7 +6,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_protocol::{HostId, SessionId, VERSION};
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::{SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
     sync::{mpsc, OnceLock},
@@ -57,6 +57,8 @@ pub struct RemoteProfile {
     pub credential: PathBuf,
     #[serde(default)]
     pub network: NetworkOptions,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
@@ -67,6 +69,10 @@ impl RemoteProfile {
                 && self.name.len() <= 128
                 && !self.credential.as_os_str().is_empty(),
             "invalid remote profile identity or credential path"
+        );
+        ensure!(
+            self.warnings.len() <= 64 && self.warnings.iter().all(|warning| warning.len() <= 1024),
+            "invalid remote host diagnostics"
         );
         endpoint(&self.endpoint)?;
         endpoint(&self.management)?;
@@ -90,7 +96,17 @@ impl RemoteProfile {
     }
     pub fn write(&self, path: &Path) -> Result<()> {
         self.validate()?;
-        private::create(path, &serde_json::to_vec_pretty(self)?)
+        let bytes = serde_json::to_vec_pretty(self)?;
+        ensure!(bytes.len() <= 65536, "remote profile exceeds 64 KiB");
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut file = tempfile::NamedTempFile::new_in(parent)?;
+        file.write_all(&bytes)?;
+        file.as_file().sync_all()?;
+        file.persist_noclobber(path).map_err(|error| error.error)?;
+        Ok(())
     }
 }
 
@@ -137,7 +153,7 @@ impl From<RemoteProfile> for Target {
             credential: e.credential,
             transport: AppTransport::Socket,
             shared_memory: None,
-            warnings: Vec::new(),
+            warnings: e.warnings,
             network: Some(e.network),
         }
     }

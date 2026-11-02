@@ -454,3 +454,120 @@ fn silent_network_loss_releases_the_controller_while_recording_continues() {
         shoop_app_protocol::Command::SetLoopSmoothingMs(7),
     );
 }
+
+#[shoop_test]
+fn losing_a_management_reply_reconciles_the_same_shutdown_operation() {
+    let mut host = host(Ipv4Addr::LOCALHOST.into());
+    let (mut client, connection) = attach(&host.profile, 11);
+    let ticket = client.shutdown().unwrap();
+    let ClientMessage::Shutdown {
+        authority,
+        operation,
+    } = ticket
+    else {
+        panic!()
+    };
+    let target: shoop_host::remote::Target = host.profile.clone().into();
+    let token = target.token().unwrap();
+    let mut raw = shoop_transport_socket::setup::connect_lan(
+        host.profile.management.parse().unwrap(),
+        &token,
+        Default::default(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    use shoop_transport::RecordPort;
+    let mut bytes = [0; 1280];
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(n) = raw.take(&mut bytes) {
+            assert_eq!(
+                codec::decode(&bytes[..n]).unwrap(),
+                WireMessage::CarrierReady {
+                    host: host.profile.host,
+                    session: host.profile.session
+                }
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    let n = codec::encode(
+        &WireMessage::ManagementRequest(ManagementRequest::Shutdown {
+            authority,
+            operation,
+        }),
+        &mut bytes,
+    )
+    .unwrap();
+    raw.post(&bytes[..n]).unwrap();
+    while !raw.outgoing_empty() {
+        raw.flush().unwrap();
+        assert!(Instant::now() < deadline);
+    }
+    drop(raw);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match connection::management(
+            &host.profile,
+            ManagementRequest::Result {
+                authority,
+                operation,
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap()
+        {
+            ManagementReply::Finished { result, .. } => {
+                assert_eq!(result.id, operation);
+                assert!(matches!(result.outcome, Outcome::Confirmed { .. }));
+                break;
+            }
+            ManagementReply::Accepted {
+                operation: pending, ..
+            } => assert_eq!(pending.id, operation),
+            reply => panic!("unexpected reconciliation: {reply:?}"),
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    drop(connection);
+    while host.child.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[shoop_test]
+fn exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile() {
+    let host = host(Ipv4Addr::LOCALHOST.into());
+    for attempt in 0..16 {
+        let path = host._root.path().join(format!("published-{attempt}.json"));
+        let profile = host.profile.clone();
+        let destination = path.clone();
+        let writer = thread::spawn(move || profile.write(&destination).unwrap());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    let profile: RemoteProfile = serde_json::from_slice(&bytes)
+                        .expect("published profile must already contain complete JSON");
+                    profile.validate().unwrap();
+                    break;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("profile publication failed: {error}"),
+            }
+            assert!(Instant::now() < deadline);
+            thread::yield_now();
+        }
+        writer.join().unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(host.profile.write(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+    let mut invalid = host.profile.clone();
+    invalid.warnings = vec!["x".repeat(1024); 65];
+    assert!(invalid.validate().is_err());
+}

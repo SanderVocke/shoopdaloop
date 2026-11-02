@@ -10,6 +10,8 @@ mod support;
 use support::service;
 #[derive(Default)]
 struct Memory {
+    limit: usize,
+    failed: bool,
     input: VecDeque<Vec<u8>>,
     output: VecDeque<Vec<u8>>,
 }
@@ -21,8 +23,11 @@ impl Memory {
     }
 }
 impl RecordPort for Memory {
+    fn failure(&mut self) -> Option<CarrierError> {
+        self.failed.then_some(CarrierError::Disconnected)
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
-        if self.output.len() == 8 {
+        if self.output.len() == if self.limit == 0 { 8 } else { self.limit } {
             return Err(CarrierError::Full);
         }
         self.output.push_back(record.to_vec());
@@ -140,4 +145,59 @@ fn timed_out_connection_releases_only_its_authority_and_cannot_evict_replacement
     session.port.send(WireMessage::Pong(1));
     session.receive(&mut service);
     assert!(service.has_connection(ConnectionId(2)));
+}
+
+#[shoop_test]
+fn interruption_during_network_snapshot_never_publishes_partial_state_and_allows_replacement() {
+    let mut service = service();
+    let mut session = Session::new(
+        ConnectionId(1),
+        Memory {
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .with_network(Default::default(), 1, 30)
+    .unwrap();
+    let mut client = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    session
+        .port
+        .send(WireMessage::Client(client.attach().unwrap()));
+    let mut began = false;
+    for _ in 0..32 {
+        session.receive(&mut service);
+        session.write(&mut service);
+        if let Some(bytes) = session.port.output.pop_front() {
+            let message = codec::decode(&bytes).unwrap();
+            began = matches!(message, WireMessage::SnapshotBegin { .. });
+            client.receive_wire(message).unwrap();
+            if began {
+                break;
+            }
+        }
+    }
+    assert!(began);
+    assert!(client.snapshot().is_none());
+    session.port.failed = true;
+    assert!(!session.alive(&service));
+    service.detach(session.id);
+    client.disconnect();
+    assert_eq!(client.state(), State::Lost);
+    assert!(service.is_ready());
+    let mut replacement = Session::new(ConnectionId(2), Memory::default())
+        .with_network(Default::default(), 2, 30)
+        .unwrap();
+    let mut next = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    replacement
+        .port
+        .send(WireMessage::Client(next.attach().unwrap()));
+    for _ in 0..64 {
+        step(&mut replacement, &mut service, &mut next);
+        if next.state() == State::Ready {
+            break;
+        }
+    }
+    assert_eq!(next.state(), State::Ready);
+    assert!(next.snapshot().is_some());
+    assert!(next.results().is_empty());
 }

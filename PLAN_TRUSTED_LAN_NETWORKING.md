@@ -405,3 +405,21 @@ planning deliverable.
   nextest settings are unchanged. The warning-denying workspace build passes.
 - Setup/credentials, both endpoints, profile identities and the future Cortex-A
   adapter contract are documented in `docs/trusted-lan-networking.md`.
+
+### Final-review and first-CI corrections
+
+- Local hosted Chromium workflow passes with zero xruns. The complete four-target
+  native/browser dependency audit passes. PR #912 targets `feat/backend-replacement`;
+  its description includes server/client startup and profile/credential handling.
+- Added explicit interruption-during-snapshot and lost-management-reply tests;
+  replacement projection and same-operation shutdown reconciliation both pass.
+  Remote profiles also retain bounded startup diagnostics for the client UI.
+- First-head CI passed bare-metal, web release, Rust coverage (85.50% patch), Docs
+  and CodeQL. Windows package probes exposed profile publication before JSON was
+  written: the credential/ACL helper created the final path before its contents.
+  Profiles now use a completed same-directory temporary file and atomic
+  no-clobber persistence. A concurrent reader regression checks complete JSON and
+  non-overwrite behavior; all seven native LAN tests pass locally.
+- The initial local native checkpoint was 2504 tests; the next checkpoint with
+  snapshot/shutdown additions passed 2506. Final native and final-head platform
+  gates are being rerun after the atomic-publication fix.

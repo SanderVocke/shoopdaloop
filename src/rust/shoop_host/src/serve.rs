@@ -267,6 +267,7 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
                     .context("credential filename unavailable")?,
             ),
             network: options.network,
+            warnings: warnings.clone(),
         };
         profile.write(options.export_profile.as_ref().unwrap())?;
     }
