@@ -65,7 +65,8 @@ The stream preserves both frame-one packets in that order. `begin_indexed_midi_c
 For a running store, `Request::BeginIndexedMidiUpload` carries a prepared boxed
 `MidiState`. Its owning completion returns the box for control-side reuse. Before
 writing any event bytes, `Request::MidiInitial { upload, packet, len }` can apply
-additional short packets to the initial checkpoint. `packet` has three bytes of
+additional short channel packets or System Reset to the initial checkpoint.
+`packet` has three bytes of
 storage and `len` identifies the used prefix. Each packet is validated before any
 state update; invalid packets and attempts after the first event bytes refuse.
 These packets establish history, not frame-zero records, and do not advance the

@@ -50,7 +50,8 @@ audible throughout preparation. Its stricter preflight requires:
 - affected rows have no active/prepared recording, interval, or frozen take;
   capture groups are Idle and can release their retained content.
 
-The operation is admitted only at callback start. After preflight it publishes
+The operation must execute at callback start; an internal-boundary delivery is
+refused before publication. After preflight it publishes
 the fresh stopped owners, media, topology, and graph together, clears retained
 Idle capture-group content, and requests runtime device MIDI cleanup at the same
 cut. Old scheduled work cannot address the fresh identities. An ordinary refused
