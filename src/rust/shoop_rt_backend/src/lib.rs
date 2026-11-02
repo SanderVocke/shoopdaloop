@@ -352,11 +352,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             match self.client.request(pending.request) {
                 Ok(correlation) => {
                     let pending = self.requests.outgoing.pop_front().expect("front exists");
-                    tracing::trace!(
-                        correlation,
-                        request = ?pending.request,
-                        "backend.rt.request"
-                    );
+                    if let shoop_rt_protocol::Request::ContentWrite { id, offset, data } =
+                        pending.request
+                    {
+                        if offset % (1024 * 1024) == 0 {
+                            tracing::debug!(
+                                correlation,
+                                id,
+                                offset,
+                                bytes = data.as_bytes().len(),
+                                "backend.rt.content_write"
+                            );
+                        }
+                    } else {
+                        tracing::trace!(correlation, request = ?pending.request, "backend.rt.request");
+                    }
                     self.requests.in_flight.insert(correlation, pending);
                     sent += 1;
                 }

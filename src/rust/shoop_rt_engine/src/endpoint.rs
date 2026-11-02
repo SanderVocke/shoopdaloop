@@ -322,6 +322,7 @@ impl ControlEndpoint {
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
+            .union(Capabilities::WIDE_CONTENT_UPLOAD)
     }
 
     fn free_pending(&self) -> usize {

@@ -176,6 +176,10 @@ def package_native(args: argparse.Namespace) -> list[Path]:
                 [str(staged_executable), "--probe-engine-transport", "--engine-transport", transport],
                 cwd=stage, check=True, timeout=60,
             )
+            subprocess.run(
+                [str(staged_executable), "--probe-persistence", "--session-transport", transport],
+                cwd=stage, check=True, timeout=600,
+            )
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:

@@ -27,12 +27,15 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Input/output file | 512 MiB compressed/encoded bytes; reject before decoding/output allocation beyond this budget |
 | Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; fixed stereo Master and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
+| Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
 | MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
 | Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump, with one complete ≤1 MiB packet atomic. Event/packet allocation remains bounded by one million events and the media budget |
+| Engine upload window | At most 64 queued 1024-byte writes when WIDE_CONTENT_UPLOAD is advertised, otherwise eight. Both use the same eight prepared runtime buffers and unchanged callback work budgets; cap the window by reliable credits |
 | Adapter preparation | Validate ≤256 KiB per pump before issuing engine preparation; one ≤1 MiB MIDI packet is atomic. Cache byte counts only with a proof retaining the immutable content. Capture checks remaining aggregate capacity before allocating each medium |
+| Browser progression | Main-thread service/client pump on engine replies, every 4 ms and on UI turns, sharing one elapsed-time clock. Each turn retains the existing record/media work bounds; dropping the runtime clears the interval |
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
 | Client file input | One platform reader plus one queued raw input, each ≤512 MiB; one codec task. Cancellation fences callbacks and checks file chunks. Browser URL cancellation wakes the pending future; a native reader keeps its slot until it exits or the HTTP timeout fires. A new input refuses while that slot is closing |
 | Archive expansion | At most 4097 entries and `5 × 256 MiB + 8 MiB` expanded bytes; metadata manifests remain 8 MiB. The factor allows decimal MIDI JSON overhead. Check declarations before extraction and actual shapes/counts while decoding |
@@ -87,7 +90,9 @@ normal service work or silently restart against newer content.
 
 - Save/export: request capture, read immutable objects, encode on the client,
   request platform output, then report the platform's actual completion. A browser
-  download handoff is not proof of a durable filesystem write. Failed/cancelled
+  download handoff is not proof of a durable filesystem write. The browser adapter
+  distinguishes a download-link click from dialog cancellation/close and releases
+  the temporary Blob URL after the handoff event turn. Failed/cancelled
   native output preserves any previously saved file and allows retry.
 - Load/import: read/decode, validate, ask any sample-rate/channel questions, recheck
   the target, stage, commit and await the confirmed result. Decline/cancel before

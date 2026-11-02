@@ -226,15 +226,15 @@ not counted as test passes. Miri remains reserved for the final stage.
   preparation, explicit commit/cancel and host-owned completion after disconnect.
 - [x] Stage a private adapter mirror, stream canonical media into prepared sources,
   publish fresh mappings after engine success and retain exact original channel data.
-- [ ] Inventory existing export/import/configuration primitives and integrate the
+- [x] Inventory existing export/import/configuration primitives and integrate the
   smallest missing engine operations. Acquire immutable media and metadata at a
   certified cut; retain them independently of future clears/removals/recordings.
-- [ ] Stage decoded audio/MIDI resources off-render, validate shapes/timing and
+- [x] Stage decoded audio/MIDI resources off-render, validate shapes/timing and
   reserve graph, loop, strip, media, result and retirement capacity before commit.
-- [ ] Implement atomic content replacement and complete core-session activation.
+- [x] Implement atomic content replacement and complete core-session activation.
   Preserve old playback until the defined cut, perform required MIDI cleanup,
   publish complete mappings/results and start restored loops stopped.
-- [ ] Handle insufficient headroom, rejected activation, stale generations,
+- [x] Handle insufficient headroom, rejected activation, stale generations,
   abandoned uploads/captures, repeated release and teardown without partial mutation
   or resource leaks. Preserve `shoop_loops`/`rt_runtime` no_std boundaries.
 
@@ -598,7 +598,7 @@ cooperative assembly/validation and complete codec quota preflight remain pendin
   engine candidate and corresponding service mappings/projection using a session
   epoch; resolve selection/target, sync, routes, controls and external connection
   intent without exposing old/new mixtures or retargeting queued old-session work.
-- [ ] Make accepted loads host-owned through finish. Reconcile results on socket
+- [x] Make accepted loads host-owned through finish. Reconcile results on socket
   reattach, reclaim uncommitted uploads on loss, and route New Session through the
   same safe replacement mechanism. Keep the host/device and client Lua VM alive.
 
@@ -674,12 +674,79 @@ output completion after backend loss. The warning-denying workspace build, traci
 and parity inventories and Rust test policy pass. Node passes 11 client, six codec, 40 session and 33 frontend tests.
 Packaged deployment checks and final CI remain pending.
 
+Packaged-deployment milestone in progress: native file canaries import a 33 MiB
+WAV plus exact MIDI, save via actual atomic output, reload via the bounded platform
+reader, refuse a corrupt document without disturbing playback, compare exact
+save/load/save media, and resume fresh stopped owners. Socket and shared-memory
+runs pass. A separate socket-loss extension and the optional large browser case
+are being validated. These are new file canaries; the existing transport canary's
+60-second packaging watchdog remains unchanged.
+
+Actual Chrome 147 hosted and single-file bundles pass recorded audio/MIDI
+save/load/save, restored controls, fresh stopped IDs, resumed playback, and real
+platform download cancellation/retry. The dialog library resolves on both its
+link and buttons, so the browser adapter now observes the actual download-link
+click and reports cancellation otherwise. Temporary download URLs are reclaimed.
+Native connection upload validation/indexing also yields at 256 KiB per poll.
+
+Native packaged validation now passes from an isolated Linux artifact: both existing
+transport probes, both 33 MiB file canaries, and socket upload/capture loss plus
+accepted-load reconciliation/retransmission. The retained transport probes keep
+their 60-second packaging watchdog; the new file probes have their own bounded
+watchdogs. A public file regression also refuses a prepared candidate one frame
+over 256 MiB while preserving the playing loop and epoch, then reloads valid media.
+
+The browser large-media canary exposed a progression/timing issue under investigation;
+one identified bottleneck was progression tied to UI paint cadence.
+A second concrete cost was the generic request trace formatting all 1024 media
+bytes for every upload record. Chunk Debug now reports length only, and adapter
+logging samples upload size/offset once per MiB instead of formatting each payload. A
+bounded main-thread application interval now pumps service/client work every 4 ms;
+Engine replies also wake the bounded pump directly; UI turns and wakeups share
+its elapsed-time clock. Dropping the runtime clears the interval and stale weak
+wakeups cannot retain or recreate it.
+A browser regression checks progress without UI paints and pump ownership release.
+The large worker case passes. Packaged release-browser validation remains pending; their media
+workloads and deadlines have not been reduced or extended.
+
+Latest broad validation: all 2477 native tests pass (four optional/platform skips),
+as do all 2098 tests across 32 Node/Wasm packages and all 142 Python tests. The
+expanded public round-trip's one-frame-over-budget refusal also passes natively.
+Formatting, warning-denying workspace and bare-metal builds, closed tracing/parity
+inventories and production dependency boundaries pass. All 37 frontend Chrome tests also pass, including a 33 MiB worker image and
+progress without painting. Packaged browser and Miri/final-head CI are still pending.
+
+Browser profiling: the debug headless GL renderer blocks the main thread in
+`getError`/painting; a separate 4 ms JavaScript timer advances about 15 times per
+second while the visible UI paints. The unchanged 33 MiB mono-to-stereo canary
+therefore exceeds its new 120-second engine phase watchdog in debug software GL.
+The existing 30-second workflow watchdog and all media workloads are unchanged.
+The CI large-media gate is release-only, and the same canary is now being run
+against the optimized hosted/single-file artifacts. Debug frontend's 37 tests,
+including the 66 MiB worker result and quota refusal, pass.
+
+Upload-window refinement: the browser trace measures round trips dominated by
+main-thread rendering. Peers advertising `WIDE_CONTENT_UPLOAD` accept 64 queued
+records, still through the existing eight reusable runtime buffers. This keeps
+callback copy/validation budgets unchanged while allowing queued work to progress
+between client turns. Older peers retain their eight-record window. The client
+also caps its window by negotiated reliable credits. The original 24-cycle/eight
+write regression remains; a separate 24-cycle/64-record case checks heap-free
+completion, disconnect and reuse under the same harness watchdogs.
+
+Wide-window validation also covers the negotiated eight/64-record high-water mark
+through a measured carrier, and 1000 sparse MIDI events spanning multiple callback
+validation budgets. Backpressure preserves FIFO per upload, so a queued write
+cannot be overtaken when the eight runtime buffers are full. MIDI writes serialize
+per upload; the advertised chunk size respects both page boundaries and the
+prepared validation budget. All affected native engine/protocol/adapter tests pass.
+
 ### Stage 7 — final end-to-end validation and PR
 
 - [ ] Exercise packaged native and hosted/self-contained browser workflows: record
   audio/MIDI, save/export, mutate, reload/import, compare content/state and play it
   back. Include >32 MiB media, near-budget refusal and malformed/unsupported files.
-- [ ] Repeat socket UI-loss/reattach during upload, capture and accepted load/import;
+- [x] Repeat socket UI-loss/reattach during upload, capture and accepted load/import;
   verify exactly-once mutation, complete projection, resource cleanup and responsive
   audio/control delivery. Cover shared-memory operation without claiming reattach.
 - [ ] Run formatting, warning-denying workspace build, full native nextest with

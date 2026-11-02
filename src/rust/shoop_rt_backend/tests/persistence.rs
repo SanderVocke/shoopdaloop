@@ -496,3 +496,132 @@ fn large_private_validation_yields_and_checks_samples_outside_the_render_window(
         &candidate.tracks[0].loops[0].audio[0].samples
     ));
 }
+
+#[shoop_test]
+fn sparse_midi_upload_larger_than_one_callback_validation_budget_roundtrips() {
+    let mut configured = description();
+    configured.page_bytes = 4096;
+    let mut backend = stack(&configured);
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "keys".into(),
+            audio_channels: 0,
+            midi: true,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 16_000;
+    content.midi[0].length = 16_000;
+    content.midi[0].events = (0..1000)
+        .map(|i| BackendMidiEvent {
+            frame: i * 16,
+            data: vec![if i % 2 == 0 { 0x90 } else { 0x80 }, 60, 64].into(),
+        })
+        .collect::<Vec<_>>()
+        .into();
+    let expected = content.midi[0].clone();
+    let mapping = loaded(&mut backend, &session).unwrap();
+    assert_ne!(mapping.loops[&track.loops[0].raw()], track.loops[0]);
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops[0].midi[0],
+        expected
+    );
+}
+
+#[shoop_test]
+fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
+    use shoop_rt_protocol::{Capabilities, ClientMessage, EngineMessage, Request};
+    use shoop_rt_transport::{
+        carrier::{Carrier, CarrierError},
+        client::ProtocolClient,
+    };
+    use std::{cell::Cell, collections::BTreeSet, rc::Rc};
+    struct Measured<C> {
+        carrier: C,
+        wide: bool,
+        writes: BTreeSet<u64>,
+        peak: Rc<Cell<usize>>,
+    }
+    impl<C: Carrier> Carrier for Measured<C> {
+        fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
+            self.carrier.send(message)?;
+            if let ClientMessage::Request {
+                correlation,
+                request: Request::ContentWrite { .. },
+            } = message
+            {
+                self.writes.insert(correlation);
+                self.peak.set(self.peak.get().max(self.writes.len()));
+            }
+            Ok(())
+        }
+        fn receive(&mut self) -> Option<EngineMessage> {
+            let mut message = self.carrier.receive()?;
+            match &mut message {
+                EngineMessage::Welcome { capabilities, .. } if !self.wide => {
+                    capabilities.0 &= !Capabilities::WIDE_CONTENT_UPLOAD.0
+                }
+                EngineMessage::Result { correlation, .. } => {
+                    self.writes.remove(correlation);
+                }
+                _ => {}
+            }
+            Some(message)
+        }
+    }
+    for (wide, expected) in [(false, 8), (true, 64)] {
+        let mut configured = description();
+        configured.reliable_credits = 128;
+        let (offline, client) = shoop_rt_engine::testing::OfflineRender::new(&configured).unwrap();
+        let peak = Rc::new(Cell::new(0));
+        let client = ProtocolClient::new(Measured {
+            carrier: client.into_carrier(),
+            wide,
+            writes: BTreeSet::new(),
+            peak: Rc::clone(&peak),
+        });
+        let mut backend = shoop_rt_backend::RtBackend::connect(
+            client,
+            OfflineClock {
+                offline,
+                capture: |_| 0.,
+                block: 16,
+            },
+        )
+        .unwrap();
+        backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "window".into(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.wait_idle();
+        let mut session = backend.capture_session().unwrap();
+        session.tracks[0].loops[0].length = 4096;
+        session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4096].into();
+        let mut finished = false;
+        for _ in 0..2000 {
+            if matches!(
+                backend.replace_session_async(&session).unwrap(),
+                BackendAsyncResult::Ready(_)
+            ) {
+                finished = true;
+                break;
+            }
+            backend.clock_mut().render(1);
+        }
+        assert!(finished);
+        assert_eq!(peak.get(), expected);
+        assert_eq!(
+            backend.capture_session().unwrap().tracks[0].loops[0].audio[0]
+                .samples
+                .as_ref(),
+            &vec![0.25; 4096]
+        );
+    }
+}

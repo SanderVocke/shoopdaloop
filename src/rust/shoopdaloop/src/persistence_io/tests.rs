@@ -602,7 +602,53 @@ async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
             .is_some_and(|t| t.status == IoTaskStatus::Completed)
     })
     .await;
+    f.dispatch(AppIntent::Loop {
+        track_id: f.runtime.snapshot().tracks[1].id,
+        loop_id,
+        action: LoopAction::PlayClicked,
+    });
+    f.until(|s| s.tracks[1].loops[0].mode == LoopMode::Playing)
+        .await;
     let epoch = f.runtime.client().snapshot().unwrap().persistence_epoch;
+    let mut oversized = before.clone();
+    oversized
+        .document
+        .track_groups
+        .iter_mut()
+        .flat_map(|group| &mut group.tracks)
+        .find(|track| track.name == "Files")
+        .unwrap()
+        .loops[0]
+        .length_frames = shoop_app_protocol::persistence::MAX_SESSION_MEDIA_BYTES / 8 + 1;
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "one-frame-over-budget.shoop".into(),
+        bytes: shoop_session::encode_session(&oversized, "test")
+            .unwrap()
+            .into(),
+    });
+    let refused = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::Failed)
+        })
+        .await;
+    assert!(
+        refused
+            .io_task
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("256 MiB"),
+        "{:?}",
+        refused.io_task
+    );
+    assert_eq!(refused.tracks[1].loops[0].id, loop_id);
+    assert_eq!(refused.tracks[1].loops[0].mode, LoopMode::Playing);
+    assert_eq!(
+        f.runtime.client().snapshot().unwrap().persistence_epoch,
+        epoch
+    );
     f.dispatch(AppIntent::LoadSessionBytes {
         name: "saved.shoop".into(),
         bytes: file.bytes,
@@ -844,4 +890,65 @@ async fn a_second_file_request_refuses_without_cancelling_the_active_task() {
         f.runtime.snapshot().io_task.as_ref().unwrap().status,
         IoTaskStatus::Cancelled
     );
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+#[shoop_test]
+async fn large_browser_worker_maps_and_returns_media_over_the_old_view_limit() {
+    let frames = 33 * 1024 * 1024 / 4;
+    let audio = shoop_session::LoopAudio {
+        sample_rate: 44100,
+        channels: vec![shoop_session::LoopAudioChannel {
+            label: "Mono".into(),
+            role: "direct".into(),
+            samples: vec![0.25; frames],
+        }],
+    };
+    let mut codec = CodecExecutor::new();
+    let mut job = codec
+        .start(Work::Decode {
+            kind: IoTaskKind::ImportLoopAudio,
+            bytes: shoop_session::encode_float_wav(&audio).unwrap().into(),
+            rate: 44100,
+        })
+        .unwrap();
+    let mut decoded = None;
+    for _ in 0..10_000 {
+        if let Some(result) = job.poll() {
+            let Value::Decoded(value) = result.expect("large worker decode") else {
+                panic!("expected decoded audio")
+            };
+            decoded = Some(value);
+            break;
+        }
+        idle().await;
+    }
+    let mut job = codec
+        .start(Work::Prepare {
+            decoded: decoded.expect("large decode deadline"),
+            mapping: vec![0, 0],
+            update_length: true,
+        })
+        .unwrap();
+    let mut image = None;
+    for _ in 0..10_000 {
+        if let Some(result) = job.poll() {
+            let Value::Image(value) = result.expect("large worker image") else {
+                panic!("expected mapped image")
+            };
+            image = Some(value);
+            break;
+        }
+        idle().await;
+    }
+    let image = image.expect("large image deadline");
+    assert_eq!(image.payloads.len(), 2);
+    for payload in &image.payloads {
+        let image::Payload::Audio(samples) = payload else {
+            panic!("expected PCM")
+        };
+        assert_eq!(samples.len(), frames);
+        assert!(samples.iter().all(|sample| *sample == 0.25));
+    }
+    codec.reset();
 }

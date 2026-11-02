@@ -92,6 +92,7 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
     Ok(Connection {
         port,
         upload: None,
+        upload_validation: None,
         upload_pending: None,
     })
 }
@@ -104,6 +105,12 @@ pub struct Connection {
         shoop_app_protocol::persistence_transfer::UploadStream,
     )>,
     upload_pending: Option<ClientMessage>,
+    upload_validation: Option<(
+        shoop_app_protocol::Authority,
+        shoop_app_protocol::persistence::Key,
+        shoop_app_protocol::persistence::Target,
+        shoop_app_protocol::persistence_image::Validation,
+    )>,
 }
 impl Connection {
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
@@ -114,13 +121,13 @@ impl Connection {
                 target,
                 image,
             } => {
-                if self.upload.is_some() {
+                if self.upload.is_some() || self.upload_validation.is_some() {
                     return Err(ClientError::Full);
                 }
-                let stream =
-                    shoop_app_protocol::persistence_transfer::UploadStream::new(image, key, target)
+                let validation =
+                    shoop_app_protocol::persistence_image::Validation::for_transfer(image)
                         .map_err(|_| ClientError::Protocol)?;
-                self.upload = Some((authority, key, stream));
+                self.upload_validation = Some((authority, key, target, validation));
                 return Ok(());
             }
             ClientMessage::CaptureImage {
@@ -133,15 +140,17 @@ impl Connection {
                     request: shoop_app_protocol::persistence::Request::Capture { key, target },
                 })
             }
-            ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key)) =>
+            ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key) || self.upload_validation.as_ref().is_some_and(|(_, staged, _, _)| staged == key)) =>
             {
                 self.upload = None;
+                self.upload_validation = None;
                 self.upload_pending = None;
             }
             ClientMessage::Detach { .. }
             | ClientMessage::Shutdown { .. }
             | ClientMessage::Attach { .. } => {
                 self.upload = None;
+                self.upload_validation = None;
                 self.upload_pending = None;
             }
             _ => {}
@@ -160,6 +169,22 @@ impl Connection {
             })
     }
     pub fn poll(&mut self, client: &mut Client) -> Result<usize, ClientError> {
+        if let Some((_, _, _, validation)) = self.upload_validation.as_mut() {
+            if validation
+                .step(256 * 1024)
+                .map_err(|_| ClientError::Protocol)?
+            {
+                let (authority, key, target, validation) = self.upload_validation.take().unwrap();
+                let stream =
+                    shoop_app_protocol::persistence_transfer::UploadStream::from_validated(
+                        validation.finish().map_err(|_| ClientError::Protocol)?,
+                        key,
+                        target,
+                    )
+                    .map_err(|_| ClientError::Protocol)?;
+                self.upload = Some((authority, key, stream));
+            }
+        }
         for _ in 0..shoop_app_protocol::MAX_COMMANDS_PER_TURN {
             if self.upload_pending.is_none() {
                 let Some((authority, _, stream)) = self.upload.as_mut() else {

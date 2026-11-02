@@ -59,6 +59,7 @@ impl ControlEndpoint {
         self.blocked_loops.fill(false);
         self.blocked_master = false;
         self.blocked_all = false;
+        self.uploads.clear_blocked();
         let mut open = staging;
         for _ in 0..self.queue.len() {
             let Some((correlation, request)) = self.queue.pop() else {
@@ -178,11 +179,11 @@ impl ControlEndpoint {
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => false,
-            Request::ContentBegin(_)
-            | Request::ContentWrite { .. }
-            | Request::ContentInitial { .. }
-            | Request::ContentFinish { .. }
-            | Request::ContentRelease { .. } => false,
+            Request::ContentBegin(_) => false,
+            Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.blocked(id),
             Request::StripControl { strip: id, .. } | Request::InjectMidi { strip: id, .. } => {
                 strip(id.0.index, HARD)
             }
@@ -243,11 +244,11 @@ impl ControlEndpoint {
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {}
-            Request::ContentBegin(_)
-            | Request::ContentWrite { .. }
-            | Request::ContentInitial { .. }
-            | Request::ContentFinish { .. }
-            | Request::ContentRelease { .. } => {}
+            Request::ContentBegin(_) => {}
+            Request::ContentWrite { id, .. }
+            | Request::ContentInitial { id, .. }
+            | Request::ContentFinish { id }
+            | Request::ContentRelease { id } => self.uploads.block(id),
             Request::StripControl { strip: id, .. }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }

@@ -153,6 +153,9 @@ recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 ```sh
 target/debug/shoopdaloop --probe-engine-transport --session-transport socket
 target/debug/shoopdaloop --probe-engine-transport --session-transport shared_memory
+# Separate large-file canaries; the transport canary retains its existing deadline.
+target/debug/shoopdaloop --probe-persistence --session-transport socket
+target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
 ```
 
 Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
@@ -162,7 +165,16 @@ NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 # After release packaging:
 NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 python3 browser_firefox_smoke.py --backend new_engine
+# Additional >32 MiB file round-trip through the codec worker and AudioWorklet:
+NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
+
+The file canaries compare exact PCM/MIDI after save/load/save, check stopped fresh
+identities, and resume playback. Native file canaries use actual atomic output and
+bounded file input. The socket case also abandons upload/capture and reconciles an
+accepted load without replay. Browser canaries cancel the first output, retry by
+clicking the actual download link, and require a browser-handoff result. The large
+browser case has separate deadlines; normal canary workloads/deadlines are retained.
 
 `--tracing` captures the local UI/control process in Perfetto format; optional
 `--tracing-engine-detail` adds available local instrumentation. External hosts and

@@ -333,6 +333,8 @@ impl Capabilities {
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
     pub const CONTENT_UPLOAD: Self = Self(1 << 3);
     pub const COMPLETE_REPLACEMENT: Self = Self(1 << 4);
+    /// Accept sixty-four queued upload records through eight reusable buffers.
+    pub const WIDE_CONTENT_UPLOAD: Self = Self(1 << 5);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

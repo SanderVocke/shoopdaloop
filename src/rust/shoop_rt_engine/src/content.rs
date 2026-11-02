@@ -46,6 +46,7 @@ struct Content {
     phase: Phase,
     failure: Option<Refusal>,
     abandoned: bool,
+    blocked: bool,
 }
 pub(crate) struct Uploads {
     slots: Box<[Option<Content>]>,
@@ -54,6 +55,27 @@ pub(crate) struct Uploads {
     last_id: u64,
 }
 impl Uploads {
+    pub(crate) fn clear_blocked(&mut self) {
+        for entry in self.slots.iter_mut().flatten() {
+            entry.blocked = false;
+        }
+    }
+    pub(crate) fn blocked(&self, id: u64) -> bool {
+        self.slots
+            .iter()
+            .flatten()
+            .any(|entry| entry.description.id == id && entry.blocked)
+    }
+    pub(crate) fn block(&mut self, id: u64) {
+        if let Some(entry) = self
+            .slots
+            .iter_mut()
+            .flatten()
+            .find(|entry| entry.description.id == id)
+        {
+            entry.blocked = true;
+        }
+    }
     pub(crate) fn source(
         &self,
         id: u64,
@@ -97,7 +119,7 @@ impl Uploads {
     pub(crate) fn new(slots: usize, chunk_bytes: usize) -> Self {
         Self {
             slots: vec![None; slots].into_boxed_slice(),
-            buffers: (0..8)
+            buffers: (0..shoop_rt_protocol::content::LEGACY_CONTENT_WRITE_WINDOW)
                 .map(|_| vec![0; chunk_bytes].into_boxed_slice())
                 .collect(),
             initials: (0..8)
@@ -180,6 +202,7 @@ impl ControlEndpoint {
                     phase: Phase::Create,
                     failure: None,
                     abandoned: false,
+                    blocked: false,
                 });
                 Ok(None)
             }
@@ -236,6 +259,9 @@ impl ControlEndpoint {
                     } else {
                         Refusal::Busy
                     });
+                }
+                if entry.description.midi && entry.pending != 0 {
+                    return Err(Refusal::Overloaded);
                 }
                 let count = data.as_bytes().len();
                 let end = offset

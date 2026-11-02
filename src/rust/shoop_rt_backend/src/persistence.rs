@@ -56,7 +56,7 @@ impl Job {
             finished: false,
             committed: false,
             completed: 0,
-            active: Vec::with_capacity(8),
+            active: Vec::with_capacity(shoop_rt_protocol::content::CONTENT_WRITE_WINDOW),
             uploads,
             cleaning: false,
             retry_after: None,
@@ -170,12 +170,17 @@ impl Job {
         }
         self.completed += 1;
     }
-    fn next(&mut self, chunk_bytes: usize, callbacks: u64) -> Result<Option<Request>> {
+    fn next(
+        &mut self,
+        chunk_bytes: usize,
+        callbacks: u64,
+        window: usize,
+    ) -> Result<Option<Request>> {
         if self.finished || (self.error.is_none() && !self.validation.is_empty()) {
             return Ok(None);
         }
         if !self.active.is_empty() {
-            if self.error.is_some() || self.active.len() == 8 {
+            if self.error.is_some() || self.active.len() >= window {
                 return Ok(None);
             }
             let Some(Request::ContentWrite { id, .. }) = self.active.first() else {
@@ -236,7 +241,7 @@ impl Job {
             None => {
                 if !self.cleaning {
                     self.cleanup();
-                    return self.next(chunk_bytes, callbacks);
+                    return self.next(chunk_bytes, callbacks, window);
                 }
                 self.finished = true;
                 return Ok(None);
@@ -263,7 +268,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let Some(replacement) = self.replacement.as_mut() else {
             return;
         };
-        match replacement.job.next(chunk_bytes, self.status.callbacks) {
+        let window = if self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::WIDE_CONTENT_UPLOAD)
+        {
+            shoop_rt_protocol::content::CONTENT_WRITE_WINDOW
+        } else {
+            shoop_rt_protocol::content::LEGACY_CONTENT_WRITE_WINDOW
+        }
+        .min(
+            self.limits
+                .map_or(1, |limits| usize::from(limits.reliable_credits)),
+        )
+        .max(1);
+        match replacement
+            .job
+            .next(chunk_bytes, self.status.callbacks, window)
+        {
             Ok(Some(request)) => {
                 self.requests.push(request, Purpose::Persistence);
             }

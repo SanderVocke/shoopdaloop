@@ -240,6 +240,7 @@ mod platform {
         midi_outputs: Vec<String>,
         midi_revision: Option<u64>,
         repaint: Option<eframe::egui::Context>,
+        pump_wake: Option<Rc<dyn Fn()>>,
     }
 
     impl Inner {
@@ -297,6 +298,7 @@ mod platform {
                 midi_outputs: Vec::new(),
                 midi_revision: None,
                 repaint: None,
+                pump_wake: None,
             }));
             let hub = inner.borrow().hub.clone();
             hub.forward_tracks(midi_forwarder(Rc::downgrade(&inner)));
@@ -330,6 +332,10 @@ mod platform {
 
         pub fn set_repaint_context(&self, context: eframe::egui::Context) {
             self.inner.borrow_mut().repaint = Some(context);
+        }
+
+        pub fn set_pump_wake(&self, wake: Rc<dyn Fn()>) {
+            self.inner.borrow_mut().pump_wake = Some(wake);
         }
 
         pub fn audio_context(&self) -> Option<AudioContext> {
@@ -751,6 +757,10 @@ mod platform {
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(inner) = weak.upgrade() {
                 receive(&inner, &message_port, &event.data());
+                let wake = inner.borrow().pump_wake.clone();
+                if let Some(wake) = wake {
+                    wake();
+                }
             }
         }) as Box<dyn FnMut(_)>);
         target.set_onmessage(Some(message_handler.as_ref().unchecked_ref()));

@@ -85,12 +85,23 @@ fn uploads_are_inaudible_bounded_and_recycle_resources_while_existing_audio_cont
 
 #[shoop_test]
 fn pipelined_chunks_and_disconnect_cleanup_return_every_prepared_owner() {
-    let mut h = Harness::new(&description());
+    pipeline_cycles(8, 8);
+}
+
+#[shoop_test]
+fn wide_upload_window_and_disconnect_reuse_every_prepared_owner() {
+    pipeline_cycles(shoop_rt_protocol::content::CONTENT_WRITE_WINDOW, 128);
+}
+
+fn pipeline_cycles(window: usize, credits: u16) {
+    let mut settings = description();
+    settings.reliable_credits = credits;
+    let mut h = Harness::new(&settings);
     for cycle in 0..24 {
         let id = cycle + 1;
-        h.done(begin(id, false, 256, 2048));
-        let requests = (0..8)
-            .map(|chunk| h.send(write(id, chunk * 256, &[0; 256])))
+        h.done(begin(id, false, window as u64 * 32, window as u64 * 256));
+        let requests = (0..window)
+            .map(|chunk| h.send(write(id, chunk as u64 * 256, &[0; 256])))
             .collect::<Vec<_>>();
         if cycle % 2 == 0 {
             h.settle();

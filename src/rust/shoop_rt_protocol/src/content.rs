@@ -2,6 +2,8 @@
 
 pub const MAX_CONTENT_BYTES: u64 = 256 * 1024 * 1024;
 pub const CONTENT_CHUNK_BYTES: usize = 1024;
+pub const CONTENT_WRITE_WINDOW: usize = 64;
+pub const LEGACY_CONTENT_WRITE_WINDOW: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ContentDescription {
@@ -11,7 +13,7 @@ pub struct ContentDescription {
     pub bytes: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ContentChunk {
     len: u16,
     bytes: [u8; CONTENT_CHUNK_BYTES],
@@ -30,5 +32,14 @@ impl ContentChunk {
     }
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes[..usize::from(self.len)]
+    }
+}
+
+impl core::fmt::Debug for ContentChunk {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ContentChunk")
+            .field("len", &self.len)
+            .finish_non_exhaustive()
     }
 }

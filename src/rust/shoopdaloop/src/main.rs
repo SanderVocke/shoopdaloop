@@ -45,7 +45,7 @@ use shoop_egui::{
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
-use application::CooperativeApplicationRuntime;
+use application::BrowserApplicationRuntime as CooperativeApplicationRuntime;
 mod app_args;
 mod application;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -586,6 +586,7 @@ impl UnifiedApp {
             new_engine_self_test: browser_rt_self_test::NewEngineSelfTest::new(
                 args.new_engine_self_test || args.self_test,
                 args.stress,
+                args.persistence_large,
             ),
             #[cfg(target_arch = "wasm32")]
             args: args.clone(),
@@ -1524,6 +1525,8 @@ impl UnifiedApp {
             self.handle_file_request(request);
         }
         while let Some(output) = self.runtime.take_file_output() {
+            #[cfg(target_arch = "wasm32")]
+            self.new_engine_self_test.file_output(&output);
             let lease = match self.file_output.reserve() {
                 Ok(lease) => lease,
                 Err(error) => {
@@ -1958,6 +1961,74 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
 }
 
 #[cfg(target_arch = "wasm32")]
+async fn write_browser_file(
+    file: &rfd::FileHandle,
+    bytes: &[u8],
+) -> anyhow::Result<shoop_egui::FileOutputOutcome> {
+    use wasm_bindgen::{closure::Closure, JsCast};
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| anyhow::anyhow!("browser document is unavailable"))?;
+    let handed_off = Rc::new(std::cell::Cell::new(false));
+    let clicked = Rc::clone(&handed_off);
+    let download_url = Rc::new(RefCell::new(None));
+    let observed_url = Rc::clone(&download_url);
+    let listener = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
+        let Some(target) = event
+            .target()
+            .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
+        else {
+            return;
+        };
+        let Some(card) = target.closest("#rfd-card").ok().flatten() else {
+            return;
+        };
+        if let Some(output) = card.query_selector("#rfd-output").ok().flatten() {
+            *observed_url.borrow_mut() = output.get_attribute("href");
+            clicked.set(target.closest("#rfd-output").ok().flatten().is_some());
+        }
+    });
+    document
+        .add_event_listener_with_callback_and_bool("click", listener.as_ref().unchecked_ref(), true)
+        .map_err(|error| anyhow::anyhow!("could not observe browser download: {error:?}"))?;
+    let result = file.write(bytes).await;
+    let removed = document.remove_event_listener_with_callback_and_bool(
+        "click",
+        listener.as_ref().unchecked_ref(),
+        true,
+    );
+    if let Err(error) = removed {
+        listener.forget();
+        anyhow::bail!("could not release browser download listener: {error:?}");
+    }
+    if handed_off.get() {
+        let window = web_sys::window().unwrap();
+        let turn = js_sys::Promise::new(&mut |resolve, reject| {
+            if let Err(error) =
+                window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
+            {
+                let _ = reject.call1(&wasm_bindgen::JsValue::UNDEFINED, &error);
+            }
+        });
+        wasm_bindgen_futures::JsFuture::from(turn)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("download was handed off but cleanup could not finish: {error:?}")
+            })?;
+    }
+    if let Some(url) = download_url.borrow().as_ref() {
+        web_sys::Url::revoke_object_url(url)
+            .map_err(|error| anyhow::anyhow!("could not release browser download: {error:?}"))?;
+    }
+    result?;
+    Ok(if handed_off.get() {
+        shoop_egui::FileOutputOutcome::DownloadHandedOff
+    } else {
+        shoop_egui::FileOutputOutcome::Cancelled
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
 fn save_file_output(
     output: application::ApplicationFileOutput,
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
@@ -1970,10 +2041,10 @@ fn save_file_output(
             .save_file()
             .await
         {
-            match file.write(&output.bytes).await {
-                Ok(()) => AppIntent::CompleteIoOutput {
+            match write_browser_file(&file, &output.bytes).await {
+                Ok(outcome) => AppIntent::CompleteIoOutput {
                     task_id: output.task_id,
-                    outcome: shoop_egui::FileOutputOutcome::DownloadHandedOff,
+                    outcome,
                 },
                 Err(error) => AppIntent::FailIoTask {
                     task_id: output.task_id,
@@ -3097,7 +3168,10 @@ impl Runtime {
             },
             pending.midi_service,
         ) {
-            Ok(runtime) => self.runtime = Some(runtime),
+            Ok(runtime) => {
+                controller.set_pump_wake(runtime.wake());
+                self.runtime = Some(runtime);
+            }
             Err(error) => controller.refuse(format!(
                 "The application could not start on the new engine backend: {error:#}"
             )),
@@ -3516,7 +3590,11 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let cli = AppArgs::parse();
-    if !cli.probe_engine_transport && !cli.probe_builtins && !cli.tracing_smoke_test {
+    if !cli.probe_engine_transport
+        && !cli.probe_persistence
+        && !cli.probe_builtins
+        && !cli.tracing_smoke_test
+    {
         match independent_roles(&cli) {
             Ok(true) => return,
             Ok(false) => {}
@@ -3527,12 +3605,21 @@ fn main() {
         }
     }
 
-    if cli.probe_engine_transport {
-        let result = session_probe::run(cli.engine_transport.unwrap());
+    if cli.probe_engine_transport || cli.probe_persistence {
+        let result = if cli.probe_persistence {
+            session_probe::files(cli.engine_transport.unwrap())
+        } else {
+            session_probe::run(cli.engine_transport.unwrap())
+        };
         match result {
             Ok(()) => {
                 println!(
-                    "Engine transport {}: audio/MIDI workflow and graceful shutdown passed",
+                    "Session {} {}: workflow and graceful shutdown passed",
+                    if cli.probe_persistence {
+                        "persistence"
+                    } else {
+                        "transport"
+                    },
                     cli.engine_transport.unwrap().id()
                 );
                 return;

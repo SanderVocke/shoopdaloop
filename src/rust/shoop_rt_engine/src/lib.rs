@@ -354,11 +354,16 @@ pub fn prepare(
             Some(PreparedPlan::with_capacity(config)?),
         ],
     };
+    let mut content_chunk_bytes = description
+        .page_bytes
+        .min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)
+        .min(config.limits().budgets.validation_steps)
+        .max(1);
+    while description.page_bytes % content_chunk_bytes != 0 {
+        content_chunk_bytes -= 1;
+    }
     let limits = Limits {
-        content_chunk_bytes: description
-            .page_bytes
-            .min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)
-            as u16,
+        content_chunk_bytes: content_chunk_bytes as u16,
         strips: strips as u32,
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
