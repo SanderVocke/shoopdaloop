@@ -141,6 +141,16 @@ pub struct SettingsDialog {
 }
 
 impl SettingsDialog {
+    pub(crate) fn reset_connection(&mut self) {
+        self.script_log_windows.clear();
+        self.script_documentation_windows.clear();
+        self.script_status_windows.clear();
+    }
+
+    pub(crate) fn registry(&self) -> Arc<SettingsRegistry> {
+        Arc::clone(&self.registry)
+    }
+
     pub fn new(registry: Arc<SettingsRegistry>) -> Self {
         Self {
             registry,

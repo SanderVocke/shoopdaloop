@@ -57,15 +57,13 @@ fn a_peer_withholding_acknowledgments_bounds_uploads_without_blocking_controls_o
         port: Port::Socket(
             shoop_transport_socket::Port::from_stream(stream, Default::default()).unwrap(),
         ),
-        upload: None,
-        upload_validation: None,
-        upload_pending: None,
-        upload_outstanding: 0,
-        upload_finished: false,
+        upload: shoop_app_connection::Upload::new(),
+        heartbeat: None,
+        last: Instant::now(),
     };
-    let mut client = Client::new(ClientId(1), HostId(1), SessionId(1)).unwrap();
+    let mut client = Client::new();
     let authority = Authority {
-        session: SessionId(1),
+        lease: LeaseId(1),
         client: ClientId(1),
         generation: ConnectionGeneration(1),
     };
@@ -103,7 +101,7 @@ fn a_peer_withholding_acknowledgments_bounds_uploads_without_blocking_controls_o
             std::thread::yield_now();
         }
         assert_eq!(records, MAX_PERSISTENCE_RECORDS_PER_TURN);
-        assert_eq!(connection.upload_outstanding, records);
+        assert_eq!(connection.upload.outstanding(), records);
         connection
             .send(ClientMessage::CancelMedia { authority })
             .unwrap();
@@ -124,7 +122,7 @@ fn a_peer_withholding_acknowledgments_bounds_uploads_without_blocking_controls_o
                 ..
             })
         ));
-        assert!(connection.upload.is_none());
-        assert_eq!(connection.upload_outstanding, 0);
+        assert!(!connection.upload.active());
+        assert_eq!(connection.upload.outstanding(), 0);
     }
 }

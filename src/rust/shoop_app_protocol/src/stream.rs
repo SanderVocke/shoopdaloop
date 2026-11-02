@@ -50,8 +50,8 @@ impl StreamEncoder {
                 revision: None,
                 bytes: codec::encode_media(&data)?,
             },
-            ServiceMessage::Attached { authority, host } => {
-                State::One(WireMessage::Attached { authority, host })
+            ServiceMessage::Attached { authority } => {
+                State::One(WireMessage::Attached { authority })
             }
             ServiceMessage::Rejected(reason) => State::One(WireMessage::Rejected(reason)),
             ServiceMessage::Accepted {

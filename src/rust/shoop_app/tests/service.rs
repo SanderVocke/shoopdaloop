@@ -14,8 +14,6 @@ use std::{
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
-const HOST: HostId = HostId(100);
-const SESSION: SessionId = SessionId(200);
 const STEP: Duration = Duration::from_millis(16);
 
 struct Clock {
@@ -89,8 +87,6 @@ fn fixture() -> Fixture {
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
-            host: HOST,
-            session: SESSION,
             master_auto_connect: true,
             loop_smoothing_ms: 4,
         },
@@ -140,8 +136,8 @@ fn drain(service: &mut Service, client: &mut Client, connection: ConnectionId, e
         deliver(client, message, encoded);
     }
 }
-fn attach(service: &mut Service, id: u128, connection: ConnectionId, encoded: bool) -> Client {
-    let mut client = Client::new(ClientId(id), HOST, SESSION).unwrap();
+fn attach(service: &mut Service, _id: u128, connection: ConnectionId, encoded: bool) -> Client {
+    let mut client = Client::new();
     service
         .handle(connection, client.attach().unwrap())
         .unwrap();
@@ -417,8 +413,8 @@ fn accepted_creation_and_lost_replies_remain_owned_until_confirmation_without_re
     f.service.detach(ConnectionId(2));
     let mut resumed = attach(&mut f.service, 10, ConnectionId(3), false);
     let authority = resumed.authority().unwrap();
-    f.service
-        .handle(
+    assert_eq!(
+        f.service.handle(
             ConnectionId(3),
             ClientMessage::Submit {
                 session_epoch: 1,
@@ -427,12 +423,19 @@ fn accepted_creation_and_lost_replies_remain_owned_until_confirmation_without_re
                 expected_revision: None,
                 command: new_track("Must not duplicate", false),
             },
-        )
-        .unwrap();
+        ),
+        Err(Refusal::Identity)
+    );
     drain(&mut f.service, &mut resumed, ConnectionId(3), false);
     f.service.tick(STEP);
     assert_eq!(f.service.snapshot().tracks.len(), 2);
-    assert!(resumed.results().contains_key(&id));
+    assert!(resumed.results().is_empty());
+    assert!(resumed
+        .snapshot()
+        .unwrap()
+        .results
+        .iter()
+        .any(|result| result.id == id));
 }
 
 #[shoop_test]
@@ -442,15 +445,8 @@ fn replacing_a_client_fences_old_mutations_detach_and_shutdown_without_disturbin
     let mut a = attach(&mut f.service, 10, first, false);
     let stale = a.authority().unwrap();
     assert_eq!(
-        f.service.handle(
-            ConnectionId(9),
-            ClientMessage::Attach {
-                version: VERSION,
-                host: HOST,
-                session: SESSION,
-                client: ClientId(99)
-            }
-        ),
+        f.service
+            .handle(ConnectionId(9), ClientMessage::Attach { version: VERSION }),
         Err(Refusal::Busy)
     );
     f.service.detach(first);
@@ -646,7 +642,7 @@ fn snapshots_order_pending_work_and_engine_refusals_across_the_attach_boundary()
         },
     );
     f.service.detach(ConnectionId(1));
-    let mut b = Client::new(ClientId(11), HOST, SESSION).unwrap();
+    let mut b = Client::new();
     f.service
         .handle(ConnectionId(2), b.attach().unwrap())
         .unwrap();
@@ -1020,7 +1016,7 @@ fn runtime_with_midi(
     midi: Box<dyn shoop_scripting::MidiControlService>,
 ) -> (shoop_app_client::runtime::Runtime, local::ServicePort) {
     let (delivery, port) = local::channel();
-    let client = Client::new(ClientId(500), HOST, SESSION).unwrap();
+    let client = Client::new();
     let mut runtime =
         shoop_app_client::runtime::Runtime::new(client, Box::new(delivery), midi, startup).unwrap();
     for _ in 0..4 {
@@ -1118,7 +1114,7 @@ fn recovered_clients_do_not_execute_catalog_scripts_until_explicit_user_start() 
     let mut f = fixture();
     let (mut runtime, port) = runtime(
         &mut f.service,
-        shoop_app_client::runtime::Startup::Recovered,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
     );
     runtime
         .dispatch(AppIntent::ReconcileCatalogScripts {
@@ -1156,7 +1152,7 @@ fn recovered_clients_do_not_execute_catalog_scripts_until_explicit_user_start() 
 fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_the_session() {
     use shoop_app_client::runtime::Startup;
     let mut f = fixture();
-    let (mut runtime, port) = runtime(&mut f.service, Startup::Recovered);
+    let (mut runtime, port) = runtime(&mut f.service, Startup::Connected(Vec::new()));
     let before = f.service.snapshot();
     let prior_notifications = runtime.snapshot().notifications.len();
     for intent in [
@@ -1201,7 +1197,7 @@ fn management_shutdown_survives_data_loss_and_a_replacement_fences_it() {
     let mut f = fixture();
     let (mut runtime, port) = runtime(
         &mut f.service,
-        shoop_app_client::runtime::Startup::Recovered,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
     );
     runtime.dispatch(AppIntent::SetLoopSmoothingMs(7)).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 4);
@@ -1238,8 +1234,7 @@ fn explicit_ownerless_shutdown_cannot_evict_a_live_ui_and_fences_previous_owners
     };
     let claim = ManagementRequest::ClaimShutdown {
         version: VERSION,
-        host: HOST,
-        session: SESSION,
+
         operation,
     };
     assert_eq!(
@@ -1285,10 +1280,10 @@ fn recovered_startup_catalog_is_visible_but_does_not_run_and_shutdown_discards_u
         .unwrap();
     let (delivery, port) = local::channel();
     let mut runtime = Runtime::new(
-        Client::new(ClientId(500), HOST, SESSION).unwrap(),
+        Client::new(),
         Box::new(delivery),
         Box::new(shoop_scripting::NullMidiService),
-        Startup::IfFresh(vec![StartupScript {
+        Startup::Connected(vec![StartupScript {
             name: "saved.lua".into(),
             identity: None,
             source: "shoop_announce_api_version(1,0); require('shoop_control').set_solo(true)"
@@ -1945,9 +1940,15 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
     f.service.detach(ConnectionId(1));
     client.disconnect();
     let mut recovered = attach(&mut f.service, 1001, ConnectionId(2), false);
-    assert!(recovered.pending().contains_key(&operation));
+    assert!(recovered.pending().is_empty());
+    assert!(recovered
+        .snapshot()
+        .unwrap()
+        .pending
+        .iter()
+        .any(|pending| pending.id == operation));
     f.advance.set(true);
-    let outcome = complete(
+    let outcome = observe_host_result(
         &mut f.service,
         &mut recovered,
         ConnectionId(2),
@@ -1964,8 +1965,8 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
         .iter()
         .map(|track| track.id)
         .collect::<Vec<_>>();
-    f.service
-        .handle(
+    assert_eq!(
+        f.service.handle(
             ConnectionId(2),
             ClientMessage::Submit {
                 authority: recovered.authority().unwrap(),
@@ -1974,10 +1975,17 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
                 expected_revision: None,
                 command: Command::CommitPersistence(key),
             },
-        )
-        .unwrap();
+        ),
+        Err(Refusal::Identity)
+    );
     drain(&mut f.service, &mut recovered, ConnectionId(2), false);
-    assert_eq!(recovered.results()[&operation], outcome);
+    assert!(!recovered.results().contains_key(&operation));
+    assert!(recovered
+        .snapshot()
+        .unwrap()
+        .results
+        .iter()
+        .any(|result| result.id == operation && result.outcome == outcome));
     assert_eq!(
         f.service
             .snapshot()
@@ -2443,4 +2451,27 @@ fn large_private_validation_yields_to_controls_and_cancel_reclaims_the_job() {
         identities
     );
     assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+fn observe_host_result(
+    service: &mut Service,
+    client: &mut Client,
+    connection: ConnectionId,
+    operation: OperationId,
+    encoded: bool,
+) -> Outcome {
+    for _ in 0..100 {
+        service.tick(STEP);
+        drain(service, client, connection, encoded);
+        if let Some(result) = client
+            .snapshot()
+            .unwrap()
+            .results
+            .iter()
+            .find(|result| result.id == operation)
+        {
+            return result.outcome.clone();
+        }
+    }
+    panic!("host operation did not finish");
 }

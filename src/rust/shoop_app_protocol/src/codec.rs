@@ -168,3 +168,25 @@ pub fn decode_manifest(bytes: &[u8]) -> Result<crate::persistence_image::Manifes
     }
     Ok(value)
 }
+
+pub fn encode_host_report(report: &crate::HostReport) -> Result<Vec<u8>, CodecError> {
+    if !report.valid() {
+        return Err(CodecError::Invalid);
+    }
+    let mut writer = BoundedWriter::<65536>(Vec::new());
+    bincode::serde::encode_into_writer(report, &mut writer, bincode::config::standard())
+        .map_err(|_| CodecError::Overflow)?;
+    Ok(writer.0)
+}
+pub fn decode_host_report(bytes: &[u8]) -> Result<crate::HostReport, CodecError> {
+    if bytes.len() > 65536 {
+        return Err(CodecError::Overflow);
+    }
+    let (report, used): (crate::HostReport, usize) =
+        bincode::serde::decode_from_slice(bytes, bincode::config::standard().with_limit::<65536>())
+            .map_err(|_| CodecError::Invalid)?;
+    if used != bytes.len() || !report.valid() {
+        return Err(CodecError::Invalid);
+    }
+    Ok(report)
+}

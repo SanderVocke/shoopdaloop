@@ -1,7 +1,7 @@
 use crate::application::ApplicationHandle;
 use eframe::egui;
 use shoop_app_protocol::{ClientMessage, ManagementReply, ManagementRequest, Outcome};
-use shoop_host::{connection, registry::HostEntry};
+use shoop_host::{connection, remote::Target as HostEntry};
 use std::{
     sync::mpsc,
     time::{Duration, Instant},
@@ -37,7 +37,8 @@ impl ExitController {
         self.authorized = true;
         context.send_viewport_cmd(egui::ViewportCommand::Close);
     }
-    pub(crate) fn start(&mut self, entry: HostEntry, handle: ApplicationHandle) {
+    pub(crate) fn start(&mut self, entry: impl Into<HostEntry>, handle: ApplicationHandle) {
+        let entry = entry.into();
         self.error = None;
         let ticket = self.ticket.clone();
         let (sender, receiver) = mpsc::channel();
@@ -128,7 +129,10 @@ impl ExitController {
     }
 }
 
-pub(crate) fn shutdown(entry: &HostEntry, ticket: ClientMessage) -> (Result<(), String>, bool) {
+pub(crate) fn shutdown(
+    entry: &impl shoop_host::remote::ConnectionTarget,
+    ticket: ClientMessage,
+) -> (Result<(), String>, bool) {
     let ClientMessage::Shutdown {
         authority,
         operation,
@@ -222,5 +226,79 @@ mod tests {
             .commands
             .contains(&egui::ViewportCommand::CancelClose));
         output.textures_delta.clear();
+    }
+}
+
+#[derive(Default)]
+pub struct HostPanel {
+    pub open: bool,
+    pub(super) report: Option<shoop_app_protocol::HostReport>,
+    receiver: Option<mpsc::Receiver<Result<shoop_app_protocol::HostReport, String>>>,
+    error: Option<String>,
+}
+impl HostPanel {
+    fn refresh(&mut self, entry: HostEntry) {
+        if self.receiver.is_some() {
+            return;
+        }
+        self.report = None;
+        self.error = None;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        self.receiver = Some(receiver);
+        std::thread::spawn(move || {
+            let _ = sender.send(
+                connection::host_report(&entry, Duration::from_secs(5))
+                    .map_err(|error| error.to_string()),
+            );
+        });
+    }
+    pub fn show(&mut self, context: &egui::Context, entry: &HostEntry) {
+        if !self.open {
+            return;
+        }
+        if self.report.is_none() && self.receiver.is_none() && self.error.is_none() {
+            self.refresh(entry.clone());
+        }
+        if let Some(receiver) = self.receiver.take() {
+            match receiver.try_recv() {
+                Ok(Ok(report)) => self.report = Some(report),
+                Ok(Err(error)) => self.error = Some(error),
+                Err(mpsc::TryRecvError::Empty) => self.receiver = Some(receiver),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.error = Some("Host query ended without a reply".into())
+                }
+            }
+        }
+        let mut open = self.open;
+        egui::Window::new("Connected host").open(&mut open).show(context, |ui| {
+            ui.label(format!("Endpoint: {}", entry.endpoint));
+            ui.label("Last queried host state. Refresh to query the endpoint again.");
+            if let Some(report) = &self.report {
+                ui.label(format!("Ready: {}; controller connected: {}; closed: {}", report.ready, report.busy, report.closed));
+                ui.label(format!("Current smoothing: {} ms; Master auto-connect: {}", report.loop_smoothing_ms, report.master_auto_connect));
+                ui.label(format!("Audio state: {:?}", report.effective.audio_driver));
+                ui.label(format!("Sample rate: {} Hz; buffer: {} frames", report.effective.sample_rate, report.effective.buffer_size));
+                ui.label(format!("Host operations in progress: {}", report.pending_operations));
+                if let Some(settings) = &report.requested {
+                    ui.separator();
+                    ui.label(format!("Configured driver: {}", settings.driver.kind().id()));
+                    ui.label(format!("Capacity: {} tracks, {} loops, {} channels, {} MiB", settings.pools.tracks, settings.pools.loops, settings.pools.channels, settings.pools.loop_memory_mb));
+                    ui.label(format!("Startup smoothing: {} ms", settings.loop_smoothing_ms));
+                    ui.collapsing("Startup configuration", |ui| {
+                        if let Ok(json) = serde_json::to_string_pretty(settings) { ui.monospace(json); }
+                    });
+                }
+                for warning in &report.diagnostics { ui.colored_label(egui::Color32::YELLOW, warning); }
+                ui.separator();
+                ui.label("Driver and capacity changes require a host restart. Local preferences are used when launching a local host.");
+            }
+            if let Some(error) = &self.error { ui.colored_label(egui::Color32::YELLOW, error); }
+            if self.receiver.is_some() { ui.spinner(); }
+            if ui.add_enabled(self.receiver.is_none(), egui::Button::new("Refresh")).clicked() { self.refresh(entry.clone()); }
+        });
+        self.open = open;
+        if self.receiver.is_some() {
+            context.request_repaint_after(Duration::from_millis(50));
+        }
     }
 }

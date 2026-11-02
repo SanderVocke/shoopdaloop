@@ -53,13 +53,10 @@ fn committed_file_tasks_wait_for_the_confirmed_projection_and_keep_known_loss_ou
     let state = fixture.runtime.client().snapshot().unwrap().clone();
     let authority = fixture.runtime.client().authority().unwrap();
     for lose_connection in [false, true] {
-        let mut client = Client::new(authority.client, HostId(100), authority.session).unwrap();
+        let mut client = Client::new();
         client.attach().unwrap();
         client
-            .receive(ServiceMessage::Attached {
-                authority,
-                host: HostId(100),
-            })
+            .receive(ServiceMessage::Attached { authority })
             .unwrap();
         client
             .receive(ServiceMessage::Snapshot {
@@ -168,7 +165,7 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
     let state = fixture.runtime.client().snapshot().unwrap().clone();
     let authority = fixture.runtime.client().authority().unwrap();
     for lose_connection in [false, true] {
-        let client = Client::new(authority.client, HostId(100), authority.session).unwrap();
+        let client = Client::new();
         let (delivery, service) = local::channel();
         let mut runtime = Runtime::new(
             client,
@@ -179,10 +176,7 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
         .unwrap();
         service
             .updates
-            .send(ServiceMessage::Attached {
-                authority,
-                host: HostId(100),
-            })
+            .send(ServiceMessage::Attached { authority })
             .unwrap();
         service
             .updates
@@ -543,8 +537,6 @@ impl Fixture {
         let mut service = Service::new(
             Box::new(backend),
             ServiceOptions {
-                host: HostId(100),
-                session: SessionId(200),
                 master_auto_connect: false,
                 loop_smoothing_ms: 0,
             },
@@ -559,7 +551,7 @@ impl Fixture {
         assert!(service.is_ready());
         let (delivery, port) = local::channel();
         let hold = Rc::new(Cell::new(false));
-        let client = Client::new(ClientId(300), HostId(100), SessionId(200)).unwrap();
+        let client = Client::new();
         let runtime = Runtime::new(
             client,
             Box::new(GateDelivery {

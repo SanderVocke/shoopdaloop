@@ -405,6 +405,8 @@ struct UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     exit: recovery::ExitController,
     #[cfg(not(target_arch = "wasm32"))]
+    host_panel: recovery::HostPanel,
+    #[cfg(not(target_arch = "wasm32"))]
     host_choices: Option<Vec<(std::path::PathBuf, shoop_host::registry::HostEntry)>>,
     runtime: Runtime,
     widget: AppWidget,
@@ -545,6 +547,8 @@ impl UnifiedApp {
         Ok(Self {
             #[cfg(not(target_arch = "wasm32"))]
             exit: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            host_panel: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             host_choices: None,
             runtime,
@@ -988,6 +992,15 @@ impl UnifiedApp {
                 }
             }
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if self.runtime.remote_entry.is_some() {
+                    if let Err(error) = validate_script_draft(&draft)
+                        .and_then(|()| self.settings.request_save(draft).map_err(Into::into))
+                    {
+                        self.settings.report_action_error(error.to_string());
+                    }
+                    return;
+                }
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
                         .dispatch(AppIntent::RequestAudioDriverSwitch {
@@ -1334,13 +1347,76 @@ impl UnifiedApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn clear_connection_state(&mut self, context: &egui::Context) {
+        context.memory_mut(|memory| {
+            memory.data.clear();
+            if let Some(id) = memory.focused() {
+                memory.surrender_focus(id);
+            }
+        });
+        self.file_input.reconcile(None);
+        let (sender, receiver) = mpsc::channel();
+        self.pending_file_intent_tx = sender;
+        self.pending_file_intent_rx = receiver;
+        self.startup_session = None;
+        self.session_url_task = None;
+        self.session_url_confirmation = None;
+        self.session_url_prompt_open = false;
+        self.session_url_input.clear();
+        self.session_url_error = None;
+        self.pending_audio_settings = None;
+        self.widget.reset_connection();
+        self.exit = Default::default();
+        self.host_panel = Default::default();
+        self.host_choices = None;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn use_connection(&mut self, runtime: Runtime, context: &egui::Context) {
+        self.clear_connection_state(context);
+        self.runtime = runtime;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_remote_profile(&mut self, context: &egui::Context) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Remote host profile", &["json"])
+            .pick_file()
+        {
+            match shoop_host::remote::RemoteProfile::read(&path)
+                .and_then(|profile| Runtime::attach(&self.settings.active(), profile))
+            {
+                Ok(runtime) => {
+                    self.use_connection(runtime, context);
+                }
+                Err(error) => self.settings.report_action_error(error.to_string()),
+            }
+        }
+    }
     fn show(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            if self.runtime.remote_entry.is_none() {
+                ui.menu_button("Session", |ui| {
+                    if ui.button("Open remote profile…").clicked() {
+                        self.open_remote_profile(ui.ctx());
+                        ui.close();
+                    }
+                });
+            }
             if let Some(entry) = self.runtime.remote_entry.clone() {
                 self.exit.intercept_close(ui.ctx());
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
+                        if ui
+                            .add_enabled(
+                                !self.exit.open && !self.exit.is_pending(),
+                                egui::Button::new("Open remote profile…"),
+                            )
+                            .clicked()
+                        {
+                            self.open_remote_profile(ui.ctx());
+                            ui.close();
+                        }
                         if ui
                             .add_enabled(
                                 !self.exit.open && !self.exit.is_pending(),
@@ -1360,6 +1436,10 @@ impl UnifiedApp {
                             }
                             ui.close();
                         }
+                        if ui.button("Connected host settings…").clicked() {
+                            self.host_panel.open = true;
+                            ui.close();
+                        }
                         if ui.button("Close UI only (keep host running)").clicked() {
                             self.exit.close_ui(ui.ctx());
                         }
@@ -1371,13 +1451,14 @@ impl UnifiedApp {
                     ui.label(&entry.name);
                 });
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
+                self.host_panel.show(ui.ctx(), &entry);
                 if let Some(choices) = self.host_choices.clone() {
                     egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
                         if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
                         for (path, candidate) in choices {
                             if ui.add_enabled(!self.exit.open && !self.exit.is_pending(), egui::Button::new(format!("{} — {}", candidate.name, path.display()))).clicked() {
                                 match Runtime::attach(&self.settings.active(), candidate) {
-                                    Ok(runtime) => {self.runtime = runtime; self.host_choices = None; self.exit = Default::default();},
+                                    Ok(runtime) => self.use_connection(runtime, ui.ctx()),
                                     Err(error) => self.settings.report_action_error(error.to_string()),
                                 }
                             }
@@ -1390,19 +1471,18 @@ impl UnifiedApp {
                     shoop_app_client::State::Ready => {}
                     shoop_app_client::State::Lost => {
                         ui.heading("Session connection lost");
-                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Reattach to check its current state."));
+                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Connect again to read its current state."));
                         if entry.transport == shoop_host::registry::AppTransport::Socket
                             && ui
                                 .add_enabled(
                                     !self.exit.is_pending(),
-                                    egui::Button::new("Reattach to this host"),
+                                    egui::Button::new("Connect to endpoint"),
                                 )
                                 .clicked()
                         {
                             match Runtime::attach(&self.settings.active(), entry) {
                                 Ok(runtime) => {
-                                    self.runtime = runtime;
-                                    self.exit = Default::default();
+                                    self.use_connection(runtime, ui.ctx());
                                 }
                                 Err(error) => self.settings.report_action_error(error.to_string()),
                             }
@@ -2327,7 +2407,7 @@ struct Runtime {
     /// The new engine backend's host. It is declared after the application runtime so that
     /// it stops after the backend is gone.
     _engine_host: Option<engine_backend::EngineHost>,
-    remote_entry: Option<shoop_host::registry::HostEntry>,
+    remote_entry: Option<shoop_host::remote::Target>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2351,6 +2431,9 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
+        if let Some(path) = &args.remote_profile {
+            return Self::attach(settings, shoop_host::remote::RemoteProfile::read(path)?);
+        }
         if let Some(path) = &args.host_file {
             return Self::attach(settings, shoop_host::registry::HostEntry::read(path)?);
         }
@@ -2439,8 +2522,9 @@ impl Runtime {
 
     fn attach(
         settings: &shoop_settings::SettingsSnapshot,
-        entry: shoop_host::registry::HostEntry,
+        entry: impl Into<shoop_host::remote::Target>,
     ) -> anyhow::Result<Self> {
+        let entry = entry.into();
         let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
         let pending_script_paths = startup_scripts
             .iter()
@@ -2571,6 +2655,10 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
+        if self.remote_entry.is_some() {
+            self.applied_audio_settings_revision = settings.revision();
+            return Ok(());
+        }
         let preferences = (
             shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
             shoop_egui::master_auto_connect(settings).unwrap_or(true),
@@ -3498,12 +3586,15 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         serve::StartOptions,
     };
     if args.shutdown_host {
-        let entry = shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?;
+        let entry: shoop_host::remote::Target = match args.remote_profile.as_ref() {
+            Some(path) => shoop_host::remote::RemoteProfile::read(path)?.into(),
+            None => shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?.into(),
+        };
         shoop_host::connection::shutdown_ownerless(&entry, Duration::from_secs(15))?;
         println!("Host cleanup confirmed");
         return Ok(true);
     }
-    if args.ui_only || args.host_file.is_some() {
+    if args.ui_only || args.host_file.is_some() || args.remote_profile.is_some() {
         return Ok(false);
     }
     let registry = args
@@ -3518,7 +3609,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         let registry = Registry::open(&registry)?;
         registry.prune_stale()?;
         for (path, entry) in registry.list()? {
-            println!("{}\t{}\t{}", entry.host.0, entry.name, path.display());
+            println!("{}\t{}\t{}", entry.endpoint, entry.name, path.display());
         }
         return Ok(true);
     }
@@ -3533,6 +3624,34 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
             .arg(registry);
         if let Some(endpoint) = args.endpoint {
             command.arg("--endpoint").arg(endpoint.to_string());
+        }
+        if args.lan {
+            command.arg("--lan");
+        }
+        if let Some(endpoint) = args.management_endpoint {
+            command
+                .arg("--management-endpoint")
+                .arg(endpoint.to_string());
+        }
+        for (flag, value) in [
+            ("--advertise-data", &args.advertise_data),
+            ("--advertise-management", &args.advertise_management),
+        ] {
+            if let Some(value) = value {
+                command.arg(flag).arg(value);
+            }
+        }
+        if let Some(path) = &args.export_profile {
+            command.arg("--export-profile").arg(path);
+        }
+        for (flag, value) in [
+            ("--heartbeat-interval-ms", args.heartbeat_interval_ms),
+            ("--heartbeat-timeout-ms", args.heartbeat_timeout_ms),
+            ("--snapshot-hz", args.snapshot_hz.map(u64::from)),
+        ] {
+            if let Some(value) = value {
+                command.arg(flag).arg(value.to_string());
+            }
         }
         if let Some(credential) = &args.credential_file {
             command.arg("--credential-file").arg(credential);
@@ -3554,14 +3673,18 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         return Ok(false);
     }
     let config = shoop_host::config::HostConfig {
-        driver: shoop_egui::selected_audio_driver(&settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
-            .map_err(anyhow::Error::msg)?,
-        pools: shoop_egui::new_engine_pools_from_snapshot(&settings).map_err(anyhow::Error::msg)?,
-        master_auto_connect: shoop_egui::master_auto_connect(&settings)
-            .map_err(anyhow::Error::msg)?,
-        loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
-            .map_err(anyhow::Error::msg)?,
+        settings: shoop_host::config::HostSettings {
+            driver: shoop_egui::selected_audio_driver(&settings)
+                .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+                .map_err(anyhow::Error::msg)?,
+            pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
+                .map_err(anyhow::Error::msg)?,
+            master_auto_connect: shoop_egui::master_auto_connect(&settings)
+                .map_err(anyhow::Error::msg)?,
+            loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
+                .map_err(anyhow::Error::msg)?,
+            ..Default::default()
+        },
         transport: if transport == shoop_egui::EngineTransportKind::Socket {
             AppTransport::Socket
         } else {

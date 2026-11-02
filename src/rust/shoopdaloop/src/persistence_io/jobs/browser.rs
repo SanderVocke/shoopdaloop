@@ -323,7 +323,7 @@ impl BrowserJob {
         receiver
             .apply(
                 Authority {
-                    session: SessionId(1),
+                    lease: LeaseId(1),
                     client: ClientId(1),
                     generation: ConnectionGeneration(1),
                 },
@@ -391,7 +391,7 @@ impl BrowserJob {
                     self.output = Output::Image(
                         transfer::Receiver::new(
                             Authority {
-                                session: SessionId(1),
+                                lease: LeaseId(1),
                                 client: ClientId(1),
                                 generation: ConnectionGeneration(1),
                             },

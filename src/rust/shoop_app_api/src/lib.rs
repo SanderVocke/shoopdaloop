@@ -3721,3 +3721,46 @@ impl Default for NewEnginePools {
         }
     }
 }
+
+/// Host-owned startup settings shared by native configuration and UI launch defaults.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
+pub struct HostSettings {
+    pub driver: AudioDriverConfig,
+    pub pools: NewEnginePools,
+    pub master_auto_connect: bool,
+    pub loop_smoothing_ms: u32,
+}
+impl Default for HostSettings {
+    fn default() -> Self {
+        Self {
+            driver: Default::default(),
+            pools: Default::default(),
+            master_auto_connect: true,
+            loop_smoothing_ms: 3,
+        }
+    }
+}
+impl HostSettings {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !(1..=64).contains(&self.pools.tracks)
+            || !(1..=256).contains(&self.pools.loops)
+            || !(1..=16).contains(&self.pools.channels)
+            || !(1..=1024).contains(&self.pools.loop_memory_mb)
+        {
+            return Err("session engine capacities exceed supported bounds");
+        }
+        if self.loop_smoothing_ms > 100 {
+            return Err("loop smoothing exceeds 100 ms");
+        }
+        if let AudioDriverConfig::Dummy(driver) = &self.driver {
+            if !(8000..=384000).contains(&driver.sample_rate)
+                || !(1..=16384).contains(&driver.buffer_size)
+            {
+                return Err("invalid dummy driver configuration");
+            }
+        }
+        Ok(())
+    }
+}

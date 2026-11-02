@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 10;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -44,8 +44,7 @@ macro_rules! identity {
         pub struct $name(pub $value);
     };
 }
-identity!(HostId, u128);
-identity!(SessionId, u128);
+identity!(LeaseId, u128);
 identity!(ClientId, u128);
 identity!(ConnectionGeneration, u64);
 identity!(Revision, u64);
@@ -53,14 +52,14 @@ identity!(TransferId, u64);
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Authority {
-    pub session: SessionId,
+    pub lease: LeaseId,
     pub client: ClientId,
     pub generation: ConnectionGeneration,
 }
 
 impl Authority {
     pub fn is_valid(self) -> bool {
-        self.session.0 != 0 && self.client.0 != 0 && self.generation.0 != 0
+        self.lease.0 != 0 && self.client.0 != 0 && self.generation.0 != 0
     }
 }
 
@@ -288,7 +287,6 @@ pub enum ServiceMessage {
     },
     Attached {
         authority: Authority,
-        host: HostId,
     },
     Rejected(Refusal),
     Snapshot {
@@ -337,7 +335,7 @@ impl ServiceMessage {
                 transfer,
                 ..
             } => authority.is_valid() && transfer.0 != 0,
-            Self::Attached { authority, host } => authority.is_valid() && host.0 != 0,
+            Self::Attached { authority } => authority.is_valid(),
             Self::Snapshot { authority, state } => authority.is_valid() && state.valid(),
             Self::Accepted {
                 authority,
@@ -366,9 +364,6 @@ pub enum ClientMessage {
     },
     Attach {
         version: u16,
-        host: HostId,
-        session: SessionId,
-        client: ClientId,
     },
     Ready {
         authority: Authority,
@@ -414,6 +409,8 @@ pub enum ClientMessage {
 /// Snapshot chunks share the same bounded record format as commands and results.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum WireMessage {
+    Ping(u64),
+    Pong(u64),
     Persistence {
         authority: Authority,
         reply: persistence::Reply,
@@ -421,7 +418,6 @@ pub enum WireMessage {
     Client(ClientMessage),
     Attached {
         authority: Authority,
-        host: HostId,
     },
     Rejected(Refusal),
     SnapshotBegin {
@@ -473,10 +469,7 @@ pub enum WireMessage {
     },
     ManagementRequest(ManagementRequest),
     ManagementReply(ManagementReply),
-    CarrierReady {
-        host: HostId,
-        session: SessionId,
-    },
+    CarrierReady,
 }
 
 impl WireMessage {
@@ -485,6 +478,7 @@ impl WireMessage {
             authority.is_valid() && operation.client == authority.client && operation.sequence != 0
         };
         match self {
+            Self::Ping(sequence) | Self::Pong(sequence) => *sequence != 0,
             Self::Client(ClientMessage::StageImage { .. } | ClientMessage::CaptureImage { .. }) => {
                 false
             }
@@ -492,7 +486,7 @@ impl WireMessage {
             Self::Client(ClientMessage::Persistence { authority, request }) => {
                 authority.is_valid() && request.valid()
             }
-            Self::CarrierReady { host, session } => host.0 != 0 && session.0 != 0,
+            Self::CarrierReady => true,
             Self::ManagementRequest(request) => request.valid(),
             Self::ManagementReply(reply) => reply.valid(),
             Self::MediaBegin {
@@ -520,12 +514,7 @@ impl WireMessage {
                 loop_id,
             }) => authority.is_valid() && transfer.0 != 0 && loop_id.is_valid(),
             Self::Client(ClientMessage::CancelMedia { authority }) => authority.is_valid(),
-            Self::Client(ClientMessage::Attach {
-                host,
-                session,
-                client,
-                ..
-            }) => host.0 != 0 && session.0 != 0 && client.0 != 0,
+            Self::Client(ClientMessage::Attach { .. }) => true,
             Self::Client(ClientMessage::Submit {
                 authority,
                 session_epoch,
@@ -540,7 +529,7 @@ impl WireMessage {
             Self::Client(
                 ClientMessage::Ready { authority, .. } | ClientMessage::Detach { authority },
             ) => authority.is_valid(),
-            Self::Attached { authority, host } => authority.is_valid() && host.0 != 0,
+            Self::Attached { authority } => authority.is_valid(),
             Self::SnapshotBegin {
                 authority,
                 transfer,
@@ -631,12 +620,39 @@ impl LoopMedia {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HostReport {
+    pub ready: bool,
+    pub busy: bool,
+    pub closed: bool,
+    pub master_auto_connect: bool,
+    pub loop_smoothing_ms: u32,
+    pub requested: Option<HostSettings>,
+    pub effective: StatusState,
+    pub diagnostics: Vec<String>,
+    pub pending_operations: u32,
+    pub restart_required_fields: Vec<String>,
+}
+impl HostReport {
+    pub fn valid(&self) -> bool {
+        self.requested
+            .as_ref()
+            .is_none_or(|settings| settings.validate().is_ok())
+            && self.diagnostics.len() <= 64
+            && self.diagnostics.iter().all(|s| s.len() <= 1024)
+            && self.restart_required_fields.len() <= 16
+            && self.restart_required_fields.iter().all(|s| s.len() <= 64)
+            && self.pending_operations as usize <= MAX_PENDING_OPERATIONS
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum ManagementRequest {
+    Settings {
+        version: u16,
+    },
     Status {
         version: u16,
-        host: HostId,
-        session: SessionId,
     },
     Shutdown {
         authority: Authority,
@@ -648,21 +664,16 @@ pub enum ManagementRequest {
     },
     ClaimShutdown {
         version: u16,
-        host: HostId,
-        session: SessionId,
+
         operation: OperationId,
     },
 }
 impl ManagementRequest {
     pub fn valid(&self) -> bool {
         match self {
-            Self::Status { host, session, .. } => host.0 != 0 && session.0 != 0,
-            Self::ClaimShutdown {
-                host,
-                session,
-                operation,
-                ..
-            } => host.0 != 0 && session.0 != 0 && operation_valid(*operation),
+            Self::Settings { .. } => true,
+            Self::Status { .. } => true,
+            Self::ClaimShutdown { operation, .. } => operation_valid(*operation),
             Self::Shutdown {
                 authority,
                 operation,
@@ -680,10 +691,14 @@ impl ManagementRequest {
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum ManagementReply {
+    SettingsChunk {
+        offset: u32,
+        total: u32,
+        bytes: Vec<u8>,
+    },
     Status {
         version: u16,
-        host: HostId,
-        session: SessionId,
+
         ready: bool,
         busy: bool,
         closed: bool,
@@ -701,7 +716,20 @@ pub enum ManagementReply {
 impl ManagementReply {
     pub fn valid(&self) -> bool {
         match self {
-            Self::Status { host, session, .. } => host.0 != 0 && session.0 != 0,
+            Self::SettingsChunk {
+                offset,
+                total,
+                bytes,
+            } => {
+                *total > 0
+                    && *total <= 65536
+                    && !bytes.is_empty()
+                    && bytes.len() <= CHUNK_BYTES
+                    && offset
+                        .checked_add(bytes.len() as u32)
+                        .is_some_and(|end| end <= *total)
+            }
+            Self::Status { .. } => true,
             Self::Refused(_) => true,
             Self::Accepted {
                 authority,

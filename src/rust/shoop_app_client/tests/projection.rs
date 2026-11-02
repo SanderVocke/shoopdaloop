@@ -9,7 +9,7 @@ use std::sync::Arc;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const AUTHORITY: Authority = Authority {
-    session: SessionId(1),
+    lease: LeaseId(1),
     client: ClientId(2),
     generation: ConnectionGeneration(3),
 };
@@ -39,12 +39,11 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
 }
 
 fn attaching() -> Client {
-    let mut client = Client::new(AUTHORITY.client, HostId(4), AUTHORITY.session).unwrap();
+    let mut client = Client::new();
     client.attach().unwrap();
     client
         .receive(ServiceMessage::Attached {
             authority: AUTHORITY,
-            host: HostId(4),
         })
         .unwrap();
     client
@@ -290,7 +289,6 @@ fn reattachment_reconciles_lost_replies_without_command_replay() {
     client
         .receive(ServiceMessage::Attached {
             authority: replacement,
-            host: HostId(4),
         })
         .unwrap();
     let mut state = (*snapshot(9)).clone();

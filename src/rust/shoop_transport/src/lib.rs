@@ -12,6 +12,8 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod buffer;
 pub mod framing;
+pub mod handshake;
+pub mod stream;
 
 /// Largest record accepted by the shared carriers, including its length prefix.
 pub const MAX_RECORD_BYTES: usize = 1280;
@@ -49,6 +51,12 @@ pub enum CarrierError {
 
 /// A bidirectional transport of encoded records.
 pub trait RecordPort {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        Ok(())
+    }
+    fn pending_records(&self) -> usize {
+        0
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError>;
     fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
         self.post(record)

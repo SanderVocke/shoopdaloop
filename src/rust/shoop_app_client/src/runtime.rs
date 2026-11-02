@@ -86,8 +86,7 @@ pub struct ApplicationAudioPreview {
 
 pub enum Startup {
     Fresh(Vec<StartupScript>),
-    IfFresh(Vec<StartupScript>),
-    Recovered,
+    Connected(Vec<StartupScript>),
 }
 
 pub struct Runtime {
@@ -97,7 +96,7 @@ pub struct Runtime {
     previous: ControlSnapshot,
     startup: Option<Startup>,
     startup_ids: Vec<Option<ScriptId>>,
-    recovered: bool,
+    connected: bool,
     explicitly_started_scripts: BTreeSet<String>,
     reset_operation: Option<OperationId>,
     reset_queued: bool,
@@ -128,7 +127,7 @@ impl Runtime {
         startup: Startup,
     ) -> Result<Self, Error> {
         delivery.send(client.attach()?)?;
-        let recovered = matches!(startup, Startup::Recovered);
+        let connected = matches!(startup, Startup::Connected(_));
         let mut scripts = ScriptManager::new_with_midi(midi);
         scripts.use_confirmed_control_reads();
         let mut runtime = Self {
@@ -138,7 +137,7 @@ impl Runtime {
             previous: ControlSnapshot::default(),
             startup: Some(startup),
             startup_ids: Vec::new(),
-            recovered,
+            connected,
             explicitly_started_scripts: BTreeSet::new(),
             reset_operation: None,
             reset_queued: false,
@@ -160,8 +159,8 @@ impl Runtime {
             persistence_io: None,
             command_epoch: None,
         };
-        if recovered {
-            runtime.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
+        if connected {
+            runtime.notify("Connected to the endpoint. Start scripts explicitly when needed.");
         }
         Ok(runtime)
     }
@@ -302,26 +301,16 @@ impl Runtime {
         let control = self.control_snapshot();
         self.scripts.set_control_snapshot(control);
         if let Some(startup) = self.startup.take() {
-            let startup = match startup {
-                Startup::IfFresh(scripts)
-                    if self
-                        .client
-                        .authority()
-                        .is_some_and(|authority| authority.generation.0 == 1) =>
-                {
-                    Startup::Fresh(scripts)
-                }
-                Startup::IfFresh(mut scripts) => {
-                    self.recovered = true;
-                    self.notify("Recovered the live session. Lua state was lost; start scripts explicitly when needed.");
-                    for script in &mut scripts {
-                        script.enabled = false;
+            {
+                let scripts = match startup {
+                    Startup::Fresh(scripts) => scripts,
+                    Startup::Connected(mut scripts) => {
+                        for script in &mut scripts {
+                            script.enabled = false;
+                        }
+                        scripts
                     }
-                    Startup::Fresh(scripts)
-                }
-                startup => startup,
-            };
-            if let Startup::Fresh(scripts) = startup {
+                };
                 for script in scripts {
                     let result = if let Some(identity) = script.identity {
                         self.scripts.add_catalog_script(
@@ -1012,7 +1001,7 @@ impl Runtime {
                 preserve_identities,
             } => {
                 let mut scripts = scripts.to_vec();
-                if self.recovered {
+                if self.connected {
                     for script in &mut scripts {
                         script.enabled &=
                             self.explicitly_started_scripts.contains(&script.identity);

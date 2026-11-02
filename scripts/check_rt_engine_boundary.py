@@ -18,7 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
-    "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
+    "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
     "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
@@ -49,6 +49,10 @@ def violations(tree: str, package: str | None = None) -> list[str]:
                      "shoop_session", "rt_runtime", "cpal", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_", "shoop_transport_")))
+    if package == "shoop_app_connection":
+        forbidden = {"shoop_host", "shoop_app_client", "shoop_scripting", "shoop_egui", "shoopdaloop",
+                     "shoop_session", "shoop_engine", "rt_runtime", "cpal", "midir", "iceoryx2", "web-sys", "js-sys"}
+        return sorted(name for name in names if name in forbidden or name.startswith(("shoop_rt_", "shoop_transport_")))
     if package == "shoop_app":
         forbidden = {"shoop_host", "shoop_engine", "shoop_app_reference", "shoop_egui", "shoopdaloop", "shoop_scripting",
                      "shoop_session", "rt_runtime", "shoop_rt_engine", "cpal", "midir",
@@ -92,7 +96,7 @@ def main() -> int:
         for target in args.target or RUNTIME.TARGETS:
             result = subprocess.run(
                 ["cargo", "tree", "--locked", "-p", package,
-                 *(["--no-default-features"] if package in {"shoop_app", "shoop_backend", "shoop_app_client"} else ["--all-features"]),
+                 *(["--no-default-features"] if package in {"shoop_app", "shoop_backend", "shoop_app_client", "shoop_app_connection"} else ["--all-features"]),
                  "--target", target, "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
                 cwd=ROOT, text=True, capture_output=True, check=False,
             )

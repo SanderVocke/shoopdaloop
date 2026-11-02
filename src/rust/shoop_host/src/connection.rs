@@ -1,4 +1,7 @@
-use crate::registry::{AppTransport, HostEntry};
+use crate::{
+    registry::AppTransport,
+    remote::{remaining, ConnectionTarget, Target as HostTarget},
+};
 use anyhow::{anyhow, Context, Result};
 use shoop_app_client::{Client, Error as ClientError};
 use shoop_app_protocol::{
@@ -12,6 +15,19 @@ pub enum Port {
     Shared(shoop_transport_shared_memory::Port),
 }
 impl RecordPort for Port {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        match self {
+            Self::Socket(p) => p.flush(),
+            Self::Shared(_) => Ok(()),
+        }
+    }
+    fn pending_records(&self) -> usize {
+        match self {
+            Self::Socket(p) => p.pending(),
+            Self::Shared(_) => 0,
+        }
+    }
+
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         self.post_on_lane(record, Lane::Reliable)
     }
@@ -35,41 +51,69 @@ impl RecordPort for Port {
     }
 }
 
-pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
-    let token = entry.token()?;
-    let mut port =
-        shoop_transport_socket::setup::connect(entry.endpoint, &token, Default::default(), timeout)
-            .context("authenticate session data connection")?;
-    let deadline = Instant::now() + timeout;
+fn open(
+    entry: &HostTarget,
+    address: &str,
+    token: &[u8; 32],
+    deadline: Instant,
+) -> Result<shoop_transport_socket::Port> {
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / ((addresses.len() - index) as u32);
+        let config = if entry.network.is_some() {
+            shoop_transport_socket::Config {
+                reliable: 8,
+                telemetry: 1,
+                bulk: 8,
+            }
+        } else {
+            Default::default()
+        };
+        let result = if entry.network.is_some() {
+            shoop_transport_socket::setup::connect_lan(*address, token, config, budget)
+        } else {
+            shoop_transport_socket::setup::connect(*address, token, config, budget)
+        };
+        match result {
+            Ok(port) => return Ok(port),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last
+        .map(anyhow::Error::from)
+        .unwrap_or_else(|| anyhow!("no usable endpoint")))
+}
+fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
     loop {
         if let Some(length) = port.take(&mut bytes) {
-            match codec::decode(&bytes[..length])
-                .map_err(|_| anyhow!("invalid session endpoint greeting"))?
+            return match codec::decode(&bytes[..length])
+                .map_err(|_| anyhow!("invalid session greeting"))?
             {
-                WireMessage::CarrierReady { host, session }
-                    if host == entry.host && session == entry.session =>
-                {
-                    break
-                }
+                WireMessage::CarrierReady => Ok(()),
                 WireMessage::Rejected(reason) => {
-                    return Err(anyhow!("session endpoint refused: {reason:?}"))
+                    Err(anyhow!("session endpoint refused: {reason:?}"))
                 }
-                _ => {
-                    return Err(anyhow!(
-                        "session endpoint identity differs from its registration"
-                    ))
-                }
-            }
+                _ => Err(anyhow!(
+                    "session endpoint identity differs from its profile"
+                )),
+            };
         }
         if port.failure().is_some() {
             return Err(anyhow!("session endpoint closed during greeting"));
         }
-        if Instant::now() >= deadline {
-            return Err(anyhow!("session endpoint greeting timed out"));
-        }
+        remaining(deadline)?;
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
+    let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
+    let deadline = Instant::now() + timeout;
+    let mut port = open(&entry, &entry.endpoint, &token, deadline)
+        .context("authenticate session data connection")?;
+    greeting(&mut port, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
         AppTransport::SharedMemory => {
@@ -89,174 +133,77 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
             )
         }
     };
-    Ok(Connection {
+    let connection = Connection {
         port,
-        upload: None,
-        upload_validation: None,
-        upload_pending: None,
-        upload_outstanding: 0,
-        upload_finished: false,
-    })
+        upload: shoop_app_connection::Upload::new(),
+        heartbeat: None,
+        last: Instant::now(),
+    };
+    match entry.network {
+        Some(network) => connection.with_heartbeat(network.heartbeat()),
+        None => Ok(connection),
+    }
 }
 
 pub struct Connection {
     pub port: Port,
-    upload: Option<(
-        shoop_app_protocol::Authority,
-        shoop_app_protocol::persistence::Key,
-        shoop_app_protocol::persistence_transfer::UploadStream,
-    )>,
-    upload_pending: Option<ClientMessage>,
-    upload_outstanding: usize,
-    upload_finished: bool,
-    upload_validation: Option<(
-        shoop_app_protocol::Authority,
-        shoop_app_protocol::persistence::Key,
-        shoop_app_protocol::persistence::Target,
-        shoop_app_protocol::persistence_image::Validation,
-    )>,
+    upload: shoop_app_connection::Upload,
+    heartbeat: Option<shoop_app_connection::Heartbeat>,
+    last: Instant,
+}
+fn client_error(error: shoop_app_connection::Error) -> ClientError {
+    match error {
+        shoop_app_connection::Error::Full => ClientError::Full,
+        shoop_app_connection::Error::Disconnected => ClientError::Disconnected,
+        shoop_app_connection::Error::Protocol => ClientError::Protocol,
+    }
 }
 impl Connection {
-    fn clear_upload(&mut self) {
-        self.upload = None;
-        self.upload_validation = None;
-        self.upload_pending = None;
-        self.upload_outstanding = 0;
-        self.upload_finished = false;
+    pub fn with_heartbeat(mut self, config: shoop_app_connection::HeartbeatConfig) -> Result<Self> {
+        let seed = (crate::registry::identity()? as u64).max(1);
+        self.heartbeat = Some(
+            shoop_app_connection::Heartbeat::new(config, seed)
+                .map_err(|_| anyhow!("invalid heartbeat configuration"))?,
+        );
+        Ok(self)
     }
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
-        match message {
-            ClientMessage::StageImage {
-                authority,
-                key,
-                target,
-                image,
-            } => {
-                if self.upload.is_some() || self.upload_validation.is_some() {
-                    return Err(ClientError::Full);
-                }
-                let validation =
-                    shoop_app_protocol::persistence_image::Validation::for_transfer(image)
-                        .map_err(|_| ClientError::Protocol)?;
-                self.upload_validation = Some((authority, key, target, validation));
-                return Ok(());
-            }
-            ClientMessage::CaptureImage {
-                authority,
-                key,
-                target,
-            } => {
-                return self.send_wire(ClientMessage::Persistence {
-                    authority,
-                    request: shoop_app_protocol::persistence::Request::Capture { key, target },
-                })
-            }
-            ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key) || self.upload_validation.as_ref().is_some_and(|(_, staged, _, _)| staged == key)) =>
-            {
-                self.clear_upload();
-            }
-            ClientMessage::Detach { .. }
-            | ClientMessage::Shutdown { .. }
-            | ClientMessage::Attach { .. } => {
-                self.clear_upload();
-            }
-            _ => {}
-        }
-        self.send_wire(message)
-    }
-    fn send_wire(&mut self, message: ClientMessage) -> Result<(), ClientError> {
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        let length = codec::encode(&WireMessage::Client(message), &mut bytes)
-            .map_err(|_| ClientError::Protocol)?;
-        self.port
-            .post(&bytes[..length])
-            .map_err(|error| match error {
-                CarrierError::Full => ClientError::Full,
-                _ => ClientError::Disconnected,
-            })
+        self.upload
+            .send(&mut self.port, message)
+            .map_err(client_error)
     }
     pub fn poll(&mut self, client: &mut Client) -> Result<usize, ClientError> {
-        if let Some((_, _, _, validation)) = self.upload_validation.as_mut() {
-            if validation
-                .step(256 * 1024)
-                .map_err(|_| ClientError::Protocol)?
-            {
-                let (authority, key, target, validation) = self.upload_validation.take().unwrap();
-                let stream =
-                    shoop_app_protocol::persistence_transfer::UploadStream::from_validated(
-                        validation.finish().map_err(|_| ClientError::Protocol)?,
-                        key,
-                        target,
-                    )
-                    .map_err(|_| ClientError::Protocol)?;
-                self.upload = Some((authority, key, stream));
+        let now = Instant::now();
+        if let Some(heartbeat) = self.heartbeat.as_mut() {
+            heartbeat.advance(now.saturating_duration_since(self.last));
+            if heartbeat.expired() {
+                client.disconnect();
+                return Err(ClientError::Disconnected);
+            }
+            if heartbeat.pump(&mut self.port).is_err() {
+                client.disconnect();
+                return Err(ClientError::Disconnected);
             }
         }
-        for _ in 0..shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN {
-            if self.upload_finished
-                || self.upload_outstanding >= shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN
-            {
-                break;
-            }
-            if self.upload_pending.is_none() {
-                let Some((authority, _, stream)) = self.upload.as_mut() else {
-                    break;
-                };
-                match stream.next_request().map_err(|_| ClientError::Protocol)? {
-                    Some(request) => {
-                        self.upload_pending = Some(ClientMessage::Persistence {
-                            authority: *authority,
-                            request,
-                        })
-                    }
-                    None => {
-                        self.upload_finished = true;
-                        break;
-                    }
-                }
-            }
-            let message = self
-                .upload_pending
-                .as_ref()
-                .expect("pending upload record")
-                .clone();
-            match self.send_wire(message) {
-                Ok(()) => {
-                    self.upload_pending = None;
-                    self.upload_outstanding += 1;
-                }
-                Err(ClientError::Full) => break,
-                Err(error) => return Err(error),
-            }
-        }
+        self.last = now;
+        self.upload.pump(&mut self.port).map_err(client_error)?;
         let mut count = 0;
         let mut bytes = [0; MAX_RECORD_BYTES];
         for _ in 0..MAX_MESSAGES_PER_TURN {
-            let Some(length) = self.port.take(&mut bytes) else {
+            let Some(n) = self.port.take(&mut bytes) else {
                 break;
             };
-            let message = codec::decode(&bytes[..length]).map_err(|_| ClientError::Protocol)?;
-            if let WireMessage::Persistence { authority, reply } = &message {
-                if self
-                    .upload
-                    .as_ref()
-                    .is_some_and(|(owner, key, _)| owner == authority && *key == reply.key())
-                {
-                    if matches!(
-                        reply,
-                        shoop_app_protocol::persistence::Reply::Refused { .. }
-                    ) {
-                        self.clear_upload();
-                    } else {
-                        self.upload_outstanding = self.upload_outstanding.saturating_sub(1);
-                    }
-                }
+            let message = codec::decode(&bytes[..n]).map_err(|_| ClientError::Protocol)?;
+            if self
+                .heartbeat
+                .as_mut()
+                .is_some_and(|heartbeat| heartbeat.receive(&message))
+            {
+                continue;
             }
+            self.upload.received(&message);
             client.receive_wire(message)?;
             count += 1;
-        }
-        if self.upload_finished && self.upload_outstanding == 0 {
-            self.clear_upload();
         }
         if self.port.failure().is_some() {
             client.disconnect();
@@ -270,24 +217,21 @@ impl Connection {
 mod tests;
 
 pub fn management(
-    entry: &HostEntry,
+    entry: &impl ConnectionTarget,
     request: ManagementRequest,
     timeout: Duration,
 ) -> Result<ManagementReply> {
-    let token = entry.token()?;
-    let mut port = shoop_transport_socket::setup::connect(
-        entry.management,
-        &token,
-        Default::default(),
-        timeout,
-    )
-    .context("authenticate session management connection")?;
+    let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
+    let deadline = Instant::now() + timeout;
+    let mut port = open(&entry, &entry.management, &token, deadline)
+        .context("authenticate session management connection")?;
+    greeting(&mut port, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode(&WireMessage::ManagementRequest(request), &mut bytes)
         .map_err(|_| anyhow!("invalid management request"))?;
     port.post(&bytes[..length])
         .map_err(|_| anyhow!("management connection closed before submission"))?;
-    let deadline = Instant::now() + timeout;
     loop {
         if let Some(length) = port.take(&mut bytes) {
             let reply = codec::decode(&bytes[..length])
@@ -308,7 +252,8 @@ pub fn management(
 }
 
 /// Explicitly acquire shutdown authority for an ownerless host. Never evicts a live UI.
-pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
+pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> Result<()> {
+    let entry = entry.target();
     use shoop_app_protocol::{ClientId, OperationId, Outcome, VERSION};
     let operation = OperationId {
         client: ClientId(crate::registry::identity()?),
@@ -316,13 +261,16 @@ pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
     };
     let mut request = ManagementRequest::ClaimShutdown {
         version: VERSION,
-        host: entry.host,
-        session: entry.session,
+
         operation,
     };
     let deadline = Instant::now() + timeout;
     loop {
-        match management(entry, request, Duration::from_secs(2))? {
+        match management(
+            &entry,
+            request,
+            remaining(deadline)?.min(Duration::from_secs(2)),
+        )? {
             ManagementReply::Accepted {
                 authority,
                 operation: pending,
@@ -344,5 +292,62 @@ pub fn shutdown_ownerless(entry: &HostEntry, timeout: Duration) -> Result<()> {
             return Err(anyhow!("host cleanup has not completed"));
         }
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+pub fn host_report(
+    entry: &impl ConnectionTarget,
+    timeout: Duration,
+) -> Result<shoop_app_protocol::HostReport> {
+    let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
+    let deadline = Instant::now() + timeout;
+    let mut port = open(&entry, &entry.management, &token, deadline)?;
+    greeting(&mut port, deadline)?;
+    let mut record = [0; MAX_RECORD_BYTES];
+    let n = codec::encode(
+        &WireMessage::ManagementRequest(ManagementRequest::Settings {
+            version: shoop_app_protocol::VERSION,
+        }),
+        &mut record,
+    )
+    .map_err(|_| anyhow!("invalid settings query"))?;
+    port.post(&record[..n])
+        .map_err(|_| anyhow!("host settings query disconnected"))?;
+    let mut bytes = Vec::new();
+    let mut expected = None;
+    loop {
+        if let Some(n) = port.take(&mut record) {
+            match codec::decode(&record[..n]).map_err(|_| anyhow!("invalid host settings reply"))? {
+                WireMessage::ManagementReply(ManagementReply::SettingsChunk {
+                    offset,
+                    total,
+                    bytes: chunk,
+                }) => {
+                    anyhow::ensure!(
+                        offset as usize == bytes.len() && expected.is_none_or(|size| size == total),
+                        "incoherent host settings reply"
+                    );
+                    if expected.is_none() {
+                        bytes.reserve_exact(total as usize);
+                        expected = Some(total);
+                    }
+                    bytes.extend_from_slice(&chunk);
+                    if bytes.len() == total as usize {
+                        return codec::decode_host_report(&bytes)
+                            .map_err(|_| anyhow!("invalid host settings document"));
+                    }
+                }
+                WireMessage::ManagementReply(ManagementReply::Refused(reason)) => {
+                    return Err(anyhow!("host settings query refused: {reason:?}"))
+                }
+                _ => return Err(anyhow!("unexpected host settings reply")),
+            }
+        }
+        if port.failure().is_some() {
+            return Err(anyhow!("host settings reply interrupted"));
+        }
+        remaining(deadline)?;
+        std::thread::sleep(Duration::from_millis(1));
     }
 }

@@ -180,6 +180,12 @@ def package_native(args: argparse.Namespace) -> list[Path]:
                 [str(staged_executable), "--probe-persistence", "--session-transport", transport],
                 cwd=stage, check=True, timeout=600,
             )
+        for probe, timeout in (("--probe-engine-transport", 60), ("--probe-persistence", 600)):
+            subprocess.run(
+                [str(staged_executable), probe, "--session-transport", "socket"],
+                cwd=stage, check=True, timeout=timeout,
+                env={**os.environ, "SHOOP_PROBE_LAN": "1"},
+            )
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:

@@ -1,52 +1,47 @@
 use crate::registry::AppTransport;
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use shoop_app_api::{AudioDriverConfig, NewEnginePools};
+pub use shoop_app_api::HostSettings;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HostConfig {
-    pub driver: AudioDriverConfig,
-    pub pools: NewEnginePools,
-    pub master_auto_connect: bool,
-    pub loop_smoothing_ms: u32,
+    #[serde(flatten)]
+    pub settings: HostSettings,
     pub transport: AppTransport,
     #[cfg(feature = "testing")]
     pub test_signal: bool,
 }
-impl Default for HostConfig {
-    fn default() -> Self {
-        Self {
-            driver: AudioDriverConfig::default(),
-            pools: NewEnginePools::default(),
-            master_auto_connect: true,
-            loop_smoothing_ms: 3,
-            transport: AppTransport::Socket,
-            #[cfg(feature = "testing")]
-            test_signal: false,
-        }
+impl core::ops::Deref for HostConfig {
+    type Target = HostSettings;
+    fn deref(&self) -> &Self::Target {
+        &self.settings
+    }
+}
+impl core::ops::DerefMut for HostConfig {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.settings
     }
 }
 impl HostConfig {
     pub fn validate(&self) -> Result<()> {
-        ensure!(
-            (1..=64).contains(&self.pools.tracks)
-                && (1..=256).contains(&self.pools.loops)
-                && (1..=16).contains(&self.pools.channels)
-                && (1..=1024).contains(&self.pools.loop_memory_mb),
-            "session engine capacities exceed supported bounds"
-        );
-        ensure!(
-            self.loop_smoothing_ms <= 100,
-            "loop smoothing exceeds 100 ms"
-        );
-        if let AudioDriverConfig::Dummy(driver) = &self.driver {
-            ensure!(
-                (8000..=384000).contains(&driver.sample_rate)
-                    && (1..=16384).contains(&driver.buffer_size),
-                "invalid dummy driver configuration"
-            );
-        }
-        Ok(())
+        self.settings.validate().map_err(anyhow::Error::msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[shoop_wasm_test_support::shoop_test]
+    fn flat_native_json_uses_the_shared_host_settings_contract() {
+        let config: super::HostConfig = serde_json::from_str(r#"{"driver":{"Dummy":{"sample_rate":44100,"buffer_size":128}},"pools":{"tracks":4,"loops":16,"channels":2,"loop_memory_mb":32},"transport":"socket"}"#).unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.pools.loop_memory_mb, 32);
+        assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());
+        let mut invalid = config.settings.clone();
+        invalid.pools.loops = 0;
+        assert!(invalid.validate().is_err());
+        let decoded: super::HostConfig =
+            serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(decoded.settings, config.settings);
     }
 }

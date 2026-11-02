@@ -12,6 +12,7 @@ pub enum SettingsTest {
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
+#[cfg_attr(not(target_arch = "wasm32"), command(group = clap::ArgGroup::new("connection_target").args(["host_file","remote_profile"])))]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
@@ -27,6 +28,30 @@ pub struct AppArgs {
     pub endpoint: Option<std::net::SocketAddr>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
+    pub management_endpoint: Option<std::net::SocketAddr>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "host_only")]
+    pub lan: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub advertise_data: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub advertise_management: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub export_profile: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub heartbeat_interval_ms: Option<u64>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub heartbeat_timeout_ms: Option<u64>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
+    pub snapshot_hz: Option<u32>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long)]
     pub credential_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
@@ -35,11 +60,14 @@ pub struct AppArgs {
     #[arg(long)]
     pub host_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_file")]
+    #[arg(long, conflicts_with = "host_only")]
+    pub remote_profile: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "connection_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Shut down the selected ownerless host using authenticated management authority.
-    #[arg(long, requires = "host_file", conflicts_with = "ui_only")]
+    #[arg(long, requires = "connection_target", conflicts_with = "ui_only")]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]

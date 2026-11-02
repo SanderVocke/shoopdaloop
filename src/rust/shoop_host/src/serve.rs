@@ -6,13 +6,12 @@ use crate::{
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
-use shoop_app_protocol::{codec, stream::StreamEncoder, *};
+use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
 use shoop_rt_host_native::{DriverConfig, NativeConfig, NativeHost};
-use shoop_transport::{CarrierError, RecordPort, MAX_RECORD_BYTES};
+use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
 use shoop_transport_socket::setup::Listener;
 use std::{
-    collections::VecDeque,
     net::SocketAddr,
     path::PathBuf,
     sync::{
@@ -27,9 +26,14 @@ use std::{
 pub struct StartOptions {
     pub registry: PathBuf,
     pub endpoint: SocketAddr,
+    pub management_endpoint: SocketAddr,
+    pub lan: bool,
+    pub advertised_endpoint: Option<String>,
+    pub advertised_management: Option<String>,
+    pub export_profile: Option<PathBuf>,
+    pub network: crate::remote::NetworkOptions,
     pub credential: Option<PathBuf>,
-    pub host: HostId,
-    pub session: SessionId,
+
     pub name: String,
 }
 impl StartOptions {
@@ -37,9 +41,14 @@ impl StartOptions {
         Ok(Self {
             registry,
             endpoint: "127.0.0.1:0".parse()?,
+            management_endpoint: "127.0.0.1:0".parse()?,
+            lan: false,
+            advertised_endpoint: None,
+            advertised_management: None,
+            export_profile: None,
+            network: Default::default(),
             credential: None,
-            host: HostId(identity()?),
-            session: SessionId(identity()?),
+
             name: "ShoopDaLoop".into(),
         })
     }
@@ -51,21 +60,65 @@ struct Acceptor {
     ports: Receiver<shoop_transport_socket::Port>,
 }
 impl Acceptor {
-    fn new(listener: Listener) -> Result<Self> {
+    fn new(listener: Listener, lan: bool) -> Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = Arc::clone(&stop);
         let (sender, ports) = mpsc::sync_channel(4);
         let join = thread::Builder::new()
             .name("shoop-auth".into())
             .spawn(move || {
+                let mut pending: Vec<(
+                    shoop_transport_socket::NativeStream,
+                    shoop_transport::handshake::Handshake,
+                )> = Vec::with_capacity(4);
+                let mut last = Instant::now();
                 while !stopping.load(Ordering::Acquire) {
-                    match listener.accept(Default::default(), Duration::from_millis(100)) {
-                        Ok(port) => {
-                            let _ = sender.try_send(port);
+                    let now = Instant::now();
+                    let elapsed = now.saturating_duration_since(last);
+                    last = now;
+                    for _ in 0..4 {
+                        match listener.accept_stream() {
+                            Ok(Some(stream)) if pending.len() < 4 => pending.push((
+                                shoop_transport_socket::NativeStream(stream),
+                                shoop_transport::handshake::Handshake::new(
+                                    *listener.token(),
+                                    true,
+                                    Duration::from_secs(5),
+                                ),
+                            )),
+                            Ok(Some(_)) => {}
+                            Ok(None) => break,
+                            Err(_) => return,
                         }
-                        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {}
-                        Err(_) => break,
                     }
+                    let mut index = 0;
+                    while index < pending.len() {
+                        let (io, handshake) = &mut pending[index];
+                        match handshake.advance(io, elapsed) {
+                            Ok(false) => index += 1,
+                            Ok(true) => {
+                                let (io, _) = pending.swap_remove(index);
+                                let config = if lan {
+                                    shoop_transport_socket::Config {
+                                        reliable: 8,
+                                        telemetry: 1,
+                                        bulk: 8,
+                                    }
+                                } else {
+                                    Default::default()
+                                };
+                                if let Ok(port) =
+                                    shoop_transport_socket::Port::from_stream(io.0, config)
+                                {
+                                    let _ = sender.try_send(port);
+                                }
+                            }
+                            Err(_) => {
+                                pending.swap_remove(index);
+                            }
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(1));
                 }
             })?;
         Ok(Self {
@@ -85,26 +138,32 @@ impl Drop for Acceptor {
 }
 
 struct Registration {
-    registry: Registry,
+    registry: Option<Registry>,
     entry: HostEntry,
 }
 impl Drop for Registration {
     fn drop(&mut self) {
-        if let Err(error) = self.registry.remove(&self.entry) {
-            tracing::warn!(%error, "host.registry.cleanup_failed");
+        if let Some(registry) = self.registry.as_ref() {
+            if let Err(error) = registry.remove(&self.entry) {
+                tracing::warn!(%error, "host.registry.cleanup_failed");
+            }
         }
     }
 }
 
 pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
-    let _span =
-        tracing::info_span!("host.session", host = %options.host.0, session = %options.session.0)
-            .entered();
+    let _span = tracing::info_span!("host.session").entered();
     config.validate()?;
+    options.network.validate()?;
     ensure!(
-        options.host.0 != 0 && options.session.0 != 0 && options.name.len() <= 128,
-        "invalid host identity or name"
+        !options.lan || config.transport == AppTransport::Socket,
+        "LAN hosts require socket delivery"
     );
+    ensure!(
+        !options.lan || options.credential.is_some(),
+        "LAN hosts require --credential-file"
+    );
+    ensure!(options.name.len() <= 128, "invalid host identity or name");
     let registry = Registry::open(&options.registry)?;
     let (mut native, mut warnings) = engine::native_config(
         &config.driver,
@@ -141,12 +200,11 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
-            host: options.host,
-            session: options.session,
             master_auto_connect: config.master_auto_connect,
             loop_smoothing_ms: config.loop_smoothing_ms,
         },
     )?;
+    service.set_host_settings(config.settings.clone(), warnings.clone())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     while !service.is_ready() {
         service.tick(Duration::from_millis(2));
@@ -172,8 +230,48 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             token
         }
     };
-    let data = Listener::bind_with(options.endpoint, token)?;
-    let management = Listener::bind_with("127.0.0.1:0".parse()?, token)?;
+    let bind = if options.lan {
+        Listener::bind_lan
+    } else {
+        Listener::bind_with
+    };
+    let data = bind(options.endpoint, token)?;
+    let management = bind(options.management_endpoint, token)?;
+    if options.lan && options.export_profile.is_some() {
+        let profile = crate::remote::RemoteProfile {
+            version: VERSION,
+
+            name: options.name.clone(),
+            endpoint: options
+                .advertised_endpoint
+                .clone()
+                .unwrap_or(data.address()?.to_string()),
+            management: options
+                .advertised_management
+                .clone()
+                .unwrap_or(management.address()?.to_string()),
+            credential: PathBuf::from(
+                options
+                    .credential
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .context("credential filename unavailable")?,
+            ),
+            network: options.network,
+        };
+        let path = options.export_profile.as_ref().unwrap();
+        if path.exists() {
+            let existing = crate::remote::RemoteProfile::read(path)?;
+            ensure!(
+                existing.endpoint == profile.endpoint
+                    && existing.management == profile.management
+                    && existing.credential.file_name() == profile.credential.file_name(),
+                "existing profile selects different endpoints or credentials"
+            );
+        } else {
+            profile.write(path)?;
+        }
+    }
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
             512, 32, 32,
@@ -192,12 +290,11 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     let credential = options
         .credential
         .map(Ok)
-        .unwrap_or_else(|| registry.create_credential(options.host, &token))?;
+        .unwrap_or_else(|| registry.create_credential(std::process::id(), &token))?;
     let registration = Registration {
         entry: HostEntry {
             version: VERSION,
-            host: options.host,
-            session: options.session,
+
             name: options.name,
             process: std::process::id(),
             endpoint: data.address()?,
@@ -207,14 +304,16 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
             warnings,
         },
-        registry,
+        registry: if options.lan { None } else { Some(registry) },
     };
-    registration.registry.publish(&registration.entry)?;
-    let data = Acceptor::new(data)?;
-    let management = Acceptor::new(management)?;
+    if let Some(registry) = registration.registry.as_ref() {
+        registry.publish(&registration.entry)?;
+    }
+    let data = Acceptor::new(data, options.lan)?;
+    let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();
-    let mut next_connection = 1u64;
+
     let mut last = Instant::now();
     let mut finished = None;
     let mut cleanup_error = None;
@@ -237,38 +336,32 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             } else {
                 None
             };
-            if send(
-                &mut port,
-                &WireMessage::CarrierReady {
-                    host: registration.entry.host,
-                    session: registration.entry.session,
-                },
-            )
-            .is_err()
-            {
+            if send(&mut port, &WireMessage::CarrierReady).is_err() {
                 continue;
             }
-            clients.push(Data::new(ConnectionId(next_connection), port, shared_port));
-            next_connection = next_connection
-                .checked_add(1)
-                .context("connection generation exhausted")?;
+            clients.push(Data::new(
+                ConnectionId(identity()?),
+                port,
+                shared_port,
+                options.lan.then_some(options.network),
+            )?);
         }
         for _ in 0..4 {
             match management.ports.try_recv() {
-                Ok(port) if managers.len() < 4 => managers.push(Manager {
-                    port,
-                    started: Instant::now(),
-                    sent: false,
-                }),
+                Ok(port) if managers.len() < 4 => {
+                    managers.push(shoop_app_connection::Management::new(port))
+                }
                 Ok(_) => {}
                 Err(_) => break,
             }
         }
+        let now = Instant::now();
+        let elapsed = now.duration_since(last);
         for client in &mut clients {
+            client.core.advance(elapsed);
             client.receive(&mut service);
         }
-        let now = Instant::now();
-        service.tick(now.duration_since(last));
+        service.tick(elapsed);
         last = now;
         if service.shutdown_ready() {
             service
@@ -288,21 +381,14 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             }
             service.complete_shutdown(result);
         }
-        for manager in &mut managers {
-            manager.pump(&mut service);
-        }
-        managers.retain_mut(|manager| {
-            !(manager.sent && manager.port.outgoing_empty())
-                && manager.started.elapsed() < Duration::from_secs(2)
-                && manager.port.failure().is_none()
-        });
+        managers.retain_mut(|manager| manager.pump(&mut service, elapsed));
         for client in &mut clients {
-            client.write(&mut service);
+            client.core.write(&mut service);
         }
         clients.retain_mut(|client| {
-            let alive = client.alive(&service);
+            let alive = client.core.alive(&service);
             if !alive {
-                service.detach(client.id);
+                service.detach(client.core.id);
             }
             alive
         });
@@ -345,211 +431,40 @@ fn send(port: &mut impl RecordPort, message: &WireMessage) -> Result<()> {
     port.post(&bytes[..length])
         .map_err(|error| anyhow!("host response delivery failed: {error:?}"))
 }
-struct Manager {
-    port: shoop_transport_socket::Port,
-    started: Instant,
-    sent: bool,
-}
-impl Manager {
-    fn pump(&mut self, service: &mut Service) {
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        if !self.sent {
-            if let Some(length) = self.port.take(&mut bytes) {
-                let reply = match codec::decode(&bytes[..length]) {
-                    Ok(WireMessage::ManagementRequest(request)) => service.management(request),
-                    _ => ManagementReply::Refused(Refusal::Invalid),
-                };
-                self.sent = send(&mut self.port, &WireMessage::ManagementReply(reply)).is_ok();
-            }
-        } else {
-            let _ = self.port.flush();
-        }
-    }
-}
 struct Data {
-    id: ConnectionId,
-    port: Port,
+    core: shoop_app_connection::Session<Port>,
     shared: Option<shoop_transport_shared_memory::Port>,
-    started: Instant,
-    attached: bool,
-    closing: bool,
-    closing_since: Option<Instant>,
-    semantic: Option<StreamEncoder>,
-    snapshot: bool,
-    media: Option<StreamEncoder>,
-    pending: Option<Vec<u8>>,
-    transfer: u64,
-    replies: VecDeque<ServiceMessage>,
 }
 impl Data {
     fn new(
         id: ConnectionId,
         port: shoop_transport_socket::Port,
         shared: Option<shoop_transport_shared_memory::Port>,
-    ) -> Self {
-        Self {
-            id,
-            port: Port::Socket(port),
-            shared,
-            started: Instant::now(),
-            attached: false,
-            closing: false,
-            closing_since: None,
-            semantic: None,
-            snapshot: false,
-            media: None,
-            pending: None,
-            transfer: 1,
-            replies: VecDeque::new(),
-        }
-    }
-    fn retire(&mut self) {
-        self.closing = true;
-        self.closing_since.get_or_insert_with(Instant::now);
-        self.media = None;
-        self.semantic = None;
-        self.pending = None;
+        network: Option<crate::remote::NetworkOptions>,
+    ) -> Result<Self> {
+        let core = shoop_app_connection::Session::new(id, Port::Socket(port));
+        let core = match network {
+            Some(network) => core
+                .with_network(
+                    network.heartbeat(),
+                    (crate::registry::identity()? as u64).max(1),
+                    network.snapshot_hz,
+                )
+                .map_err(|_| anyhow!("invalid heartbeat settings"))?,
+            None => core,
+        };
+        Ok(Self { core, shared })
     }
     fn receive(&mut self, service: &mut Service) {
         if self.shared.is_some() {
-            if let Port::Socket(port) = &mut self.port {
+            if let Port::Socket(port) = &mut self.core.port {
                 let _ = port.flush();
                 if !port.outgoing_empty() {
                     return;
                 }
             }
-            self.port = Port::Shared(self.shared.take().unwrap());
+            self.core.port = Port::Shared(self.shared.take().unwrap());
         }
-        if self.closing {
-            return;
-        }
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        let mut commands = 0;
-        for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
-            if commands == MAX_COMMANDS_PER_TURN {
-                break;
-            }
-            let Some(length) = self.port.take(&mut bytes) else {
-                break;
-            };
-            let result = match codec::decode(&bytes[..length]) {
-                Ok(WireMessage::Client(message)) => {
-                    if !matches!(message, ClientMessage::Persistence { .. }) {
-                        commands += 1;
-                    }
-                    if matches!(
-                        message,
-                        ClientMessage::CancelMedia { .. } | ClientMessage::ReadMedia { .. }
-                    ) {
-                        self.media = None;
-                    }
-                    let detached = matches!(message, ClientMessage::Detach { .. });
-                    let result = service.handle(self.id, message);
-                    if result.is_ok() && detached {
-                        self.retire();
-                    }
-                    result
-                }
-                _ => Err(Refusal::Invalid),
-            };
-            if let Err(reason) = result {
-                self.replies.push_back(ServiceMessage::Rejected(reason));
-                self.retire();
-                break;
-            }
-            self.attached |= service.has_connection(self.id);
-        }
-    }
-    fn write(&mut self, service: &mut Service) {
-        let mut records = 0;
-        for _ in 0..2 * MAX_MESSAGES_PER_TURN {
-            if records == MAX_MESSAGES_PER_TURN {
-                break;
-            }
-            if self.pending.is_none() {
-                if self.semantic.is_none() {
-                    let update = self
-                        .replies
-                        .pop_front()
-                        .or_else(|| service.take_update(self.id));
-                    if let Some(update) = update {
-                        let media = matches!(update, ServiceMessage::Media { .. });
-                        self.snapshot = matches!(update, ServiceMessage::Snapshot { .. });
-                        let stream = StreamEncoder::new(update, TransferId(self.transfer));
-                        self.transfer = self.transfer.saturating_add(1);
-                        match stream {
-                            Ok(stream) if media => self.media = Some(stream),
-                            Ok(stream) => self.semantic = Some(stream),
-                            Err(_) => {
-                                self.retire();
-                                return;
-                            }
-                        }
-                    }
-                }
-                let from_media = self.media.is_some()
-                    && (self.semantic.is_none() || (self.snapshot && records % 4 == 3));
-                let stream = if from_media {
-                    &mut self.media
-                } else {
-                    &mut self.semantic
-                };
-                let Some(encoder) = stream.as_mut() else {
-                    break;
-                };
-                let Some(message) = encoder.next_message() else {
-                    *stream = None;
-                    continue;
-                };
-                let mut bytes = [0; MAX_RECORD_BYTES];
-                match codec::encode(&message, &mut bytes) {
-                    Ok(length) => self.pending = Some(bytes[..length].to_vec()),
-                    Err(_) => {
-                        self.retire();
-                        return;
-                    }
-                }
-            }
-            match self.port.post(self.pending.as_ref().unwrap()) {
-                Ok(()) => {
-                    self.pending = None;
-                    records += 1;
-                }
-                Err(CarrierError::Full) => break,
-                Err(_) => {
-                    self.retire();
-                    break;
-                }
-            }
-        }
-    }
-    fn alive(&mut self, service: &Service) -> bool {
-        if self
-            .closing_since
-            .is_some_and(|started| started.elapsed() > Duration::from_secs(2))
-        {
-            return false;
-        }
-        if self.port.failure().is_some() {
-            return false;
-        }
-        if self.attached && !service.has_connection(self.id) && !self.closing {
-            return false;
-        }
-        if !self.attached && self.started.elapsed() > Duration::from_secs(3) {
-            return false;
-        }
-        let drained = match &mut self.port {
-            Port::Socket(port) => {
-                let _ = port.flush();
-                port.outgoing_empty()
-            }
-            Port::Shared(_) => true,
-        };
-        !(self.closing
-            && self.replies.is_empty()
-            && self.semantic.is_none()
-            && self.pending.is_none()
-            && drained)
+        self.core.receive(service);
     }
 }

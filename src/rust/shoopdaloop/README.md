@@ -8,6 +8,8 @@ tracks each temporary gap, reference implementation/test and restoration criteri
 Feature editors, document/configuration fields and reference behavior are retained
 for upcoming parity work. Recovery is independent of disk persistence.
 
+For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
+
 ## Native roles and delivery
 
 ```sh
@@ -40,19 +42,23 @@ target/debug/shoopdaloop --ui-only --host-file /path/from/list/host.json
 ```
 
 Host-only also accepts `--registry`, `--endpoint 127.0.0.1:PORT`,
-`--credential-file PATH`, `--host-id`, `--session-id` and `--name`. The application
+`--credential-file PATH` and `--name`. The application
 wrapper uses `--host-registry` for the registry override. Credential files contain
 exactly 32 random bytes and require owner-only permissions/ACLs. Registry entries
 refer to credentials rather than embedding tokens; never put tokens in arguments.
-Explicit registrations carry data/management endpoints and host/session identities.
-Authentication and identity verification precede attachment; a healthy owner is
-refused without eviction. Registrations are discovery hints, not process authority.
+Registrations carry data/management endpoints and local process metadata.
+Authentication and protocol checks precede attachment; a second controller is
+refused while the current owner remains healthy. Registrations are discovery hints.
 
-Attachment shows progress, coherent snapshot synchronization, failures and a manual
-**Reattach to this host** action. The Session menu can select a registered host.
-Recovered scripts are visible but inactive because the previous Lua VM was lost;
-start them explicitly in Scripts. Reattachment does not reload settings, scripts,
-a session file, Master autoconnections or the sync track into the live service.
+Every connection obtains a fresh snapshot of the endpoint's current state. The
+**Connect to endpoint** action uses the same flow after loss or host restart.
+Previous pending requests are discarded and commands are not replayed. Configured
+scripts remain visible but disabled; start them explicitly in Scripts. Connection
+does not apply local preferences or initialize the host's session.
+
+The Session menu's **Connected host settings…** panel queries the host's startup
+settings, effective audio status and diagnostics. Local preference saves change
+future local launch defaults, independently of the connected host.
 
 For an external host, the Session menu and window/platform close offer:
 

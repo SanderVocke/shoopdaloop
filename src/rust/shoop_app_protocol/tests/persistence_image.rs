@@ -12,7 +12,7 @@ fn key() -> Key {
 }
 fn authority() -> Authority {
     Authority {
-        session: SessionId(1),
+        lease: LeaseId(1),
         client: ClientId(1),
         generation: ConnectionGeneration(1),
     }
