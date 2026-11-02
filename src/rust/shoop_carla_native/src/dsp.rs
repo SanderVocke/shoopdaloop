@@ -16,6 +16,15 @@ impl CarlaDsp {
         dispatcher: Option<CarlaMainThreadUiDispatcher>,
     ) -> anyhow::Result<Self> {
         config.validate()?;
+        let state = state
+            .map(|state| {
+                if state.trim_start().starts_with('<') {
+                    crate::encode_state(kind, state.as_bytes())
+                } else {
+                    Ok(state.to_owned())
+                }
+            })
+            .transpose()?;
         let mut host = match &dispatcher {
             Some(dispatcher) => CarlaNativeHost::instantiate_with_ui_dispatcher(
                 kind,
@@ -29,7 +38,7 @@ impl CarlaDsp {
             host.info().audio_inputs == config.channels,
             "Carla channel shape mismatch"
         );
-        if let Some(state) = state {
+        if let Some(state) = &state {
             host.restore_state(state)?;
         }
         host.set_active(true);
@@ -37,7 +46,7 @@ impl CarlaDsp {
             host,
             config,
             kind,
-            state: state.map(str::to_owned),
+            state,
             dispatcher,
         })
     }

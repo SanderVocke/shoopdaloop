@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: Stage 1 implemented and verified; Stages 2–3 and sweeps are pending.
+Status: Stages 1–2 implemented and verified; Stage 3 and full sweeps are pending.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -201,27 +201,27 @@ Do not make the generic interface depend on `shoop_engine` or its worker protoco
 
 Depends on Stage 1's DSP contract and both implementations.
 
-- [ ] Implement bounded codecs, negotiation and per-stream epochs. Negotiate
+- [x] Implement bounded codecs, negotiation and per-stream epochs. Negotiate
       `fs/P/k/N`, shape, DSP choice/configuration, reorder limits and capacities.
       Define startup/priming, gap, stop and reconfiguration semantics in protocol
       documentation with boundary examples.
-- [ ] Implement packet-to-`C` assembly and `C`-to-packet splitting by source frame,
+- [x] Implement packet-to-`C` assembly and `C`-to-packet splitting by source frame,
       independent of socket receive chunking. Rebase MIDI offsets in both
       directions and cover partial/malformed messages and capacity exhaustion.
-- [ ] Add `shoop_dsp_host serve --processor delay-copy|carla` and a native requester
+- [x] Add `shoop_dsp_host serve --processor delay-copy|carla` and a native requester
       mode. The requester generates known samples, maintains multiple requests in
       flight, checks returned content and consumes every scheduled output slot.
-- [ ] Pace the requester from nominal source readiness with monotonic elapsed
+- [x] Pace the requester from nominal source readiness with monotonic elapsed
       time. Record sender lateness separately; bound catch-up and mark source
       overruns instead of silently moving deadlines or bursting indefinitely.
-- [ ] Add source-relative and worker-duration instrumentation, bounded counters
+- [x] Add source-relative and worker-duration instrumentation, bounded counters
       and off-worker reporting. Distinguish input concealment, sender overruns,
       output deadline misses, stale traffic and queue/algorithm failures.
-- [ ] Verify real localhost UDP between separate processes with both DSP choices,
+- [x] Verify real localhost UDP between separate processes with both DSP choices,
       `k=1` and aggregation, startup silence, channel ordering, state restoration,
       control progress and clean shutdown. Impulses must land at exact sample
       indices; processing must not acquire an extra queued packet period.
-- [ ] Commit this milestone after focused codec/adapter/process tests pass.
+- [x] Commit this milestone after focused codec/adapter/process tests pass.
 
 ## Stage 3 — Failure semantics and actual localhost sweeps
 
@@ -322,3 +322,26 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - `cargo fmt --all`, warning-denying workspace build and shared test policy passed.
 - Extraction retains ABI/state/UI implementation and moves its tests with it;
   native tests use shared source fixtures and no legacy-engine dependency.
+
+### Stage 2
+
+- Added processor-independent UDP codecs, bounded source-ordered stream adaptation
+  and a bounded return-slot scheduler. Deadline slots emit processed/concealed
+  audio or silence without accepting retroactive late replacement.
+- Added a dedicated processing worker and control/main-thread lifecycle with
+  authenticated TCP, epoch fencing, quiescent state/UI operations and source-idle
+  retirement. Pause/resume retains the worker's elapsed-time domain.
+- Extracted the existing protected-file helper to `shoop_transport_socket` and
+  re-exported it from `shoop_host`; both hosts now share Unix/Windows checks.
+- `SHOOP_REQUIRE_CARLA_TESTS=1 cargo test -p shoop_dsp -p shoop_remote_dsp
+  -p shoop_dsp_host --features shoop_dsp_host/carla -p shoop_transport_socket
+  -p shoop_carla_native`: 26 tests passed. Follow-up targeted runs after lifecycle
+  hardening passed all 9 protocol/process tests.
+- Real separate-process gain-0.5 Carla workflows verified 19,200 samples per run,
+  first from project XML and then from network-saved state; no correctness errors.
+- `cargo build --lib -p shoop_dsp -p shoop_remote_dsp --target
+  thumbv7em-none-eabihf`: passed without a standard library.
+- `cargo tree -p shoop_dsp_host --no-default-features --edges normal` confirms no
+  dependency on Carla or the legacy engine. Both host feature builds passed.
+- Warning-denying workspace build, formatting, test policy and tracing inventory
+  passed. Short smoke timing results are not substituted for the planned sweeps.

@@ -4782,6 +4782,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_dsp_host"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "shoop_carla_native",
+ "shoop_dsp",
+ "shoop_remote_dsp",
+ "shoop_transport_socket",
+ "shoop_wasm_test_support",
+ "socket2",
+ "tempfile",
+]
+
+[[package]]
 name = "shoop_egui"
 version = "0.3.0"
 dependencies = [
@@ -4941,6 +4959,16 @@ dependencies = [
  "serde_json",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_remote_dsp"
+version = "0.3.0"
+dependencies = [
+ "assert_no_alloc",
+ "serde",
+ "shoop_dsp",
+ "shoop_wasm_test_support",
 ]
 
 [[package]]
@@ -5189,9 +5217,13 @@ dependencies = [
 name = "shoop_transport_socket"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "getrandom 0.4.3",
+ "nix",
  "shoop_transport",
+ "shoop_wasm_test_support",
  "socket2",
+ "tempfile",
 ]
 
 [[package]]

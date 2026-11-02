@@ -356,3 +356,12 @@ src/rust/shoop_carla_native/src/lib.rs,mixed_realtime_and_control,instrumented_d
 src/rust/shoop_carla_native/src/api.rs,types,excluded,Plain native adapter metadata and UI contract.
 src/rust/shoop_carla_native/src/dsp.rs,mixed_realtime_and_control,instrumented_indirect,Calls instrumented native processing and state boundaries.
 src/rust/shoop_dsp/src/lib.rs,realtime,excluded,Portable bounded DSP contract and deterministic reference algorithm measured by its host.
+src/rust/shoop_remote_dsp/src/lib.rs,types,excluded,Portable negotiation and source-relative timing arithmetic.
+src/rust/shoop_remote_dsp/src/wire.rs,realtime,excluded,Bounded codec measured by the standalone requester.
+src/rust/shoop_remote_dsp/src/stream.rs,realtime,excluded,Prepared stream reports counters and algorithm duration through its host.
+src/rust/shoop_remote_dsp/src/returns.rs,realtime,excluded,Bounded source-slot scheduler verified with deterministic deadlines.
+src/rust/shoop_dsp_host/src/main.rs,control,excluded,Standalone CLI composition without application graph events.
+src/rust/shoop_dsp_host/src/control.rs,control,excluded,Bounded native control framing outside the DSP worker.
+src/rust/shoop_dsp_host/src/server.rs,mixed_realtime_and_control,excluded,Standalone service publishes explicit stream counters and elapsed durations.
+src/rust/shoop_dsp_host/src/client.rs,control,excluded,Measurement requester exports timings histograms and sample correctness.
+src/rust/shoop_transport_socket/src/private.rs,control,excluded,Protected filesystem and platform ACL adapter.
