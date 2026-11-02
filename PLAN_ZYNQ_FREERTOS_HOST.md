@@ -4,8 +4,10 @@
 
 Execution authorized on 2026-11-02. Investigation used
 `feat/trusted-lan-networking` at `5aeadd0b52229312349053617677a714d2d4e437`.
-Implementation will use a new branch, `feat/zynq-freertos-rt-host`, and finish
-with one PR **into `feat/backend-replacement`**, left unmerged.
+Implemented on `feat/zynq-freertos-rt-host` in
+[PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914),
+**targeting `feat/backend-replacement`**, left unmerged. Final CI and handoff
+are in progress.
 The user retargeted delivery after networking merged as `540e863f`; this is the
 implementation base. Its tree matches the investigated networking head.
 
@@ -76,8 +78,8 @@ board testing and must not be claimed from QEMU results.
 
 Investigation already passed warning-denying library builds for
 `armv7a-none-eabi` and `armv7a-none-eabihf` with `target-cpu=cortex-a9`, plus all
-16 tests in `shoop_transport` and `shoop_app_connection`. No firmware has yet
-been linked or booted; these results do not pass Gate 1.
+16 tests in `shoop_transport` and `shoop_app_connection`. Those investigation-only results predated firmware integration; the actual
+firmware evidence below covers all three gates.
 
 Reuse `shoop_app_connection::{Session, Management}`, the `shoop_app` service,
 `shoop_rt_backend`, and the prepared engine/runtime/loop crates. Implement
@@ -145,12 +147,12 @@ checks and add the firmware job for that target; absent checks are not passes.
   upstream QEMU; any required AMD QEMU version or small patch must be pinned,
   justified and reproducible.
 
-### Initial memory policy
+### Measured memory policy
 
-This is a conservative starting design, to be measured before Gate 2 is accepted;
-the 1 GiB ceiling and acceptance criteria above remain fixed.
+The implemented subdivisions below include the documented arena/stack revisions
+in the execution evidence. The 1 GiB ceiling and acceptance criteria remain fixed.
 
-| PS DDR allocation | Initial maximum |
+| PS DDR allocation | Maximum |
 | --- | ---: |
 | Firmware, BSP/C/FreeRTOS heaps, task/exception stacks, DMA and all lwIP pools | 128 MiB |
 | Rust arena, including engine recording pages and all service/staging allocations | 768 MiB |
@@ -195,7 +197,7 @@ separate firmware manifest must have its own reproducible locked resolution.
 Depends on Stage 0; prove this gate before integrating Shoop.
 
 - [x] Build the smallest AMD FreeRTOS socket-mode echo application with PS UART,
-  TTC/GIC, GEM and 1 GiB-compatible BSP/linker settings. Park the second core.
+  SCU private timer/GIC, GEM and 1 GiB-compatible BSP/linker settings. Park the second core.
   Record ELF entry/load addresses, startup ownership and stack/heap regions.
 - [x] Add the QEMU launcher using `-M xilinx-zynq-a9 -accel tcg -smp 1 -m 1G`,
   direct ELF loading, captured serial output and a local QMP endpoint. Use
@@ -312,7 +314,7 @@ diagnostic capture, then restore it before committing the green milestone.
 
 Depends on all three gates; use the repository-prescribed build environment.
 
-- [ ] Rebuild from clean inputs and execute the entire QEMU suite at `-m 1G`.
+- [x] Rebuild from clean inputs and execute the entire QEMU suite at `-m 1G`.
   Repeat the native UI workflow: attach, create/record/play, close UI only,
   reconnect to ongoing state, save/load, query settings and confirm host shutdown.
 - [x] Run `cargo fmt --all` and the warning-denying build before Rust commits;
@@ -325,7 +327,7 @@ Depends on all three gates; use the repository-prescribed build environment.
   `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`,
   plus affected native LAN/persistence and browser regression gates. Use no
   missing-backend allowance to substitute for the actual embedded integration.
-- [ ] Review the memory ledger, image/map, production/test feature separation,
+- [x] Review the memory ledger, image/map, production/test feature separation,
   dependency boundaries, scope and acceptance evidence; update this plan and the
   LAN/platform documentation. Commit each remaining meaningful milestone.
 - [x] Push `feat/zynq-freertos-rt-host` and create/update one PR with
@@ -370,106 +372,103 @@ documentation links are background, not reproducible build inputs.
 
 ## Execution evidence
 
-- Stage 0: implementation base `540e863f` on `feat/backend-replacement` after
-  the user's retargeting instruction; its tree equals investigated `5aeadd0b`.
-  The hard-float Cortex-A9 portable build and all 16 connection/transport tests
-  pass. Platform layout and source/tool pins are recorded under `platforms/`.
-- Gate 1 local evidence: Arm GCC 14.2.1, QEMU 10.0.13, pinned AMD commit
-  `97f2baf7`. Actual FreeRTOS/lwIP/GEM exchanged 3,198,120 exact bytes over three
-  connections; QMP confirmed one CPU and 1,073,741,824 RAM bytes. Recorded AMD
-  interrupt-status patch resolves a double read of a clear-on-read register.
-  Stage 0 commit: `ba4e2adf`. Gate 1 scripts and the pinned-container CI job
-  are implemented; live PR CI and Gates 2/3 remain pending.
+- Delivery: [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914), base
+  `feat/backend-replacement` at `540e863f`. A final fetch confirmed no base
+  movement. The base tree equals investigated `5aeadd0b`.
+- Milestones: `ba4e2adf` establishes pins/layout; `ddd7cd4e` proves echo;
+  `64360a1c` introduces configurable admission; `dee441c3` integrates the complete
+  host and CI. Subsequent fixes cover the runner container's checkout ownership,
+  orderly fixture TCP close, monotonic transfer keys and explicit non-null
+  allocation evidence. The host/allocator review milestone is `dcb48ded`; later fixture synchronization
+  and documentation updates follow it.
+- Full local `suite.py --fetch`: all seven phases passed in one run, with rebuilt
+  firmware and the pinned AMD checkout: echo build, echo, intentional failing
+  content canary, production/restart, native UI, recovery and the complete fixture.
+  Total host time was 12 minutes 46 seconds. Each VM's QMP facts verified one CPU
+  and exactly 1,073,741,824 RAM bytes. Evidence is under `work/zynq/suite/` and
+  the corresponding per-phase directories; CI archives the same evidence.
 
-- Measured design revision during Stage 2: the prepared 8-track/32-loop engine
-  uses 344,480,048 Rust-heap bytes (328.52 MiB) before transfers. A 512 MiB arena
-  does not leave a conservative allowance for retained media plus ingress and
-  assembly. Enlarge the Rust arena to 768 MiB and reduce unassigned headroom to
-  128 MiB; the platform remains capped at 128 MiB and QEMU remains at 1 GiB.
-  The recording pool remains 128 MiB. The original 64 KiB render task stack had
-  only 249 words free; enlarge it to 256 KiB and remeasure with active media.
-  These revise design subdivisions, not goals or acceptance criteria.
+| Immutable criterion | Executed evidence |
+| --- | --- |
+| 1 — platform | Actual FreeRTOS/AMD lwIP/GEM exchanged 3,198,120 exact bytes over three TCP connections, including fragmentation and reopen. Corrupt echo bytes intentionally fail with captured diagnostics. |
+| 2 — complete host/UI | Production ELF, public native app client and real native UI paint/settings/edit/record/play/close/reattach/save/load/shutdown paths passed. Exact stereo PCM, MIDI payloads and their 512-frame separation reached real engine dummy outputs. |
+| 3 — authority/recovery | Wrong credentials/version, 12 slow handshakes and a competitor preserve the owner. All three TCP direction blackholes expire leases while recording continues. Upload/download loss reclaims staging or completes accepted commit, then recovers exact media. Restart refuses old authority; lost ownerless shutdown reply reconciles the same operation. All 32 MIDI reset packets are acknowledged before confirmed cleanup; stopped-owner failure/retry passes. |
+| 4 — runtime/boundaries | Cortex-A9 soft/hard-float and AArch64 no_std builds passed. Actual firmware verifies allocator alignment through 4096 bytes, 64-bit atomic carry, FPU task/IRQ preservation and the monotonic timer low-word carry. Every render call guards allocation and deallocation. Production ELF audits exclude fixture symbols and markers. |
+| 5 — memory/admission | Linker/load checks enforce the 1 GiB layout. Firmware refuses excess metadata/media/objects/MIDI events and inconsistent totals. A real full recording pool preserves playback; over-budget export and a small raw image with oversized normalized duration are refused without changing the session. Teardown leaves zero Rust allocations, socket slots and netconns. |
+| 6 — segmented persistence | 41,943,040 audio bytes plus MIDI and supported session structure round-trip exactly; the loaded session also renders its distinct stereo pattern through the engine. |
+| 7 — permanent CI | The pinned-container firmware job runs all seven phases, with bounded process ownership/timeouts and compact pass evidence plus failure-only packet/register captures. Existing native/browser/coverage/bare-metal/docs/CodeQL jobs remain enabled. Final CI verification is in progress. |
+| 8 — delivery/review | The PR targets the requested base and remains unmerged. CodeQL's two allocator-probe findings were fixed with an explicit NonNull guard; its rescan passes and both automated threads are resolved. Final head checks and handoff remain in progress. |
 
-- Portable admission milestone: `64360a1c` adds host-local limits with unchanged
-  native defaults. Limits cover declarations, cumulative assembly, canonical
-  content, normalized replacement bytes and capture/export, including source
-  metadata/object/event admission. The board profile is 64 MiB media, 1 MiB
-  metadata, 512 objects and 65,536 MIDI events.
-- Gate 2 execution: actual firmware recorded exact stereo PCM and note-on/off
-  events with a 512-frame separation; rendered playback reached the dummy outputs
-  with exact samples and MIDI bytes. A segmented session containing 41,943,040
-  audio bytes plus MIDI round-tripped exactly. Initial transfer peak was
-  407,465,916 Rust bytes. Native UI execution painted the connected host panel,
-  kept local preferences separate, recorded across UI close/reconnect, played,
-  saved/loaded/saved a client-side session and confirmed host cleanup.
-- Resource execution: the real 128 MiB page pool was filled while unrelated audio
-  played. A settled recording above the 64 MiB export budget was refused; a
-  replacement recording exhausted the pool while retaining prior playback.
-  A 100-cycle measured attach/stage/cancel/detach soak after ten warm-up cycles
-  retained exactly the same Rust heap usage and C heap/socket counts. MIDI output
-  counters checked both note payloads; all render calls retained the allocation
-  and deallocation guard. Cleanup-failure injection retained the stopped owner
-  for retry, and final teardown reported zero Rust allocations, socket slots and
-  netconns. All FreeRTOS task stack watermarks are archived; the render watermark
-  is saved before task deletion.
-- TCP lifecycle finding: packet capture showed a reused client source port
-  colliding with normal lwIP TIME_WAIT state. The broker now drains and waits
-  briefly for peer FIN before forcing close, and the fixture client closes its
-  TCP side before reconnecting. Normal cycling consequently leaves no guest
-  TIME_WAIT accumulation. No TCP safety setting or QEMU bypass was introduced.
-- Runtime checks passed on QEMU: allocator alignment through 4096 bytes, 64-bit
-  atomic carry, and two FPU canaries across task switches and deliberately
-  clobbering timer interrupts. Production builds reject fixture symbols/markers.
-  The launcher provisions a fresh boot nonce; restarting the same ELF at the
-  same TCP endpoints refuses previous-boot authority.
-- Regression evidence so far: all 2,517 native tests passed (five intentionally
-  skipped, including the external firmware UI test executed by its harness).
-  The affected Node suites and hosted Chromium core workflow passed; Cortex-A9
-  soft/hard-float and AArch64 no_std library builds, warning-denying workspace
-  build, tracing inventory and boundary audits passed. The full final QEMU run,
-  live PR CI and automated-review handoff remain pending.
+### Memory ledger and measured margins
 
-- Host/CI milestone: final short fixture also compares supported session structure,
-  admits 512 small objects, refuses 65,537 MIDI events, and completes the exact
-  100-cycle retained-heap comparison plus stopped-owner cleanup retry. The native
-  suite is 2,517/2,517; affected Node suites are 81/81 and hosted Chromium reports
-  the core audio/MIDI/file workflow passed with zero xruns. All-gates rerun and
-  live PR CI remain outstanding.
+| Allocation/accounting | Bound or observed value |
+| --- | ---: |
+| Platform reservation, including low startup area | 128 MiB |
+| Highest platform ELF load end | 48,234,496 bytes (46 MiB) |
+| Rust arena | 0x08000000–0x38000000: 768 MiB |
+| Unavailable headroom above the Rust arena | 128 MiB |
+| Recording pages, inside the Rust arena | 128 MiB |
+| Newlib / FreeRTOS / lwIP heap reservations | 16 / 16 / 4 MiB |
+| Prepared startup Rust use | 344,480,136 bytes (328.52 MiB) |
+| Combined-suite Rust peak | 407,460,812 bytes (388.58 MiB) |
+| Largest qualified-fixture Rust peak observed | 407,466,188 bytes (388.59 MiB) |
+| Minimum FreeRTOS free heap observed | 16,168,840 bytes |
+| Minimum control / render stack free | 37,511 / 41,901 words |
+| Minimum other task stack free | 929 words |
+| Combined-suite lwIP heap peak | 6,032 bytes |
+| Final Rust use / application sockets / netconns | 0 / 0 / 0 |
 
-- Delivery opened as [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914),
-  base `feat/backend-replacement` at `540e863f`. Host/CI milestone is `dee441c3`.
-  The new firmware workflow and existing desktop/browser, bare-metal, docs and
-  CodeQL workflows are running. No review has arrived at initial inspection.
-  The loaded-audio render expectation accounts for IEEE signed-zero mixing;
-  persisted PCM remains compared bit-for-bit.
+The board ceilings are 64 MiB decoded media, 1 MiB metadata, 512 objects and
+65,536 MIDI events. One persistence job owns ingress/assembly; immutable content
+is shared with Arc and engine uploads stream fixed chunks into the prepared
+pool. Admission includes aggregate canonical content and normalized duration,
+rather than granting the desktop's 256 MiB ceiling. Native defaults are unchanged.
+A 100-cycle measured soak after ten warm-up cycles, with the 40 MiB session still
+loaded, retained exactly 386,474,392 Rust bytes before and after, with unchanged
+FreeRTOS free heap and socket count.
 
-- Live CI found a container ownership mismatch at manifest Git revision capture
-  before echo execution. The firmware job now trusts only its runner checkout
-  path explicitly. The failure still uploaded the partial ELF/map/log evidence.
+### Supported design revisions and integration findings
 
-- Final-suite media checks passed with distinct stereo engine playback and exact
-  40 MiB-plus-MIDI persistence. The soak then exposed the fixture aborting a TCP
-  connection with unread telemetry before its Detach reached the guest; packet
-  capture showed the next Attach correctly refused Busy. Replace both-half close
-  and a fixed delay with write-half close, bounded receive drain and observed
-  peer EOF. The corrected short fixture completed all 100 measured cycles with
-  identical retained heaps and confirmed cleanup. Repeat the entire suite.
+- The measured prepared baseline was 328.52 MiB. Increase the original 512 MiB
+  Rust arena to 768 MiB to allow retained content plus ingress/assembly ownership;
+  reduce unassigned headroom to 128 MiB. The total stays 1 GiB. A 64 KiB render
+  stack initially left only 249 words, so both owner tasks now have 256 KiB stacks.
+- Use AMD's SCU private timer for the RTOS tick and the 64-bit PS global timer for
+  elapsed time. The fractional render notification phase implements 48 kHz/256
+  without approximating the quantum to five ticks.
+- Recorded AMD patches fix a duplicate clear-on-read GEM ISR read and preserve
+  FPU registers through the FreeRTOS IRQ assembly wrapper. Source pins, licenses,
+  patch hashes, ELF hashes and map/launch facts are retained; QEMU is unmodified.
+- Nonblocking BSD descriptors can still wait on lwIP's API semaphore. A separate
+  broker owns them; Rust ByteIo uses bounded SPSC rings. Orderly receive draining
+  and write-half close prevent a fixture from aborting its Detach with unread
+  telemetry; normal reconnects leave no guest TIME_WAIT accumulation.
+- The global allocator's alignment probe now constructs NonNull before pointer
+  access. The updated probe passes in QEMU; CodeQL rescan passes and resolves its
+  two findings without suppressions or coverage-policy changes.
 
-- Shutdown evidence now requires the dummy sink to acknowledge all 32 ordered
-  all-sound-off/all-notes-off packets across the 16 MIDI channels. The control
-  task emits the completion marker after render stop; the integration runner
-  requires it. Production/restart and native UI paths passed this stricter check.
+### Regressions and final CI
 
-- Combined-run resource evidence: 40 MiB exact engine playback, 100 identical-heap
-  cycles, the 128 MiB pool boundary, refused oversized export and unaffected
-  playback all passed. The last normalized-replacement probe used transfer 494
-  after capture 500, so the service correctly refused Identity before preparation.
-  Use fresh transfer 501 to test the intended budget refusal. The matching
-  portable pool/replacement test passes; rerun the affected firmware fixture.
+Local checks passed: all 2,517 native tests (five intentionally skipped), all 81
+affected Node tests, hosted Chromium's core audio/MIDI/file workflow, the three
+Cortex-A library targets, warning-denying workspace/firmware builds, formatting,
+Rust test-attribute policy, all boundary audits and the closed 355-module tracing
+inventory. The ignored external-firmware UI test executes through the actual
+QEMU harness. No missing-backend allowance substitutes for firmware integration.
 
-- Automated CodeQL review reported two nullable-pointer dereferences in the
-  fixture allocator alignment probe. Replace the compound raw-pointer assertion
-  with `NonNull::new(...).expect(...)` before obtaining its pointer. No suppression
-  or coverage-threshold change is used. Warning-denying native/bare-metal builds
-  and the actual QEMU allocator/atomic self-test pass with this change; await the
-  repeated CodeQL scan. Codecov patch status passed at 91.66% (80% required).
+Previous PR check evidence:
+[firmware](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357861),
+[native/browser/coverage](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357579),
+[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518358236) and
+[docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357704).
+CodeQL, docs and coverage pass. The firmware job passed platform, production, UI,
+recovery and 40 MiB playback, then exposed a fixture revision-fence race: Begin
+transfer 20 targeted a snapshot from before Playing became visible and correctly
+received RevisionConflict. The fixture now waits for observed Playing before
+capacity probes, retaining its exact Overloaded expectation and logging unexpected
+replies. Its shared wait path and the short firmware suite pass. The complete
+fixture and final CI reruns are pending. Codecov patch status is 91.66% against
+the unchanged 80% floor; final-head results use the complete PR check list.
+
+Physical audio/FPGA wiring, silicon cache/DMA validation, physical real-time
+performance and production boot packaging remain outside the agreed scope.

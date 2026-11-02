@@ -13,7 +13,9 @@ The CI workflow pins its Debian image by digest and its Arm compiler/newlib/QEMU
 packages by version. Install Python 3, Git, patch, those packages and the pinned
 Rust toolchain with `armv7a-none-eabihf`. The build
 rejects a different compiler/source revision; the runner rejects a different QEMU.
-No Vitis installation, FPGA synthesis, TAP device or KVM is required.
+No Vitis installation, FPGA synthesis, TAP device or KVM is required. Native
+client/UI probes also need the Linux build dependencies listed in
+[the firmware workflow](../../.github/workflows/zynq_freertos.yml).
 
 From the repository root:
 
@@ -154,9 +156,9 @@ grant a larger persistence budget. Stop recordings before capture/export.
 Session uploads retain their existing revision fence: concurrent session edits
 can cause a revision refusal. Captured images remain immutable during download.
 
-Measured startup Rust allocation is 344,480,048 bytes (328.52 MiB). The exact
-40 MiB audio-plus-MIDI round trip peaked at 407,465,916 bytes (388.59 MiB) in
-the initial integration run. Budget admission includes retained canonical media,
+Measured startup Rust allocation is 344,480,136 bytes (328.52 MiB). The largest
+qualified fixture, including the 40 MiB audio-plus-MIDI round trip and capacity
+checks, peaked at 407,466,188 bytes (388.59 MiB). Budget admission includes retained canonical media,
 raw transfer storage, decoded assembly and replacement overlap. The arena leaves
 room for those simultaneous owners; OOM is a diagnostic halt, not an admission
 mechanism. UART reports Rust used/peak, FreeRTOS free/min-free and task stack

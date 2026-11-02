@@ -186,6 +186,29 @@ fn action(
         },
     ));
 }
+fn wait_playing(client: &mut Client, connection: &mut Connection, track: TrackId, loop_id: LoopId) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|entry| entry.id == track)
+            .unwrap()
+            .loops
+            .iter()
+            .find(|entry| entry.id == loop_id)
+            .unwrap()
+            .mode
+            == LoopMode::Playing
+        {
+            return;
+        }
+        assert!(Instant::now() < deadline, "playing state was not observed");
+        pump(client, connection);
+    }
+}
 pub fn run(client: &mut Client, connection: &mut Connection) {
     let socket =
         UnixStream::connect(std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").unwrap()).unwrap();
@@ -340,6 +363,7 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
     drive("I 0");
     let midi_before = drive("Q");
     action(client, connection, track, loop_id, LoopAction::PlayClicked);
+    wait_playing(client, connection, track, loop_id);
     let mut expected = 2_166_136_261u32;
     for sample in [0.25f32, -0.25f32] {
         for _ in 0..256 {
@@ -549,6 +573,7 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
             track.loops[0].id,
             LoopAction::PlayClicked,
         );
+        wait_playing(client, connection, track.id, track.loops[0].id);
         drive("S 512");
         let hashes: Vec<u32> = (0..257)
             .map(|phase| {
@@ -605,13 +630,17 @@ fn capacity(client: &mut Client, connection: &mut Connection) {
                 media_bytes,
             }),
         );
-        assert!(matches!(
-            received(client, connection),
-            Reply::Refused {
-                reason: Refusal::Overloaded,
-                ..
-            }
-        ));
+        let response = received(client, connection);
+        assert!(
+            matches!(
+                &response,
+                Reply::Refused {
+                    reason: Refusal::Overloaded,
+                    ..
+                }
+            ),
+            "capacity transfer {transfer} expected Overloaded, received {response:?}"
+        );
     }
     let key = key(client, 23);
     request(
