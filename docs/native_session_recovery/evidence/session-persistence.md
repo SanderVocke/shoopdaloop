@@ -5,7 +5,9 @@ This covers the core slice of P01/P02/P11 in the
 [PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906) into
 `feat/backend-replacement`. All 16 [parity rows](../feature-parity.md) remain open.
 The [contract](../persistence-contract.md) records supported fields, finite limits
-and explicit refusals. Final validation is recorded in the plan.
+and explicit refusals. Final validation is recorded in the plan and
+[green platform CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41394668116);
+the PR exposes checks for its final documentation head.
 
 ## Acceptance coverage
 
@@ -31,7 +33,9 @@ Implementation validation is recorded against
 (four optional/platform skips); CI's complete Node suite passes 2106 tests across
 32 packages; the frontend Chrome suite passes 39 tests. The completion regressions
 also withhold a confirmed load/New Session projection and verify readiness waits
-for that revision, while known commit results survive connection loss.
+for that revision, while known commit results survive connection loss. The subsequent
+`d6ae885d` change adds exclusive CI recovery-fixture scheduling and evidence only;
+runtime sources and the selected Miri cases are unchanged.
 
 The [selected Miri report](miri/session-persistence/result.json) and its twelve
 hashed logs cover six complete protocol/resource/codec cases with seeds 0 and 1.

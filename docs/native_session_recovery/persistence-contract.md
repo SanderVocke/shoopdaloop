@@ -1,7 +1,9 @@
 # Core persistence contract
 
 Implementation contract for [the persistence plan](../../PLAN_SESSION_PERSISTENCE_MEDIA_IO.md).
-This records decisions, not completed feature support. P01/P02/P11 remain open.
+The core slice is implemented and validated;
+[acceptance evidence](evidence/session-persistence.md) records its scope.
+P01/P02/P11 remain open for their deferred dependencies.
 
 ## Field and capability matrix
 

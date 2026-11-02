@@ -2,17 +2,15 @@
 
 ## Status and delivery
 
-Implementation and local acceptance are complete on `957975a6`. Core file workflows,
-atomic replacement, bounded codecs, cooperative media preparation and callback
-lifetime fencing are implemented. Packaged Linux/macOS/Windows and hosted/single-file
-browser file canaries pass, including media above 32 MiB and socket-loss reconciliation.
-All 16 parity rows remain OPEN with their remaining dependencies.
-[PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906) targets the integration
-feature branch. Windows debug recovery fixtures hit startup timeouts in both CI
-attempts; exclusive scheduling of those process-heavy fixtures is under final
-validation, with their workloads and deadlines unchanged. Final CI delivery remains
-pending. Earlier milestone notes below
-retain their status at the time; the current evidence is recorded at the end.
+Complete: all stages and acceptance criteria are implemented and validated. Core
+file workflows, atomic replacement, bounded codecs, cooperative media preparation
+and callback lifetime fencing are delivered in
+[PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906), targeting
+`feat/backend-replacement`. Native Linux/macOS/Windows and hosted/single-file browser
+checks pass, including media above 32 MiB and socket-loss reconciliation. All 16
+parity rows remain OPEN with their remaining dependencies. The PR remains open.
+Earlier milestone notes below retain their status at the time; final evidence is
+recorded at the end.
 Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
@@ -845,7 +843,7 @@ the full native and affected Wasm gates.
 - [x] Reconcile each acceptance criterion and ledger subitem with test/evidence
   links and final commit IDs. Commit milestones, push with this branch's own origin
   upstream, and create the PR with `--base feat/backend-replacement`.
-- [ ] Inspect actual final-head checks with raw `gh`/git. Ensure Linux/macOS/Windows
+- [x] Inspect actual final-head checks with raw `gh`/git. Ensure Linux/macOS/Windows
   and web debug/release matrices, coverage, CodeQL and docs pass; fix failures and
   rerun. Use workflow dispatch if needed, without treating a missing check as a pass.
 - [x] Inspect automated review if present, address actionable feedback and repeat
@@ -855,15 +853,17 @@ the full native and affected Wasm gates.
 Verification: green checks tied to the final implementation head, reviewed diff,
 complete acceptance evidence and an open PR targeting the integration feature branch.
 
-Current acceptance evidence is tied to implementation commit
-`957975a6c52db5185e151ff41742a547b586dde4` and
-[CI run 41390268085](https://github.com/SanderVocke/shoopdaloop/actions/runs/41390268085).
+Runtime implementation is `957975a6c52db5185e151ff41742a547b586dde4`; the final CI
+scheduling/evidence candidate is `d6ae885d7a28ebaab3258e1856980e467e3b2940`, with
+[green CI run 41394668116](https://github.com/SanderVocke/shoopdaloop/actions/runs/41394668116).
+The documentation closeout is also verified against the live PR checks before
+delivery; no runtime sources change after the implementation candidate.
 The [acceptance mapping](docs/native_session_recovery/evidence/session-persistence.md)
 links all nine criteria to the production routes and regressions.
 
 | Gate | Result and scope |
 | --- | --- |
-| Native | 2486 tests pass locally, four optional/platform skips; retained reference fixtures remain. Linux debug/release, macOS debug/release and Windows release CI pass. Windows debug packaging passes; recovery-host startup timeouts repeated under concurrent fixture startup, so exclusive fixture scheduling is under final validation. |
+| Native | 2486 tests pass locally, four optional/platform skips; retained reference fixtures remain. Linux, macOS and Windows debug/release CI pass, including the Windows debug recovery suite with exclusive fixture scheduling. |
 | Wasm and browser | All 2106 tests across 32 Node packages pass in CI. All 39 frontend Chrome tests pass locally. Release CI passes hosted/single-file large-media workflows and Firefox; debug CI passes the normal and denied-first microphone workflows. |
 | Files and recovery | All native packaged socket/shared-memory probes pass on Linux, macOS and Windows. A 33 MiB WAV and exact MIDI survive save/load/save; output/input, corrupt refusal, fresh stopped IDs and playback are exercised. Socket loss covers partial upload/capture and exactly-once accepted-load reconciliation. Shared-memory reattachment is not claimed. |
 | Policy and architecture | Formatting, warning-denying workspace and bare-metal builds, production dependency boundaries, all 142 Python tests, test attributes and closed tracing/parity inventories pass. Coverage, CodeQL and docs checks pass. |
@@ -891,8 +891,8 @@ threads for each `shoop_host::recovery` case, following the existing exclusive
 fixture convention. Pool sizes, 32 recovery cycles, assertions, retry policy and
 the original ten-second startup deadline are unchanged. This addresses fixture
 contention; it is not a claim that the Windows failure reproduced locally. The
-complete native suite and final-head CI verify the scheduling change.
+complete native suite and cross-platform CI pass with the scheduling change.
 
 Review inspection: PR #906 has no formal review or approval verdict. The only
 automated comment is the Codecov coverage report; its project and patch statuses
-pass. No reviewer approval is claimed. Final-head checks remain the delivery gate.
+pass. No reviewer approval is claimed. Final-head checks are verified before delivery.
