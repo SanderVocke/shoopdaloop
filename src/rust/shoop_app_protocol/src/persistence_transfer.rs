@@ -1,6 +1,9 @@
 //! Segmented ownership-preserving adapters for transports that require bytes.
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::{codec, persistence::*, persistence_image::*, Refusal, CHUNK_BYTES};
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 pub struct Source {
     image: Arc<Image>,

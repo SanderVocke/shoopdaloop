@@ -2,13 +2,15 @@
 //! control side reads when it assembles telemetry. Fields are independent
 //! atomics: a record may combine values from neighbouring callbacks.
 
+use alloc::boxed::Box;
+
 use crate::stream::ByteRing;
+use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use rt_runtime::Frame;
 use shoop_loops::runtime::BoundaryObserver;
 use shoop_loops::{Decision, Event, Mode};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, Peaks, MAX_STRIP_CHANNELS};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::Arc;
 
 /// Per-channel absolute peaks since the last read.
 #[derive(Default)]
@@ -134,7 +136,7 @@ impl Cells {
     }
     pub(crate) fn driver(&self) -> DriverStatus {
         let [kind, state, sample_rate, buffer_frames] =
-            std::array::from_fn(|index| self.driver[index].load(Ordering::Relaxed));
+            core::array::from_fn(|index| self.driver[index].load(Ordering::Relaxed));
         DriverStatus {
             kind: match kind {
                 1 => DriverKind::Cpal,
@@ -205,7 +207,7 @@ impl BoundaryObserver for Observer {
             cells.position.store(state.position, Ordering::Relaxed);
         }
     }
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn core::any::Any {
         self
     }
 }

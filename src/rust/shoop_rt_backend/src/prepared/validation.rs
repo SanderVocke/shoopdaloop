@@ -1,7 +1,7 @@
 use super::{initial_message, MAX_MEDIA_BYTES, MAX_MIDI_EVENTS};
+use alloc::sync::Arc;
 use anyhow::{anyhow, bail, Result};
 use shoop_backend::{BackendChannelMode, BackendLoopContent};
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct Prepared {

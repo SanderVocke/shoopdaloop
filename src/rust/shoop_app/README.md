@@ -1,5 +1,10 @@
 # Authoritative session service
 
+The service supports `no_std` with `alloc` when default features are disabled.
+The default `std` feature supplies `pump_local` and standard-library channel
+delivery. Embedded hosts drive `handle`, `tick` and `take_update` directly and
+provide elapsed time and their own transport.
+
 `Service` owns musical state, app/engine identity mappings, connection intent and
 admitted work for one backend lifetime. It receives the portable app protocol and
 publishes bounded projections/results independently of UI delivery. Reattachment

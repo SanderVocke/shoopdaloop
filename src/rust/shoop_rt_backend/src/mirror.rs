@@ -1,7 +1,11 @@
 //! The application's view of the engine: identities reserved on the control side, values
 //! the engine confirmed, and the latest telemetry.
 
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::borrow::ToOwned;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use shoop_backend::{
     BackendBusChannelState, BackendBusState, BackendConfirmedLink, BackendHostPortDescriptor,
@@ -21,14 +25,14 @@ pub(crate) const SILENT_DB: f32 = -200.0;
 
 pub(crate) fn amplitude_db(amplitude: f32) -> f32 {
     if amplitude > 0.0 {
-        20.0 * amplitude.log10()
+        20.0 * libm::log10f(amplitude)
     } else {
         SILENT_DB
     }
 }
 
 pub(crate) fn db_amplitude(db: f32) -> f32 {
-    10.0_f32.powf(db / 20.0)
+    libm::powf(10.0, db / 20.0)
 }
 
 /// Peaks received since the previous snapshot; without new telemetry the previous reading
@@ -509,8 +513,8 @@ impl Mirror {
             input_monitoring: controls.input_monitoring,
             input_peaks: track.input_meter.take_db(channels),
             output_peaks: track.output_meter.take_db(channels),
-            input_midi_activity: std::mem::take(&mut track.midi_in),
-            output_midi_activity: std::mem::take(&mut track.midi_out),
+            input_midi_activity: core::mem::take(&mut track.midi_in),
+            output_midi_activity: core::mem::take(&mut track.midi_out),
             ..Default::default()
         }
     }

@@ -1,6 +1,10 @@
 //! Engine messages: the handshake and resynchronization, outcomes, and telemetry.
 
-use std::collections::BTreeSet;
+use alloc::borrow::ToOwned;
+use alloc::collections::BTreeSet;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use shoop_backend::{
     BackendBusControl, BackendConfirmedLink, BackendConnectionFailure, BackendMixerFailure,

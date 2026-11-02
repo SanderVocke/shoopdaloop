@@ -1,3 +1,8 @@
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use super::*;
 use shoop_app_protocol::{
     persistence_image as image,
@@ -37,7 +42,7 @@ pub(super) enum Preparing {
     Assembly(Assembly),
 }
 impl Preparing {
-    fn step(self) -> Result<std::result::Result<image::ValidatedImage, Self>, Refusal> {
+    fn step(self) -> Result<core::result::Result<image::ValidatedImage, Self>, Refusal> {
         match self {
             Self::Validation(mut validation) => {
                 if !validation.step(256 * 1024)? {

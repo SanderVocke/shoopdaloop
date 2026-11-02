@@ -1,3 +1,7 @@
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::*;
 use shoop_app_protocol::persistence_image as image;
 

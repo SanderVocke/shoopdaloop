@@ -15,7 +15,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 [dependencies]
 serde = { workspace = true, features = ["derive", "rc"], optional = true }
 shoop_latency = { path = "../shoop_latency" }
-shoop_script_resources = { path = "../shoop_script_resources" }
+shoop_script_resources = { path = "../shoop_script_resources", default-features = false }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

@@ -6,8 +6,14 @@
 //! length, further chunks are requested ahead as far as the bulk credits allow. A read belongs
 //! to one version of the loop's content and is replaced when the content changes.
 
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 mod assembly;
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
 
 use shoop_backend::{
     BackendAudioChannelData, BackendAudioData, BackendChannelMode, BackendLoopId,
@@ -399,7 +405,7 @@ impl Reads {
             if matches!(read.outcome, Outcome::Reading)
                 && read.total.is_some_and(|total| read.received >= total)
             {
-                let bytes = std::mem::take(&mut read.bytes)
+                let bytes = core::mem::take(&mut read.bytes)
                     .into_values()
                     .flatten()
                     .collect::<Vec<_>>();

@@ -1,8 +1,14 @@
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use super::*;
 
 mod control;
 
-type CommandResult = std::result::Result<Effect, CommandError>;
+type CommandResult = core::result::Result<Effect, CommandError>;
 
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
@@ -164,13 +170,13 @@ impl Service {
         }
     }
 
-    fn track(&self, id: TrackId) -> std::result::Result<&Track, CommandError> {
+    fn track(&self, id: TrackId) -> core::result::Result<&Track, CommandError> {
         self.tracks
             .get(&id)
             .filter(|track| track.view.structural_state != StructuralState::Removing)
             .ok_or_else(|| CommandError::invalid(format!("stale or unknown track {id}")))
     }
-    fn loop_entry(&self, id: LoopId) -> std::result::Result<&Loop, CommandError> {
+    fn loop_entry(&self, id: LoopId) -> core::result::Result<&Loop, CommandError> {
         let entry = self
             .loops
             .get(&id)
@@ -503,7 +509,7 @@ impl Service {
         mode: BackendLoopMode,
         delay: Option<u32>,
         cycles: Option<u32>,
-    ) -> std::result::Result<(), CommandError> {
+    ) -> core::result::Result<(), CommandError> {
         let targets: BTreeSet<_> = ids.into_iter().collect();
         let mut tracks = BTreeSet::new();
         for id in &targets {
@@ -550,7 +556,7 @@ impl Service {
     fn global_action(
         &mut self,
         action: GlobalControlAction,
-    ) -> std::result::Result<(), CommandError> {
+    ) -> core::result::Result<(), CommandError> {
         match action {
             GlobalControlAction::StopAll => self.transition(
                 self.ordered_loops(),
@@ -611,7 +617,7 @@ impl Service {
         Ok(())
     }
 
-    fn piano(&mut self, action: PianoAction) -> std::result::Result<(), CommandError> {
+    fn piano(&mut self, action: PianoAction) -> core::result::Result<(), CommandError> {
         if !self
             .backend
             .capabilities()
@@ -741,7 +747,7 @@ impl Service {
         id: PortId,
         host: &str,
         connected: bool,
-    ) -> std::result::Result<(), CommandError> {
+    ) -> core::result::Result<(), CommandError> {
         let port = self
             .ports
             .get(&id)
@@ -770,7 +776,7 @@ impl Service {
         source: PortId,
         destination: BusChannelId,
         connected: bool,
-    ) -> std::result::Result<(), CommandError> {
+    ) -> core::result::Result<(), CommandError> {
         let source_backend = self
             .ports
             .get(&source)
@@ -830,7 +836,7 @@ impl Service {
         }
         Ok(())
     }
-    fn connect_track_inputs(&mut self, track: TrackId) -> std::result::Result<(), CommandError> {
+    fn connect_track_inputs(&mut self, track: TrackId) -> core::result::Result<(), CommandError> {
         let inputs: Vec<_> = self.tracks[&track]
             .view
             .port_ids
@@ -867,7 +873,7 @@ impl Service {
         }
         Ok(())
     }
-    fn route_track_to_master(&mut self, track: TrackId) -> std::result::Result<(), CommandError> {
+    fn route_track_to_master(&mut self, track: TrackId) -> core::result::Result<(), CommandError> {
         let outputs: Vec<_> = self.tracks[&track]
             .view
             .port_ids

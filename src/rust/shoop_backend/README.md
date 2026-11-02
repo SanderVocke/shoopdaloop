@@ -1,5 +1,8 @@
 # Backend contracts
 
+The contract builds as `no_std` with `alloc`; the `legacy` feature enables `std`
+for the retained implementations. Portable consumers must leave `legacy` disabled.
+
 The crate root defines engine-independent backend identities, data types,
 capabilities, request/result structures and the Backend trait. It builds with
 `--no-default-features` without either engine implementation, concrete transport,

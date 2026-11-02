@@ -9,8 +9,11 @@
 //! [`OfflineRender::process`], [`OfflineHost::request`] and [`OfflineHost::receive`]
 //! do not allocate, so callers can guard them with an allocator check.
 
-use std::ops::{Deref, DerefMut};
-use std::time::Duration;
+use alloc::boxed::Box;
+use alloc::vec;
+
+use core::ops::{Deref, DerefMut};
+use core::time::Duration;
 
 use crate::description::MAX_HOST_PORTS;
 use crate::{
@@ -114,7 +117,8 @@ impl OfflineRender {
             *slot = &input[..frames];
         }
         let output_count = self.outputs.len();
-        let mut outputs: [&mut [f32]; MAX_HOST_PORTS] = std::array::from_fn(|_| Default::default());
+        let mut outputs: [&mut [f32]; MAX_HOST_PORTS] =
+            core::array::from_fn(|_| Default::default());
         for (slot, output) in outputs.iter_mut().zip(self.outputs.iter_mut()) {
             *slot = &mut output[..frames];
         }

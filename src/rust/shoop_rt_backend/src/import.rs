@@ -1,17 +1,19 @@
 //! A loop update stages both media while retaining the unchanged canonical channels.
+use alloc::vec::Vec;
+
 use crate::{
     persistence::{Job, Work},
     prepared::{Upload, MAX_MEDIA_BYTES},
     EngineClock, RtBackend,
 };
+use alloc::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    sync::Arc,
+};
 use anyhow::{anyhow, bail, Result};
 use shoop_backend::*;
 use shoop_rt_protocol::Request;
 use shoop_rt_transport::carrier::Carrier;
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    sync::Arc,
-};
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn import_content(
         &mut self,

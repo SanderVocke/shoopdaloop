@@ -14,14 +14,14 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["std"] }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend", default-features = false, features = ["legacy"] }
 shoop_latency = { path = "../shoop_latency" }
 shoop_session = { path = "../shoop_session" }
 shoop_scripting = { path = "../shoop_scripting" }
 shoop_script_resources = { path = "../shoop_script_resources" }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 shoop_scripting = { path = "../shoop_scripting" }

@@ -1,6 +1,9 @@
+use alloc::vec;
+use alloc::vec::Vec;
+
 use super::*;
 use crate::{persistence::*, Refusal};
-use std::collections::BTreeSet;
+use alloc::collections::BTreeSet;
 
 /// Validation evidence retains the immutable image it describes.
 pub struct ValidatedImage {

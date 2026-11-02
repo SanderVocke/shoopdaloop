@@ -4911,6 +4911,7 @@ name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "libm",
  "shoop_app_api",
  "shoop_backend",
  "shoop_rt_engine",

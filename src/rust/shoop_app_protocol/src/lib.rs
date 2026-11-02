@@ -1,19 +1,29 @@
 //! Session control contracts, independent of engine, UI, Lua and concrete carriers.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub mod codec;
+#[cfg(feature = "std")]
 pub mod local;
 pub mod persistence;
 pub mod persistence_image;
 pub mod persistence_transfer;
 pub mod stream;
 
+use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
-use std::sync::Arc;
 
 pub const VERSION: u16 = 8;
 pub const CHUNK_BYTES: usize = 1024;

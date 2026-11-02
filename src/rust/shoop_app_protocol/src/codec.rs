@@ -1,5 +1,7 @@
 //! Bounded app records with a distinct protocol discriminator and version.
 
+use alloc::vec::Vec;
+
 use crate::{SessionSnapshot, WireMessage, MAX_SNAPSHOT_BYTES, VERSION};
 use shoop_transport::{CodecError, MAX_RECORD_BYTES};
 

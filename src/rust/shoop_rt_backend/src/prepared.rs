@@ -1,6 +1,6 @@
 //! Canonical content and the bounded, normalized byte stream presented to the engine.
 mod validation;
-use std::sync::Arc;
+use alloc::sync::Arc;
 pub(crate) use validation::{Prepared, Validation};
 
 use anyhow::{anyhow, bail, Result};

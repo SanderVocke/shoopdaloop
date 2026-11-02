@@ -1,7 +1,10 @@
 //! Core application state and immutable media, independent of file formats and engines.
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
-use std::sync::Arc;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Controls {

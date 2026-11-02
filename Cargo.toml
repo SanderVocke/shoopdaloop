@@ -12,7 +12,7 @@ unknown_lints = "allow"
 semicolon_in_expressions_from_non_local_macros = "allow"
 
 [workspace.dependencies]
-anyhow = "1.0"
+anyhow = { version = "1.0", default-features = false }
 log = "0.4"
 colored = "3.1"
 humantime = "2.1"
@@ -20,12 +20,12 @@ lazy_static = "1.5"
 ctor = "1.0"
 toml = "1.1"
 regex = "1.10"
-serde = "1.0"
+serde = { version = "1.0", default-features = false, features = ["alloc"] }
 uuid = { version = "1.17", features = ["v4"] }
 tempfile = "3.20"
 serde_json = "1.0"
 base64 = "0.23"
-bincode = { version = "2.0.1", default-features = false, features = ["std", "serde"] }
+bincode = { version = "2.0.1", default-features = false, features = ["alloc", "serde"] }
 libloading = "0.9"
 memmap2 = "0.9"
 egui = "0.36"
@@ -56,12 +56,13 @@ jack-sys = { version = "0.5", features = ["dynamic_loading"] }
 cpal = { version = "0.17", features = ["jack", "asio"] }
 midir = "0.11"
 rubato = "5.0"
-thiserror = "2.0"
+libm = { version = "0.2", default-features = false }
+thiserror = { version = "2.0", default-features = false }
 sha2 = "0.11"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 hound = "3.5"
 rfd = { version = "0.16", default-features = false }
-tracing = "0.1"
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
 ehttp = "0.7"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

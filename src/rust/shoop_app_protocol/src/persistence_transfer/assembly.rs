@@ -1,6 +1,8 @@
+use alloc::vec::Vec;
+
 use super::*;
+use alloc::collections::VecDeque;
 use shoop_app_api::MidiEventState;
-use std::collections::VecDeque;
 
 struct Active {
     object: Object,
@@ -78,7 +80,7 @@ impl Assembly {
                 let Some(object) = self.objects.pop_front() else {
                     self.validation = Some(Validation::for_transfer(Arc::new(Image {
                         manifest: self.manifest.take().unwrap(),
-                        payloads: std::mem::take(&mut self.payloads),
+                        payloads: core::mem::take(&mut self.payloads),
                     }))?);
                     return Ok(None);
                 };

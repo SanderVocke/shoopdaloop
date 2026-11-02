@@ -1,6 +1,11 @@
 //! Requests built from application operations: identities are reserved here and the
 //! requests queued until credits allow sending them.
 
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use anyhow::{anyhow, Result};
 use shoop_backend::{
     BackendBusChannelId, BackendBusControl, BackendConfirmedLink, BackendLoopId, BackendMixerLink,

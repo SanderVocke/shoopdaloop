@@ -23,7 +23,7 @@ impl Text {
         })
     }
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.bytes[..self.len as usize]).expect("validated text")
+        core::str::from_utf8(&self.bytes[..self.len as usize]).expect("validated text")
     }
     pub fn clipped(value: &str) -> Self {
         let mut end = value.len().min(MAX_HOST_TEXT_BYTES);

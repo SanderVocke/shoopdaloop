@@ -1,5 +1,7 @@
 //! Bounded persistence ingress. File codecs and engine resource ownership stay outside it.
 
+use alloc::vec::Vec;
+
 use crate::{Authority, Refusal, Revision, TransferId, CHUNK_BYTES, MAX_SNAPSHOT_BYTES};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::LoopId;

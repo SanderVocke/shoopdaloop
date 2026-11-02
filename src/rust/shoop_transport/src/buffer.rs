@@ -1,5 +1,8 @@
 //! Byte buffers in module memory that the processor script fills and empties.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::framing::FramingError;
 
 /// An inbound byte stream. The script appends at [`Stream::len`] and commits; the

@@ -2,7 +2,10 @@
 //! checked completely before anything changes, so one that needs anything else is rejected
 //! whole.
 
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::borrow::ToOwned;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::format;
+use alloc::vec::Vec;
 
 use anyhow::{anyhow, Result};
 use shoop_app_api::BackendCapability;
@@ -150,8 +153,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             prepared::{Upload, MAX_MEDIA_BYTES},
             requests::Purpose,
         };
+        use alloc::{collections::VecDeque, sync::Arc};
         use shoop_rt_protocol::{Capabilities, ReplacementEdit, Request, StripPreset};
-        use std::{collections::VecDeque, sync::Arc};
         self.ready()?;
         if !self.requests.is_empty() || self.replacement.is_some() {
             return Err(anyhow!(
@@ -205,13 +208,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         let image = self.mirror.replacement_image();
-        let live = std::mem::replace(&mut self.mirror, image);
-        let requests = std::mem::take(&mut self.requests);
-        let failures = std::mem::take(&mut self.connection_failures);
+        let live = core::mem::replace(&mut self.mirror, image);
+        let requests = core::mem::take(&mut self.requests);
+        let failures = core::mem::take(&mut self.connection_failures);
         let mapping = self.build_structure(session);
-        let staged = std::mem::replace(&mut self.requests, requests);
-        let failures = std::mem::replace(&mut self.connection_failures, failures);
-        let mut candidate = std::mem::replace(&mut self.mirror, live);
+        let staged = core::mem::replace(&mut self.requests, requests);
+        let failures = core::mem::replace(&mut self.connection_failures, failures);
+        let mut candidate = core::mem::replace(&mut self.mirror, live);
         self.mirror.reserve_image_identities(&candidate);
         let mapping = mapping?;
         for pending in &staged.outgoing {

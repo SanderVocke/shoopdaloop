@@ -27,7 +27,7 @@ pub fn record_len(bytes: &[u8]) -> Result<Option<usize>, FramingError> {
 /// The records of a batch of whole records. An incomplete last record is a
 /// framing error.
 pub fn records(mut batch: &[u8]) -> impl Iterator<Item = Result<&[u8], FramingError>> {
-    std::iter::from_fn(move || {
+    core::iter::from_fn(move || {
         if batch.is_empty() {
             return None;
         }
@@ -48,6 +48,7 @@ pub fn records(mut batch: &[u8]) -> impl Iterator<Item = Result<&[u8], FramingEr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
     use shoop_wasm_test_support::shoop_test;
 
     #[shoop_test]

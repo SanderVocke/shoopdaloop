@@ -1,5 +1,8 @@
 //! A fixed-capacity FIFO prepared off-render.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 pub(crate) struct Ring<T> {
     items: Box<[Option<T>]>,
     head: usize,

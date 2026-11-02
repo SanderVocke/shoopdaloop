@@ -12,9 +12,12 @@ browser-feature = "wasm-test-browser"
 workspace = true
 
 [features]
+default = ["std"]
+std = ["anyhow/std", "tracing/std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+libm = { workspace = true }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }

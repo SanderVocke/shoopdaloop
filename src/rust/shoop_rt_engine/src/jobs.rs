@@ -11,6 +11,8 @@
 //! Afterwards new loops get their smoothing, their initial media is released and
 //! the displaced owners are recycled into their prepared slots.
 
+use alloc::boxed::Box;
+
 use crate::endpoint::{
     completion_refusal, execution_outcome, loop_id, ControlEndpoint, Purpose, RuntimeResult,
     PLANNED,
@@ -984,7 +986,7 @@ impl ControlEndpoint {
         }
         job.faded = false;
         let revision = self.model.revision.max(self.next.revision) + 1;
-        std::mem::swap(&mut self.model, &mut self.next);
+        core::mem::swap(&mut self.model, &mut self.next);
         self.model.settle();
         self.model.revision = revision;
         let created = (0..self.model.loops.len())
@@ -994,7 +996,7 @@ impl ControlEndpoint {
             })
             .count();
         if !self.room(2 * created + 3) {
-            std::mem::swap(&mut self.model, &mut self.next);
+            core::mem::swap(&mut self.model, &mut self.next);
             return false;
         }
         for slot in 0..self.model.loops.len() {

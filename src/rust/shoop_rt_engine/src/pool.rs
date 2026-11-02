@@ -6,6 +6,9 @@
 //! stage), followed by three per loop (playback, capture and fader). Appending a segment extends both the
 //! slot indices and the node range without moving existing slots.
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::description::Segment;
 use rt_runtime::NodeId;
 

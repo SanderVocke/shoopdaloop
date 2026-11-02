@@ -215,7 +215,7 @@ impl Wire for Name {
         if len > MAX_NAME_BYTES {
             return Err(CodecError::Invalid);
         }
-        let text = std::str::from_utf8(r.bytes(len)?).map_err(|_| CodecError::Invalid)?;
+        let text = core::str::from_utf8(r.bytes(len)?).map_err(|_| CodecError::Invalid)?;
         Name::new(text).ok_or(CodecError::Invalid)
     }
 }

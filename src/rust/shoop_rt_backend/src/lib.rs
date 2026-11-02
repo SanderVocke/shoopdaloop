@@ -18,7 +18,19 @@
 //! report the state of the next frame to render. Delays the application derives from a
 //! position and the sync loop's length can therefore come out one cycle later when a request
 //! falls within one callback of a wrap.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 mod backend;
 mod capture;
@@ -33,7 +45,7 @@ mod reads;
 mod requests;
 mod session;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub use clock::Sleep;
 pub use clock::{EngineClock, NoWait};
 
@@ -102,9 +114,9 @@ struct Replacement {
     mapping: BackendSessionReplacement,
     candidate: Option<Mirror>,
     job: persistence::Job,
-    content: std::collections::BTreeMap<
+    content: alloc::collections::BTreeMap<
         shoop_backend::BackendLoopId,
-        std::sync::Arc<shoop_backend::BackendLoopContent>,
+        alloc::sync::Arc<shoop_backend::BackendLoopContent>,
     >,
     connection_failures: Vec<BackendConnectionFailure>,
     loop_target: Option<shoop_backend::BackendLoopId>,
@@ -134,12 +146,13 @@ pub struct RtBackend<C, K> {
     telemetry_fresh: bool,
     replacement: Option<Replacement>,
     next_persistence: u64,
-    canonical_content: std::collections::BTreeMap<
+    canonical_content: alloc::collections::BTreeMap<
         shoop_backend::BackendLoopId,
-        std::sync::Arc<shoop_backend::BackendLoopContent>,
+        alloc::sync::Arc<shoop_backend::BackendLoopContent>,
     >,
-    canonical_imports: std::collections::BTreeSet<shoop_backend::BackendLoopId>,
-    prepared_content: std::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
+    canonical_imports: alloc::collections::BTreeSet<shoop_backend::BackendLoopId>,
+    prepared_content:
+        alloc::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
     capture_validation: Option<prepared::Validation>,
 }
 

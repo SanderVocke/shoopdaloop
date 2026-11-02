@@ -1,15 +1,19 @@
 //! Capture settled core state while its media cannot be changed by admitted work.
+use alloc::borrow::ToOwned;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::{
     mirror::Mirror,
     prepared::{Validation, MAX_MEDIA_BYTES},
     reads::{empty_audio, empty_midi, Outcome},
     EngineClock, RtBackend,
 };
+use alloc::sync::Arc;
 use anyhow::{anyhow, bail, Result};
 use shoop_backend::*;
 use shoop_rt_protocol::LoopMode;
 use shoop_rt_transport::carrier::Carrier;
-use std::sync::Arc;
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn capture_pending(
@@ -214,7 +218,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ports
             .keys()
             .map(|id| (*id, port(*id)))
-            .collect::<std::collections::BTreeMap<_, _>>();
+            .collect::<alloc::collections::BTreeMap<_, _>>();
         let tracks = self
             .mirror
             .tracks

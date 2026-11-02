@@ -1,5 +1,12 @@
 #![forbid(unsafe_code)]
 
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
+
 mod commands;
 mod management;
 mod media;
@@ -7,13 +14,13 @@ mod media;
 mod persistence_jobs;
 mod projection;
 
+use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
+use alloc::sync::Arc;
 use anyhow::{anyhow, Result};
+use core::time::Duration;
 use shoop_app_api::*;
 use shoop_app_protocol::*;
 use shoop_backend::*;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::sync::Arc;
-use std::time::Duration;
 
 pub const MAX_TRACKS: usize = 64;
 pub const MAX_LOOPS: usize = 256;
@@ -432,7 +439,7 @@ impl Service {
             .is_some_and(|lease| lease.connection == connection)
         {
             self.lease = None;
-            for (note, tracks) in std::mem::take(&mut self.piano_notes) {
+            for (note, tracks) in core::mem::take(&mut self.piano_notes) {
                 for track in tracks {
                     self.released_notes.push_back((track, note));
                 }
@@ -734,7 +741,7 @@ impl Service {
         self.backend.advance(elapsed);
         match self.backend.poll() {
             Ok(mut observed) => {
-                let completions = std::mem::take(&mut observed.mutation_completions);
+                let completions = core::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
                 for completion in completions {
                     for track in self.tracks.values_mut() {
@@ -904,6 +911,7 @@ impl Service {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn pump_local(
         &mut self,
         connection: ConnectionId,

@@ -1,5 +1,9 @@
 //! Prepared upload ownership. New content stays inaudible until a later commit.
 
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::endpoint::{
     completion_refusal, execution_outcome, ControlEndpoint, Purpose, RuntimeResult,
 };

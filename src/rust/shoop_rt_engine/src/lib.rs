@@ -13,7 +13,17 @@
 //! audio callback; and the [`HostStatus`] handle for driver status, xruns and
 //! load. Both the endpoint and the render path are bounded and allocation-free
 //! after preparation.
+#![no_std]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

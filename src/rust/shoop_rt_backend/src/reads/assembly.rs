@@ -1,5 +1,10 @@
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
+use alloc::sync::Arc;
 use shoop_backend::{BackendAudioChannelData, BackendAudioData, BackendMidiEvent};
-use std::sync::Arc;
 
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_EVENTS: usize = 1_000_000;

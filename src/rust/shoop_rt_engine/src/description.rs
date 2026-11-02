@@ -1,6 +1,10 @@
 //! What an engine is prepared with: host ports, pools, signal settings and
 //! control capacities.
 
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use shoop_rt_protocol::{Name, MAX_STRIP_CHANNELS};
 
 /// Most host ports of one kind and direction.

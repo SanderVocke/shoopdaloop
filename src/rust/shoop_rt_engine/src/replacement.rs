@@ -1,5 +1,8 @@
 //! A private, prepared replacement of the complete engine model.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
 use crate::{
     endpoint::ControlEndpoint,
     jobs::Job,
@@ -90,9 +93,9 @@ impl ControlEndpoint {
                 if self.replacement.state != State::Receiving {
                     return Err(Refusal::Busy);
                 }
-                std::mem::swap(&mut self.next, &mut self.replacement.candidate);
+                core::mem::swap(&mut self.next, &mut self.replacement.candidate);
                 let result = self.replacement_edit(edit);
-                std::mem::swap(&mut self.next, &mut self.replacement.candidate);
+                core::mem::swap(&mut self.next, &mut self.replacement.candidate);
                 result.map(|()| Some(Outcome::Done))
             }
             Request::ReplacementPrepare { .. } => {
@@ -103,7 +106,7 @@ impl ControlEndpoint {
                     return Err(Refusal::Busy);
                 }
                 self.validate_replacement()?;
-                std::mem::swap(&mut self.next, &mut self.replacement.candidate);
+                core::mem::swap(&mut self.next, &mut self.replacement.candidate);
                 for slot in 0..self.model.strips.len() {
                     if self.model.strips[slot].is_some() || self.next.strips[slot].is_some() {
                         self.touched_strips[slot] = HARD;

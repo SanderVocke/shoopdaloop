@@ -1,16 +1,22 @@
 //! Acknowledged persistence steps and a bounded write pipeline, independent of mutation receipts.
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
 use crate::{
     prepared::{Prepared, Upload, Validation},
     requests::Purpose,
     EngineClock, RtBackend,
 };
-use anyhow::{anyhow, bail, Result};
-use shoop_rt_protocol::{Outcome, Refusal, Request};
-use shoop_rt_transport::carrier::Carrier;
-use std::{
+use alloc::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
 };
+use anyhow::{anyhow, bail, Result};
+use shoop_rt_protocol::{Outcome, Refusal, Request};
+use shoop_rt_transport::carrier::Carrier;
 
 pub(crate) enum Work {
     Request(Request),
@@ -312,7 +318,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .iter()
                     .map(|(id, image)| (*id, replacement.job.prepared[&image.source_id].clone()))
                     .collect();
-                self.canonical_content = std::mem::take(&mut replacement.content);
+                self.canonical_content = core::mem::take(&mut replacement.content);
                 self.canonical_imports = self.canonical_content.keys().copied().collect();
                 self.connection_failures
                     .append(&mut replacement.connection_failures);
