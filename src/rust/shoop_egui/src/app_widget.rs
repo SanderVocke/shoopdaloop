@@ -3351,6 +3351,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn active_tracing_status_offers_save_action() {
         let context = egui::Context::default();
+        crate::initialize(&context);
         let mut widget = AppWidget::default();
         widget.set_tracing_status(TracingStatus {
             available: true,
