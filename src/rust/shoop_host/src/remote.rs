@@ -211,6 +211,7 @@ type Answer = Result<Vec<SocketAddr>, String>;
 struct Resolve {
     name: String,
     reply: mpsc::SyncSender<Answer>,
+    deadline: Instant,
 }
 static RESOLVER: OnceLock<mpsc::SyncSender<Resolve>> = OnceLock::new();
 pub fn resolve(value: &str, deadline: Instant) -> Result<Vec<SocketAddr>> {
@@ -224,6 +225,9 @@ pub fn resolve(value: &str, deadline: Instant) -> Result<Vec<SocketAddr>> {
             .name("shoop-dns".into())
             .spawn(move || {
                 while let Ok(job) = receiver.recv() {
+                    if Instant::now() >= job.deadline {
+                        continue;
+                    }
                     let answer = job
                         .name
                         .to_socket_addrs()
@@ -240,6 +244,7 @@ pub fn resolve(value: &str, deadline: Instant) -> Result<Vec<SocketAddr>> {
         .try_send(Resolve {
             name: value.into(),
             reply,
+            deadline,
         })
         .map_err(|_| anyhow!("DNS resolver is busy"))?;
     let answer = receiver

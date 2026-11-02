@@ -345,3 +345,10 @@ src/rust/shoopdaloop/src/persistence_io/mod.rs,application_ui_and_control,instru
 src/rust/shoopdaloop/src/persistence_io/pump.rs,application_ui_and_control,instrumented_indirect,"Client input leases and worker/transfer progress run within traced frontend file intents, persistence pumping and codec task boundaries."
 src/rust/shoopdaloop/src/persistence_io/tests.rs,validation_fixture,excluded,Test-only module; no production execution boundary.
 src/rust/shoopdaloop/src/platform_input.rs,application_ui_and_control,instrumented_indirect,"Client input leases and worker/transfer progress run within traced frontend file intents, persistence pumping and codec task boundaries."
+src/rust/shoop_transport/src/handshake.rs,session_transport,excluded,Portable cooperative token state; failures return to connection owners without tracing credentials.
+src/rust/shoop_transport/src/stream.rs,session_transport,excluded,Prepared bounded byte queues and partial I/O; connection owners report terminal failures.
+src/rust/shoop_app_connection/src/lib.rs,app_session,excluded,Portable connection exports.
+src/rust/shoop_app_connection/src/heartbeat.rs,app_session,excluded,Injected-clock heartbeat policy; expiration is reported to host/client delivery owners.
+src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Generic connection progression calls traced service handling and tick boundaries; native composition owns transport diagnostics.
+src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
+src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.

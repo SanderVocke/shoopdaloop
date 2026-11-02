@@ -8,6 +8,8 @@ tracks each temporary gap, reference implementation/test and restoration criteri
 Feature editors, document/configuration fields and reference behavior are retained
 for upcoming parity work. Recovery is independent of disk persistence.
 
+For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
+
 ## Native roles and delivery
 
 ```sh

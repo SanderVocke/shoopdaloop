@@ -212,13 +212,13 @@ stages must preserve earlier contracts.
 
 ### Stage 3 — heartbeats, deadlines and ownership cleanup
 
-- [ ] Add versioned probe/reply records and implement client/server liveness in
+- [x] Add versioned probe/reply records and implement client/server liveness in
   the portable connection layer. Validate heartbeat settings and use remaining
   deadlines across setup, greeting, attachment, management and drain phases.
-- [ ] On expiry retire transport ownership and call the existing service detach
+- [x] On expiry retire transport ownership and call the existing service detach
   path once. Preserve accepted work, staged-upload cleanup, stale-authority
   fencing and independent management shutdown behavior.
-- [ ] **Verify:** fake-clock tests cover bidirectional and one-way blackholes,
+- [x] **Verify:** fake-clock tests cover bidirectional and one-way blackholes,
   delayed/stale replies, large elapsed steps, a suspended UI, missing upload
   acknowledgments, reconnect-before-old-traffic-arrives and lost commit/shutdown
   replies. Assert AC5 and pre/post-commit ownership without wall-clock sleeps.
@@ -388,3 +388,20 @@ planning deliverable.
   Package CI now runs these LAN probes on every native platform.
 - Focused native/portable suites, Cortex-A connection build, warning-denying
   workspace build and test-attribute check pass.
+
+### Stage 6 validation checkpoint
+
+- Full native nextest suite: **2504 passed; four intentional canaries skipped**,
+  using the repository CI profile (four threads; zero retries). Missing physical
+  audio/MIDI facilities use the documented `SHOOP_ALLOW_MISSING_BACKENDS=1` mode.
+- Both complete Cortex-A server/connection library builds pass. Formatting,
+  test-attribute policy, tracing inventory (353 modules) and 17 boundary-policy
+  tests pass. The native blackhole test keeps TCP open while discarding traffic;
+  its replacement sees the same actively recording loop after lease expiration.
+- Local compilation initially filled the 32 GiB volume with generated debug and
+  incremental files. Only `target/debug` artifacts were removed. Final local
+  builds use `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0` and
+  `CARGO_PROFILE_TEST_DEBUG=0`; assertions, optimization level, workload and
+  nextest settings are unchanged. The warning-denying workspace build passes.
+- Setup/credentials, both endpoints, profile identities and the future Cortex-A
+  adapter contract are documented in `docs/trusted-lan-networking.md`.

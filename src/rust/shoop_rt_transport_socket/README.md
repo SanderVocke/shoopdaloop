@@ -10,8 +10,8 @@ are terminal errors, distinct from idle. All socket work runs outside rendering.
 `setup::Listener` binds an ephemeral loopback endpoint. The peer authenticates
 with a fresh token passed privately by its host; tokens are never command-line
 arguments. Each host decides connection and engine lifetime. This carrier has no
-engine, application or process-management dependency. Remote-network deployment
-is outside this milestone.
+engine, application or process-management dependency. The independent application host can opt into trusted-LAN setup through the
+shared native carrier; these internal engine/process setup APIs stay local-only.
 
 ```sh
 cargo test -p shoop_rt_transport_socket

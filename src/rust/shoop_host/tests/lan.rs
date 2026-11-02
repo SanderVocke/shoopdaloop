@@ -91,7 +91,11 @@ fn attach(profile: &RemoteProfile, id: u128) -> (Client, Connection) {
     }
     (client, connection)
 }
-fn control(client: &mut Client, connection: &mut Connection, command: shoop_app_protocol::Command) {
+fn control(
+    client: &mut Client,
+    connection: &mut Connection,
+    command: shoop_app_protocol::Command,
+) -> Outcome {
     let message = client.command(command, None).unwrap();
     let ClientMessage::Submit { operation, .. } = message else {
         panic!()
@@ -105,8 +109,9 @@ fn control(client: &mut Client, connection: &mut Connection, command: shoop_app_
     }
     assert!(matches!(
         client.results()[&operation],
-        Outcome::Confirmed { .. }
+        Outcome::Confirmed { .. } | Outcome::TrackCreated { .. }
     ));
+    client.results()[&operation].clone()
 }
 fn status(profile: &RemoteProfile) -> ManagementReply {
     connection::management(
@@ -267,4 +272,185 @@ fn wildcard_profiles_and_remote_shared_memory_are_refused() {
     let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = occupied.local_addr().unwrap();
     assert!(shoop_transport_socket::setup::Listener::bind_lan(address, [1; 32]).is_err());
+}
+
+struct Blackhole {
+    address: SocketAddr,
+    blocked: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    sockets: std::sync::Arc<std::sync::Mutex<Vec<std::net::TcpStream>>>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+impl Blackhole {
+    fn new(target: SocketAddr) -> Self {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let blocked = Arc::new(AtomicBool::new(false));
+        let stop = Arc::new(AtomicBool::new(false));
+        let sockets = Arc::new(Mutex::new(Vec::new()));
+        let (b, s, held) = (blocked.clone(), stop.clone(), sockets.clone());
+        let join = thread::spawn(move || {
+            let incoming = loop {
+                if s.load(Ordering::Acquire) {
+                    return;
+                }
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(2))
+                    }
+                    Err(_) => return,
+                }
+            };
+            let outgoing =
+                std::net::TcpStream::connect_timeout(&target, Duration::from_secs(5)).unwrap();
+            held.lock()
+                .unwrap()
+                .extend([incoming.try_clone().unwrap(), outgoing.try_clone().unwrap()]);
+            let forward = |mut reader: std::net::TcpStream,
+                           mut writer: std::net::TcpStream,
+                           b: Arc<AtomicBool>,
+                           s: Arc<AtomicBool>| {
+                thread::spawn(move || {
+                    use std::io::{Read, Write};
+                    reader
+                        .set_read_timeout(Some(Duration::from_millis(50)))
+                        .unwrap();
+                    writer
+                        .set_write_timeout(Some(Duration::from_millis(100)))
+                        .unwrap();
+                    let mut bytes = [0; 4096];
+                    while !s.load(Ordering::Acquire) {
+                        match reader.read(&mut bytes) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                if !b.load(Ordering::Acquire)
+                                    && writer.write_all(&bytes[..n]).is_err()
+                                {
+                                    break;
+                                }
+                            }
+                            Err(error)
+                                if matches!(
+                                    error.kind(),
+                                    std::io::ErrorKind::WouldBlock
+                                        | std::io::ErrorKind::TimedOut
+                                        | std::io::ErrorKind::Interrupted
+                                ) => {}
+                            Err(_) => break,
+                        }
+                    }
+                })
+            };
+            let a = forward(
+                incoming.try_clone().unwrap(),
+                outgoing.try_clone().unwrap(),
+                b.clone(),
+                s.clone(),
+            );
+            let c = forward(outgoing, incoming, b, s);
+            a.join().unwrap();
+            c.join().unwrap();
+        });
+        Self {
+            address,
+            blocked,
+            stop,
+            sockets,
+            join: Some(join),
+        }
+    }
+}
+impl Drop for Blackhole {
+    fn drop(&mut self) {
+        use std::sync::atomic::Ordering;
+        self.stop.store(true, Ordering::Release);
+        for socket in self.sockets.lock().unwrap().iter() {
+            let _ = socket.shutdown(std::net::Shutdown::Both);
+        }
+        self.join.take().unwrap().join().unwrap();
+    }
+}
+
+#[shoop_test]
+fn silent_network_loss_releases_the_controller_while_recording_continues() {
+    let host = host(Ipv4Addr::LOCALHOST.into());
+    let relay = Blackhole::new(host.profile.endpoint.parse().unwrap());
+    let mut profile = host.profile.clone();
+    profile.endpoint = relay.address.to_string();
+    let (mut client, mut connection) = attach(&profile, 9);
+    control(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::Global(shoop_app_api::GlobalControlAction::SetSync(false)),
+    );
+    let outcome = control(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::AddTrack(shoop_app_api::TrackSpec {
+            name: "Blackhole recording".into(),
+            topology: shoop_app_api::TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    );
+    let Outcome::TrackCreated { track, loops, .. } = outcome else {
+        panic!()
+    };
+    let loop_id = loops[0];
+    control(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::Loop {
+            track,
+            loop_id,
+            action: shoop_app_api::LoopAction::RecordClicked,
+        },
+    );
+    let owner = client.authority().unwrap();
+    relay
+        .blocked
+        .store(true, std::sync::atomic::Ordering::Release);
+    thread::sleep(Duration::from_secs(7));
+    let (mut replacement, mut direct) = attach(&host.profile, 10);
+    let state = replacement.snapshot().unwrap();
+    let preserved = state
+        .tracks
+        .iter()
+        .find(|candidate| candidate.id == track)
+        .unwrap();
+    assert_eq!(preserved.loops[0].mode, shoop_app_api::LoopMode::Recording);
+    assert!(preserved.loops[0].length_frames > 48000 * 5);
+    assert!(replacement.authority().unwrap().generation > owner.generation);
+    assert!(connection.poll(&mut client).is_err());
+    assert_eq!(client.state(), State::Lost);
+    assert!(matches!(
+        connection::management(
+            &host.profile,
+            ManagementRequest::Shutdown {
+                authority: owner,
+                operation: OperationId {
+                    client: owner.client,
+                    sequence: 100
+                }
+            },
+            Duration::from_secs(5)
+        )
+        .unwrap(),
+        ManagementReply::Refused(Refusal::StaleAuthority)
+    ));
+    control(
+        &mut replacement,
+        &mut direct,
+        shoop_app_protocol::Command::SetLoopSmoothingMs(7),
+    );
 }

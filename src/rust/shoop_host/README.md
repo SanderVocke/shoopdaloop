@@ -14,3 +14,7 @@ acquire a new fenced generation only when no live UI owns the session.
 `cargo test -p shoop_host --features testing` runs private-path and real subprocess
 recovery/launch tests. The testing feature's deterministic dummy input is confined
 to fixtures and is disabled in ordinary production builds.
+
+Explicit LAN endpoints and remote profiles are described in
+[trusted-LAN setup](../../../docs/trusted-lan-networking.md). Portable connection
+progression lives in `shoop_app_connection`; native hosting retains device lifetime.
