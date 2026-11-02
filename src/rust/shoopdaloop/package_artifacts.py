@@ -44,7 +44,8 @@ WEB_REQUIRED_FILES = (
     "icon.png",
     "rt_audio_worklet.js",
     "generated/shoop_rt_host_worklet.wasm",
-    "generated/shoop_persistence_codec.wasm",
+    "generated/shoop_persistence_codec_bg.wasm",
+    "generated/shoop_persistence_codec.js",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
 
@@ -444,7 +445,7 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
     reject_application_script_payload(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_rt_worklet, "hosted new engine AudioWorklet Wasm")
-    hosted_codec = archive_file(bundle, f"{root}generated/shoop_persistence_codec.wasm")
+    hosted_codec = archive_file(bundle, f"{root}generated/shoop_persistence_codec_bg.wasm")
     reject_carla_native_payload(hosted_codec, "hosted client file codec worker Wasm")
     if not hosted_codec.startswith(b"\0asm"):
         raise RuntimeError("hosted client codec worker is not a Wasm module")
@@ -497,6 +498,13 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     reject_application_script_payload(
         application_binary or b"", "single-file core application Wasm"
     )
+    codec_bindings = re.search(r'codecBindingsUrl: "data:text/javascript;base64,([A-Za-z0-9+/=]+)"', text)
+    if (
+        not codec_bindings
+        or base64.b64decode(codec_bindings.group(1), validate=True)
+        != archive_file(bundle, f"{root}generated/shoop_persistence_codec.js")
+    ):
+        raise RuntimeError("self-contained HTML has invalid client codec bindings")
     rt_worklet = re.search(r'rtModuleUrl: "data:text/javascript;base64,([A-Za-z0-9+/=]+)"', text)
     if not rt_worklet or b"shoop-rt-audio-processor" not in base64.b64decode(
         rt_worklet.group(1), validate=True

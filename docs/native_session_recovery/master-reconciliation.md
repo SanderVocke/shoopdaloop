@@ -9,7 +9,7 @@ branch's 233 commits and incorporates all 11 subsequent master commits.
 | Master work | Treatment on the replacement branch |
 | --- | --- |
 | Carla completion starvation (#894) | Preserve the completion policy, shared-memory fix and tests in the independent legacy engine. Production does not host Carla yet (P07/P08); do not wire the old processor ownership model into the session service. Use the bounded deadline/completion behavior when restoring processors. |
-| ZIP 9 compatibility (#900) | Defer the upgrade and its API-specific edits. Pin ZIP 8.6.0: ZIP 9 unconditionally enables JavaScript randomness on wasm, introducing imports that prevent the raw codec worker from starting. The browser core save/load canary exposed this after native tests passed. Preserve the existing bounded archive validation and require an import-free codec artifact in CI before reconsidering the upgrade. |
+| ZIP 9 compatibility (#900) | Upgrade to ZIP 9.2 and adapt filename validation. ZIP 9 brings JavaScript bindings through its wasm randomness dependency, so build the client codec using `wasm-pack` and initialize its generated bindings in the Worker. Ship and embed those bindings with its Wasm. The RT AudioWorklet keeps its import-free contract; the codec artifact test exercises the complete bindings/ABI bundle. |
 | egui ecosystem upgrade (#901) | Carry the coordinated versions, Dependabot group and API migrations. Migrate additional capability storage, notification and recovery-test IDs introduced on the feature branch. |
 | CPAL 0.18.2 compatibility (#902) | Carry the old driver's fixes and adapt the replacement native host and software-host tests. Stream configurations pass by value; errors use `ErrorKind`. Xruns remain recoverable, route-change/realtime-denial notifications do not fail the stream, and unavailable/invalidated devices remain failures. |
 | ehttp, clap and lazy_static updates (#903–#905) | Carry the lockfile updates without changing the replacement architecture. |
@@ -35,10 +35,14 @@ ledger remain authoritative; this merge does not close a parity gap.
 - `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`: 2,533 passed, 4 skipped. Local networking was enabled for UDP, socket and LAN-host tests. Real unavailable host audio/plugin facilities retain the suite's explicit allowances.
 - Formatting, test-attribute policy, closed tracing inventory and production dependency boundaries: passed.
 - Warning-denying `wasm32-unknown-unknown` builds of the app, exported RT worklet and codec worker: passed. The app/service and RT engine also pass no-default-feature checks for this target.
-- Node AudioWorklet artifact/MessagePort contract and codec worker import/export contract: passed.
-- Hosted Chromium core workflow at 900×600: passed, including audio/MIDI recording, media details, save/load/save and resumed playback, with zero xruns. Chromium Perfetto tracing smoke: passed. Browser checks used available Node 24.19.0.
+- Node AudioWorklet artifact/MessagePort contract and codec worker bindings/ABI contract: passed.
+- Hosted and single-file Chromium core workflows at 900×600: passed, including audio/MIDI recording, media details, save/load/save and resumed playback, with zero xruns. Chromium Perfetto tracing smoke: passed. Browser checks used available Node 24.19.0.
 
-The native suite was rerun after pinning ZIP, correcting versioned wire fixtures and separating
-the production build from tests that launch a test-enabled host executable.
-Its final run disables debug symbols and incremental compilation to fit the
+The single-file ZIP 9.2 check uses `SELF_CONTAINED_URL` on localhost with only the
+HTML served; this environment's Chromium policy blocks `file://` navigation.
+Hosted archive and single-file verification check that the codec bindings are
+shipped and embedded exactly. The artifact contract initializes the codec through
+those bindings, while the separate RT worklet still rejects every import.
+
+The final native run disables debug symbols and incremental compilation to fit the
 environment's disk budget; warning denial and the CI test profile remain enabled.

@@ -288,7 +288,10 @@ fn decode_loop_audio_inner(
         );
         if declared.len() != manifest.channels.len() + 1
             || archive.len() != declared.len()
-            || archive.file_names().any(|name| !declared.contains(name))
+            || archive.file_names().any(|name| match name {
+                Ok(name) => !declared.contains(name.as_ref()),
+                Err(_) => true,
+            })
         {
             return Err(SessionError::Archive(
                 "unexpected or reused loop audio entries".into(),

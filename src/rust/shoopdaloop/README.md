@@ -121,6 +121,7 @@ not shipped; their sources/recipes and behavioral fixtures are preserved for par
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install --locked trunk --version 0.21.14
+cargo install --locked wasm-pack --version 0.15.0
 cd src/rust/shoopdaloop
 trunk serve --open
 ```
@@ -174,6 +175,10 @@ python3 browser_firefox_smoke.py --backend new_engine
 # Additional >32 MiB file round-trip through the codec worker and AudioWorklet:
 NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
+
+`SELF_CONTAINED_URL` can point the self-contained smoke at an already served HTML
+URL. Serve a directory containing only that HTML to test its embedded bundle
+independently of hosted assets.
 
 The file canaries compare exact PCM/MIDI after save/load/save, check stopped fresh
 identities, and resume playback. Native file canaries use actual atomic output and
