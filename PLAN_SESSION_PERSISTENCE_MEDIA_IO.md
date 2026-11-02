@@ -2,13 +2,13 @@
 
 ## Status and delivery
 
-Implementation in progress; the app transfer foundation and engine content-upload
-foundation are implemented, along with the underlying atomic full-owner replacement
-cut and deferred processor presets.
-Engine, adapter, service and public client core file workflows are implemented.
-Cooperative media preparation, bounded codecs and callback lifetime fencing are
-in place. Packaged deployment, loss/reconciliation coverage and final gates remain
-pending. Written under
+Stages 0–6 are implemented. Core file workflows, atomic replacement, cooperative
+media preparation, bounded codecs and callback lifetime fencing are in place.
+Packaged Linux socket/shared-memory and hosted/self-contained release Chrome
+workflows pass, including media above 32 MiB and socket-loss reconciliation.
+Final validation and cross-platform CI corrections are in progress in
+[PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906).
+Written under
 [write_plan.md](.agents/prompts/write_plan.md) for priority 1: **session save/load
 and media I/O**, covering the current-core portions of parity items P01, P02 and
 P11 in the [feature parity ledger](docs/native_session_recovery/feature-parity.md).
@@ -740,6 +740,24 @@ validation budgets. Backpressure preserves FIFO per upload, so a queued write
 cannot be overtaken when the eight runtime buffers are full. MIDI writes serialize
 per upload; the advertised chunk size respects both page boundaries and the
 prepared validation budget. All affected native engine/protocol/adapter tests pass.
+
+Release Chrome 147 now passes both hosted and direct-file large-media canaries on
+`47fc96ec`: a 33 MiB mono WAV mapped to two channels, save/load/save comparison,
+fresh stopped identities and resumed playback. Both include the smaller recorded
+audio/MIDI workflow and actual download-link cancellation/retry. The matching ZIP
+and self-contained HTML pass artifact verification. No workload or watchdog was
+reduced or extended.
+
+Initial PR CI exposed two canary issues: the raw worklet contract still sent an
+RT version-1 greeting, and the Windows socket-loss canary used a command outcome
+before its corresponding projection arrived. The former now checks version 2;
+the latter waits for the confirmed revision before issuing the next fenced request.
+macOS also exposed slow large imports with small prepared configurations: the MIDI
+validation bound had reduced the common audio/MIDI chunk size. Preparation now
+reserves at least one page-bounded wire chunk of MIDI validation work (at most
+1024 steps), while retaining eight physical buffers and the negotiated queue
+window. A heap-guarded small-engine regression checks full audio and MIDI chunks.
+Final-head platform checks remain pending after these corrections.
 
 ### Stage 7 — final end-to-end validation and PR
 

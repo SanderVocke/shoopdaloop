@@ -93,6 +93,35 @@ fn wide_upload_window_and_disconnect_reuse_every_prepared_owner() {
     pipeline_cycles(shoop_rt_protocol::content::CONTENT_WRITE_WINDOW, 128);
 }
 
+#[shoop_test]
+fn small_engines_prepare_a_full_wire_chunk_without_exceeding_page_or_validation_limits() {
+    let mut settings = description();
+    settings.page_bytes = 4096;
+    let mut h = Harness::new(&settings);
+    let Some(EngineMessage::Welcome { limits, .. }) = h.lifecycle.first() else {
+        panic!("expected engine limits");
+    };
+    assert_eq!(
+        usize::from(limits.content_chunk_bytes),
+        content::CONTENT_CHUNK_BYTES
+    );
+    let bytes = vec![0; content::CONTENT_CHUNK_BYTES];
+    h.done(begin(1, false, bytes.len() as u64 / 8, bytes.len() as u64));
+    h.done(write(1, 0, &bytes));
+    h.done(Request::ContentFinish { id: 1 });
+    h.done(Request::ContentRelease { id: 1 });
+    let mut midi = Vec::new();
+    for frame in 0..64u64 {
+        midi.extend_from_slice(&frame.to_le_bytes());
+        midi.extend_from_slice(&3u32.to_le_bytes());
+        midi.extend_from_slice(&[0x90, 60, 64]);
+    }
+    h.done(begin(2, true, 64, midi.len() as u64));
+    h.done(write(2, 0, &midi));
+    h.done(Request::ContentFinish { id: 2 });
+    h.done(Request::ContentRelease { id: 2 });
+}
+
 fn pipeline_cycles(window: usize, credits: u16) {
     let mut settings = description();
     settings.reliable_credits = credits;

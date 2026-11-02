@@ -84,6 +84,15 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
         ),
         "probe operation failed: {result:?}"
     );
+    let revision = match &result {
+        Outcome::Confirmed { revision, .. } | Outcome::TrackCreated { revision, .. } => *revision,
+        _ => unreachable!(),
+    };
+    wait(client, connection, |client| {
+        client
+            .snapshot()
+            .is_some_and(|state| state.revision >= revision)
+    })?;
     Ok(result)
 }
 fn launch(
@@ -744,6 +753,14 @@ fn socket_file_loss(
         "lost commit did not finish: {:?}",
         client.results()[&operation]
     );
+    let Outcome::Confirmed { revision, .. } = client.results()[&operation] else {
+        unreachable!()
+    };
+    wait(&mut client, &mut connection, |client| {
+        client
+            .snapshot()
+            .is_some_and(|state| state.revision >= revision)
+    })?;
     let state = client.snapshot().unwrap();
     let tracks = state.tracks.iter().map(|t| t.id).collect::<Vec<_>>();
     ensure!(

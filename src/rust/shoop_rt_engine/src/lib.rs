@@ -197,7 +197,8 @@ pub fn prepare(
             events: slots,
             subranges: 0,
             transfer_bytes: payload + (2 + stream::READ_PAGES) * page_bytes,
-            validation_steps: 3 * pool.nodes() + edges + 2 * loops + 64,
+            validation_steps: (3 * pool.nodes() + edges + 2 * loops + 64)
+                .max(page_bytes.min(shoop_rt_protocol::content::CONTENT_CHUNK_BYTES)),
             publications: slots,
         },
     }
