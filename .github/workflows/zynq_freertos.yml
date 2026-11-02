@@ -58,8 +58,8 @@ jobs:
             work/zynq/echo-test/*.json
             work/zynq/echo-test/*.log
             work/zynq/echo-canary/*.log
-            work/zynq/integration/*.json
-            work/zynq/integration/*.log
+            work/zynq/integration/**/*.json
+            work/zynq/integration/**/*.log
             work/zynq/*-test/*.json
             work/zynq/*-test/*.log
           retention-days: 14
@@ -71,4 +71,6 @@ jobs:
           path: |
             work/zynq/*/*.pcap
             work/zynq/*/*.txt
+            work/zynq/integration/restart/*.pcap
+            work/zynq/integration/restart/*.txt
           retention-days: 3

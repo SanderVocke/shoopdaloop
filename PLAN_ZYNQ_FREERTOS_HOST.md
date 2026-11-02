@@ -6,8 +6,8 @@ Execution authorized on 2026-11-02. Investigation used
 `feat/trusted-lan-networking` at `5aeadd0b52229312349053617677a714d2d4e437`.
 Implemented on `feat/zynq-freertos-rt-host` in
 [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914),
-**targeting `feat/backend-replacement`**, left unmerged. Final CI and handoff
-are in progress.
+**targeting `feat/backend-replacement`**, left unmerged. All three gates and implementation-head CI pass.
+The final documentation head must pass the same checks before handoff.
 The user retargeted delivery after networking merged as `540e863f`; this is the
 implementation base. Its tree matches the investigated networking head.
 
@@ -334,10 +334,10 @@ Depends on all three gates; use the repository-prescribed build environment.
   **base `feat/backend-replacement`**. Explain the resulting firmware behavior,
   usage, three gate results, memory maxima and hardware validation limits. Do not
   retarget the existing networking PR or merge either PR as part of this task.
-- [ ] Monitor all required/applicable checks on the PR's current head. Inspect
+- [x] Monitor all required/applicable checks on the PR's current head. Inspect
   failure logs, fix failures and rerun affected checks until green. Reconcile
   target-branch movement and repeat affected validation when necessary.
-- [ ] Inspect automated review submissions, inline comments and check feedback;
+- [x] Inspect automated review submissions, inline comments and check feedback;
   address substantive findings, push fixes and repeat review/CI until the reviewer
   approves. If no automated reviewer responds, record that fact without claiming
   approval. Final handoff includes the PR URL, final head/check results, evidence
@@ -379,8 +379,8 @@ documentation links are background, not reproducible build inputs.
   `64360a1c` introduces configurable admission; `dee441c3` integrates the complete
   host and CI. Subsequent fixes cover the runner container's checkout ownership,
   orderly fixture TCP close, monotonic transfer keys and explicit non-null
-  allocation evidence. The host/allocator review milestone is `dcb48ded`; later fixture synchronization
-  and documentation updates follow it.
+  allocation evidence. The complete implementation and fixture synchronization are at `9d1003cc`,
+  before the final evidence/documentation commit.
 - Full local `suite.py --fetch`: all seven phases passed in one run, with rebuilt
   firmware and the pinned AMD checkout: echo build, echo, intentional failing
   content canary, production/restart, native UI, recovery and the complete fixture.
@@ -396,8 +396,8 @@ documentation links are background, not reproducible build inputs.
 | 4 — runtime/boundaries | Cortex-A9 soft/hard-float and AArch64 no_std builds passed. Actual firmware verifies allocator alignment through 4096 bytes, 64-bit atomic carry, FPU task/IRQ preservation and the monotonic timer low-word carry. Every render call guards allocation and deallocation. Production ELF audits exclude fixture symbols and markers. |
 | 5 — memory/admission | Linker/load checks enforce the 1 GiB layout. Firmware refuses excess metadata/media/objects/MIDI events and inconsistent totals. A real full recording pool preserves playback; over-budget export and a small raw image with oversized normalized duration are refused without changing the session. Teardown leaves zero Rust allocations, socket slots and netconns. |
 | 6 — segmented persistence | 41,943,040 audio bytes plus MIDI and supported session structure round-trip exactly; the loaded session also renders its distinct stereo pattern through the engine. |
-| 7 — permanent CI | The pinned-container firmware job runs all seven phases, with bounded process ownership/timeouts and compact pass evidence plus failure-only packet/register captures. Existing native/browser/coverage/bare-metal/docs/CodeQL jobs remain enabled. Final CI verification is in progress. |
-| 8 — delivery/review | The PR targets the requested base and remains unmerged. CodeQL's two allocator-probe findings were fixed with an explicit NonNull guard; its rescan passes and both automated threads are resolved. Final head checks and handoff remain in progress. |
+| 7 — permanent CI | The pinned-container firmware job runs all seven phases, with bounded process ownership/timeouts and compact pass evidence plus failure-only packet/register captures. Existing native/browser/coverage/bare-metal/docs/CodeQL jobs remain enabled. Clean-runner firmware CI passes all seven phases. |
+| 8 — delivery/review | The PR targets the requested base and remains unmerged. CodeQL's two allocator-probe findings were fixed with an explicit NonNull guard; its rescan passes and both automated threads are resolved. All implementation-head checks pass; the documentation head is checked again before handoff. |
 
 ### Memory ledger and measured margins
 
@@ -413,7 +413,7 @@ documentation links are background, not reproducible build inputs.
 | Combined-suite Rust peak | 407,460,812 bytes (388.58 MiB) |
 | Largest qualified-fixture Rust peak observed | 407,466,188 bytes (388.59 MiB) |
 | Minimum FreeRTOS free heap observed | 16,168,840 bytes |
-| Minimum control / render stack free | 37,511 / 41,901 words |
+| Minimum control / render stack free observed in local/CI fixtures | 37,431 / 41,901 words |
 | Minimum other task stack free | 929 words |
 | Combined-suite lwIP heap peak | 6,032 bytes |
 | Final Rust use / application sockets / netconns | 0 / 0 / 0 |
@@ -456,19 +456,31 @@ Rust test-attribute policy, all boundary audits and the closed 355-module tracin
 inventory. The ignored external-firmware UI test executes through the actual
 QEMU harness. No missing-backend allowance substitutes for firmware integration.
 
-Previous PR check evidence:
-[firmware](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357861),
-[native/browser/coverage](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357579),
-[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518358236) and
-[docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41518357704).
-CodeQL, docs and coverage pass. The firmware job passed platform, production, UI,
-recovery and 40 MiB playback, then exposed a fixture revision-fence race: Begin
-transfer 20 targeted a snapshot from before Playing became visible and correctly
-received RevisionConflict. The fixture now waits for observed Playing before
-capacity probes, retaining its exact Overloaded expectation and logging unexpected
-replies. Its shared wait path and the short firmware suite pass. The complete
-fixture and final CI reruns are pending. Codecov patch status is 91.66% against
-the unchanged 80% floor; final-head results use the complete PR check list.
+All required/applicable checks passed on implementation head `9d1003cc`:
+[firmware](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522777971),
+[native/browser/coverage](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522778021),
+[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522777973) and
+[docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522777993).
+The complete check list includes 19 successful checks; only the scheduled/manual
+CPAL-free nightly is intentionally skipped for a PR. Codecov patch status is
+91.66% against its unchanged 80% floor. CodeQL's two review threads are resolved;
+no additional substantive automated review arrived at final inspection.
+
+The clean CI firmware suite completed all seven phases in 16 minutes 21 seconds.
+Its [verified execution artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/41522777971/artifacts/13178787967)
+contains ELF/map/pins, launch/QMP facts, serial output, per-phase results and
+heap/stack accounting. The artifact ZIP digest is
+`5a8392a157cc0948f70481de3d3ef7dca544bc9243f29786ad25e227dae4a13a`.
+Its production, UI, recovery and full-fixture result records all pass and report
+zero final Rust allocations, application socket slots and netconns.
+
+CI packet evidence also identified a fixture revision-fence race after a Playing
+command was confirmed but before its snapshot became visible. Waiting for
+observed Playing makes the subsequent capacity probes valid; they still require
+the exact Overloaded refusal. The corrected complete firmware CI passes.
+The final workflow artifact paths additionally include nested restart logs,
+QMP facts and failure diagnostics. Final-documentation-head checks must pass
+before handoff and remain visible on the PR's current check list.
 
 Physical audio/FPGA wiring, silicon cache/DMA validation, physical real-time
 performance and production boot packaging remain outside the agreed scope.
