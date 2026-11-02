@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, StreamConfig, StreamError, SupportedBufferSize};
+use cpal::{BufferSize, Error, ErrorKind, StreamConfig, SupportedBufferSize};
 use rtrb::{Consumer, Producer, RingBuffer};
 use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState};
@@ -260,12 +260,13 @@ fn buffer_size(
     }
 }
 
-fn failure(shared: &Shared, error: StreamError) {
-    match error {
-        StreamError::BufferUnderrun => shared.xrun(&shared.counters.stream_underruns),
-        StreamError::DeviceNotAvailable => shared.fail(StreamFailure::DeviceNotAvailable),
-        StreamError::StreamInvalidated => shared.fail(StreamFailure::StreamInvalidated),
-        StreamError::BackendSpecific { .. } => shared.fail(StreamFailure::Backend),
+fn failure(shared: &Shared, error: Error) {
+    match error.kind() {
+        ErrorKind::Xrun => shared.xrun(&shared.counters.stream_underruns),
+        ErrorKind::DeviceNotAvailable => shared.fail(StreamFailure::DeviceNotAvailable),
+        ErrorKind::StreamInvalidated => shared.fail(StreamFailure::StreamInvalidated),
+        ErrorKind::DeviceChanged | ErrorKind::RealtimeDenied => {}
+        _ => shared.fail(StreamFailure::Backend),
     }
 }
 
@@ -587,7 +588,7 @@ where
             let errors = shared.clone();
             let stream = device
                 .build_input_stream(
-                    &stream_config(channels),
+                    stream_config(channels),
                     move |data: &[f32], _: &cpal::InputCallbackInfo| capture.push(data),
                     move |error| failure(&errors, error),
                     None,
@@ -609,7 +610,7 @@ where
     let errors = shared.clone();
     let output_stream = output
         .build_output_stream(
-            &stream_config(output_channels),
+            stream_config(output_channels),
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| side.process(data),
             move |error| failure(&errors, error),
             None,

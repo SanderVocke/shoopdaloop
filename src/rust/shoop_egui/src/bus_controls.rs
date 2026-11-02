@@ -186,7 +186,7 @@ impl BusControls {
             let mut remove = false;
             let mut cancel = false;
             egui::Window::new("Remove bus?")
-                .id(egui::Id::new(("remove_bus", state.id.raw())))
+                .id(egui::Id::unique(("remove_bus", state.id.raw())))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -478,7 +478,7 @@ impl BusControls {
         };
         let mut open = true;
         egui::Window::new(format!("{} — Process logs", state.name))
-            .id(egui::Id::new(("bus_fx_logs", state.id.raw())))
+            .id(egui::Id::unique(("bus_fx_logs", state.id.raw())))
             .open(&mut open)
             .resizable(true)
             .show(context, |ui| {

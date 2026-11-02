@@ -142,7 +142,7 @@ Release packaging also embeds them in a single HTML file, subject to browser res
 ```sh
 cargo fmt --all -- --check
 RUSTFLAGS='-D warnings' cargo build --workspace
-SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
 python3 scripts/check_rt_engine_boundary.py
 python3 scripts/check_tracing_coverage.py --require-closed
 python3 scripts/check_shoop_test_usage.py
@@ -185,4 +185,7 @@ browser case has separate deadlines; normal canary workloads/deadlines are retai
 `--tracing` captures the local UI/control process in Perfetto format; optional
 `--tracing-engine-detail` adds available local instrumentation. External hosts and
 RT worklets do not become traced application-model realms through UI attachment.
+The browser tracing smoke waits for more than 8,192 records from the local UI
+capture. After 60 seconds it saves the available trace and reports a failure with
+the observed record count.
 Forced process termination cannot finalize an in-process trace.

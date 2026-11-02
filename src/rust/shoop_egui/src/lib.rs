@@ -112,13 +112,14 @@ fn script_markdown_base_uri(script_path: &str) -> String {
 const BACKEND_CAPABILITIES_ID: &str = "shoop_backend_capabilities";
 
 pub(crate) fn set_backend_capabilities(context: &egui::Context, capabilities: BackendCapabilities) {
-    context.data_mut(|data| data.insert_temp(egui::Id::new(BACKEND_CAPABILITIES_ID), capabilities));
+    context
+        .data_mut(|data| data.insert_temp(egui::Id::unique(BACKEND_CAPABILITIES_ID), capabilities));
 }
 
 /// The capabilities published by the application; every feature when none were published.
 pub(crate) fn backend_capabilities(context: &egui::Context) -> BackendCapabilities {
     context
-        .data(|data| data.get_temp(egui::Id::new(BACKEND_CAPABILITIES_ID)))
+        .data(|data| data.get_temp(egui::Id::unique(BACKEND_CAPABILITIES_ID)))
         .unwrap_or_default()
 }
 
