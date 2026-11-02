@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 pub const MAX_RECORD: usize = 64 * 1024;
 pub const FILE_CHUNK: usize = 16 * 1024;
+pub const IMAGE_BATCH_PARTS: usize = 16;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Summary {
     pub handle: u64,
@@ -46,6 +47,7 @@ pub enum Command {
     Next,
     NextImageBatch,
     Reset,
+    ImageBatch(Vec<Request>),
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
@@ -215,9 +217,26 @@ impl Worker {
     }
     fn apply(&mut self, command: Command) -> Result<Response> {
         match command {
+            Command::ImageBatch(parts) => {
+                ensure!(
+                    !parts.is_empty() && parts.len() <= IMAGE_BATCH_PARTS,
+                    "invalid codec image batch length"
+                );
+                ensure!(
+                    parts[..parts.len() - 1]
+                        .iter()
+                        .all(|part| !matches!(part, Request::Finish { .. })),
+                    "codec image finish must end its batch"
+                );
+                let mut response = Response::Ack;
+                for part in parts {
+                    response = self.apply(Command::Image(part))?;
+                }
+                Ok(response)
+            }
             Command::NextImageBatch => {
                 let mut parts = Vec::new();
-                for _ in 0..16 {
+                for _ in 0..IMAGE_BATCH_PARTS {
                     let Some(stream) = &mut self.image else {
                         return Ok(Response::ImageBatch { parts, done: true });
                     };
@@ -546,6 +565,136 @@ mod tests {
         let mut bytes = encode(&Command::Reset).unwrap();
         bytes.push(0);
         assert!(decode::<Command>(&bytes).is_err());
+        assert!(matches!(
+            worker.receive(Command::ImageBatch(Vec::new())),
+            Response::Failed(_)
+        ));
+        assert!(matches!(
+            worker.receive(Command::ImageBatch(vec![
+                Request::Finish { key: key() };
+                IMAGE_BATCH_PARTS + 1
+            ])),
+            Response::Failed(_)
+        ));
+    }
+
+    #[shoop_test]
+    fn bounded_image_batches_match_scalar_export_and_preserve_exact_audio() {
+        let expected = (0..8192)
+            .map(|frame| if frame % 2 == 0 { 0.25 } else { -0.5 })
+            .collect::<Vec<_>>();
+        let audio = shoop_session::LoopAudio {
+            sample_rate: 1000,
+            channels: vec![shoop_session::LoopAudioChannel {
+                label: "Source".into(),
+                role: "direct".into(),
+                samples: expected.clone(),
+            }],
+        };
+        let Value::Decoded(decoded) = (Work::Decode {
+            kind: IoTaskKind::ImportLoopAudio,
+            bytes: shoop_session::encode_float_wav(&audio).unwrap().into(),
+            rate: 1000,
+        })
+        .run()
+        .unwrap() else {
+            panic!("decode failed")
+        };
+        let Value::Image(image) = (Work::Prepare {
+            decoded,
+            mapping: vec![0],
+            update_length: true,
+        })
+        .run()
+        .unwrap() else {
+            panic!("prepare failed")
+        };
+        let persistence_image::Manifest::Update {
+            sample_rate,
+            frames,
+            audio,
+            ..
+        } = &image.manifest
+        else {
+            panic!("expected imported audio")
+        };
+        let image = Arc::new(persistence_image::Image {
+            manifest: persistence_image::Manifest::Loop {
+                sample_rate: *sample_rate,
+                content: persistence_image::Loop {
+                    id: shoop_app_api::LoopId::from_raw(1),
+                    name: "Captured audio".into(),
+                    sync: false,
+                    frames: frames.unwrap(),
+                    gain: 1.,
+                    balance: 0.,
+                    audio: audio.iter().map(|update| update.content.clone()).collect(),
+                    midi: Vec::new(),
+                },
+            },
+            payloads: image.payloads.clone(),
+        });
+        let mut stream = UploadStream::new(
+            image,
+            key(),
+            Target::Session {
+                revision: Revision(1),
+            },
+        )
+        .unwrap();
+        let description = stream.description();
+        let mut requests = Vec::new();
+        while let Some(request) = stream.next_request().unwrap() {
+            requests.push(request);
+        }
+        assert!(requests.len() > IMAGE_BATCH_PARTS);
+        let mut files = Vec::new();
+        for width in [1, IMAGE_BATCH_PARTS] {
+            let mut worker = Worker::default();
+            assert!(matches!(
+                worker.receive(Command::BeginImage {
+                    description,
+                    kind: 2,
+                    wav: true,
+                    standard: false,
+                    channels: vec![0],
+                }),
+                Response::Ack
+            ));
+            let mut declared = None;
+            for parts in requests.chunks(width) {
+                let command = if width == 1 {
+                    Command::Image(parts[0].clone())
+                } else {
+                    Command::ImageBatch(parts.to_vec())
+                };
+                let encoded = encode(&command).unwrap();
+                assert!(encoded.len() <= MAX_RECORD);
+                match worker.receive(decode(&encoded).unwrap()) {
+                    Response::Ack => {}
+                    Response::File { bytes, .. } => declared = Some(bytes),
+                    response => panic!("image transfer failed: {response:?}"),
+                }
+            }
+            let mut file = Vec::new();
+            loop {
+                match worker.receive(Command::Next) {
+                    Response::FileChunk { offset, bytes } => {
+                        assert_eq!(offset, file.len() as u64);
+                        file.extend_from_slice(&bytes);
+                    }
+                    Response::Done => break,
+                    response => panic!("file transfer failed: {response:?}"),
+                }
+            }
+            assert_eq!(Some(file.len() as u64), declared);
+            assert_eq!(
+                shoop_session::decode_wav(&file).unwrap().channels[0].samples,
+                expected
+            );
+            files.push(file);
+        }
+        assert_eq!(files[0], files[1]);
     }
     #[shoop_test]
     fn worker_retains_decoded_audio_across_dialog_and_streams_the_complete_image() {

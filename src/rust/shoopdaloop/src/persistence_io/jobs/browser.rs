@@ -12,6 +12,7 @@ use std::{
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 const WINDOW: usize = 16;
+const MEDIA_BYTES_PER_POLL: usize = 256 * 1024;
 fn js_error(value: JsValue) -> anyhow::Error {
     anyhow!("file codec worker: {value:?}")
 }
@@ -237,7 +238,7 @@ impl Sending {
             } => {
                 if let Some(progress) = validation {
                     if !progress
-                        .step(64 * 1024)
+                        .step(MEDIA_BYTES_PER_POLL)
                         .map_err(|r| anyhow!("invalid captured media: {r:?}"))?
                     {
                         return Ok(None);
@@ -272,10 +273,17 @@ impl Sending {
                         channels: std::mem::take(channels),
                     }));
                 }
-                Ok(stream
-                    .next_request()
-                    .map_err(|r| anyhow!("captured image transfer failed: {r:?}"))?
-                    .map(WorkerCommand::Image))
+                let mut parts = Vec::with_capacity(worker::IMAGE_BATCH_PARTS);
+                for _ in 0..worker::IMAGE_BATCH_PARTS {
+                    let Some(request) = stream
+                        .next_request()
+                        .map_err(|r| anyhow!("captured image transfer failed: {r:?}"))?
+                    else {
+                        break;
+                    };
+                    parts.push(request);
+                }
+                Ok((!parts.is_empty()).then_some(WorkerCommand::ImageBatch(parts)))
             }
             Self::One(command) => Ok(command.take()),
         }
@@ -394,7 +402,10 @@ impl BrowserJob {
                 }
                 WorkerResponse::ImagePart(request) => self.image_part(request)?,
                 WorkerResponse::ImageBatch { parts, done } => {
-                    ensure!(parts.len() <= 16, "codec batch exceeded its bound");
+                    ensure!(
+                        parts.len() <= worker::IMAGE_BATCH_PARTS,
+                        "codec batch exceeded its bound"
+                    );
                     if matches!(self.output, Output::Image(_)) {
                         for request in parts {
                             self.image_part(request)?;
@@ -452,7 +463,7 @@ impl BrowserJob {
         }
         if let Output::Assembly(assembly) = &mut self.output {
             return Ok(assembly
-                .step(64 * 1024)
+                .step(MEDIA_BYTES_PER_POLL)
                 .map_err(|r| anyhow!("invalid codec media: {r:?}"))?
                 .map(|image| Value::Image(image.into_image())));
         }
@@ -573,7 +584,7 @@ impl CodecJob {
                     .map(|work| work.run().map_err(|e| e.to_string()))
             }
             Mode::Assembly(assembly) => assembly
-                .step(64 * 1024)
+                .step(MEDIA_BYTES_PER_POLL)
                 .map(|value| value.map(|image| Value::Captured(image.into_image())))
                 .map_err(|r| anyhow!("invalid captured media: {r:?}")),
             Mode::Browser(job) => job.poll(),

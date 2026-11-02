@@ -794,6 +794,25 @@ refusal before the fix and passes after it. New bulk reads now wait for every
 queued cancellation to finish, while ordinary controls continue. Affected Wasm,
 browser and selected Miri checks are repeated after these portable changes.
 
+On `d17355df`, macOS debug packaging passes the large native file canaries, and
+the rebuilt hosted/single-file Chrome bundles pass recorded save/load/resave and
+the MIDI-detail handoff. Release CI's large import also passes, but large save
+times out while encoding: client-to-codec image delivery sent one 1 KiB part per
+worker round trip. Image commands now batch up to sixteen parts within the existing
+64 KiB worker record limit, with sixteen envelopes in flight. Main-thread image
+validation/assembly each yield after 256 KiB. This matches the existing bounded
+worker-to-client image batching. The scalar and batched worker routes produce
+byte-identical WAV output and exact samples; empty/oversized batches refuse.
+All 2484 native tests pass after this change; browser/CI validation is repeated
+with the same large workload and watchdogs.
+
+The extended engine staging Miri case passes on `d17355df`, seed 0, with its full
+workload (715 seconds wall time). A separate extended adapter interpreter attempt
+was stopped without a verdict and is not counted as a pass. Final selected Miri
+keeps the five protocol/resource ownership cases on both original seeds and adds
+the complete codec batch regression. Engine and cancellation workloads remain in
+the full native and affected Wasm gates.
+
 ### Stage 7 — final end-to-end validation and PR
 
 - [ ] Exercise packaged native and hosted/self-contained browser workflows: record
