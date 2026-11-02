@@ -9,7 +9,9 @@ original pinned-profile and cross-connection recovery requirements. Earlier
 implementation and validation evidence remains in Git history.
 
 Branch `feat/trusted-lan-networking`; PR https://github.com/SanderVocke/shoopdaloop/pull/912
-against `feat/backend-replacement` (base `202fe46f`). Leave it unmerged.
+against `feat/backend-replacement` (base `202fe46f`). Implementation and local
+validation are complete. Final delivery is gated by the PR's live current-head
+checks as specified below. Leave it unmerged.
 
 ## Goals, scope and immutable acceptance criteria
 
@@ -82,8 +84,16 @@ management GUI remain out of scope.
 - [x] R4a: update setup/profile/configuration documentation and PR usage examples;
   run full native suite, >32 MiB LAN/local/shared-memory probes, browser checks,
   Cortex-A builds, formatting, tracing/test policies and boundary audits.
-- [ ] R4b: push milestone commits, fix final-head CI, check automated review and address it.
-  If no reviewer responds, report that without claiming approval. Leave unmerged.
+- [x] R4b: push milestone commits and inspect automated review. No code-review
+  submissions or inline feedback arrived at the delivery checkpoint; no approval
+  is claimed. Leave unmerged.
+
+### Mandatory live delivery gate
+
+Before handoff, every required check on the PR's **current head** must pass.
+Fix any arriving CI/review failure and repeat verification. This gate is tracked
+by the live PR checks and final PR validation report, so recording completion does
+not itself require another source commit and another identical platform run.
 
 ## Execution contract
 
@@ -137,3 +147,24 @@ fresh final-head checks after implementing the new contract.
 - First endpoint implementation CI passes coverage, Codecov patch/project, Docs,
   CodeQL and bare-metal gates. Native/browser matrix completion and final-head
   review remain tracked by PR #912's checks.
+
+### Final UI boundary and platform checkpoint
+
+- All platform checks at `c5c90d42d2a2da165247a15274c46c02dcc501ee` passed:
+  https://github.com/SanderVocke/shoopdaloop/actions/runs/41462251480.
+  This includes Linux/macOS/Windows and web debug/release, coverage, bare-metal,
+  canonical wire fixtures, package workflows and local/shared-memory regressions.
+  Docs, CodeQL and Codecov patch/project checks also passed.
+- Final review found session-specific widget drafts and platform file callbacks
+  surviving runtime replacement. All three UI connection paths now share one
+  reset: cancel old readers, replace callback channels, clear session dialogs,
+  request correlations, transient edit history/focus and pending startup actions.
+  Preserve local settings/drafts, tracing artifacts and finishing file writes.
+- Final native suite: **2513 passed; four intentional canaries skipped**.
+  Explicit regressions verify old callbacks cannot target a new connection,
+  readers release their reservation before reuse, finishing writes retain their
+  reservation, and local preference drafts survive session-widget reset.
+- Browser rebuild and hosted Chromium workflow pass with zero xruns after this
+  final UI refinement. Formatting, warning-denying build, test policy, tracing
+  inventory and 17 boundary-policy tests pass. The final refinement is subject to
+  the mandatory current-head gate above before handoff.

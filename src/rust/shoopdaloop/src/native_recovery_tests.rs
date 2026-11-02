@@ -422,3 +422,51 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     }
     assert!(path.exists() && root.path().join("host.key").exists());
 }
+
+#[shoop_wasm_test_support::shoop_test]
+fn a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks() {
+    let mut app = UnifiedApp::new(1., false, &AppArgs::default()).unwrap();
+    let old_sender = app.pending_file_intent_tx.clone();
+    old_sender
+        .send(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+        .unwrap();
+    let input = app
+        .file_input
+        .reserve(shoop_egui::TaskId::from_raw(1))
+        .unwrap();
+    let output = app.file_output.reserve().unwrap();
+    let settings = app.settings.active();
+    app.startup_session = Some(("previous.shoop".into(), false));
+    app.session_url_task = Some(shoop_egui::TaskId::from_raw(1));
+    let context = egui::Context::default();
+    let field = egui::Id::new("previous connection field");
+    context.data_mut(|data| data.insert_temp(field, 42_u32));
+    app.clear_connection_state(&context);
+    assert!(context.data(|data| data.get_temp::<u32>(field)).is_none());
+    assert!(app.pending_file_intent_rx.try_recv().is_err());
+    assert!(old_sender
+        .send(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+        .is_err());
+    app.pending_file_intent_tx
+        .send(AppIntent::Global(GlobalControlAction::SetSolo(false)))
+        .unwrap();
+    assert!(matches!(
+        app.pending_file_intent_rx.try_recv(),
+        Ok(AppIntent::Global(GlobalControlAction::SetSolo(false)))
+    ));
+    assert!(input.check().is_err());
+    assert!(app
+        .file_input
+        .reserve(shoop_egui::TaskId::from_raw(2))
+        .is_err());
+    assert!(app.file_output.reserve().is_err());
+    assert!(app.startup_session.is_none() && app.session_url_task.is_none());
+    assert!(Arc::ptr_eq(&settings, &app.settings.active()));
+    drop(input);
+    drop(output);
+    assert!(app
+        .file_input
+        .reserve(shoop_egui::TaskId::from_raw(2))
+        .is_ok());
+    assert!(app.file_output.reserve().is_ok());
+}

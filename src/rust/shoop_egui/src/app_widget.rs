@@ -1314,6 +1314,16 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn reset_connection(&mut self) {
+        let mut fresh = Self::new(self.settings.registry());
+        core::mem::swap(&mut fresh.settings, &mut self.settings);
+        fresh.settings.reset_connection();
+        fresh.logo = self.logo.take();
+        fresh.tracing_status = self.tracing_status;
+        fresh.tracing_stopped = self.tracing_stopped.take();
+        *self = fresh;
+    }
+
     pub fn new(settings_registry: Arc<SettingsRegistry>) -> Self {
         let mut sync_track = TrackWidget::default();
         sync_track.set_width_resizable(false);
@@ -3625,6 +3635,48 @@ fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
 
 #[cfg(test)]
 mod tests {
+    #[shoop_wasm_test_support::shoop_test]
+    fn a_new_connection_discards_session_dialogs_and_request_correlations() {
+        let mut widget = super::AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_bus_open = true;
+        widget.new_session_confirmation_open = true;
+        widget.pending_add_bus_request = Some(7);
+        widget
+            .io_channel_mappings
+            .insert(crate::TaskId::from_raw(1), vec![3]);
+        widget
+            .io_channel_selections
+            .insert(crate::TaskId::from_raw(1), vec![2]);
+        let registry = widget.settings.registry();
+        widget.settings.open(&settings_state());
+        widget
+            .settings
+            .draft_mut()
+            .unwrap()
+            .set(crate::UI_SCALE_FACTOR, 1.25);
+        widget.reset_connection();
+        assert!(widget.settings.is_open());
+        assert_eq!(
+            widget
+                .settings
+                .draft_mut()
+                .unwrap()
+                .get(crate::UI_SCALE_FACTOR)
+                .unwrap(),
+            1.25
+        );
+        assert!(
+            !widget.add_track_open && !widget.add_bus_open && !widget.new_session_confirmation_open
+        );
+        assert!(widget.pending_add_bus_request.is_none());
+        assert!(widget.io_channel_mappings.is_empty() && widget.io_channel_selections.is_empty());
+        assert!(std::sync::Arc::ptr_eq(
+            &registry,
+            &widget.settings.registry()
+        ));
+    }
+
     use std::collections::BTreeSet;
     use std::sync::Arc;
 

@@ -78,7 +78,9 @@ registrations and never participate in PID pruning.
 After loss, the last projection is marked stale. **Connect to endpoint** runs the
 same connection flow against whatever the endpoint currently owns, including a
 restarted host with an empty session. Previous projections, transfers and pending
-request assumptions are discarded. Commands, session loads, initialization and
+request assumptions are discarded. Session dialogs, edit history and old file
+callbacks are cleared; local preferences and already finishing file writes remain
+UI-owned. Commands, session loads, initialization and
 scripts are never replayed. Configured scripts remain visible but disabled until
 explicitly started. A connection-scoped control lease fences delayed traffic and
 shutdown requests from a departed controller.

@@ -1348,7 +1348,36 @@ impl UnifiedApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn open_remote_profile(&mut self) {
+    fn clear_connection_state(&mut self, context: &egui::Context) {
+        context.memory_mut(|memory| {
+            memory.data.clear();
+            if let Some(id) = memory.focused() {
+                memory.surrender_focus(id);
+            }
+        });
+        self.file_input.reconcile(None);
+        let (sender, receiver) = mpsc::channel();
+        self.pending_file_intent_tx = sender;
+        self.pending_file_intent_rx = receiver;
+        self.startup_session = None;
+        self.session_url_task = None;
+        self.session_url_confirmation = None;
+        self.session_url_prompt_open = false;
+        self.session_url_input.clear();
+        self.session_url_error = None;
+        self.pending_audio_settings = None;
+        self.widget.reset_connection();
+        self.exit = Default::default();
+        self.host_panel = Default::default();
+        self.host_choices = None;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn use_connection(&mut self, runtime: Runtime, context: &egui::Context) {
+        self.clear_connection_state(context);
+        self.runtime = runtime;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_remote_profile(&mut self, context: &egui::Context) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Remote host profile", &["json"])
             .pick_file()
@@ -1357,10 +1386,7 @@ impl UnifiedApp {
                 .and_then(|profile| Runtime::attach(&self.settings.active(), profile))
             {
                 Ok(runtime) => {
-                    self.runtime = runtime;
-                    self.exit = Default::default();
-                    self.host_panel = Default::default();
-                    self.host_choices = None;
+                    self.use_connection(runtime, context);
                 }
                 Err(error) => self.settings.report_action_error(error.to_string()),
             }
@@ -1372,7 +1398,7 @@ impl UnifiedApp {
             if self.runtime.remote_entry.is_none() {
                 ui.menu_button("Session", |ui| {
                     if ui.button("Open remote profile…").clicked() {
-                        self.open_remote_profile();
+                        self.open_remote_profile(ui.ctx());
                         ui.close();
                     }
                 });
@@ -1388,7 +1414,7 @@ impl UnifiedApp {
                             )
                             .clicked()
                         {
-                            self.open_remote_profile();
+                            self.open_remote_profile(ui.ctx());
                             ui.close();
                         }
                         if ui
@@ -1432,7 +1458,7 @@ impl UnifiedApp {
                         for (path, candidate) in choices {
                             if ui.add_enabled(!self.exit.open && !self.exit.is_pending(), egui::Button::new(format!("{} — {}", candidate.name, path.display()))).clicked() {
                                 match Runtime::attach(&self.settings.active(), candidate) {
-                                    Ok(runtime) => {self.runtime = runtime; self.host_choices = None; self.exit = Default::default();},
+                                    Ok(runtime) => self.use_connection(runtime, ui.ctx()),
                                     Err(error) => self.settings.report_action_error(error.to_string()),
                                 }
                             }
@@ -1456,9 +1482,7 @@ impl UnifiedApp {
                         {
                             match Runtime::attach(&self.settings.active(), entry) {
                                 Ok(runtime) => {
-                                    self.runtime = runtime;
-                                    self.exit = Default::default();
-                                    self.host_panel = Default::default();
+                                    self.use_connection(runtime, ui.ctx());
                                 }
                                 Err(error) => self.settings.report_action_error(error.to_string()),
                             }
