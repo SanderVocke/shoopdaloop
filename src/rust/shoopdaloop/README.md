@@ -230,6 +230,10 @@ python3 scripts/run_wasm_tests.py --runtime node --profile ci \
 
 Every Rust testcase must use `#[shoop_test]` from `shoop_wasm_test_support`. It runs with per-test Perfetto capture under native nextest and the Node/Chromium Wasm harnesses. Native-only tests use `no_wasm = "reason"`, lifecycle/allocation tests that cannot tolerate an outer trace use `no_trace = "reason"`, and Wasm-only tests use `wasm_only = "reason"`. Each modifier requires a non-empty reason. `SHOOP_TEST_TRACE=off|failure|always` and `--trace` on the Wasm runner select retention. Keep unsupported imports behind narrow target gates.
 
+The engine library's Chromium tests run in a dedicated Worker. CPU-heavy DSP
+tests can then run without blocking WebDriver progress collection on the main
+thread. Per-test capture and the existing runner deadlines still apply.
+
 The orchestrator discovers package opt-in metadata, builds one profile-specific production worklet artifact, stages hashed assets outside the source tree, and runs each package with `--package-timeout` (600 seconds by default) inside a `--global-timeout` execution budget (3,600 seconds by default). Reports live under `target/wasm-tests/<profile>/reports/<runtime>`. A compile error, missing tool, malformed/truncated output, runner/browser/Worker failure, timeout, zero discovery, count mismatch, test failure, or teardown failure exits nonzero and retains JUnit where a runner log exists.
 
 ## Browser verification

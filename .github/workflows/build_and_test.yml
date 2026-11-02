@@ -361,6 +361,7 @@ jobs:
               - 'scripts/check_shoop_test_usage.py'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
+              - 'src/rust/shoop_engine/src/lib.rs'
               - 'src/rust/shoop_wasm_runtime_tests/**'
               - 'src/rust/shoop_audio_worklet/**'
               - 'src/rust/shoop_worklet_client/**'
