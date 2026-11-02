@@ -1,8 +1,8 @@
 # Shared audio history and copy-on-write takes
 
 `resource::shared_audio::AudioStore` reserves prepared pages in a `ResourceStore`
-and owns a persistent binary page index. It is an additional audio-only source;
-ordinary uploads, captures and snapshots retain their existing interfaces.
+and owns a persistent binary page index. A prepared store can also live inside
+`ResourceStore`, behind ordinary resource IDs, snapshots, cursors and read indexes.
 
 ## Ownership and publication
 
@@ -40,7 +40,8 @@ The store reserves its configured pages so unrelated uploads cannot consume them
 Owner admission conservatively charges a whole history root, including pages
 outside a requested window. This guarantees room for live capture, retained owners
 and an edit transaction. Owner admission can refuse before every metadata slot is
-occupied. Whole-root charging and power-of-two padding are explicit capacity
+occupied. Imported takes charge the larger of a history root and their logical
+page count. Whole-root charging and power-of-two padding are explicit capacity
 tradeoffs; this is not a final application memory policy.
 
 Capture and edits use render accounting rather than background transfer credits.
@@ -52,8 +53,8 @@ is part of required write work and does not depend on background maintenance.
 
 On the native sizing fixture, 30 seconds at 48 kHz stereo with 4096-byte pages,
 32-frame operations and four owner slots uses a 4096-page ring. The configured
-20483-page reservation is 83,898,368 payload bytes (about 80.01 MiB), with 4,438,880
-additional bytes of index, lease and scratch arrays (about 4.23 MiB). Common arena
+20483-page reservation is 83,898,368 payload bytes (about 80.01 MiB), with 4,898,856
+additional bytes of index, lease and scratch arrays (about 4.67 MiB). Common arena
 metadata and allocator overhead are additional. Small edits copy one data page
 and a logarithmic index path. These measurements describe this conservative
 configuration, not every host or target layout.
@@ -70,6 +71,43 @@ releases the history root and returns the entire prepared page reservation. Fina
 object destruction remains outside rendering. There is no implicit callback-time
 drop or automatic budget reset.
 
+## Ordinary resource and persistence integration
+
+`ResourceStore::prepare_audio_store` prepares a lifetime-scoped `AudioStoreId`.
+`RenderIo::append_audio_history` writes its history. `grab_audio` returns a new
+ordinary `ResourceId`; `fork_audio` returns a new editable resource from an
+existing immutable snapshot. Both have `ResourceCommand` equivalents. Prepared
+audio-store slots remain allocated until host teardown, including after cleanup.
+
+Loaded ordinary PCM is retained as an immutable base, without an initial sample
+copy. Its loop length may exceed the history horizon. Edits overlay touched pages
+and preserve untouched base bytes. Importing a running capture snapshot can copy
+its private tail under the ordinary background allowance. A shared snapshot can
+be forked within its originating prepared audio store; cross-store shared forks
+refuse. Channel shape must match the prepared store.
+
+`RenderIo::replace_audio` checks the ordinary resource revision before editing.
+Every ordinary `snapshot` acquires an immutable audio export, never a borrowed
+mutable take index. `retain_snapshot` keeps exactly the selected revision even
+after removal of its resource. Generic byte reads support arbitrary byte offsets
+and chunk sizes, exclude frame padding, and obey the existing background copy
+allowance. Required playback reads remain independent of that allowance.
+
+The existing media ledger, `NodePairSnapshot`, `Adopt`, `Select`, export cursors
+and `ConfigurationReplace` consume these snapshots unchanged. New full-loop
+uploads can supersede a shared resource while already retained exports stay
+readable. Session archives and audio files contain logical samples and ordinary
+metadata; page identities, sharing, edit roots and prepared-store IDs are never
+serialized.
+
+`ResourceStore::reclaim` services registered audio retirement and ordinary
+retirement under the same callback validation allowance, giving both turns.
+Remove resources and release snapshots, drain retirement, then call
+`cleanup_audio_store` and drain again to return the history reservation. An
+imported base retains its snapshot credit until budgeted maintenance releases it.
+Page, node, owner and transaction capacities still apply to every edit; a large
+import does not enlarge prepared transaction scratch or index-node capacity.
+
 ## Evidence scope
 
 Resource tests guard all execution against heap operations and check partial stereo
@@ -80,6 +118,9 @@ horizons.
 
 The loop-library fixture adds real resolver decisions, capture and renderer DSP,
 an independent sample oracle and callback-partition comparisons. It manually owns
-the composition; this source is not yet integrated with `LoopPlanner` operations,
-the media ledger or an application host. It implements neither MIDI history nor
-application replacing/grab policy, and establishes no device deadline guarantee.
+the composition. Additional fixtures exercise ordinary full-loop adoption,
+playback, exports, complete configuration replacement and teardown with both
+grabbed and imported COW sources. Codec tests round-trip pinned original and
+edited snapshots through session archives, exact audio and WAV, then load them
+into editable PCM. It implements neither MIDI history nor application
+replacing/grab policy, and establishes no device deadline guarantee.

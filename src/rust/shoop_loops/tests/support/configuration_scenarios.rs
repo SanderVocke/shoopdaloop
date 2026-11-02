@@ -26,6 +26,25 @@ fn prepared(media: bool, journal: usize, reverse: bool, packets: usize, spare: b
     h.engine.prepare_graph_staging(2).unwrap();
     h
 }
+fn prepared_shared(backing: SharedInput) -> Harness {
+    let mut h = Harness::with_audio_backing(
+        true,
+        0,
+        false,
+        staging(),
+        8,
+        None,
+        NodePairSettings {
+            candidates: 2,
+            sources: 8,
+            source_packets_per_callback: 64,
+        },
+        false,
+        Some(backing),
+    );
+    h.engine.prepare_graph_staging(2).unwrap();
+    h
+}
 fn generation(slot: u32, number: u32) -> LoopId {
     LoopId::from_parts(slot, number).unwrap()
 }
@@ -225,7 +244,17 @@ fn full_replacement(h: &mut Harness) -> (NodePairStageId, StageId, GraphStageId)
 
 #[shoop_test]
 fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_validated_cut() {
-    let mut h = prepared(true, 0, false, 64, false);
+    complete_replacement_case(prepared(true, 0, false, 64, false));
+}
+
+#[shoop_test]
+fn complete_replacement_and_old_exports_accept_cow_loaded_audio_and_grabbed_history() {
+    for backing in [SharedInput::Loaded, SharedInput::History] {
+        complete_replacement_case(prepared_shared(backing));
+    }
+}
+
+fn complete_replacement_case(mut h: Harness) {
     let (node_pairs, topology, graph) = full_replacement(&mut h);
     let at = h.engine.next_frame().0;
     h.op(at, play(0));
@@ -319,6 +348,7 @@ fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_valida
         h.read_export(export, true, encoded_midi().len()),
         encoded_midi()
     );
+    h.finish();
 }
 
 #[shoop_test]

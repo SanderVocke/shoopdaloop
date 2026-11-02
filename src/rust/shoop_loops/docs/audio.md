@@ -49,10 +49,15 @@ Whole, single-frame and irregular callback partitions produce identical samples.
 A separate run refuses an export at its owner limit and preserves running content.
 All execution and cleanup are heap guarded.
 
-This is an audio-resource composition proof. `LoopPlanner` admission/media-ledger
-integration, replacing mode, MIDI, host protocols and application P04/P05 capability
-restoration remain separate work. Native tests do not establish browser/device
-deadlines or a new cross-platform acceptance campaign.
+Registered shared audio also uses ordinary resource snapshots, so existing
+`LoopPlanner` source admission, `Adopt`, `Select`, media-ledger exports and complete
+configuration replacement accept it without a second publication mechanism.
+Integration fixtures cover loaded PCM bases and grabbed history, playback and
+retained exports across replacement, and complete resource cleanup. Codec fixtures
+exercise session, exact-audio and WAV round trips. Replacing mode, MIDI history,
+host grab protocols and application P04/P05 capability restoration remain separate
+work. Native tests do not establish browser/device deadlines or a new cross-platform
+acceptance campaign.
 
 ## Verification boundary
 

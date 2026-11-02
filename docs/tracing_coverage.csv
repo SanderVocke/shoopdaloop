@@ -14,6 +14,8 @@ src/rust/rt_runtime/src/processor.rs,generic_realtime_library,excluded,Processor
 src/rust/rt_runtime/src/render.rs,generic_realtime_library,excluded,Independent bounded render validation; no application tracing dependency.
 src/rust/rt_runtime/src/resource/capture.rs,generic_realtime_library,excluded,Independent bounded capture implementation; work and incomplete-state diagnostics are exposed to hosts.
 src/rust/rt_runtime/src/resource/boundary.rs,generic_realtime_library,excluded,Restricted planner lifecycle and consumer staging capabilities; no host tracing dependencies.
+src/rust/rt_runtime/src/resource/audio_backing.rs,generic_realtime_library,excluded,Prepared shared audio backing for generic resource leases and bounded maintenance; no host tracing dependencies.
+src/rust/rt_runtime/src/resource/audio_backing/tests.rs,test_support,excluded,Heap-guarded resource snapshot interoperability and lifecycle fixtures; not a production execution boundary.
 src/rust/rt_runtime/src/resource/format.rs,generic_realtime_library,excluded,Resource format value definitions; no execution boundary to instrument.
 src/rust/rt_runtime/src/resource/group.rs,generic_realtime_library,excluded,Prepared capture claims and lifecycle credits; plain-data outcomes and pool usage without host tracing dependencies.
 src/rust/rt_runtime/src/resource/group/interval.rs,generic_realtime_library,excluded,Prepared group interval reservations and staged commit; bounded render diagnostics without host tracing dependencies.

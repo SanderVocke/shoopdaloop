@@ -5,6 +5,30 @@ The core slice is implemented and validated;
 [acceptance evidence](evidence/session-persistence.md) records its scope.
 P01/P02/P11 remain open for their deferred dependencies.
 
+## Shared audio reconciliation
+
+Prepared shared audio uses the same `ResourceId`, immutable `Snapshot`, read index
+and byte cursor as uploaded PCM. Capturing a snapshot pins an immutable audio
+export; session capture never borrows a mutable take's current read index.
+`NodePairSnapshot`, `Adopt`/`Select`, media-ledger exports and
+`ConfigurationReplace` remain the publication and replacement authorities.
+An upload may replace a shared resource without changing already pinned exports.
+
+Loaded PCM can become an editable COW resource while retaining its uploaded
+snapshot as an immutable base. Editing copies touched pages; untouched bytes and
+old exports remain readable, including after resource removal. Logical loop
+length is independent of the rolling-history horizon. Prepared page, node,
+transaction and owner quotas still govern admission. Registered audio stores are
+lifetime-scoped and shared snapshots fork within their originating store.
+
+Session/audio codecs continue to receive logical samples and metadata, so the
+archive and protocol formats do not encode sharing, page addresses or edit roots.
+Tests cover grabbed and imported sources through adoption, playback, full
+configuration replacement, retained exports and bounded teardown, plus session,
+exact-audio and WAV round trips for original and edited revisions. Existing core
+capability/refusal policies remain in force: this storage integration does not
+restore P04/P05 or enable capture during future replacement recording.
+
 ## Field and capability matrix
 
 | Document/live data | Core behavior | Ownership and refusal |

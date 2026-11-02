@@ -78,6 +78,16 @@ struct View {
     revision: Revision,
     writable: bool,
     retiring: bool,
+    base: Option<usize>,
+    modulus: usize,
+    credit: usize,
+}
+
+#[derive(Clone, Copy)]
+struct Base {
+    snapshot: super::Snapshot,
+    index: super::ReadIndex,
+    references: usize,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -115,6 +125,9 @@ pub struct AudioStore {
     retired: Vec<(usize, usize)>,
     pending: Box<[usize]>,
     closed: bool,
+    bases: Vec<Option<Base>>,
+    retired_bases: Vec<usize>,
+    base_turn: bool,
 }
 
 impl AudioStore {
@@ -160,7 +173,12 @@ impl AudioStore {
         if config.pages < baseline || config.pages > store.free_pages.len() - store.reserved_pages {
             return Err(Error::Capacity);
         }
-        let depth = ring_pages.trailing_zeros() as usize;
+        let index_pages = (store.config.resource_bytes() / (channels * 4))
+            .div_ceil(page_frames)
+            .max(ring_pages)
+            .checked_next_power_of_two()
+            .ok_or(Error::Capacity)?;
+        let depth = index_pages.trailing_zeros() as usize;
         let node_limit = config
             .views
             .checked_add(2)
@@ -183,7 +201,14 @@ impl AudioStore {
                         .checked_mul(size_of::<Slot<View>>() + size_of::<usize>() * 2)?,
                 )
             })
-            .and_then(|n| n.checked_add(ring_pages.checked_mul(size_of::<(u64, usize)>())?))
+            .and_then(|n| n.checked_add(index_pages.checked_mul(size_of::<(u64, usize)>())?))
+            .and_then(|n| {
+                n.checked_add(
+                    config
+                        .views
+                        .checked_mul(size_of::<Option<Base>>() + size_of::<usize>())?,
+                )
+            })
             .and_then(|n| n.checked_add(scratch_bytes))
             .and_then(|n| n.checked_add(transaction_pages.checked_mul(size_of::<Plan>())?))
             .and_then(|n| n.checked_add(size_of::<usize>()))
@@ -201,7 +226,7 @@ impl AudioStore {
             .ok_or(Error::Capacity)?;
         let mut scratch = vec![0; scratch_bytes].into_boxed_slice();
         let mut nodes = vec![None; node_limit];
-        let mut marks = vec![(0, 0); ring_pages].into_boxed_slice();
+        let mut marks = vec![(0, 0); index_pages].into_boxed_slice();
         let mut views = slots(config.views);
         let mut plans = vec![Plan::default(); transaction_pages];
         let mut retired = vec![(0, 0); node_limit];
@@ -235,6 +260,10 @@ impl AudioStore {
         let pages = SharedPages::prepare(store, lease_limit)?;
         let scope = index::new_scope()?;
         store.reserved_pages += config.pages;
+        let mut bases = vec![None; config.views];
+        for base in &mut bases {
+            *core::hint::black_box(base) = None;
+        }
         Ok(Self {
             scope,
             store_scope: store.scope,
@@ -259,7 +288,7 @@ impl AudioStore {
             views,
             free_views: (0..config.views).rev().collect(),
             debt: 0,
-            debt_limit: (config.pages - baseline) / ring_pages,
+            debt_limit: config.pages - baseline,
             reserved: config.pages,
             pages,
             marks,
@@ -270,6 +299,9 @@ impl AudioStore {
             retired,
             pending,
             closed: false,
+            bases,
+            retired_bases: retirement_stack(config.views),
+            base_turn: true,
         })
     }
 
@@ -328,14 +360,22 @@ impl AudioStore {
         if self.closed {
             return Err(Error::InvalidState);
         }
-        if self.free_views.is_empty() || self.debt == self.debt_limit {
+        if self.free_views.is_empty() || view.credit > self.debt_limit - self.debt {
             return Err(Error::Capacity);
         }
+        if let Some(base) = view.base {
+            if self.bases[base].expect("owned base").references == usize::MAX {
+                return Err(Error::Exhausted);
+            }
+        }
         self.retain_root(view.root)?;
+        if let Some(base) = view.base {
+            self.bases[base].as_mut().expect("owned base").references += 1;
+        }
         let slot = self.free_views.pop().expect("prepared view credit");
         view.writable = writable;
         self.views[slot].value = Some(view);
-        self.debt += 1;
+        self.debt += view.credit;
         Ok(Handle {
             scope: self.scope,
             slot: slot as u32,
@@ -357,6 +397,9 @@ impl AudioStore {
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
+                base: None,
+                modulus: self.ring_frames(),
+                credit: self.ring_pages,
             },
             true,
         )
@@ -369,6 +412,74 @@ impl AudioStore {
 
     pub fn export(&mut self, take: TakeId) -> Result<ExportId, Error> {
         self.own(self.view(take.0)?, false).map(ExportId)
+    }
+
+    pub(super) fn fork_export(&mut self, export: ExportId) -> Result<TakeId, Error> {
+        self.own(self.view(export.0)?, true).map(TakeId)
+    }
+
+    pub(super) fn retain_export(&mut self, export: ExportId) -> Result<ExportId, Error> {
+        self.own(self.view(export.0)?, false).map(ExportId)
+    }
+
+    pub(super) fn import_snapshot(
+        &mut self,
+        store: &mut ResourceStore,
+        snapshot: super::SnapshotId,
+    ) -> Result<TakeId, Error> {
+        self.check(store)?;
+        let lease = super::get(&store.snapshots, snapshot.slot, snapshot.generation)?;
+        let description = lease.snapshot.description;
+        if lease.audio.is_some()
+            || description.format
+                != (super::Format::Audio {
+                    channels: self.channels as u32,
+                })
+            || description.frames == 0
+        {
+            return Err(Error::InvalidShape);
+        }
+        let frames = usize::try_from(description.frames).map_err(|_| Error::Capacity)?;
+        if frames
+            > self
+                .marks
+                .len()
+                .checked_mul(self.page_frames)
+                .ok_or(Error::Capacity)?
+        {
+            return Err(Error::Capacity);
+        }
+        let credit = self.ring_pages.max(frames.div_ceil(self.page_frames));
+        if self.free_views.is_empty() || credit > self.debt_limit - self.debt {
+            return Err(Error::Capacity);
+        }
+        let base_slot = self
+            .bases
+            .iter()
+            .position(Option::is_none)
+            .ok_or(Error::Capacity)?;
+        let retained = store.retain_snapshot(snapshot)?;
+        let index = store.read_index(retained.id)?;
+        self.bases[base_slot] = Some(Base {
+            snapshot: retained,
+            index,
+            references: 0,
+        });
+        self.own(
+            View {
+                root: None,
+                first: 0,
+                frames,
+                revision: Revision(0),
+                writable: true,
+                retiring: false,
+                base: Some(base_slot),
+                modulus: self.marks.len() * self.page_frames,
+                credit,
+            },
+            true,
+        )
+        .map(TakeId)
     }
 
     pub fn take_index(&self, take: TakeId) -> Result<ReadIndex, Error> {
@@ -480,6 +591,8 @@ impl AudioStore {
         position: usize,
         samples: &[f32],
         wrapping: bool,
+        modulus: usize,
+        base: Option<usize>,
     ) -> Result<Option<usize>, Error> {
         let count = samples.len() / self.channels;
         self.generation = self.generation.checked_add(1).ok_or(Error::Exhausted)?;
@@ -490,7 +603,7 @@ impl AudioStore {
             } else {
                 position + frame
             };
-            let physical = (first + local) % self.ring_frames();
+            let physical = (first + local) % modulus;
             let page = physical / self.page_frames;
             if self.marks[page].0 != self.generation {
                 if self.plans.len() == self.capacity.transaction_pages {
@@ -516,6 +629,18 @@ impl AudioStore {
                 destination.copy_from_slice(self.pages.bytes(store, lease)?);
             } else {
                 destination.fill(0);
+                if let Some(base) = base {
+                    let base = self.bases[base].expect("owned base");
+                    let offset = entry.page * self.page_frames * self.channels * 4;
+                    let count = (self.page_frames * self.channels * 4)
+                        .min(base.snapshot.description.bytes.saturating_sub(offset));
+                    store.copy_linear_span(
+                        base.index,
+                        offset,
+                        &mut destination[..count],
+                        WorkClass::Render,
+                    )?;
+                }
             }
         }
         for frame in 0..count {
@@ -524,7 +649,7 @@ impl AudioStore {
             } else {
                 position + frame
             };
-            let physical = (first + local) % self.ring_frames();
+            let physical = (first + local) % modulus;
             let plan = self.marks[physical / self.page_frames].1;
             let destination =
                 plan * self.page_bytes + physical % self.page_frames * self.channels * 4;
@@ -585,6 +710,8 @@ impl AudioStore {
             0,
             samples,
             false,
+            self.ring_frames(),
+            None,
         )?;
         let old = core::mem::replace(&mut self.history, root);
         self.release_immediate(io.store, old);
@@ -623,6 +750,8 @@ impl AudioStore {
             position as usize,
             samples,
             true,
+            view.modulus,
+            view.base,
         )?;
         self.release_immediate(io.store, view.root);
         view.root = root;
@@ -656,38 +785,89 @@ impl AudioStore {
         {
             return Err(Error::InvalidOffset);
         }
-        // Validate every source before touching the caller's output.
-        let mut offset = 0;
-        let mut pages = 0;
-        while offset < frames {
-            let physical = (view.first + position as usize + offset) % self.ring_frames();
-            let lease = self
-                .find(view.root, physical / self.page_frames)
-                .ok_or(Error::Incomplete)?;
-            self.pages.bytes(io.store, lease)?;
-            offset += (frames - offset).min(self.page_frames - physical % self.page_frames);
-            pages += 1;
-        }
-        io.store.note_operation(WorkClass::Render);
-        io.store.charge_work(
+        self.read_span(
+            io.store,
+            index,
+            position as usize * frame_bytes,
+            output,
             WorkClass::Render,
-            output.len(),
-            2 * pages * (self.depth + 1),
         )?;
-        let mut offset = 0;
-        while offset < frames {
-            let physical = (view.first + position as usize + offset) % self.ring_frames();
-            let lease = self
-                .find(view.root, physical / self.page_frames)
-                .expect("validated source");
-            let bytes = self.pages.bytes(io.store, lease)?;
-            let start = physical % self.page_frames * frame_bytes;
-            let count = (frames - offset).min(self.page_frames - physical % self.page_frames);
-            output[offset * frame_bytes..(offset + count) * frame_bytes]
-                .copy_from_slice(&bytes[start..start + count * frame_bytes]);
-            offset += count;
-        }
         Ok(frames)
+    }
+
+    pub(super) fn read_span(
+        &self,
+        store: &mut ResourceStore,
+        index: ReadIndex,
+        position: usize,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<(), Error> {
+        self.check(store)?;
+        let view = self.view(index.0)?;
+        let frame_bytes = self.channels * 4;
+        let length = view.frames * frame_bytes;
+        if position
+            .checked_add(output.len())
+            .is_none_or(|end| end > length)
+        {
+            return Err(Error::InvalidOffset);
+        }
+        let base = view.base.map(|slot| self.bases[slot].expect("owned base"));
+        let mut copied = 0;
+        let mut spans = 0;
+        while copied < output.len() {
+            let byte = position + copied;
+            let physical = (view.first + byte / frame_bytes) % view.modulus;
+            let start = physical % self.page_frames * frame_bytes + byte % frame_bytes;
+            let count = (output.len() - copied)
+                .min(self.page_frames * frame_bytes - start)
+                .min((view.modulus - physical) * frame_bytes - byte % frame_bytes);
+            if let Some(lease) = self.find(view.root, physical / self.page_frames) {
+                self.pages.bytes(store, lease)?;
+            } else if base.is_none() {
+                return Err(Error::Incomplete);
+            }
+            copied += count;
+            spans += 1;
+        }
+        store.note_operation(class);
+        let index_steps = 2 * spans * (self.depth + 1);
+        store.charge_work(
+            class,
+            output.len(),
+            if class == WorkClass::Render {
+                index_steps
+            } else {
+                0
+            },
+        )?;
+        for _ in 0..index_steps {
+            store.index_step(class);
+        }
+        let mut copied = 0;
+        while copied < output.len() {
+            let byte = position + copied;
+            let physical = (view.first + byte / frame_bytes) % view.modulus;
+            let start = physical % self.page_frames * frame_bytes + byte % frame_bytes;
+            let count = (output.len() - copied)
+                .min(self.page_frames * frame_bytes - start)
+                .min((view.modulus - physical) * frame_bytes - byte % frame_bytes);
+            let destination = &mut output[copied..copied + count];
+            if let Some(lease) = self.find(view.root, physical / self.page_frames) {
+                let bytes = self.pages.bytes(store, lease).expect("validated source");
+                destination.copy_from_slice(&bytes[start..start + count]);
+            } else {
+                store.copy_linear_span(
+                    base.expect("validated base").index,
+                    byte,
+                    destination,
+                    class,
+                )?;
+            }
+            copied += count;
+        }
+        Ok(())
     }
 
     fn queue(&mut self, root: Option<usize>, owner: usize) {
@@ -699,6 +879,13 @@ impl AudioStore {
 
     fn release_view(&mut self, handle: Handle) -> Result<(), Error> {
         let mut view = self.view(handle)?;
+        if let Some(base) = view.base {
+            let entry = self.bases[base].as_mut().expect("owned base");
+            entry.references -= 1;
+            if entry.references == 0 {
+                self.retired_bases.push(base);
+            }
+        }
         view.retiring = true;
         self.views[handle.slot as usize].value = Some(view);
         self.queue(view.root, handle.slot as usize);
@@ -708,7 +895,7 @@ impl AudioStore {
 
     fn finish_owner(&mut self, owner: usize) {
         if owner < self.views.len() && self.pending[owner] == 0 {
-            self.debt -= 1;
+            self.debt -= self.views[owner].value.expect("retired owner").credit;
             release(&mut self.views, &mut self.free_views, owner);
         }
     }
@@ -721,15 +908,33 @@ impl AudioStore {
     }
 
     pub fn maintain(&mut self, store: &mut ResourceStore) -> Result<usize, Error> {
+        self.maintain_limit(store, usize::MAX)
+    }
+
+    pub(super) fn maintain_limit(
+        &mut self,
+        store: &mut ResourceStore,
+        limit: usize,
+    ) -> Result<usize, Error> {
         if store.scope != self.store_scope {
             return Err(Error::InvalidId);
         }
         let mut steps = 0;
-        while store.steps_remaining() > 0 {
+        while store.steps_remaining() > 0 && steps < limit {
+            if !self.retired_bases.is_empty() && (self.base_turn || self.retired.is_empty()) {
+                let base = self.retired_bases.pop().expect("pending base");
+                store.charge_external(0, 1)?;
+                let snapshot = self.bases[base].take().expect("retired base").snapshot;
+                store.release_snapshot(snapshot.id)?;
+                self.base_turn = false;
+                steps += 1;
+                continue;
+            }
             let Some(&(index, owner)) = self.retired.last() else {
                 break;
             };
             let node = self.nodes[index].expect("retired index node");
+            self.base_turn = true;
             match node.kind {
                 Kind::Leaf(lease) => {
                     if self.pages.reclaim_lease(store, lease)? {
@@ -759,7 +964,7 @@ impl AudioStore {
             self.finish_owner(owner);
             steps += 1;
         }
-        if self.closed && self.retired.is_empty() {
+        if self.closed && self.retired.is_empty() && self.retired_bases.is_empty() {
             store.reserved_pages -= self.reserved;
             self.reserved = 0;
         }
