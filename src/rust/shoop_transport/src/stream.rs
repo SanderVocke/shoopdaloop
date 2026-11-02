@@ -126,6 +126,12 @@ impl<S: ByteIo> Stream<S> {
     }
 }
 impl<S: ByteIo> RecordPort for Stream<S> {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        Self::flush(self)
+    }
+    fn pending_records(&self) -> usize {
+        self.pending()
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         self.post_on_lane(record, Lane::Reliable)
     }

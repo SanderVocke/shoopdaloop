@@ -173,12 +173,12 @@ stages must preserve earlier contracts.
 
 - [x] Refresh `feat/backend-replacement`, inspect changes since the pinned base,
   then create `feat/trusted-lan-networking`. Carry this plan onto that branch.
-- [ ] Read current build/test/CI guidance; record the baseline focused tests,
+- [x] Read current build/test/CI guidance; record the baseline focused tests,
   boundary checks, native recovery/persistence probes and both Cortex-A builds.
   Record existing failures separately without weakening gates.
-- [ ] Map AC1–AC8 to named tests/probes and document initial connection/queue/pump
+- [x] Map AC1–AC8 to named tests/probes and document initial connection/queue/pump
   budgets and the deterministic responsiveness fixture parameters.
-- [ ] **Verify:** baseline evidence and acceptance mapping are recorded; no
+- [x] **Verify:** baseline evidence and acceptance mapping are recorded; no
   implementation is credited to the pre-existing planning tests.
 
 ### Stage 1 — portable byte-stream and token-handshake core
@@ -197,15 +197,15 @@ stages must preserve earlier contracts.
 
 ### Stage 2 — portable application connection pump
 
-- [ ] Create `shoop_app_connection` and extract data/management message progression,
+- [x] Create `shoop_app_connection` and extract data/management message progression,
   snapshot/media streaming and client upload validation/credit handling from the
   native host. Accept a `RecordPort`, elapsed time and explicit budgets.
-- [ ] Keep host/device shutdown execution in the composition root; portable
+- [x] Keep host/device shutdown execution in the composition root; portable
   management processing reports actions/results through the existing service
   authority. Keep local shared-memory attachment restrictions intact.
-- [ ] Extend dependency-boundary rules/tests and the existing bare-metal CI job
+- [x] Extend dependency-boundary rules/tests and the existing bare-metal CI job
   to include the new crate with default features disabled throughout its graph.
-- [ ] **Verify:** the portable pump runs the service workflow with a simulated
+- [x] **Verify:** the portable pump runs the service workflow with a simulated
   carrier and fake clock. Native recovery, large-image persistence and the
   withheld-upload-acknowledgment test retain their semantics. Both Cortex-A
   library builds pass without importing `std` through feature unification.
@@ -330,3 +330,15 @@ planning deliverable.
 - Nine transport tests (including allocator-guarded prepared progression), seven
   socket tests and seven shared-memory tests pass. Both Cortex-A stream builds,
   the warning-denying workspace build and test-attribute checks pass.
+
+### Stage 2 evidence
+
+- Native socket/shared-memory workflow and >32 MiB persistence probes pass at
+  baseline. Both original Cortex-A server stacks build successfully.
+- `shoop_app_connection` now contains generic server/management and upload pumps;
+  `shoop_host` retains native device lifetime and shared-memory handoff only.
+- Simulated service attach/control/detach passes; all nine native recovery tests
+  and the withheld-upload-acknowledgment test pass after extraction.
+- Both new Cortex-A library builds, workspace warning-denying build, dependency
+  audit, twelve boundary-policy tests and test-attribute check pass. CI includes
+  the portable connection crate in the existing bare-metal gate.

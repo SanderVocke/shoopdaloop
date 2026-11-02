@@ -58,6 +58,12 @@ impl Port {
     }
 }
 impl RecordPort for Port {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        Self::flush(self)
+    }
+    fn pending_records(&self) -> usize {
+        self.pending()
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         self.core.post(record)
     }

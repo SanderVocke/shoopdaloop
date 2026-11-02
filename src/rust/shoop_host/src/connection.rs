@@ -12,6 +12,19 @@ pub enum Port {
     Shared(shoop_transport_shared_memory::Port),
 }
 impl RecordPort for Port {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        match self {
+            Self::Socket(p) => p.flush(),
+            Self::Shared(_) => Ok(()),
+        }
+    }
+    fn pending_records(&self) -> usize {
+        match self {
+            Self::Socket(p) => p.pending(),
+            Self::Shared(_) => 0,
+        }
+    }
+
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         self.post_on_lane(record, Lane::Reliable)
     }
@@ -91,172 +104,39 @@ pub fn connect(entry: &HostEntry, timeout: Duration) -> Result<Connection> {
     };
     Ok(Connection {
         port,
-        upload: None,
-        upload_validation: None,
-        upload_pending: None,
-        upload_outstanding: 0,
-        upload_finished: false,
+        upload: shoop_app_connection::Upload::new(),
     })
 }
 
 pub struct Connection {
     pub port: Port,
-    upload: Option<(
-        shoop_app_protocol::Authority,
-        shoop_app_protocol::persistence::Key,
-        shoop_app_protocol::persistence_transfer::UploadStream,
-    )>,
-    upload_pending: Option<ClientMessage>,
-    upload_outstanding: usize,
-    upload_finished: bool,
-    upload_validation: Option<(
-        shoop_app_protocol::Authority,
-        shoop_app_protocol::persistence::Key,
-        shoop_app_protocol::persistence::Target,
-        shoop_app_protocol::persistence_image::Validation,
-    )>,
+    upload: shoop_app_connection::Upload,
+}
+fn client_error(error: shoop_app_connection::Error) -> ClientError {
+    match error {
+        shoop_app_connection::Error::Full => ClientError::Full,
+        shoop_app_connection::Error::Disconnected => ClientError::Disconnected,
+        shoop_app_connection::Error::Protocol => ClientError::Protocol,
+    }
 }
 impl Connection {
-    fn clear_upload(&mut self) {
-        self.upload = None;
-        self.upload_validation = None;
-        self.upload_pending = None;
-        self.upload_outstanding = 0;
-        self.upload_finished = false;
-    }
     pub fn send(&mut self, message: ClientMessage) -> Result<(), ClientError> {
-        match message {
-            ClientMessage::StageImage {
-                authority,
-                key,
-                target,
-                image,
-            } => {
-                if self.upload.is_some() || self.upload_validation.is_some() {
-                    return Err(ClientError::Full);
-                }
-                let validation =
-                    shoop_app_protocol::persistence_image::Validation::for_transfer(image)
-                        .map_err(|_| ClientError::Protocol)?;
-                self.upload_validation = Some((authority, key, target, validation));
-                return Ok(());
-            }
-            ClientMessage::CaptureImage {
-                authority,
-                key,
-                target,
-            } => {
-                return self.send_wire(ClientMessage::Persistence {
-                    authority,
-                    request: shoop_app_protocol::persistence::Request::Capture { key, target },
-                })
-            }
-            ClientMessage::Persistence { ref request, .. } if matches!(request, shoop_app_protocol::persistence::Request::Cancel { key } if self.upload.as_ref().is_some_and(|(_, staged, _)| staged == key) || self.upload_validation.as_ref().is_some_and(|(_, staged, _, _)| staged == key)) =>
-            {
-                self.clear_upload();
-            }
-            ClientMessage::Detach { .. }
-            | ClientMessage::Shutdown { .. }
-            | ClientMessage::Attach { .. } => {
-                self.clear_upload();
-            }
-            _ => {}
-        }
-        self.send_wire(message)
-    }
-    fn send_wire(&mut self, message: ClientMessage) -> Result<(), ClientError> {
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        let length = codec::encode(&WireMessage::Client(message), &mut bytes)
-            .map_err(|_| ClientError::Protocol)?;
-        self.port
-            .post(&bytes[..length])
-            .map_err(|error| match error {
-                CarrierError::Full => ClientError::Full,
-                _ => ClientError::Disconnected,
-            })
+        self.upload
+            .send(&mut self.port, message)
+            .map_err(client_error)
     }
     pub fn poll(&mut self, client: &mut Client) -> Result<usize, ClientError> {
-        if let Some((_, _, _, validation)) = self.upload_validation.as_mut() {
-            if validation
-                .step(256 * 1024)
-                .map_err(|_| ClientError::Protocol)?
-            {
-                let (authority, key, target, validation) = self.upload_validation.take().unwrap();
-                let stream =
-                    shoop_app_protocol::persistence_transfer::UploadStream::from_validated(
-                        validation.finish().map_err(|_| ClientError::Protocol)?,
-                        key,
-                        target,
-                    )
-                    .map_err(|_| ClientError::Protocol)?;
-                self.upload = Some((authority, key, stream));
-            }
-        }
-        for _ in 0..shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN {
-            if self.upload_finished
-                || self.upload_outstanding >= shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN
-            {
-                break;
-            }
-            if self.upload_pending.is_none() {
-                let Some((authority, _, stream)) = self.upload.as_mut() else {
-                    break;
-                };
-                match stream.next_request().map_err(|_| ClientError::Protocol)? {
-                    Some(request) => {
-                        self.upload_pending = Some(ClientMessage::Persistence {
-                            authority: *authority,
-                            request,
-                        })
-                    }
-                    None => {
-                        self.upload_finished = true;
-                        break;
-                    }
-                }
-            }
-            let message = self
-                .upload_pending
-                .as_ref()
-                .expect("pending upload record")
-                .clone();
-            match self.send_wire(message) {
-                Ok(()) => {
-                    self.upload_pending = None;
-                    self.upload_outstanding += 1;
-                }
-                Err(ClientError::Full) => break,
-                Err(error) => return Err(error),
-            }
-        }
+        self.upload.pump(&mut self.port).map_err(client_error)?;
         let mut count = 0;
         let mut bytes = [0; MAX_RECORD_BYTES];
         for _ in 0..MAX_MESSAGES_PER_TURN {
-            let Some(length) = self.port.take(&mut bytes) else {
+            let Some(n) = self.port.take(&mut bytes) else {
                 break;
             };
-            let message = codec::decode(&bytes[..length]).map_err(|_| ClientError::Protocol)?;
-            if let WireMessage::Persistence { authority, reply } = &message {
-                if self
-                    .upload
-                    .as_ref()
-                    .is_some_and(|(owner, key, _)| owner == authority && *key == reply.key())
-                {
-                    if matches!(
-                        reply,
-                        shoop_app_protocol::persistence::Reply::Refused { .. }
-                    ) {
-                        self.clear_upload();
-                    } else {
-                        self.upload_outstanding = self.upload_outstanding.saturating_sub(1);
-                    }
-                }
-            }
+            let message = codec::decode(&bytes[..n]).map_err(|_| ClientError::Protocol)?;
+            self.upload.received(&message);
             client.receive_wire(message)?;
             count += 1;
-        }
-        if self.upload_finished && self.upload_outstanding == 0 {
-            self.clear_upload();
         }
         if self.port.failure().is_some() {
             client.disconnect();

@@ -6,13 +6,12 @@ use crate::{
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
-use shoop_app_protocol::{codec, stream::StreamEncoder, *};
+use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
 use shoop_rt_host_native::{DriverConfig, NativeConfig, NativeHost};
-use shoop_transport::{CarrierError, RecordPort, MAX_RECORD_BYTES};
+use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
 use shoop_transport_socket::setup::Listener;
 use std::{
-    collections::VecDeque,
     net::SocketAddr,
     path::PathBuf,
     sync::{
@@ -255,20 +254,20 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         }
         for _ in 0..4 {
             match management.ports.try_recv() {
-                Ok(port) if managers.len() < 4 => managers.push(Manager {
-                    port,
-                    started: Instant::now(),
-                    sent: false,
-                }),
+                Ok(port) if managers.len() < 4 => {
+                    managers.push(shoop_app_connection::Management::new(port))
+                }
                 Ok(_) => {}
                 Err(_) => break,
             }
         }
+        let now = Instant::now();
+        let elapsed = now.duration_since(last);
         for client in &mut clients {
+            client.core.advance(elapsed);
             client.receive(&mut service);
         }
-        let now = Instant::now();
-        service.tick(now.duration_since(last));
+        service.tick(elapsed);
         last = now;
         if service.shutdown_ready() {
             service
@@ -288,21 +287,14 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             }
             service.complete_shutdown(result);
         }
-        for manager in &mut managers {
-            manager.pump(&mut service);
-        }
-        managers.retain_mut(|manager| {
-            !(manager.sent && manager.port.outgoing_empty())
-                && manager.started.elapsed() < Duration::from_secs(2)
-                && manager.port.failure().is_none()
-        });
+        managers.retain_mut(|manager| manager.pump(&mut service, elapsed));
         for client in &mut clients {
-            client.write(&mut service);
+            client.core.write(&mut service);
         }
         clients.retain_mut(|client| {
-            let alive = client.alive(&service);
+            let alive = client.core.alive(&service);
             if !alive {
-                service.detach(client.id);
+                service.detach(client.core.id);
             }
             alive
         });
@@ -345,41 +337,9 @@ fn send(port: &mut impl RecordPort, message: &WireMessage) -> Result<()> {
     port.post(&bytes[..length])
         .map_err(|error| anyhow!("host response delivery failed: {error:?}"))
 }
-struct Manager {
-    port: shoop_transport_socket::Port,
-    started: Instant,
-    sent: bool,
-}
-impl Manager {
-    fn pump(&mut self, service: &mut Service) {
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        if !self.sent {
-            if let Some(length) = self.port.take(&mut bytes) {
-                let reply = match codec::decode(&bytes[..length]) {
-                    Ok(WireMessage::ManagementRequest(request)) => service.management(request),
-                    _ => ManagementReply::Refused(Refusal::Invalid),
-                };
-                self.sent = send(&mut self.port, &WireMessage::ManagementReply(reply)).is_ok();
-            }
-        } else {
-            let _ = self.port.flush();
-        }
-    }
-}
 struct Data {
-    id: ConnectionId,
-    port: Port,
+    core: shoop_app_connection::Session<Port>,
     shared: Option<shoop_transport_shared_memory::Port>,
-    started: Instant,
-    attached: bool,
-    closing: bool,
-    closing_since: Option<Instant>,
-    semantic: Option<StreamEncoder>,
-    snapshot: bool,
-    media: Option<StreamEncoder>,
-    pending: Option<Vec<u8>>,
-    transfer: u64,
-    replies: VecDeque<ServiceMessage>,
 }
 impl Data {
     fn new(
@@ -388,168 +348,20 @@ impl Data {
         shared: Option<shoop_transport_shared_memory::Port>,
     ) -> Self {
         Self {
-            id,
-            port: Port::Socket(port),
+            core: shoop_app_connection::Session::new(id, Port::Socket(port)),
             shared,
-            started: Instant::now(),
-            attached: false,
-            closing: false,
-            closing_since: None,
-            semantic: None,
-            snapshot: false,
-            media: None,
-            pending: None,
-            transfer: 1,
-            replies: VecDeque::new(),
         }
-    }
-    fn retire(&mut self) {
-        self.closing = true;
-        self.closing_since.get_or_insert_with(Instant::now);
-        self.media = None;
-        self.semantic = None;
-        self.pending = None;
     }
     fn receive(&mut self, service: &mut Service) {
         if self.shared.is_some() {
-            if let Port::Socket(port) = &mut self.port {
+            if let Port::Socket(port) = &mut self.core.port {
                 let _ = port.flush();
                 if !port.outgoing_empty() {
                     return;
                 }
             }
-            self.port = Port::Shared(self.shared.take().unwrap());
+            self.core.port = Port::Shared(self.shared.take().unwrap());
         }
-        if self.closing {
-            return;
-        }
-        let mut bytes = [0; MAX_RECORD_BYTES];
-        let mut commands = 0;
-        for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
-            if commands == MAX_COMMANDS_PER_TURN {
-                break;
-            }
-            let Some(length) = self.port.take(&mut bytes) else {
-                break;
-            };
-            let result = match codec::decode(&bytes[..length]) {
-                Ok(WireMessage::Client(message)) => {
-                    if !matches!(message, ClientMessage::Persistence { .. }) {
-                        commands += 1;
-                    }
-                    if matches!(
-                        message,
-                        ClientMessage::CancelMedia { .. } | ClientMessage::ReadMedia { .. }
-                    ) {
-                        self.media = None;
-                    }
-                    let detached = matches!(message, ClientMessage::Detach { .. });
-                    let result = service.handle(self.id, message);
-                    if result.is_ok() && detached {
-                        self.retire();
-                    }
-                    result
-                }
-                _ => Err(Refusal::Invalid),
-            };
-            if let Err(reason) = result {
-                self.replies.push_back(ServiceMessage::Rejected(reason));
-                self.retire();
-                break;
-            }
-            self.attached |= service.has_connection(self.id);
-        }
-    }
-    fn write(&mut self, service: &mut Service) {
-        let mut records = 0;
-        for _ in 0..2 * MAX_MESSAGES_PER_TURN {
-            if records == MAX_MESSAGES_PER_TURN {
-                break;
-            }
-            if self.pending.is_none() {
-                if self.semantic.is_none() {
-                    let update = self
-                        .replies
-                        .pop_front()
-                        .or_else(|| service.take_update(self.id));
-                    if let Some(update) = update {
-                        let media = matches!(update, ServiceMessage::Media { .. });
-                        self.snapshot = matches!(update, ServiceMessage::Snapshot { .. });
-                        let stream = StreamEncoder::new(update, TransferId(self.transfer));
-                        self.transfer = self.transfer.saturating_add(1);
-                        match stream {
-                            Ok(stream) if media => self.media = Some(stream),
-                            Ok(stream) => self.semantic = Some(stream),
-                            Err(_) => {
-                                self.retire();
-                                return;
-                            }
-                        }
-                    }
-                }
-                let from_media = self.media.is_some()
-                    && (self.semantic.is_none() || (self.snapshot && records % 4 == 3));
-                let stream = if from_media {
-                    &mut self.media
-                } else {
-                    &mut self.semantic
-                };
-                let Some(encoder) = stream.as_mut() else {
-                    break;
-                };
-                let Some(message) = encoder.next_message() else {
-                    *stream = None;
-                    continue;
-                };
-                let mut bytes = [0; MAX_RECORD_BYTES];
-                match codec::encode(&message, &mut bytes) {
-                    Ok(length) => self.pending = Some(bytes[..length].to_vec()),
-                    Err(_) => {
-                        self.retire();
-                        return;
-                    }
-                }
-            }
-            match self.port.post(self.pending.as_ref().unwrap()) {
-                Ok(()) => {
-                    self.pending = None;
-                    records += 1;
-                }
-                Err(CarrierError::Full) => break,
-                Err(_) => {
-                    self.retire();
-                    break;
-                }
-            }
-        }
-    }
-    fn alive(&mut self, service: &Service) -> bool {
-        if self
-            .closing_since
-            .is_some_and(|started| started.elapsed() > Duration::from_secs(2))
-        {
-            return false;
-        }
-        if self.port.failure().is_some() {
-            return false;
-        }
-        if self.attached && !service.has_connection(self.id) && !self.closing {
-            return false;
-        }
-        if !self.attached && self.started.elapsed() > Duration::from_secs(3) {
-            return false;
-        }
-        let drained = match &mut self.port {
-            Port::Socket(port) => {
-                let _ = port.flush();
-                port.outgoing_empty()
-            }
-            Port::Shared(_) => true,
-        };
-        !(self.closing
-            && self.replies.is_empty()
-            && self.semantic.is_none()
-            && self.pending.is_none()
-            && drained)
+        self.core.receive(service);
     }
 }

@@ -51,6 +51,12 @@ pub enum CarrierError {
 
 /// A bidirectional transport of encoded records.
 pub trait RecordPort {
+    fn flush(&mut self) -> Result<(), CarrierError> {
+        Ok(())
+    }
+    fn pending_records(&self) -> usize {
+        0
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError>;
     fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
         self.post(record)
