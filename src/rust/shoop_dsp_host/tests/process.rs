@@ -22,10 +22,10 @@ fn process_pair_preserves_non_aligned_delay_across_aggregation_and_input_loss() 
         .status()
         .unwrap()
         .success());
-    for (k, drop_every) in [(1, 0), (4, 7)] {
+    for (k, drop_every, polling) in [(1, 0, "yield"), (4, 7, "yield"), (4, 7, "spin")] {
         let mut server = Child(
             Command::new(BIN)
-                .args(["serve", "--once", "--credential-file"])
+                .args(["serve", "--once", "--polling", polling, "--credential-file"])
                 .arg(&key)
                 .stdout(Stdio::piped())
                 .spawn()
@@ -46,6 +46,8 @@ fn process_pair_preserves_non_aligned_delay_across_aggregation_and_input_loss() 
             ])
             .arg(&key)
             .args([
+                "--polling",
+                polling,
                 "--seconds",
                 "0.04",
                 "--warmup",

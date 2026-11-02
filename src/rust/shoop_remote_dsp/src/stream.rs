@@ -125,7 +125,7 @@ impl Stream {
             }
             return Err(Error::Future);
         }
-        let index = h.sequence as usize % self.slots.len();
+        let index = crate::slot_index(h.sequence, self.slots.len());
         let slot = &mut self.slots[index];
         if slot.sequence == Some(h.sequence) {
             self.stats.duplicates += 1;
@@ -168,7 +168,7 @@ impl Stream {
         let cframes = p * k;
         let mut missing = 0u64;
         for j in 0..k {
-            if self.slots[(self.next as usize + j) % self.slots.len()].sequence
+            if self.slots[crate::slot_index(self.next + j as u64, self.slots.len())].sequence
                 != Some(self.next + j as u64)
             {
                 missing |= 1 << j;
@@ -205,7 +205,7 @@ impl Stream {
         }
         for j in 0..k {
             let length = self.slots.len();
-            let slot = &mut self.slots[(self.next as usize + j) % length];
+            let slot = &mut self.slots[crate::slot_index(self.next + j as u64, length)];
             if slot.sequence != Some(self.next + j as u64) {
                 continue;
             }
@@ -300,5 +300,59 @@ impl Stream {
         self.next = self.next.checked_add(k as u64).ok_or(Error::Capacity)?;
         self.gap_since = None;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_dsp::DelayCopy;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn reordered_slots_survive_the_32_bit_sequence_boundary() {
+        let config = Config {
+            packet_frames: 1,
+            multiplier: 4,
+            allowance: 4,
+            channels: 1,
+            midi_per_packet: 0,
+            reorder_packets: 4,
+            ..Config::default()
+        };
+        let base = (1u64 << 32) - 4;
+        let mut stream = Stream::prepare(config, 1).unwrap();
+        stream.next = base;
+        let mut dsp = DelayCopy::prepare(config.dsp(), 0).unwrap();
+        let mut raw = [0; 68];
+        for offset in (0..9).rev() {
+            let n = wire::encode(
+                wire::Header::input(1, base + offset, config),
+                config,
+                &[offset as f32 + 1.],
+                &[],
+                &mut raw,
+            )
+            .unwrap();
+            stream.accept(&raw[..n], 0).unwrap();
+        }
+        let mut received = 0;
+        for _ in 0..2 {
+            assert!(stream
+                .process_one(
+                    0,
+                    &mut dsp,
+                    || 0,
+                    |raw| {
+                        let packet = wire::decode(raw, config)?;
+                        assert_eq!(packet.header.sequence, base + received);
+                        assert_eq!(packet.sample(0, 0), received as f32 + 1.);
+                        received += 1;
+                        Ok(())
+                    }
+                )
+                .unwrap());
+        }
+        assert_eq!(received, 8);
+        assert_eq!(stream.stats().concealed_packets, 0);
     }
 }

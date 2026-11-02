@@ -57,6 +57,7 @@ pub enum Reply {
     Ok,
     Status {
         stats: Stats,
+        service_gaps: crate::polling::ServiceGaps,
         concealment: Vec<(u64, u64)>,
         next_sequence: u64,
     },

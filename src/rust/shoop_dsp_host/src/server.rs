@@ -1,4 +1,5 @@
 use crate::control::{self, Algorithm, Reply, Request};
+use crate::polling::{Polling, ServiceGaps};
 use anyhow::{ensure, Result};
 use clap::Args;
 use shoop_dsp::{DelayCopy, Latency, Processor};
@@ -28,6 +29,8 @@ pub struct Options {
     lan: bool,
     #[arg(long, default_value_t = 1_048_576)]
     socket_buffer: usize,
+    #[arg(long, value_enum, default_value = "yield")]
+    polling: Polling,
 }
 struct Work {
     dsp: Box<dyn Processor>,
@@ -36,6 +39,7 @@ struct Work {
     config: Config,
     peer: SocketAddr,
     elapsed_ns: u64,
+    service_gaps: ServiceGaps,
 }
 struct Worker {
     stop: Arc<AtomicBool>,
@@ -99,7 +103,7 @@ impl Ui {
         }
     }
 }
-fn start(mut work: Work) -> Result<Worker> {
+fn start(mut work: Work, polling: Polling) -> Result<Worker> {
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     let mut raw = vec![0u8; work.config.max_packet_bytes() + 1];
@@ -109,11 +113,15 @@ fn start(mut work: Work) -> Result<Worker> {
             let origin = Instant::now();
             let elapsed_base = work.elapsed_ns;
             let mut last_input = Instant::now();
+            let mut last_service = 0;
             while !stopping.load(Ordering::Acquire) {
                 if work.core.stats().retired {
                     thread::sleep(Duration::from_millis(1));
                     continue;
                 }
+                let serviced = origin.elapsed().as_nanos() as u64;
+                work.service_gaps.observe(serviced - last_service);
+                last_service = serviced;
                 let mut progress = false;
                 match work.udp.recv_from(&mut raw) {
                     Ok((len, peer)) if peer == work.peer => {
@@ -152,8 +160,7 @@ fn start(mut work: Work) -> Result<Worker> {
                     work.core.retire();
                 }
                 if !progress {
-                    std::hint::spin_loop();
-                    thread::yield_now();
+                    polling.idle();
                 }
             }
             work.elapsed_ns = elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
@@ -235,6 +242,7 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             config,
                             peer: SocketAddr::new(peer.ip(), udp_port),
                             elapsed_ns: 0,
+                            service_gaps: ServiceGaps::default(),
                         });
                         used_epochs.insert(epoch);
                         ui.pump();
@@ -256,6 +264,7 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             parked
                                 .take()
                                 .ok_or_else(|| anyhow::anyhow!("configure first"))?,
+                            options.polling,
                         )?);
                         Reply::Ok
                     }
@@ -271,6 +280,7 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                         })?;
                         Reply::Status {
                             stats: w.core.stats(),
+                            service_gaps: w.service_gaps,
                             concealment: w.core.concealment().to_vec(),
                             next_sequence: w.core.next_sequence(),
                         }

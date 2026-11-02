@@ -364,4 +364,5 @@ src/rust/shoop_dsp_host/src/main.rs,control,excluded,Standalone CLI composition 
 src/rust/shoop_dsp_host/src/control.rs,control,excluded,Bounded native control framing outside the DSP worker.
 src/rust/shoop_dsp_host/src/server.rs,mixed_realtime_and_control,excluded,Standalone service publishes explicit stream counters and elapsed durations.
 src/rust/shoop_dsp_host/src/client.rs,control,excluded,Measurement requester exports timings histograms and sample correctness.
+src/rust/shoop_dsp_host/src/polling.rs,mixed_realtime_and_control,excluded,Polling selection and bounded service-gap counters are exported in measurements.
 src/rust/shoop_transport_socket/src/private.rs,control,excluded,Protected filesystem and platform ACL adapter.

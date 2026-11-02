@@ -1613,7 +1613,9 @@ mod tests {
             file_dialog_result: UnsafeCell::new(None),
             visible: AtomicBool::new(false),
         });
-        let snapshot = unsafe { &*host_get_time_info((&mut *context as *mut HostContext).cast()) };
+        let snapshot =
+            unsafe { host_get_time_info((&mut *context as *mut HostContext).cast()).as_ref() }
+                .expect("valid host context returns a time snapshot");
         assert_eq!(snapshot.frame, 96_000);
         assert_eq!(snapshot.usecs, 2_000_000);
         assert!(snapshot.playing);

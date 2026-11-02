@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: all local implementation, validation and measurements are complete. Public push, PR creation, CI and automated review are blocked pending explicit user consent to publish the source and evidence.
+Status: Stages 1–3, local validation and measurements are complete. Published as [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915); remote CI and automated review are in progress.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -268,6 +268,24 @@ Depends on Stage 2's real process pair and independent sample reference.
       recorded experiments, without fragile CI wall-time percentile thresholds.
       Commit the test/script milestone and reviewed evidence.
 
+## Follow-up — Scheduling and polling comparisons
+
+Requested by the user after reviewing the original campaign; preserve that
+campaign as published and add independent, reproducible evidence.
+
+- [x] Add explicit yielding/spinning polling modes and bounded service-gap counters.
+      Verify both modes, native Carla compatibility and portable-core boundaries.
+- [ ] Run randomized, repeated comparisons of unpinned/pinned processes, independent
+      requester/worker polling, and 200/1000-microsecond input-gap policies. Probe
+      elevated priority; record permission failures rather than assuming success.
+- [ ] Measure CPU cost and cgroup throttling alongside exact samples, input
+      concealment, sender overruns, output misses and stream retirement. Keep
+      timings separate from correctness; run no builds/tests during measurements.
+- [ ] Repeat matched baseline and selected alternatives for longer runs. Retain all
+      outcomes and document selection, environment limits and reproducible commands.
+- [ ] Publish an additional report/artifacts on PR #915 alongside the unchanged
+      original evidence and explain the measured outcome to the user.
+
 ## Final end-to-end validation and delivery
 
 Depends on completed Stages 1–3; does not add the deferred graph/hardware stage.
@@ -286,7 +304,7 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
       Use the selected build environment; do not allow missing-backend skips to
       satisfy the required real-Carla smoke test. Check shared `no_std` builds and
       existing native/WASM CI boundaries affected by extraction.
-- [ ] Commit completed milestones, push `feat/network-dsp-host`, and open a PR
+- [x] Commit completed milestones, push `feat/network-dsp-host`, and open a PR
       targeting `feat/backend-replacement`. Describe the DSP abstraction, native
       Carla reuse, protocol/deadline contract and measured localhost outcomes.
 - [ ] Monitor CI to green; inspect failures before targeted fixes. Check for
@@ -374,8 +392,8 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - Latest real-Carla and targeted DSP/protocol/process tests passed after lifecycle
   and fault-reporting refinements. Native CI now runs the correctness subset on
   Linux/macOS/Windows and the bare-metal job builds both portable crates.
-- Full matrix, long follow-ups, reviewed measurement artifacts and final PR/CI
-  delivery remain unchecked until their execution completes.
+- The completed matrix and follow-ups are recorded below; external gates are
+  tracked separately from local validation.
 
 ### Completed measurement campaign and local delivery
 
@@ -413,13 +431,33 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 | 6–7: bounded failures, memory and lifecycle | Malformed/fault/reorder/late/epoch tests, allocation guards, process lifecycle tests and recorded retirement outcomes |
 | 8: MIDI and time/latency metadata | MIDI offset/overflow/reset tests, source-time snapshot tests, explicit unknown Carla latency |
 | 9: actual reproducible localhost campaign | 288 archived records, consistency audit, regenerated report and plot |
-| 10: native smoke and final external gates | Real pinned-Carla and local repository gates passed; public PR/CI/automated-review portion remains blocked |
+| 10: native smoke and final external gates | Real pinned-Carla and local repository gates passed; PR #915 is open and external CI/review is in progress |
 
-### External publication block
+### Public delivery
 
-Automatic approval review rejected the source push to the public
-`https://github.com/SanderVocke/shoopdaloop` repository. The destination and the
-actor's push/admin access were verified, but review still required explicit user
-consent to disclose this implementation payload publicly. No alternate upload
-route was used. The implementation and evidence are committed locally; the
-push/PR/CI/review checklist items stay open until that consent and delivery occur.
+- The user explicitly approved publication of commit `77950957`, source and
+  benchmark evidence to the public repository after automatic approval review
+  requested disclosure consent. The branch push then succeeded.
+- [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915) targets the recorded
+  `feat/backend-replacement` base. It describes the abstraction, protocol and
+  reviewed measurements, and links commands and reproducible artifacts.
+- Remote CI and automated review are in progress; their final outcome remains
+  unchecked until verified.
+
+### Scheduling comparison preparation
+
+- Added independent `--polling yield|spin` modes and bounded native service-gap
+  counters. The comparison runner records verified process affinities, CPU usage,
+  cgroup deltas and actual priority-probe outcomes. Original evidence is unchanged.
+- Required real-Carla and DSP/protocol/process checks passed all 33 tests in both
+  debug and release profiles. The complete native suite passed 2533 tests with
+  four skips. Formatting, warning-denying workspace build, test-policy, tracing
+  inventory (367 modules), portable-core build and runner smoke checks passed.
+- Fixed release-only test compilation by using the repository heap tracker for
+  allocation guards. Reduced ring indices before narrowing to native pointer
+  width, with input/return regression coverage around the 32-bit sequence boundary.
+- Addressed CodeQL's nullable-pointer finding in the time-snapshot test by checking
+  the callback result before borrowing it. Remote scanning will verify the fix.
+- This environment permits affinity changes but denies FIFO/RR priority and
+  negative niceness. The full campaign records those refused settings explicitly;
+  completed measurements will be published separately from the original results.

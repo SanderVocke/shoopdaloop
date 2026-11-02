@@ -6,6 +6,10 @@ pub mod wire;
 
 use shoop_dsp::Config as DspConfig;
 
+fn slot_index(sequence: u64, capacity: usize) -> usize {
+    (sequence % capacity as u64) as usize
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {

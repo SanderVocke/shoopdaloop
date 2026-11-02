@@ -67,7 +67,7 @@ impl Returns {
             return Err(Error::Deadline);
         }
         let length = self.slots.len();
-        let slot = &mut self.slots[h.sequence as usize % length];
+        let slot = &mut self.slots[crate::slot_index(h.sequence, length)];
         if slot.sequence == Some(h.sequence) {
             return Err(Error::Duplicate);
         }
@@ -103,7 +103,7 @@ impl Returns {
             return Err(Error::Config);
         }
         let length = self.slots.len();
-        let slot = &mut self.slots[sequence as usize % length];
+        let slot = &mut self.slots[crate::slot_index(sequence, length)];
         midi.clear();
         let outcome;
         let midi_reset;
@@ -130,5 +130,48 @@ impl Returns {
             outcome,
             midi_reset,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn queued_returns_survive_the_32_bit_sequence_boundary() {
+        let config = Config {
+            packet_frames: 1,
+            multiplier: 4,
+            allowance: 4,
+            channels: 1,
+            midi_per_packet: 0,
+            reorder_packets: 4,
+            ..Config::default()
+        };
+        let base = (1u64 << 32) - 4;
+        let mut returns = Returns::prepare(config, 1).unwrap();
+        returns.next = base;
+        let mut raw = [0; 68];
+        for offset in (0..13).rev() {
+            let mut header = wire::Header::input(1, base + offset, config);
+            header.kind = wire::OUTPUT;
+            let n = wire::encode(header, config, &[offset as f32 + 1.], &[], &mut raw).unwrap();
+            returns.accept(&raw[..n], 0).unwrap();
+        }
+        let mut audio = [0.];
+        let mut midi = MidiBuffer::new(0);
+        for offset in 0..13 {
+            let sequence = base + offset;
+            let delivery = returns
+                .consume(
+                    sequence,
+                    config.deadline_ns(sequence).unwrap(),
+                    &mut audio,
+                    &mut midi,
+                )
+                .unwrap();
+            assert_eq!(delivery.outcome, Outcome::Processed);
+            assert_eq!(audio[0], offset as f32 + 1.);
+        }
     }
 }

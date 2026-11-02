@@ -257,7 +257,8 @@ impl Processor for DelayCopy {
 mod tests {
     use super::*;
     #[global_allocator]
-    static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
+    static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
+        shoop_wasm_test_support::heap::TrackingAllocator;
 
     #[shoop_wasm_test_support::shoop_test]
     fn delay_matches_independent_sample_reference_and_resets() {
@@ -279,7 +280,7 @@ mod tests {
                                 input[c * frames + i] = (c * 10000 + step * frames + i + 1) as f32;
                             }
                         }
-                        assert_no_alloc::assert_no_alloc(|| {
+                        shoop_wasm_test_support::heap::assert_no_heap(|| {
                             dsp.process(Block {
                                 frame: (step * frames) as u64,
                                 frames,

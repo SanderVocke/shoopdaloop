@@ -12,7 +12,6 @@ shoop_dsp = { path = "../shoop_dsp" }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
-assert_no_alloc = { workspace = true }
 
 [lints]
 workspace = true

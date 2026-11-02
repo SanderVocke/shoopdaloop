@@ -192,3 +192,37 @@ compressed JSONL with timing histograms, and a Markdown report. Source-time
 readiness remains fixed. A 50 ms receive grace captures diagnostic late responses
 without extending consumption deadlines; responses absent at that cutoff count as
 missing. Timing misses never fail CI on a wall-clock percentile threshold.
+
+## Scheduling and polling comparisons
+
+Both `serve` and `client` accept `--polling yield|spin`. The default keeps the
+original yielding behavior. Spinning avoids voluntary scheduler handoff; it does
+not reserve CPU time or prevent preemption. The yielding mode also polls actively,
+so neither mode is an energy-saving blocking implementation.
+
+The Linux comparison runner assigns affinities through `taskset`, independently
+varies requester/worker polling, probes elevated priority, and compares the
+200-microsecond input-gap policy with 1000 microseconds. Select two distinct CPUs
+from the current allowed affinity mask; assignment does not isolate those CPUs
+from other tasks:
+
+```sh
+cargo build --release -p shoop_dsp_host --no-default-features
+python3 scripts/tune_remote_dsp.py --client-cpu 1 --server-cpu 2 \
+  --profile all --output work/remote-dsp-tuning
+python3 scripts/tune_remote_dsp.py --report-only --output work/remote-dsp-tuning
+```
+
+The default campaign randomizes three short repetitions of eight configurations
+and seven conditions, then runs fresh yielding baselines and selected alternatives
+for 60 seconds each. Priority conditions are added only when the probe confirms
+the requested setting took effect. Refused priority requests are preserved in the
+manifest. `--profile smoke` checks the workflow; `screen` and `followup` split the
+campaign. Use a new output directory for a changed binary or runner.
+
+Reports include child-process CPU time and cgroup-counter deltas. CPU cost covers
+startup, warm-up, capture and report generation, as well as measured audio time;
+it is not a DSP-only measurement. Cgroup counters include other tasks. The native
+host records maximum service-loop gaps and threshold counts; these include its
+own processing work and OS scheduling delays. They are not direct scheduler
+latency measurements. No builds or test campaigns should run concurrently.

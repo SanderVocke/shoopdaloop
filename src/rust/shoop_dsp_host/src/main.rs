@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod client;
 mod control;
+mod polling;
 mod server;
 
 #[derive(Parser)]

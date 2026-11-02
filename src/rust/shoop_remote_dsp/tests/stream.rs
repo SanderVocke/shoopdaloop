@@ -1,7 +1,8 @@
 use shoop_dsp::{DelayCopy, MidiEvent};
 use shoop_remote_dsp::{stream::Stream, wire, Config, Error};
 #[global_allocator]
-static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
+static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
+    shoop_wasm_test_support::heap::TrackingAllocator;
 fn config() -> Config {
     Config {
         packet_frames: 4,
@@ -94,7 +95,7 @@ fn aggregation_reorders_once_and_preserves_samples_and_midi_without_allocating()
     for block in 0..2 {
         for j in [3, 1, 0, 2] {
             let i = block * 4 + j;
-            assert_no_alloc::assert_no_alloc(|| {
+            shoop_wasm_test_support::heap::assert_no_heap(|| {
                 stream.accept(&packets[i][..lengths[i]], 0).unwrap()
             });
         }
@@ -102,7 +103,7 @@ fn aggregation_reorders_once_and_preserves_samples_and_midi_without_allocating()
             stream.accept(&packets[block * 4][..lengths[block * 4]], 0),
             Err(Error::Duplicate)
         );
-        assert_no_alloc::assert_no_alloc(|| {
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
             stream
                 .process_one(
                     0,
@@ -155,7 +156,7 @@ fn missing_input_expires_at_the_boundary_and_advances_state_with_zero_and_reset(
         .process_one(due - 1, &mut dsp, || 0, |_| panic!("too early"))
         .unwrap());
     let mut outputs = 0;
-    assert_no_alloc::assert_no_alloc(|| {
+    shoop_wasm_test_support::heap::assert_no_heap(|| {
         assert!(stream
             .process_one(
                 due,
@@ -212,7 +213,7 @@ fn presentation_has_fixed_slots_and_late_results_never_shift_following_audio() {
     let mut header = wire::Header::input(9, 1, c);
     header.kind = wire::OUTPUT;
     let n = wire::encode(header, c, &[0.5; 8], &[], &mut raw).unwrap();
-    assert_no_alloc::assert_no_alloc(|| {
+    shoop_wasm_test_support::heap::assert_no_heap(|| {
         returns
             .accept(&raw[..n], c.deadline_ns(1).unwrap())
             .unwrap()
@@ -223,7 +224,7 @@ fn presentation_has_fixed_slots_and_late_results_never_shift_following_audio() {
         returns.consume(0, c.deadline_ns(0).unwrap() - 1, &mut audio, &mut midi),
         Err(Error::Deadline)
     );
-    let first = assert_no_alloc::assert_no_alloc(|| {
+    let first = shoop_wasm_test_support::heap::assert_no_heap(|| {
         returns
             .consume(0, c.deadline_ns(0).unwrap(), &mut audio, &mut midi)
             .unwrap()
@@ -232,7 +233,7 @@ fn presentation_has_fixed_slots_and_late_results_never_shift_following_audio() {
     assert_eq!(first.outcome, Outcome::Silence);
     assert!(first.midi_reset);
     assert_eq!(audio, [0.; 8]);
-    let second = assert_no_alloc::assert_no_alloc(|| {
+    let second = shoop_wasm_test_support::heap::assert_no_heap(|| {
         returns
             .consume(1, c.deadline_ns(1).unwrap(), &mut audio, &mut midi)
             .unwrap()
@@ -277,7 +278,7 @@ fn expired_input_is_not_replayed_and_its_zeroes_remain_in_delayed_algorithm_stat
             let n = packet(c, 1, sequence, &mut raw);
             stream.accept(&raw[..n], 0).unwrap();
         }
-        assert_no_alloc::assert_no_alloc(|| {
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
             assert!(stream
                 .process_one(
                     due,

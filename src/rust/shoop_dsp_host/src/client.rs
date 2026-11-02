@@ -1,4 +1,5 @@
 use crate::control::{self, Algorithm, Reply, Request};
+use crate::polling::{Polling, ServiceGaps};
 use anyhow::{ensure, Result};
 use clap::Args;
 use serde_json::{json, Value};
@@ -62,6 +63,8 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     validate_only: bool,
+    #[arg(long, value_enum, default_value = "yield")]
+    polling: Polling,
 }
 fn signal(frame: u64, channel: usize, seed: u64, impulse: bool) -> f32 {
     if impulse {
@@ -235,8 +238,12 @@ pub fn run(options: Options) -> Result<()> {
     let mut deliberately_dropped = 0;
     let mut max_source_backlog = 0;
     let finish = config.deadline_ns(count as u64 - 1)? + 50_000_000;
+    let mut service_gaps = ServiceGaps::default();
+    let mut last_service = 0;
     while origin.elapsed().as_nanos() as u64 <= finish {
         let now = origin.elapsed().as_nanos() as u64;
+        service_gaps.observe(now - last_service);
+        last_service = now;
         let mut progressed = false;
         for _ in 0..128 {
             match udp.recv(&mut raw) {
@@ -325,8 +332,7 @@ pub fn run(options: Options) -> Result<()> {
             }
         }
         if !progressed {
-            std::hint::spin_loop();
-            std::thread::yield_now();
+            options.polling.idle();
         }
     }
     while consume_next < count {
@@ -340,14 +346,16 @@ pub fn run(options: Options) -> Result<()> {
         consume_next += 1;
     }
     control::call(&mut tcp, &Request::Pause)?;
-    let (stats, concealment, next_sequence) = match control::call(&mut tcp, &Request::Stats)? {
-        Reply::Status {
-            stats,
-            concealment,
-            next_sequence,
-        } => (stats, concealment, next_sequence),
-        _ => anyhow::bail!("expected stream statistics"),
-    };
+    let (stats, concealment, next_sequence, server_service_gaps) =
+        match control::call(&mut tcp, &Request::Stats)? {
+            Reply::Status {
+                stats,
+                concealment,
+                next_sequence,
+                service_gaps,
+            } => (stats, concealment, next_sequence, service_gaps),
+            _ => anyhow::bail!("expected stream statistics"),
+        };
     if let Some(path) = &options.state_output {
         match control::call(&mut tcp, &Request::Save)? {
             Reply::State { state } => std::fs::write(path, state)?,
@@ -457,6 +465,7 @@ pub fn run(options: Options) -> Result<()> {
         "send_errors_or_skipped":send_errors,"deliberately_dropped":deliberately_dropped,"duplicates":duplicate,"invalid":invalid,
         "correctness_errors":correctness_errors,"verified_samples":verified_samples,"unverified_samples":unverified_samples,
         "server":stats,"concealment":concealment,"next_sequence":next_sequence,
+        "polling":options.polling,"client_service_gaps":service_gaps,"server_service_gaps":server_service_gaps,
         "socket_buffers":{"server_receive":server_receive_buffer,"server_send":server_send_buffer,"client_receive":client_receive_buffer,"client_send":client_send_buffer},
         "rtt":distribution(rtt),"sender_lateness":distribution(lateness),"batch_turnaround":distribution(batch),"dsp_processing":distribution(dsp_times)});
     if let Some(path) = &options.output {

@@ -4777,7 +4777,6 @@ dependencies = [
 name = "shoop_dsp"
 version = "0.3.0"
 dependencies = [
- "assert_no_alloc",
  "shoop_wasm_test_support",
 ]
 
@@ -4965,7 +4964,6 @@ dependencies = [
 name = "shoop_remote_dsp"
 version = "0.3.0"
 dependencies = [
- "assert_no_alloc",
  "serde",
  "shoop_dsp",
  "shoop_wasm_test_support",
