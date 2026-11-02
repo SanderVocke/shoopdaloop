@@ -298,6 +298,66 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     };
     let mut app = open();
     assert!(app.runtime.remote_entry.as_ref().unwrap().network.is_some());
+    let context = egui::Context::default();
+    shoop_egui::initialize(&context);
+    app.host_panel.open = true;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while app.host_panel.report.is_none() {
+        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+        output.textures_delta.clear();
+        assert!(
+            Instant::now() < deadline,
+            "connected host panel did not receive settings"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        app.host_panel
+            .report
+            .as_ref()
+            .unwrap()
+            .effective
+            .sample_rate,
+        48000
+    );
+    let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
+    draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32000);
+    draft.set(shoop_egui::LOOP_EDGE_SMOOTHING_MS, 19);
+    draft.set(shoop_egui::MASTER_AUTO_CONNECT, false);
+    let revision = app.settings.active().revision();
+    app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
+        config: shoop_egui::AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+            sample_rate: 32000,
+            buffer_size: 256,
+        }),
+        draft,
+    });
+    while app.settings.active().revision() == revision {
+        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+        output.textures_delta.clear();
+        assert!(
+            Instant::now() < deadline,
+            "local preference save did not finish"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        app.settings
+            .active()
+            .get(shoop_egui::DUMMY_SAMPLE_RATE)
+            .unwrap(),
+        32000
+    );
+    assert!(app.pending_audio_settings.is_none());
+    let report = shoop_host::connection::host_report(
+        app.runtime.remote_entry.as_ref().unwrap(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    assert_eq!(report.effective.sample_rate, 48000);
+    assert_eq!(report.loop_smoothing_ms, 3);
+    assert!(report.master_auto_connect);
+    app.host_panel.open = false;
     app.runtime
         .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
         .unwrap();
@@ -317,8 +377,6 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     });
     let before = state.status.processed_frames;
     let owner = state.tracks[1].id;
-    let context = egui::Context::default();
-    shoop_egui::initialize(&context);
     let mut output = context.run_ui(Default::default(), |ui| {
         app.show(ui);
         app.exit.close_ui(ui.ctx());

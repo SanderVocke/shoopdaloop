@@ -79,10 +79,10 @@ management GUI remain out of scope.
   and existing-UI display, reusing shared settings validation. Verify queried
   settings belong to the target and cannot overwrite local preferences or mutate
   devices during attachment. Keep extra GUI and driver hot swapping out of scope.
-- [ ] R4: update setup/profile/configuration documentation and PR usage examples;
+- [x] R4a: update setup/profile/configuration documentation and PR usage examples;
   run full native suite, >32 MiB LAN/local/shared-memory probes, browser checks,
-  Cortex-A builds, formatting, tracing/test policies and boundary audits. Push
-  milestone commits, fix final-head CI, check automated review and address it.
+  Cortex-A builds, formatting, tracing/test policies and boundary audits.
+- [ ] R4b: push milestone commits, fix final-head CI, check automated review and address it.
   If no reviewer responds, report that without claiming approval. Leave unmerged.
 
 ## Execution contract
@@ -124,3 +124,16 @@ fresh final-head checks after implementing the new contract.
 - LAN packaged workflow and >32 MiB exact audio/MIDI persistence pass, including
   abandoned transfer cleanup and fresh-snapshot observation of accepted work.
   Browser and final-head platform CI remain delivery gates.
+
+### Final local delivery gates
+
+- Chromium hosted workflow passes with zero xruns after the endpoint revision.
+  Local socket and shared-memory workflows and >32 MiB persistence probes pass,
+  alongside the LAN equivalents. All report exact audio/MIDI round trips.
+- The real remote-profile UI test now opens/renders the connected-host panel,
+  saves different local audio preferences and verifies the host remains at 48 kHz,
+  3 ms smoothing and Master auto-connect enabled. It then retains recording
+  across UI replacement and confirms explicit shutdown. This regression passes.
+- First endpoint implementation CI passes coverage, Codecov patch/project, Docs,
+  CodeQL and bare-metal gates. Native/browser matrix completion and final-head
+  review remain tracked by PR #912's checks.

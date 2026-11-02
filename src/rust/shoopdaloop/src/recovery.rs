@@ -232,7 +232,7 @@ mod tests {
 #[derive(Default)]
 pub struct HostPanel {
     pub open: bool,
-    report: Option<shoop_app_protocol::HostReport>,
+    pub(super) report: Option<shoop_app_protocol::HostReport>,
     receiver: Option<mpsc::Receiver<Result<shoop_app_protocol::HostReport, String>>>,
     error: Option<String>,
 }
