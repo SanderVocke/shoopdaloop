@@ -129,9 +129,10 @@ fn launch(
             .arg(config_file)
             .arg("--registry")
             .arg(registry.root())
+            .env("RUST_LOG", "shoop_rt_backend=debug")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()?,
     );
     let deadline = Instant::now() + Duration::from_secs(12);

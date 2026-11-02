@@ -757,7 +757,10 @@ validation bound had reduced the common audio/MIDI chunk size. Preparation now
 reserves at least one page-bounded wire chunk of MIDI validation work (at most
 1024 steps), while retaining eight physical buffers and the negotiated queue
 window. A heap-guarded small-engine regression checks full audio and MIDI chunks.
-Final-head platform checks remain pending after these corrections.
+The first retry still times out during macOS import; chunk sizing alone did not
+resolve it. The companion now initializes its existing tracing events and package
+probes inherit coarse backend diagnostics to identify where progression stalls.
+Final-head platform checks remain pending.
 
 ### Stage 7 — final end-to-end validation and PR
 
