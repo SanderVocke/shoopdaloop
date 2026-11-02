@@ -345,8 +345,8 @@ pub fn register_settings_with_appearance_defaults(
             UI_SCALE_FACTOR,
             ui_scale_default,
             "Appearance",
-            "Pixels-per-point scale",
-            "Multiplier for egui's native pixels-per-point value, scaling the entire UI.",
+            "UI size",
+            "Adjust the size of text and controls.",
         )
         .category_order(2)
         .setting_order(10)
@@ -414,7 +414,7 @@ pub fn register_audio_settings_with_default_driver(
             default_driver.id().to_owned(),
             "Audio",
             "Preferred audio driver",
-            "Driver attempted first on the next native launch. Runtime changes require Switch confirmation.",
+            "Driver attempted first on the next native launch. Use Switch audio driver to change it now.",
         )
         .category_order(5)
         .setting_order(1)
@@ -1476,7 +1476,11 @@ impl AppWidget {
                             .inner_margin(egui::Margin::same(6)),
                     )
                     .show(ui, |ui| {
-                        actions.extend(self.details.show(ui, state.details.as_ref()));
+                        actions.extend(self.details.show(
+                            ui,
+                            state.details.as_ref(),
+                            &state.tracks,
+                        ));
                     });
             }
             Some(BottomPane::Piano) => {
@@ -1484,15 +1488,25 @@ impl AppWidget {
                 let destination_centers = self.tracks.track_centers(&destination_ids);
                 egui::Panel::bottom("piano")
                     .resizable(true)
-                    .default_size(165.0)
-                    .min_size(145.0)
-                    .max_size(260.0)
+                    .default_size(215.0)
+                    .min_size(195.0)
+                    .max_size(300.0)
                     .frame(
                         egui::Frame::new()
                             .fill(colors::RAISED_BACKGROUND)
                             .inner_margin(egui::Margin::same(6)),
                     )
                     .show(ui, |ui| {
+                        if destination_ids.is_empty() {
+                            ui.strong("No MIDI destination");
+                            ui.label("Add a track with MIDI enabled, then turn on its input monitoring (ear icon).");
+                        } else {
+                            let names = state.tracks.iter()
+                                .filter(|track| destination_ids.contains(&track.id))
+                                .map(|track| track.name.as_str())
+                                .collect::<Vec<_>>().join(", ");
+                            ui.label(egui::RichText::new(format!("Playing to: {names}")).strong());
+                        }
                         actions.extend(
                             self.piano
                                 .show(ui, !destination_ids.is_empty(), &destination_centers)
@@ -2372,7 +2386,8 @@ impl AppWidget {
                     self.add_track_recording_frames_rect = _configuration_ui.recording_frames_rect;
                     self.add_track_processor_frames_rect = _configuration_ui.processor_frames_rect;
                 }
-                let _make_default = ui.checkbox(&mut self.add_track_make_default, "make default");
+                let _make_default = ui.checkbox(&mut self.add_track_make_default, "Use these settings for new tracks")
+                    .on_hover_text("Save this configuration as the default for future Add Track dialogs. Existing tracks are unchanged.");
                 #[cfg(test)]
                 {
                     self.add_track_make_default_rect = Some(_make_default.rect);
@@ -2901,6 +2916,7 @@ pub struct NewTrackConfigurationUi {
     pub midi_id: Option<egui::Id>,
     pub recording_frames_rect: Option<egui::Rect>,
     pub processor_frames_rect: Option<egui::Rect>,
+    pub advanced_timing_rect: Option<egui::Rect>,
 }
 
 pub struct BusOption {
@@ -3063,99 +3079,116 @@ pub fn show_new_track_configuration(
                         });
                 });
                 ui.end_row();
-
-                ui.label("Recording alignment:");
-                egui::ComboBox::from_id_salt("recording_adjustment")
-                    .selected_text(recording_adjustment_label(
-                        configuration.recording_adjustment,
-                    ))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut configuration.recording_adjustment,
-                            RecordingOffsetAdjustmentState::Automatic,
-                            "Automatic",
-                        );
-                        ui.selectable_value(
-                            &mut configuration.recording_adjustment,
-                            RecordingOffsetAdjustmentState::ManualOverride,
-                            "Manual",
-                        );
-                        ui.selectable_value(
-                            &mut configuration.recording_adjustment,
-                            RecordingOffsetAdjustmentState::AutomaticPlusTrim,
-                            "Automatic + trim",
-                        );
-                    });
-                ui.end_row();
-
-                ui.label(
-                    if configuration.recording_adjustment
-                        == RecordingOffsetAdjustmentState::AutomaticPlusTrim
-                    {
-                        "Recording trim:"
-                    } else {
-                        "Recording offset:"
-                    },
-                );
-                let recording_frames = ui.add_enabled(
-                    configuration.recording_adjustment != RecordingOffsetAdjustmentState::Automatic,
-                    egui::DragValue::new(&mut configuration.recording_frames)
-                        .range(-crate::MAX_TRACK_LATENCY_FRAMES..=crate::MAX_TRACK_LATENCY_FRAMES)
-                        .suffix(" frames"),
-                );
-                response.recording_frames_rect = Some(recording_frames.rect);
-                ui.end_row();
-
-                ui.label("Processor latency:");
-                egui::ComboBox::from_id_salt("processor_adjustment")
-                    .selected_text(processor_adjustment_label(
-                        configuration.processor_adjustment,
-                    ))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut configuration.processor_adjustment,
-                            ProcessorLatencyAdjustmentState::Automatic,
-                            "Automatic",
-                        );
-                        ui.selectable_value(
-                            &mut configuration.processor_adjustment,
-                            ProcessorLatencyAdjustmentState::ManualOverride,
-                            "Manual",
-                        );
-                        ui.selectable_value(
-                            &mut configuration.processor_adjustment,
-                            ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
-                            "Automatic + trim",
-                        );
-                    });
-                ui.end_row();
-
-                ui.label(
-                    if configuration.processor_adjustment
-                        == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
-                    {
-                        "Processor trim:"
-                    } else {
-                        "Processor latency value:"
-                    },
-                );
-                let processor_min = if configuration.processor_adjustment
-                    == ProcessorLatencyAdjustmentState::ManualOverride
-                {
-                    0
-                } else {
-                    -crate::MAX_TRACK_LATENCY_FRAMES
-                };
-                let processor_frames = ui.add_enabled(
-                    configuration.processor_adjustment
-                        != ProcessorLatencyAdjustmentState::Automatic,
-                    egui::DragValue::new(&mut configuration.processor_frames)
-                        .range(processor_min..=crate::MAX_TRACK_LATENCY_FRAMES)
-                        .suffix(" frames"),
-                );
-                response.processor_frames_rect = Some(processor_frames.rect);
-                ui.end_row();
             });
+        let advanced = egui::CollapsingHeader::new("Advanced timing")
+            .id_salt("advanced_timing")
+            .default_open(
+                configuration.recording_frames != 0 || configuration.processor_frames != 0,
+            )
+            .show(ui, |ui| {
+                ui.label("Adjust recording alignment and processor latency for this track.");
+                egui::Grid::new("fields")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Recording alignment:");
+                        egui::ComboBox::from_id_salt("recording_adjustment")
+                            .selected_text(recording_adjustment_label(
+                                configuration.recording_adjustment,
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut configuration.recording_adjustment,
+                                    RecordingOffsetAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut configuration.recording_adjustment,
+                                    RecordingOffsetAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut configuration.recording_adjustment,
+                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            });
+                        ui.end_row();
+
+                        ui.label(
+                            if configuration.recording_adjustment
+                                == RecordingOffsetAdjustmentState::AutomaticPlusTrim
+                            {
+                                "Recording trim:"
+                            } else {
+                                "Recording offset:"
+                            },
+                        );
+                        let recording_frames = ui.add_enabled(
+                            configuration.recording_adjustment
+                                != RecordingOffsetAdjustmentState::Automatic,
+                            egui::DragValue::new(&mut configuration.recording_frames)
+                                .range(
+                                    -crate::MAX_TRACK_LATENCY_FRAMES
+                                        ..=crate::MAX_TRACK_LATENCY_FRAMES,
+                                )
+                                .suffix(" frames"),
+                        );
+                        response.recording_frames_rect = Some(recording_frames.rect);
+                        ui.end_row();
+
+                        ui.label("Processor latency:");
+                        egui::ComboBox::from_id_salt("processor_adjustment")
+                            .selected_text(processor_adjustment_label(
+                                configuration.processor_adjustment,
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut configuration.processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut configuration.processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut configuration.processor_adjustment,
+                                    ProcessorLatencyAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            });
+                        ui.end_row();
+
+                        ui.label(
+                            if configuration.processor_adjustment
+                                == ProcessorLatencyAdjustmentState::AutomaticPlusTrim
+                            {
+                                "Processor trim:"
+                            } else {
+                                "Processor latency value:"
+                            },
+                        );
+                        let processor_min = if configuration.processor_adjustment
+                            == ProcessorLatencyAdjustmentState::ManualOverride
+                        {
+                            0
+                        } else {
+                            -crate::MAX_TRACK_LATENCY_FRAMES
+                        };
+                        let processor_frames = ui.add_enabled(
+                            configuration.processor_adjustment
+                                != ProcessorLatencyAdjustmentState::Automatic,
+                            egui::DragValue::new(&mut configuration.processor_frames)
+                                .range(processor_min..=crate::MAX_TRACK_LATENCY_FRAMES)
+                                .suffix(" frames"),
+                        );
+                        response.processor_frames_rect = Some(processor_frames.rect);
+                        ui.end_row();
+                    });
+            });
+        response.advanced_timing_rect = Some(advanced.header_response.rect);
     });
     response
 }
@@ -4064,6 +4097,64 @@ mod tests {
                 selected_audio_driver(&builder.finish().defaults(1)).unwrap(),
                 kind
             );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn collapsing_advanced_timing_preserves_the_track_configuration() {
+        fn render(
+            context: &egui::Context,
+            configuration: &mut NewTrackConfiguration,
+            events: Vec<egui::Event>,
+        ) -> NewTrackConfigurationUi {
+            let mut response = NewTrackConfigurationUi::default();
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    response = show_new_track_configuration(ui, "fixture", configuration, &[], &[]);
+                },
+            );
+            output.textures_delta.clear();
+            response
+        }
+        let context = egui::Context::default();
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            context.style_mut_of(theme, |style| style.animation_time = 0.0);
+        }
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let mut configuration = NewTrackConfiguration::from_settings_draft(
+            &SettingsDraft::from_snapshot(&builder.finish().defaults(1)),
+        )
+        .unwrap();
+        let response = render(&context, &mut configuration, Vec::new());
+        let header = response.advanced_timing_rect.unwrap().center();
+        assert!(response.recording_frames_rect.is_none());
+        configuration.recording_frames = -12;
+        configuration.processor_frames = 256;
+        let expected = configuration.clone();
+        for open in [true, false] {
+            for pressed in [true, false] {
+                render(
+                    &context,
+                    &mut configuration,
+                    vec![
+                        egui::Event::PointerMoved(header),
+                        egui::Event::PointerButton {
+                            pos: header,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            let response = render(&context, &mut configuration, Vec::new());
+            assert_eq!(response.recording_frames_rect.is_some(), open);
+            assert_eq!(configuration, expected);
         }
     }
 
