@@ -445,7 +445,8 @@ fn silent_network_loss_releases_the_controller_while_recording_continues() {
         .find(|candidate| candidate.id == track)
         .unwrap();
     assert_eq!(preserved.loops[0].mode, shoop_app_api::LoopMode::Recording);
-    assert!(preserved.loops[0].length_frames > 48000 * 5);
+    let recorded = preserved.loops[0].length_frames;
+    assert!(recorded > 0);
     assert!(replacement.authority().unwrap().generation > owner.generation);
     assert!(connection.poll(&mut client).is_err());
     assert_eq!(client.state(), State::Lost);
@@ -469,6 +470,18 @@ fn silent_network_loss_releases_the_controller_while_recording_continues() {
         &mut direct,
         shoop_app_protocol::Command::SetLoopSmoothingMs(7),
     );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        direct.poll(&mut replacement).unwrap();
+        let state = replacement.snapshot().unwrap();
+        let preserved = state.tracks.iter().find(|item| item.id == track).unwrap();
+        assert_eq!(preserved.loops[0].mode, shoop_app_api::LoopMode::Recording);
+        if preserved.loops[0].length_frames > recorded {
+            break;
+        }
+        assert!(Instant::now() < deadline, "recording stopped progressing");
+        thread::sleep(Duration::from_millis(2));
+    }
 }
 
 #[shoop_test]

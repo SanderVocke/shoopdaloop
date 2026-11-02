@@ -458,6 +458,12 @@ Windows debug CI additionally caught the refusal fixture suspending its healthy
 owner across several slow ACL checks, correctly expiring the default heartbeat.
 The fixture now pumps that owner concurrently while probing identity/token and
 busy-controller refusals; the heartbeat settings and refusal assertions are intact.
+macOS release CI caught a separate fixture assumption: a wall-clock delay does
+not guarantee nominal sample throughput from the sleep-driven dummy renderer on
+a contended runner. The silent-loss test now asserts retained recording data and
+continued growth after replacement instead of requiring five seconds of samples
+within seven wall-clock seconds. The default lease, seven-second blackhole,
+recording identity/mode and stale-owner shutdown fencing remain covered.
 
 | Criterion | Evidence |
 | --- | --- |
