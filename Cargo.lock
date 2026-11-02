@@ -1309,10 +1309,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2f1b93eb2e039aaff63ce07cca59bd1dca02f2ce30075a17b619d2c42f56efc"
 dependencies = [
  "document-features",
+ "futures-util",
  "js-sys",
  "ureq",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -4848,6 +4850,7 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4875,6 +4878,22 @@ version = "0.3.0"
 dependencies = [
  "rt_runtime",
  "shoop_loops",
+]
+
+[[package]]
+name = "shoop_persistence_codec"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "rt_runtime",
+ "serde",
+ "shoop_app_api",
+ "shoop_app_protocol",
+ "shoop_loops",
+ "shoop_session",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5187,6 +5206,7 @@ dependencies = [
  "clap",
  "eframe",
  "ehttp",
+ "futures-util",
  "js-sys",
  "log",
  "rfd",
@@ -5194,12 +5214,14 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_app",
+ "shoop_app_api",
  "shoop_app_client",
  "shoop_app_protocol",
  "shoop_backend",
  "shoop_common",
  "shoop_egui",
  "shoop_host",
+ "shoop_persistence_codec",
  "shoop_plugin_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
@@ -6037,6 +6059,19 @@ name = "wasm-bindgen-test-shared"
 version = "0.2.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ff1c1b360982e93b6d8ea9c04836f71dba0817a16f91e229cf3a51bdd9d987"
+
+[[package]]
+name = "wasm-streams"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
 
 [[package]]
 name = "wayland-backend"

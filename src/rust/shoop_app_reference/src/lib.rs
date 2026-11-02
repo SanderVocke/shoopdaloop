@@ -103,7 +103,7 @@ pub struct ApplicationFileOutput {
     pub task_id: TaskId,
     pub suggested_name: String,
     pub mime_type: String,
-    pub bytes: Arc<[u8]>,
+    pub bytes: Arc<Vec<u8>>,
 }
 
 #[derive(Clone, Debug)]
@@ -1474,9 +1474,10 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                 content_revision: channel.content_revision,
                 events: channel
                     .events
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .map(|event| MidiEventState {
-                        frame: event.time,
+                        frame: event.frame,
                         data: Arc::from(event.data),
                     })
                     .collect(),
@@ -1953,6 +1954,11 @@ impl ApplicationModel {
             return;
         }
         let result = match intent {
+            AppIntent::CompleteIoInput { .. }
+            | AppIntent::CompleteIoOutput { .. }
+            | AppIntent::RequestLoadSessionSource { .. } => {
+                Err("task-scoped file callbacks require the production session client".to_owned())
+            }
             AppIntent::SetLoopSmoothingMs(milliseconds) => backend
                 .set_loop_smoothing_ms(milliseconds)
                 .map_err(|error| error.to_string()),
@@ -2351,7 +2357,8 @@ impl ApplicationModel {
                 | LoopAction::ComposeIntoParallel(_) => require(Capability::CompositeLoops),
                 LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
                     require(Capability::SessionCapture)?;
-                    require(Capability::LoopContentImport)
+                    require(Capability::LoopContentImport)?;
+                    require(Capability::LoopDuplication)
                 }
                 _ => Ok(()),
             },
@@ -2433,8 +2440,11 @@ impl ApplicationModel {
             AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::ImportLoopAudioBytes { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. }
-            | AppIntent::ImportLoopMidiBytes { .. }
-            | AppIntent::GenerateClickTrack { .. } => require(Capability::LoopContentImport),
+            | AppIntent::ImportLoopMidiBytes { .. } => require(Capability::LoopContentImport),
+            AppIntent::GenerateClickTrack { .. } => {
+                require(Capability::LoopContentImport)?;
+                require(Capability::ClickTrackInsertion)
+            }
             _ => Ok(()),
         }
     }
@@ -2582,8 +2592,8 @@ impl ApplicationModel {
                 let mut recipients = BTreeSet::new();
                 let mut failures = Vec::new();
                 let event = BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, note, 100],
+                    frame: 0,
+                    data: vec![0x90, note, 100].into(),
                 };
                 for (track_id, backend_id) in destinations {
                     match backend.inject_midi_input(backend_id, std::slice::from_ref(&event)) {
@@ -2626,8 +2636,8 @@ impl ApplicationModel {
             .collect::<Vec<_>>();
         let events = (0..16)
             .map(|channel| BackendMidiEvent {
-                time: 0,
-                data: vec![0xb0 | channel, 120, 0],
+                frame: 0,
+                data: vec![0xb0 | channel, 120, 0].into(),
             })
             .collect::<Vec<_>>();
         let mut failures = Vec::new();
@@ -2668,8 +2678,8 @@ impl ApplicationModel {
         recipients: BTreeSet<TrackId>,
     ) -> Result<(), String> {
         let event = BackendMidiEvent {
-            time: 0,
-            data: vec![0x80, note, 0],
+            frame: 0,
+            data: vec![0x80, note, 0].into(),
         };
         let mut failures = Vec::new();
         for track_id in recipients {
@@ -2753,7 +2763,7 @@ impl ApplicationModel {
                 task_id,
                 suggested_name: name.to_owned(),
                 mime_type: "text/x-lua".to_owned(),
-                bytes: Arc::from(source.as_bytes()),
+                bytes: Arc::new(source.as_bytes().to_vec()),
             });
         Ok(())
     }
@@ -10926,7 +10936,7 @@ impl ApplicationModel {
                         media.insert(
                             media_id.clone(),
                             MediaPayload::Audio(AudioPayload {
-                                samples: audio.samples.clone(),
+                                samples: audio.samples.to_vec(),
                             }),
                         );
                     }
@@ -10996,9 +11006,9 @@ impl ApplicationModel {
                                     .iter()
                                     .enumerate()
                                     .map(|(order, event)| ExactMidiEvent {
-                                        frame: u64::from(event.time),
+                                        frame: u64::from(event.frame),
                                         order: order as u32,
-                                        data: event.data.clone(),
+                                        data: event.data.to_vec(),
                                     })
                                     .collect(),
                             }),
@@ -11929,7 +11939,7 @@ impl ApplicationModel {
                             .get(index)
                             .cloned()
                             .unwrap_or_else(|| format!("Audio {}", index + 1)),
-                        samples: Arc::clone(&channel.samples),
+                        samples: channel.samples.to_vec().into(),
                         start_offset: i64::from(channel.start_offset)
                             .saturating_add(i64::from(channel.capture_alignment_frames)),
                         preplay_samples: u64::from(channel.preplay),
@@ -12103,7 +12113,7 @@ impl ApplicationModel {
                 .enumerate()
                 .map(|(channel, source)| BackendAudioChannelUpdate {
                     channel,
-                    samples: source.samples.clone(),
+                    samples: source.samples.clone().into(),
                     start_offset: Some(0),
                     capture_alignment_frames: Some(0),
                     preplay: None,
@@ -12140,12 +12150,13 @@ impl ApplicationModel {
                     .iter()
                     .map(|event| {
                         Ok(BackendMidiEvent {
-                            time: u32::try_from(event.frame)
+                            frame: u32::try_from(event.frame)
                                 .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
-                            data: event.data.clone(),
+                            data: event.data.clone().into(),
                         })
                     })
-                    .collect::<Result<Vec<_>, String>>()?,
+                    .collect::<Result<Vec<_>, String>>()?
+                    .into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(0),
                 preplay: None,
@@ -12184,7 +12195,7 @@ impl ApplicationModel {
             audio: (0..target_channels)
                 .map(|channel| BackendAudioChannelUpdate {
                     channel,
-                    samples: samples.clone(),
+                    samples: samples.clone().into(),
                     start_offset: Some(0),
                     capture_alignment_frames: Some(0),
                     preplay: Some(0),
@@ -12207,9 +12218,9 @@ impl ApplicationModel {
             .iter()
             .map(|event| {
                 Ok(BackendMidiEvent {
-                    time: u32::try_from(event.frame)
+                    frame: u32::try_from(event.frame)
                         .map_err(|_| "generated MIDI event exceeds engine range".to_owned())?,
-                    data: event.data.clone(),
+                    data: event.data.clone().into(),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -12226,7 +12237,7 @@ impl ApplicationModel {
                 channel: 0,
                 length,
                 start_state: midi.start_state.clone(),
-                events,
+                events: events.into(),
                 start_offset: Some(0),
                 capture_alignment_frames: Some(0),
                 preplay: Some(0),
@@ -12596,7 +12607,7 @@ fn logical_exact_midi(
         .enumerate()
         .map(|(order, event)| {
             let frame = mapping
-                .logical_media_frame(i64::from(event.time), i64::from(content.start_offset))
+                .logical_media_frame(i64::from(event.frame), i64::from(content.start_offset))
                 .map_err(|error| error.to_string())?;
             let order = u32::try_from(order)
                 .map_err(|_| "MIDI export event count exceeds the supported range".to_owned())?;
@@ -12608,7 +12619,7 @@ fn logical_exact_midi(
         mapped
             .iter()
             .filter(|(frame, _, _)| *frame < 0)
-            .map(|(_, _, event)| event.data.as_slice()),
+            .map(|(_, _, event)| event.data.as_ref()),
     );
     let events = mapped
         .into_iter()
@@ -12616,7 +12627,7 @@ fn logical_exact_midi(
         .map(|(frame, order, event)| ExactMidiEvent {
             frame: frame as u64,
             order,
-            data: event.data.clone(),
+            data: event.data.to_vec(),
         })
         .collect();
     Ok(ExactMidi {
@@ -13456,7 +13467,7 @@ fn session_bundle_to_backend(
                         };
                         audio.push(BackendAudioContent {
                             mode: backend_channel_mode(channel.mode)?,
-                            samples,
+                            samples: samples.into(),
                             gain: channel.gain,
                             start_offset: i32::try_from(channel.start_offset_frames)
                                 .map_err(|_| "audio offset exceeds engine range".to_owned())?,
@@ -13489,16 +13500,19 @@ fn session_bundle_to_backend(
                                         .iter()
                                         .map(|event| {
                                             Ok(BackendMidiEvent {
-                                                time: u32::try_from(event.frame).map_err(|_| {
-                                                    "MIDI event exceeds engine range".to_owned()
-                                                })?,
-                                                data: event.data.clone(),
+                                                frame: u32::try_from(event.frame).map_err(
+                                                    |_| {
+                                                        "MIDI event exceeds engine range".to_owned()
+                                                    },
+                                                )?,
+                                                data: event.data.clone().into(),
                                             })
                                         })
                                         .collect::<Result<Vec<_>, String>>()
                                 })
                                 .transpose()?
-                                .unwrap_or_default(),
+                                .unwrap_or_default()
+                                .into(),
                             start_offset: i32::try_from(channel.start_offset_frames)
                                 .map_err(|_| "MIDI offset exceeds engine range".to_owned())?,
                             capture_alignment_frames: i32::try_from(
@@ -13517,7 +13531,7 @@ fn session_bundle_to_backend(
                     .copied()
                     .map(|mode| BackendAudioContent {
                         mode,
-                        samples: Vec::new(),
+                        samples: Vec::new().into(),
                         gain: 1.0,
                         start_offset: 0,
                         capture_alignment_frames: 0,
@@ -13531,7 +13545,7 @@ fn session_bundle_to_backend(
                         mode,
                         length: 0,
                         start_state: Vec::new(),
-                        events: Vec::new(),
+                        events: Vec::new().into(),
                         start_offset: 0,
                         capture_alignment_frames: 0,
                         preplay: 0,
@@ -15820,7 +15834,7 @@ mod tests {
         let source_update = BackendLoopContentUpdate {
             audio: vec![BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.25, -0.5, 0.75, -1.0],
+                samples: vec![0.25, -0.5, 0.75, -1.0].into(),
                 start_offset: Some(-2),
                 capture_alignment_frames: Some(2),
                 preplay: Some(3),
@@ -15830,9 +15844,10 @@ mod tests {
                 length: 5,
                 start_state: vec![vec![0xB0, 7, 99]],
                 events: vec![BackendMidiEvent {
-                    time: 2,
-                    data: vec![0x90, 64, 100],
-                }],
+                    frame: 2,
+                    data: vec![0x90, 64, 100].into(),
+                }]
+                .into(),
                 start_offset: Some(-1),
                 capture_alignment_frames: Some(0),
                 preplay: Some(2),
@@ -15850,7 +15865,7 @@ mod tests {
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![1.0, 1.0],
+                        samples: vec![1.0, 1.0].into(),
                         start_offset: Some(0),
                         capture_alignment_frames: None,
                         preplay: Some(0),
@@ -18554,7 +18569,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             model.length = 480;
             model.audio_data = Some(BackendAudioData {
                 channels: vec![shoop_backend::BackendAudioChannelData {
-                    samples: Arc::from([0.25, -0.25]),
+                    samples: Arc::new(vec![0.25, -0.25]),
                     ..Default::default()
                 }],
             });
@@ -20935,7 +20950,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             injections[0]
                 .1
                 .iter()
-                .map(|event| event.data.clone())
+                .map(|event| event.data.to_vec())
                 .collect::<Vec<_>>(),
             (0..16)
                 .map(|channel| vec![0xb0 | channel, 120, 0])
@@ -21031,7 +21046,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .iter()
             .filter_map(|operation| match operation {
                 shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
-                    Some((*track, events[0].data.clone()))
+                    Some((*track, events[0].data.to_vec()))
                 }
                 _ => None,
             })
@@ -21069,7 +21084,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .iter()
             .filter_map(|operation| match operation {
                 shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
-                    Some((*track, events[0].data.clone()))
+                    Some((*track, events[0].data.to_vec()))
                 }
                 _ => None,
             })
@@ -21129,8 +21144,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             &shoop_backend::FakeOperation::InjectMidiInput(
                 successful_backend_id,
                 vec![BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x80, 64, 0],
+                    frame: 0,
+                    data: vec![0x80, 64, 0].into(),
                 }],
             )
         ));
@@ -21192,8 +21207,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let captured = runtime.backend.capture_session().unwrap();
         for track in &captured.tracks[1..3] {
             let events = &track.loops[0].midi[0].events;
-            assert!(events.iter().any(|event| event.data == [0x90, 67, 100]));
-            assert!(events.iter().any(|event| event.data == [0x80, 67, 0]));
+            assert!(events
+                .iter()
+                .any(|event| event.data == [0x90, 67, 100].into()));
+            assert!(events
+                .iter()
+                .any(|event| event.data == [0x80, 67, 0].into()));
         }
         assert!(captured.tracks[3].loops[0].midi.is_empty());
     }
@@ -21298,7 +21317,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![0.25; 24],
+                        samples: vec![0.25; 24].into(),
                         start_offset: Some(-3),
                         capture_alignment_frames: Some(3),
                         preplay: Some(4),
@@ -21309,14 +21328,15 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         start_state: Vec::new(),
                         events: vec![
                             BackendMidiEvent {
-                                time: 2,
-                                data: vec![0x90, 67, 99],
+                                frame: 2,
+                                data: vec![0x90, 67, 99].into(),
                             },
                             BackendMidiEvent {
-                                time: 18,
-                                data: vec![0x80, 67, 0],
+                                frame: 18,
+                                data: vec![0x80, 67, 0].into(),
                             },
-                        ],
+                        ]
+                        .into(),
                         start_offset: Some(-3),
                         capture_alignment_frames: Some(3),
                         preplay: Some(4),
@@ -24088,7 +24108,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "old.shl".to_owned(),
-                bytes: Arc::from(&b"unsupported predecessor archive"[..]),
+                bytes: Arc::new(b"unsupported predecessor archive".to_vec()),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -24321,7 +24341,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let loop_id = runtime.snapshot().tracks[1].loops[0].id;
 
         for (name, bytes) in [
-            ("broken.shoop-audio", Arc::from(&b"not audio"[..])),
+            ("broken.shoop-audio", Arc::new(b"not audio".to_vec())),
             (
                 "empty.shoop-audio",
                 Arc::from(
@@ -24352,7 +24372,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .dispatch(AppIntent::ImportLoopMidiBytes {
                 loop_id,
                 name: "broken.shoop-midi".to_owned(),
-                bytes: Arc::from(&b"not midi"[..]),
+                bytes: Arc::new(b"not midi".to_vec()),
                 update_loop_length: true,
             })
             .unwrap();
@@ -24371,26 +24391,27 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             start_state: vec![vec![0xb0, 7, 10]],
             events: vec![
                 BackendMidiEvent {
-                    time: 0,
-                    data: vec![0xb0, 7, 99],
+                    frame: 0,
+                    data: vec![0xb0, 7, 99].into(),
                 },
                 BackendMidiEvent {
-                    time: 1,
-                    data: vec![0xc0, 42],
+                    frame: 1,
+                    data: vec![0xc0, 42].into(),
                 },
                 BackendMidiEvent {
-                    time: 1,
-                    data: vec![0x90, 60, 100],
+                    frame: 1,
+                    data: vec![0x90, 60, 100].into(),
                 },
                 BackendMidiEvent {
-                    time: 3,
-                    data: vec![0x80, 60, 0],
+                    frame: 3,
+                    data: vec![0x80, 60, 0].into(),
                 },
                 BackendMidiEvent {
-                    time: 7,
-                    data: vec![0x90, 61, 100],
+                    frame: 7,
+                    data: vec![0x90, 61, 100].into(),
                 },
-            ],
+            ]
+            .into(),
             start_offset: 0,
             capture_alignment_frames: 2,
             preplay: 0,
@@ -25350,7 +25371,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![channel as f32 + 0.25; 128],
+                            samples: vec![channel as f32 + 0.25; 128].into(),
                             start_offset: Some(11),
                             capture_alignment_frames: None,
                             preplay: Some(12),
@@ -25361,9 +25382,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         length: 128,
                         start_state: vec![vec![0xB0, 7, 99]],
                         events: vec![BackendMidiEvent {
-                            time: 64,
-                            data: vec![0x90, 70, 88],
-                        }],
+                            frame: 64,
+                            data: vec![0x90, 70, 88].into(),
+                        }]
+                        .into(),
                         start_offset: Some(13),
                         capture_alignment_frames: None,
                         preplay: Some(14),
@@ -25396,7 +25418,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .audio
             .iter()
             .all(|channel| channel.start_offset == 0 && channel.preplay == 0));
-        assert_eq!(target.midi[0].events[0].data, vec![0x90, 70, 88]);
+        assert_eq!(target.midi[0].events[0].data, vec![0x90, 70, 88].into());
         assert_eq!(target.midi[0].start_offset, 13);
         let preserved_audio = target.audio.clone();
 
@@ -25412,7 +25434,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .find(|loop_| loop_.source_id == model.loops[&loop_id].backend_id.raw())
             .unwrap();
         assert_eq!(target.audio, preserved_audio);
-        assert_eq!(target.midi[0].events[0].data, vec![0x90, 64, 127]);
+        assert_eq!(target.midi[0].events[0].data, vec![0x90, 64, 127].into());
         assert_eq!(target.midi[0].start_offset, 0);
         assert_eq!(target.midi[0].preplay, 0);
 
@@ -26241,8 +26263,23 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 AppIntent::ImportLoopAudioBytes {
                     loop_id,
                     name: "take.wav".to_owned(),
-                    bytes: Arc::from([]),
+                    bytes: Arc::new(Vec::new()),
                     update_loop_length: true,
+                },
+            ),
+            (
+                BackendCapability::LoopDuplication,
+                AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::Duplicate,
+                },
+            ),
+            (
+                BackendCapability::ClickTrackInsertion,
+                AppIntent::GenerateClickTrack {
+                    loop_id,
+                    request: Default::default(),
                 },
             ),
             (

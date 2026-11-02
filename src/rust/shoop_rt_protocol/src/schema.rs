@@ -154,6 +154,45 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    CancelBulk,
+    ReplacementBegin {
+        id: u64,
+    },
+    ReplacementEdit {
+        id: u64,
+        edit: crate::ReplacementEdit,
+    },
+    ReplacementPrepare {
+        id: u64,
+    },
+    ReplacementCommit {
+        id: u64,
+    },
+    ReplacementCancel {
+        id: u64,
+    },
+    ContentBegin(crate::ContentDescription),
+    ContentWrite {
+        id: u64,
+        offset: u64,
+        data: crate::ContentChunk,
+    },
+    ContentFinish {
+        id: u64,
+    },
+    ContentInitial {
+        id: u64,
+        message: MidiMessage,
+    },
+    ContentApply {
+        loop_id: LoopSlotId,
+        frames: u64,
+        audio: Option<u64>,
+        midi: Option<u64>,
+    },
+    ContentRelease {
+        id: u64,
+    },
     CreateStrip {
         strip: StripId,
         shape: StripShape,
@@ -292,6 +331,10 @@ impl Capabilities {
     pub const MIDI_INJECTION: Self = Self(1);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
+    pub const CONTENT_UPLOAD: Self = Self(1 << 3);
+    pub const COMPLETE_REPLACEMENT: Self = Self(1 << 4);
+    /// Accept sixty-four queued upload records through thirty-two reusable buffers.
+    pub const WIDE_CONTENT_UPLOAD: Self = Self(1 << 5);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -304,6 +347,8 @@ impl Capabilities {
 /// Current capacities. They may change during a connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Limits {
+    /// Maximum content-upload bytes per request, limited by the prepared page size.
+    pub content_chunk_bytes: u16,
     pub strips: u32,
     pub loops: u32,
     pub strip_audio_channels: u8,
@@ -414,6 +459,10 @@ pub enum BulkSelector {
     /// count frames; a chunk carries whole frames.
     AudioFrames,
     Midi,
+    /// Length-prefixed short packets restoring one channel's initial projection.
+    MidiInitial {
+        channel: u8,
+    },
 }
 
 /// Read one chunk of a loop's current media, starting at `offset` (frames for

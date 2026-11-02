@@ -562,7 +562,7 @@ impl RemoteWorkletBackend {
                     WireChannelMode::Wet => BackendChannelMode::Wet,
                 },
                 length: chunk.length,
-                events: Vec::with_capacity(chunk.total_events),
+                events: Vec::with_capacity(chunk.total_events).into(),
                 start_offset: chunk.start_offset,
                 capture_alignment_frames: chunk.capture_alignment_frames,
                 preplay: chunk.preplay,
@@ -582,12 +582,12 @@ impl RemoteWorkletBackend {
         {
             return Err(anyhow!("inconsistent MIDI detail chunk metadata"));
         }
-        channel
-            .events
-            .extend(chunk.events.into_iter().map(|event| BackendMidiEvent {
-                time: event.frame,
-                data: event.data,
-            }));
+        Arc::make_mut(&mut channel.events).extend(chunk.events.into_iter().map(|event| {
+            BackendMidiEvent {
+                frame: event.frame,
+                data: event.data.into(),
+            }
+        }));
         if chunk.final_chunk {
             assembly.next_channel += 1;
             assembly.next_offset = 0;
@@ -2367,7 +2367,7 @@ impl Backend for RemoteWorkletBackend {
         if events.len() > MIDI_BATCH_CAPACITY
             || events
                 .iter()
-                .any(|event| event.time != 0 || event.data.is_empty() || event.data.len() > 4)
+                .any(|event| event.frame != 0 || event.data.is_empty() || event.data.len() > 4)
         {
             return Err(anyhow!("invalid browser MIDI input injection batch"));
         }
@@ -2376,8 +2376,8 @@ impl Backend for RemoteWorkletBackend {
             events: events
                 .iter()
                 .map(|event| WireMidiEvent {
-                    frame: event.time,
-                    data: event.data.clone(),
+                    frame: event.frame,
+                    data: event.data.to_vec(),
                 })
                 .collect(),
         })
@@ -2490,7 +2490,7 @@ impl Backend for RemoteWorkletBackend {
                     let (start_offset, capture_alignment_frames, preplay) =
                         timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
-                        samples,
+                        samples: samples.to_vec().into(),
                         start_offset,
                         capture_alignment_frames,
                         preplay,
@@ -4315,7 +4315,7 @@ mod tests {
             .loop_audio_data_with_metadata(loop_id)
             .unwrap()
             .unwrap();
-        assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
+        assert_eq!(audio.channels[0].samples.as_slice(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
         assert_eq!(audio.channels[0].capture_alignment_frames, 3);
         assert_eq!(audio.channels[0].preplay, 6);
@@ -4328,7 +4328,7 @@ mod tests {
                     content_revision: 1,
                     mode: BackendChannelMode::Direct,
                     length: 16,
-                    events: Vec::new(),
+                    events: Vec::new().into(),
                     start_offset: -4,
                     capture_alignment_frames: 0,
                     preplay: 6,
@@ -4885,8 +4885,8 @@ mod tests {
             .inject_midi_input(
                 creation.track_id,
                 &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 60, 100],
+                    frame: 0,
+                    data: vec![0x90, 60, 100].into(),
                 }],
             )
             .unwrap();
@@ -5421,7 +5421,7 @@ mod tests {
         let loop_update = BackendLoopContentUpdate {
             audio: vec![shoop_backend::BackendAudioChannelUpdate {
                 channel: 0,
-                samples: vec![0.25; 128],
+                samples: vec![0.25; 128].into(),
                 start_offset: None,
                 capture_alignment_frames: None,
                 preplay: None,

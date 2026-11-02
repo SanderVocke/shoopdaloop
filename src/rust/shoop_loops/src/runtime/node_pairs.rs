@@ -59,6 +59,7 @@ pub struct NodePairInitial {
     pub audio: Option<NodePairSourceId>,
     pub midi: Option<NodePairSourceId>,
     pub gain: f32,
+    pub balance: f32,
     pub preserve_input: bool,
 }
 #[derive(Clone, Copy)]
@@ -313,6 +314,40 @@ impl NodePairs {
         self.take_source(id);
         Ok(())
     }
+    pub(super) fn adopt(
+        &mut self,
+        description: media::Description,
+        audio: Option<NodePairSourceId>,
+        midi: Option<NodePairSourceId>,
+        packet_bytes: usize,
+        ledger: &mut media::Ledger,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<media::MediaId, Error> {
+        if audio.is_some() && audio == midi {
+            return Err(Error::InvalidShape);
+        }
+        for id in [audio, midi].into_iter().flatten() {
+            match self.source_status(id)? {
+                NodePairSourceStatus::Ready { max_packet } if max_packet <= packet_bytes => {}
+                NodePairSourceStatus::Ready { .. } => return Err(Error::Capacity),
+                _ => return Err(Error::InvalidState),
+            }
+        }
+        let media = ledger
+            .adopt(
+                io,
+                media::Input {
+                    description,
+                    audio: audio.map(|id| self.source(id)).transpose()?,
+                    midi: midi.map(|id| self.source(id)).transpose()?,
+                },
+            )
+            .map_err(|e| e.error)?;
+        for id in [audio, midi].into_iter().flatten() {
+            self.take_source(id);
+        }
+        Ok(media)
+    }
     pub(super) fn bank(&self, id: NodePairStageId) -> Result<&Bank, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
@@ -370,6 +405,7 @@ impl NodePairs {
         }
         let mut change = if let Some(initial) = edit.initial {
             if !initial.gain.is_finite()
+                || !(-1.0..=1.0).contains(&initial.balance)
                 || (initial.audio.is_some() && initial.audio == initial.midi)
             {
                 return Err(Error::InvalidShape);

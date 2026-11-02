@@ -1,0 +1,39 @@
+   Compiling num-traits v0.2.19
+   Compiling crossbeam-utils v0.8.22
+   Compiling crossbeam-epoch v0.9.20
+   Compiling crossbeam-deque v0.8.7
+   Compiling crc32fast v1.5.0
+   Compiling rayon-core v1.13.0
+   Compiling hashbrown v0.17.1
+   Compiling either v1.17.0
+   Compiling simd-adler32 v0.3.10
+   Compiling zlib-rs v0.6.7
+   Compiling num-integer v0.1.47
+   Compiling num-complex v0.4.6
+   Compiling transpose v0.2.3
+   Compiling primal-check v0.3.4
+   Compiling audioadapter-sample v5.1.0
+   Compiling rustfft v6.4.1
+   Compiling bumpalo v3.20.3
+   Compiling audioadapter-buffers v5.1.0
+   Compiling zopfli v0.8.3
+   Compiling rayon v1.12.0
+   Compiling windowfunctions v0.1.1
+   Compiling indexmap v2.14.0
+   Compiling typed-path v0.12.3
+   Compiling serde_json v1.0.151
+   Compiling midly v0.5.3
+   Compiling hound v3.5.1
+   Compiling realfft v3.5.0
+   Compiling rubato v5.0.0
+   Compiling flate2 v1.1.9
+   Compiling zip v8.6.0
+   Compiling shoop_session v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_session)
+   Compiling shoop_persistence_codec v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_persistence_codec)
+    Finished `test` profile [unoptimized] target(s) in 11.45s
+     Running unittests src/lib.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/shoop_persistence_codec-fa6f0cd25ceaf84b)
+
+running 1 test
+test worker::tests::bounded_image_batches_match_scalar_export_and_preserve_exact_audio ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 264.50s

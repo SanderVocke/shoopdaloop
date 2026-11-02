@@ -29,13 +29,18 @@ extern crate std;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 mod backend;
+mod capture;
 mod clock;
+mod import;
 mod incoming;
 mod mirror;
 mod outgoing;
+mod persistence;
+mod prepared;
 mod reads;
 mod requests;
 mod session;
@@ -107,9 +112,15 @@ impl Status {
 /// A session replacement whose requests are not all answered yet.
 struct Replacement {
     mapping: BackendSessionReplacement,
-    first: u64,
-    last: u64,
-    refused: Vec<String>,
+    candidate: Option<Mirror>,
+    job: persistence::Job,
+    content: alloc::collections::BTreeMap<
+        shoop_backend::BackendLoopId,
+        alloc::sync::Arc<shoop_backend::BackendLoopContent>,
+    >,
+    connection_failures: Vec<BackendConnectionFailure>,
+    loop_target: Option<shoop_backend::BackendLoopId>,
+    published: bool,
 }
 
 /// The application backend over a protocol client. See the crate documentation.
@@ -124,6 +135,7 @@ pub struct RtBackend<C, K> {
     mirror: Mirror,
     requests: Requests,
     reads: Reads,
+    read_cancel_needed: bool,
     resync: Option<Vec<StateRecord>>,
     mutation_failures: Vec<BackendMutationFailure>,
     mutation_completions: Vec<BackendMutationCompletion>,
@@ -133,6 +145,15 @@ pub struct RtBackend<C, K> {
     /// Telemetry arrived after the latest outcome.
     telemetry_fresh: bool,
     replacement: Option<Replacement>,
+    next_persistence: u64,
+    canonical_content: alloc::collections::BTreeMap<
+        shoop_backend::BackendLoopId,
+        alloc::sync::Arc<shoop_backend::BackendLoopContent>,
+    >,
+    canonical_imports: alloc::collections::BTreeSet<shoop_backend::BackendLoopId>,
+    prepared_content:
+        alloc::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
+    capture_validation: Option<prepared::Validation>,
 }
 
 pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
@@ -158,6 +179,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             mirror: Mirror::new(),
             requests: Requests::default(),
             reads: Reads::default(),
+            read_cancel_needed: false,
             resync: None,
             mutation_failures: Vec::new(),
             mutation_completions: Vec::new(),
@@ -166,6 +188,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             failure_sequence: 0,
             telemetry_fresh: false,
             replacement: None,
+            next_persistence: 1,
+            canonical_content: Default::default(),
+            canonical_imports: Default::default(),
+            prepared_content: Default::default(),
+            capture_validation: None,
         })
     }
 
@@ -198,6 +225,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub fn clock(&self) -> &K {
         &self.clock
     }
+    /// The confirmed synchronization source of a live loop.
+    pub fn loop_sync_source(
+        &self,
+        id: shoop_backend::BackendLoopId,
+    ) -> Option<shoop_backend::BackendLoopId> {
+        self.mirror.live_loop(id).and_then(|entry| entry.sync)
+    }
 
     pub fn clock_mut(&mut self) -> &mut K {
         &mut self.clock
@@ -220,7 +254,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// Sends queued requests and reads as credits allow and handles every engine message that
     /// has arrived. Never waits.
     pub fn pump(&mut self) {
+        self.reads.advance();
+        if let Some(replacement) = self.replacement.as_mut() {
+            if let Err(error) = replacement.job.prepare() {
+                replacement.job.fail(error.to_string());
+            }
+        }
         for _ in 0..MAX_PUMP_ROUNDS {
+            if self.read_cancel_needed
+                && self.is_ready()
+                && self.require_mutation_capacity(1).is_ok()
+                && !self.read_cancel_outstanding()
+            {
+                self.requests.push(
+                    shoop_rt_protocol::Request::CancelBulk,
+                    crate::requests::Purpose::CancelReads,
+                );
+                self.read_cancel_needed = false;
+            }
+            self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
             while let Some(message) = self.client.poll() {
@@ -234,6 +286,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn ready(&self) -> Result<()> {
+        if self
+            .replacement
+            .as_ref()
+            .is_some_and(|replacement| !replacement.job.finished)
+        {
+            return Err(anyhow!("a session replacement is in progress"));
+        }
         match &self.link {
             Link::Ready => self.require_mutation_capacity(1),
             Link::Connecting | Link::Resyncing => Err(anyhow!("the engine is not connected yet")),
@@ -261,7 +320,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn idle(&self) -> bool {
         match self.link {
-            Link::Ready => self.requests.is_empty() && self.reads.idle() && self.telemetry_fresh,
+            Link::Ready => {
+                self.requests.is_empty()
+                    && !self.read_cancel_needed
+                    && self.reads.idle()
+                    && self.telemetry_fresh
+                    && self
+                        .replacement
+                        .as_ref()
+                        .is_none_or(|replacement| replacement.job.finished)
+            }
             Link::Disconnected(_) => true,
             Link::Connecting | Link::Resyncing => false,
         }
@@ -292,11 +360,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             match self.client.request(pending.request) {
                 Ok(correlation) => {
                     let pending = self.requests.outgoing.pop_front().expect("front exists");
-                    tracing::trace!(
-                        correlation,
-                        request = ?pending.request,
-                        "backend.rt.request"
-                    );
+                    if let shoop_rt_protocol::Request::ContentWrite { id, offset, data } =
+                        pending.request
+                    {
+                        if offset % (1024 * 1024) == 0 {
+                            tracing::debug!(
+                                correlation,
+                                id,
+                                offset,
+                                bytes = data.as_bytes().len(),
+                                "backend.rt.content_write"
+                            );
+                        }
+                    } else {
+                        tracing::trace!(correlation, request = ?pending.request, "backend.rt.request");
+                    }
                     self.requests.in_flight.insert(correlation, pending);
                     sent += 1;
                 }
@@ -306,6 +384,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     return sent;
                 }
             }
+        }
+        if self.read_cancel_needed || self.read_cancel_outstanding() {
+            return sent;
         }
         while let Some((loop_id, midi, read)) = self.reads.next() {
             match self.client.bulk(read) {
@@ -322,6 +403,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         sent
+    }
+
+    fn read_cancel_outstanding(&self) -> bool {
+        self.requests
+            .outgoing
+            .iter()
+            .chain(self.requests.in_flight.values())
+            .any(|pending| pending.purpose == crate::requests::Purpose::CancelReads)
     }
 
     fn lose(&mut self, reason: String) {
@@ -344,7 +433,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.requests.clear();
         self.reads.clear();
         if let Some(replacement) = &mut self.replacement {
-            replacement.refused.push(reason);
+            replacement.job.disconnected(reason);
         }
         self.mirror.connection_revision += 1;
     }

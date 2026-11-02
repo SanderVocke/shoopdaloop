@@ -182,6 +182,7 @@ struct AccessState<'a> {
     epoch: &'a mut Epoch,
     activation_allowed: bool,
     check: &'a dyn Fn(&PreparedPlan) -> Result<(), Error>,
+    recovery: &'a mut [crate::midi::ResetState],
 }
 /// Callback-scoped graph authority. It cannot create plans or validate untrusted descriptors.
 /// Preparing a permit does not publish anything; dropping it leaves both owners unchanged.
@@ -199,6 +200,7 @@ impl<'a> GraphAccess<'a> {
         epoch: &'a mut Epoch,
         activation_allowed: bool,
         check: &'a dyn Fn(&PreparedPlan) -> Result<(), Error>,
+        recovery: &'a mut [crate::midi::ResetState],
     ) -> Self {
         Self {
             inner: Some(AccessState {
@@ -207,6 +209,7 @@ impl<'a> GraphAccess<'a> {
                 epoch,
                 activation_allowed,
                 check,
+                recovery,
             }),
         }
     }
@@ -266,6 +269,7 @@ impl<'a> GraphAccess<'a> {
             active: inner.active,
             epoch: inner.epoch,
             next,
+            recovery: inner.recovery,
         })
     }
 }
@@ -277,6 +281,7 @@ pub struct GraphActivation<'a> {
     active: &'a mut Option<PreparedPlan>,
     epoch: &'a mut Epoch,
     next: Epoch,
+    recovery: &'a mut [crate::midi::ResetState],
 }
 impl GraphActivation<'_> {
     pub fn candidate(&self) -> &PreparedPlan {
@@ -289,10 +294,22 @@ impl GraphActivation<'_> {
         self.next
     }
     pub fn commit(self) -> Epoch {
+        self.commit_inner(false)
+    }
+    /// Replace a complete MIDI-producing graph and request device cleanup at the same cut.
+    pub fn commit_with_midi_reset(self) -> Epoch {
+        self.commit_inner(true)
+    }
+    fn commit_inner(self, reset: bool) -> Epoch {
         let candidate = self.slot.owner.take().expect("ready owner");
         self.slot.owner = self.active.replace(candidate);
         self.slot.phase = Phase::Taken;
         *self.epoch = self.next;
+        if reset {
+            for recovery in self.recovery {
+                recovery.request();
+            }
+        }
         self.next
     }
 }
@@ -300,6 +317,58 @@ impl GraphActivation<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_reset_is_requested_only_by_committed_replacement() {
+        let config = crate::Config {
+            max_nodes: 1,
+            max_edges: 1,
+            ..crate::Config::default()
+        }
+        .prepare()
+        .unwrap();
+        let owner =
+            PreparedPlan::from_descriptor(config, super::super::PlanDescriptor::default()).unwrap();
+        let mut stages = GraphStages::prepare(1, config).unwrap();
+        let id = stages.install(0, Epoch(0), owner);
+        let mut active = None;
+        let mut epoch = Epoch(0);
+        let mut recovery = [crate::midi::ResetState::default(); 2];
+        {
+            let mut access = GraphAccess::new(
+                &mut stages,
+                &mut active,
+                &mut epoch,
+                true,
+                &|_| Ok(()),
+                &mut recovery,
+            );
+            let permit = access.prepare_activation(id, Epoch(0)).unwrap();
+            drop(permit);
+        }
+        assert!(recovery.iter().all(|reset| !reset.pending()));
+        assert_eq!(epoch, Epoch(0));
+        {
+            let mut access = GraphAccess::new(
+                &mut stages,
+                &mut active,
+                &mut epoch,
+                true,
+                &|_| Ok(()),
+                &mut recovery,
+            );
+            assert!(access.prepare_activation(id, Epoch(1)).is_err());
+            assert_eq!(
+                access
+                    .prepare_activation(id, Epoch(0))
+                    .unwrap()
+                    .commit_with_midi_reset(),
+                Epoch(1)
+            );
+        }
+        assert!(recovery.iter().all(|reset| reset.pending()));
+        assert_eq!(epoch, Epoch(1));
+        assert!(active.is_some());
+    }
     #[shoop_wasm_test_support::shoop_test]
     fn stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners() {
         let counter = AtomicU32::new(u32::MAX - 1);
@@ -331,8 +400,14 @@ mod tests {
         let mut active = None;
         let mut epoch = Epoch(0);
         {
-            let mut access =
-                GraphAccess::new(&mut stages, &mut active, &mut epoch, true, &|_| Ok(()));
+            let mut access = GraphAccess::new(
+                &mut stages,
+                &mut active,
+                &mut epoch,
+                true,
+                &|_| Ok(()),
+                &mut [],
+            );
             let permit = access.prepare_activation(id, Epoch(0)).unwrap();
             assert!(permit.current().is_none());
             assert_eq!(permit.commit(), Epoch(1));
@@ -345,8 +420,14 @@ mod tests {
         let id = stages.install(0, Epoch(u64::MAX), active.take().unwrap());
         epoch = Epoch(u64::MAX);
         {
-            let mut access =
-                GraphAccess::new(&mut stages, &mut active, &mut epoch, true, &|_| Ok(()));
+            let mut access = GraphAccess::new(
+                &mut stages,
+                &mut active,
+                &mut epoch,
+                true,
+                &|_| Ok(()),
+                &mut [],
+            );
             assert_eq!(
                 access.prepare_activation(id, Epoch(u64::MAX)).err(),
                 Some(Error::Exhausted)

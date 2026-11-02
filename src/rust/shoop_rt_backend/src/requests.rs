@@ -33,6 +33,8 @@ pub(crate) enum Purpose {
     BusControl(BackendBusControl),
     InjectMidi(BackendTrackId),
     Smoothing(u32),
+    Persistence,
+    CancelReads,
 }
 
 #[derive(Clone, Debug)]

@@ -46,6 +46,12 @@ A standalone ResourceStore owner calls `begin_callback()` once per real host cal
 
 `GraphAccess::disabled()` similarly supports standalone prototypes without runtime publication rights. Borrowed graph/resource/decision/observation views cannot escape their permitted scope or survive the mutation they constrain.
 
+`GraphActivation::commit_with_midi_reset` adds a runtime output-recovery request
+to an otherwise identical validated graph commit. It neither transfers domain
+media ownership nor promises synchronous device delivery. Use it only after the
+complete domain replacement has been preflighted; unused/refused permits request
+no cleanup. See [staged activation](../part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md).
+
 ## RenderRuntime is only the clock/host-block layer
 
 `RenderRuntime::new` retains prepared limits and starts at frame zero. Its `process(AudioBlock)` validates nonempty shapes/expected frame, clears bounded output and advances the empty-graph clock. Zero calls do nothing. It has no processor DAG, transport, scheduler, resource store or planner hidden inside it.

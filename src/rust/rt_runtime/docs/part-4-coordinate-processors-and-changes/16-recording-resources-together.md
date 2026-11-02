@@ -133,6 +133,22 @@ After callbacks stop, `into_planner_and_resources()` preserves the ledger contai
 
 Release the Idle group explicitly; frozen content and outside leases survive that release. Release each actually acquired snapshot once, remove both resources, and reclaim their retired pages/versions. The example checks all data pages, version slots, snapshot slots, MIDI banks and the group slot recover. Disconnect or ordinary handle destruction supplies none of those release calls.
 
+### Clear an Idle group before replacing its loop owner
+
+An Idle group may still retain its frozen member versions. Planner capture access
+provides `check_idle_group(group)` to preflight the whole group, and
+`clear_idle_group(group)` to detach those retained versions while keeping the
+group binding available for another take. Preflight all affected groups before
+publishing a coordinated replacement; clear them only after the other fallible
+checks have succeeded. Prepared or active takes/reservations refuse unchanged.
+
+Clearing is not freezing, cancelling a recording, or releasing the group itself.
+Existing snapshot leases remain readable, and retired storage still needs
+reclamation. With no retained group content, a later take cannot accidentally
+reactivate media belonging to the previous loop owner. The
+[capture group tests](../../tests/capture_groups.rs) cover refusal while prepared,
+retained snapshots after clearing, reuse, and storage recovery.
+
 The safe media path is copying, not zero-copy: input → staging → 64-byte stack scratch → resource pages. These are three counted media copies; checkpoint-state copies have separate diagnostics. Required work is independent from background credit, but finite storage and saturating counters are not a deadline certificate.
 
 [Next: Capacity, work budgets, and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md)

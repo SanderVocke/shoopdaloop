@@ -29,6 +29,17 @@ arrays (`MAX_NAME_BYTES`, `MAX_MIDI_BYTES`, `MAX_STRIP_CHANNELS`,
 `BULK_CHUNK_SAMPLES`, `BULK_CHUNK_BYTES`), so encoding and queueing need no
 allocation.
 
+Protocol version 2 adds prepared content upload on the reliable lane:
+`ContentBegin`, `ContentWrite`, `ContentFinish` and `ContentRelease`. Upload IDs
+are monotonically increasing for the engine endpoint's lifetime. The announced
+`content_chunk_bytes` is the smaller of the prepared resource page size and 1024;
+chunks must also respect page boundaries. Declared content is limited to 256 MiB
+aggregate across retained uploads, subject to currently free prepared resources.
+`ContentFinish` confirms a validated immutable source, not audible activation.
+Release, failure and connection loss reclaim uncommitted upload ownership; admitted
+music continues. These primitives alone do not advertise application save/load or
+content-import capability.
+
 ## Lifecycle
 
 - `Hello { version }` is answered with `Welcome { version, capabilities, limits,

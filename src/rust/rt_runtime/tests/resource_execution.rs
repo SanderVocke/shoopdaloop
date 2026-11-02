@@ -325,6 +325,91 @@ impl<P: Processor> Harness<P> {
 }
 
 #[shoop_test]
+fn upload_prefix_returns_prepared_storage_and_rejects_invalid_ranges_without_writes() {
+    let config = config();
+    let mut store = ResourceStore::new(config).unwrap();
+    let playback = store.create().unwrap();
+    let recording = store.create().unwrap();
+    let staged = store.create().unwrap();
+    install(&mut store, playback, &floats(&[1.; 16]));
+    let snapshot = store.snapshot(playback, Frame(0)).unwrap();
+    let cursor = store.cursor(snapshot.id).unwrap();
+    let mut h = Harness::new(
+        config,
+        PlayerRecorder {
+            playback,
+            recording,
+            snapshot,
+            cursor,
+            rebind_refusals: 0,
+        },
+        store,
+        false,
+    );
+    h.expected = Some(1.);
+    let Some(Reply::Upload(upload)) = h
+        .request(Request::BeginUpload {
+            resource: staged,
+            expected_revision: Revision(0),
+            description: Description {
+                format: Format::Audio { channels: 1 },
+                frames: 2,
+                bytes: 8,
+            },
+        })
+        .reply()
+    else {
+        panic!("missing upload")
+    };
+    for used in [0, 65] {
+        let error = match h.control.submit_prepared(
+            Lane::Normal,
+            Command::resource(Request::WritePrefix {
+                upload,
+                offset: 0,
+                bytes: vec![99; 64].into_boxed_slice(),
+                used,
+            }),
+        ) {
+            Ok(_) => panic!("invalid prefix admitted"),
+            Err(error) => error,
+        };
+        assert_eq!(error.error, Error::InvalidShape);
+        let Command::Resource(command) = error.value else {
+            panic!("wrong command")
+        };
+        let Request::WritePrefix { bytes, .. } = command.into_request() else {
+            panic!("wrong request")
+        };
+        assert_eq!(&*bytes, &[99; 64]);
+    }
+    let mut buffer = vec![99; 64].into_boxed_slice();
+    for (offset, value) in [2f32, 3f32].into_iter().enumerate() {
+        buffer[..4].copy_from_slice(&value.to_le_bytes());
+        let original = buffer.as_ptr();
+        let command = h.request(Request::WritePrefix {
+            upload,
+            offset: offset * 4,
+            bytes: buffer,
+            used: 4,
+        });
+        let Request::WritePrefix { bytes, .. } = command.into_request() else {
+            panic!("wrong request")
+        };
+        assert_eq!(bytes.as_ptr(), original);
+        assert_eq!(bytes.len(), 64);
+        buffer = bytes;
+    }
+    h.request(Request::Finish { upload });
+    h.request(Request::Commit { upload });
+    let Some(Reply::Snapshot(snapshot)) = h.request(Request::Snapshot { resource: staged }).reply()
+    else {
+        panic!("missing snapshot")
+    };
+    assert_eq!(h.fetch(snapshot), floats(&[2., 3.]));
+}
+
+#[shoop_test]
 fn large_audio_midi_uploads_capture_and_exports_run_without_interrupting_resource_playback() {
     let config = config();
     let mut store = ResourceStore::new(config).unwrap();

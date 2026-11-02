@@ -30,6 +30,10 @@ impl StreamEncoder {
             return Err(CodecError::Invalid);
         }
         let state = match message {
+            ServiceMessage::CapturedImage { .. } => return Err(CodecError::Invalid),
+            ServiceMessage::Persistence { authority, reply } => {
+                State::One(WireMessage::Persistence { authority, reply })
+            }
             ServiceMessage::Snapshot { authority, state } => State::Begin {
                 authority,
                 transfer: snapshot_transfer,

@@ -93,6 +93,65 @@ fn packet(store: &mut ResourceStore, event: MidiEvent, expected: &[u8]) {
     assert_eq!(&data[..n], expected);
 }
 #[shoop_test]
+fn initial_packets_are_validated_before_any_indexed_event_and_retained_at_zero() {
+    let mut store = store(2, 4, 8, 64, 64);
+    let resource = store.create().unwrap();
+    let data = bytes(&[(2, vec![0x80, 60, 0])]);
+    let upload = store
+        .begin_indexed_midi_upload(
+            resource,
+            Revision(0),
+            Description {
+                format: Format::Midi,
+                frames: 4,
+                bytes: data.len(),
+            },
+            &MidiState::default(),
+        )
+        .unwrap();
+    assert_no_heap(|| {
+        store.begin_callback();
+        store.upload_midi_initial(upload, &[0xb0, 7, 91]).unwrap();
+        store.upload_midi_initial(upload, &[0x90, 60, 99]).unwrap();
+        assert_eq!(
+            store.upload_midi_initial(upload, &[0xb0, 7, 255]),
+            Err(Error::InvalidEvent)
+        );
+        assert_eq!(
+            store.upload_midi_initial(upload, &[0xf8]),
+            Err(Error::InvalidShape)
+        );
+        store.write_upload(upload, 0, &data).unwrap();
+        assert_eq!(
+            store.upload_midi_initial(upload, &[0xb0, 7, 12]),
+            Err(Error::InvalidState)
+        );
+        store.finish_upload(upload).unwrap();
+        store.commit(upload).unwrap();
+    });
+    let snapshot = store.snapshot(resource, Frame(0)).unwrap();
+    let index = store.read_index(snapshot.id).unwrap();
+    assert_no_heap(|| {
+        let initial = store.render_io().midi_seek(index, 0).unwrap();
+        let state = initial.state.channel(0).unwrap();
+        assert_eq!(state.controller(7), Some(91));
+        assert_eq!(state.note(60).unwrap().velocity(), 99);
+        assert_eq!(
+            store
+                .render_io()
+                .midi_seek(index, 3)
+                .unwrap()
+                .state
+                .channel(0)
+                .unwrap()
+                .note(60)
+                .unwrap()
+                .velocity(),
+            0
+        );
+    });
+}
+#[shoop_test]
 fn indexed_positions_match_linear_event_and_independent_key_state_oracles() {
     let mut store = store(2, 40, 8, 16, 1);
     let mut initial = MidiState::default();

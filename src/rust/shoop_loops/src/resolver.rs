@@ -619,6 +619,25 @@ impl Resolver {
         expected: Epoch,
         candidate: PreparedTopology,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
+        self.replace_topology_inner(expected, candidate, false)
+    }
+
+    /// Replace every logical owner, retiring playback at publication. Recording is refused.
+    /// The caller must coordinate media/graph ownership and device MIDI cleanup.
+    pub fn replace_topology_stopping_playback(
+        &mut self,
+        expected: Epoch,
+        candidate: PreparedTopology,
+    ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
+        self.replace_topology_inner(expected, candidate, true)
+    }
+
+    fn replace_topology_inner(
+        &mut self,
+        expected: Epoch,
+        candidate: PreparedTopology,
+        stop_playback: bool,
+    ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
             if self.quiescent || self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
@@ -627,11 +646,17 @@ impl Resolver {
                 return Err(Error::InvalidProgram);
             }
             for state in self.states.iter().flatten() {
-                if candidate.node(state.id).is_err() && state.mode != Mode::Stopped {
+                if candidate.node(state.id).is_err()
+                    && state.mode != Mode::Stopped
+                    && !(stop_playback && state.mode == Mode::Playing)
+                {
                     return Err(Error::InvalidState);
                 }
             }
             for node in candidate.nodes() {
+                if stop_playback && self.state(node.id).is_ok() {
+                    return Err(Error::InvalidId);
+                }
                 if let Ok(state) = self.state(node.id) {
                     if state.composite.is_some() != (node.kind == LoopKind::Composite) {
                         return Err(Error::InvalidProgram);

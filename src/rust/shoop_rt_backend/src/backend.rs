@@ -18,11 +18,10 @@ use shoop_backend::{
     BackendCompositeConfig, BackendCompositeId, BackendConnectionSnapshot,
     BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendLoopContentUpdate,
     BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendOperationKind, BackendOperationProgress, BackendPortId,
-    BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
+    BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -122,6 +121,37 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if entry.view.mode == LoopMode::Recording {
             return Ok(None);
         }
+        if self.canonical_imports.contains(&loop_id) {
+            let (version, slot) = (entry.content, entry.slot);
+            if let Outcome::Done(data) = self.reads.audio(loop_id, version, slot, channels) {
+                return Ok(Some(data));
+            }
+            let content = &self.canonical_content[&loop_id];
+            if content
+                .audio
+                .iter()
+                .map(|channel| channel.samples.len() as u64 * 4)
+                .sum::<u64>()
+                > 32 * 1024 * 1024
+            {
+                return Err(anyhow!("audio view exceeds 32 MiB; use media export"));
+            }
+            let data = BackendAudioData {
+                channels: content
+                    .audio
+                    .iter()
+                    .map(|channel| shoop_backend::BackendAudioChannelData {
+                        samples: Arc::from(channel.samples.clone()),
+                        start_offset: channel.start_offset,
+                        capture_alignment_frames: channel.capture_alignment_frames,
+                        preplay: channel.preplay,
+                    })
+                    .collect(),
+            };
+            self.reads
+                .remember_audio(loop_id, version, slot, data.clone());
+            return Ok(Some(data));
+        }
         if entry.view.length == 0 {
             return Ok(Some(empty_audio(channels)));
         }
@@ -158,13 +188,33 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn cancel_media_reads(&mut self) {
         self.reads.clear();
+        self.capture_validation = None;
+        self.prepared_content
+            .retain(|id, _| self.canonical_imports.contains(id));
+        self.read_cancel_needed = true;
+        self.canonical_content
+            .retain(|id, _| self.canonical_imports.contains(id));
     }
 
     fn capabilities(&self) -> BackendCapabilities {
-        BackendCapabilities::NONE.with(
-            BackendCapability::MidiInjection,
-            self.capabilities.contains(Capabilities::MIDI_INJECTION),
-        )
+        BackendCapabilities::NONE
+            .with(
+                BackendCapability::MidiInjection,
+                self.capabilities.contains(Capabilities::MIDI_INJECTION),
+            )
+            .with(
+                BackendCapability::SessionCapture,
+                self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
+            .with(
+                BackendCapability::SessionContentLoad,
+                self.capabilities
+                    .contains(Capabilities::COMPLETE_REPLACEMENT),
+            )
+            .with(
+                BackendCapability::LoopContentImport,
+                self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -340,7 +390,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let messages = events
             .iter()
             .map(|event| {
-                (event.time == 0 && event.data.len() <= 4)
+                (event.frame == 0 && event.data.len() <= 4)
                     .then(|| MidiMessage::new(&event.data))
                     .flatten()
                     .ok_or_else(|| anyhow!("invalid MIDI input injection event"))
@@ -406,7 +456,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(self.read_audio(loop_id)?.map(|data| {
             data.channels
                 .into_iter()
-                .map(|channel| channel.samples)
+                .map(|channel| channel.samples.to_vec().into())
                 .collect()
         }))
     }
@@ -432,7 +482,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .channels
             .get(channel)
             .map(|channel| Arc::clone(&channel.samples))
-            .unwrap_or_else(|| Arc::from([]));
+            .unwrap_or_else(|| Arc::new(Vec::new()));
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
             content_revision: self
@@ -449,7 +499,18 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             } else {
                 Vec::new()
             },
-            ..Default::default()
+            start_offset: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.start_offset),
+            capture_alignment_frames: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.capture_alignment_frames),
+            preplay: data
+                .channels
+                .get(channel)
+                .map_or(0, |channel| channel.preplay),
         })
     }
 
@@ -460,6 +521,40 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
         let midi = self.mirror.tracks[&entry.track].midi;
+        if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
+            let (version, slot) = (entry.content, entry.slot);
+            if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
+                return Ok(Some(data));
+            }
+            let content = &self.canonical_content[&loop_id];
+            let bytes = self
+                .prepared_content
+                .get(&loop_id)
+                .filter(|p| p.matches(content))
+                .ok_or_else(|| anyhow!("imported content lacks a validation proof"))?
+                .events_bytes();
+            if bytes > 32 * 1024 * 1024 {
+                return Err(anyhow!("MIDI view exceeds 32 MiB; use media export"));
+            }
+            let data = BackendMidiData {
+                channels: content
+                    .midi
+                    .iter()
+                    .map(|channel| shoop_backend::BackendMidiChannelData {
+                        content_revision: version,
+                        mode: channel.mode,
+                        length: channel.length,
+                        events: channel.events.clone(),
+                        start_offset: channel.start_offset,
+                        capture_alignment_frames: channel.capture_alignment_frames,
+                        preplay: channel.preplay,
+                    })
+                    .collect(),
+            };
+            self.reads
+                .remember_midi(loop_id, version, slot, data.clone());
+            return Ok(Some(data));
+        }
         if !midi || entry.view.length == 0 && entry.view.mode != LoopMode::Recording {
             return Ok(Some(empty_midi(entry.content, midi)));
         }
@@ -534,18 +629,28 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn replace_loop_content(
         &mut self,
-        _loop_id: BackendLoopId,
-        _update: &BackendLoopContentUpdate,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopContentImport))
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(()) = self.import_content(loop_id, update)? {
+                return Ok(());
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "content replacement is pending; use replace_loop_content_async"
+                ));
+            }
+        }
+        Err(anyhow!("content replacement did not settle"))
     }
 
     fn replace_loop_content_async(
         &mut self,
-        _loop_id: BackendLoopId,
-        _update: &BackendLoopContentUpdate,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
     ) -> Result<BackendAsyncResult<()>> {
-        Err(unavailable(BackendCapability::LoopContentImport))
+        self.import_content(loop_id, update)
     }
 
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
@@ -563,19 +668,53 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
-        Err(unavailable(BackendCapability::SessionCapture))
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(capture) = self.capture_core(None)? {
+                return Ok(capture);
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "session capture is pending; use capture_session_async"
+                ));
+            }
+        }
+        Err(anyhow!("session capture did not settle"))
     }
 
     fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
-        Err(unavailable(BackendCapability::SessionCapture))
+        self.capture_core(None)
+    }
+    fn capture_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<BackendAsyncResult<shoop_backend::BackendLoopContent>> {
+        match self.capture_core(Some(loop_id))? {
+            BackendAsyncResult::Pending(progress) => Ok(BackendAsyncResult::Pending(progress)),
+            BackendAsyncResult::Ready(session) => session
+                .tracks
+                .into_iter()
+                .flat_map(|track| track.loops)
+                .find(|content| content.source_id == loop_id.raw())
+                .map(BackendAsyncResult::Ready)
+                .ok_or_else(|| anyhow!("capture omitted target loop")),
+        }
     }
 
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
-        let mapping = self.start_replacement(session)?;
-        Ok(mapping)
+        for _ in 0..crate::MAX_WAITS {
+            if let BackendAsyncResult::Ready(mapping) = self.replace_session_async(session)? {
+                return Ok(mapping);
+            }
+            if !self.clock.wait() {
+                return Err(anyhow!(
+                    "session replacement is pending; use replace_session_async"
+                ));
+            }
+        }
+        Err(anyhow!("session replacement did not settle"))
     }
 
     fn replace_session_async(
@@ -583,43 +722,26 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         session: &BackendSessionData,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
         if self.replacement.is_none() {
-            let first = self.requests.last_sequence() + 1;
-            let mapping = self.start_replacement(session)?;
-            self.replacement = Some(crate::Replacement {
-                mapping,
-                first,
-                last: self.requests.last_sequence(),
-                refused: Vec::new(),
-            });
+            self.start_replacement(session)?;
         }
-        self.pump();
-        let replacement = self.replacement.as_ref().expect("a replacement");
-        if !self.requests.answered_through(replacement.last) {
-            let total = (replacement.last + 1).saturating_sub(replacement.first) as usize;
-            let remaining = self
-                .requests
-                .outgoing
-                .iter()
-                .chain(self.requests.in_flight.values())
-                .filter(|pending| {
-                    (replacement.first..=replacement.last).contains(&pending.sequence)
-                })
-                .count();
-            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
-                key: replacement.first,
-                kind: BackendOperationKind::SessionReplacement,
-                completed: total - remaining,
-                total: Some(total),
-            }));
+        self.persistence_progress()
+    }
+
+    fn cancel_session_replacement(&mut self) -> Result<()> {
+        if let Some(replacement) = &mut self.replacement {
+            replacement.job.cancel()?;
         }
-        let replacement = self.replacement.take().expect("a replacement");
-        if !replacement.refused.is_empty() {
-            return Err(anyhow!(
-                "the engine refused part of the new session: {}",
-                replacement.refused.join("; ")
-            ));
+        Ok(())
+    }
+    fn replace_session_with_sync_async(
+        &mut self,
+        session: &BackendSessionData,
+        sync: &alloc::collections::BTreeMap<u64, u64>,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() {
+            self.start_replacement_with_sync(session, sync)?;
         }
-        Ok(BackendAsyncResult::Ready(replacement.mapping))
+        self.persistence_progress()
     }
 
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {

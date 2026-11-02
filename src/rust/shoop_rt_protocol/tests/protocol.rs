@@ -5,6 +5,7 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const LIMITS: Limits = Limits {
+    content_chunk_bytes: 1024,
     strips: 4,
     loops: 16,
     strip_audio_channels: 2,
@@ -35,6 +36,96 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CancelBulk,
+        Request::ReplacementBegin { id: 1 },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Strip {
+                strip: strip(0),
+                shape: StripShape {
+                    audio_inputs: 2,
+                    audio_outputs: 2,
+                    midi_input: true,
+                    midi_output: true,
+                },
+                controls: StripPreset {
+                    input_gain: 0.5,
+                    input_balance: -0.25,
+                    monitoring: false,
+                    output_gain: 1.,
+                    output_balance: 0.25,
+                    output_mute: true,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Loop {
+                loop_id: loop_id(0),
+                strip: strip(0),
+                sync: Some(loop_id(1)),
+                frames: u64::MAX,
+                audio: Some(2),
+                midi: None,
+                gain: 0.5,
+                balance: 0.25,
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Connect {
+                port: EnginePort::Strip(StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 0,
+                }),
+                host: HostPortId(2),
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Route {
+                port: StripPort {
+                    strip: strip(0),
+                    kind: PortKind::AudioOut,
+                    index: 1,
+                },
+                bus: BusPort {
+                    bus: BusId::Master,
+                    index: 1,
+                },
+            },
+        },
+        Request::ReplacementEdit {
+            id: 1,
+            edit: ReplacementEdit::Master(BusControl::Mute(true)),
+        },
+        Request::ReplacementPrepare { id: 1 },
+        Request::ReplacementCommit { id: 1 },
+        Request::ReplacementCancel { id: 1 },
+        Request::ContentBegin(ContentDescription {
+            id: 1,
+            midi: false,
+            frames: 64,
+            bytes: 512,
+        }),
+        Request::ContentWrite {
+            id: 1,
+            offset: 0,
+            data: ContentChunk::new(&[42; 1024]).unwrap(),
+        },
+        Request::ContentFinish { id: 1 },
+        Request::ContentApply {
+            loop_id: loop_id(0),
+            frames: 4,
+            audio: Some(1),
+            midi: Some(2),
+        },
+        Request::ContentInitial {
+            id: 1,
+            message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
+        },
+        Request::ContentRelease { id: 1 },
         Request::CreateStrip {
             strip: strip(1),
             shape: StripShape {
@@ -138,6 +229,12 @@ fn client_samples() -> Vec<ClientMessage> {
             loop_id: loop_id(2),
             selector: BulkSelector::AudioFrames,
             offset: 128,
+        }),
+        ClientMessage::Bulk(BulkRead {
+            id: 7,
+            loop_id: loop_id(2),
+            selector: BulkSelector::MidiInitial { channel: 15 },
+            offset: 0,
         }),
     ];
     messages.extend(requests.into_iter().enumerate().map(|(index, request)| {

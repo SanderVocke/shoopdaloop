@@ -22,3 +22,7 @@ threads-required = "num-test-threads"
 [[profile.ci.overrides]]
 filter = 'binary_id(/shoopdaloop::bin.shoopdaloop/) & test(/^settings::tests::/)'
 threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(=shoop_host::recovery)'
+threads-required = "num-test-threads"

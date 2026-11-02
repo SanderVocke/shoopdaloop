@@ -181,6 +181,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         || length != previous.length
                     {
                         entry.content += 1;
+                        self.canonical_content.remove(id);
+                        self.prepared_content.remove(id);
+                        self.canonical_imports.remove(id);
                     }
                     entry.view = LoopView {
                         mode,
@@ -358,6 +361,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::CancelReads {
+            return;
+        }
+        if pending.purpose == Purpose::Persistence {
+            if let Some(replacement) = &mut self.replacement {
+                replacement
+                    .job
+                    .answered(pending.request, outcome, self.status.callbacks);
+            }
+            return;
+        }
         let Pending {
             sequence, purpose, ..
         } = pending;
@@ -373,13 +387,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Outcome::Done => None,
             Outcome::Refused(refusal) => Some(refusal),
         };
-        if let (Some(refusal), Some(replacement)) = (refusal, &mut self.replacement) {
-            if (replacement.first..=replacement.last).contains(&sequence) {
-                replacement
-                    .refused
-                    .push(format!("{purpose:?}: {}", refusal_text(refusal)));
-            }
-        }
         match (purpose, refusal) {
             (Purpose::CreateStrip(id), None) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
@@ -406,7 +413,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
-            (Purpose::RemoveStrip(id), None) => self.mirror.drop_track(id),
+            (Purpose::RemoveStrip(id), None) => {
+                if let Some(track) = self.mirror.tracks.get(&id) {
+                    for loop_id in &track.loops {
+                        self.canonical_content.remove(loop_id);
+                        self.prepared_content.remove(loop_id);
+                        self.canonical_imports.remove(loop_id);
+                    }
+                }
+                self.mirror.drop_track(id);
+            }
             (Purpose::RemoveStrip(id), Some(refusal)) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
                     track.removing = false;
@@ -477,6 +493,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             (Purpose::Clear(id), None) => {
+                self.canonical_content.remove(&id);
+                self.prepared_content.remove(&id);
+                self.canonical_imports.remove(&id);
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;
                 }
@@ -529,8 +548,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             host_port_id: host,
                         };
                         if connected {
+                            self.mirror.desired_links.insert(link.clone());
                             self.mirror.links.insert(link);
                         } else {
+                            self.mirror.desired_links.remove(&link);
                             self.mirror.links.remove(&link);
                         }
                     }
@@ -613,7 +634,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     refusal_text(refusal)
                 ),
             ),
-            (Purpose::InjectMidi(_) | Purpose::Smoothing(_), _) => {}
+            (
+                Purpose::InjectMidi(_)
+                | Purpose::Smoothing(_)
+                | Purpose::Persistence
+                | Purpose::CancelReads,
+                _,
+            ) => {}
         }
     }
 }

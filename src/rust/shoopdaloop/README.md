@@ -79,13 +79,24 @@ map to CPAL's JACK host or default device with a diagnostic. Unusable device set
 fall back to dummy with a visible warning and do not overwrite the saved preference.
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, additional buses, composite/grab/dry-wet
-operations, timing/alignment edits, click previews and content save/load/import/export.
+operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
 The authoritative capability checks refuse unsupported operations.
 
 Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
 targets/policies, supported track/Master controls, routes/connections, piano MIDI and
 bounded waveform/MIDI detail reads are available. Configured track/loop/channel/media
 pools are prepared at startup; exhausted capacity produces a refusal.
+
+Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard MIDI
+import/export use the session service. Save while playing is supported; active or
+scheduled recording refuses without stopping it. Load starts restored loops stopped
+and asks before sample-rate conversion, leaving the device unchanged. Unsupported
+FX/dry-wet/composite/bus/script documents refuse as a whole. Audio mapping, channel
+selection, optional import length changes and SMF loss warnings remain explicit.
+Native output replaces its target atomically; browser completion means download
+handoff. Limits and supported fields are in the
+[persistence contract](../../../docs/native_session_recovery/persistence-contract.md).
+Full feature parity remains tracked by the ledger.
 
 The Scripts tab manages external built-ins, examples, native user files and run-once
 Lua sources. Script source export is available. Lua reads confirmed state; a write
@@ -110,14 +121,15 @@ trunk serve --open
 
 Audio needs an explicit microphone or output-only enable gesture. Web MIDI has a
 separate permission action. The app client, Lua and service pump cooperatively on
-the main thread; only the prepared RT engine renders in the AudioWorklet. There is
-no application Worker. `offline` disables the session engine; the retired `worker`
+the main thread; only the prepared RT engine renders in the AudioWorklet. File
+codecs run in a dedicated client Worker so decoding/encoding does not block that
+service. `offline` disables the session engine; the retired `worker`
 mode produces a diagnostic. Audio/MIDI access depends on browser secure-context and
 permission policies. Physical port inventory is fixed at engine preparation; reload
 when new MIDI endpoints need engine ports. Same-page UI recovery is not provided.
 
-Hosted bundles carry external built-ins and the RT worklet. Release packaging also
-embeds them in a single HTML file, subject to browser restrictions on `file:` URLs.
+Hosted bundles carry external built-ins, the RT worklet and the client codec module.
+Release packaging also embeds them in a single HTML file, subject to browser restrictions on `file:` URLs.
 
 ## Verification
 
@@ -141,6 +153,9 @@ recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 ```sh
 target/debug/shoopdaloop --probe-engine-transport --session-transport socket
 target/debug/shoopdaloop --probe-engine-transport --session-transport shared_memory
+# Separate large-file canaries; the transport canary retains its existing deadline.
+target/debug/shoopdaloop --probe-persistence --session-transport socket
+target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
 ```
 
 Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
@@ -150,7 +165,16 @@ NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 # After release packaging:
 NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 python3 browser_firefox_smoke.py --backend new_engine
+# Additional >32 MiB file round-trip through the codec worker and AudioWorklet:
+NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
+
+The file canaries compare exact PCM/MIDI after save/load/save, check stopped fresh
+identities, and resume playback. Native file canaries use actual atomic output and
+bounded file input. The socket case also abandons upload/capture and reconciles an
+accepted load without replay. Browser canaries cancel the first output, retry by
+clicking the actual download link, and require a browser-handoff result. The large
+browser case has separate deadlines; normal canary workloads/deadlines are retained.
 
 `--tracing` captures the local UI/control process in Perfetto format; optional
 `--tracing-engine-detail` adds available local instrumentation. External hosts and

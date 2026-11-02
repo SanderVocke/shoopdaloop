@@ -312,6 +312,48 @@ impl ResourceStore {
         );
         Ok(())
     }
+    pub fn check_idle_capture_group(&self, id: CaptureGroupId) -> Result<(), Error> {
+        let group = self.capture_group_info(id)?;
+        if group.phase != CapturePhase::Idle {
+            return Err(Error::InvalidState);
+        }
+        for index in 0..group.members {
+            let member = self.capture_groups.member(id, index);
+            let resource = self.check_writer(member.spec.resource, Some(id))?;
+            if member.take.is_some() || member.lease.is_some() || member.append.is_some() {
+                return Err(Error::InvalidState);
+            }
+            if let Some(active) = resource.active {
+                let version = get(&self.versions, active.slot, active.generation)?;
+                if version.references == 0 || version.capture.is_some_and(|capture| capture.active)
+                {
+                    return Err(Error::InvalidState);
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Detach settled content without invalidating the prepared group or retained snapshots.
+    pub fn clear_idle_capture_group(&mut self, id: CaptureGroupId) -> Result<(), Error> {
+        self.check_idle_capture_group(id)?;
+        let group = self.capture_group_info(id).expect("validated group");
+        for index in 0..group.members {
+            let member = self.capture_groups.member(id, index);
+            let resource = self
+                .check_writer(member.spec.resource, Some(id))
+                .expect("validated group member");
+            if let Some(active) = resource.active {
+                self.detach(active)
+                    .expect("validated settled resource owner");
+                self.resources[member.spec.resource.slot() as usize]
+                    .value
+                    .as_mut()
+                    .expect("validated resource")
+                    .active = None;
+            }
+        }
+        Ok(())
+    }
     /// Initial states correspond to MIDI members in declaration order. Reserve all
     /// version/index/final-lease credits without changing any active revision.
     pub fn prepare_capture_take(

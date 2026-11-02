@@ -10,6 +10,8 @@ use alloc::vec::Vec;
 mod commands;
 mod management;
 mod media;
+#[path = "persistence/mod.rs"]
+mod persistence_jobs;
 mod projection;
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -71,8 +73,8 @@ enum Effect {
     TrackCreated(TrackId, Vec<LoopId>),
     LoopCreated(TrackId, LoopId),
     TrackRemoved(TrackId),
-    SessionReset(Vec<TrackId>),
     Shutdown,
+    Persistence(persistence::Key),
 }
 
 struct Pending {
@@ -149,6 +151,13 @@ pub struct Service {
     active_effect: Effect,
     media_loop: Option<LoopId>,
     media_pending: Option<(TransferId, LoopId)>,
+    persistence_epoch: u64,
+    persistence_job: Option<persistence_jobs::Job>,
+    persistence_last: Option<(Authority, u64)>,
+    persistence_closed: Option<(Authority, persistence::Key)>,
+    channel_annotations: BTreeMap<(LoopId, bool, u32), (u64, Option<String>)>,
+    bootstrap_track: Option<BackendTrackId>,
+    bootstrap_loop: Option<BackendLoopId>,
 }
 
 impl Service {
@@ -195,6 +204,13 @@ impl Service {
             active_effect: Effect::None,
             media_loop: None,
             media_pending: None,
+            persistence_epoch: 1,
+            persistence_job: None,
+            persistence_last: None,
+            persistence_closed: None,
+            channel_annotations: BTreeMap::new(),
+            bootstrap_track: None,
+            bootstrap_loop: None,
         };
         service.register_master()?;
         let created = service.backend.create_direct_track(DirectTrackRequest {
@@ -203,6 +219,8 @@ impl Service {
             midi: false,
             initial_loops: 1,
         })?;
+        service.bootstrap_track = Some(created.track_id);
+        service.bootstrap_loop = created.loops.first().copied();
         service.insert_track(created, "Sync".to_owned(), 1, false, true)?;
         service
             .backend
@@ -227,13 +245,11 @@ impl Service {
             && self.revision.0 != u64::MAX
             && !self.backend.mutations_pending_through(self.init_through)
             && self
-                .tracks
-                .get(&TrackId::from_raw(1))
-                .is_some_and(|track| track.view.structural_state == StructuralState::Confirmed)
+                .bootstrap_track
+                .is_none_or(|id| self.observed.tracks.contains_key(&id))
             && self
-                .loops
-                .get(&LoopId::from_raw(1))
-                .is_some_and(|entry| entry.view.structural_state == StructuralState::Confirmed)
+                .bootstrap_loop
+                .is_none_or(|id| self.observed.loops.contains_key(&id))
             && !matches!(
                 self.observed.status.driver_state,
                 BackendDriverState::Failed | BackendDriverState::Stopped
@@ -248,6 +264,46 @@ impl Service {
         let _span =
             tracing::trace_span!("app.service.receive", connection = connection.0).entered();
         match message {
+            ClientMessage::StageImage {
+                authority,
+                key,
+                target,
+                image,
+            } => {
+                self.check(connection, authority)?;
+                if let Err(reason) = self.stage_image(authority, key, target, image) {
+                    self.emit(ServiceMessage::Persistence {
+                        authority,
+                        reply: persistence::Reply::Refused { key, reason },
+                    });
+                }
+            }
+            ClientMessage::CaptureImage {
+                authority,
+                key,
+                target,
+            } => {
+                self.check(connection, authority)?;
+                if let Err(reason) = self.capture_image(authority, key, target, true) {
+                    self.emit(ServiceMessage::Persistence {
+                        authority,
+                        reply: persistence::Reply::Refused { key, reason },
+                    });
+                }
+            }
+            ClientMessage::Persistence { authority, request } => {
+                self.check(connection, authority)?;
+                if !request.valid() {
+                    return Err(Refusal::Invalid);
+                }
+                let key = request.key();
+                if let Err(reason) = self.persistence_request(authority, request) {
+                    self.emit(ServiceMessage::Persistence {
+                        authority,
+                        reply: persistence::Reply::Refused { key, reason },
+                    });
+                }
+            }
             ClientMessage::ReadMedia {
                 authority,
                 transfer,
@@ -260,12 +316,22 @@ impl Service {
                 if transfer.0 == 0 {
                     return Err(Refusal::Invalid);
                 }
+                if self.persistence_reads_busy() {
+                    self.media_pending = Some((transfer, loop_id));
+                    self.media_loop = None;
+                    return Ok(());
+                }
                 self.backend.cancel_media_reads();
                 self.media_loop = None;
                 self.media_pending = Some((transfer, loop_id));
             }
             ClientMessage::CancelMedia { authority } => {
                 self.check(connection, authority)?;
+                if self.persistence_reads_busy() {
+                    self.media_pending = None;
+                    self.media_loop = None;
+                    return Ok(());
+                }
                 self.media_pending = None;
                 self.media_loop = None;
                 self.backend.cancel_media_reads();
@@ -330,19 +396,25 @@ impl Service {
             }
             ClientMessage::Submit {
                 authority,
+                session_epoch,
                 operation,
                 expected_revision,
                 command,
             } => {
                 self.check(connection, authority)?;
-                self.submit(operation, expected_revision, Some(command))?;
+                self.submit(
+                    operation,
+                    expected_revision,
+                    Some(command),
+                    Some(session_epoch),
+                )?;
             }
             ClientMessage::Shutdown {
                 authority,
                 operation,
             } => {
                 self.check(connection, authority)?;
-                self.submit(operation, None, None)?;
+                self.submit(operation, None, None, None)?;
             }
         }
         Ok(())
@@ -373,7 +445,7 @@ impl Service {
                 }
             }
             self.updates.clear();
-            self.backend.cancel_media_reads();
+            self.persistence_detach();
             self.media_loop = None;
             self.media_pending = None;
         }
@@ -415,12 +487,13 @@ impl Service {
         id: OperationId,
         expected: Option<Revision>,
         command: Option<Command>,
+        epoch: Option<u64>,
     ) -> Result<(), Refusal> {
         let lease = self.lease.as_ref().ok_or(Refusal::StaleAuthority)?;
         if !lease.ready {
             return Err(Refusal::NotReady);
         }
-        self.admit(lease.authority, id, expected, command)
+        self.admit(lease.authority, id, expected, command, epoch)
     }
 
     fn admit(
@@ -429,6 +502,7 @@ impl Service {
         id: OperationId,
         expected: Option<Revision>,
         command: Option<Command>,
+        epoch: Option<u64>,
     ) -> Result<(), Refusal> {
         if id.client != authority.client || id.sequence == 0 {
             return Err(Refusal::Identity);
@@ -465,8 +539,15 @@ impl Service {
             || self.shutdown.is_some()
         {
             Some((Refusal::NotReady, "the session is not accepting commands"))
+        } else if epoch.is_some_and(|epoch| epoch != self.persistence_epoch) {
+            Some((Refusal::Identity, "the session was replaced"))
         } else if expected.is_some_and(|expected| expected != self.revision) {
             Some((Refusal::RevisionConflict, "the shared state changed"))
+        } else if self.persistence_busy(command.as_ref()) {
+            Some((
+                Refusal::Busy,
+                "persistence is preparing an immutable capture or applying a replacement",
+            ))
         } else if command.as_ref().is_some_and(|command| !command.bounded()) {
             Some((Refusal::Invalid, "the command exceeds protocol bounds"))
         } else if self.pending.len() == MAX_PENDING_OPERATIONS
@@ -633,8 +714,8 @@ impl Service {
                     .inject_midi_input(
                         track.backend,
                         &[BackendMidiEvent {
-                            time: 0,
-                            data: vec![0x80, note, 0],
+                            frame: 0,
+                            data: vec![0x80, note, 0].into(),
                         }],
                     )
                     .is_err()
@@ -702,11 +783,12 @@ impl Service {
                     .pending
                     .values()
                     .filter(|pending| {
-                        pending.completed.len() as u64
-                            == pending
-                                .last
-                                .checked_sub(pending.first)
-                                .map_or(0, |count| count + 1)
+                        !matches!(pending.effect, Effect::Persistence(_))
+                            && pending.completed.len() as u64
+                                == pending
+                                    .last
+                                    .checked_sub(pending.first)
+                                    .map_or(0, |count| count + 1)
                             && !(self.shutdown_ready && self.shutdown == Some(pending.id))
                     })
                     .map(|pending| pending.id)
@@ -728,7 +810,10 @@ impl Service {
                 }
             }
         }
-        self.advance_media();
+        self.advance_persistence();
+        if !self.persistence_reads_busy() {
+            self.advance_media();
+        }
         self.publish();
     }
 
@@ -744,6 +829,9 @@ impl Service {
         authority: Authority,
         loop_id: LoopId,
     ) -> Result<Option<BackendAudioData>> {
+        if self.persistence_reads_busy() {
+            return Err(anyhow!("persistence capture is using media reads"));
+        }
         self.check(connection, authority)
             .map_err(|reason| anyhow!("{reason:?}"))?;
         if !self.lease.as_ref().is_some_and(|lease| lease.ready) {
@@ -768,6 +856,9 @@ impl Service {
         authority: Authority,
         loop_id: LoopId,
     ) -> Result<Option<BackendMidiData>> {
+        if self.persistence_reads_busy() {
+            return Err(anyhow!("persistence capture is using media reads"));
+        }
         self.check(connection, authority)
             .map_err(|reason| anyhow!("{reason:?}"))?;
         if !self.lease.as_ref().is_some_and(|lease| lease.ready) {

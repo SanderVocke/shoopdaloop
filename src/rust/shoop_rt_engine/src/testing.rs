@@ -212,6 +212,9 @@ impl OfflineHost {
     pub fn connect(&mut self) -> Result<(), ClientError> {
         self.client.connect()
     }
+    pub fn disconnect(&mut self) {
+        self.client.disconnect();
+    }
     pub fn request(&mut self, request: Request) -> Result<u64, ClientError> {
         self.client.request(request)
     }

@@ -137,6 +137,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.tracks.insert(
             track_id,
             Track {
+                port_name_base: port_name_base.to_owned(),
                 strip,
                 audio_channels,
                 midi,
@@ -311,6 +312,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         connected: bool,
     ) -> Result<()> {
         self.ready()?;
+        if !connected
+            && self.mirror.host_by_name(host).is_none()
+            && self.mirror.live_port(port_id).is_some()
+        {
+            self.mirror.desired_links.remove(&BackendConfirmedLink {
+                application_port_id: port_id,
+                host_port_id: host.to_owned(),
+            });
+            return Ok(());
+        }
         let port = self
             .mirror
             .live_port(port_id)

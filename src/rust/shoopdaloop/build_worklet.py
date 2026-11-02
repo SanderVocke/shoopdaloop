@@ -34,7 +34,7 @@ output_dir = args.output_dir.resolve()
 output_dir.mkdir(parents=True, exist_ok=True)
 (output_dir / "shoop_audio_worklet.wasm").unlink(missing_ok=True)
 # One Cargo invocation per module, so their dependency features resolve separately.
-for package in ("shoop_rt_host_worklet",):
+for package in ("shoop_rt_host_worklet", "shoop_persistence_codec"):
     command = [
         "cargo",
         "build",
@@ -44,6 +44,8 @@ for package in ("shoop_rt_host_worklet",):
         "-p",
         package,
     ]
+    if package == "shoop_persistence_codec":
+        command.extend(["--features", "worker-exports"])
     if profile == "release":
         command.append("--release")
     subprocess.run(command, cwd=ROOT, env=environment, check=True)

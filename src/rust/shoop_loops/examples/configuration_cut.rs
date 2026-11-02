@@ -547,6 +547,7 @@ fn run(parts: &[usize]) {
                     audio: Some(source),
                     midi: None,
                     gain: 1.0,
+                    balance: 0.,
                     preserve_input: false
                 }),
             }

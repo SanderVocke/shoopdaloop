@@ -65,6 +65,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            persistence_epoch: self.persistence_epoch,
             revision: self.revision,
             tracks,
             buses,
@@ -73,12 +74,16 @@ impl Service {
             loop_smoothing_ms: self.options.loop_smoothing_ms,
             status: status(&self.observed.status),
             audio_drivers: self.observed.audio_drivers.clone(),
-            capabilities: BackendCapabilities::NONE.with(
+            capabilities: [
                 BackendCapability::MidiInjection,
-                self.backend
-                    .capabilities()
-                    .supports(BackendCapability::MidiInjection),
-            ),
+                BackendCapability::SessionCapture,
+                BackendCapability::SessionContentLoad,
+                BackendCapability::LoopContentImport,
+            ]
+            .into_iter()
+            .fold(BackendCapabilities::NONE, |caps, capability| {
+                caps.with(capability, self.backend.capabilities().supports(capability))
+            }),
             connections: Arc::new(connections),
             track_processors: Arc::from([]),
             bus_processors: Arc::from([]),
@@ -413,17 +418,6 @@ impl Service {
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
         match effect {
-            Effect::SessionReset(tracks) => {
-                for id in tracks {
-                    if self
-                        .tracks
-                        .get(id)
-                        .is_some_and(|track| !self.observed.tracks.contains_key(&track.backend))
-                    {
-                        self.forget_track(*id);
-                    }
-                }
-            }
             Effect::TrackRemoved(id) => {
                 if success {
                     self.forget_track(*id);

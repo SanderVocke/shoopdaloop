@@ -1,0 +1,11 @@
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_protocol)
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_transport)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+    Finished `test` profile [unoptimized] target(s) in 1.76s
+     Running tests/content.rs (target/miri/x86_64-unknown-linux-gnu/debug/deps/content-147355b6f296f050)
+
+running 1 test
+test small_engines_prepare_a_full_wire_chunk_without_exceeding_page_or_validation_limits ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 397.67s

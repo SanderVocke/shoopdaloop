@@ -43,6 +43,12 @@ impl PlannerResourceIo<'_> {
     }
 }
 impl CaptureBoundaryIo<'_> {
+    pub fn check_idle_group(&self, id: CaptureGroupId) -> Result<(), Error> {
+        self.store.check_idle_capture_group(id)
+    }
+    pub fn clear_idle_group(&mut self, id: CaptureGroupId) -> Result<(), Error> {
+        self.store.clear_idle_capture_group(id)
+    }
     pub fn release_group(&mut self, id: CaptureGroupId) -> Result<(), Error> {
         self.store.release_capture_group(id)
     }

@@ -178,6 +178,28 @@ impl MidiPool {
             replay_events: self.config.ok_or(Error::InvalidState)?.replay_events,
         })
     }
+    pub fn initial_packet(
+        &mut self,
+        owner: MidiOwner,
+        source: UploadId,
+        packet: &[u8],
+    ) -> Result<(), Error> {
+        let row = self.row(owner, source)?;
+        if row.events != 0 {
+            return Err(Error::InvalidState);
+        }
+        let mut state = row.state;
+        state.apply_packet(packet, 3)?;
+        self.versions[owner.0].state = state;
+        let base = owner.0
+            * self
+                .config
+                .ok_or(Error::InvalidState)?
+                .checkpoints_per_version;
+        self.checkpoints[base].state = state;
+        self.work.add(1, 2, 0, WorkClass::Background);
+        Ok(())
+    }
     pub fn append(&mut self, owner: MidiOwner, record: RecordSummary, class: WorkClass) {
         let config = self.config.expect("prepared MIDI index");
         let row = &mut self.versions[owner.0];
@@ -341,5 +363,22 @@ impl ResourceStore {
         let version = get(&self.versions, source.slot, source.generation)?;
         self.midi_indexes
             .info(version.midi.ok_or(Error::InvalidState)?, source)
+    }
+    pub fn upload_midi_initial(&mut self, upload: UploadId, packet: &[u8]) -> Result<(), Error> {
+        if !matches!(packet.first(), Some(0x80..=0xef | 0xff)) {
+            return Err(Error::InvalidShape);
+        }
+        let version = get(&self.versions, upload.slot, upload.generation)?;
+        if version.state != State::Receiving || version.written != 0 {
+            return Err(Error::InvalidState);
+        }
+        let owner = version.midi.ok_or(Error::InvalidShape)?;
+        if self.steps_remaining() < packet.len() {
+            return Err(Error::Budget);
+        }
+        self.midi_indexes.initial_packet(owner, upload, packet)?;
+        self.steps_remaining -= packet.len();
+        self.work.validation_steps += packet.len();
+        Ok(())
     }
 }

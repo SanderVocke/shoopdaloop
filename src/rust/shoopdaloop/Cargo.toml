@@ -21,6 +21,9 @@ clap = { workspace = true }
 eframe = { workspace = true }
 shoop_app = { path = "../shoop_app", default-features = false, features = ["std"] }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_app_api = { path = "../shoop_app_api" }
+shoop_session = { path = "../shoop_session" }
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
 shoop_backend = { path = "../shoop_backend", default-features = false }
 shoop_egui = { path = "../shoop_egui" }
@@ -29,7 +32,7 @@ shoop_script_resources = { path = "../shoop_script_resources" }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
-ehttp = { workspace = true }
+ehttp = { workspace = true, features = ["streaming"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_host = { path = "../shoop_host", default-features = false }
@@ -44,7 +47,8 @@ rodio = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_settings = { path = "../shoop_settings" }
-rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
+rfd = { workspace = true, features = ["xdg-portal", "async-std", "file-handle-inner"] }
+futures-util = "0.3"
 js-sys = "0.3"
 log = { workspace = true }
 shoop_rt_backend = { path = "../shoop_rt_backend" }
@@ -68,10 +72,13 @@ web-sys = { version = "0.3", features = [
     "AudioWorkletNode",
     "AudioWorkletNodeOptions",
     "Blob",
+    "BlobPropertyBag",
+    "ErrorEvent",
     "Document",
     "Element",
     "Event",
     "EventTarget",
+    "File",
     "HtmlAnchorElement",
     "HtmlButtonElement",
     "HtmlCanvasElement",
@@ -112,9 +119,9 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
 serde_json = { workspace = true }
-shoop_session = { path = "../shoop_session" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
 

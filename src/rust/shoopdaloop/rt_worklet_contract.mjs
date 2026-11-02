@@ -101,7 +101,8 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-node.port.deliver({ kind: 'records', bytes: Uint8Array.of(1, 0).buffer });
+const engineProtocolVersion = 2;
+node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const first = quantum(node, 0.5);
 if (!first.alive) throw new Error('the processor stopped after its first quantum');
 const replies = node.port.take('records');
@@ -109,8 +110,8 @@ if (replies.length !== 1 || !(replies[0].bytes instanceof ArrayBuffer)) {
   throw new Error(`expected one record batch, got ${JSON.stringify(replies)}`);
 }
 const welcome = new Uint8Array(replies[0].bytes);
-if (welcome[2] !== 0 || welcome[3] !== 1 || welcome[4] !== 0) {
-  throw new Error('the first engine record is not a Welcome for version 1');
+if (welcome[2] !== 0 || welcome[3] !== engineProtocolVersion || welcome[4] !== 0) {
+  throw new Error(`the first engine record is not a Welcome for version ${engineProtocolVersion}`);
 }
 if (first.outputs.some(channel => channel.some(sample => sample !== 0))) {
   throw new Error('an engine without strips rendered non-silent output');

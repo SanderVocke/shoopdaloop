@@ -159,7 +159,11 @@ fn core_workflow_runs_on_the_new_engine_backend() {
     });
     assert_eq!(
         snapshot.capabilities,
-        BackendCapabilities::NONE.with(BackendCapability::MidiInjection, true)
+        BackendCapabilities::NONE
+            .with(BackendCapability::MidiInjection, true)
+            .with(BackendCapability::SessionCapture, true)
+            .with(BackendCapability::SessionContentLoad, true)
+            .with(BackendCapability::LoopContentImport, true)
     );
 
     runtime.dispatch(AppIntent::RequestNewSession).unwrap();

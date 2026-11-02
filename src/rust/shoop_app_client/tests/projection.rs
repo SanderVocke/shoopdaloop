@@ -16,6 +16,7 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        persistence_epoch: 1,
         revision: Revision(revision),
         tracks: vec![TrackState {
             id: TrackId::from_raw(1),
@@ -59,6 +60,77 @@ fn ready() -> Client {
         .unwrap();
     client.ready_sent().unwrap();
     client
+}
+
+#[shoop_test]
+fn persistence_replies_are_fenced_bounded_and_discarded_on_loss() {
+    let key = persistence::Key {
+        transfer: TransferId(8),
+        epoch: 1,
+    };
+    let request = persistence::Request::Cancel { key };
+    assert_eq!(
+        attaching().persistence(request.clone()),
+        Err(Error::NotReady)
+    );
+    for encoded in [false, true] {
+        let mut client = ready();
+        assert_eq!(
+            client.persistence(request.clone()),
+            Ok(ClientMessage::Persistence {
+                authority: AUTHORITY,
+                request: request.clone(),
+            })
+        );
+        let reply = persistence::Reply::Closed { key };
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            if encoded {
+                wire(
+                    &mut client,
+                    WireMessage::Persistence {
+                        authority: AUTHORITY,
+                        reply: reply.clone(),
+                    },
+                )
+                .unwrap();
+            } else {
+                client
+                    .receive(ServiceMessage::Persistence {
+                        authority: AUTHORITY,
+                        reply: reply.clone(),
+                    })
+                    .unwrap();
+            }
+        }
+        assert_eq!(client.take_persistence_reply(), Some(reply.clone()));
+        client
+            .receive(ServiceMessage::Persistence {
+                authority: AUTHORITY,
+                reply: reply.clone(),
+            })
+            .unwrap();
+        assert_eq!(
+            client.receive(ServiceMessage::Persistence {
+                authority: AUTHORITY,
+                reply: reply.clone()
+            }),
+            Err(Error::Full)
+        );
+        assert_eq!(client.state(), State::Lost);
+        assert_eq!(client.take_persistence_reply(), None);
+        let mut client = ready();
+        let stale = Authority {
+            generation: ConnectionGeneration(99),
+            ..AUTHORITY
+        };
+        assert!(client
+            .receive(ServiceMessage::Persistence {
+                authority: stale,
+                reply
+            })
+            .is_err());
+        assert_eq!(client.take_persistence_reply(), None);
+    }
 }
 
 fn wire(client: &mut Client, message: WireMessage) -> Result<(), Error> {
@@ -614,4 +686,55 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
         Err(Error::Protocol)
     );
     assert!(client.media().is_none());
+}
+
+#[shoop_test]
+fn commands_carry_the_latest_session_epoch_and_images_keep_typed_ownership() {
+    use shoop_app_protocol::persistence_image::{Image, Manifest};
+    let mut client = ready();
+    let mut state = (*snapshot(6)).clone();
+    state.persistence_epoch = 9;
+    client
+        .receive(ServiceMessage::Snapshot {
+            authority: AUTHORITY,
+            state: Arc::new(state),
+        })
+        .unwrap();
+    let ClientMessage::Submit { session_epoch, .. } =
+        client.command(Command::ResetXruns, None).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(session_epoch, 9);
+    let image = Arc::new(Image {
+        manifest: Manifest::Update {
+            sample_rate: 48000,
+            frames: Some(0),
+            audio: vec![],
+            midi: vec![],
+        },
+        payloads: vec![],
+    });
+    let key = persistence::Key {
+        transfer: TransferId(8),
+        epoch: 9,
+    };
+    client
+        .receive(ServiceMessage::CapturedImage {
+            authority: AUTHORITY,
+            key,
+            image: Arc::clone(&image),
+        })
+        .unwrap();
+    let (_, received) = client.take_captured_image().unwrap();
+    assert!(Arc::ptr_eq(&image, &received));
+    client
+        .receive(ServiceMessage::CapturedImage {
+            authority: AUTHORITY,
+            key,
+            image,
+        })
+        .unwrap();
+    client.disconnect();
+    assert!(client.take_captured_image().is_none());
 }

@@ -421,6 +421,7 @@ fn accepted_creation_and_lost_replies_remain_owned_until_confirmation_without_re
         .handle(
             ConnectionId(3),
             ClientMessage::Submit {
+                session_epoch: 1,
                 authority,
                 operation: id,
                 expected_revision: None,
@@ -591,11 +592,11 @@ fn active_audio_and_midi_recording_continues_through_client_loss_and_media_is_no
     assert!(midi.channels[0]
         .events
         .iter()
-        .any(|event| event.data == [0x90, 60, 100]));
+        .any(|event| event.data == [0x90, 60, 100].into()));
     assert!(midi.channels[0]
         .events
         .iter()
-        .any(|event| event.data == [0x80, 60, 0]));
+        .any(|event| event.data == [0x80, 60, 0].into()));
     assert_eq!(f.waits.get(), f.initial_waits);
 }
 
@@ -709,6 +710,7 @@ fn a_slow_client_is_reclaimed_while_accepted_work_and_outcomes_remain_bounded() 
             .handle(
                 ConnectionId(1),
                 ClientMessage::Submit {
+                    session_epoch: 1,
                     authority,
                     operation: OperationId {
                         client: authority.client,
@@ -1161,7 +1163,7 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
         AppIntent::RequestSaveSession,
         AppIntent::LoadSessionBytes {
             name: "unavailable.shoop".into(),
-            bytes: std::sync::Arc::from([]),
+            bytes: std::sync::Arc::new(Vec::new()),
         },
         AppIntent::PreviewClickTrack {
             output: ClickTrackPreviewOutput::System,
@@ -1469,7 +1471,7 @@ fn ui_bursts_apply_in_order_without_disconnecting_a_pumping_client_and_reset_is_
         runtime.snapshot().io_task.as_ref().unwrap().status,
         IoTaskStatus::Completed
     );
-    assert_eq!(runtime.snapshot().tracks[0].id, sync);
+    assert_ne!(runtime.snapshot().tracks[0].id, sync);
     assert_eq!(runtime.snapshot().tracks[0].name, "Sync");
 }
 
@@ -1555,8 +1557,8 @@ fn losing_the_client_releases_only_held_piano_notes_while_recording_continues() 
         2,
         "detach sends a held note-off without a channel panic or capture reset"
     );
-    assert_eq!(midi.channels[0].events[0].data, [0x90, 60, 100]);
-    assert_eq!(midi.channels[0].events[1].data, [0x80, 60, 0]);
+    assert_eq!(midi.channels[0].events[0].data, [0x90, 60, 100].into());
+    assert_eq!(midi.channels[0].events[1].data, [0x80, 60, 0].into());
 }
 
 #[shoop_test]
@@ -1602,4 +1604,843 @@ fn lua_midi_ports_and_callbacks_live_in_the_client_and_release_on_detach() {
     f.service.pump_local(ConnectionId(99), &port, STEP);
     assert!(f.service.is_ready());
     assert_eq!(f.service.snapshot().tracks.len(), 1);
+}
+
+#[shoop_test]
+fn another_session_epoch_cannot_apply_even_global_commands_and_refusal_is_reconciled() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 900, ConnectionId(1), false);
+    let mut message = client
+        .command(Command::SetMasterAutoConnect(true), None)
+        .unwrap();
+    let ClientMessage::Submit {
+        operation,
+        session_epoch,
+        ..
+    } = &mut message
+    else {
+        panic!()
+    };
+    let operation = *operation;
+    *session_epoch += 1;
+    let before = f.service.snapshot();
+    f.service.handle(ConnectionId(1), message.clone()).unwrap();
+    let result = complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    assert!(matches!(
+        result,
+        Outcome::Refused {
+            reason: Refusal::Identity,
+            ..
+        }
+    ));
+    assert_eq!(
+        f.service.snapshot().master_auto_connect,
+        before.master_auto_connect
+    );
+    f.service.handle(ConnectionId(1), message).unwrap();
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert_eq!(client.results()[&operation], result);
+}
+
+fn persistence_message(
+    service: &mut Service,
+    client: &mut Client,
+    request: persistence::Request,
+    encoded: bool,
+) {
+    let message = client.persistence(request).unwrap();
+    let message = if encoded {
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let length = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..length]).unwrap() else {
+            panic!()
+        };
+        message
+    } else {
+        message
+    };
+    service.handle(ConnectionId(1), message).unwrap();
+    drain(service, client, ConnectionId(1), encoded);
+}
+fn capture_image(
+    service: &mut Service,
+    client: &mut Client,
+    transfer: u64,
+    encoded: bool,
+) -> std::sync::Arc<persistence_image::Image> {
+    let key = persistence::Key {
+        transfer: TransferId(transfer),
+        epoch: client.snapshot().unwrap().persistence_epoch,
+    };
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    if encoded {
+        persistence_message(
+            service,
+            client,
+            persistence::Request::Capture { key, target },
+            true,
+        );
+    } else {
+        service
+            .handle(ConnectionId(1), client.capture_image(key, target).unwrap())
+            .unwrap();
+    }
+    let mut description = None;
+    for _ in 0..500 {
+        service.tick(STEP);
+        drain(service, client, ConnectionId(1), encoded);
+        if let Some((received, image)) = client.take_captured_image() {
+            assert_eq!(received, key);
+            return image;
+        }
+        while let Some(reply) = client.take_persistence_reply() {
+            match reply {
+                persistence::Reply::Captured(captured) => description = Some(captured),
+                persistence::Reply::Refused { reason, .. } => panic!("capture refused: {reason:?}"),
+                _ => {}
+            }
+        }
+        if description.is_some() {
+            break;
+        }
+    }
+    let description = description.expect("capture did not complete");
+    let mut objects = Vec::new();
+    for object in 0..description.objects {
+        persistence_message(
+            service,
+            client,
+            persistence::Request::Describe { key, object },
+            true,
+        );
+        let persistence::Reply::Object {
+            object: descriptor, ..
+        } = client.take_persistence_reply().unwrap()
+        else {
+            panic!()
+        };
+        let mut bytes = Vec::new();
+        while (bytes.len() as u64) < descriptor.bytes {
+            persistence_message(
+                service,
+                client,
+                persistence::Request::Read {
+                    key,
+                    object,
+                    offset: bytes.len() as u64,
+                },
+                true,
+            );
+            let persistence::Reply::Chunk { bytes: chunk, .. } =
+                client.take_persistence_reply().unwrap()
+            else {
+                panic!()
+            };
+            bytes.extend_from_slice(&chunk);
+        }
+        objects.push(persistence::Object {
+            description: descriptor,
+            bytes,
+        });
+    }
+    persistence_transfer::assemble(objects).unwrap()
+}
+fn release_image(
+    service: &mut Service,
+    client: &mut Client,
+    transfer: u64,
+    epoch: u64,
+    encoded: bool,
+) {
+    persistence_message(
+        service,
+        client,
+        persistence::Request::Cancel {
+            key: persistence::Key {
+                transfer: TransferId(transfer),
+                epoch,
+            },
+        },
+        encoded,
+    );
+    assert!(matches!(
+        client.take_persistence_reply(),
+        Some(persistence::Reply::Closed { .. })
+    ));
+}
+fn stage_image(
+    service: &mut Service,
+    client: &mut Client,
+    transfer: u64,
+    image: std::sync::Arc<persistence_image::Image>,
+    encoded: bool,
+) -> persistence::Key {
+    let key = persistence::Key {
+        transfer: TransferId(transfer),
+        epoch: client.snapshot().unwrap().persistence_epoch,
+    };
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    if encoded {
+        let mut stream = persistence_transfer::UploadStream::new(image, key, target).unwrap();
+        while let Some(request) = stream.next_request().unwrap() {
+            persistence_message(service, client, request, true);
+            if let Some(reply) = client.take_persistence_reply() {
+                assert!(
+                    !matches!(reply, persistence::Reply::Refused { .. }),
+                    "stage refused: {reply:?}"
+                );
+            }
+        }
+    } else {
+        service
+            .handle(
+                ConnectionId(1),
+                client.stage_image(key, target, image).unwrap(),
+            )
+            .unwrap();
+        drain(service, client, ConnectionId(1), false);
+    }
+    for _ in 0..20 {
+        service.tick(STEP);
+        drain(service, client, ConnectionId(1), encoded);
+        while let Some(reply) = client.take_persistence_reply() {
+            match reply {
+                persistence::Reply::Ready { key: received } => {
+                    assert_eq!(received, key);
+                    return key;
+                }
+                persistence::Reply::Refused { reason, .. } => panic!("stage refused: {reason:?}"),
+                _ => {}
+            }
+        }
+    }
+    panic!("persistence preparation did not complete")
+}
+#[shoop_test]
+fn service_captures_and_reloads_core_images_through_typed_and_wire_paths() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut client = attach(&mut f.service, 999, ConnectionId(1), encoded);
+        let image = capture_image(&mut f.service, &mut client, 1, encoded);
+        let epoch = client.snapshot().unwrap().persistence_epoch;
+        release_image(&mut f.service, &mut client, 1, epoch, encoded);
+        let old_track = client.snapshot().unwrap().tracks[0].id;
+        let old_loop = client.snapshot().unwrap().tracks[0].loops[0].id;
+        let key = stage_image(&mut f.service, &mut client, 2, image, encoded);
+        let operation = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::CommitPersistence(key),
+        );
+        let result = complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            encoded,
+        );
+        assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+        assert!(f.service.is_ready());
+        assert_eq!(client.snapshot().unwrap().persistence_epoch, epoch + 1);
+        assert_ne!(client.snapshot().unwrap().tracks[0].id, old_track);
+        assert_ne!(client.snapshot().unwrap().tracks[0].loops[0].id, old_loop);
+        assert_eq!(
+            client.snapshot().unwrap().tracks[0].loops[0].mode,
+            LoopMode::Stopped
+        );
+        let saved = capture_image(&mut f.service, &mut client, 3, encoded);
+        assert!(matches!(
+            saved.manifest,
+            persistence_image::Manifest::Session(_)
+        ));
+        assert!(saved.payloads.is_empty());
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}
+
+#[shoop_test]
+fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1001, ConnectionId(1), false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        new_track("Music", true),
+    );
+    let (_, loops) = created(complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    ));
+    let mut image = (*capture_image(&mut f.service, &mut client, 1, false)).clone();
+    release_image(&mut f.service, &mut client, 1, 1, false);
+    let persistence_image::Manifest::Session(session) = &mut image.manifest else {
+        panic!()
+    };
+    session.global.sync = false;
+    session.selected = vec![loops[0]];
+    session.target = Some(loops[1]);
+    let content = &mut session.tracks[1].loops[0];
+    content.frames = 4;
+    content.audio[0].frames = 6;
+    content.audio[0].object = Some(1);
+    content.audio[0].start_offset = 1;
+    content.audio[0].gain = 0.5;
+    content.audio[0].recording_started_at = Some("2026-11-01T00:00:00Z".to_owned());
+    content.midi[0].channel.frames = 8;
+    content.midi[0].channel.object = Some(2);
+    content.midi[0].initial = vec![vec![0xb0, 7, 12], vec![0xb0, 7, 99]];
+    image.payloads = vec![
+        persistence_image::Payload::Audio(Arc::new(vec![0., 0.25, 0.5, 0.75, 1., 0.125])),
+        persistence_image::Payload::Midi(Arc::new(vec![
+            MidiEventState {
+                frame: 0,
+                data: Arc::from([0x90, 60, 100]),
+            },
+            MidiEventState {
+                frame: 5,
+                data: Arc::from([0x80, 60, 0]),
+            },
+        ])),
+    ];
+    let expected = image.payloads.clone();
+    let key = stage_image(&mut f.service, &mut client, 2, Arc::new(image), false);
+    f.advance.set(false);
+    let message = client
+        .command(Command::CommitPersistence(key), None)
+        .unwrap();
+    let ClientMessage::Submit { operation, .. } = &message else {
+        panic!()
+    };
+    let operation = *operation;
+    f.service.handle(ConnectionId(1), message).unwrap();
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key },
+        false,
+    );
+    assert!(matches!(
+        client.take_persistence_reply(),
+        Some(persistence::Reply::Refused {
+            reason: Refusal::Busy,
+            ..
+        })
+    ));
+    f.service.detach(ConnectionId(1));
+    client.disconnect();
+    let mut recovered = attach(&mut f.service, 1001, ConnectionId(2), false);
+    assert!(recovered.pending().contains_key(&operation));
+    f.advance.set(true);
+    let outcome = complete(
+        &mut f.service,
+        &mut recovered,
+        ConnectionId(2),
+        operation,
+        false,
+    );
+    assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+    let state = recovered.snapshot().unwrap();
+    assert_eq!(state.persistence_epoch, 2);
+    assert!(state.tracks[1].loops[0].selected);
+    assert!(state.tracks[1].loops[1].targeted);
+    let ids = state
+        .tracks
+        .iter()
+        .map(|track| track.id)
+        .collect::<Vec<_>>();
+    f.service
+        .handle(
+            ConnectionId(2),
+            ClientMessage::Submit {
+                authority: recovered.authority().unwrap(),
+                session_epoch: 1,
+                operation,
+                expected_revision: None,
+                command: Command::CommitPersistence(key),
+            },
+        )
+        .unwrap();
+    drain(&mut f.service, &mut recovered, ConnectionId(2), false);
+    assert_eq!(recovered.results()[&operation], outcome);
+    assert_eq!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>(),
+        ids
+    );
+    let authority = recovered.authority().unwrap();
+    let capture_key = persistence::Key {
+        transfer: TransferId(3),
+        epoch: 2,
+    };
+    let target = persistence::Target::Session {
+        revision: recovered.snapshot().unwrap().revision,
+    };
+    f.service
+        .handle(
+            ConnectionId(2),
+            recovered.capture_image(capture_key, target).unwrap(),
+        )
+        .unwrap();
+    let captured = (0..100)
+        .find_map(|_| {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut recovered, ConnectionId(2), false);
+            recovered.take_captured_image().map(|(_, image)| image)
+        })
+        .expect("capture completion");
+    assert_eq!(captured.payloads, expected);
+    for (captured, expected) in captured.payloads.iter().zip(&expected) {
+        match (captured, expected) {
+            (persistence_image::Payload::Audio(a), persistence_image::Payload::Audio(b)) => {
+                assert!(Arc::ptr_eq(a, b))
+            }
+            (persistence_image::Payload::Midi(a), persistence_image::Payload::Midi(b)) => {
+                assert!(Arc::ptr_eq(a, b))
+            }
+            _ => panic!("capture changed media types"),
+        }
+    }
+    let persistence_image::Manifest::Session(session) = &captured.manifest else {
+        panic!()
+    };
+    let content = &session.tracks[1].loops[0];
+    assert_eq!(
+        content.audio[0].recording_started_at.as_deref(),
+        Some("2026-11-01T00:00:00Z")
+    );
+    assert_eq!(content.audio[0].start_offset, 1);
+    assert_eq!(content.audio[0].gain, 0.5);
+    assert_eq!(
+        content.midi[0].initial,
+        [vec![0xb0, 7, 12], vec![0xb0, 7, 99]]
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
+    assert!(f.service.has_connection(ConnectionId(2)));
+    assert_ne!(
+        authority.generation,
+        client
+            .authority()
+            .map_or(ConnectionGeneration(0), |authority| authority.generation)
+    );
+}
+
+#[shoop_test]
+fn capture_keeps_one_metadata_cut_while_controls_continue_and_view_cancellation_is_independent() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1002, ConnectionId(1), false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        new_track("Music", true),
+    );
+    let (track, loops) = created(complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    ));
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        },
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    for _ in 0..20 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+    }
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::StopClicked,
+        },
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    let old_name = client.snapshot().unwrap().tracks[1].loops[0].name.clone();
+    let key = persistence::Key {
+        transfer: TransferId(1),
+        epoch: 1,
+    };
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    f.service
+        .handle(ConnectionId(1), client.capture_image(key, target).unwrap())
+        .unwrap();
+    f.service.tick(STEP);
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert!(client.take_captured_image().is_none());
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::NameChanged("Changed after cut".to_owned()),
+        },
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    f.service
+        .handle(
+            ConnectionId(1),
+            ClientMessage::CancelMedia {
+                authority: client.authority().unwrap(),
+            },
+        )
+        .unwrap();
+    let view = client.read_media(loops[0]).unwrap();
+    f.service.handle(ConnectionId(1), view).unwrap();
+    let image = (0..100)
+        .find_map(|index| {
+            let _ = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Track {
+                    track,
+                    action: TrackAction::OutputGainChanged(-6. - index as f32 * 0.01),
+                },
+            );
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), false);
+            client.take_captured_image().map(|(_, image)| image)
+        })
+        .expect("capture must progress while gain controls continue");
+    let persistence_image::Manifest::Session(session) = &image.manifest else {
+        panic!()
+    };
+    assert_eq!(session.tracks[1].loops[0].name, old_name);
+    assert_eq!(session.tracks[1].controls.output_gain_db, 0.);
+    assert_eq!(
+        client.snapshot().unwrap().tracks[1].loops[0].name,
+        "Changed after cut"
+    );
+    assert!(client.snapshot().unwrap().tracks[1].controls.output_gain_db < 0.);
+    let persistence_image::Payload::Audio(samples) = &image.payloads[0] else {
+        panic!()
+    };
+    assert!(samples.iter().all(|sample| *sample == 0.25));
+    for _ in 0..100 {
+        if matches!(client.media(), Some(Ok(_))) {
+            break;
+        }
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+    }
+    assert!(
+        matches!(client.media(), Some(Ok(_))),
+        "the deferred media view must resume after capture"
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+#[shoop_test]
+fn empty_session_load_and_new_session_use_fresh_epochs_and_remain_usable() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1003, ConnectionId(1), false);
+    let mut image = (*capture_image(&mut f.service, &mut client, 1, false)).clone();
+    release_image(&mut f.service, &mut client, 1, 1, false);
+    let persistence_image::Manifest::Session(session) = &mut image.manifest else {
+        panic!()
+    };
+    session.tracks.clear();
+    session.routes.clear();
+    session.selected.clear();
+    session.target = None;
+    let key = stage_image(&mut f.service, &mut client, 2, Arc::new(image), false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::CommitPersistence(key),
+    );
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            false
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(f.service.is_ready());
+    assert!(client.snapshot().unwrap().tracks.is_empty());
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        new_track("No sync source", false),
+    );
+    created(complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    ));
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::NewSession,
+    );
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            false
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(client.snapshot().unwrap().persistence_epoch, 3);
+    assert_eq!(client.snapshot().unwrap().tracks.len(), 1);
+    assert!(client.snapshot().unwrap().tracks[0].is_sync);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        new_track("After reset", false),
+    );
+    created(complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    ));
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+#[shoop_test]
+fn selected_loop_capture_continues_while_another_loop_records() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1004, ConnectionId(1), false);
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        new_track("Music", true),
+    );
+    let (track, loops) = created(complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    ));
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        },
+    );
+    complete(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        operation,
+        false,
+    );
+    let key = persistence::Key {
+        transfer: TransferId(1),
+        epoch: 1,
+    };
+    let revision = client.snapshot().unwrap().tracks[1].loops[1].content_revision;
+    let target = persistence::Target::Loop {
+        loop_id: loops[1],
+        content_revision: revision,
+    };
+    f.service
+        .handle(ConnectionId(1), client.capture_image(key, target).unwrap())
+        .unwrap();
+    let image = (0..100)
+        .find_map(|_| {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), false);
+            client.take_captured_image().map(|(_, image)| image)
+        })
+        .expect("selected capture completion");
+    assert!(
+        matches!(&image.manifest, persistence_image::Manifest::Loop { content, .. } if content.id == loops[1])
+    );
+    assert_eq!(
+        client.snapshot().unwrap().tracks[1].loops[0].mode,
+        LoopMode::Recording
+    );
+}
+
+#[shoop_test]
+fn large_private_validation_yields_to_controls_and_cancel_reclaims_the_job() {
+    use std::sync::Arc;
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 10, ConnectionId(1), false);
+    let original = capture_image(&mut f.service, &mut client, 1, false);
+    let epoch = client.snapshot().unwrap().persistence_epoch;
+    release_image(&mut f.service, &mut client, 1, epoch, false);
+    let identities = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .map(|l| l.id)
+        .collect::<Vec<_>>();
+    let mut large = (*original).clone();
+    let persistence_image::Manifest::Session(session) = &mut large.manifest else {
+        panic!()
+    };
+    let frames = 8 * 1024 * 1024 + 1;
+    let content = &mut session.tracks[0].loops[0];
+    content.frames = frames;
+    content.audio[0].frames = frames;
+    content.audio[0].object = Some(1);
+    large.payloads = vec![persistence_image::Payload::Audio(Arc::new(
+        vec![0.25; frames as usize],
+    ))];
+    let key = persistence::Key {
+        transfer: TransferId(2),
+        epoch,
+    };
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    f.service
+        .handle(
+            ConnectionId(1),
+            client.stage_image(key, target, Arc::new(large)).unwrap(),
+        )
+        .unwrap();
+    f.service.tick(STEP);
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert!(
+        client.take_persistence_reply().is_none(),
+        "large validation must yield before ready"
+    );
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Global(GlobalControlAction::SetSolo(true)),
+    );
+    for _ in 0..4 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+    }
+    assert!(matches!(
+        client.results().get(&operation),
+        Some(Outcome::Confirmed { .. })
+    ));
+    assert!(client.snapshot().unwrap().global.solo);
+    assert!(client.take_persistence_reply().is_none());
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key },
+        false,
+    );
+    assert!(
+        matches!(client.take_persistence_reply(), Some(persistence::Reply::Closed { key: closed }) if closed == key)
+    );
+    let next = stage_image(&mut f.service, &mut client, 3, original, false);
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key: next },
+        false,
+    );
+    assert_eq!(client.snapshot().unwrap().persistence_epoch, epoch);
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .map(|l| l.id)
+            .collect::<Vec<_>>(),
+        identities
+    );
+    assert_eq!(f.waits.get(), f.initial_waits);
 }
