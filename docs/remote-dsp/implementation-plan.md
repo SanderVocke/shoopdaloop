@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: Stages 1–2 complete; Stage 3 code/tests/runner are verified. Full measurement and final delivery are in progress.
+Status: all local implementation, validation and measurements are complete. Public push, PR creation, CI and automated review are blocked pending explicit user consent to publish the source and evidence.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -237,34 +237,34 @@ Depends on Stage 2's real process pair and independent sample reference.
 - [x] Add a repeatable sweep script launching a real server and requester as
       separate processes on the same host. Use loopback sockets, not an in-process
       carrier; select delay-copy without building/loading Carla.
-- [ ] Run the full baseline matrix at 48 kHz stereo: `P = 8,16,32,64,128`,
+- [x] Run the full baseline matrix at 48 kHz stereo: `P = 8,16,32,64,128`,
       `k = 1,2,4,8`, `N = 1,2,4,8,16` (100 configurations), with `A=0`.
       Record rejected combinations explicitly. Run three repetitions of each
       admitted configuration with 0.5 s warm-up and 2 s measured source time.
-- [ ] Also run `A=1` and `A=C+3` correctness cases for every `P/k` pair with
+- [x] Also run `A=1` and `A=C+3` correctness cases for every `P/k` pair with
       `N=64`, plus 16-channel `P=16` acceptance and `P=32` refusal at a 1500-byte
       IP MTU. Record actual misses even with this larger allowance. Confirm sample
       delay does not become extra server holding time or alter output frame tags.
-- [ ] Select up to six configurations around observed pass/miss boundaries for
+- [x] Select up to six configurations around observed pass/miss boundaries for
       60 s follow-up runs. Record selection rationale, all runs and variance;
       retain missing/late responses in the denominator. Do not silently discard
       failing configurations or reclassify empirical misses as static refusals.
-- [ ] Save a manifest with revision, commands, configuration, seeds, run durations,
+- [x] Save a manifest with revision, commands, configuration, seeds, run durations,
       hardware/OS/toolchain/build profile, scheduling/affinity settings, socket
       buffers, counts and environment limits. Save per-run CSV/JSON metrics and
       histogram/raw timing evidence sufficient to regenerate the report.
-- [ ] Report correctness failures, offered/completed packet rate, sender lateness,
+- [x] Report correctness failures, offered/completed packet rate, sender lateness,
       per-packet round trips, batch turnaround after final input submission,
       queue/concealment counters, deadline-miss fraction, empirical percentiles
       and maximum observed time. Label aggregation separately and disclose sample
       counts when interpreting tail percentiles. Never subtract unsynchronized
       client/server timestamps.
-- [ ] Write `docs/remote-dsp/localhost-results.md` with reproducible commands,
+- [x] Write `docs/remote-dsp/localhost-results.md` with reproducible commands,
       tables/plots over `P/k/N`, lowest observed miss-free allowance per workload,
       and limitations. These are shared-host loopback results, not hard real-time
       guarantees or physical-LAN measurements. Record actual outcomes even if no
       tested allowance is miss-free; no benchmark numbers are pre-populated.
-- [ ] Keep a short correctness-focused CI subset. Run full timing sweeps as
+- [x] Keep a short correctness-focused CI subset. Run full timing sweeps as
       recorded experiments, without fragile CI wall-time percentile thresholds.
       Commit the test/script milestone and reviewed evidence.
 
@@ -272,16 +272,16 @@ Depends on Stage 2's real process pair and independent sample reference.
 
 Depends on completed Stages 1–3; does not add the deferred graph/hardware stage.
 
-- [ ] Rebuild from a clean checkout. Reproduce a delay-copy process-pair workflow
+- [x] Rebuild from a clean checkout. Reproduce a delay-copy process-pair workflow
       with aggregation, exact sample verification, injected failure and restart;
       reproduce a real-Carla processing/state workflow without a Shoop bridge.
-- [ ] Run the documented localhost sweep command and verify evidence/report
+- [x] Run the documented localhost sweep command and verify evidence/report
       generation from recorded data. Link every acceptance criterion to checks,
       tests or measurement artifacts; keep genuinely blocked checks incomplete.
-- [ ] Run `cargo fmt --all`, `python3 scripts/check_shoop_test_usage.py` when Rust
+- [x] Run `cargo fmt --all`, `python3 scripts/check_shoop_test_usage.py` when Rust
       tests change, and `RUSTFLAGS="-D warnings" cargo build --workspace`, including
       explicit new-package Carla-enabled and Carla-disabled feature builds.
-- [ ] Run focused new-package and existing Carla/engine regressions, followed by
+- [x] Run focused new-package and existing Carla/engine regressions, followed by
       the complete Rust suite from `.agents/info/test.md` and tracing inventory.
       Use the selected build environment; do not allow missing-backend skips to
       satisfy the required real-Carla smoke test. Check shared `no_std` builds and
@@ -376,3 +376,50 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
   Linux/macOS/Windows and the bare-metal job builds both portable crates.
 - Full matrix, long follow-ups, reviewed measurement artifacts and final PR/CI
   delivery remain unchecked until their execution completes.
+
+### Completed measurement campaign and local delivery
+
+- The release executable was frozen from clean source commit
+  `46b9fd8d5a593cd915dc310cf37f974da9b931c7`; the manifest records its SHA-256.
+  No builds or test campaigns ran concurrently with measurement.
+- Executed all 100 unique baseline configurations: 70 admitted configurations
+  repeated three times and 30 structural refusals (240 baseline records).
+  Added all 40 delay cases, both MTU boundaries and all six 60-second follow-ups.
+- Final totals: 288 records, 257 measured runs, 31 refusals, 2,149,596 measured
+  packet slots, 71,534,176 verified received samples, zero mismatches and zero
+  unverified samples. Histogram counts and packet-outcome sums all match.
+- Preserved every run, including two `Future` retirements and all late/missing
+  results. Larger output allowances do not automatically enlarge the independent
+  200-microsecond input-gap policy. The report distinguishes those outcomes.
+- Regenerated the report and verified identical decompressed run data. Reviewed
+  CSV/archive/manifest/audit artifacts are in `docs/remote-dsp/evidence/`, with a
+  reproducible scientific heatmap. Generated credential files were excluded.
+- Results and limitations are documented in `docs/remote-dsp/localhost-results.md`;
+  `scripts/plot_remote_dsp.py` regenerates the figure from the archived results.
+- A clean detached worktree of the executed source built the entire workspace
+  and passed all 31 DSP/protocol/required-real-Carla/process tests, including
+  restored-state network audio. The source worktree remained clean.
+- Local formatting, warning-denying builds, shared Rust test policy, tracing
+  inventory, bare-metal and WebAssembly checks passed. The complete native suite
+  passed 2531 tests with four skips; new/fault paths were checked again separately.
+
+### Acceptance evidence
+
+| Criteria | Evidence |
+| --- | --- |
+| 1–2: abstraction, native hosting and compatibility | Dedicated crates, dependency-tree checks, real gain/state tests and 21 retained engine/bridge regressions |
+| 3–4: packet/block/allowance and fixed source timing | All 100 baseline combinations, MTU refusals, bounded return-slot and absolute-origin tests |
+| 5: exact algorithm delay | Independent delay reference tests and all 40 non-aligned delay experiment cases |
+| 6–7: bounded failures, memory and lifecycle | Malformed/fault/reorder/late/epoch tests, allocation guards, process lifecycle tests and recorded retirement outcomes |
+| 8: MIDI and time/latency metadata | MIDI offset/overflow/reset tests, source-time snapshot tests, explicit unknown Carla latency |
+| 9: actual reproducible localhost campaign | 288 archived records, consistency audit, regenerated report and plot |
+| 10: native smoke and final external gates | Real pinned-Carla and local repository gates passed; public PR/CI/automated-review portion remains blocked |
+
+### External publication block
+
+Automatic approval review rejected the source push to the public
+`https://github.com/SanderVocke/shoopdaloop` repository. The destination and the
+actor's push/admin access were verified, but review still required explicit user
+consent to disclose this implementation payload publicly. No alternate upload
+route was used. The implementation and evidence are committed locally; the
+push/PR/CI/review checklist items stay open until that consent and delivery occur.

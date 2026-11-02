@@ -1,0 +1,23 @@
+{
+  "source_revision": "46b9fd8d5a593cd915dc310cf37f974da9b931c7",
+  "records": 288,
+  "baseline_configurations": 100,
+  "by_suite": {
+    "baseline": 240,
+    "delay": 40,
+    "followup": 6,
+    "mtu": 2
+  },
+  "by_status": {
+    "measured": 257,
+    "rejected": 31
+  },
+  "verified_samples": 71534176,
+  "incorrect_samples": 0,
+  "unverified_samples": 0,
+  "measured_packet_slots": 2149596,
+  "histogram_counts_validated": true,
+  "packet_outcome_counts_validated": true,
+  "report_regeneration_payload_identical": true,
+  "uncompressed_results_sha256": "246d5cfc6c238b20f3b32a0edcd088db45bfefb714f8c7e1085cdad15f5d54f1"
+}

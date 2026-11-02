@@ -98,7 +98,10 @@ Control uses the repository's 32-byte token handshake followed by bounded JSON
 frames (`u32` little-endian byte length, maximum 32 MiB). It negotiates the protocol
 version, configuration, nonzero never-reused per-connection epoch, requester UDP
 port and algorithm. JSON tags and invalid versions/configurations are rejected.
-Partial reads and connection loss preserve the processing/ownership boundary.
+Clients must choose a fresh epoch for every stream incarnation, including
+reconnection and process restart; the requester uses operating-system entropy.
+The service rejects repeated epochs within one connection. Partial reads and
+connection loss preserve the processing/ownership boundary.
 If DSP cannot stop within five seconds, the dedicated process exits before native
 cleanup can overlap active processing. Source inactivity retires processing after
 two seconds; source-time progress is
