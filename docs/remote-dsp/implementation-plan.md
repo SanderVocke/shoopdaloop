@@ -490,3 +490,25 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - The later priority-runner refinement uses cooperative yielding for any permitted
   FIFO/RR/niceness conditions, avoiding a spinning FIFO peer starving control.
   It does not change the seven conditions actually measured on this host.
+
+### CI graph-flush correction
+
+- CodeQL passed all four language analyses with zero new alerts; its earlier
+  nullable-pointer review thread is resolved.
+- Coverage run `41536354052` exposed an existing controlled-dummy race: 160
+  requested frames advanced a loop only 32 frames. Its finalized Perfetto trace
+  shows the two 64-frame cycles before graph installation; only the last short
+  cycle reached the loop. The graph apply had deferred its rebuild and armed
+  another generation, but the original flush returned after the deferred attempt.
+- Added a deterministic regression: the first apply arms a follow-up inside a
+  30-second coalescing window; a flush must complete both. It failed before the
+  correction (one apply instead of two) and passed afterward. Flush now rechecks
+  the pending generation and waits through deferred follow-ups.
+- The original test passed 20 unconstrained and 100 constrained baseline runs;
+  the regression avoids relying on that timing-dependent failure. After the fix,
+  both tests passed 100 iterations constrained to one CPU, alongside the complete
+  2554-test native suite (four skips), warning-denying build, formatting, test
+  policy, tracing inventory and WebAssembly check.
+- This correction affects the retained legacy scheduler, which is outside the
+  standalone network DSP executable. Both frozen measurement archives remain
+  unchanged. Final CI is being rerun on the corrected revision.

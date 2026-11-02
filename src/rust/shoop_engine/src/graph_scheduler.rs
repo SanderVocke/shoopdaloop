@@ -161,29 +161,32 @@ impl GraphScheduler {
     }
 
     /// Applies any pending batch now and returns once it has landed.
+    /// Follow-up batches armed by a deferred apply must also finish.
     ///
     /// For the points where a caller needs the schedule to be current before it goes on:
     /// startup, driver activation, and the test suite's "let everything settle" call.
     pub fn flush_blocking(&self) {
         let _span = tracing::info_span!("engine.graph.flush").entered();
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        let target = state.dirty_gen;
-        if state.applied_gen >= target {
-            return;
-        }
-        // Bring the deadline forward rather than applying inline, so the worker stays the
-        // only thread that ever applies and there is no second path to get wrong.
-        state.deadline = Some(Instant::now());
-        self.shared.cv.notify_all();
+        loop {
+            let target = state.dirty_gen;
+            if state.applied_gen >= target {
+                return;
+            }
+            // Bring the deadline forward rather than applying inline, so the worker stays the
+            // only thread that ever applies and there is no second path to get wrong.
+            state.deadline = Some(Instant::now());
+            self.shared.cv.notify_all();
 
-        // Waits on the generation, not on an apply count: an apply that was already
-        // running cannot have observed `target`, so counting one would return too early.
-        while state.applied_gen < target {
-            state = self
-                .shared
-                .cv
-                .wait(state)
-                .unwrap_or_else(|e| e.into_inner());
+            // Waits on the generation, not on an apply count: an apply that was already
+            // running cannot have observed `target`, so counting one would return too early.
+            while state.applied_gen < target {
+                state = self
+                    .shared
+                    .cv
+                    .wait(state)
+                    .unwrap_or_else(|e| e.into_inner());
+            }
         }
     }
 
@@ -331,6 +334,29 @@ mod tests {
         check!(n.load(Ordering::Relaxed) == 1);
         check!(start.elapsed() < Duration::from_secs(5));
         drop(s);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn flush_waits_for_a_rebuild_deferred_by_its_apply() {
+        let scheduler_slot =
+            Arc::new(std::sync::OnceLock::<std::sync::Weak<GraphScheduler>>::new());
+        let attempts = Arc::new(AtomicU32::new(0));
+        let callback_slot = Arc::clone(&scheduler_slot);
+        let callback_attempts = Arc::clone(&attempts);
+        let scheduler = Arc::new(GraphScheduler::start(
+            Duration::from_secs(30),
+            Box::new(move || {
+                if callback_attempts.fetch_add(1, Ordering::AcqRel) == 0 {
+                    callback_slot.get().unwrap().upgrade().unwrap().arm();
+                }
+            }),
+        ));
+        assert!(scheduler_slot.set(Arc::downgrade(&scheduler)).is_ok());
+
+        scheduler.arm();
+        scheduler.flush_blocking();
+
+        assert_eq!(attempts.load(Ordering::Acquire), 2);
     }
 
     /// A flush must wait for an apply that actually observed the caller's change.
