@@ -186,6 +186,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn cancel_media_reads(&mut self) {
         self.reads.clear();
+        self.capture_validation = None;
+        self.prepared_content
+            .retain(|id, _| self.canonical_imports.contains(id));
         self.read_cancel_needed = true;
         self.canonical_content
             .retain(|id, _| self.canonical_imports.contains(id));
@@ -522,12 +525,12 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 return Ok(Some(data));
             }
             let content = &self.canonical_content[&loop_id];
-            let bytes = content
-                .midi
-                .iter()
-                .flat_map(|channel| channel.events.iter())
-                .map(|event| 12 + event.data.len() as u64)
-                .sum::<u64>();
+            let bytes = self
+                .prepared_content
+                .get(&loop_id)
+                .filter(|p| p.matches(content))
+                .ok_or_else(|| anyhow!("imported content lacks a validation proof"))?
+                .events_bytes();
             if bytes > 32 * 1024 * 1024 {
                 return Err(anyhow!("MIDI view exceeds 32 MiB; use media export"));
             }

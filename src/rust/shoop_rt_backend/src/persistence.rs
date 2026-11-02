@@ -1,9 +1,16 @@
 //! Acknowledged persistence steps and a bounded write pipeline, independent of mutation receipts.
-use crate::{prepared::Upload, requests::Purpose, EngineClock, RtBackend};
+use crate::{
+    prepared::{Prepared, Upload, Validation},
+    requests::Purpose,
+    EngineClock, RtBackend,
+};
 use anyhow::{anyhow, bail, Result};
 use shoop_rt_protocol::{Outcome, Refusal, Request};
 use shoop_rt_transport::carrier::Carrier;
-use std::collections::VecDeque;
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
 
 pub(crate) enum Work {
     Request(Request),
@@ -22,10 +29,27 @@ pub(crate) struct Job {
     retry_after: Option<u64>,
     retries: u16,
     session: bool,
+    validation: VecDeque<Validation>,
+    pub prepared: BTreeMap<u64, Prepared>,
+    canonical_bytes: u64,
+    rendered_bytes: u64,
+    canonical_limit: u64,
 }
 impl Job {
-    pub fn new(id: u64, work: VecDeque<Work>, uploads: Vec<u64>, session: bool) -> Self {
-        Self {
+    pub fn new(
+        id: u64,
+        work: VecDeque<Work>,
+        uploads: Vec<u64>,
+        session: bool,
+        content: impl IntoIterator<Item = Arc<shoop_backend::BackendLoopContent>>,
+        channels: usize,
+        canonical_limit: u64,
+    ) -> Result<Self> {
+        let validation = content
+            .into_iter()
+            .map(|image| Validation::new(image, channels))
+            .collect::<Result<VecDeque<_>>>()?;
+        Ok(Self {
             id,
             work,
             error: None,
@@ -38,7 +62,44 @@ impl Job {
             retry_after: None,
             retries: 0,
             session,
+            validation,
+            prepared: BTreeMap::new(),
+            canonical_bytes: 0,
+            rendered_bytes: 0,
+            canonical_limit,
+        })
+    }
+    pub fn prepare(&mut self) -> Result<()> {
+        if self.error.is_some() {
+            return Ok(());
         }
+        let Some(validation) = self.validation.front_mut() else {
+            return Ok(());
+        };
+        if validation.step(256 * 1024)? {
+            let prepared = self.validation.pop_front().unwrap().finish()?;
+            self.canonical_bytes = self
+                .canonical_bytes
+                .checked_add(prepared.bytes())
+                .ok_or_else(|| anyhow!("canonical size overflow"))?;
+            self.rendered_bytes = self
+                .rendered_bytes
+                .checked_add(prepared.rendered_bytes())
+                .ok_or_else(|| anyhow!("prepared size overflow"))?;
+            if self.canonical_bytes > self.canonical_limit
+                || self.rendered_bytes > crate::prepared::MAX_MEDIA_BYTES
+            {
+                bail!("canonical or prepared session media exceeds the 256 MiB budget");
+            }
+            if self
+                .prepared
+                .insert(prepared.image().source_id, prepared)
+                .is_some()
+            {
+                bail!("duplicate content identity");
+            }
+        }
+        Ok(())
     }
     pub fn fail(&mut self, message: String) {
         self.error.get_or_insert(message);
@@ -61,6 +122,7 @@ impl Job {
     fn cleanup(&mut self) {
         self.cleaning = true;
         self.work.clear();
+        self.validation.clear();
         if self.session && !self.committed {
             self.work
                 .push_back(Work::Request(Request::ReplacementCancel { id: self.id }));
@@ -109,7 +171,7 @@ impl Job {
         self.completed += 1;
     }
     fn next(&mut self, chunk_bytes: usize, callbacks: u64) -> Result<Option<Request>> {
-        if self.finished {
+        if self.finished || (self.error.is_none() && !self.validation.is_empty()) {
             return Ok(None);
         }
         if !self.active.is_empty() {
@@ -153,6 +215,11 @@ impl Job {
                 request
             }
             Some(Work::Upload { upload, begun }) => {
+                upload.certify(
+                    self.prepared
+                        .get(&upload.source())
+                        .ok_or_else(|| anyhow!("missing prepared content proof"))?,
+                )?;
                 let id = upload.description.id;
                 if !*begun {
                     *begun = true;
@@ -211,12 +278,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     entry.content += 1;
                     entry.view.length = u64::from(content.length);
                 }
+                self.prepared_content
+                    .insert(id, replacement.job.prepared[&content.source_id].clone());
                 self.canonical_content.insert(id, content);
                 self.canonical_imports.insert(id);
                 self.reads.forget(id);
             }
             if let Some(image) = replacement.candidate.take() {
                 self.mirror = image;
+                self.prepared_content = replacement
+                    .content
+                    .iter()
+                    .map(|(id, image)| (*id, replacement.job.prepared[&image.source_id].clone()))
+                    .collect();
                 self.canonical_content = std::mem::take(&mut replacement.content);
                 self.canonical_imports = self.canonical_content.keys().copied().collect();
                 self.connection_failures

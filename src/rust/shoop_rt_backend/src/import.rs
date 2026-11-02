@@ -1,7 +1,7 @@
 //! A loop update stages both media while retaining the unchanged canonical channels.
 use crate::{
     persistence::{Job, Work},
-    prepared::{canonical_bytes, Upload, MAX_MEDIA_BYTES},
+    prepared::{Upload, MAX_MEDIA_BYTES},
     EngineClock, RtBackend,
 };
 use anyhow::{anyhow, bail, Result};
@@ -87,18 +87,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if let Some(length) = update.length {
             content.length = length;
         }
-        let size = canonical_bytes(&content)?;
         let retained = self
             .canonical_imports
             .iter()
             .filter(|id| **id != loop_id)
             .try_fold(0u64, |size, id| {
-                size.checked_add(canonical_bytes(&self.canonical_content[id])?)
-                    .ok_or_else(|| anyhow!("retained media size overflow"))
+                size.checked_add(
+                    self.prepared_content
+                        .get(id)
+                        .filter(|p| p.matches(&self.canonical_content[id]))
+                        .ok_or_else(|| anyhow!("retained content lacks a validation proof"))?
+                        .bytes(),
+                )
+                .ok_or_else(|| anyhow!("retained media size overflow"))
             })?;
-        if size > MAX_MEDIA_BYTES.saturating_sub(retained) {
-            bail!("retained canonical session media exceeds the 256 MiB budget");
-        }
         let events = content
             .midi
             .iter()
@@ -161,7 +163,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.replacement = Some(crate::Replacement {
             mapping: Default::default(),
             candidate: None,
-            job: Job::new(id, work, uploads, false),
+            job: Job::new(
+                id,
+                work,
+                uploads,
+                false,
+                [Arc::clone(&content)],
+                usize::from(self.limits().strip_audio_channels),
+                MAX_MEDIA_BYTES.saturating_sub(retained),
+            )?,
             content: BTreeMap::from([(loop_id, content)]),
             connection_failures: Vec::new(),
             loop_target: Some(loop_id),

@@ -427,3 +427,72 @@ fn untracked_initial_parameters_refuse_but_a_later_system_reset_is_preserved() {
         [vec![0xb0, 6, 40], vec![0xff]]
     );
 }
+
+#[shoop_test]
+fn large_private_validation_yields_and_checks_samples_outside_the_render_window() {
+    use std::sync::Arc;
+    let (mut backend, old, mut session) = fixture();
+    session.tracks[0].loops[0].length = 4;
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4].into();
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let live = mapping.loops[&old.loops[0].raw()];
+    let track = mapping.tracks[&old.track_id.raw()].track_id;
+    backend
+        .transition_loop(live, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.capture_session().unwrap();
+    let mut candidate = before.clone();
+    candidate.tracks[0].loops[0].length = 1;
+    let mut samples = vec![0.25; 33 * 1024 * 1024 / 4];
+    *samples.last_mut().unwrap() = f32::NAN;
+    candidate.tracks[0].loops[0].audio[0].samples = Arc::new(samples);
+    assert!(matches!(
+        backend.replace_session_async(&candidate).unwrap(),
+        BackendAsyncResult::Pending(_)
+    ));
+    assert!(backend
+        .set_track_control(track, BackendTrackControl::InputGainDb(-6.0))
+        .unwrap_err()
+        .to_string()
+        .contains("replacement"));
+    for _ in 0..4 {
+        backend.clock_mut().render(1);
+        backend.poll().unwrap();
+    }
+    let state = backend.poll().unwrap();
+    assert_eq!(state.tracks[&track].input_gain_db, 0.0);
+    assert_eq!(state.loops[&live].mode, BackendLoopMode::Playing);
+    assert!(matches!(
+        backend.replace_session_async(&candidate).unwrap(),
+        BackendAsyncResult::Pending(_)
+    ));
+    backend.cancel_session_replacement().unwrap();
+    assert!(loaded(&mut backend, &candidate)
+        .unwrap_err()
+        .to_string()
+        .contains("cancelled"));
+    assert!(Arc::get_mut(&mut candidate.tracks[0].loops[0].audio[0].samples).is_some());
+    assert!(loaded(&mut backend, &candidate)
+        .unwrap_err()
+        .to_string()
+        .contains("non-finite"));
+    assert_eq!(
+        backend.poll().unwrap().loops[&live].mode,
+        BackendLoopMode::Playing
+    );
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops,
+        before.tracks[0].loops
+    );
+    *Arc::get_mut(&mut candidate.tracks[0].loops[0].audio[0].samples)
+        .expect("failed preparation releases its image")
+        .last_mut()
+        .unwrap() = 0.25;
+    loaded(&mut backend, &candidate).unwrap();
+    let saved = backend.capture_session().unwrap();
+    assert!(Arc::ptr_eq(
+        &saved.tracks[0].loops[0].audio[0].samples,
+        &candidate.tracks[0].loops[0].audio[0].samples
+    ));
+}

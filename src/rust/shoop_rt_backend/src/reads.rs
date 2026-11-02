@@ -39,6 +39,7 @@ struct Read<T> {
     audio_data: Option<assembly::Audio>,
     midi_data: Option<assembly::Midi>,
     midi_length: u32,
+    limit: u64,
     bytes: BTreeMap<u64, Vec<u8>>,
     outcome: Outcome<T>,
 }
@@ -56,6 +57,7 @@ impl<T> Read<T> {
             audio_data: None,
             midi_data: None,
             midi_length: 0,
+            limit: 256 * 1024 * 1024,
             bytes: BTreeMap::new(),
             outcome: Outcome::Reading,
         }
@@ -204,6 +206,15 @@ impl Reads {
         version: u64,
         slot: LoopSlotId,
     ) -> Outcome<BackendMidiData> {
+        self.midi_limited(loop_id, version, slot, 256 * 1024 * 1024)
+    }
+    pub fn midi_limited(
+        &mut self,
+        loop_id: BackendLoopId,
+        version: u64,
+        slot: LoopSlotId,
+        limit: u64,
+    ) -> Outcome<BackendMidiData> {
         let read = self
             .midi
             .entry(loop_id)
@@ -213,6 +224,12 @@ impl Reads {
                 }
             })
             .or_insert_with(|| Read::new(version, slot, 1));
+        read.limit = read.limit.min(limit);
+        if read.total.is_some_and(|total| total > read.limit) {
+            read.outcome =
+                Outcome::Failed("MIDI capture exceeds the remaining session budget".into());
+        }
+
         let outcome = read.outcome.clone();
         if let Outcome::Failed(_) = outcome {
             self.midi.remove(&loop_id);
@@ -415,7 +432,7 @@ impl Reads {
                     if chunk.offset != expected
                         || read.total.is_some_and(|total| total != chunk.total)
                         || len > bytes.len()
-                        || chunk.total > MAX_READ_BYTES
+                        || chunk.total > read.limit.min(MAX_READ_BYTES)
                         || chunk
                             .offset
                             .checked_add(len as u64)

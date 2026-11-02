@@ -139,6 +139,8 @@ pub struct RtBackend<C, K> {
         std::sync::Arc<shoop_backend::BackendLoopContent>,
     >,
     canonical_imports: std::collections::BTreeSet<shoop_backend::BackendLoopId>,
+    prepared_content: std::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
+    capture_validation: Option<prepared::Validation>,
 }
 
 pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
@@ -176,6 +178,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             next_persistence: 1,
             canonical_content: Default::default(),
             canonical_imports: Default::default(),
+            prepared_content: Default::default(),
+            capture_validation: None,
         })
     }
 
@@ -238,6 +242,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// has arrived. Never waits.
     pub fn pump(&mut self) {
         self.reads.advance();
+        if let Some(replacement) = self.replacement.as_mut() {
+            if let Err(error) = replacement.job.prepare() {
+                replacement.job.fail(error.to_string());
+            }
+        }
         for _ in 0..MAX_PUMP_ROUNDS {
             if self.read_cancel_needed
                 && self.is_ready()

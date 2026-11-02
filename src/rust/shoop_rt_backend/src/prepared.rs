@@ -1,8 +1,10 @@
 //! Canonical content and the bounded, normalized byte stream presented to the engine.
+mod validation;
 use std::sync::Arc;
+pub(crate) use validation::{Prepared, Validation};
 
 use anyhow::{anyhow, bail, Result};
-use shoop_backend::{BackendChannelMode, BackendLoopContent, BackendMidiContent};
+use shoop_backend::BackendLoopContent;
 use shoop_rt_protocol::{ContentChunk, ContentDescription, MidiMessage};
 
 pub(crate) const MAX_MEDIA_BYTES: u64 = 256 * 1024 * 1024;
@@ -18,52 +20,9 @@ pub(crate) struct Upload {
     event_byte: usize,
     initial: usize,
     initial_end: usize,
+    certified: bool,
 }
 
-pub(crate) fn canonical_bytes(content: &BackendLoopContent) -> Result<u64> {
-    let mut bytes = 0u64;
-    for audio in &content.audio {
-        if audio.mode != BackendChannelMode::Direct || !audio.gain.is_finite() || audio.preplay != 0
-        {
-            bail!("audio requires unsupported channel mode, gain or preplay");
-        }
-        if audio.samples.iter().any(|sample| !sample.is_finite()) {
-            bail!("audio contains a non-finite sample");
-        }
-        bytes = bytes
-            .checked_add(audio.samples.len() as u64 * 4)
-            .ok_or_else(|| anyhow!("media size overflow"))?;
-    }
-    for midi in &content.midi {
-        if midi.mode != BackendChannelMode::Direct
-            || midi.start_state.len() > 16_384
-            || midi.preplay != 0
-            || midi.events.len() > MAX_MIDI_EVENTS
-        {
-            bail!("MIDI requires unsupported channel mode, preplay or event count");
-        }
-        let mut previous = 0;
-        for event in midi.events.iter() {
-            if event.frame < previous || event.frame >= midi.length || event.data.is_empty() {
-                bail!("invalid MIDI event order, position or packet");
-            }
-            previous = event.frame;
-            bytes = bytes
-                .checked_add(event.data.len() as u64 + 12)
-                .ok_or_else(|| anyhow!("media size overflow"))?;
-        }
-        validate_initial_parameters(midi)?;
-        for packet in &midi.start_state {
-            bytes = bytes
-                .checked_add(packet.len() as u64 + 4)
-                .ok_or_else(|| anyhow!("media size overflow"))?;
-        }
-    }
-    if bytes > MAX_MEDIA_BYTES {
-        bail!("decoded content exceeds the 256 MiB media budget");
-    }
-    Ok(bytes)
-}
 fn initial_message(packet: &[u8]) -> Result<MidiMessage> {
     let valid = match packet {
         [0x80..=0xbf | 0xe0..=0xef, a, b] => *a < 128 && *b < 128,
@@ -76,32 +35,6 @@ fn initial_message(packet: &[u8]) -> Result<MidiMessage> {
     }
     MidiMessage::new(packet).ok_or_else(|| anyhow!("invalid MIDI initial packet"))
 }
-fn validate_initial_parameters(channel: &BackendMidiContent) -> Result<()> {
-    let origin = i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
-    let prefix = channel
-        .events
-        .partition_point(|event| i64::from(event.frame) < origin);
-    if channel.start_state.len() + prefix > 16_384 {
-        bail!("MIDI initial/preroll state exceeds its bounded packet count");
-    }
-    let mut history = false;
-    for packet in channel.start_state.iter().map(Vec::as_slice).chain(
-        channel.events[..prefix]
-            .iter()
-            .map(|event| event.data.as_ref()),
-    ) {
-        initial_message(packet)?;
-        if packet == [0xff] {
-            history = false;
-        } else if matches!(packet, [0xb0..=0xbf, 6 | 38 | 96 | 97, _]) {
-            history = true;
-        }
-    }
-    if history {
-        bail!("MIDI initial/preroll parameter history is not supported yet (P11)");
-    }
-    Ok(())
-}
 impl Upload {
     pub fn new(
         id: u64,
@@ -109,28 +42,9 @@ impl Upload {
         content: Arc<BackendLoopContent>,
         channels: usize,
     ) -> Result<Self> {
-        let (mut event, mut event_end, mut initial_end) = (0, 0, 0);
+        let (event, event_end, initial_end) = (0, 0, 0);
         let bytes = if midi {
-            if let Some(channel) = content.midi.first() {
-                let origin =
-                    i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
-                event = channel
-                    .events
-                    .partition_point(|event| i64::from(event.frame) < origin);
-                initial_end = event;
-                event_end = channel.events.partition_point(|event| {
-                    i64::from(event.frame) < origin + i64::from(content.length)
-                });
-                validate_initial_parameters(channel)?;
-                channel.events[event..event_end]
-                    .iter()
-                    .try_fold(0u64, |n, event| {
-                        n.checked_add(12 + event.data.len() as u64)
-                            .ok_or_else(|| anyhow!("MIDI size overflow"))
-                    })?
-            } else {
-                0
-            }
+            0
         } else {
             u64::from(content.length)
                 .checked_mul(channels as u64 * 4)
@@ -154,7 +68,35 @@ impl Upload {
             event_byte: 0,
             initial: 0,
             initial_end,
+            certified: false,
         })
+    }
+    pub fn source(&self) -> u64 {
+        self.content.source_id
+    }
+    pub fn certify(&mut self, prepared: &Prepared) -> Result<()> {
+        if self.certified {
+            return Ok(());
+        }
+        if !prepared.matches(&self.content) {
+            bail!("content proof belongs to another image");
+        }
+        if self.description.midi {
+            self.description.bytes = prepared.rendered_midi_bytes();
+            if let Some(channel) = self.content.midi.first() {
+                let origin =
+                    i64::from(channel.start_offset) + i64::from(channel.capture_alignment_frames);
+                self.event = channel
+                    .events
+                    .partition_point(|event| i64::from(event.frame) < origin);
+                self.initial_end = self.event;
+                self.event_end = channel.events.partition_point(|event| {
+                    i64::from(event.frame) < origin + i64::from(self.content.length)
+                });
+            }
+        }
+        self.certified = true;
+        Ok(())
     }
     pub fn initial(&mut self) -> Result<Option<MidiMessage>> {
         if !self.description.midi {

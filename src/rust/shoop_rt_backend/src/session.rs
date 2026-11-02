@@ -147,7 +147,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         use crate::{
             mirror::db_amplitude,
             persistence::{Job, Work},
-            prepared::{canonical_bytes, Upload, MAX_MEDIA_BYTES},
+            prepared::{Upload, MAX_MEDIA_BYTES},
             requests::Purpose,
         };
         use shoop_rt_protocol::{Capabilities, ReplacementEdit, Request, StripPreset};
@@ -203,18 +203,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 };
                 current = *next;
             }
-        }
-        let canonical_size = session
-            .tracks
-            .iter()
-            .flat_map(|track| &track.loops)
-            .try_fold(0u64, |bytes, content| {
-                bytes
-                    .checked_add(canonical_bytes(content)?)
-                    .ok_or_else(|| anyhow!("media size overflow"))
-            })?;
-        if canonical_size > MAX_MEDIA_BYTES {
-            return Err(anyhow!("session exceeds the 256 MiB decoded media budget"));
         }
         let image = self.mirror.replacement_image();
         let live = std::mem::replace(&mut self.mirror, image);
@@ -392,7 +380,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.replacement = Some(crate::Replacement {
             mapping: mapping.clone(),
             candidate: Some(candidate),
-            job: Job::new(id, work, uploads, true),
+            job: Job::new(
+                id,
+                work,
+                uploads,
+                true,
+                contents.values().cloned(),
+                usize::from(self.limits().strip_audio_channels),
+                MAX_MEDIA_BYTES,
+            )?,
             content: contents,
             connection_failures: failures,
             loop_target: None,

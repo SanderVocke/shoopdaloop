@@ -178,6 +178,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     {
                         entry.content += 1;
                         self.canonical_content.remove(id);
+                        self.prepared_content.remove(id);
                         self.canonical_imports.remove(id);
                     }
                     entry.view = LoopView {
@@ -412,6 +413,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 if let Some(track) = self.mirror.tracks.get(&id) {
                     for loop_id in &track.loops {
                         self.canonical_content.remove(loop_id);
+                        self.prepared_content.remove(loop_id);
                         self.canonical_imports.remove(loop_id);
                     }
                 }
@@ -488,6 +490,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
             (Purpose::Clear(id), None) => {
                 self.canonical_content.remove(&id);
+                self.prepared_content.remove(&id);
                 self.canonical_imports.remove(&id);
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;

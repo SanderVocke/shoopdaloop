@@ -371,7 +371,7 @@ Rust test policy and whitespace checks pass.
   intent, including channel annotations. Keep document codec conversion client-side.
 - [x] Expose bounded session/selected-loop media reads from retained capture handles,
   with fair progress beside controls/snapshots and independent cancellation/release.
-- [ ] Integrate client bundle assembly and existing session/audio/MIDI encoders
+- [x] Integrate client bundle assembly and existing session/audio/MIDI encoders
   off the service/RT path, retaining loss/quantization diagnostics and budget checks.
 
 Verification: production service/adapter capture compared with reference documents;
@@ -555,6 +555,21 @@ Validation: native passes 30 adapter, 28 service and all 70 frontend tests,
 including companion-process recovery and the unchanged read-throughput deadline.
 Node passes 29 portable adapter, 28 service and 27 frontend tests. Affected
 warning-denying builds, Rust test policy, formatting and whitespace checks pass.
+
+Adapter-preparation milestone: canonical PCM and MIDI validation advances with a
+256 KiB budget per adapter pump. Immutable proofs retain the exact content and
+cache raw/rendered byte counts; uploads and later captures reuse them without a
+full scan. All content validates before the first engine preparation request.
+Capture reserves its remaining aggregate budget before PCM/MIDI allocation,
+including initial state. The existing accepted-replacement mutation barrier stays
+in place; status, playback and cancellation keep progressing.
+
+A 33 MiB adapter regression proves pending progression, old playback, immediate
+busy refusal of conflicting mutations, cancellation ownership reclamation, late
+NaN rejection outside the rendered window, and a successful retry with retained
+sample ownership. Native passes 31 adapter, 28 service and all 70 frontend tests;
+Node passes 30 portable adapter, 28 service and 27 frontend tests. Warning-denying
+affected builds, Rust test policy, formatting and whitespace checks pass.
 
 Portable codec-worker foundation: document conversion and existing codec calls now
 live in `shoop_persistence_codec`, with no backend/engine/device dependency. Its

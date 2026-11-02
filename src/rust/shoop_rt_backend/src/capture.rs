@@ -1,7 +1,7 @@
 //! Capture settled core state while its media cannot be changed by admitted work.
 use crate::{
     mirror::Mirror,
-    prepared::{canonical_bytes, MAX_MEDIA_BYTES},
+    prepared::{Validation, MAX_MEDIA_BYTES},
     reads::{empty_audio, empty_midi, Outcome},
     EngineClock, RtBackend,
 };
@@ -68,6 +68,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.canonical_content
                 .retain(|id, _| self.canonical_imports.contains(id) || *id == target);
         }
+        self.prepared_content.retain(|id, proof| {
+            self.canonical_content
+                .get(id)
+                .is_some_and(|image| proof.matches(image))
+        });
         let ids = self
             .mirror
             .loops
@@ -82,20 +87,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
                 let track = &self.mirror.tracks[&entry.track];
                 let (channels, midi) = (track.audio_channels as usize, track.midi);
+                let audio_bytes = u64::from(length)
+                    .checked_mul(channels as u64 * 4)
+                    .ok_or_else(|| anyhow!("audio size overflow"))?;
+                if audio_bytes > MAX_MEDIA_BYTES.saturating_sub(bytes) {
+                    bail!("session capture exceeds the remaining 256 MiB budget");
+                }
                 let audio = if length == 0 || channels == 0 {
                     empty_audio(channels)
                 } else {
                     match self.reads.audio(id, version, slot, channels) {
                         Outcome::Done(audio) => audio,
-                        Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
-                        Outcome::Failed(message) => bail!(message),
-                    }
-                };
-                let events = if length == 0 || !midi {
-                    empty_midi(version, midi)
-                } else {
-                    match self.reads.midi(id, version, slot) {
-                        Outcome::Done(midi) => midi,
                         Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
                         Outcome::Failed(message) => bail!(message),
                     }
@@ -110,6 +112,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         }
                     }
                 }
+                if initial.len() > 16_384 {
+                    bail!("MIDI initial state exceeds its bounded packet count");
+                }
+                let initial_bytes = initial.iter().map(|p| p.len() as u64 + 4).sum::<u64>();
+                let midi_limit = MAX_MEDIA_BYTES
+                    .checked_sub(bytes)
+                    .and_then(|n| n.checked_sub(audio_bytes))
+                    .and_then(|n| n.checked_sub(initial_bytes))
+                    .ok_or_else(|| {
+                        anyhow!("session capture exceeds the remaining 256 MiB budget")
+                    })?;
+                let events = if length == 0 || !midi {
+                    empty_midi(version, midi)
+                } else {
+                    match self.reads.midi_limited(id, version, slot, midi_limit) {
+                        Outcome::Done(midi) => midi,
+                        Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
+                        Outcome::Failed(message) => bail!(message),
+                    }
+                };
                 let entry = &self.mirror.loops[&id];
                 let content = BackendLoopContent {
                     source_id: id.raw(),
@@ -145,8 +167,30 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.canonical_content.insert(id, Arc::new(content));
                 self.reads.forget(id);
             }
+            let image = Arc::clone(&self.canonical_content[&id]);
+            if !self
+                .prepared_content
+                .get(&id)
+                .is_some_and(|p| p.matches(&image))
+            {
+                if !self
+                    .capture_validation
+                    .as_ref()
+                    .is_some_and(|v| Arc::ptr_eq(v.image(), &image))
+                {
+                    self.capture_validation = Some(Validation::new(
+                        image,
+                        usize::from(self.limits().strip_audio_channels),
+                    )?);
+                }
+                if !self.capture_validation.as_mut().unwrap().step(256 * 1024)? {
+                    return Ok(self.capture_pending(index, ids.len()));
+                }
+                let proof = self.capture_validation.take().unwrap().finish()?;
+                self.prepared_content.insert(id, proof);
+            }
             bytes = bytes
-                .checked_add(canonical_bytes(&self.canonical_content[&id])?)
+                .checked_add(self.prepared_content[&id].bytes())
                 .ok_or_else(|| anyhow!("capture size overflow"))?;
             if bytes > MAX_MEDIA_BYTES {
                 bail!("session capture exceeds the 256 MiB media budget");
