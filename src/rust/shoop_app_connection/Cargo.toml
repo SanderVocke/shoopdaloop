@@ -10,6 +10,7 @@ shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
 shoop_transport = { path = "../shoop_transport" }
 [dev-dependencies]
+shoop_app_api = { path = "../shoop_app_api" }
 shoop_app_client = { path = "../shoop_app_client" }
 shoop_rt_backend = { path = "../shoop_rt_backend", default-features = false }
 shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }

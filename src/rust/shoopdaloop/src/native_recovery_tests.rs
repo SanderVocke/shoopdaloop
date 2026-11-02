@@ -83,7 +83,13 @@ fn host_peer() {
         test_signal: true,
         ..Default::default()
     };
-    shoop_host::serve::run(config, StartOptions::new(root.join("registry")).unwrap()).unwrap();
+    let mut options = StartOptions::new(root.join("registry")).unwrap();
+    if root.join("lan").exists() {
+        options.lan = true;
+        options.credential = Some(root.join("host.key"));
+        options.export_profile = Some(root.join("profile.json"));
+    }
+    shoop_host::serve::run(config, options).unwrap();
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -264,4 +270,96 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(!path.exists() && !entry.credential.exists());
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_shutdown() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("lan"), b"1").unwrap();
+    shoop_host::remote::create_credential(&root.path().join("host.key")).unwrap();
+    let mut host = peer("host_peer", root.path());
+    let path = root.path().join("profile.json");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !path.exists() {
+        assert!(host.0.try_wait().unwrap().is_none());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let open = || {
+        let args = AppArgs {
+            ui_only: true,
+            remote_profile: Some(path.clone()),
+            ..Default::default()
+        };
+        let app = UnifiedApp::new(1., false, &args).unwrap();
+        wait(&app.runtime, |state| !state.tracks.is_empty());
+        app
+    };
+    let mut app = open();
+    assert!(app.runtime.remote_entry.as_ref().unwrap().network.is_some());
+    app.runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    app.runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "LAN recording".into(),
+            audio_channels: 1,
+            midi: true,
+        }))
+        .unwrap();
+    let state = wait(&app.runtime, |state| {
+        state.tracks.len() == 2 && state.tracks[1].loops.len() == 8
+    });
+    loop_action(&mut app.runtime, &state, LoopAction::RecordClicked);
+    let state = wait(&app.runtime, |state| {
+        state.tracks[1].loops[0].mode == LoopMode::Recording
+    });
+    let before = state.status.processed_frames;
+    let owner = state.tracks[1].id;
+    let context = egui::Context::default();
+    shoop_egui::initialize(&context);
+    let mut output = context.run_ui(Default::default(), |ui| {
+        app.show(ui);
+        app.exit.close_ui(ui.ctx());
+    });
+    output.textures_delta.clear();
+    drop(app);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(host.0.try_wait().unwrap().is_none());
+    let mut app = open();
+    let state = wait(&app.runtime, |state| {
+        state.tracks.len() == 2 && state.status.processed_frames > before
+    });
+    assert_eq!(state.tracks[1].id, owner);
+    assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+    assert!(state.scripting.scripts.iter().all(|script| !script.enabled));
+    loop_action(&mut app.runtime, &state, LoopAction::PlayClicked);
+    wait(&app.runtime, |state| {
+        state.tracks[1].loops[0].mode == LoopMode::Playing
+    });
+    app.exit.open = true;
+    app.exit.start(
+        app.runtime.remote_entry.clone().unwrap(),
+        app.runtime.handle.clone(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+        let closed = output.viewport_output[&egui::ViewportId::ROOT]
+            .commands
+            .contains(&egui::ViewportCommand::Close);
+        output.textures_delta.clear();
+        if closed {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    drop(app);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while host.0.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(path.exists() && root.path().join("host.key").exists());
 }

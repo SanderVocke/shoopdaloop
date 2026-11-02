@@ -1,44 +1,13 @@
-use shoop_app::{ConnectionId, Service, ServiceOptions};
+use shoop_app::{ConnectionId, Service};
 use shoop_app_client::{Client, State};
 use shoop_app_connection::Session;
 use shoop_app_protocol::*;
-use shoop_rt_backend::{EngineClock, RtBackend};
-use shoop_rt_engine::{testing::OfflineRender, EngineDescription};
 use shoop_transport::{CarrierError, RecordPort};
 use shoop_wasm_test_support::shoop_test;
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, time::Duration};
+use std::{collections::VecDeque, time::Duration};
 
-struct Clock(Rc<RefCell<OfflineRender>>);
-impl EngineClock for Clock {
-    fn advance(&mut self, elapsed: Duration) {
-        self.0.borrow_mut().run_for(elapsed, |_, _| 0.25).unwrap();
-    }
-    fn wait(&mut self) -> bool {
-        self.0.borrow_mut().run(16, |_, _| 0.25).unwrap();
-        true
-    }
-}
-fn service() -> Service {
-    let (render, client) = OfflineRender::new(&EngineDescription::default()).unwrap();
-    let backend = RtBackend::connect(client, Clock(Rc::new(RefCell::new(render)))).unwrap();
-    let mut service = Service::new(
-        Box::new(backend),
-        ServiceOptions {
-            host: HostId(1),
-            session: SessionId(2),
-            master_auto_connect: true,
-            loop_smoothing_ms: 3,
-        },
-    )
-    .unwrap();
-    for _ in 0..128 {
-        service.tick(Duration::from_millis(10));
-        if service.is_ready() {
-            return service;
-        }
-    }
-    panic!("service did not initialize");
-}
+mod support;
+use support::service;
 #[derive(Default)]
 struct Memory {
     input: VecDeque<Vec<u8>>,

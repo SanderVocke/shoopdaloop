@@ -455,9 +455,10 @@ impl Data {
         let core = shoop_app_connection::Session::new(id, Port::Socket(port));
         let core = match network {
             Some(network) => core
-                .with_heartbeat(
+                .with_network(
                     network.heartbeat(),
                     (crate::registry::identity()? as u64).max(1),
+                    network.snapshot_hz,
                 )
                 .map_err(|_| anyhow!("invalid heartbeat settings"))?,
             None => core,

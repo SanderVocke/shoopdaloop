@@ -245,15 +245,15 @@ stages must preserve earlier contracts.
 
 ### Stage 5 — traffic budgets and desktop integration
 
-- [ ] Implement configurable periodic network snapshot cadence, retaining prompt
+- [x] Implement configurable periodic network snapshot cadence, retaining prompt
   initial and confirmation state. Apply bounded scheduling for controls, probes,
   snapshots, media and segmented persistence in both directions. Avoid adding a
   delta protocol or separate bulk socket unless evidence requires revising design.
-- [ ] Add explicit remote-profile opening to CLI and the Session UI, with connection
+- [x] Add explicit remote-profile opening to CLI and the Session UI, with connection
   progress, loss diagnostics, manual reattachment and existing close/shutdown
   actions. Reuse existing recovery and persistence UI paths. Keep files, scripts
   and controller bindings client-local and startup initialization fresh-session-only.
-- [ ] **Verify:** meet AC7 in the deterministic throttled-link fixture, including
+- [x] **Verify:** meet AC7 in the deterministic throttled-link fixture, including
   concurrent controls and large-transfer progression; assert memory/work budgets.
   Exercise remote UI attachment, file dialogs, cancellation, reattachment and both
   exit actions. Verify local settings/registry behavior is unchanged.
@@ -369,3 +369,22 @@ planning deliverable.
   tests and the canonical heartbeat wire fixture pass.
 - CLI and Session-menu profile opening are wired into existing recovery/file UI.
   Native application tests compile; workspace build and test-attribute check pass.
+
+### Stage 5 evidence
+
+- Network sessions coalesce unsent periodic snapshots (30 Hz default), preserve
+  active transfers and prioritize operation replies between bounded bulk chunks.
+  Native LAN stream queues and requested socket send buffers are bounded.
+- The deterministic real-service fixture uploads and reads back 1 MiB of exact
+  audio over a 1 MiB/s, 20 ms RTT link with 10 ms pump steps. Ordinary controls
+  complete in 40 ms during upload and 20 ms during download; heartbeats remain
+  live, queued records never exceed eight and periodic snapshots stay <=30 Hz.
+  The import commit is separately awaited through its actual engine preparation.
+- The real UI remote-profile test preserves recording across UI-only close and
+  reattachment, then confirms the close-both action through management.
+- Remote-profile packaged workflow and >32 MiB persistence probes pass, including
+  exact MIDI, corrupt input refusal, native file output, fresh load/exact resave,
+  abandoned upload/capture cleanup and accepted-load reconciliation without replay.
+  Package CI now runs these LAN probes on every native platform.
+- Focused native/portable suites, Cortex-A connection build, warning-denying
+  workspace build and test-attribute check pass.

@@ -5,6 +5,7 @@ use shoop_app_protocol::{codec, stream::StreamEncoder, *};
 use shoop_transport::{CarrierError, RecordPort, MAX_RECORD_BYTES};
 
 pub struct Session<P> {
+    network: Option<Network>,
     heartbeat: Option<crate::Heartbeat>,
     pub id: ConnectionId,
     pub port: P,
@@ -22,6 +23,7 @@ pub struct Session<P> {
 impl<P: RecordPort> Session<P> {
     pub fn new(id: ConnectionId, port: P) -> Self {
         Self {
+            network: None,
             heartbeat: None,
             id,
             port,
@@ -45,7 +47,23 @@ impl<P: RecordPort> Session<P> {
         self.heartbeat = Some(crate::Heartbeat::new(config, seed)?);
         Ok(self)
     }
+    pub fn with_network(
+        mut self,
+        config: crate::HeartbeatConfig,
+        seed: u64,
+        snapshot_hz: u32,
+    ) -> Result<Self, CarrierError> {
+        if !(1..=60).contains(&snapshot_hz) {
+            return Err(CarrierError::Codec(shoop_transport::CodecError::Invalid));
+        }
+        self = self.with_heartbeat(config, seed)?;
+        self.network = Some(Network::new(snapshot_hz));
+        Ok(self)
+    }
     pub fn retire(&mut self) {
+        if let Some(network) = self.network.as_mut() {
+            network.clear();
+        }
         self.closing = true;
         self.closing_since.get_or_insert(self.age);
         self.media = None;
@@ -54,6 +72,9 @@ impl<P: RecordPort> Session<P> {
     }
     pub fn advance(&mut self, elapsed: Duration) {
         self.age = self.age.saturating_add(elapsed);
+        if let Some(network) = self.network.as_mut() {
+            network.since = network.since.saturating_add(elapsed);
+        }
         if let Some(heartbeat) = self.heartbeat.as_mut() {
             heartbeat.advance(elapsed);
         }
@@ -124,6 +145,11 @@ impl<P: RecordPort> Session<P> {
                 self.retire();
                 return;
             }
+        }
+        if let Some(mut network) = self.network.take() {
+            network.write(self, service);
+            self.network = Some(network);
+            return;
         }
         let mut records = 0;
         for _ in 0..2 * MAX_MESSAGES_PER_TURN {
@@ -278,5 +304,154 @@ impl<P: RecordPort> Management<P> {
         }
         let _ = self.port.flush();
         !(self.sent && self.port.pending_records() == 0)
+    }
+}
+
+struct Network {
+    interval: Duration,
+    since: Duration,
+    next_snapshot: Option<ServiceMessage>,
+    urgent: VecDeque<WireMessage>,
+    bulk: VecDeque<WireMessage>,
+    force: bool,
+}
+impl Network {
+    fn new(hz: u32) -> Self {
+        Self {
+            interval: Duration::from_nanos(1_000_000_000_u64.div_ceil(u64::from(hz))),
+            since: Duration::ZERO,
+            next_snapshot: None,
+            urgent: VecDeque::new(),
+            bulk: VecDeque::new(),
+            force: true,
+        }
+    }
+    fn clear(&mut self) {
+        self.next_snapshot = None;
+        self.urgent.clear();
+        self.bulk.clear();
+    }
+    fn stream<P: RecordPort>(
+        session: &mut Session<P>,
+        update: ServiceMessage,
+    ) -> Result<StreamEncoder, shoop_transport::CodecError> {
+        let id = TransferId(session.transfer);
+        session.transfer = session.transfer.saturating_add(1);
+        StreamEncoder::new(update, id)
+    }
+    fn collect<P: RecordPort>(
+        &mut self,
+        session: &mut Session<P>,
+        service: &mut Service,
+    ) -> Result<(), shoop_transport::CodecError> {
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            if self.urgent.len() + self.bulk.len() >= QUEUE_CAPACITY {
+                break;
+            }
+            let Some(update) = session
+                .replies
+                .pop_front()
+                .or_else(|| service.take_update(session.id))
+            else {
+                break;
+            };
+            match update {
+                update @ ServiceMessage::Snapshot { .. } => self.next_snapshot = Some(update),
+                update @ ServiceMessage::Media { .. } => {
+                    session.media = Some(Self::stream(session, update)?)
+                }
+                update => {
+                    let bulk = matches!(update, ServiceMessage::Persistence { .. });
+                    self.force |= matches!(
+                        update,
+                        ServiceMessage::Attached { .. }
+                            | ServiceMessage::Finished { .. }
+                            | ServiceMessage::ShutdownComplete { .. }
+                    );
+                    if let Some(message) = Self::stream(session, update)?.next_message() {
+                        if bulk {
+                            self.bulk.push_back(message);
+                        } else {
+                            self.urgent.push_back(message);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    fn snapshot<P: RecordPort>(&mut self, session: &mut Session<P>) -> Option<WireMessage> {
+        let message = session.semantic.as_mut()?.next_message();
+        if message.is_none() {
+            session.semantic = None;
+        }
+        message
+    }
+    fn bulk<P: RecordPort>(&mut self, session: &mut Session<P>) -> Option<WireMessage> {
+        if let Some(message) = self.bulk.pop_front() {
+            return Some(message);
+        }
+        let message = session.media.as_mut()?.next_message();
+        if message.is_none() {
+            session.media = None;
+        }
+        message
+    }
+    fn write<P: RecordPort>(&mut self, session: &mut Session<P>, service: &mut Service) {
+        if self.collect(session, service).is_err() {
+            session.retire();
+            self.clear();
+            return;
+        }
+        for index in 0..16 {
+            if session.port.pending_records() >= 8 {
+                break;
+            }
+            if session.pending.is_none() {
+                if session.semantic.is_none()
+                    && self.next_snapshot.is_some()
+                    && (self.force || self.since >= self.interval)
+                {
+                    match Self::stream(session, self.next_snapshot.take().unwrap()) {
+                        Ok(stream) => session.semantic = Some(stream),
+                        Err(_) => {
+                            session.retire();
+                            self.clear();
+                            return;
+                        }
+                    }
+                    self.since = Duration::ZERO;
+                    self.force = false;
+                }
+                let message = self.urgent.pop_front().or_else(|| {
+                    if index % 4 == 3 {
+                        self.bulk(session).or_else(|| self.snapshot(session))
+                    } else {
+                        self.snapshot(session).or_else(|| self.bulk(session))
+                    }
+                });
+                let Some(message) = message else {
+                    break;
+                };
+                let mut bytes = [0; MAX_RECORD_BYTES];
+                match codec::encode(&message, &mut bytes) {
+                    Ok(n) => session.pending = Some(bytes[..n].to_vec()),
+                    Err(_) => {
+                        session.retire();
+                        self.clear();
+                        return;
+                    }
+                }
+            }
+            match session.port.post(session.pending.as_ref().unwrap()) {
+                Ok(()) => session.pending = None,
+                Err(CarrierError::Full) => break,
+                Err(_) => {
+                    session.retire();
+                    self.clear();
+                    return;
+                }
+            }
+        }
     }
 }

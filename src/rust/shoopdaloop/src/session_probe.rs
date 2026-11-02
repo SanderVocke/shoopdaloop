@@ -9,7 +9,8 @@ use shoop_egui::{
 use shoop_host::{
     config::HostConfig,
     connection::{self, Connection},
-    registry::{AppTransport, HostEntry, Registry},
+    registry::{AppTransport, Registry},
+    remote::Target as HostEntry,
 };
 use std::{
     process::{Child, Command as Process, Stdio},
@@ -123,22 +124,48 @@ fn launch(
     let config_file = root.path().join("config.json");
     std::fs::write(&config_file, serde_json::to_vec(&config)?)?;
     let companion = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
-    let mut host = ProbeHost(
-        Process::new(companion)
-            .arg("--config")
-            .arg(config_file)
-            .arg("--registry")
-            .arg(registry.root())
-            .env("RUST_LOG", "shoop_rt_backend=debug")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .spawn()?,
+    let lan = std::env::var("SHOOP_PROBE_LAN").is_ok_and(|value| value == "1");
+    ensure!(
+        !lan || transport == EngineTransportKind::Socket,
+        "LAN probes require socket delivery"
     );
+    let profile_path = root.path().join("remote.json");
+    let mut command = Process::new(companion);
+    command
+        .arg("--config")
+        .arg(config_file)
+        .arg("--registry")
+        .arg(registry.root())
+        .env("RUST_LOG", "shoop_rt_backend=debug")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit());
+    if lan {
+        let credential = root.path().join("host.key");
+        shoop_host::remote::create_credential(&credential)?;
+        command
+            .arg("--lan")
+            .arg("--endpoint")
+            .arg("127.0.0.1:0")
+            .arg("--management-endpoint")
+            .arg("127.0.0.1:0")
+            .arg("--credential-file")
+            .arg(credential)
+            .arg("--export-profile")
+            .arg(&profile_path);
+    }
+    let mut host = ProbeHost(command.spawn()?);
     let deadline = Instant::now() + Duration::from_secs(12);
     let (path, entry) = loop {
-        if let Some(entry) = registry.list()?.into_iter().next() {
-            break entry;
+        if lan {
+            if profile_path.exists() {
+                break (
+                    profile_path.clone(),
+                    shoop_host::remote::RemoteProfile::read(&profile_path)?.into(),
+                );
+            }
+        } else if let Some((path, entry)) = registry.list()?.into_iter().next() {
+            break (path, HostEntry::from(entry));
         }
         ensure!(
             host.0.try_wait()?.is_none(),
@@ -275,7 +302,11 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        !path.exists() && !entry.credential.exists(),
+        if entry.network.is_some() {
+            path.exists() && entry.credential.exists()
+        } else {
+            !path.exists() && !entry.credential.exists()
+        },
         "session registration was not cleaned up"
     );
     Ok(())
@@ -574,7 +605,11 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        !path.exists() && !entry.credential.exists(),
+        if entry.network.is_some() {
+            path.exists() && entry.credential.exists()
+        } else {
+            !path.exists() && !entry.credential.exists()
+        },
         "file companion registration was not cleaned up"
     );
     println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
