@@ -125,7 +125,8 @@ management sessions each retain their finite limits (4 pending per listener,
 include closing and TIME_WAIT peers. Heartbeats expire on guest monotonic time.
 
 The render endpoint stays alive when a UI disappears. Shutdown first closes it,
-observes the renderer disconnect, drains dummy MIDI recovery, deletes the render
+observes the renderer disconnect, acknowledges all 32 MIDI reset packets in the
+dummy sink, deletes the render
 task and performs stopped-resource cleanup. Only then does the service confirm
 shutdown. Test-only cleanup failure injection verifies a refusal and safe retry.
 Fixture UART commands and input/output inspection are compiled out of production;

@@ -186,11 +186,22 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
         return -1;
     };
     if report.phase == Phase::Disconnected {
-        dummy.reset = report.recovery_packets > 0
-            && dummy
-                .render
-                .midi_recovery(0)
-                .is_some_and(|buffer| !buffer.is_empty());
+        let mut reset = rt_runtime::midi::ResetState::default();
+        reset.request();
+        dummy.reset = dummy.render.midi_recovery(0).is_some_and(|buffer| {
+            for index in 0..buffer.len() {
+                let Some((frame, bytes)) = buffer.get(index) else {
+                    return false;
+                };
+                let Some(expected) = reset.peek() else {
+                    return false;
+                };
+                if frame != 0 || bytes != expected || reset.acknowledge().is_err() {
+                    return false;
+                }
+            }
+            !reset.pending()
+        });
         return 1;
     }
     0
@@ -211,6 +222,9 @@ impl StoppedDummy {
 }
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     let dummy = Box::from_raw(owner.cast::<Dummy>());
+    if dummy.reset {
+        log("SHOOP_DUMMY_MIDI_RESET packets=32\n");
+    }
     dummy.status.set_driver(driver(DriverRunState::Stopped));
     StoppedDummy {
         render: dummy.render.into_stopped(),

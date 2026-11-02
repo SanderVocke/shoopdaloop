@@ -82,6 +82,8 @@ def main():
             serial = emulator.serial.read_text()
             if "SHOOP_HOST_CLEANUP_COMPLETE" not in serial:
                 raise RuntimeError("Host cleanup was not confirmed")
+            if "SHOOP_DUMMY_MIDI_RESET packets=32" not in serial:
+                raise RuntimeError("Dummy sink did not acknowledge the complete MIDI reset")
             if args.fixture:
                 for marker in ["SHOOP_FPU_PASS", "SHOOP_ALLOC_ATOMIC_PASS"]:
                     if marker not in serial:

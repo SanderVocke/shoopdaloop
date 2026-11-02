@@ -454,3 +454,8 @@ documentation links are background, not reproducible build inputs.
   and a fixed delay with write-half close, bounded receive drain and observed
   peer EOF. The corrected short fixture completed all 100 measured cycles with
   identical retained heaps and confirmed cleanup. Repeat the entire suite.
+
+- Shutdown evidence now requires the dummy sink to acknowledge all 32 ordered
+  all-sound-off/all-notes-off packets across the 16 MIDI channels. The control
+  task emits the completion marker after render stop; the integration runner
+  requires it. Production/restart and native UI paths passed this stricter check.
