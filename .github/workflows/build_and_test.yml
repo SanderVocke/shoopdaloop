@@ -107,15 +107,22 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
             protobuf-compiler
 
+      - name: Build pinned native Carla for coverage tests
+        run: >-
+          python3 scripts/build_carla_native_tests.py
+          --directory "${{ runner.temp }}/carla-native-tests"
+          --environment-file "$GITHUB_ENV"
+
       - name: Generate Rust coverage
         env:
           SHOOP_ALLOW_MISSING_BACKENDS: 1
+          SHOOP_REQUIRE_CARLA_TESTS: 1
           SHOOP_TEST_TRACE: failure
           SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-rust-coverage
         run: |
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo llvm-cov nextest --locked --workspace \
-            --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci \
+            --features shoop_engine/app_backend,shoop_backend/native-fx,shoop_dsp_host/carla --profile ci \
             --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov

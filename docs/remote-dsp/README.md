@@ -172,6 +172,14 @@ It requires the real runtime. Other tests inject loss, duplicates, reorder,
 retirement and stale epochs and verify independent sample references and fixed
 presentation slots, including allocator-guarded prepared operations.
 
+Linux coverage CI builds the pinned headless native library with
+`scripts/build_carla_native_tests.py`, verifies source/header checksums from
+`third_party/carla/runtime-lock.json`, and requires these real-runtime tests.
+The helper accepts a fresh `--directory`, prints the absolute library/resource
+overrides and optionally writes them to a GitHub Actions `--environment-file`.
+It prepares a test runtime; GUI helpers and distributable components use the
+existing packaging workflow.
+
 ## Localhost sweeps
 
 ```sh

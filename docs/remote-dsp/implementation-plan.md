@@ -512,3 +512,26 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - This correction affects the retained legacy scheduler, which is outside the
   standalone network DSP executable. Both frozen measurement archives remain
   unchanged. Final CI is being rerun on the corrected revision.
+
+### Required Carla coverage and fixture ordering
+
+- Run `41540314442` passed the coverage job and all 2554 tests, but Codecov's
+  patch check reported 71.31% against the unchanged 80% requirement. Most missed
+  lines were in the extracted native loader and generic Carla adapter: the CI
+  environment lacked Carla, so its real-runtime checks returned early.
+- Added a Linux test-runtime builder using the locked source archive and native
+  header checksums, a fresh source tree and headless plugin build. Coverage now
+  enables `shoop_dsp_host/carla` and `SHOOP_REQUIRE_CARLA_TESTS=1`, exercising the
+  existing real gain/state and network restoration tests instead of skipping them.
+  The helper's fresh build, direct source download/checksum, required 33-test
+  subset and complete 2555-test suite passed locally (four skips in the full suite).
+- Linux debug also exposed an existing fake-FX fixture race. Its trace shows an
+  in-flight automatic cycle applying staged input before the output-clear command,
+  consuming input intended for the controlled cycle. The fixture now waits for
+  the driver to settle after changing mode and before staging test data. Samples
+  and assertions are unchanged; no fixed sleep was added.
+- The fixture passed 20 ordinary and 100 constrained baseline repetitions and
+  100 constrained repetitions with the explicit barrier. The final required-Carla
+  workspace suite passed all 2555 tests, along with the warning-denying workspace
+  build, formatting, test policy and tracing inventory. Both experiment archives
+  remain immutable; final CI/patch coverage are still pending.
