@@ -42,8 +42,7 @@ struct Transfer {
 
 pub struct Client {
     id: ClientId,
-    host: HostId,
-    session: SessionId,
+
     state: State,
     authority: Option<Authority>,
     last_authority: Option<Authority>,
@@ -64,14 +63,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(id: ClientId, host: HostId, session: SessionId) -> Result<Self, Error> {
-        if id.0 == 0 || host.0 == 0 || session.0 == 0 {
-            return Err(Error::Identity);
-        }
-        Ok(Self {
-            id,
-            host,
-            session,
+    pub fn new() -> Self {
+        Self {
+            id: ClientId(0),
             state: State::Detached,
             authority: None,
             last_authority: None,
@@ -89,7 +83,7 @@ impl Client {
             next_transfer: 1,
             persistence_replies: VecDeque::new(),
             captured_image: None,
-        })
+        }
     }
 
     pub fn state(&self) -> State {
@@ -177,6 +171,7 @@ impl Client {
         self.state = State::Attaching;
         self.refusal = None;
         self.authority = None;
+        self.last_authority = None;
         self.snapshot = None;
         self.transfer = None;
         self.ready_ack = None;
@@ -188,12 +183,7 @@ impl Client {
         self.pending.clear();
         self.submitted.clear();
         self.results.clear();
-        Ok(ClientMessage::Attach {
-            version: VERSION,
-            host: self.host,
-            session: self.session,
-            client: self.id,
-        })
+        Ok(ClientMessage::Attach { version: VERSION })
     }
 
     /// Construct one operation, without submission or replay. The caller must deliver it once.
@@ -382,15 +372,12 @@ impl Client {
                     self.media = Some(Err(reason));
                 }
             }
-            ServiceMessage::Attached { authority, host } => {
-                if self.state != State::Attaching
-                    || host != self.host
-                    || authority.session != self.session
-                    || authority.client != self.id
-                    || !authority.is_valid()
-                {
+            ServiceMessage::Attached { authority } => {
+                if self.state != State::Attaching || !authority.is_valid() {
                     return Err(Error::Identity);
                 }
+                self.id = authority.client;
+                self.next_operation = 1;
                 self.authority = Some(authority);
                 self.last_authority = Some(authority);
                 self.state = State::Synchronizing;
@@ -560,7 +547,7 @@ impl Client {
             WireMessage::Persistence { authority, reply } => {
                 self.receive(ServiceMessage::Persistence { authority, reply })
             }
-            WireMessage::CarrierReady { .. }
+            WireMessage::CarrierReady
             | WireMessage::ManagementRequest(_)
             | WireMessage::ManagementReply(_) => Err(Error::Protocol),
             WireMessage::MediaBegin {
@@ -638,8 +625,8 @@ impl Client {
             WireMessage::Client(_) | WireMessage::Ping(_) | WireMessage::Pong(_) => {
                 return Err(Error::Protocol)
             }
-            WireMessage::Attached { authority, host } => {
-                self.receive(ServiceMessage::Attached { authority, host })
+            WireMessage::Attached { authority } => {
+                self.receive(ServiceMessage::Attached { authority })
             }
             WireMessage::Rejected(reason) => self.receive(ServiceMessage::Rejected(reason)),
             WireMessage::Accepted {

@@ -59,7 +59,7 @@ fn step(session: &mut Session<Memory>, service: &mut Service, client: &mut Clien
 fn portable_host_driven_connection_attaches_confirms_and_detaches() {
     let mut service = service();
     let mut session = Session::new(ConnectionId(1), Memory::default());
-    let mut client = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    let mut client = Client::new();
     session
         .port
         .send(WireMessage::Client(client.attach().unwrap()));
@@ -100,7 +100,7 @@ fn portable_host_driven_connection_attaches_confirms_and_detaches() {
 fn timed_out_connection_releases_only_its_authority_and_cannot_evict_replacement() {
     let mut service = service();
     let mut session = Session::new(ConnectionId(1), Memory::default());
-    let mut client = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    let mut client = Client::new();
     session
         .port
         .send(WireMessage::Client(client.attach().unwrap()));
@@ -121,7 +121,7 @@ fn timed_out_connection_releases_only_its_authority_and_cannot_evict_replacement
     assert!(!service.has_connection(ConnectionId(1)));
     assert!(service.is_ready());
     let mut replacement = Session::new(ConnectionId(2), Memory::default());
-    let mut next = Client::new(ClientId(4), HostId(1), SessionId(2)).unwrap();
+    let mut next = Client::new();
     replacement
         .port
         .send(WireMessage::Client(next.attach().unwrap()));
@@ -159,7 +159,7 @@ fn interruption_during_network_snapshot_never_publishes_partial_state_and_allows
     )
     .with_network(Default::default(), 1, 30)
     .unwrap();
-    let mut client = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    let mut client = Client::new();
     session
         .port
         .send(WireMessage::Client(client.attach().unwrap()));
@@ -187,7 +187,7 @@ fn interruption_during_network_snapshot_never_publishes_partial_state_and_allows
     let mut replacement = Session::new(ConnectionId(2), Memory::default())
         .with_network(Default::default(), 2, 30)
         .unwrap();
-    let mut next = Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap();
+    let mut next = Client::new();
     replacement
         .port
         .send(WireMessage::Client(next.attach().unwrap()));
@@ -200,4 +200,53 @@ fn interruption_during_network_snapshot_never_publishes_partial_state_and_allows
     assert_eq!(next.state(), State::Ready);
     assert!(next.snapshot().is_some());
     assert!(next.results().is_empty());
+}
+
+#[shoop_test]
+fn management_settings_are_coherent_segmented_and_bounded_under_backpressure() {
+    let mut service = service();
+    let diagnostics = vec!["diagnostic ".repeat(80); 8];
+    service
+        .set_host_settings(Default::default(), diagnostics.clone())
+        .unwrap();
+    let mut management = shoop_app_connection::Management::new(Memory {
+        limit: 1,
+        ..Default::default()
+    });
+    management.port.send(WireMessage::ManagementRequest(
+        ManagementRequest::Settings { version: VERSION },
+    ));
+    let mut result = Vec::new();
+    let mut total = None;
+    for step in 0..100 {
+        let alive = management.pump(&mut service, Duration::from_millis(10));
+        assert!(management.port.output.len() <= 1);
+        if step % 2 == 0 {
+            while let Some(record) = management.port.output.pop_front() {
+                match codec::decode(&record).unwrap() {
+                    WireMessage::CarrierReady => {}
+                    WireMessage::ManagementReply(ManagementReply::SettingsChunk {
+                        offset,
+                        total: size,
+                        bytes,
+                    }) => {
+                        assert_eq!(offset as usize, result.len());
+                        assert!(total.is_none_or(|old| old == size));
+                        total = Some(size);
+                        result.extend(bytes);
+                    }
+                    other => panic!("unexpected reply: {other:?}"),
+                }
+            }
+        }
+        if !alive {
+            break;
+        }
+    }
+    assert!(result.len() > shoop_transport::MAX_RECORD_BYTES);
+    assert_eq!(result.len(), total.unwrap() as usize);
+    let report = codec::decode_host_report(&result).unwrap();
+    assert_eq!(report.diagnostics, diagnostics);
+    assert_eq!(report.requested.unwrap(), Default::default());
+    assert_eq!(report.pending_operations, 0);
 }

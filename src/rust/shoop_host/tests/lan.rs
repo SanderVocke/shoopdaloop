@@ -49,7 +49,6 @@ fn host(ip: IpAddr) -> Host {
         .arg(key)
         .arg("--export-profile")
         .arg(&path)
-        .args(["--host-id", "100", "--session-id", "200"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -75,9 +74,9 @@ fn host(ip: IpAddr) -> Host {
         path,
     }
 }
-fn attach(profile: &RemoteProfile, id: u128) -> (Client, Connection) {
+fn attach(profile: &RemoteProfile, _id: u128) -> (Client, Connection) {
     let mut connection = connection::connect(profile, Duration::from_secs(5)).unwrap();
-    let mut client = Client::new(ClientId(id), profile.host, profile.session).unwrap();
+    let mut client = Client::new();
     connection.send(client.attach().unwrap()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     while client.state() != State::Ready {
@@ -116,11 +115,7 @@ fn control(
 fn status(profile: &RemoteProfile) -> ManagementReply {
     connection::management(
         profile,
-        ManagementRequest::Status {
-            version: VERSION,
-            host: profile.host,
-            session: profile.session,
-        },
+        ManagementRequest::Status { version: VERSION },
         Duration::from_secs(5),
     )
     .unwrap()
@@ -165,19 +160,6 @@ fn lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints() {
             }
         });
         let mut wrong = profile.clone();
-        wrong.host = HostId(101);
-        assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
-        assert!(connection::management(
-            &wrong,
-            ManagementRequest::Status {
-                version: VERSION,
-                host: wrong.host,
-                session: wrong.session
-            },
-            Duration::from_secs(5)
-        )
-        .is_err());
-        let mut wrong = profile.clone();
         wrong.version = VERSION + 1;
         assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
         let bad_key = host._root.path().join("wrong.key");
@@ -190,7 +172,7 @@ fn lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints() {
             ManagementReply::Status { busy: true, .. }
         ));
         let mut busy = connection::connect(&profile, Duration::from_secs(5)).unwrap();
-        let mut other = Client::new(ClientId(2), profile.host, profile.session).unwrap();
+        let mut other = Client::new();
         busy.send(other.attach().unwrap()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         while other.state() != State::Lost {
@@ -512,10 +494,7 @@ fn losing_a_management_reply_reconciles_the_same_shutdown_operation() {
         if let Some(n) = raw.take(&mut bytes) {
             assert_eq!(
                 codec::decode(&bytes[..n]).unwrap(),
-                WireMessage::CarrierReady {
-                    host: host.profile.host,
-                    session: host.profile.session
-                }
+                WireMessage::CarrierReady {}
             );
             break;
         }
@@ -597,6 +576,109 @@ fn exported_profiles_become_visible_complete_and_never_overwrite_an_existing_pro
         assert_eq!(std::fs::read(&path).unwrap(), before);
     }
     let mut invalid = host.profile.clone();
-    invalid.warnings = vec!["x".repeat(1024); 65];
+    invalid.name = "x".repeat(129);
     assert!(invalid.validate().is_err());
+}
+
+#[shoop_test]
+fn saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state() {
+    let mut host = host(Ipv4Addr::LOCALHOST.into());
+    let original = std::fs::read(&host.path).unwrap();
+    let (mut client, mut old_connection) = attach(&host.profile, 1);
+    control(
+        &mut client,
+        &mut old_connection,
+        shoop_app_protocol::Command::Global(shoop_app_api::GlobalControlAction::SetSolo(true)),
+    );
+    let previous = client.authority().unwrap();
+    let uncertain = client
+        .command(shoop_app_protocol::Command::SetLoopSmoothingMs(17), None)
+        .unwrap();
+    old_connection.send(uncertain).unwrap();
+    host.child.kill().unwrap();
+    host.child.wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while old_connection.poll(&mut client).is_ok() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    let profile = host.profile.clone();
+    host.child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .arg("--config")
+        .arg(host._root.path().join("config.json"))
+        .arg("--registry")
+        .arg(host._root.path().join("registry"))
+        .arg("--lan")
+        .arg("--endpoint")
+        .arg(&profile.endpoint)
+        .arg("--management-endpoint")
+        .arg(&profile.management)
+        .arg("--credential-file")
+        .arg(&profile.credential)
+        .arg("--export-profile")
+        .arg(&host.path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut connection = loop {
+        if let Ok(connection) = connection::connect(&profile, Duration::from_secs(1)) {
+            break connection;
+        }
+        assert!(host.child.try_wait().unwrap().is_none());
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    };
+    connection.send(client.attach().unwrap()).unwrap();
+    assert!(client.snapshot().is_none());
+    assert!(
+        client.pending().is_empty()
+            && client.results().is_empty()
+            && !client.has_unfinished_operations()
+    );
+    while client.state() != State::Ready {
+        connection.poll(&mut client).unwrap();
+        if let Some(message) = client.ready_message() {
+            connection.send(message).unwrap();
+            client.ready_sent().unwrap();
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    assert!(!client.snapshot().unwrap().global.solo);
+    assert_ne!(client.authority().unwrap().lease, previous.lease);
+    assert_eq!(std::fs::read(&host.path).unwrap(), original);
+    assert!(!String::from_utf8(original).unwrap().contains("\"host\""));
+    assert!(matches!(
+        connection::management(
+            &profile,
+            ManagementRequest::Shutdown {
+                authority: previous,
+                operation: OperationId {
+                    client: previous.client,
+                    sequence: 99
+                },
+            },
+            Duration::from_secs(5)
+        )
+        .unwrap(),
+        ManagementReply::Refused(Refusal::StaleAuthority)
+    ));
+    let report = connection::host_report(&profile, Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        report.requested.unwrap(),
+        shoop_host::config::HostSettings::default()
+    );
+    assert_eq!(report.effective.sample_rate, 48000);
+    assert!(report
+        .restart_required_fields
+        .iter()
+        .any(|field| field == "pools"));
+    control(
+        &mut client,
+        &mut connection,
+        shoop_app_protocol::Command::SetLoopSmoothingMs(4),
+    );
 }

@@ -67,15 +67,15 @@ management GUI remain out of scope.
 
 - [x] R0: inspect current protocol, authority, configuration and native/UI paths;
   record this user-authorized revision and preserve the existing PR target.
-- [ ] R1: remove host/session IDs from protocol, clients, service, profiles,
+- [x] R1: remove host/session IDs from protocol, clients, service, profiles,
   registry, CLI and greetings; retain fresh connection authority. Update typed,
   socket and browser consumers and canonical wire fixtures. Verify portable and
   focused native/client/service suites, warning-denying build and Cortex-A builds.
-- [ ] R2: unify fresh attachment semantics, including restart at the same endpoint,
+- [x] R2: unify fresh attachment semantics, including restart at the same endpoint,
   clean projection/transfers, no replay/initialization and stale-owner fencing.
   Replace continuity-dependent tests/probes with current-state observation and
   explicit uncertain outcomes. Verify restart/replacement and accepted-work cases.
-- [ ] R3: add bounded host settings/status queries, effective settings/diagnostics
+- [x] R3: add bounded host settings/status queries, effective settings/diagnostics
   and existing-UI display, reusing shared settings validation. Verify queried
   settings belong to the target and cannot overwrite local preferences or mutate
   devices during attachment. Keep extra GUI and driver hot swapping out of scope.
@@ -102,3 +102,25 @@ release, coverage, Docs, CodeQL and bare-metal. macOS caught a dummy-renderer
 wall-clock throughput assumption; the corrected recording-continuity test passes
 locally, including a 15 ms Linux timer-slack experiment. Current revision requires
 fresh final-head checks after implementing the new contract.
+
+## Endpoint revision evidence
+
+- Protocol version 10 removes host/session identity from profiles, greetings,
+  attachment and management. Data connections receive fresh control nonces and
+  operation namespaces. Native PID discovery remains separate from LAN profiles.
+- Every remote connection uses the same fresh-snapshot path; configured scripts
+  are listed disabled and local preference saves do not alter the remote host.
+- The same saved profile and Client reconnect to a restarted host at the same
+  ports, clear pending state, accept a lower fresh revision and reject the old
+  shutdown lease. Exporting a matching existing profile is idempotent.
+- Shared HostSettings validation is used by native JSON and local native launch.
+  Bounded management reports include requested/effective settings, current host
+  status, diagnostics, restart requirements and pending host-work counts. The
+  existing UI exposes Session → Connected host settings… with explicit refresh.
+- Full native CI-profile suite: **2511 passed; four intentional canaries skipped**.
+  Focused portable/native suites and segmented-report backpressure tests pass.
+  Both Cortex-A library builds, warning-denying workspace build, formatting,
+  tracing/test policy, four-target dependency audit and 17 boundary tests pass.
+- LAN packaged workflow and >32 MiB exact audio/MIDI persistence pass, including
+  abandoned transfer cleanup and fresh-snapshot observation of accepted work.
+  Browser and final-head platform CI remain delivery gates.

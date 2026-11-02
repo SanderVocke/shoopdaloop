@@ -80,7 +80,7 @@ impl Rig {
             link,
             session,
             service: support::service(),
-            client: Client::new(ClientId(3), HostId(1), SessionId(2)).unwrap(),
+            client: Client::new(),
             upload: Upload::new(),
             heartbeat: Heartbeat::new(HeartbeatConfig::default(), 200).unwrap(),
             replies: Vec::new(),

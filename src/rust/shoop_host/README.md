@@ -18,3 +18,7 @@ to fixtures and is disabled in ordinary production builds.
 Explicit LAN endpoints and remote profiles are described in
 [trusted-LAN setup](../../../docs/trusted-lan-networking.md). Portable connection
 progression lives in `shoop_app_connection`; native hosting retains device lifetime.
+
+Reusable profiles select endpoints without host/session IDs. Every connection
+synchronizes fresh state. `connection::host_report` queries shared startup settings,
+effective runtime status and diagnostics; the existing UI displays this information.

@@ -51,10 +51,9 @@ fn wait(
 fn attach(entry: &HostEntry) -> Result<(Client, Connection)> {
     attach_as(entry, ClientId(shoop_host::registry::identity()?))
 }
-fn attach_as(entry: &HostEntry, actor: ClientId) -> Result<(Client, Connection)> {
+fn attach_as(entry: &HostEntry, _actor: ClientId) -> Result<(Client, Connection)> {
     let mut connection = connection::connect(entry, Duration::from_secs(3))?;
-    let mut client =
-        Client::new(actor, entry.host, entry.session).map_err(|error| anyhow!("{error:?}"))?;
+    let mut client = Client::new();
     connection
         .send(client.attach().map_err(|error| anyhow!("{error:?}"))?)
         .map_err(|error| anyhow!("{error:?}"))?;
@@ -107,12 +106,15 @@ fn launch(
     let root = tempfile::tempdir()?;
     let registry = Registry::open(&root.path().join("registry"))?;
     let config = HostConfig {
-        driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
-        pools: shoop_egui::NewEnginePools {
-            tracks: 3,
-            loops: 20,
-            channels: 2,
-            loop_memory_mb: memory_mb,
+        settings: shoop_host::config::HostSettings {
+            driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
+            pools: shoop_egui::NewEnginePools {
+                tracks: 3,
+                loops: 20,
+                channels: 2,
+                loop_memory_mb: memory_mb,
+            },
+            ..Default::default()
         },
         transport: if transport == EngineTransportKind::Socket {
             AppTransport::Socket
@@ -775,28 +777,32 @@ fn socket_file_loss(
     drop(connection);
     std::thread::sleep(Duration::from_millis(50));
     (client, connection) = attach_as(entry, actor)?;
+    ensure!(
+        client.results().is_empty() && client.pending().is_empty(),
+        "a new connection retained old request assumptions"
+    );
     let deadline = Instant::now() + Duration::from_secs(120);
-    while !client.results().contains_key(&operation) {
+    let outcome = loop {
+        if let Some(result) = client
+            .snapshot()
+            .unwrap()
+            .results
+            .iter()
+            .find(|result| result.id == operation)
+        {
+            break result.outcome.clone();
+        }
         connection.poll(&mut client).map_err(|e| anyhow!("{e:?}"))?;
         ensure!(
             Instant::now() < deadline,
-            "accepted persistence load did not complete"
+            "accepted host work did not complete"
         );
         std::thread::sleep(Duration::from_millis(2));
-    }
-    ensure!(
-        matches!(client.results()[&operation], Outcome::Confirmed { .. }),
-        "lost commit did not finish: {:?}",
-        client.results()[&operation]
-    );
-    let Outcome::Confirmed { revision, .. } = client.results()[&operation] else {
-        unreachable!()
     };
-    wait(&mut client, &mut connection, |client| {
-        client
-            .snapshot()
-            .is_some_and(|state| state.revision >= revision)
-    })?;
+    ensure!(
+        matches!(outcome, Outcome::Confirmed { .. }),
+        "host work failed: {outcome:?}"
+    );
     let state = client.snapshot().unwrap();
     let tracks = state.tracks.iter().map(|t| t.id).collect::<Vec<_>>();
     ensure!(
@@ -809,15 +815,6 @@ fn socket_file_loss(
                 .all(|l| l.mode == LoopMode::Stopped),
         "lost commit did not restore one fresh stopped session"
     );
-    connection
-        .send(ClientMessage::Submit {
-            authority: client.authority().unwrap(),
-            session_epoch: epoch,
-            operation,
-            expected_revision: None,
-            command: Command::CommitPersistence(key),
-        })
-        .map_err(|e| anyhow!("{e:?}"))?;
     command(
         &mut client,
         &mut connection,
@@ -835,6 +832,6 @@ fn socket_file_loss(
             && client.snapshot().unwrap().persistence_epoch == epoch + 1,
         "reconciliation replayed the load"
     );
-    println!("Socket file loss: abandoned upload/capture reclaimed; accepted load reconciled once without replay");
+    println!("Socket file loss: abandoned upload/capture reclaimed; fresh connection observed accepted host load once without replay");
     client.management_shutdown().map_err(|e| anyhow!("{e:?}"))
 }

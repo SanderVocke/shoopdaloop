@@ -74,11 +74,14 @@ fn host_peer() {
     };
     let root = std::path::PathBuf::from(root);
     let config = HostConfig {
-        pools: shoop_egui::NewEnginePools {
-            tracks: 4,
-            loops: 32,
-            channels: 2,
-            loop_memory_mb: 16,
+        settings: shoop_host::config::HostSettings {
+            pools: shoop_egui::NewEnginePools {
+                tracks: 4,
+                loops: 32,
+                channels: 2,
+                loop_memory_mb: 16,
+            },
+            ..Default::default()
         },
         test_signal: true,
         ..Default::default()
@@ -183,8 +186,6 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
                 &entry,
                 shoop_app_protocol::ManagementRequest::Status {
                     version: shoop_app_protocol::VERSION,
-                    host: entry.host,
-                    session: entry.session,
                 },
                 Duration::from_secs(2),
             )

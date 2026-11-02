@@ -44,10 +44,6 @@ fn run() -> anyhow::Result<()> {
         endpoint: std::net::SocketAddr,
         #[arg(long)]
         credential_file: Option<PathBuf>,
-        #[arg(long)]
-        host_id: Option<u128>,
-        #[arg(long)]
-        session_id: Option<u128>,
         #[arg(long, default_value = "ShoopDaLoop")]
         name: String,
     }
@@ -81,12 +77,6 @@ fn run() -> anyhow::Result<()> {
     };
     options.credential = args.credential_file;
     options.name = args.name;
-    if let Some(id) = args.host_id {
-        options.host = shoop_app_protocol::HostId(id);
-    }
-    if let Some(id) = args.session_id {
-        options.session = shoop_app_protocol::SessionId(id);
-    }
     shoop_host::serve::run(config, options)
 }
 #[cfg(target_arch = "wasm32")]

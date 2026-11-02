@@ -405,6 +405,8 @@ struct UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     exit: recovery::ExitController,
     #[cfg(not(target_arch = "wasm32"))]
+    host_panel: recovery::HostPanel,
+    #[cfg(not(target_arch = "wasm32"))]
     host_choices: Option<Vec<(std::path::PathBuf, shoop_host::registry::HostEntry)>>,
     runtime: Runtime,
     widget: AppWidget,
@@ -545,6 +547,8 @@ impl UnifiedApp {
         Ok(Self {
             #[cfg(not(target_arch = "wasm32"))]
             exit: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            host_panel: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             host_choices: None,
             runtime,
@@ -988,6 +992,15 @@ impl UnifiedApp {
                 }
             }
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if self.runtime.remote_entry.is_some() {
+                    if let Err(error) = validate_script_draft(&draft)
+                        .and_then(|()| self.settings.request_save(draft).map_err(Into::into))
+                    {
+                        self.settings.report_action_error(error.to_string());
+                    }
+                    return;
+                }
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
                         .dispatch(AppIntent::RequestAudioDriverSwitch {
@@ -1346,6 +1359,7 @@ impl UnifiedApp {
                 Ok(runtime) => {
                     self.runtime = runtime;
                     self.exit = Default::default();
+                    self.host_panel = Default::default();
                     self.host_choices = None;
                 }
                 Err(error) => self.settings.report_action_error(error.to_string()),
@@ -1396,6 +1410,10 @@ impl UnifiedApp {
                             }
                             ui.close();
                         }
+                        if ui.button("Connected host settings…").clicked() {
+                            self.host_panel.open = true;
+                            ui.close();
+                        }
                         if ui.button("Close UI only (keep host running)").clicked() {
                             self.exit.close_ui(ui.ctx());
                         }
@@ -1407,6 +1425,7 @@ impl UnifiedApp {
                     ui.label(&entry.name);
                 });
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
+                self.host_panel.show(ui.ctx(), &entry);
                 if let Some(choices) = self.host_choices.clone() {
                     egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
                         if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
@@ -1426,12 +1445,12 @@ impl UnifiedApp {
                     shoop_app_client::State::Ready => {}
                     shoop_app_client::State::Lost => {
                         ui.heading("Session connection lost");
-                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Reattach to check its current state."));
+                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Connect again to read its current state."));
                         if entry.transport == shoop_host::registry::AppTransport::Socket
                             && ui
                                 .add_enabled(
                                     !self.exit.is_pending(),
-                                    egui::Button::new("Reattach to this host"),
+                                    egui::Button::new("Connect to endpoint"),
                                 )
                                 .clicked()
                         {
@@ -1439,6 +1458,7 @@ impl UnifiedApp {
                                 Ok(runtime) => {
                                     self.runtime = runtime;
                                     self.exit = Default::default();
+                                    self.host_panel = Default::default();
                                 }
                                 Err(error) => self.settings.report_action_error(error.to_string()),
                             }
@@ -2611,6 +2631,10 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
+        if self.remote_entry.is_some() {
+            self.applied_audio_settings_revision = settings.revision();
+            return Ok(());
+        }
         let preferences = (
             shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
             shoop_egui::master_auto_connect(settings).unwrap_or(true),
@@ -3561,7 +3585,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         let registry = Registry::open(&registry)?;
         registry.prune_stale()?;
         for (path, entry) in registry.list()? {
-            println!("{}\t{}\t{}", entry.host.0, entry.name, path.display());
+            println!("{}\t{}\t{}", entry.endpoint, entry.name, path.display());
         }
         return Ok(true);
     }
@@ -3625,14 +3649,18 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         return Ok(false);
     }
     let config = shoop_host::config::HostConfig {
-        driver: shoop_egui::selected_audio_driver(&settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
-            .map_err(anyhow::Error::msg)?,
-        pools: shoop_egui::new_engine_pools_from_snapshot(&settings).map_err(anyhow::Error::msg)?,
-        master_auto_connect: shoop_egui::master_auto_connect(&settings)
-            .map_err(anyhow::Error::msg)?,
-        loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
-            .map_err(anyhow::Error::msg)?,
+        settings: shoop_host::config::HostSettings {
+            driver: shoop_egui::selected_audio_driver(&settings)
+                .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+                .map_err(anyhow::Error::msg)?,
+            pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
+                .map_err(anyhow::Error::msg)?,
+            master_auto_connect: shoop_egui::master_auto_connect(&settings)
+                .map_err(anyhow::Error::msg)?,
+            loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
+                .map_err(anyhow::Error::msg)?,
+            ..Default::default()
+        },
         transport: if transport == shoop_egui::EngineTransportKind::Socket {
             AppTransport::Socket
         } else {

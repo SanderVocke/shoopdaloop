@@ -46,10 +46,9 @@ pub fn pair(
 ) -> Result<PathBuf> {
     config.validate()?;
     let registry = Registry::open(&options.registry)?;
-    let path = registry.entry_path(options.host);
     let config_path = registry
         .root()
-        .join(format!("{:032x}.launch", options.host.0));
+        .join(format!("{:032x}.launch", crate::registry::identity()?));
     private::create(&config_path, &serde_json::to_vec(config)?)?;
     let mut command = Command::new(host_executable);
     command
@@ -59,10 +58,6 @@ pub fn pair(
         .arg(registry.root())
         .arg("--endpoint")
         .arg(options.endpoint.to_string())
-        .arg("--host-id")
-        .arg(options.host.0.to_string())
-        .arg("--session-id")
-        .arg(options.session.0.to_string())
         .arg("--name")
         .arg(&options.name);
     if let Some(credential) = options.credential {
@@ -70,22 +65,19 @@ pub fn pair(
     }
     independent(&mut command);
     let mut child = command.spawn().context("start independent session host")?;
+    let path = registry.entry_path(child.id());
     let deadline = Instant::now() + Duration::from_secs(12);
     let ready = loop {
         if path.exists() {
             let entry = HostEntry::read(&path)?;
             ensure!(
-                entry.host == options.host && entry.session == options.session,
+                entry.process == child.id(),
                 "launched host identity differs from readiness entry"
             );
             if matches!(
                 connection::management(
                     &entry,
-                    ManagementRequest::Status {
-                        version: VERSION,
-                        host: entry.host,
-                        session: entry.session
-                    },
+                    ManagementRequest::Status { version: VERSION },
                     Duration::from_millis(500)
                 ),
                 Ok(ManagementReply::Status { ready: true, .. })
@@ -110,7 +102,7 @@ pub fn pair(
         if !path.exists() {
             let _ = child.kill();
             let _ = child.wait();
-            let credential = registry.credential_path(options.host);
+            let credential = registry.credential_path(child.id());
             if credential.exists() {
                 let _ = std::fs::remove_file(credential);
             }

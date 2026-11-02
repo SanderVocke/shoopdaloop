@@ -24,14 +24,12 @@ use shoop_backend::*;
 
 pub const MAX_TRACKS: usize = 64;
 pub const MAX_LOOPS: usize = 256;
-const MAX_ACTORS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ConnectionId(pub u64);
+/// A fresh control-connection nonce supplied by the composition root.
+pub struct ConnectionId(pub u128);
 
 pub struct ServiceOptions {
-    pub host: HostId,
-    pub session: SessionId,
     pub master_auto_connect: bool,
     pub loop_smoothing_ms: u32,
 }
@@ -119,6 +117,8 @@ impl CommandError {
 pub struct Service {
     backend: Box<dyn Backend>,
     options: ServiceOptions,
+    host_settings: Option<HostSettings>,
+    host_diagnostics: Vec<String>,
     revision: Revision,
     generation: u64,
     lease: Option<Lease>,
@@ -162,9 +162,6 @@ pub struct Service {
 
 impl Service {
     pub fn new(mut backend: Box<dyn Backend>, options: ServiceOptions) -> Result<Self> {
-        if options.host.0 == 0 || options.session.0 == 0 {
-            return Err(anyhow!("invalid host/session identity"));
-        }
         let observed = backend.poll()?;
         if !observed.tracks.is_empty() || !observed.loops.is_empty() {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
@@ -172,6 +169,8 @@ impl Service {
         let mut service = Self {
             backend,
             options,
+            host_settings: None,
+            host_diagnostics: Vec::new(),
             revision: Revision(1),
             generation: 0,
             lease: None,
@@ -230,6 +229,42 @@ impl Service {
         }
         service.init_through = service.backend.mutation_cursor();
         Ok(service)
+    }
+
+    pub fn set_host_settings(
+        &mut self,
+        settings: HostSettings,
+        diagnostics: Vec<String>,
+    ) -> Result<()> {
+        settings.validate().map_err(anyhow::Error::msg)?;
+        self.host_settings = Some(settings);
+        self.host_diagnostics = diagnostics
+            .into_iter()
+            .take(64)
+            .map(|mut s| {
+                let mut end = s.len().min(1024);
+                while !s.is_char_boundary(end) {
+                    end -= 1;
+                }
+                s.truncate(end);
+                s
+            })
+            .collect();
+        Ok(())
+    }
+    pub fn host_report(&self) -> HostReport {
+        HostReport {
+            requested: self.host_settings.clone(),
+            effective: projection::status(&self.observed.status),
+            diagnostics: self.host_diagnostics.clone(),
+            ready: self.is_ready(),
+            busy: self.lease.is_some(),
+            closed: self.closed,
+            master_auto_connect: self.options.master_auto_connect,
+            loop_smoothing_ms: self.options.loop_smoothing_ms,
+            pending_operations: self.pending.len() as u32,
+            restart_required_fields: vec!["driver".into(), "pools".into()],
+        }
     }
 
     pub fn failure(&self) -> Option<&str> {
@@ -336,20 +371,11 @@ impl Service {
                 self.media_loop = None;
                 self.backend.cancel_media_reads();
             }
-            ClientMessage::Attach {
-                version,
-                host,
-                session,
-                client,
-            } => {
+            ClientMessage::Attach { version } => {
                 if version != VERSION {
                     return Err(Refusal::Version);
                 }
-                if connection.0 == 0
-                    || host != self.options.host
-                    || session != self.options.session
-                    || client.0 == 0
-                {
+                if connection.0 == 0 {
                     return Err(Refusal::Identity);
                 }
                 if self.lease.is_some() {
@@ -358,13 +384,12 @@ impl Service {
                 if !self.is_ready() {
                     return Err(Refusal::NotReady);
                 }
-                if !self.actors.contains_key(&client) && self.actors.len() == MAX_ACTORS {
-                    return Err(Refusal::Overloaded);
-                }
                 self.generation = self.generation.checked_add(1).ok_or(Refusal::Overloaded)?;
-                self.actors.entry(client).or_insert(0);
+                let client = ClientId(u128::from(self.generation));
+                self.actors.clear();
+                self.actors.insert(client, 0);
                 let authority = Authority {
-                    session,
+                    lease: LeaseId(connection.0),
                     client,
                     generation: ConnectionGeneration(self.generation),
                 };
@@ -376,7 +401,7 @@ impl Service {
                     ready: false,
                     snapshot_revision: self.revision,
                 });
-                self.emit(ServiceMessage::Attached { authority, host });
+                self.emit(ServiceMessage::Attached { authority });
                 self.publish();
             }
             ClientMessage::Ready {

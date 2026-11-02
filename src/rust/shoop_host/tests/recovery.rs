@@ -35,11 +35,14 @@ fn host(transport: AppTransport) -> Host {
 fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let root = tempfile::tempdir().unwrap();
     let config = HostConfig {
-        pools: NewEnginePools {
-            tracks: 8,
-            loops: 80,
-            channels: 2,
-            loop_memory_mb,
+        settings: shoop_host::config::HostSettings {
+            pools: NewEnginePools {
+                tracks: 8,
+                loops: 80,
+                channels: 2,
+                loop_memory_mb,
+            },
+            ..Default::default()
         },
         transport,
         test_signal: true,
@@ -48,18 +51,18 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let config_path = root.path().join("config.json");
     std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
     let registry = root.path().join("registry");
-    let path = registry.join(format!("{:032x}.json", 100));
+
     let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
         .args(["--config"])
         .arg(&config_path)
         .arg("--registry")
         .arg(&registry)
-        .args(["--host-id", "100", "--session-id", "200"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
+    let path = registry.join(format!("{}.json", child.id()));
     let deadline = Instant::now() + Duration::from_secs(10);
     while !path.exists() {
         assert!(
@@ -77,9 +80,9 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
         entry,
     }
 }
-fn attach(entry: &HostEntry, id: u128) -> (Client, Connection) {
+fn attach(entry: &HostEntry, _id: u128) -> (Client, Connection) {
     let mut connection = connection::connect(entry, Duration::from_secs(2)).unwrap();
-    let mut client = Client::new(ClientId(id), entry.host, entry.session).unwrap();
+    let mut client = Client::new();
     connection.send(client.attach().unwrap()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while client.state() != State::Ready {
@@ -312,8 +315,7 @@ fn busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_an
         let (mut owner, mut connection) = attach(&host.entry, 400);
         if transport == AppTransport::Socket {
             let mut second = connection::connect(&host.entry, Duration::from_secs(2)).unwrap();
-            let mut client =
-                Client::new(ClientId(401), host.entry.host, host.entry.session).unwrap();
+            let mut client = Client::new();
             second.send(client.attach().unwrap()).unwrap();
             let deadline = Instant::now() + Duration::from_secs(2);
             while client.state() != State::Lost {
@@ -338,14 +340,12 @@ fn busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_an
         let wrong = connection::management(
             &host.entry,
             ManagementRequest::Status {
-                version: VERSION,
-                host: HostId(999),
-                session: host.entry.session,
+                version: VERSION + 1,
             },
             Duration::from_secs(2),
         )
         .unwrap();
-        assert_eq!(wrong, ManagementReply::Refused(Refusal::Identity));
+        assert_eq!(wrong, ManagementReply::Refused(Refusal::Version));
         shutdown(&mut host, &mut owner);
     }
 }
@@ -358,11 +358,14 @@ fn launcher_peer() {
     let root = PathBuf::from(root);
     let options = shoop_host::serve::StartOptions::new(root.join("registry")).unwrap();
     let config = HostConfig {
-        pools: NewEnginePools {
-            tracks: 8,
-            loops: 80,
-            channels: 2,
-            loop_memory_mb: 16,
+        settings: shoop_host::config::HostSettings {
+            pools: NewEnginePools {
+                tracks: 8,
+                loops: 80,
+                channels: 2,
+                loop_memory_mb: 16,
+            },
+            ..Default::default()
         },
         test_signal: true,
         ..Default::default()
@@ -502,8 +505,6 @@ fn bad_credentials_versions_and_early_disconnects_leave_the_session_healthy() {
         &host.entry,
         ManagementRequest::Status {
             version: VERSION + 1,
-            host: host.entry.host,
-            session: host.entry.session,
         },
         Duration::from_secs(2),
     )
@@ -539,11 +540,7 @@ fn authenticated_management_can_close_a_shared_host_after_its_only_data_connecti
     loop {
         let reply = connection::management(
             &host.entry,
-            ManagementRequest::Status {
-                version: VERSION,
-                host: host.entry.host,
-                session: host.entry.session,
-            },
+            ManagementRequest::Status { version: VERSION },
             Duration::from_secs(2),
         )
         .unwrap();
@@ -618,11 +615,7 @@ fn bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections
         loop {
             let status = connection::management(
                 &host.entry,
-                ManagementRequest::Status {
-                    version: VERSION,
-                    host: host.entry.host,
-                    session: host.entry.session,
-                },
+                ManagementRequest::Status { version: VERSION },
                 Duration::from_secs(2),
             )
             .unwrap();
@@ -698,15 +691,16 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         .unwrap();
     assert!(!status.success());
     assert!(!registry.exists());
-    let mut options = shoop_host::serve::StartOptions::new(root.path().join("registry")).unwrap();
-    options.host = HostId(100);
-    options.session = SessionId(200);
+    let options = shoop_host::serve::StartOptions::new(root.path().join("registry")).unwrap();
     let config = HostConfig {
-        pools: NewEnginePools {
-            tracks: 8,
-            loops: 80,
-            channels: 2,
-            loop_memory_mb: 16,
+        settings: shoop_host::config::HostSettings {
+            pools: NewEnginePools {
+                tracks: 8,
+                loops: 80,
+                channels: 2,
+                loop_memory_mb: 16,
+            },
+            ..Default::default()
         },
         ..Default::default()
     };
@@ -717,10 +711,12 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         |_| Process::new(root.path().join("missing-ui")),
     );
     assert!(result.is_err());
-    let path = root
-        .path()
-        .join("registry")
-        .join(format!("{:032x}.json", 100));
+    let path = shoop_host::registry::Registry::open(&root.path().join("registry"))
+        .unwrap()
+        .list()
+        .unwrap()[0]
+        .0
+        .clone();
     let entry = HostEntry::read(&path).unwrap();
     let (mut client, _connection) = attach(&entry, 800);
     let ClientMessage::Shutdown {

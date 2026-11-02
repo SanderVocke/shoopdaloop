@@ -84,18 +84,14 @@ fn open(
         .map(anyhow::Error::from)
         .unwrap_or_else(|| anyhow!("no usable endpoint")))
 }
-fn greeting(port: &mut impl RecordPort, entry: &HostTarget, deadline: Instant) -> Result<()> {
+fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
     loop {
         if let Some(length) = port.take(&mut bytes) {
             return match codec::decode(&bytes[..length])
                 .map_err(|_| anyhow!("invalid session greeting"))?
             {
-                WireMessage::CarrierReady { host, session }
-                    if host == entry.host && session == entry.session =>
-                {
-                    Ok(())
-                }
+                WireMessage::CarrierReady => Ok(()),
                 WireMessage::Rejected(reason) => {
                     Err(anyhow!("session endpoint refused: {reason:?}"))
                 }
@@ -117,7 +113,7 @@ pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Conne
     let deadline = Instant::now() + timeout;
     let mut port = open(&entry, &entry.endpoint, &token, deadline)
         .context("authenticate session data connection")?;
-    greeting(&mut port, &entry, deadline)?;
+    greeting(&mut port, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
         AppTransport::SharedMemory => {
@@ -230,7 +226,7 @@ pub fn management(
     let deadline = Instant::now() + timeout;
     let mut port = open(&entry, &entry.management, &token, deadline)
         .context("authenticate session management connection")?;
-    greeting(&mut port, &entry, deadline)?;
+    greeting(&mut port, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode(&WireMessage::ManagementRequest(request), &mut bytes)
         .map_err(|_| anyhow!("invalid management request"))?;
@@ -265,8 +261,7 @@ pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> R
     };
     let mut request = ManagementRequest::ClaimShutdown {
         version: VERSION,
-        host: entry.host,
-        session: entry.session,
+
         operation,
     };
     let deadline = Instant::now() + timeout;
@@ -297,5 +292,62 @@ pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> R
             return Err(anyhow!("host cleanup has not completed"));
         }
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+pub fn host_report(
+    entry: &impl ConnectionTarget,
+    timeout: Duration,
+) -> Result<shoop_app_protocol::HostReport> {
+    let entry = entry.target();
+    let token = entry.token().context("validate session credential")?;
+    let deadline = Instant::now() + timeout;
+    let mut port = open(&entry, &entry.management, &token, deadline)?;
+    greeting(&mut port, deadline)?;
+    let mut record = [0; MAX_RECORD_BYTES];
+    let n = codec::encode(
+        &WireMessage::ManagementRequest(ManagementRequest::Settings {
+            version: shoop_app_protocol::VERSION,
+        }),
+        &mut record,
+    )
+    .map_err(|_| anyhow!("invalid settings query"))?;
+    port.post(&record[..n])
+        .map_err(|_| anyhow!("host settings query disconnected"))?;
+    let mut bytes = Vec::new();
+    let mut expected = None;
+    loop {
+        if let Some(n) = port.take(&mut record) {
+            match codec::decode(&record[..n]).map_err(|_| anyhow!("invalid host settings reply"))? {
+                WireMessage::ManagementReply(ManagementReply::SettingsChunk {
+                    offset,
+                    total,
+                    bytes: chunk,
+                }) => {
+                    anyhow::ensure!(
+                        offset as usize == bytes.len() && expected.is_none_or(|size| size == total),
+                        "incoherent host settings reply"
+                    );
+                    if expected.is_none() {
+                        bytes.reserve_exact(total as usize);
+                        expected = Some(total);
+                    }
+                    bytes.extend_from_slice(&chunk);
+                    if bytes.len() == total as usize {
+                        return codec::decode_host_report(&bytes)
+                            .map_err(|_| anyhow!("invalid host settings document"));
+                    }
+                }
+                WireMessage::ManagementReply(ManagementReply::Refused(reason)) => {
+                    return Err(anyhow!("host settings query refused: {reason:?}"))
+                }
+                _ => return Err(anyhow!("unexpected host settings reply")),
+            }
+        }
+        if port.failure().is_some() {
+            return Err(anyhow!("host settings reply interrupted"));
+        }
+        remaining(deadline)?;
+        std::thread::sleep(Duration::from_millis(1));
     }
 }

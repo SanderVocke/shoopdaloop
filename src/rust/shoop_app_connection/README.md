@@ -8,8 +8,8 @@ Native hosts and future Cortex-A control tasks share the same implementation.
   root ticks the service once per turn, separately from the connection count.
   After `alive(service)` becomes false, detach its `ConnectionId` and retire its
   carrier. `with_network` adds heartbeat policy and bounded snapshot/media
-  scheduling. Initial data endpoint identity greeting belongs to composition.
-- `Management<P>` emits its identity greeting, dispatches fenced requests and
+  scheduling. Initial data endpoint versioned greeting belongs to composition.
+- `Management<P>` emits its versioned greeting, dispatches fenced requests and
   retains a response across backpressure. `pump` returns whether to keep it.
   Device cleanup remains a host responsibility.
 - `Upload` validates and segments immutable images cooperatively. Feed received
@@ -22,3 +22,7 @@ Native hosts and future Cortex-A control tasks share the same implementation.
 These are control-task components. Framing/byte queues in `shoop_transport` are
 heap-free after preparation; service projections and persistence may allocate.
 See [LAN setup and the RTOS adapter contract](../../../docs/trusted-lan-networking.md).
+
+Management also streams bounded host settings/status reports. Each new data
+connection uses a fresh nonce from its composition root; no host/session identity
+is stored or compared by clients.

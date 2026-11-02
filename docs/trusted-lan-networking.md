@@ -3,7 +3,7 @@
 A native UI can control a session host on another Linux, macOS or Windows
 machine. The host owns audio/MIDI devices, playback, recording and accepted
 operations. The UI owns files, dialogs, codecs, scripts and controller bindings.
-Both sides must use the same application protocol version (currently 9).
+Both sides must use the same application protocol version (currently 10).
 
 Connections use unencrypted TCP and the existing 32-byte token check. This mode
 targets trusted LANs; TLS, pairing, automatic discovery and Internet traversal
@@ -30,10 +30,11 @@ same host options with `shoopdaloop --host-only --host-config host.json ...`.
 Allow the chosen TCP ports through the server's LAN firewall.
 
 Without `--lan`, listeners and process/engine sockets retain their loopback-only
-policy. LAN delivery requires sockets, an explicit credential file and a profile
-export path. The export refuses to overwrite an existing file. A restarted host
-normally has fresh host/session identities: export a fresh profile and distribute
-it to clients. This is separate from replacing a UI while the same host survives.
+policy. LAN delivery requires sockets and an explicit credential file. Use
+`--export-profile` to create a reusable profile. A restarted or replacement host
+at the same endpoints accepts the same profile and credential. Exporting to an
+existing matching profile preserves it; a different endpoint/credential target
+requires a separate file. Export is optional on subsequent starts.
 
 To bind a wildcard interface, supply concrete advertised destinations with
 `--advertise-data HOST:PORT` and `--advertise-management HOST:PORT`. Wildcard
@@ -68,16 +69,19 @@ Open **Session → Open remote profile…**, or start explicitly:
 shoopdaloop --ui-only --remote-profile remote.json
 ```
 
-The UI checks the data endpoint's host/session identity before attachment. The
-management endpoint receives the same identity check before any shutdown request.
-An additional UI is refused while the existing controlling UI remains healthy.
-Remote profiles are separate from local registrations: listing/pruning local
-hosts never consults a remote PID or deletes a remote profile or credential.
+Endpoints select the host. Profiles and greetings contain no host/session IDs.
+Every connection authenticates, checks the protocol version, acquires exclusive
+control and synchronizes a complete snapshot. A healthy controlling UI is not
+evicted by another connection. Remote profiles are separate from local PID
+registrations and never participate in PID pruning.
 
-After connection loss, the UI shows its last projection as stale and offers
-**Reattach to this host**. Reattachment obtains coherent state and accepted
-operation results. It does not replay commands, load a session file, rerun startup
-initialization or restart the previous script VM.
+After loss, the last projection is marked stale. **Connect to endpoint** runs the
+same connection flow against whatever the endpoint currently owns, including a
+restarted host with an empty session. Previous projections, transfers and pending
+request assumptions are discarded. Commands, session loads, initialization and
+scripts are never replayed. Configured scripts remain visible but disabled until
+explicitly started. A connection-scoped control lease fences delayed traffic and
+shutdown requests from a departed controller.
 
 **Close UI only** preserves the host. **Close UI and host** waits for confirmed
 MIDI reset, device stop and cleanup. An uncertain shutdown retry checks the same
@@ -90,7 +94,54 @@ shoopdaloop --shutdown-host --remote-profile remote.json
 Saved files, WAV and MIDI imports/exports stay on the UI machine. Transfers use
 the existing bounded segmented persistence protocol; images above 32 MiB do not
 require a shared filesystem. Loss before commit discards staging; an accepted
-commit remains host-owned and is reconciled after reattachment.
+commit remains host-owned. A new connection observes current state and host jobs;
+it does not restore old per-client results or assume a lost request succeeded or
+failed.
+
+## Host settings and status
+
+**Session → Connected host settings…** queries the selected host through its
+management endpoint. It shows requested startup settings, effective audio state,
+sample rate/buffer size, current smoothing and Master auto-connect, diagnostics,
+and the number of host-owned operations in progress. Refresh queries current
+state without taking control or modifying the host.
+
+The native API is `shoop_host::connection::host_report(target, timeout)`; the
+portable management request is `ManagementRequest::Settings`. Reports use bounded
+1024-byte chunks with a 64 KiB total ceiling. The portable server remains
+`no_std` + `alloc`.
+
+`HostSettings` is shared by native `host.json` and local UI launch defaults and
+validation. The native UI already stores user preferences as JSON. While
+connected to an external host, preference saves apply to future local launches;
+they do not reconfigure that host. The panel is read-only. Edit its startup JSON
+and restart the host for driver/pool changes. A separate management GUI and
+remote configuration editing/hot swapping are future work.
+
+For example, `host.json` can contain:
+
+```json
+{
+  "driver": { "Dummy": { "sample_rate": 48000, "buffer_size": 256 } },
+  "pools": { "tracks": 16, "loops": 128, "channels": 2, "loop_memory_mb": 256 },
+  "master_auto_connect": true,
+  "loop_smoothing_ms": 3,
+  "transport": "socket"
+}
+```
+
+An exported `remote.json` looks like this (replace the address):
+
+```json
+{
+  "version": 10,
+  "name": "Studio host",
+  "endpoint": "192.168.1.50:15400",
+  "management": "192.168.1.50:15401",
+  "credential": "host.key",
+  "network": { "heartbeat_interval_ms": 1000, "heartbeat_timeout_ms": 5000, "snapshot_hz": 30 }
+}
+```
 
 ## Scheduling and budgets
 
@@ -131,11 +182,11 @@ and accepts elapsed time; the host supplies entropy or provisioned credentials.
 management, heartbeats, state/media scheduling and segmented client uploads over
 `RecordPort`. It does not depend on native sockets, threads, files, clocks, Lua,
 the client projection or an engine/device host. A composition root supplies
-identities and the initial data `CarrierReady` greeting, drives each connection
+a fresh connection nonce and the initial data `CarrierReady` greeting, drives each connection
 with elapsed monotonic time, calls `Service::tick` once per service turn, and
 invokes `Service::detach` when a connection retires. It also executes device
 shutdown and reports cleanup completion back to the service. Management emits its
-own identity greeting through the portable pump.
+own versioned greeting through the portable pump.
 
 An RTOS adapter can drive the same code from a control task using BSD sockets,
 lwIP or another byte-stream stack. It supplies scheduling, timer-wrap conversion,
@@ -162,7 +213,7 @@ builds and simulated adapter tests, not an RTOS implementation or board executio
 - `cargo test -p shoop_app_connection`: fake-clock heartbeat and authority tests,
   host-driven service progression and the throttled bidirectional transfer test.
 - `cargo test -p shoop_host --features testing`: two-process LAN/IPv6/DNS,
-  non-loopback Linux, identity/credential refusal, silent network loss and existing
+  non-loopback Linux, credential/version refusal, silent network loss and existing
   local recovery cases.
 - The native UI recovery test opens a remote profile, retains recording across
   close/reattach and confirms host shutdown.

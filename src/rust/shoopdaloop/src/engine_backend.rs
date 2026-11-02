@@ -80,6 +80,13 @@ fn start_with(
     pools: &NewEnginePools,
     inventory: &Discovery,
 ) -> Result<NewEngine> {
+    shoop_egui::HostSettings {
+        driver: driver.clone(),
+        pools: *pools,
+        ..Default::default()
+    }
+    .validate()
+    .map_err(anyhow::Error::msg)?;
     let _span = tracing::info_span!("frontend.new_engine.start").entered();
     let (config, mut warnings) = native_config(driver, pools, inventory);
     let started = match shoop_rt_host_native::start(&config) {

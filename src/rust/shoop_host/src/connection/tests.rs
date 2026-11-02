@@ -61,9 +61,9 @@ fn a_peer_withholding_acknowledgments_bounds_uploads_without_blocking_controls_o
         heartbeat: None,
         last: Instant::now(),
     };
-    let mut client = Client::new(ClientId(1), HostId(1), SessionId(1)).unwrap();
+    let mut client = Client::new();
     let authority = Authority {
-        session: SessionId(1),
+        lease: LeaseId(1),
         client: ClientId(1),
         generation: ConnectionGeneration(1),
     };

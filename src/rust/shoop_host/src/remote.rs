@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
-use shoop_app_protocol::{HostId, SessionId, VERSION};
+use shoop_app_protocol::VERSION;
 use std::{
     io::{Read, Write},
     net::{SocketAddr, ToSocketAddrs},
@@ -49,30 +49,20 @@ impl NetworkOptions {
 #[serde(deny_unknown_fields)]
 pub struct RemoteProfile {
     pub version: u16,
-    pub host: HostId,
-    pub session: SessionId,
+
     pub name: String,
     pub endpoint: String,
     pub management: String,
     pub credential: PathBuf,
     #[serde(default)]
     pub network: NetworkOptions,
-    #[serde(default)]
-    pub warnings: Vec<String>,
 }
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
         ensure!(self.version == VERSION, "incompatible session protocol");
         ensure!(
-            self.host.0 != 0
-                && self.session.0 != 0
-                && self.name.len() <= 128
-                && !self.credential.as_os_str().is_empty(),
+            self.name.len() <= 128 && !self.credential.as_os_str().is_empty(),
             "invalid remote profile identity or credential path"
-        );
-        ensure!(
-            self.warnings.len() <= 64 && self.warnings.iter().all(|warning| warning.len() <= 1024),
-            "invalid remote host diagnostics"
         );
         endpoint(&self.endpoint)?;
         endpoint(&self.management)?;
@@ -113,8 +103,7 @@ impl RemoteProfile {
 #[derive(Clone, Debug)]
 pub struct Target {
     pub version: u16,
-    pub host: HostId,
-    pub session: SessionId,
+
     pub name: String,
     pub endpoint: String,
     pub management: String,
@@ -128,8 +117,7 @@ impl From<HostEntry> for Target {
     fn from(e: HostEntry) -> Self {
         Self {
             version: e.version,
-            host: e.host,
-            session: e.session,
+
             name: e.name,
             endpoint: e.endpoint.to_string(),
             management: e.management.to_string(),
@@ -145,15 +133,14 @@ impl From<RemoteProfile> for Target {
     fn from(e: RemoteProfile) -> Self {
         Self {
             version: e.version,
-            host: e.host,
-            session: e.session,
+
             name: e.name,
             endpoint: e.endpoint,
             management: e.management,
             credential: e.credential,
             transport: AppTransport::Socket,
             shared_memory: None,
-            warnings: e.warnings,
+            warnings: Vec::new(),
             network: Some(e.network),
         }
     }
@@ -186,10 +173,7 @@ impl Target {
                 "remote shared memory is unsupported"
             );
         }
-        ensure!(
-            self.host.0 != 0 && self.session.0 != 0,
-            "invalid session identity"
-        );
+
         private::read(&self.credential, 32)?
             .try_into()
             .map_err(|_| anyhow!("invalid credential length"))

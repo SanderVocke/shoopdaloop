@@ -33,8 +33,7 @@ pub struct StartOptions {
     pub export_profile: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
     pub credential: Option<PathBuf>,
-    pub host: HostId,
-    pub session: SessionId,
+
     pub name: String,
 }
 impl StartOptions {
@@ -49,8 +48,7 @@ impl StartOptions {
             export_profile: None,
             network: Default::default(),
             credential: None,
-            host: HostId(identity()?),
-            session: SessionId(identity()?),
+
             name: "ShoopDaLoop".into(),
         })
     }
@@ -154,9 +152,7 @@ impl Drop for Registration {
 }
 
 pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
-    let _span =
-        tracing::info_span!("host.session", host = %options.host.0, session = %options.session.0)
-            .entered();
+    let _span = tracing::info_span!("host.session").entered();
     config.validate()?;
     options.network.validate()?;
     ensure!(
@@ -164,13 +160,10 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         "LAN hosts require socket delivery"
     );
     ensure!(
-        !options.lan || (options.credential.is_some() && options.export_profile.is_some()),
-        "LAN hosts require --credential-file and --export-profile"
+        !options.lan || options.credential.is_some(),
+        "LAN hosts require --credential-file"
     );
-    ensure!(
-        options.host.0 != 0 && options.session.0 != 0 && options.name.len() <= 128,
-        "invalid host identity or name"
-    );
+    ensure!(options.name.len() <= 128, "invalid host identity or name");
     let registry = Registry::open(&options.registry)?;
     let (mut native, mut warnings) = engine::native_config(
         &config.driver,
@@ -207,12 +200,11 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
-            host: options.host,
-            session: options.session,
             master_auto_connect: config.master_auto_connect,
             loop_smoothing_ms: config.loop_smoothing_ms,
         },
     )?;
+    service.set_host_settings(config.settings.clone(), warnings.clone())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     while !service.is_ready() {
         service.tick(Duration::from_millis(2));
@@ -245,11 +237,10 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     };
     let data = bind(options.endpoint, token)?;
     let management = bind(options.management_endpoint, token)?;
-    if options.lan {
+    if options.lan && options.export_profile.is_some() {
         let profile = crate::remote::RemoteProfile {
             version: VERSION,
-            host: options.host,
-            session: options.session,
+
             name: options.name.clone(),
             endpoint: options
                 .advertised_endpoint
@@ -267,9 +258,19 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
                     .context("credential filename unavailable")?,
             ),
             network: options.network,
-            warnings: warnings.clone(),
         };
-        profile.write(options.export_profile.as_ref().unwrap())?;
+        let path = options.export_profile.as_ref().unwrap();
+        if path.exists() {
+            let existing = crate::remote::RemoteProfile::read(path)?;
+            ensure!(
+                existing.endpoint == profile.endpoint
+                    && existing.management == profile.management
+                    && existing.credential.file_name() == profile.credential.file_name(),
+                "existing profile selects different endpoints or credentials"
+            );
+        } else {
+            profile.write(path)?;
+        }
     }
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
@@ -289,12 +290,11 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     let credential = options
         .credential
         .map(Ok)
-        .unwrap_or_else(|| registry.create_credential(options.host, &token))?;
+        .unwrap_or_else(|| registry.create_credential(std::process::id(), &token))?;
     let registration = Registration {
         entry: HostEntry {
             version: VERSION,
-            host: options.host,
-            session: options.session,
+
             name: options.name,
             process: std::process::id(),
             endpoint: data.address()?,
@@ -313,7 +313,7 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();
-    let mut next_connection = 1u64;
+
     let mut last = Instant::now();
     let mut finished = None;
     let mut cleanup_error = None;
@@ -336,32 +336,21 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             } else {
                 None
             };
-            if send(
-                &mut port,
-                &WireMessage::CarrierReady {
-                    host: registration.entry.host,
-                    session: registration.entry.session,
-                },
-            )
-            .is_err()
-            {
+            if send(&mut port, &WireMessage::CarrierReady).is_err() {
                 continue;
             }
             clients.push(Data::new(
-                ConnectionId(next_connection),
+                ConnectionId(identity()?),
                 port,
                 shared_port,
                 options.lan.then_some(options.network),
             )?);
-            next_connection = next_connection
-                .checked_add(1)
-                .context("connection generation exhausted")?;
         }
         for _ in 0..4 {
             match management.ports.try_recv() {
-                Ok(port) if managers.len() < 4 => managers.push(
-                    shoop_app_connection::Management::new(port, options.host, options.session),
-                ),
+                Ok(port) if managers.len() < 4 => {
+                    managers.push(shoop_app_connection::Management::new(port))
+                }
                 Ok(_) => {}
                 Err(_) => break,
             }

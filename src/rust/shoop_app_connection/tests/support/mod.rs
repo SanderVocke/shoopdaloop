@@ -1,5 +1,4 @@
 use shoop_app::{Service, ServiceOptions};
-use shoop_app_protocol::{HostId, SessionId};
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{testing::OfflineRender, EngineDescription};
 use std::{cell::RefCell, rc::Rc, time::Duration};
@@ -19,8 +18,6 @@ pub fn service() -> Service {
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
-            host: HostId(1),
-            session: SessionId(2),
             master_auto_connect: true,
             loop_smoothing_ms: 3,
         },

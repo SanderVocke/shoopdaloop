@@ -253,20 +253,22 @@ pub struct Management<P> {
     age: Duration,
     pending: Option<WireMessage>,
     sent: bool,
+    settings: Option<(Vec<u8>, usize)>,
 }
 impl<P: RecordPort> Management<P> {
-    pub fn new(port: P, host: HostId, session: SessionId) -> Self {
+    pub fn new(port: P) -> Self {
         Self {
-            greeting: Some(WireMessage::CarrierReady { host, session }),
+            greeting: Some(WireMessage::CarrierReady),
             port,
             age: Duration::ZERO,
             pending: None,
             sent: false,
+            settings: None,
         }
     }
     pub fn pump(&mut self, service: &mut Service, elapsed: Duration) -> bool {
         self.age = self.age.saturating_add(elapsed);
-        if self.age >= Duration::from_secs(2) || self.port.failure().is_some() {
+        if self.age >= Duration::from_secs(5) || self.port.failure().is_some() {
             return false;
         }
         let mut bytes = [0; MAX_RECORD_BYTES];
@@ -280,14 +282,42 @@ impl<P: RecordPort> Management<P> {
                 Err(_) => return false,
             }
         }
-        if self.pending.is_none() && !self.sent {
+        if self.pending.is_none() && !self.sent && self.settings.is_none() {
             if let Some(n) = self.port.take(&mut bytes) {
                 let reply = match codec::decode(&bytes[..n]) {
+                    Ok(WireMessage::ManagementRequest(ManagementRequest::Settings { version }))
+                        if version == VERSION =>
+                    {
+                        match codec::encode_host_report(&service.host_report()) {
+                            Ok(bytes) => {
+                                self.settings = Some((bytes, 0));
+                                ManagementReply::Status {
+                                    version: VERSION,
+                                    ready: service.is_ready(),
+                                    busy: false,
+                                    closed: false,
+                                }
+                            }
+                            Err(_) => ManagementReply::Refused(Refusal::Overloaded),
+                        }
+                    }
                     Ok(WireMessage::ManagementRequest(request)) => service.management(request),
                     _ => ManagementReply::Refused(Refusal::Invalid),
                 };
-                self.pending = Some(WireMessage::ManagementReply(reply));
+                if self.settings.is_none() {
+                    self.pending = Some(WireMessage::ManagementReply(reply));
+                }
             }
+        }
+        if let Some((bytes, offset)) = self.settings.as_ref() {
+            let end = (*offset + CHUNK_BYTES).min(bytes.len());
+            self.pending = Some(WireMessage::ManagementReply(
+                ManagementReply::SettingsChunk {
+                    offset: *offset as u32,
+                    total: bytes.len() as u32,
+                    bytes: bytes[*offset..end].to_vec(),
+                },
+            ));
         }
         if let Some(message) = self.pending.as_ref() {
             let Ok(n) = codec::encode(message, &mut bytes) else {
@@ -296,7 +326,15 @@ impl<P: RecordPort> Management<P> {
             match self.port.post(&bytes[..n]) {
                 Ok(()) => {
                     self.pending = None;
-                    self.sent = true;
+                    if let Some((bytes, offset)) = self.settings.as_mut() {
+                        *offset = (*offset + CHUNK_BYTES).min(bytes.len());
+                        if *offset == bytes.len() {
+                            self.settings = None;
+                            self.sent = true;
+                        }
+                    } else {
+                        self.sent = true;
+                    }
                 }
                 Err(CarrierError::Full) => {}
                 Err(_) => return false,
