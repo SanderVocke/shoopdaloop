@@ -7,7 +7,6 @@ use alloc::sync::Arc;
 use shoop_backend::{BackendAudioChannelData, BackendAudioData, BackendMidiEvent};
 
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
-const MAX_EVENTS: usize = 1_000_000;
 const MAX_PACKET: usize = 1024 * 1024;
 
 pub(super) struct Audio {
@@ -75,10 +74,11 @@ pub(super) struct Midi {
     total: usize,
     at: usize,
     previous: u32,
+    max_events: usize,
     events: Vec<BackendMidiEvent>,
 }
 impl Midi {
-    pub fn new(total: u64) -> Result<Self, String> {
+    pub fn new(total: u64, max_events: usize) -> Result<Self, String> {
         if total > MAX_BYTES {
             return Err("MIDI read exceeds its media budget".into());
         }
@@ -91,6 +91,7 @@ impl Midi {
             total: total as usize,
             at: 0,
             previous: 0,
+            max_events,
             events: Vec::new(),
         })
     }
@@ -117,7 +118,7 @@ impl Midi {
                 || len > MAX_PACKET
                 || frame >= frames
                 || frame < self.previous
-                || self.events.len() == MAX_EVENTS
+                || self.events.len() >= self.max_events
             {
                 return Err("MIDI content exceeds its packet/event/position budget".into());
             }
@@ -151,7 +152,7 @@ mod tests {
             bytes.extend_from_slice(&3u32.to_le_bytes());
             bytes.extend_from_slice(&packet);
         }
-        let mut midi = Midi::new(bytes.len() as u64).unwrap();
+        let mut midi = Midi::new(bytes.len() as u64, 1_000_000).unwrap();
         midi.push(12, &bytes[12..]).unwrap();
         midi.push(0, &bytes[..12]).unwrap();
         assert!(!midi.step(1, 4).unwrap());
@@ -164,10 +165,10 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn assemblies_refuse_oversized_and_malformed_sources_before_publication() {
         assert!(Audio::new(MAX_BYTES / 4 + 1, 1, 1).is_err());
-        assert!(Midi::new(MAX_BYTES + 1).is_err());
+        assert!(Midi::new(MAX_BYTES + 1, 1_000_000).is_err());
         let mut audio = Audio::new(1, 2, 2).unwrap();
         assert!(audio.push(1, &[0.0, 0.0]).is_err());
-        let mut midi = Midi::new(12).unwrap();
+        let mut midi = Midi::new(12, 1_000_000).unwrap();
         midi.push(0, &[0; 12]).unwrap();
         assert!(midi.step(64, 4).is_err());
     }

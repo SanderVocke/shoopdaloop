@@ -257,8 +257,26 @@ pub struct Receiver {
 }
 impl Receiver {
     pub fn new(authority: Authority, description: Description) -> Result<Self, Refusal> {
+        Self::with_limits(
+            authority,
+            description,
+            shoop_app_api::HostResourceLimits::default(),
+        )
+    }
+    pub fn with_limits(
+        authority: Authority,
+        description: Description,
+        limits: shoop_app_api::HostResourceLimits,
+    ) -> Result<Self, Refusal> {
         if !authority.is_valid() || !description.valid() {
             return Err(Refusal::Invalid);
+        }
+        if !limits.is_valid()
+            || description.media_bytes > limits.media_bytes
+            || description.metadata_bytes > limits.metadata_bytes
+            || description.objects > limits.objects
+        {
+            return Err(Refusal::Overloaded);
         }
         Ok(Self {
             authority,

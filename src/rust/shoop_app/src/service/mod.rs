@@ -117,6 +117,7 @@ impl CommandError {
 pub struct Service {
     backend: Box<dyn Backend>,
     options: ServiceOptions,
+    resource_limits: HostResourceLimits,
     host_settings: Option<HostSettings>,
     host_diagnostics: Vec<String>,
     revision: Revision,
@@ -161,7 +162,18 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(mut backend: Box<dyn Backend>, options: ServiceOptions) -> Result<Self> {
+    pub fn new(backend: Box<dyn Backend>, options: ServiceOptions) -> Result<Self> {
+        Self::new_with_resource_limits(backend, options, HostResourceLimits::default())
+    }
+
+    pub fn new_with_resource_limits(
+        mut backend: Box<dyn Backend>,
+        options: ServiceOptions,
+        resource_limits: HostResourceLimits,
+    ) -> Result<Self> {
+        if !resource_limits.is_valid() {
+            return Err(anyhow!("invalid host resource limits"));
+        }
         let observed = backend.poll()?;
         if !observed.tracks.is_empty() || !observed.loops.is_empty() {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
@@ -169,6 +181,7 @@ impl Service {
         let mut service = Self {
             backend,
             options,
+            resource_limits,
             host_settings: None,
             host_diagnostics: Vec::new(),
             revision: Revision(1),

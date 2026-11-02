@@ -31,6 +31,39 @@ fn fixture() -> (Stack, BackendTrackCreation, BackendSessionData) {
     let session = backend.capture_session().unwrap();
     (backend, track, session)
 }
+
+#[shoop_test]
+fn board_media_budget_refuses_replacement_without_changing_live_content() {
+    let limits = shoop_app_api::HostResourceLimits {
+        media_bytes: 32,
+        midi_events: 2,
+        ..Default::default()
+    };
+    let mut backend = stack(&description()).with_resource_limits(limits).unwrap();
+    backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "bounded".into(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 2,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let mut session = backend.capture_session().unwrap();
+    session.tracks[0].loops[0].length = 4;
+    session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4].into();
+    loaded(&mut backend, &session).unwrap();
+    let before = backend.capture_session().unwrap();
+    let mut excessive = before.clone();
+    excessive.tracks[0].loops[1].length = 8;
+    excessive.tracks[0].loops[1].audio[0].samples = vec![0.5; 8].into();
+    assert!(loaded(&mut backend, &excessive).is_err());
+    assert_eq!(backend.capture_session().unwrap(), before);
+    assert_eq!(
+        backend.poll().unwrap().status.driver_state,
+        BackendDriverState::Dummy
+    );
+}
 #[shoop_test]
 fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media() {
     let (mut backend, old, mut session) = fixture();

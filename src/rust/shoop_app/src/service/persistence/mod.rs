@@ -265,7 +265,11 @@ impl Service {
                 self.persistence_begin(authority, key, description.target)?;
                 self.persistence_job = Some(Job::Upload {
                     authority,
-                    receiver: persistence::Receiver::new(authority, description)?,
+                    receiver: persistence::Receiver::with_limits(
+                        authority,
+                        description,
+                        self.resource_limits,
+                    )?,
                 });
                 self.persistence_reply(authority, persistence::Reply::Begun { key });
                 return Ok(());
@@ -338,7 +342,10 @@ impl Service {
                 unreachable!()
             };
             let target = receiver.description().target;
-            let work = Preparing::Assembly(Assembly::new(receiver.into_objects()?)?);
+            let work = Preparing::Assembly(Assembly::with_limits(
+                receiver.into_objects()?,
+                self.resource_limits,
+            )?);
             self.persistence_job = Some(Job::Prepare {
                 authority,
                 key,
