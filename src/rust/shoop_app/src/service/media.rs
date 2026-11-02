@@ -63,6 +63,8 @@ impl Service {
                     .channels
                     .into_iter()
                     .map(|channel| MidiMediaChannel {
+                        length: channel.length,
+                        capture_alignment_frames: channel.capture_alignment_frames,
                         events: channel
                             .events
                             .iter()

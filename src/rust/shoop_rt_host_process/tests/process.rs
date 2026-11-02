@@ -100,7 +100,7 @@ fn engine_peer() {
                 let stream = output.stream().unwrap();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(300));
-                    stream.fail(cpal::StreamError::DeviceNotAvailable);
+                    stream.fail(cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable));
                 });
             }
             let (endpoint, outbox) = started.client.into_carrier().into_parts();

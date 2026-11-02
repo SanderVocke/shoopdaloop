@@ -439,7 +439,7 @@ fn a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks() {
     app.startup_session = Some(("previous.shoop".into(), false));
     app.session_url_task = Some(shoop_egui::TaskId::from_raw(1));
     let context = egui::Context::default();
-    let field = egui::Id::new("previous connection field");
+    let field = egui::Id::unique("previous connection field");
     context.data_mut(|data| data.insert_temp(field, 42_u32));
     app.clear_connection_state(&context);
     assert!(context.data(|data| data.get_temp::<u32>(field)).is_none());

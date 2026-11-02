@@ -7,7 +7,8 @@ self.onmessage = event => {
             const module = message.module || await WebAssembly.compile(
                 await (await fetch(message.url)).arrayBuffer(),
             );
-            instance = await WebAssembly.instantiate(module, {});
+            const { default: initialize } = await import(message.bindingsUrl);
+            instance = { exports: await initialize({ module_or_path: module }) };
             self.postMessage({ ready: true });
             return;
         }

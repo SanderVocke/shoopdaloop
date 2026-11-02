@@ -5936,6 +5936,90 @@ impl Backend for EngineBackend {
         }
     }
 
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        let length = self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .length();
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels"))?;
+        for update in updates {
+            let (alignment, offset, stored) = if update.is_midi {
+                let index = channels
+                    .midi
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel"))?;
+                let channel = self
+                    .session
+                    .midi_channel(*index)
+                    .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+                (
+                    channel.capture_alignment_frames(),
+                    channel.start_offset(),
+                    u64::from(channel.length()),
+                )
+            } else {
+                let index = channels
+                    .audio
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel"))?;
+                let channel = self
+                    .session
+                    .audio_channel(*index)
+                    .ok_or_else(|| anyhow!("missing audio channel"))?;
+                (
+                    channel.capture_alignment_frames(),
+                    channel.start_offset(),
+                    channel.length() as u64,
+                )
+            };
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    update.start_offset.unwrap_or(offset),
+                    stored,
+                    length,
+                    if update.is_midi { "MIDI" } else { "audio" },
+                    update.channel,
+                )?;
+            }
+        }
+        for update in updates {
+            if update.is_midi {
+                let channel = self
+                    .session
+                    .midi_channel_mut(channels.midi[update.channel])
+                    .expect("channel was validated");
+                if let Some(offset) = update.start_offset {
+                    channel.set_start_offset(offset);
+                }
+                if let Some(preplay) = update.preplay {
+                    channel.set_pre_play_samples(preplay);
+                }
+            } else {
+                let channel = self
+                    .session
+                    .audio_channel_mut(channels.audio[update.channel])
+                    .expect("channel was validated");
+                if let Some(offset) = update.start_offset {
+                    channel.set_start_offset(offset);
+                }
+                if let Some(preplay) = update.preplay {
+                    channel.set_pre_play_samples(preplay);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn set_loop_timing(
         &mut self,
         loop_id: BackendLoopId,
@@ -6813,6 +6897,14 @@ impl Backend for LocalDummyBackend {
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         self.runtime.set_loop_length(loop_id, length)
+    }
+
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        self.runtime.set_loop_channel_timings(loop_id, updates)
     }
 
     fn set_loop_timing(
@@ -9278,6 +9370,71 @@ impl Backend for FakeBackend {
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         self.set_loop_timing(loop_id, None, None, Some(length))
+    }
+
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        self.require_loop(loop_id)?;
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        for update in updates {
+            let (alignment, offset, stored) = if update.is_midi {
+                let channel = content
+                    .midi
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel"))?;
+                (
+                    channel.capture_alignment_frames,
+                    channel.start_offset,
+                    u64::from(channel.length),
+                )
+            } else {
+                let channel = content
+                    .audio
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel"))?;
+                (
+                    channel.capture_alignment_frames,
+                    channel.start_offset,
+                    channel.samples.len() as u64,
+                )
+            };
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    update.start_offset.unwrap_or(offset),
+                    stored,
+                    content.length,
+                    if update.is_midi { "MIDI" } else { "audio" },
+                    update.channel,
+                )?;
+            }
+        }
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .expect("loop was validated");
+        for update in updates {
+            let (offset, preplay) = if update.is_midi {
+                let channel = &mut content.midi[update.channel];
+                (&mut channel.start_offset, &mut channel.preplay)
+            } else {
+                let channel = &mut content.audio[update.channel];
+                (&mut channel.start_offset, &mut channel.preplay)
+            };
+            if let Some(value) = update.start_offset {
+                *offset = value;
+            }
+            if let Some(value) = update.preplay {
+                *preplay = value;
+            }
+        }
+        Ok(())
     }
 
     fn set_loop_timing(
@@ -12225,6 +12382,88 @@ mod tests {
         unsupported.tracks[0].state.topology = topology;
         assert!(backend.replace_session(&unsupported).is_err());
         assert_eq!(backend.capture_session().unwrap(), before);
+    }
+
+    pub(super) fn channel_timing_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "channel-timing".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .set_loop_timing(loop_id, Some(4), Some(2), Some(16))
+            .unwrap();
+        backend
+            .set_loop_channel_timings(
+                loop_id,
+                &[
+                    BackendChannelTimingUpdate {
+                        channel: 1,
+                        is_midi: false,
+                        start_offset: Some(9),
+                        preplay: None,
+                    },
+                    BackendChannelTimingUpdate {
+                        channel: 0,
+                        is_midi: true,
+                        start_offset: Some(12),
+                        preplay: Some(7),
+                    },
+                ],
+            )
+            .unwrap();
+        backend.wait_idle();
+        let before = backend.capture_session().unwrap();
+        let content = before
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|content| content.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(content.length, 16);
+        assert_eq!(
+            (content.audio[0].start_offset, content.audio[0].preplay),
+            (4, 2)
+        );
+        assert_eq!(
+            (content.audio[1].start_offset, content.audio[1].preplay),
+            (9, 2)
+        );
+        assert_eq!(
+            (content.midi[0].start_offset, content.midi[0].preplay),
+            (12, 7)
+        );
+        assert!(backend
+            .set_loop_channel_timings(
+                loop_id,
+                &[
+                    BackendChannelTimingUpdate {
+                        channel: 0,
+                        is_midi: false,
+                        start_offset: Some(99),
+                        preplay: None
+                    },
+                    BackendChannelTimingUpdate {
+                        channel: 99,
+                        is_midi: true,
+                        start_offset: Some(99),
+                        preplay: None
+                    },
+                ]
+            )
+            .is_err());
+        assert_eq!(backend.capture_session().unwrap(), before);
+        backend.remove_track(created.track_id).unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_and_engine_channel_timing_edits_are_targeted_and_validate_the_entire_batch() {
+        channel_timing_contract(&mut FakeBackend::default());
+        channel_timing_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
     fn loop_content_contract(backend: &mut dyn Backend) {

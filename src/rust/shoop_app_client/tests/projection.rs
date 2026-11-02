@@ -600,7 +600,14 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
                 capture_alignment_frames: 0,
                 preplay: 0,
             }],
-            midi: vec![],
+            midi: vec![MidiMediaChannel {
+                events: Arc::from([]),
+                content_revision: 7,
+                length: 32768,
+                capture_alignment_frames: 16,
+                start_offset: -8,
+                preplay: 4,
+            }],
         });
         let message = ServiceMessage::Media {
             authority: AUTHORITY,
@@ -625,6 +632,12 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
                 .len(),
             32768
         );
+        let received = client.media().unwrap().as_ref().unwrap();
+        let midi = &received.midi[0];
+        assert_eq!(midi.length, 32768);
+        assert_eq!(midi.capture_alignment_frames, 16);
+        assert_eq!(midi.start_offset, -8);
+        assert_eq!(midi.preplay, 4);
         client.cancel_media().unwrap();
         assert!(client.media().is_none());
         client
