@@ -4709,6 +4709,80 @@ impl Backend for NativeBackend {
         self.set_loop_timing(loop_id, None, None, Some(length))
     }
 
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let target = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop"))?;
+        let length = target.handle.get_state()?.length;
+        for update in updates {
+            let (alignment, offset, stored) = if update.is_midi {
+                let state = target
+                    .midi
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel"))?
+                    .get_state()?;
+                (
+                    state.capture_alignment_frames,
+                    state.start_offset,
+                    u64::from(state.length),
+                )
+            } else {
+                let state = target
+                    .audio
+                    .get(update.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel"))?
+                    .get_state()?;
+                (
+                    state.capture_alignment_frames,
+                    state.start_offset,
+                    u64::from(state.length),
+                )
+            };
+            if alignment != 0 {
+                validate_take_alignment_window(
+                    alignment,
+                    update.start_offset.unwrap_or(offset),
+                    stored,
+                    length,
+                    if update.is_midi { "MIDI" } else { "audio" },
+                    update.channel,
+                )?;
+            }
+        }
+        let mut sequences = Vec::new();
+        for update in updates {
+            if update.is_midi {
+                let channel = &target.midi[update.channel];
+                if let Some(offset) = update.start_offset {
+                    sequences.push(channel.set_start_offset(offset)?);
+                }
+                if let Some(preplay) = update.preplay {
+                    sequences.push(channel.set_n_preplay_samples(preplay)?);
+                }
+            } else {
+                let channel = &target.audio[update.channel];
+                if let Some(offset) = update.start_offset {
+                    sequences.push(channel.set_start_offset(offset)?);
+                }
+                if let Some(preplay) = update.preplay {
+                    sequences.push(channel.set_n_preplay_samples(preplay)?);
+                }
+            }
+        }
+        for sequence in sequences {
+            runtime
+                .session
+                .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        }
+        Ok(())
+    }
+
     fn set_loop_timing(
         &mut self,
         loop_id: BackendLoopId,
@@ -7423,6 +7497,7 @@ mod tests {
             buffer_size: 64,
         }))
         .unwrap();
+        super::super::tests::channel_timing_contract(&mut backend);
         let created = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "targeted-content".to_owned(),

@@ -1640,6 +1640,7 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::ClearLoop { loop_id }
         | Command::SetLoopLength { loop_id, .. }
         | Command::SetLoopTiming { loop_id, .. }
+        | Command::SetLoopChannelTimings { loop_id, .. }
         | Command::SetTakeAlignment { loop_id, .. }
         | Command::SetTakeProcessorAlignment { loop_id, .. } => {
             (BackendMutationKind::LoopControl, Some(*loop_id))
@@ -1803,9 +1804,9 @@ fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
         Command::SetLoopBalance { balance, .. } => {
             Some(BackendMutationDetail::LoopBalance(*balance))
         }
-        Command::SetLoopLength { .. } | Command::SetLoopTiming { .. } => {
-            Some(BackendMutationDetail::LoopTiming)
-        }
+        Command::SetLoopLength { .. }
+        | Command::SetLoopTiming { .. }
+        | Command::SetLoopChannelTimings { .. } => Some(BackendMutationDetail::LoopTiming),
         Command::SetTakeAlignment { .. } => Some(BackendMutationDetail::TakeAlignment),
         Command::SetTakeProcessorAlignment { .. } => {
             Some(BackendMutationDetail::TakeProcessorAlignment)
@@ -2632,6 +2633,53 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[shoop_backend::BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        self.submit(Command::SetLoopChannelTimings {
+            loop_id: loop_id.raw(),
+            updates: updates
+                .iter()
+                .map(|update| shoop_audio_protocol::WireChannelTimingUpdate {
+                    channel: update.channel,
+                    is_midi: update.is_midi,
+                    start_offset: update.start_offset,
+                    preplay: update.preplay,
+                })
+                .collect(),
+        })?;
+        for update in updates {
+            if update.is_midi {
+                if let Some(channel) = self
+                    .midi_data
+                    .get_mut(&loop_id)
+                    .and_then(|assembly| assembly.channels.get_mut(update.channel))
+                {
+                    if let Some(offset) = update.start_offset {
+                        channel.start_offset = offset;
+                    }
+                    if let Some(preplay) = update.preplay {
+                        channel.preplay = preplay;
+                    }
+                }
+            } else if let Some(timing) = self
+                .waveforms
+                .get_mut(&loop_id)
+                .and_then(|assembly| assembly.timing.get_mut(update.channel))
+            {
+                if let Some(offset) = update.start_offset {
+                    timing.0 = offset;
+                }
+                if let Some(preplay) = update.preplay {
+                    timing.2 = preplay;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn set_loop_timing(
         &mut self,
         loop_id: BackendLoopId,
@@ -2662,9 +2710,6 @@ impl Backend for RemoteWorkletBackend {
                 }
                 if let Some(samples) = preplay {
                     channel.preplay = samples;
-                }
-                if let Some(length) = length {
-                    channel.length = length;
                 }
             }
         }
@@ -3267,7 +3312,8 @@ impl Backend for RemoteWorkletBackend {
                     }
                     match &received.command {
                         Command::SetLoopLength { loop_id, .. }
-                        | Command::SetLoopTiming { loop_id, .. } => {
+                        | Command::SetLoopTiming { loop_id, .. }
+                        | Command::SetLoopChannelTimings { loop_id, .. } => {
                             let loop_id = BackendLoopId::from_raw(*loop_id);
                             self.waveforms.remove(&loop_id);
                             self.midi_data.remove(&loop_id);
@@ -4248,6 +4294,99 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn targeted_channel_timings_update_only_selected_cache_entries_and_replay_in_order() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        let creation = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "targeted-timing".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        deliver(&control, 1, 2, Event::Ack);
+        let loop_id = creation.loops[0];
+        backend.waveforms.insert(
+            loop_id,
+            WaveformAssembly {
+                revision: 1,
+                channels: vec![vec![0.25], vec![0.5]],
+                timing: vec![(2, 3, 4), (5, 6, 7)],
+                request_channel: 2,
+                request_offset: 0,
+                channel_total: None,
+                expected: VecDeque::new(),
+                complete: true,
+            },
+        );
+        backend.midi_data.insert(
+            loop_id,
+            MidiDataAssembly {
+                generation: 1,
+                channels: vec![BackendMidiChannelData {
+                    start_offset: 8,
+                    preplay: 9,
+                    length: 100,
+                    capture_alignment_frames: 2,
+                    content_revision: 1,
+                    mode: BackendChannelMode::Direct,
+                    events: Vec::new(),
+                }],
+                next_channel: 1,
+                next_offset: 0,
+                complete: true,
+                in_flight: false,
+            },
+        );
+        backend
+            .set_loop_channel_timings(
+                loop_id,
+                &[
+                    shoop_backend::BackendChannelTimingUpdate {
+                        channel: 1,
+                        is_midi: false,
+                        start_offset: Some(12),
+                        preplay: None,
+                    },
+                    shoop_backend::BackendChannelTimingUpdate {
+                        channel: 0,
+                        is_midi: true,
+                        start_offset: None,
+                        preplay: Some(15),
+                    },
+                ],
+            )
+            .unwrap();
+        assert_eq!(backend.waveforms[&loop_id].timing, [(2, 3, 4), (12, 6, 7)]);
+        assert_eq!(backend.midi_data[&loop_id].channels[0].start_offset, 8);
+        assert_eq!(backend.midi_data[&loop_id].channels[0].preplay, 15);
+        assert_eq!(backend.midi_data[&loop_id].channels[0].length, 100);
+        assert!(sent.borrow().iter().any(|message| matches!(
+            serde_json::from_str::<CommandEnvelope>(message).unwrap().command,
+            Command::SetLoopChannelTimings { updates, .. } if updates.len() == 2
+        )));
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Error {
+                message: "invalid channel window".to_owned(),
+            },
+        );
+        let rejected = backend.poll().unwrap();
+        assert_eq!(
+            rejected.mutation_failures[0].detail,
+            Some(BackendMutationDetail::LoopTiming)
+        );
+        assert!(!backend.waveforms.contains_key(&loop_id));
+        assert!(!backend.midi_data.contains_key(&loop_id));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn waveform_timing_is_assembled_edited_and_replayed_without_losing_partial_updates() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -4349,7 +4488,7 @@ mod tests {
         assert_eq!(audio.channels[0].start_offset, -8);
         assert_eq!(audio.channels[0].preplay, 12);
         let midi = &backend.midi_data[&loop_id].channels[0];
-        assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 32));
+        assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 16));
         deliver(&control, 1, 5, Event::Ack);
         deliver(&control, 1, 6, Event::Ack);
         deliver(
