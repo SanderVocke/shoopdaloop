@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 10;
+pub const VERSION: u16 = 11;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -576,6 +576,8 @@ pub struct AudioMediaChannel {
 pub type MidiMediaEvent = MidiEventState;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MidiMediaChannel {
+    pub length: u32,
+    pub capture_alignment_frames: i32,
     pub events: Arc<[MidiMediaEvent]>,
     pub content_revision: u64,
     pub start_offset: i32,

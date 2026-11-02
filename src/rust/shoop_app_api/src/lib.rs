@@ -1348,6 +1348,8 @@ pub struct MidiSequenceChannelState {
     pub label: String,
     pub content_revision: u64,
     pub events: Arc<[MidiEventState]>,
+    pub data_length: u64,
+    pub capture_alignment_frames: i64,
     pub start_offset: i64,
     pub preplay_samples: u64,
     pub loop_length: u64,
@@ -1361,6 +1363,8 @@ impl Default for MidiSequenceChannelState {
             label: String::new(),
             content_revision: 0,
             events: Arc::from([]),
+            data_length: 0,
+            capture_alignment_frames: 0,
             start_offset: 0,
             preplay_samples: 0,
             loop_length: 0,
@@ -2349,6 +2353,13 @@ pub enum PianoAction {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ChannelTimelineUpdate {
+    pub channel_id: ChannelId,
+    pub start_offset: Option<i64>,
+    pub preplay_samples: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
     SetLoopSmoothingMs(u32),
     SetMasterAutoConnect(bool),
@@ -2357,6 +2368,10 @@ pub enum AppIntent {
         start_offset: Option<i64>,
         preplay_samples: Option<u64>,
         loop_length: Option<u64>,
+    },
+    SetLoopChannelTimings {
+        loop_id: LoopId,
+        updates: Vec<ChannelTimelineUpdate>,
     },
     Loop {
         track_id: TrackId,
@@ -2739,7 +2754,7 @@ impl AppIntent {
         match self {
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
-            Self::SetLoopTimeline { .. } => "loop.timeline",
+            Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
             Self::Bus { action, .. } => action.kind(),

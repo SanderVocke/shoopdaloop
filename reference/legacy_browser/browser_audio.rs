@@ -285,6 +285,15 @@ impl BrowserAudioController {
             .is_some_and(crate::browser_trace::RealmTraceState::stopped)
     }
 
+    pub fn trace_received_records(&self) -> usize {
+        let inner = self.driver.state.borrow();
+        inner
+            .trace
+            .as_ref()
+            .filter(|trace| !trace.stopped() && inner.pending_input_mode.is_none())
+            .map_or(0, crate::browser_trace::RealmTraceState::received_records)
+    }
+
     pub fn discard_tracing(&self) {
         let pending_input_mode = {
             let mut inner = self.driver.state.borrow_mut();

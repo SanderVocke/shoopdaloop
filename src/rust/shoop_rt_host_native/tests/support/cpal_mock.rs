@@ -13,18 +13,16 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{
-    BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceDescription,
-    DeviceDescriptionBuilder, DeviceDirection, DeviceId, DeviceIdError, DeviceNameError,
-    DevicesError, InputCallbackInfo, InputStreamTimestamp, OutputCallbackInfo,
-    OutputStreamTimestamp, PauseStreamError, PlayStreamError, SampleFormat, StreamConfig,
-    StreamError, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
+    BufferSize, Data, DeviceDescription, DeviceDescriptionBuilder, DeviceDirection, DeviceId,
+    Error, ErrorKind, InputCallbackInfo, InputStreamTimestamp, OutputCallbackInfo,
+    OutputStreamTimestamp, SampleFormat, StreamConfig, StreamInstant, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange,
 };
 use shoop_wasm_test_support::heap::measure;
 
 type OutputCallback = Box<dyn FnMut(&mut Data, &OutputCallbackInfo) + Send>;
 type InputCallback = Box<dyn FnMut(&Data, &InputCallbackInfo) + Send>;
-type ErrorCallback = Box<dyn FnMut(StreamError) + Send>;
+type ErrorCallback = Box<dyn FnMut(Error) + Send>;
 
 enum Callback {
     Output(OutputCallback),
@@ -58,7 +56,7 @@ impl HostTrait for MockHost {
     fn is_available() -> bool {
         true
     }
-    fn devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn devices(&self) -> Result<Self::Devices, Error> {
         Ok(self.devices.clone().into_iter())
     }
     fn default_input_device(&self) -> Option<MockDevice> {
@@ -84,6 +82,28 @@ struct DeviceInner {
 
 #[derive(Clone)]
 pub struct MockDevice(Arc<DeviceInner>);
+
+impl std::fmt::Debug for MockDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("MockDevice").field(&self.0.name).finish()
+    }
+}
+impl std::fmt::Display for MockDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.name)
+    }
+}
+impl PartialEq for MockDevice {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for MockDevice {}
+impl std::hash::Hash for MockDevice {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&Arc::as_ptr(&self.0), state);
+    }
+}
 
 impl MockDevice {
     pub fn output(name: &str, channels: u16) -> Self {
@@ -150,14 +170,14 @@ impl MockDevice {
         format: SampleFormat,
         callback: Callback,
         error: ErrorCallback,
-    ) -> Result<MockStream, BuildStreamError> {
+    ) -> Result<MockStream, Error> {
         if output != self.0.output
             || format != SampleFormat::F32
             || config.channels == 0
             || config.channels > self.0.channels
             || config.sample_rate != self.0.sample_rate
         {
-            return Err(BuildStreamError::StreamConfigNotSupported);
+            return Err(Error::new(ErrorKind::UnsupportedConfig));
         }
         let handle = Arc::new(MockStreamHandle {
             channels: usize::from(config.channels),
@@ -187,7 +207,7 @@ impl DeviceTrait for MockDevice {
     type SupportedOutputConfigs = std::vec::IntoIter<SupportedStreamConfigRange>;
     type Stream = MockStream;
 
-    fn description(&self) -> Result<DeviceDescription, DeviceNameError> {
+    fn description(&self) -> Result<DeviceDescription, Error> {
         Ok(DeviceDescriptionBuilder::new(&self.0.name)
             .direction(if self.0.output {
                 DeviceDirection::Output
@@ -196,12 +216,10 @@ impl DeviceTrait for MockDevice {
             })
             .build())
     }
-    fn id(&self) -> Result<DeviceId, DeviceIdError> {
-        Ok(DeviceId(cpal::default_host().id(), self.0.name.clone()))
+    fn id(&self) -> Result<DeviceId, Error> {
+        Ok(DeviceId::new(cpal::default_host().id(), &self.0.name))
     }
-    fn supported_input_configs(
-        &self,
-    ) -> Result<Self::SupportedInputConfigs, SupportedStreamConfigsError> {
+    fn supported_input_configs(&self) -> Result<Self::SupportedInputConfigs, Error> {
         Ok(if self.0.output {
             vec![]
         } else {
@@ -209,9 +227,7 @@ impl DeviceTrait for MockDevice {
         }
         .into_iter())
     }
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, Error> {
         Ok(if self.0.output {
             vec![self.range()]
         } else {
@@ -219,35 +235,35 @@ impl DeviceTrait for MockDevice {
         }
         .into_iter())
     }
-    fn default_input_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_input_config(&self) -> Result<SupportedStreamConfig, Error> {
         if self.0.output {
-            Err(DefaultStreamConfigError::StreamTypeNotSupported)
+            Err(Error::new(ErrorKind::UnsupportedOperation))
         } else {
             Ok(self.config())
         }
     }
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, Error> {
         if self.0.output {
             Ok(self.config())
         } else {
-            Err(DefaultStreamConfigError::StreamTypeNotSupported)
+            Err(Error::new(ErrorKind::UnsupportedOperation))
         }
     }
     fn build_input_stream_raw<D, E>(
         &self,
-        config: &StreamConfig,
+        config: StreamConfig,
         sample_format: SampleFormat,
         data_callback: D,
         error_callback: E,
         _timeout: Option<Duration>,
-    ) -> Result<MockStream, BuildStreamError>
+    ) -> Result<MockStream, Error>
     where
         D: FnMut(&Data, &InputCallbackInfo) + Send + 'static,
-        E: FnMut(StreamError) + Send + 'static,
+        E: FnMut(Error) + Send + 'static,
     {
         self.build(
             false,
-            config,
+            &config,
             sample_format,
             Callback::Input(Box::new(data_callback)),
             Box::new(error_callback),
@@ -255,19 +271,19 @@ impl DeviceTrait for MockDevice {
     }
     fn build_output_stream_raw<D, E>(
         &self,
-        config: &StreamConfig,
+        config: StreamConfig,
         sample_format: SampleFormat,
         data_callback: D,
         error_callback: E,
         _timeout: Option<Duration>,
-    ) -> Result<MockStream, BuildStreamError>
+    ) -> Result<MockStream, Error>
     where
         D: FnMut(&mut Data, &OutputCallbackInfo) + Send + 'static,
-        E: FnMut(StreamError) + Send + 'static,
+        E: FnMut(Error) + Send + 'static,
     {
         self.build(
             true,
-            config,
+            &config,
             sample_format,
             Callback::Output(Box::new(data_callback)),
             Box::new(error_callback),
@@ -344,7 +360,7 @@ impl MockStreamHandle {
     }
 
     /// Report a stream error as the backend would.
-    pub fn fail(&self, error: StreamError) {
+    pub fn fail(&self, error: Error) {
         let mut callback = self.error.lock().unwrap();
         (callback.as_mut().expect("a live stream"))(error);
     }
@@ -391,7 +407,13 @@ pub struct MockStream {
 }
 
 impl StreamTrait for MockStream {
-    fn play(&self) -> Result<(), PlayStreamError> {
+    fn buffer_size(&self) -> Result<cpal::FrameCount, Error> {
+        Ok(self.handle.period as cpal::FrameCount)
+    }
+    fn now(&self) -> StreamInstant {
+        StreamInstant::new(0, 0)
+    }
+    fn play(&self) -> Result<(), Error> {
         let mut thread = self.thread.lock().unwrap();
         if self.threaded && thread.is_none() {
             let handle = self.handle.clone();
@@ -399,7 +421,7 @@ impl StreamTrait for MockStream {
         }
         Ok(())
     }
-    fn pause(&self) -> Result<(), PauseStreamError> {
+    fn pause(&self) -> Result<(), Error> {
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     colors,
-    details_pane::{paint_timeline_regions, MediaWidgetResponse},
+    details_pane::{media_response, paint_lane_label, paint_timeline_regions, MediaWidgetResponse},
     waveform::WaveformPyramid,
     MediaView, WaveformChannelState,
 };
@@ -112,17 +112,14 @@ impl WaveformWidget {
         channel: &WaveformChannelState,
         view: MediaView,
         sync_loop_length: u64,
+        grid_divider: Option<u32>,
+        grid_origin: i64,
         editing: bool,
+        height: f32,
     ) -> MediaWidgetResponse {
-        let desired = egui::vec2(ui.available_width(), 72.0);
+        let desired = egui::vec2(ui.available_width(), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
-        let pan_frames = if response.dragged() && !editing {
-            let mut panned_view = view;
-            panned_view.pan(response.drag_delta().x, rect.width());
-            panned_view.start_frame - view.start_frame
-        } else {
-            0.0
-        };
+        let result = media_response(ui, rect, &response, view, editing);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
@@ -143,17 +140,11 @@ impl WaveformWidget {
             channel.start_offset,
             channel.preplay_samples,
             channel.loop_length,
+            channel.samples.len() as u64,
             sync_loop_length,
+            grid_divider,
+            grid_origin,
         );
-        let clicked_frame = editing
-            .then(|| response.interact_pointer_pos())
-            .flatten()
-            .filter(|_| response.clicked())
-            .map(|position| view.x_to_frame(position.x, rect).round() as i64);
-        let result = MediaWidgetResponse {
-            pan_frames,
-            clicked_frame,
-        };
         if channel.samples.is_empty() {
             painter.text(
                 rect.center(),
@@ -231,11 +222,7 @@ impl WaveformWidget {
     }
 
     fn show_label(ui: &mut egui::Ui, rect: egui::Rect, label: &str) {
-        let label_rect = egui::Rect::from_min_max(
-            rect.left_top() + egui::vec2(6.0, 3.0),
-            rect.right_top() + egui::vec2(-6.0, 22.0),
-        );
-        ui.place(label_rect, egui::Label::new(label).truncate());
+        paint_lane_label(ui, rect, label);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -301,13 +288,14 @@ mod tests {
                     ..Default::default()
                 },
                 MediaView {
-                    timeline_start: 0.0,
-                    timeline_end: 16.0,
                     start_frame: 0.0,
                     end_frame: 16.0,
                 },
                 4,
+                Some(8),
+                0,
                 false,
+                72.0,
             );
             assert!(ui.next_widget_position().y >= top + 72.0);
         });

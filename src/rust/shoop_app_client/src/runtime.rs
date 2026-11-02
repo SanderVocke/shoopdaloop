@@ -834,6 +834,8 @@ impl Runtime {
                             id: ChannelId::from_raw((entry.id.raw() << 8) | (index as u64 + 129)),
                             label: format!("MIDI {}", index + 1),
                             content_revision: channel.content_revision,
+                            data_length: u64::from(channel.length),
+                            capture_alignment_frames: i64::from(channel.capture_alignment_frames),
                             events: Arc::clone(&channel.events),
                             start_offset: i64::from(channel.start_offset),
                             preplay_samples: u64::from(channel.preplay),
@@ -1091,7 +1093,9 @@ impl Runtime {
                     | AppIntent::RequestLoopMidiImportPicker { .. }
                     | AppIntent::ImportLoopMidiBytes { .. } => BackendCapability::LoopContentImport,
                     AppIntent::GenerateClickTrack { .. } => BackendCapability::ClickTrackInsertion,
-                    AppIntent::SetLoopTimeline { .. } => BackendCapability::LoopTimingEdits,
+                    AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. } => {
+                        BackendCapability::LoopTimingEdits
+                    }
                     AppIntent::SetTrackLatency { .. } => BackendCapability::LatencyCompensation,
                     AppIntent::SetTakeAlignment { .. }
                     | AppIntent::SetTakeProcessorAlignment { .. } => {

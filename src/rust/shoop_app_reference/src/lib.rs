@@ -1472,6 +1472,8 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                 ),
                 label: format!("{kind} {}", index + 1),
                 content_revision: channel.content_revision,
+                data_length: u64::from(channel.length),
+                capture_alignment_frames: i64::from(channel.capture_alignment_frames),
                 events: channel
                     .events
                     .iter()
@@ -1980,6 +1982,9 @@ impl ApplicationModel {
             } => {
                 self.set_loop_timeline(backend, loop_id, start_offset, preplay_samples, loop_length)
             }
+            AppIntent::SetLoopChannelTimings { loop_id, updates } => {
+                self.set_loop_channel_timings(backend, loop_id, &updates)
+            }
             AppIntent::Loop {
                 track_id,
                 loop_id,
@@ -2345,7 +2350,9 @@ impl ApplicationModel {
         let capabilities = self.capabilities;
         let require = |capability| capabilities.require(capability);
         match intent {
-            AppIntent::SetLoopTimeline { .. } => require(Capability::LoopTimingEdits),
+            AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. } => {
+                require(Capability::LoopTimingEdits)
+            }
             AppIntent::Loop { action, .. } => match action {
                 LoopAction::PlayDryClicked | LoopAction::RerecordClicked => {
                     require(Capability::DryWetModes)
@@ -2497,6 +2504,100 @@ impl ApplicationModel {
         self.notifications
             .retain(|notification| notification.id != id);
         self.notification_view = self.notifications.iter().cloned().collect();
+    }
+
+    fn set_loop_channel_timings(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        updates: &[shoop_app_api::ChannelTimelineUpdate],
+    ) -> Result<(), String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut seen = BTreeSet::new();
+        let timings = updates
+            .iter()
+            .map(|update| {
+                if !seen.insert(update.channel_id) {
+                    return Err("duplicate channel timing update".to_owned());
+                }
+                let audio = model.audio_data.as_ref().and_then(|data| {
+                    data.channels.iter().enumerate().find(|(index, _)| {
+                        ChannelId::from_raw((loop_id.raw() << 8) | *index as u64 + 1)
+                            == update.channel_id
+                    })
+                });
+                let (is_midi, channel, alignment) = if let Some((index, channel)) = audio {
+                    (false, index, i64::from(channel.capture_alignment_frames))
+                } else {
+                    let (index, channel) = model
+                        .midi_data
+                        .as_ref()
+                        .and_then(|channels| {
+                            channels
+                                .iter()
+                                .enumerate()
+                                .find(|(_, channel)| channel.id == update.channel_id)
+                        })
+                        .ok_or_else(|| "stale loop channel".to_owned())?;
+                    (true, index, channel.capture_alignment_frames)
+                };
+                let start_offset = update
+                    .start_offset
+                    .map(|offset| {
+                        offset
+                            .checked_sub(alignment)
+                            .and_then(|offset| i32::try_from(offset).ok())
+                            .ok_or_else(|| {
+                                "channel start is outside the supported frame range".to_owned()
+                            })
+                    })
+                    .transpose()?;
+                let preplay = update
+                    .preplay_samples
+                    .map(u32::try_from)
+                    .transpose()
+                    .map_err(|_| "preplay is outside the supported frame range".to_owned())?;
+                Ok(shoop_backend::BackendChannelTimingUpdate {
+                    channel,
+                    is_midi,
+                    start_offset,
+                    preplay,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        backend
+            .set_loop_channel_timings(model.backend_id, &timings)
+            .map_err(|error| format!("could not update channel timing: {error}"))?;
+        let model = self.loops.get_mut(&loop_id).expect("loop was validated");
+        for (update, timing) in updates.iter().zip(timings) {
+            if timing.is_midi {
+                let channel =
+                    &mut model.midi_data.as_mut().expect("channel was validated")[timing.channel];
+                if let Some(offset) = update.start_offset {
+                    channel.start_offset = offset;
+                }
+                if let Some(preplay) = update.preplay_samples {
+                    channel.preplay_samples = preplay;
+                }
+            } else {
+                let channel = &mut model
+                    .audio_data
+                    .as_mut()
+                    .expect("channel was validated")
+                    .channels[timing.channel];
+                if let Some(offset) = timing.start_offset {
+                    channel.start_offset = offset;
+                }
+                if let Some(preplay) = timing.preplay {
+                    channel.preplay = preplay;
+                }
+            }
+        }
+        self.revision = self.revision.saturating_add(1);
+        Ok(())
     }
 
     fn set_loop_timeline(
@@ -21399,6 +21500,85 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let edited_channel = &edited_loop.midi[0];
         assert_eq!(edited_channel.start_offset, -1);
         assert_eq!(edited_channel.capture_alignment_frames, 3);
+        let audio_id = edited.channels[0].id;
+        let midi_id = edited.midi_channels[0].id;
+        model
+            .set_loop_channel_timings(
+                &mut backend,
+                loop_id,
+                &[shoop_app_api::ChannelTimelineUpdate {
+                    channel_id: audio_id,
+                    start_offset: Some(0),
+                    preplay_samples: Some(7),
+                }],
+            )
+            .unwrap();
+        let single = backend.capture_session().unwrap();
+        assert_eq!(single.tracks[1].loops[0].audio[0].start_offset, -3);
+        assert_eq!(single.tracks[1].loops[0].midi[0].start_offset, -1);
+        assert_eq!(
+            model.details_snapshot().unwrap().channels[0].start_offset,
+            0
+        );
+        model
+            .set_loop_channel_timings(
+                &mut backend,
+                loop_id,
+                &[shoop_app_api::ChannelTimelineUpdate {
+                    channel_id: midi_id,
+                    start_offset: Some(1),
+                    preplay_samples: Some(5),
+                }],
+            )
+            .unwrap();
+        let single = backend.capture_session().unwrap();
+        assert_eq!(single.tracks[1].loops[0].midi[0].start_offset, -2);
+        assert_eq!(single.tracks[1].loops[0].audio[0].start_offset, -3);
+        assert_eq!(
+            model.details_snapshot().unwrap().midi_channels[0].start_offset,
+            1
+        );
+        assert_eq!(
+            model.details_snapshot().unwrap().midi_channels[0].data_length,
+            24
+        );
+        assert!(model
+            .set_loop_channel_timings(
+                &mut backend,
+                loop_id,
+                &[
+                    shoop_app_api::ChannelTimelineUpdate {
+                        channel_id: audio_id,
+                        start_offset: Some(1),
+                        preplay_samples: None
+                    },
+                    shoop_app_api::ChannelTimelineUpdate {
+                        channel_id: ChannelId::INVALID,
+                        start_offset: Some(1),
+                        preplay_samples: None
+                    },
+                ]
+            )
+            .is_err());
+        assert_eq!(backend.capture_session().unwrap(), single);
+        model
+            .set_loop_channel_timings(
+                &mut backend,
+                loop_id,
+                &[
+                    shoop_app_api::ChannelTimelineUpdate {
+                        channel_id: audio_id,
+                        start_offset: Some(2),
+                        preplay_samples: Some(6),
+                    },
+                    shoop_app_api::ChannelTimelineUpdate {
+                        channel_id: midi_id,
+                        start_offset: Some(2),
+                        preplay_samples: Some(6),
+                    },
+                ],
+            )
+            .unwrap();
         model.handle_intent(
             &mut backend,
             AppIntent::SetTakeAlignment {
@@ -26289,6 +26469,17 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     start_offset: Some(4),
                     preplay_samples: None,
                     loop_length: None,
+                },
+            ),
+            (
+                BackendCapability::LoopTimingEdits,
+                AppIntent::SetLoopChannelTimings {
+                    loop_id,
+                    updates: vec![shoop_app_api::ChannelTimelineUpdate {
+                        channel_id: ChannelId::INVALID,
+                        start_offset: Some(4),
+                        preplay_samples: None,
+                    }],
                 },
             ),
             (
