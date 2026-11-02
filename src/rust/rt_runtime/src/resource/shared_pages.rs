@@ -2,7 +2,7 @@
 //! Copies consume callback-wide transfer credits. Final release retires a page for
 //! incremental reclamation. Copying a lease ID does not acquire another owner.
 
-use super::{get, index, release, slots, Page, ResourceStore, Slot};
+use super::{get, index, release, slots, Page, ResourceStore, Slot, WorkClass};
 use crate::Error;
 use alloc::{boxed::Box, vec, vec::Vec};
 
@@ -117,6 +117,45 @@ impl SharedPages {
             output.copy_from_slice(&sample.to_le_bytes());
         }
         Ok(self.publish(store, page))
+    }
+
+    pub(super) fn insert_bytes_render(
+        &mut self,
+        store: &mut ResourceStore,
+        bytes: &[u8],
+    ) -> Result<LeaseId, Error> {
+        self.check_store(store)?;
+        let page_bytes = store.config.limits().page_bytes;
+        if bytes.len() != page_bytes {
+            return Err(Error::InvalidShape);
+        }
+        if self.free_leases.is_empty() || store.free_pages.len() == store.reserved_pages {
+            return Err(Error::Capacity);
+        }
+        store.charge_work(WorkClass::Render, page_bytes, 0)?;
+        let page = store.free_pages.pop().expect("prepared page credit");
+        store.data[page * page_bytes..(page + 1) * page_bytes].copy_from_slice(bytes);
+        Ok(self.publish(store, page))
+    }
+
+    pub(super) fn reclaim_render(
+        &mut self,
+        store: &mut ResourceStore,
+        lease: LeaseId,
+    ) -> Result<bool, Error> {
+        self.check_store(store)?;
+        let page = self.page(lease)?;
+        let remaining = self.references[page]
+            .checked_sub(1)
+            .ok_or(Error::InvalidState)?;
+        store.charge_work(WorkClass::Render, 0, 1)?;
+        self.references[page] = remaining;
+        if remaining == 0 {
+            store.pages[page] = Page::default();
+            store.free_pages.push(page);
+        }
+        release(&mut self.leases, &mut self.free_leases, lease.slot as usize);
+        Ok(remaining == 0)
     }
 
     pub fn retain(&mut self, lease: LeaseId) -> Result<LeaseId, Error> {

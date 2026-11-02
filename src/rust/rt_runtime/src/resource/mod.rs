@@ -25,6 +25,7 @@ mod render;
 mod request;
 #[allow(dead_code)] // Prepared history storage; engine integration is staged separately.
 mod rolling_history;
+pub mod shared_audio;
 #[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
 mod shared_pages;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
