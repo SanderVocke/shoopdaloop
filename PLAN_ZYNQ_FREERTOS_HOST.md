@@ -459,3 +459,10 @@ documentation links are background, not reproducible build inputs.
   all-sound-off/all-notes-off packets across the 16 MIDI channels. The control
   task emits the completion marker after render stop; the integration runner
   requires it. Production/restart and native UI paths passed this stricter check.
+
+- Combined-run resource evidence: 40 MiB exact engine playback, 100 identical-heap
+  cycles, the 128 MiB pool boundary, refused oversized export and unaffected
+  playback all passed. The last normalized-replacement probe used transfer 494
+  after capture 500, so the service correctly refused Identity before preparation.
+  Use fresh transfer 501 to test the intended budget refusal. The matching
+  portable pool/replacement test passes; rerun the affected firmware fixture.

@@ -1035,7 +1035,7 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         .unwrap()
         .loops[0]
         .frames = 9_000_000;
-    let staged = stage(client, connection, 494, Arc::new(padded));
+    let staged = stage(client, connection, 501, Arc::new(padded));
     assert!(
         matches!(
             command(client, connection, Command::CommitPersistence(staged)),
