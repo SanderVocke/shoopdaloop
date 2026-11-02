@@ -328,7 +328,7 @@ Depends on all three gates; use the repository-prescribed build environment.
 - [ ] Review the memory ledger, image/map, production/test feature separation,
   dependency boundaries, scope and acceptance evidence; update this plan and the
   LAN/platform documentation. Commit each remaining meaningful milestone.
-- [ ] Push `feat/zynq-freertos-rt-host` and create/update one PR with
+- [x] Push `feat/zynq-freertos-rt-host` and create/update one PR with
   **base `feat/backend-replacement`**. Explain the resulting firmware behavior,
   usage, three gate results, memory maxima and hardware validation limits. Do not
   retarget the existing networking PR or merge either PR as part of this task.
@@ -435,3 +435,10 @@ documentation links are background, not reproducible build inputs.
   suite is 2,517/2,517; affected Node suites are 81/81 and hosted Chromium reports
   the core audio/MIDI/file workflow passed with zero xruns. All-gates rerun and
   live PR CI remain outstanding.
+
+- Delivery opened as [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914),
+  base `feat/backend-replacement` at `540e863f`. Host/CI milestone is `dee441c3`.
+  The new firmware workflow and existing desktop/browser, bare-metal, docs and
+  CodeQL workflows are running. No review has arrived at initial inspection.
+  The loaded-audio render expectation accounts for IEEE signed-zero mixing;
+  persisted PCM remains compared bit-for-bit.

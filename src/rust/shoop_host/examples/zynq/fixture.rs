@@ -557,6 +557,8 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
                     for frame in 0..256 {
                         let sample = ((phase + frame) % 257) as f32 / 512. - 0.25;
                         let sample = if channel == 0 { sample } else { -sample };
+                        // Mixing into a cleared output turns negative zero into positive zero.
+                        let sample = if sample == 0. { 0. } else { sample };
                         hash = hash.wrapping_mul(16_777_619) ^ sample.to_bits();
                     }
                 }
