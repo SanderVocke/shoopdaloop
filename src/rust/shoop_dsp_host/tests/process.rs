@@ -164,6 +164,9 @@ fn control_stays_responsive_and_new_epochs_fence_old_udp_then_disconnect_stops_w
     let configure = |epoch| json!({"request":"configure","version":1,"config":config,"epoch":epoch,"udp_port":udp.local_addr().unwrap().port(),"algorithm":{"type":"delay-copy","delay":0}});
     let mut raw = [0; 1452];
     let mut output = [0; 1452];
+    let mut wrong_version = configure(99);
+    wrong_version["version"] = json!(999);
+    assert_eq!(rpc(&mut tcp, wrong_version)["reply"], "error");
     for epoch in [1, 2] {
         let reply = rpc(&mut tcp, configure(epoch));
         assert_eq!(reply["reply"], "ready");

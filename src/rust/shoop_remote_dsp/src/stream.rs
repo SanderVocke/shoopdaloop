@@ -18,6 +18,7 @@ pub struct Stats {
     pub process_ns: u64,
     pub diagnostics_truncated: bool,
     pub retired: bool,
+    pub fault: Option<Error>,
 }
 struct Slot {
     sequence: Option<u64>,
@@ -90,6 +91,10 @@ impl Stream {
         self.next
     }
     pub fn retire(&mut self) {
+        self.retire_with(Error::Retired);
+    }
+    pub fn retire_with(&mut self, error: Error) {
+        self.stats.fault.get_or_insert(error);
         self.stats.retired = true;
     }
     pub fn accept(&mut self, bytes: &[u8], now: u64) -> Result<(), Error> {
@@ -116,7 +121,7 @@ impl Stream {
             self.stats.future += 1;
             self.future_streak += 1;
             if self.future_streak > self.slots.len() {
-                self.retire();
+                self.retire_with(Error::Future);
             }
             return Err(Error::Future);
         }
@@ -205,7 +210,7 @@ impl Stream {
                 continue;
             }
             if transport.is_some_and(|t| t != slot.transport) {
-                self.retire();
+                self.retire_with(Error::Packet);
                 return Err(Error::Packet);
             }
             transport = Some(slot.transport);
@@ -224,7 +229,7 @@ impl Stream {
         let started = clock();
         if dsp
             .process(Block {
-                frame: self.next * p as u64,
+                frame: self.config.start_frame + self.next * p as u64,
                 frames: cframes,
                 input: &self.input,
                 output: &mut self.output,
@@ -234,7 +239,7 @@ impl Stream {
             })
             .is_err()
         {
-            self.retire();
+            self.retire_with(Error::Dsp);
             return Err(Error::Dsp);
         }
         let elapsed = clock().saturating_sub(started);
@@ -274,7 +279,7 @@ impl Stream {
                 flags,
                 epoch: self.epoch,
                 sequence,
-                frame: sequence * p as u64,
+                frame: self.config.start_frame + sequence * p as u64,
                 transport,
                 process_ns: elapsed,
                 missing_mask: missing,

@@ -59,7 +59,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p shoop_loops -p shoop_dsp -p shoop_remote_dsp --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -544,6 +544,18 @@ jobs:
         run: |
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+
+      - name: Test standalone network DSP and localhost correctness
+        if: matrix.target != 'web'
+        env:
+          RUSTFLAGS: -D warnings
+        shell: bash
+        run: |
+          cargo test --locked -p shoop_dsp -p shoop_remote_dsp -p shoop_dsp_host -p shoop_carla_native --features shoop_dsp_host/carla ${{ matrix.cargo_args }}
+          cargo build --locked -p shoop_dsp_host --no-default-features ${{ matrix.cargo_args }}
+          binary="target/${{ matrix.profile }}/shoop_dsp_host"
+          if [ "${{ runner.os }}" = "Windows" ]; then binary="${binary}.exe"; fi
+          python3 scripts/sweep_remote_dsp.py --binary "$binary" --profile smoke --output "${{ runner.temp }}/network-dsp-smoke"
 
       - name: Test independent runtime, loop library and native hosts
         if: matrix.target != 'web'

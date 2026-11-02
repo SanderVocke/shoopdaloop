@@ -190,7 +190,7 @@ pub struct DelayCopy {
     delay: usize,
     history: Vec<f32>,
     cursor: usize,
-    next_frame: u64,
+    next_frame: Option<u64>,
 }
 impl DelayCopy {
     pub fn prepare(config: Config, delay: u32) -> Result<Self, Error> {
@@ -203,7 +203,7 @@ impl DelayCopy {
             delay: delay as usize,
             history: vec![0.0; delay as usize * config.channels],
             cursor: 0,
-            next_frame: 0,
+            next_frame: None,
         })
     }
 }
@@ -219,7 +219,7 @@ impl Processor for DelayCopy {
     }
     fn process(&mut self, block: Block<'_>) -> Result<(), Error> {
         block.validate(self.config)?;
-        if block.frame != self.next_frame {
+        if self.next_frame.is_some_and(|frame| block.frame != frame) {
             return Err(Error::Discontinuity);
         }
         block.midi_output.clear();
@@ -242,13 +242,13 @@ impl Processor for DelayCopy {
                 self.cursor = (self.cursor + 1) % self.delay;
             }
         }
-        self.next_frame += block.frames as u64;
+        self.next_frame = Some(block.frame + block.frames as u64);
         Ok(())
     }
     fn reset(&mut self) -> Result<(), Error> {
         self.history.fill(0.0);
         self.cursor = 0;
-        self.next_frame = 0;
+        self.next_frame = None;
         Ok(())
     }
 }

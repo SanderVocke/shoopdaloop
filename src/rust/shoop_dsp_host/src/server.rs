@@ -71,6 +71,11 @@ impl Ui {
                         self.service = Some(service);
                         self.dispatcher = Some(dispatcher);
                     }
+                    ensure!(
+                        config.multiplier as usize * config.midi_per_packet as usize + 32
+                            <= shoop_carla_native::CARLA_MIDI_BUFFER_CAPACITY,
+                        "Carla MIDI capacity must include recovery events"
+                    );
                     let kind = if patchbay16 {
                         ChainType::CarlaPatchbay16x
                     } else {
@@ -105,25 +110,25 @@ fn start(mut work: Work) -> Result<Worker> {
             let elapsed_base = work.elapsed_ns;
             let mut last_input = Instant::now();
             while !stopping.load(Ordering::Acquire) {
+                if work.core.stats().retired {
+                    thread::sleep(Duration::from_millis(1));
+                    continue;
+                }
                 let mut progress = false;
-                for _ in 0..32 {
-                    match work.udp.recv_from(&mut raw) {
-                        Ok((len, peer)) if peer == work.peer => {
-                            let _ = work.core.accept(
-                                &raw[..len],
-                                elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
-                            );
-                            last_input = Instant::now();
-                            progress = true;
-                        }
-                        Ok(_) => {}
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                        Err(_) => {
-                            work.core.retire();
-                            break;
-                        }
+                match work.udp.recv_from(&mut raw) {
+                    Ok((len, peer)) if peer == work.peer => {
+                        let _ = work.core.accept(
+                            &raw[..len],
+                            elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
+                        );
+                        last_input = Instant::now();
+                        progress = true;
                     }
+                    Ok(_) => {}
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            || e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(_) => work.core.retire_with(shoop_remote_dsp::Error::Io),
                 }
                 for _ in 0..8 {
                     let now = elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
@@ -161,10 +166,10 @@ fn pause(worker: Worker, ui: &mut Ui) -> Result<Work> {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !worker.handle.is_finished() {
         ui.pump();
-        ensure!(
-            Instant::now() < deadline,
-            "DSP failed to stop within 5 seconds"
-        );
+        if Instant::now() >= deadline {
+            eprintln!("DSP failed to stop within 5 seconds; terminating its dedicated process");
+            std::process::exit(1);
+        }
         thread::sleep(Duration::from_micros(100));
     }
     worker

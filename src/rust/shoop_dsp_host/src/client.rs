@@ -16,6 +16,8 @@ pub struct Options {
     endpoint: SocketAddr,
     #[arg(long)]
     credential_file: PathBuf,
+    #[arg(long, default_value_t = 0)]
+    start_frame: u64,
     #[arg(long, default_value_t = 48_000)]
     sample_rate: u32,
     #[arg(long, default_value_t = 16)]
@@ -58,6 +60,8 @@ pub struct Options {
     impulse: bool,
     #[arg(long)]
     output: Option<PathBuf>,
+    #[arg(long)]
+    validate_only: bool,
 }
 fn signal(frame: u64, channel: usize, seed: u64, impulse: bool) -> f32 {
     if impulse {
@@ -100,6 +104,7 @@ fn distribution(mut values: Vec<u64>) -> Value {
 }
 pub fn run(options: Options) -> Result<()> {
     let config = Config {
+        start_frame: options.start_frame,
         sample_rate: options.sample_rate,
         packet_frames: options.packet_frames,
         multiplier: options.multiplier,
@@ -112,6 +117,14 @@ pub fn run(options: Options) -> Result<()> {
     };
     if let Err(error) = config.validate() {
         let report = json!({"status":"rejected","reason":error.to_string(),"config":config});
+        if let Some(path) = &options.output {
+            std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+        }
+        println!("{report}");
+        return Ok(());
+    }
+    if options.validate_only {
+        let report = json!({"status":"admitted","config":config});
         if let Some(path) = &options.output {
             std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
         }
@@ -139,6 +152,13 @@ pub fn run(options: Options) -> Result<()> {
     ensure!(
         count <= 1_000_000,
         "measurement exceeds prepared packet capacity"
+    );
+    ensure!(
+        config
+            .start_frame
+            .checked_add(count as u64 * p as u64)
+            .is_some(),
+        "source interval overflows frame range"
     );
     let token = control::token(&options.credential_file)?;
     let tcp = TcpStream::connect_timeout(&options.endpoint, Duration::from_secs(5))?;
@@ -413,7 +433,11 @@ pub fn run(options: Options) -> Result<()> {
     }
     for base in (warmup_packets..count).step_by(k) {
         let last = base + k - 1;
-        if tx[last] != u64::MAX && rx[base..base + k].iter().all(|r| *r != u64::MAX) {
+        if !stats.diagnostics_truncated
+            && !concealed[base..base + k].iter().any(|v| *v)
+            && tx[base..base + k].iter().all(|t| *t != u64::MAX)
+            && rx[base..base + k].iter().all(|r| *r != u64::MAX)
+        {
             batch.push(
                 rx[base..base + k]
                     .iter()
@@ -428,7 +452,7 @@ pub fn run(options: Options) -> Result<()> {
     }
     let report = json!({"status":"measured","config":config,"algorithm":options.processor,"delay_frames":options.delay,
         "algorithm_latency_frames":latency,"seed":options.seed,"impulse":options.impulse,"warmup_seconds":options.warmup,"measurement_seconds":options.seconds,
-        "total_packets":count,"measured_packets":measured_packets,"sent":measured_sent,"on_time":on_time,"late":late,"missing":missing,
+        "capture_grace_ms":50,"total_packets":count,"measured_packets":measured_packets,"sent":measured_sent,"on_time":on_time,"late":late,"missing":missing,
         "deadline_miss_fraction":(late+missing) as f64/measured_packets as f64,"sender_period_overruns":sender_late,"maximum_sender_backlog_packets":max_source_backlog,
         "send_errors_or_skipped":send_errors,"deliberately_dropped":deliberately_dropped,"duplicates":duplicate,"invalid":invalid,
         "correctness_errors":correctness_errors,"verified_samples":verified_samples,"unverified_samples":unverified_samples,

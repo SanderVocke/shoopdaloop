@@ -7,6 +7,7 @@ pub struct CarlaDsp {
     kind: ChainType,
     state: Option<String>,
     dispatcher: Option<CarlaMainThreadUiDispatcher>,
+    next_frame: Option<u64>,
 }
 impl CarlaDsp {
     pub fn prepare(
@@ -48,6 +49,7 @@ impl CarlaDsp {
             kind,
             state,
             dispatcher,
+            next_frame: None,
         })
     }
 }
@@ -63,6 +65,9 @@ impl Processor for CarlaDsp {
     }
     fn process(&mut self, block: Block<'_>) -> Result<(), Error> {
         block.validate(self.config)?;
+        if self.next_frame.is_some_and(|frame| frame != block.frame) {
+            return Err(Error::Discontinuity);
+        }
         if block.midi_input.len() > crate::CARLA_MIDI_BUFFER_CAPACITY {
             return Err(Error::Capacity);
         }
@@ -85,6 +90,7 @@ impl Processor for CarlaDsp {
         self.host
             .process(block.frames)
             .map_err(|_| Error::Algorithm)?;
+        self.next_frame = Some(block.frame + block.frames as u64);
         for c in 0..self.config.channels {
             block.output[c * block.frames..(c + 1) * block.frames]
                 .copy_from_slice(&self.host.audio_output(c).ok_or(Error::Shape)?[..block.frames]);

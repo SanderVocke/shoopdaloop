@@ -126,7 +126,7 @@ impl Returns {
         }
         self.next = self.next.checked_add(1).ok_or(Error::Capacity)?;
         Ok(Delivery {
-            frame: sequence * self.config.packet_frames as u64,
+            frame: self.config.start_frame + sequence * self.config.packet_frames as u64,
             outcome,
             midi_reset,
         })

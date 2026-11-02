@@ -259,3 +259,207 @@ fn presentation_has_fixed_slots_and_late_results_never_shift_following_audio() {
         Outcome::Silence
     );
 }
+
+#[shoop_wasm_test_support::shoop_test]
+fn expired_input_is_not_replayed_and_its_zeroes_remain_in_delayed_algorithm_state() {
+    let c = config();
+    let delay = c.dsp().frames + 3;
+    let mut stream = Stream::prepare(c, 1).unwrap();
+    let mut dsp = DelayCopy::prepare(c.dsp(), delay as u32).unwrap();
+    let mut raw = [0; 1452];
+    let due = 3 * c.packet_ns() + c.gap_timeout_us as u64 * 1000;
+    for batch in 0..3 {
+        for j in 0..4 {
+            let sequence = batch * 4 + j;
+            if sequence == 1 {
+                continue;
+            }
+            let n = packet(c, 1, sequence, &mut raw);
+            stream.accept(&raw[..n], 0).unwrap();
+        }
+        assert_no_alloc::assert_no_alloc(|| {
+            assert!(stream
+                .process_one(
+                    due,
+                    &mut dsp,
+                    || 0,
+                    |raw| {
+                        let output = wire::decode(raw, c).unwrap();
+                        for ch in 0..2 {
+                            for i in 0..4 {
+                                let n = output.header.frame as usize + i;
+                                let expected = if n < delay || (4..8).contains(&(n - delay)) {
+                                    0.
+                                } else {
+                                    (ch * 10000 + n - delay + 1) as f32
+                                };
+                                assert_eq!(output.sample(ch, i), expected);
+                            }
+                        }
+                        Ok(())
+                    }
+                )
+                .unwrap())
+        });
+        let n = packet(c, 1, 1, &mut raw);
+        assert_eq!(stream.accept(&raw[..n], due), Err(Error::Stale));
+    }
+    assert_eq!(stream.stats().blocks, 3);
+    assert_eq!(stream.stats().concealed_packets, 1);
+}
+#[shoop_wasm_test_support::shoop_test]
+fn algorithm_failure_retires_without_replaying_partly_modified_state() {
+    use shoop_dsp::{Block, Info, Processor};
+    struct Failing {
+        calls: usize,
+        inner: DelayCopy,
+    }
+    impl Processor for Failing {
+        fn info(&self) -> Info {
+            self.inner.info()
+        }
+        fn reset(&mut self) -> Result<(), shoop_dsp::Error> {
+            self.inner.reset()
+        }
+        fn process(&mut self, _block: Block<'_>) -> Result<(), shoop_dsp::Error> {
+            self.calls += 1;
+            Err(shoop_dsp::Error::Algorithm)
+        }
+    }
+    let c = config();
+    let mut stream = Stream::prepare(c, 1).unwrap();
+    let mut raw = [0; 1452];
+    for seq in 0..4 {
+        let n = packet(c, 1, seq, &mut raw);
+        stream.accept(&raw[..n], 0).unwrap();
+    }
+    let mut dsp = Failing {
+        calls: 0,
+        inner: DelayCopy::prepare(c.dsp(), 0).unwrap(),
+    };
+    assert_eq!(
+        stream.process_one(0, &mut dsp, || 0, |_| panic!("failed DSP emitted output")),
+        Err(Error::Dsp)
+    );
+    assert_eq!(
+        stream.process_one(0, &mut dsp, || 0, |_| panic!("retired DSP emitted output")),
+        Err(Error::Retired)
+    );
+    assert_eq!(dsp.calls, 1);
+    assert_eq!(stream.stats().fault, Some(Error::Dsp));
+}
+#[shoop_wasm_test_support::shoop_test]
+fn midi_overflow_requests_reset_without_discarding_audio() {
+    use shoop_dsp::{Block, Info, Processor};
+    struct ManyMidi(DelayCopy);
+    impl Processor for ManyMidi {
+        fn info(&self) -> Info {
+            self.0.info()
+        }
+        fn reset(&mut self) -> Result<(), shoop_dsp::Error> {
+            self.0.reset()
+        }
+        fn process(&mut self, block: Block<'_>) -> Result<(), shoop_dsp::Error> {
+            block.output.copy_from_slice(block.input);
+            block.midi_output.clear();
+            for note in 60..63 {
+                block
+                    .midi_output
+                    .push(MidiEvent::new(0, 0, &[0x90, note, 100])?)?;
+            }
+            Ok(())
+        }
+    }
+    let c = Config {
+        midi_per_packet: 1,
+        ..config()
+    };
+    let mut stream = Stream::prepare(c, 1).unwrap();
+    let mut raw = [0; 1452];
+    for seq in 0..4 {
+        let n = packet(c, 1, seq, &mut raw);
+        stream.accept(&raw[..n], 0).unwrap();
+    }
+    let mut dsp = ManyMidi(DelayCopy::prepare(c.dsp(), 0).unwrap());
+    let mut count = 0;
+    assert!(stream
+        .process_one(
+            0,
+            &mut dsp,
+            || 0,
+            |raw| {
+                let p = wire::decode(raw, c).unwrap();
+                assert!(p.sample(0, 0) > 0.);
+                if p.header.sequence == 0 {
+                    assert_ne!(p.header.flags & wire::MIDI_RESET, 0);
+                    assert_eq!(p.midi_len(), 0);
+                }
+                count += 1;
+                Ok(())
+            }
+        )
+        .unwrap());
+    assert_eq!(count, 4);
+}
+#[shoop_wasm_test_support::shoop_test]
+fn arbitrary_truncated_datagrams_cannot_panic_or_advance_state() {
+    let c = config();
+    let mut stream = Stream::prepare(c, 1).unwrap();
+    let mut raw = [0; 1452];
+    let mut seed = 1234567u64;
+    for index in 0..5000 {
+        for b in &mut raw {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            *b = seed as u8;
+        }
+        let len = index % raw.len();
+        assert!(stream.accept(&raw[..len], 0).is_err());
+    }
+    assert_eq!(stream.next_sequence(), 0);
+    assert_eq!(stream.stats().invalid, 5000);
+}
+#[shoop_wasm_test_support::shoop_test]
+fn long_source_timeline_does_not_overflow_the_intermediate_nanosecond_conversion() {
+    let c = config();
+    let sequence = 48_000u64 * 60 * 60 * 24 * 10 / c.packet_frames as u64;
+    assert!(c.ready_ns(sequence).unwrap() > 8 * 24 * 60 * 60 * 1_000_000_000u64);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn stream_attachment_preserves_a_nonzero_absolute_source_frame() {
+    use shoop_dsp::MidiBuffer;
+    use shoop_remote_dsp::returns::Returns;
+    let c = Config {
+        start_frame: 1_000_003,
+        multiplier: 1,
+        ..config()
+    };
+    let mut stream = Stream::prepare(c, 3).unwrap();
+    let mut returns = Returns::prepare(c, 3).unwrap();
+    let mut dsp = DelayCopy::prepare(c.dsp(), 1).unwrap();
+    let mut raw = [0; 1452];
+    let mut audio = [0.; 8];
+    let mut midi = MidiBuffer::new(4);
+    let n = packet(c, 3, 0, &mut raw);
+    stream.accept(&raw[..n], 0).unwrap();
+    assert!(stream
+        .process_one(
+            0,
+            &mut dsp,
+            || 0,
+            |raw| {
+                let packet = wire::decode(raw, c).unwrap();
+                assert_eq!(packet.header.frame, 1_000_003);
+                returns.accept(raw, 0)
+            }
+        )
+        .unwrap());
+    let result = returns
+        .consume(0, c.deadline_ns(0).unwrap(), &mut audio, &mut midi)
+        .unwrap();
+    assert_eq!(result.frame, 1_000_003);
+    assert_eq!(audio[0], 0.);
+    assert_eq!(audio[1], 1.);
+}

@@ -31,6 +31,7 @@ responses for diagnostics only. Unavailable output produces silence and a MIDI
 reset indication; it never shifts a later slot. Delay-copy delays audio by exactly
 `A` samples and passes MIDI through at its original offsets.
 
+Use `--start-frame` to attach at an existing absolute source frame.
 Use `--channels`, `--sample-rate`, `--reorder-packets`, `--gap-timeout-us` and
 `--mtu` for other stream shapes/budgets. `--impulse` selects an impulse input.
 `--drop-every` and `--duplicate-every` are requester-side failure injection, not
@@ -98,7 +99,9 @@ frames (`u32` little-endian byte length, maximum 32 MiB). It negotiates the prot
 version, configuration, nonzero never-reused per-connection epoch, requester UDP
 port and algorithm. JSON tags and invalid versions/configurations are rejected.
 Partial reads and connection loss preserve the processing/ownership boundary.
-Source inactivity retires processing after two seconds; source-time progress is
+If DSP cannot stop within five seconds, the dedicated process exits before native
+cleanup can overlap active processing. Source inactivity retires processing after
+two seconds; source-time progress is
 never synthesized indefinitely while no source exists.
 
 Audio uses UDP. The 64-byte header and every integer/float payload are explicitly
@@ -110,7 +113,7 @@ little-endian. Planar float32 samples follow the header, then zero or more fixed
 | 0 | `SDSP` magic, version `u16`, input/output kind `u8`, flags `u8` |
 | 8 | Stream epoch `u64` |
 | 16 | Packet sequence `u64` |
-| 24 | Source frame `u64`, exactly `sequence * P` |
+| 24 | Source frame `u64`, exactly `start_frame + sequence * P` |
 | 32 | Frames, channels, MIDI count and zero reserved word, all `u16` |
 | 40 | Optional tempo as float64; zero means absent |
 | 48 | Server-local DSP processing duration in ns (`u64`), output only |
@@ -122,7 +125,9 @@ all-sound-off/all-notes-off events before processing zeros; output concealment o
 MIDI overflow requests receiver MIDI reset and suppresses ordinary MIDI for that
 packet. Audio continues. Context changes within a `C`-frame batch are refused.
 
-For packet `[s,s+P)`, nominal readiness is `r(s)=t0+(s+P)/fs`, and consumption is
+The configured `start_frame` is an absolute frame origin; sequence numbers begin
+at zero for each epoch. For packet `[s,s+P)`, nominal readiness is
+`r(s)=t0+(s-start_frame+P)/fs`, and consumption is
 `d(s)=r(s)+N*P/fs`. Late source dispatch never moves these deadlines. The requester
 allows multiple requests in flight and measures deadline completion on its own
 monotonic clock; it never subtracts server timestamps from client timestamps.
@@ -163,3 +168,24 @@ samples, saves state and checks another process pair restored from that state.
 It requires the real runtime. Other tests inject loss, duplicates, reorder,
 retirement and stale epochs and verify independent sample references and fixed
 presentation slots, including allocator-guarded prepared operations.
+
+## Localhost sweeps
+
+```sh
+cargo build --release -p shoop_dsp_host --no-default-features
+python3 scripts/sweep_remote_dsp.py --profile all --output work/remote-dsp-sweep
+python3 scripts/sweep_remote_dsp.py --report-only --output work/remote-dsp-sweep
+```
+
+The full profile executes the planned 100-configuration matrix, three repetitions
+of admitted configurations, both non-aligned delay cases for every `P/k`, MTU
+boundary cases and up to six 60-second follow-ups selected from observed baseline
+boundaries. `--profile smoke` is a short correctness-focused CI subset. Other
+profiles run just `baseline`, `delays` or `followup`. Results resume only when the
+binary and runner hashes match; report regeneration uses stored results.
+
+Each output directory contains the host manifest, per-run logs/results, a CSV,
+compressed JSONL with timing histograms, and a Markdown report. Source-time
+readiness remains fixed. A 50 ms receive grace captures diagnostic late responses
+without extending consumption deadlines; responses absent at that cutoff count as
+missing. Timing misses never fail CI on a wall-clock percentile threshold.

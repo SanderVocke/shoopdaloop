@@ -7,6 +7,7 @@ pub mod wire;
 use shoop_dsp::Config as DspConfig;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {
     Config,
     Mtu,
@@ -31,6 +32,7 @@ impl core::error::Error for Error {}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct Config {
+    pub start_frame: u64,
     pub sample_rate: u32,
     pub packet_frames: u16,
     pub multiplier: u16,
@@ -44,6 +46,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            start_frame: 0,
             sample_rate: 48_000,
             packet_frames: 16,
             multiplier: 4,
@@ -66,6 +69,13 @@ impl Config {
     }
     pub fn validate(self) -> Result<Self, Error> {
         self.dsp().validate().map_err(|_| Error::Config)?;
+        if self
+            .start_frame
+            .checked_add(self.dsp().frames as u64)
+            .is_none()
+        {
+            return Err(Error::Config);
+        }
         if self.multiplier == 0
             || self.multiplier > 64
             || self.allowance > 4096

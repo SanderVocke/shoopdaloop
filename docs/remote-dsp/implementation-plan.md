@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: Stages 1–2 implemented and verified; Stage 3 and full sweeps are pending.
+Status: Stages 1–2 complete; Stage 3 code/tests/runner are verified. Full measurement and final delivery are in progress.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -227,14 +227,14 @@ Depends on Stage 1's DSP contract and both implementations.
 
 Depends on Stage 2's real process pair and independent sample reference.
 
-- [ ] Use deterministic clocks/test transports to inject packet delay, reordering,
+- [x] Use deterministic clocks/test transports to inject packet delay, reordering,
       duplicates, gaps, late replies, malformed dimensions, stale epochs, stream
       restart, control loss and sustained overload. Assert exact samples/flags,
       once-only state progression, fallback boundaries and bounded storage.
-- [ ] Cover allocation-free prepared codec/adapter/delay-copy paths and lifecycle
+- [x] Cover allocation-free prepared codec/adapter/delay-copy paths and lifecycle
       ownership. Keep failure injection separate from the production delay-copy
       algorithm; a known sample delay must not be implemented as wall-clock delay.
-- [ ] Add a repeatable sweep script launching a real server and requester as
+- [x] Add a repeatable sweep script launching a real server and requester as
       separate processes on the same host. Use loopback sockets, not an in-process
       carrier; select delay-copy without building/loading Carla.
 - [ ] Run the full baseline matrix at 48 kHz stereo: `P = 8,16,32,64,128`,
@@ -345,3 +345,34 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
   dependency on Carla or the legacy engine. Both host feature builds passed.
 - Warning-denying workspace build, formatting, test policy and tracing inventory
   passed. Short smoke timing results are not substituted for the planned sweeps.
+
+### Stage 3 implementation and validation
+
+- Added deterministic parser/fault tests covering 5000 malformed/truncated
+  datagrams, delayed-input state, MIDI recovery overflow, non-replayed algorithm
+  faults, long elapsed-time arithmetic, and nonzero absolute stream attachment.
+- Design refinement: negotiation includes `start_frame`. Epoch-relative packet
+  sequences preserve the original absolute source frame, including attachment to
+  an already-running FPGA timeline. Readiness uses `s - start_frame`; all planned
+  zero-origin sweep configurations retain their original deadline definition.
+- Retired streams publish a compact first-fault reason. The worker processes a
+  ready batch before receiving another datagram, and a shutdown watchdog exits
+  the dedicated process before cleanup could overlap a stuck DSP invocation.
+- Added `scripts/sweep_remote_dsp.py` with full/smoke/delay/follow-up profiles,
+  refusal records, three repetitions, seeded ordering, binary/runner manifests,
+  histograms, CSV, compressed JSONL and report regeneration.
+- Smoke experiment: 3 measured configurations and 1 structural refusal, 15,808
+  checked samples with zero incorrect samples. Timing misses were recorded.
+- Full native suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace
+  --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`:
+  2531 passed, 4 skipped. The first debug-info-heavy attempt exhausted disk;
+  generated development caches were reclaimed and validation reran with
+  `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0`.
+  Debug assertions/allocation guards remain enabled.
+- `cargo check -p shoopdaloop --no-default-features --target wasm32-unknown-unknown`
+  passed; the two portable DSP crates also passed the bare-metal target build.
+- Latest real-Carla and targeted DSP/protocol/process tests passed after lifecycle
+  and fault-reporting refinements. Native CI now runs the correctness subset on
+  Linux/macOS/Windows and the bare-metal job builds both portable crates.
+- Full matrix, long follow-ups, reviewed measurement artifacts and final PR/CI
+  delivery remain unchecked until their execution completes.

@@ -28,7 +28,7 @@ impl Header {
             flags: 0,
             epoch,
             sequence,
-            frame: sequence * config.packet_frames as u64,
+            frame: config.start_frame + sequence * config.packet_frames as u64,
             transport: Transport::default(),
             process_ns: 0,
             missing_mask: 0,
@@ -87,7 +87,11 @@ pub fn decode(raw: &[u8], config: Config) -> Result<Packet<'_>, Error> {
         return Err(Error::Packet);
     }
     let sequence = u64_at(raw, 16);
-    if sequence.checked_mul(config.packet_frames as u64) != Some(u64_at(raw, 24)) {
+    if sequence
+        .checked_mul(config.packet_frames as u64)
+        .and_then(|frame| config.start_frame.checked_add(frame))
+        != Some(u64_at(raw, 24))
+    {
         return Err(Error::Packet);
     }
     let bpm = f64::from_bits(u64_at(raw, 40));
