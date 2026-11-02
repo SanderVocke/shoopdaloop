@@ -31,6 +31,8 @@ jobs:
             libnewlib-arm-none-eabi=4.5.0.20241231-1 libnewlib-dev=4.5.0.20241231-1 \
             qemu-system-arm=1:10.0.13+ds-0+deb13u1
       - uses: actions/checkout@v7
+      - name: Trust the runner checkout inside the build container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.99.1

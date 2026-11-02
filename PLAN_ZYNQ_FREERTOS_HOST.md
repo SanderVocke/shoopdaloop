@@ -442,3 +442,7 @@ documentation links are background, not reproducible build inputs.
   CodeQL workflows are running. No review has arrived at initial inspection.
   The loaded-audio render expectation accounts for IEEE signed-zero mixing;
   persisted PCM remains compared bit-for-bit.
+
+- Live CI found a container ownership mismatch at manifest Git revision capture
+  before echo execution. The firmware job now trusts only its runner checkout
+  path explicitly. The failure still uploaded the partial ELF/map/log evidence.
