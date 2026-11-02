@@ -24,6 +24,7 @@ pub const MAX_RETAINED_RESULTS: usize = 256;
 pub const QUEUE_CAPACITY: usize = 256;
 pub const MAX_MESSAGES_PER_TURN: usize = 64;
 pub const MAX_COMMANDS_PER_TURN: usize = 16;
+pub const MAX_PERSISTENCE_RECORDS_PER_TURN: usize = 64;
 
 macro_rules! identity {
     ($name:ident, $value:ty) => {

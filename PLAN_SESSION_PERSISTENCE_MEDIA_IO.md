@@ -760,7 +760,13 @@ window. A heap-guarded small-engine regression checks full audio and MIDI chunks
 The first retry still times out during macOS import; chunk sizing alone did not
 resolve it. The companion now initializes its existing tracing events and package
 probes inherit coarse backend diagnostics to identify where progression stalls.
-Final-head platform checks remain pending.
+Diagnostics on `e1bd41c7` show steady macOS progress: about 43 seconds of preparation
+and app-wire transfer, then 83 seconds for the 66 MiB engine upload, just exceeding
+the unchanged 120-second import deadline. Native file turns now batch at most 64
+persistence records (≤64 KiB of media), while ordinary commands retain their
+16-record limit. This reduces timer-driven app-wire overhead without adding RT
+buffers, reducing the fixture, or changing a watchdog. Final-head platform checks
+remain pending.
 
 ### Stage 7 — final end-to-end validation and PR
 

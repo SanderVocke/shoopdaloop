@@ -185,7 +185,7 @@ impl Connection {
                 self.upload = Some((authority, key, stream));
             }
         }
-        for _ in 0..shoop_app_protocol::MAX_COMMANDS_PER_TURN {
+        for _ in 0..shoop_app_protocol::MAX_PERSISTENCE_RECORDS_PER_TURN {
             if self.upload_pending.is_none() {
                 let Some((authority, _, stream)) = self.upload.as_mut() else {
                     break;

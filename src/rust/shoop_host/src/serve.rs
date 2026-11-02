@@ -424,12 +424,19 @@ impl Data {
             return;
         }
         let mut bytes = [0; MAX_RECORD_BYTES];
-        for _ in 0..MAX_COMMANDS_PER_TURN {
+        let mut commands = 0;
+        for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
+            if commands == MAX_COMMANDS_PER_TURN {
+                break;
+            }
             let Some(length) = self.port.take(&mut bytes) else {
                 break;
             };
             let result = match codec::decode(&bytes[..length]) {
                 Ok(WireMessage::Client(message)) => {
+                    if !matches!(message, ClientMessage::Persistence { .. }) {
+                        commands += 1;
+                    }
                     if matches!(
                         message,
                         ClientMessage::CancelMedia { .. } | ClientMessage::ReadMedia { .. }

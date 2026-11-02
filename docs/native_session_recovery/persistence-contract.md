@@ -28,6 +28,7 @@ This records decisions, not completed feature support. P01/P02/P11 remain open.
 | Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; fixed stereo Master and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
+| Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media); ordinary command handling retains its 16-record limit. This batches file work across platform timer wakeups without increasing RT buffer ownership |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
 | MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
