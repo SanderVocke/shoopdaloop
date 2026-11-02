@@ -1095,9 +1095,23 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
         let shoop_host::connection::Port::Socket(port) = &connection.port else {
             panic!("TCP expected")
         };
-        port.stream().shutdown(std::net::Shutdown::Both).unwrap();
-        let start = drive("Q")[7];
-        while drive("Q")[7].wrapping_sub(start) < 20 {}
+        port.stream().shutdown(std::net::Shutdown::Write).unwrap();
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            for _ in 0..MAX_MESSAGES_PER_TURN {
+                if connection.port.take(&mut bytes).is_none() {
+                    break;
+                }
+            }
+            if let Some(error) = connection.port.failure() {
+                assert_eq!(error, shoop_transport::CarrierError::Disconnected);
+                break;
+            }
+            assert!(Instant::now() < deadline, "detached peer did not close");
+            advance();
+            std::thread::sleep(Duration::from_millis(2));
+        }
         (*client, *connection) = super::attach(&profile);
         for _ in 0..10 {
             pump(client, connection);

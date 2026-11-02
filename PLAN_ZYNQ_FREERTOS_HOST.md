@@ -446,3 +446,11 @@ documentation links are background, not reproducible build inputs.
 - Live CI found a container ownership mismatch at manifest Git revision capture
   before echo execution. The firmware job now trusts only its runner checkout
   path explicitly. The failure still uploaded the partial ELF/map/log evidence.
+
+- Final-suite media checks passed with distinct stereo engine playback and exact
+  40 MiB-plus-MIDI persistence. The soak then exposed the fixture aborting a TCP
+  connection with unread telemetry before its Detach reached the guest; packet
+  capture showed the next Attach correctly refused Busy. Replace both-half close
+  and a fixed delay with write-half close, bounded receive drain and observed
+  peer EOF. The corrected short fixture completed all 100 measured cycles with
+  identical retained heaps and confirmed cleanup. Repeat the entire suite.
