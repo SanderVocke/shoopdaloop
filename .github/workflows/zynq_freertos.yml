@@ -1,0 +1,39 @@
+name: Zynq FreeRTOS firmware
+on:
+  pull_request:
+    branches: ["master", "feat/backend-replacement"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zynq-freertos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    container: debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+    timeout-minutes: 20
+    steps:
+      - name: Install build and emulator tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends ca-certificates git patch python3 \
+            gcc-arm-none-eabi=15:14.2.rel1-1 binutils-arm-none-eabi=2.44-3+23+b1 \
+            libnewlib-arm-none-eabi=4.5.0.20241231-1 libnewlib-dev=4.5.0.20241231-1 \
+            qemu-system-arm=1:10.0.13+ds-0+deb13u1
+      - uses: actions/checkout@v7
+      - name: Build FreeRTOS and AMD lwIP
+        run: python3 platforms/zynq7000/build.py --fetch
+      - name: Exchange TCP payloads through emulated GEM
+        run: python3 platforms/zynq7000/qemu.py
+      - name: Save firmware and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zynq-freertos-evidence
+          path: |
+            work/zynq/build/echo.elf
+            work/zynq/build/echo.map
+            work/zynq/build/build.json
+            work/zynq/echo-test/
+          retention-days: 14

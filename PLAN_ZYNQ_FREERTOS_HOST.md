@@ -194,19 +194,19 @@ separate firmware manifest must have its own reproducible locked resolution.
 
 Depends on Stage 0; prove this gate before integrating Shoop.
 
-- [ ] Build the smallest AMD FreeRTOS socket-mode echo application with PS UART,
+- [x] Build the smallest AMD FreeRTOS socket-mode echo application with PS UART,
   TTC/GIC, GEM and 1 GiB-compatible BSP/linker settings. Park the second core.
   Record ELF entry/load addresses, startup ownership and stack/heap regions.
-- [ ] Add the QEMU launcher using `-M xilinx-zynq-a9 -accel tcg -smp 1 -m 1G`,
+- [x] Add the QEMU launcher using `-M xilinx-zynq-a9 -accel tcg -smp 1 -m 1G`,
   direct ELF loading, captured serial output and a local QMP endpoint. Use
   unprivileged user networking with loopback-only TCP forwarding and a compatible
   guest IPv4 address, initially `10.0.2.15`. Avoid privileged TAP/KVM requirements.
-- [ ] Resolve real BSP/QEMU incompatibilities, including PHY address/negotiation
+- [x] Resolve real BSP/QEMU incompatibilities, including PHY address/negotiation
   and reset/clock polling. Keep adaptations explicit and confined to the platform.
-- [ ] Add a host echo probe, readiness/overall deadlines, unconditional process
+- [x] Add a host echo probe, readiness/overall deadlines, unconditional process
   cleanup, and link-map checks. Verify exact fragmented payloads, connection
   close/reopen and exchanges exceeding a single packet/socket buffer.
-- [ ] Add an initial Linux CI job that builds and executes this probe from source;
+- [x] Add an initial Linux CI job that builds and executes this probe from source;
   make its workflow run for PRs targeting the agreed base. Commit Gate 1 evidence.
 
 Verification: clean and cached builds both pass; QEMU RAM size is queried/checked,
@@ -375,7 +375,8 @@ documentation links are background, not reproducible build inputs.
   The hard-float Cortex-A9 portable build and all 16 connection/transport tests
   pass. Platform layout and source/tool pins are recorded under `platforms/`.
 - Gate 1 local evidence: Arm GCC 14.2.1, QEMU 10.0.13, pinned AMD commit
-  `97f2baf7`. Actual FreeRTOS/lwIP/GEM exchanged 445,608 exact bytes over three
+  `97f2baf7`. Actual FreeRTOS/lwIP/GEM exchanged 3,198,120 exact bytes over three
   connections; QMP confirmed one CPU and 1,073,741,824 RAM bytes. Recorded AMD
   interrupt-status patch resolves a double read of a clear-on-read register.
-  Live PR CI and Gates 2/3 remain pending.
+  Stage 0 commit: `ba4e2adf`. Gate 1 scripts and the pinned-container CI job
+  are implemented; live PR CI and Gates 2/3 remain pending.
