@@ -53,6 +53,7 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let registry = root.path().join("registry");
 
     let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .env("RUST_LOG", "info")
         .args(["--config"])
         .arg(&config_path)
         .arg("--registry")
@@ -690,7 +691,15 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         .status()
         .unwrap();
     assert!(!status.success());
-    assert!(!registry.exists());
+    assert!(shoop_host::registry::Registry::open(&registry)
+        .unwrap()
+        .list()
+        .unwrap()
+        .is_empty());
+    assert!(std::fs::read_dir(&registry)
+        .unwrap()
+        .all(|entry| entry.unwrap().file_name() == "logs"));
+    assert_eq!(std::fs::read_dir(registry.join("logs")).unwrap().count(), 1);
     let options = shoop_host::serve::StartOptions::new(root.path().join("registry")).unwrap();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
@@ -761,4 +770,42 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[shoop_test]
+fn management_monitoring_preserves_controller_and_logs_startup_failures() {
+    let mut host = host(AppTransport::Socket);
+    let (mut client, mut connection) = attach(&host.entry, 1);
+    for _ in 0..3 {
+        let report = connection::host_report(&host.entry, Duration::from_secs(2)).unwrap();
+        assert!(report.ready && report.busy);
+        assert!(connection::shutdown_ownerless(&host.entry, Duration::from_secs(2)).is_err());
+        connection.poll(&mut client).unwrap();
+        assert_eq!(client.state(), State::Ready);
+    }
+    let log_path = shoop_host::logging::path(host.path.parent().unwrap(), host.entry.process);
+    let log = shoop_host::logging::tail(&log_path).unwrap();
+    assert!(log.contains("Host ready:"));
+    shutdown(&mut host, &mut client);
+    assert!(shoop_host::logging::tail(&log_path)
+        .unwrap()
+        .contains("Host cleanup confirmed"));
+
+    let registry = host.root.path().join("failed-start");
+    let mut failed = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .arg("--config")
+        .arg(host.root.path().join("missing.json"))
+        .arg("--registry")
+        .arg(&registry)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = failed.id();
+    assert!(!failed.wait().unwrap().success());
+    assert!(
+        shoop_host::logging::tail(&shoop_host::logging::path(&registry, pid))
+            .unwrap()
+            .contains("session host:")
+    );
 }

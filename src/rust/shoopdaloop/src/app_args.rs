@@ -15,6 +15,10 @@ pub enum SettingsTest {
 #[cfg_attr(not(target_arch = "wasm32"), command(group = clap::ArgGroup::new("connection_target").args(["host_file","remote_profile"])))]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
+    /// Manage independent hosts without opening an audio session.
+    #[arg(long, conflicts_with_all = ["host_only", "ui_only", "shutdown_host", "list_hosts", "engine_transport", "session", "probe_engine_transport", "probe_persistence", "probe_builtins", "tracing", "host_file"])]
+    pub manage_hosts: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
     pub host_only: bool,
     #[cfg(not(target_arch = "wasm32"))]

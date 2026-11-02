@@ -22,3 +22,8 @@ progression lives in `shoop_app_connection`; native hosting retains device lifet
 Reusable profiles select endpoints without host/session IDs. Every connection
 synchronizes fresh state. `connection::host_report` queries shared startup settings,
 effective runtime status and diagnostics; the existing UI displays this information.
+
+The native `shoopdaloop --manage-hosts` window monitors hosts without taking a
+control lease. Host diagnostics are persisted in private rotating files under
+`REGISTRY/logs/PID.log`, including startup errors. See the application README for
+manager controls, log retention and remote-profile behavior.

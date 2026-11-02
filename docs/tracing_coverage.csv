@@ -352,3 +352,5 @@ src/rust/shoop_app_connection/src/heartbeat.rs,app_session,excluded,Injected-clo
 src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Generic connection progression calls traced service handling and tick boundaries; native composition owns transport diagnostics.
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
+src/rust/shoop_host/src/logging.rs,native_host,excluded,Private diagnostic sink; logging must not recursively emit tracing.
+src/rust/shoopdaloop/src/host_manager.rs,native_ui,excluded,Management-only presentation and background authenticated queries; no audio or application runtime.

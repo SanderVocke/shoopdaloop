@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     if let Err(error) = run() {
+        tracing::error!("session host: {error:#}");
         eprintln!("session host: {error:#}");
         std::process::exit(1);
     }
@@ -9,13 +10,6 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     use clap::Parser;
     use std::{io::Read, path::PathBuf};
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
-        )
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
     #[derive(Parser)]
     struct Args {
         #[arg(long, required_unless_present = "generate_credential")]
@@ -53,17 +47,26 @@ fn run() -> anyhow::Result<()> {
         println!("Credential file created");
         return Ok(());
     }
+    let registry = args
+        .registry
+        .map(Ok)
+        .unwrap_or_else(shoop_host::registry::Registry::default_path)?;
+    let log = shoop_host::logging::Writer::open(&registry, std::process::id())?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with_writer(move || log.clone())
+        .with_ansi(false)
+        .init();
+    tracing::info!("Starting host {} (PID {})", args.name, std::process::id());
     let mut bytes = Vec::new();
     std::fs::File::open(args.config.as_ref().unwrap())?
         .take(65537)
         .read_to_end(&mut bytes)?;
     anyhow::ensure!(bytes.len() <= 65536, "host configuration exceeds 64 KiB");
     let config = serde_json::from_slice(&bytes)?;
-    let mut options = shoop_host::serve::StartOptions::new(
-        args.registry
-            .map(Ok)
-            .unwrap_or_else(shoop_host::registry::Registry::default_path)?,
-    )?;
+    let mut options = shoop_host::serve::StartOptions::new(registry)?;
     options.endpoint = args.endpoint;
     options.management_endpoint = args.management_endpoint;
     options.lan = args.lan;
@@ -77,7 +80,9 @@ fn run() -> anyhow::Result<()> {
     };
     options.credential = args.credential_file;
     options.name = args.name;
-    shoop_host::serve::run(config, options)
+    shoop_host::serve::run(config, options)?;
+    tracing::info!("Host cleanup confirmed; exiting");
+    Ok(())
 }
 #[cfg(target_arch = "wasm32")]
 fn main() {}

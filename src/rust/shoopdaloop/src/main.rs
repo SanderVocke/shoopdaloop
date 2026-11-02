@@ -59,6 +59,8 @@ mod browser_rt_self_test;
 #[cfg(not(target_arch = "wasm32"))]
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
+mod host_manager;
+#[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_recovery_tests;
@@ -1397,6 +1399,12 @@ impl UnifiedApp {
         {
             if self.runtime.remote_entry.is_none() {
                 ui.menu_button("Session", |ui| {
+                    if ui.button("Host Manager…").clicked() {
+                        if let Err(error) = host_manager::launch() {
+                            self.settings.report_action_error(error.to_string());
+                        }
+                        ui.close();
+                    }
                     if ui.button("Open remote profile…").clicked() {
                         self.open_remote_profile(ui.ctx());
                         ui.close();
@@ -1407,6 +1415,12 @@ impl UnifiedApp {
                 self.exit.intercept_close(ui.ctx());
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
+                        if ui.button("Host Manager…").clicked() {
+                            if let Err(error) = host_manager::launch() {
+                                self.settings.report_action_error(error.to_string());
+                            }
+                            ui.close();
+                        }
                         if ui
                             .add_enabled(
                                 !self.exit.open && !self.exit.is_pending(),
@@ -3713,6 +3727,13 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let cli = AppArgs::parse();
+    if cli.manage_hosts {
+        if let Err(error) = host_manager::run(&cli) {
+            eprintln!("Host Manager failed: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if !cli.probe_engine_transport
         && !cli.probe_persistence
         && !cli.probe_builtins

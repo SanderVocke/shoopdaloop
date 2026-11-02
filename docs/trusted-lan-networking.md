@@ -117,8 +117,9 @@ portable management request is `ManagementRequest::Settings`. Reports use bounde
 validation. The native UI already stores user preferences as JSON. While
 connected to an external host, preference saves apply to future local launches;
 they do not reconfigure that host. The panel is read-only. Edit its startup JSON
-and restart the host for driver/pool changes. A separate management GUI and
-remote configuration editing/hot swapping are future work.
+and restart the host for driver/pool changes. The native `shoopdaloop --manage-hosts` window can inspect local hosts and explicitly
+added remote profiles without taking control. Remote configuration editing/hot
+swapping remain future work.
 
 For example, `host.json` can contain:
 

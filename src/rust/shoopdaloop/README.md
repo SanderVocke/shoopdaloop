@@ -186,3 +186,43 @@ browser case has separate deadlines; normal canary workloads/deadlines are retai
 `--tracing-engine-detail` adds available local instrumentation. External hosts and
 RT worklets do not become traced application-model realms through UI attachment.
 Forced process termination cannot finalize an in-process trace.
+
+## Host Manager
+
+Run `shoopdaloop --manage-hosts`, or choose **Session → Host Manager…** in the
+native looper UI. This opens a separate management process without starting audio
+or taking control of a session. Closing the manager leaves hosts and UIs running.
+
+Local hosts are discovered automatically. **Add remote profile…** adds a profile
+for this manager session; `--manage-hosts --remote-profile remote.json` selects one
+at startup. `--host-registry PATH` selects an alternative local registry.
+Status queries run in the background and refresh every two seconds after each
+scan. Unreachable endpoints are shown explicitly; a timeout does not prove a host
+has exited. Up to 64 local registrations/profiles are monitored per manager.
+
+Select a host to inspect effective audio state, DSP load, xruns, requested startup
+settings and diagnostics. Dummy audio is shown as a warning. **Open UI** launches
+a socket UI only when no controller is connected. Shared-memory hosts cannot
+reattach. **Stop host…** confirms the loss of the in-memory session and requests
+authenticated ownerless cleanup. A connected controller refuses shutdown, even if
+it attaches after the manager's last refresh. Save needed work through the looper
+UI before stopping. Driver and capacity editing/restart and tray integration are
+not part of this initial manager.
+
+Every native host writes private logs under `REGISTRY/logs/PID.log`, including
+startup errors before discovery registration. The default registry is the same
+per-user sessions directory used by `--list-hosts`. Logs rotate at 1 MiB with
+three backups per PID and remain after exit; old process logs can be removed
+manually. `RUST_LOG` controls verbosity (default `info`). **View logs** displays the
+latest 64 KiB and can refresh/copy it; remote logs stay on the host machine.
+**Open host log…** also browses logs of exited hosts and failed startups.
+**Copy diagnostics** copies the current report without credential contents.
+
+Screenshots captured from the native manager with dummy hosts and an unreachable
+remote profile:
+
+![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
+
+![Host Manager persistent log viewer](../../../docs/screenshots/host-manager-logs.png)
+
+![Host Manager observing a connected controller](../../../docs/screenshots/host-manager-controller.png)

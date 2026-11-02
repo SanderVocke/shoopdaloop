@@ -195,6 +195,9 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     warnings.extend(started.host.warnings().iter().cloned());
+    for warning in &warnings {
+        tracing::warn!("{warning}");
+    }
     let mut host = Some(started.host);
     let backend = RtBackend::connect(started.client, Sleep::default())?;
     let mut service = Service::new(
@@ -309,6 +312,11 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     if let Some(registry) = registration.registry.as_ref() {
         registry.publish(&registration.entry)?;
     }
+    tracing::info!(
+        "Host ready: data={}, management={}",
+        registration.entry.endpoint,
+        registration.entry.management
+    );
     let data = Acceptor::new(data, options.lan)?;
     let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
