@@ -453,6 +453,7 @@ impl Runtime {
             self.loss_reported = true;
         }
         self.client.disconnect();
+        self.reconcile_results();
         self.requested_media = None;
         self.intents.clear();
         self.commands.clear();
@@ -531,17 +532,14 @@ impl Runtime {
         }
     }
     fn reconcile_results(&mut self) {
-        let results: Vec<_> = self
-            .client
-            .results()
-            .iter()
-            .map(|(id, outcome)| (*id, outcome.clone()))
-            .collect();
-        for (id, outcome) in results {
-            if !self.seen_results.insert(id) {
-                continue;
-            }
-            if self.reset_operation == Some(id) {
+        if let Some(outcome) = self
+            .reset_operation
+            .and_then(|id| self.client.results().get(&id))
+            .cloned()
+        {
+            let state_ready = !matches!(outcome, Outcome::Confirmed { revision }
+                if self.client.state() != State::Lost && self.client.snapshot().is_none_or(|state| state.revision < revision));
+            if state_ready {
                 if let Some(task) = &mut self.io_task {
                     task.progress = 1.0;
                     task.status = if matches!(outcome, Outcome::Refused { .. }) {
@@ -551,10 +549,24 @@ impl Runtime {
                     };
                     task.message = match &outcome {
                         Outcome::Refused { message, .. } => message.clone(),
+                        _ if self.client.state() == State::Lost => {
+                            "Fresh session committed; reconnect to inspect the session".into()
+                        }
                         _ => "Fresh session ready".into(),
                     };
                 }
                 self.reset_operation = None;
+            }
+        }
+        let results: Vec<_> = self
+            .client
+            .results()
+            .iter()
+            .map(|(id, outcome)| (*id, outcome.clone()))
+            .collect();
+        for (id, outcome) in results {
+            if !self.seen_results.insert(id) {
+                continue;
             }
             if let Some((request_id, bus)) = self.creations.remove(&id) {
                 let success = !matches!(outcome, Outcome::Refused { .. });

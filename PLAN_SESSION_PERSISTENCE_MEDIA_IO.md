@@ -806,6 +806,15 @@ byte-identical WAV output and exact samples; empty/oversized batches refuse.
 All 2484 native tests pass after this change; browser/CI validation is repeated
 with the same large workload and watchdogs.
 
+Release web CI passes on `6789d616`, including hosted and self-contained large
+workflows and Firefox. Native shared-memory canaries on Linux and Windows expose
+a projection-ordering race: a confirmed file load could report Completed before
+the corresponding fresh-state snapshot arrived. File mutations and New Session
+now wait for the confirmed revision before reporting readiness while connected.
+Known commit results survive connection loss with an explicit reconnect message.
+Deterministic regressions hold back the snapshot and exercise both connected and
+lost-client outcomes; the file regression fails before the fix and passes after it.
+
 The extended engine staging Miri case passes on `d17355df`, seed 0, with its full
 workload (715 seconds wall time). A separate extended adapter interpreter attempt
 was stopped without a verdict and is not counted as a pass. Final selected Miri

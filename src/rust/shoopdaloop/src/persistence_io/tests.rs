@@ -48,6 +48,83 @@ struct Fixture {
 }
 
 #[shoop_test]
+fn committed_file_tasks_wait_for_the_confirmed_projection_and_keep_known_loss_outcomes() {
+    let fixture = Fixture::new();
+    let state = fixture.runtime.client().snapshot().unwrap().clone();
+    let authority = fixture.runtime.client().authority().unwrap();
+    for lose_connection in [false, true] {
+        let mut client = Client::new(authority.client, HostId(100), authority.session).unwrap();
+        client.attach().unwrap();
+        client
+            .receive(ServiceMessage::Attached {
+                authority,
+                host: HostId(100),
+            })
+            .unwrap();
+        client
+            .receive(ServiceMessage::Snapshot {
+                authority,
+                state: Arc::clone(&state),
+            })
+            .unwrap();
+        client.ready_sent().unwrap();
+        let mut provider = Provider::new();
+        provider
+            .start(&state, IoTaskKind::LoadSession, None)
+            .unwrap();
+        let message = client
+            .command(
+                Command::CommitPersistence(provider.task.as_ref().unwrap().key),
+                None,
+            )
+            .unwrap();
+        let ClientMessage::Submit { operation, .. } = message else {
+            unreachable!()
+        };
+        provider.phase = Phase::Committed(operation);
+        let revision = Revision(state.revision.0 + 1);
+        client
+            .receive(ServiceMessage::Finished {
+                authority,
+                result: OperationResult {
+                    id: operation,
+                    outcome: Outcome::Confirmed { revision },
+                },
+            })
+            .unwrap();
+        let (mut delivery, _service) = local::channel();
+        provider.pump(&mut client, &mut delivery).unwrap();
+        assert_eq!(provider.task().unwrap().status, IoTaskStatus::Running);
+        if lose_connection {
+            client.disconnect();
+        } else {
+            let mut published = (*state).clone();
+            published.revision = revision;
+            published.persistence_epoch += 1;
+            client
+                .receive(ServiceMessage::Snapshot {
+                    authority,
+                    state: Arc::new(published),
+                })
+                .unwrap();
+        }
+        provider.pump(&mut client, &mut delivery).unwrap();
+        let task = provider.task().unwrap();
+        assert_eq!(task.status, IoTaskStatus::Completed);
+        if lose_connection {
+            assert!(task.message.contains("reconnect"));
+            assert!(provider.pending_cancel.is_none());
+        } else {
+            assert_eq!(client.snapshot().unwrap().revision, revision);
+            assert_eq!(
+                client.snapshot().unwrap().persistence_epoch,
+                state.persistence_epoch + 1
+            );
+        }
+    }
+}
+
+#[shoop_test]
 async fn client_queue_holds_one_raw_file_input_without_blocking_controls() {
     let mut fixture = Fixture::new();
     fixture.until(|_| true).await;
@@ -83,6 +160,91 @@ async fn client_queue_holds_one_raw_file_input_without_blocking_controls() {
         IoTaskStatus::Failed
     );
     fixture.runtime.dispatch(input()).unwrap();
+}
+
+#[shoop_test]
+fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss() {
+    let fixture = Fixture::new();
+    let state = fixture.runtime.client().snapshot().unwrap().clone();
+    let authority = fixture.runtime.client().authority().unwrap();
+    for lose_connection in [false, true] {
+        let client = Client::new(authority.client, HostId(100), authority.session).unwrap();
+        let (delivery, service) = local::channel();
+        let mut runtime = Runtime::new(
+            client,
+            Box::new(delivery),
+            Box::new(shoop_scripting::NullMidiService),
+            Startup::Fresh(Vec::new()),
+        )
+        .unwrap();
+        service
+            .updates
+            .send(ServiceMessage::Attached {
+                authority,
+                host: HostId(100),
+            })
+            .unwrap();
+        service
+            .updates
+            .send(ServiceMessage::Snapshot {
+                authority,
+                state: Arc::clone(&state),
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        runtime.tick(STEP);
+        let operation = service
+            .commands
+            .try_iter()
+            .find_map(|message| match message {
+                ClientMessage::Submit {
+                    command: Command::NewSession,
+                    operation,
+                    ..
+                } => Some(operation),
+                _ => None,
+            })
+            .unwrap();
+        let revision = Revision(state.revision.0 + 1);
+        service
+            .updates
+            .send(ServiceMessage::Finished {
+                authority,
+                result: OperationResult {
+                    id: operation,
+                    outcome: Outcome::Confirmed { revision },
+                },
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Running
+        );
+        if lose_connection {
+            drop(service);
+        } else {
+            let mut published = (*state).clone();
+            published.revision = revision;
+            published.persistence_epoch += 1;
+            service
+                .updates
+                .send(ServiceMessage::Snapshot {
+                    authority,
+                    state: Arc::new(published),
+                })
+                .unwrap();
+        }
+        runtime.tick(STEP);
+        let task = runtime.snapshot().io_task.as_ref().unwrap().clone();
+        assert_eq!(task.status, IoTaskStatus::Completed);
+        if lose_connection {
+            assert!(task.message.contains("reconnect"));
+        } else {
+            assert_eq!(runtime.client().snapshot().unwrap().revision, revision);
+        }
+    }
 }
 
 #[shoop_test]

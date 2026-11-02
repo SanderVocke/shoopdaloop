@@ -1,5 +1,40 @@
 use super::*;
 impl Provider {
+    fn reconcile_commit(&mut self, client: &Client) {
+        let Phase::Committed(operation) = self.phase else {
+            return;
+        };
+        let Some(outcome) = client.results().get(&operation) else {
+            return;
+        };
+        match outcome {
+            Outcome::Refused { message, .. } => {
+                self.finish(IoTaskStatus::Failed, message.clone());
+            }
+            Outcome::Confirmed { revision } => {
+                if client.state() == State::Lost {
+                    self.finish(IoTaskStatus::Completed, "Session media committed; connection lost before the refreshed state arrived. Please reconnect to inspect the session");
+                } else if client
+                    .snapshot()
+                    .is_some_and(|state| state.revision >= *revision)
+                {
+                    self.finish(IoTaskStatus::Completed, "Session media committed");
+                } else if let Some(task) = &mut self.task {
+                    task.view.progress = 0.95;
+                    task.view.message =
+                        "Media committed; awaiting the confirmed session state".into();
+                }
+            }
+            _ => self.finish(
+                IoTaskStatus::Failed,
+                "The host returned an unexpected media commit result",
+            ),
+        }
+        if client.state() == State::Lost && matches!(self.phase, Phase::Idle) {
+            self.messages.clear();
+            self.pending_cancel = None;
+        }
+    }
     fn request(&mut self, client: &Client, request: transfer::Request) -> Result<()> {
         ensure!(
             self.messages.len() < MAX_MESSAGES_PER_TURN,
@@ -137,6 +172,7 @@ impl Provider {
                 }
             }
         }
+        self.reconcile_commit(client);
         if client.state() != State::Ready {
             if client.state() == State::Lost && !matches!(self.phase, Phase::Idle | Phase::Output) {
                 self.messages.clear();
@@ -275,16 +311,7 @@ impl Provider {
                 Err(error) => bail!("connection lost during file transfer ({error:?}); inspect the host session for the actual outcome"),
             }
         }
-        if let Phase::Committed(operation) = self.phase {
-            if let Some(outcome) = client.results().get(&operation) {
-                match outcome {
-                    Outcome::Refused { message, .. } => {
-                        self.finish(IoTaskStatus::Failed, message.clone())
-                    }
-                    _ => self.finish(IoTaskStatus::Completed, "Session media committed"),
-                }
-            }
-        }
+        self.reconcile_commit(client);
         Ok(())
     }
 }
