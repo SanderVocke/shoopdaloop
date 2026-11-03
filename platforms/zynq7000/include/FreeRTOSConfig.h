@@ -6,6 +6,9 @@
 #define configIDLE_SHOULD_YIELD 1
 #define configCPU_CLOCK_HZ XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ
 #define configTICK_RATE_HZ 1000
+#ifndef pdTICKS_TO_MS
+#define pdTICKS_TO_MS(ticks) ((uint32_t)((uint64_t)(ticks) * 1000 / configTICK_RATE_HZ))
+#endif
 #define configMAX_PRIORITIES 8
 #define configMINIMAL_STACK_SIZE 1024
 #define configTOTAL_HEAP_SIZE (16 * 1024 * 1024)

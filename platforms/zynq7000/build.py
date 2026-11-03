@@ -13,6 +13,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = Path(__file__).resolve().parent
 SOURCE = ROOT / "work/zynq/embeddedsw"
+TINYUSB = ROOT / "work/zynq/tinyusb"
 BUILD = ROOT / "work/zynq/build"
 PINS = json.loads((PLATFORM / "pins.json").read_text())
 REVISION = PINS["embeddedsw"]
@@ -32,6 +33,7 @@ def build():
     parser.add_argument("--app", choices=["echo", "host"], default="echo")
     parser.add_argument("--credential-file", type=Path)
     parser.add_argument("--fixture", action="store_true")
+    parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
     parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
@@ -42,6 +44,9 @@ def build():
         parser.error("Deployment is only supported by the host app")
     if args.deployment_test_fault and not args.deployment:
         parser.error("Deployment test faults require --deployment")
+    if args.usb and args.app != "host":
+        parser.error("USB MIDI requires the host app")
+    BUILD.mkdir(parents=True, exist_ok=True)
     if args.fetch:
         SOURCE.parent.mkdir(parents=True, exist_ok=True)
         if not (SOURCE / ".git").exists():
@@ -85,6 +90,22 @@ def build():
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
+    if args.usb:
+        if args.fetch:
+            if not (TINYUSB / ".git").exists():
+                run(["git", "init", TINYUSB])
+                run(["git", "-C", TINYUSB, "remote", "add", "origin", "https://github.com/hathach/tinyusb.git"])
+            run(["git", "-C", TINYUSB, "fetch", "--depth=1", "origin", PINS["tinyusb"]])
+            run(["git", "-C", TINYUSB, "checkout", "--detach", PINS["tinyusb"]])
+        revision = subprocess.check_output(["git", "-C", TINYUSB, "rev-parse", "HEAD"], text=True).strip()
+        dirty = subprocess.check_output(["git", "-C", TINYUSB, "status", "--porcelain"], text=True).strip()
+        if revision != PINS["tinyusb"] or dirty:
+            raise SystemExit("TinyUSB source differs from its pin or has unrecorded modifications")
+        includes += [PLATFORM / "usb", TINYUSB / "src", TINYUSB / "src/portable/ehci"]
+        sources += [TINYUSB / "src" / name for name in (
+            "tusb.c", "common/tusb_fifo.c", "host/usbh.c", "host/hub.c",
+            "class/midi/midi_host.c", "portable/ehci/ehci.c")]
+        sources += [PLATFORM / "usb/hcd_zynq.c", PLATFORM / "usb/host.c"]
     if args.deployment:
         deployment = PLATFORM / "deployment"
         includes += [deployment, drivers / "sdps/src"]
@@ -98,13 +119,16 @@ def build():
     for original, patch_name in [
         (drivers / "emacps/src/xemacps_intr.c", "emacps-read-clear.patch"),
         (kernel / "portable/GCC/ARM_CA9/portZynq7000.c", "freertos-fpu-irq.patch"),
+        *([(TINYUSB / "src/portable/ehci/ehci.c", "tinyusb-zynq-ehci.patch")] if args.usb else []),
     ]:
         patched = BUILD / "patched"
-        patched_source = patched / original.relative_to(SOURCE)
+        patch_root = patched / "tinyusb" if original.is_relative_to(TINYUSB) else patched
+        origin_root = TINYUSB if original.is_relative_to(TINYUSB) else SOURCE
+        patched_source = patch_root / original.relative_to(origin_root)
         patched_source.parent.mkdir(parents=True, exist_ok=True)
         patched_source.write_bytes(original.read_bytes())
         patch = PLATFORM / "patches" / patch_name
-        run(["patch", "--batch", "--forward", "-p1", "-d", patched, "-i", patch], stdout=subprocess.DEVNULL)
+        run(["patch", "--batch", "--forward", "-p1", "-d", patch_root, "-i", patch], stdout=subprocess.DEVNULL)
         sources = [patched_source if p == original else p for p in sources]
         patches[patch_name] = hashlib.sha256(patch.read_bytes()).hexdigest()
     rust_library = None
@@ -134,6 +158,8 @@ def build():
     flags += ["-include", str(PLATFORM / "include/xparameters.h")]
     if args.fixture:
         flags += ["-DSHOOP_FIXTURE"]
+    if args.usb:
+        flags += ["-DSHOOP_USB_MIDI"]
     if args.deployment:
         fault = [None, "before-ready", "render", "control", "broker", "handoff-version", "cleanup"].index(args.deployment_test_fault)
         flags += ["-DSHOOP_DEPLOYMENT", "-DSHOOP_DEPLOY_FAULT=" + str(fault)]
@@ -142,7 +168,7 @@ def build():
 
     def compile_one(source):
         obj = BUILD / (hashlib.sha256(str(source).encode()).hexdigest()[:12] + ".o")
-        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent in {PLATFORM, PLATFORM / "deployment"} else []
+        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent in {PLATFORM, PLATFORM / "deployment", PLATFORM / "usb"} else []
         result = subprocess.run([cc, *flags, *warnings, "-c", str(source), "-o", str(obj)], capture_output=True, text=True)
         if result.returncode:
             return None, str(source.relative_to(ROOT)) + "\n" + result.stderr
@@ -154,7 +180,7 @@ def build():
     if errors:
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
-    elf = BUILD / (args.app + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
+    elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-z,noexecstack", "-Wl,-Map=" + str(elf.with_suffix(".map")),
          "-T", PLATFORM / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
@@ -187,6 +213,7 @@ def build():
         if first[1] > second[0]:
             raise SystemExit("Overlapping ELF load regions")
     elf.with_suffix(".json").write_text(json.dumps({"embeddedsw": REVISION,
+        "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
         "elf_sha256": hashlib.sha256(image).hexdigest(),

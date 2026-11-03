@@ -30,8 +30,12 @@ SECTIONS {
     . += 0x10000; __supervisor_stack = .;
     . += 0x100000; __stack = .; _stack = .;
   } > platform
+  .usb_dma ALIGN(0x100000) (NOLOAD) : {
+    __usb_dma_start = .; *(.usb_dma*) . = ALIGN(0x100000); __usb_dma_end = .;
+  } > platform
   .dma (NOLOAD) : { . = ALIGN(0x100000); _end = .; . += 0x200000; __platform_end = .; } > platform
   .rust_heap (NOLOAD) : { __rust_heap = .; . += 0x30000000; __rust_heap_end = .; } > rust
   ASSERT(__platform_end <= 0x08000000, "platform exceeds 128 MiB")
+  ASSERT(__usb_dma_end - __usb_dma_start <= 0x100000, "USB DMA exceeds 1 MiB")
   ASSERT(__rust_heap_end <= 0x38000000, "Rust exceeds 768 MiB arena")
 }

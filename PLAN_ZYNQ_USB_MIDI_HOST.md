@@ -328,6 +328,18 @@ no QEMU result is presented as physical hub, DMA/cache or timing qualification.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
 
+## Execution evidence (in progress)
+
+- Base fetched and branch created at `de38520c`; planning milestone `2660a158`.
+- Native workspace build with `RUSTFLAGS=-D warnings` passed.
+- Pinned Debian/compiler/Rust/QEMU tools are available in the session build
+  container. QEMU capability probe and USB-enabled empty-bus firmware boot pass.
+- Original echo, mismatch canary, production, UI and recovery gates pass. The
+  full fixture failed its recording-pool boundary assertion after the 100-cycle
+  soak passed. Keep the baseline and final regression criteria open until fixed.
+- Capacity and memory contracts are recorded in `platforms/zynq7000/usb/README.md`.
+- Physical qualification is deferred at the user's request, not waived.
+
 ## Source references
 
 - [Inspected base and platform](https://github.com/SanderVocke/shoopdaloop/tree/de38520c8eb27d5bc9741a1fd8c394c817ba38bc/platforms/zynq7000),

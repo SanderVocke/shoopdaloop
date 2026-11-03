@@ -1,0 +1,26 @@
+--- a/src/portable/ehci/ehci.c
++++ b/src/portable/ehci/ehci.c
+@@ -37,7 +37,11 @@
+ #define EHCI_DBG     2
+ 
+ // Framelist size as small as possible to save SRAM
+-#ifdef TUP_USBIP_CHIPIDEA_HS
++#if defined(CFG_TUH_EHCI_FRAMELIST_SIZE)
++  TU_VERIFY_STATIC(CFG_TUH_EHCI_FRAMELIST_SIZE == 1024, "Only the standard 1024-entry override is supported");
++  #define FRAMELIST_SIZE_BIT_VALUE 0u
++  #define FRAMELIST_SIZE_USBCMD_VALUE 0u
++#elif defined(TUP_USBIP_CHIPIDEA_HS)
+   // NXP Transdimension: 8 elements
+   #define FRAMELIST_SIZE_BIT_VALUE      7u
+   #define FRAMELIST_SIZE_USBCMD_VALUE   (((FRAMELIST_SIZE_BIT_VALUE &  3) << EHCI_USBCMD_FRAMELIST_SIZE_SHIFT) | \
+@@ -322,7 +326,9 @@
+     list_insert(framelist + i, head_4ms, EHCI_QTYPE_QHD);
+   }
+ 
+-  list_insert(framelist + 3, head_8ms, EHCI_QTYPE_QHD);
++  for (uint32_t i = 3; i < FRAMELIST_SIZE; i += 8) {
++    list_insert(framelist + i, head_8ms, EHCI_QTYPE_QHD);
++  }
+ 
+   head_1ms->terminate = 1;
+ }

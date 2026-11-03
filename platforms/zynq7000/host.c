@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <string.h>
 #include "deployment/runtime.h"
+#ifdef SHOOP_USB_MIDI
+#include "usb/host.h"
+#endif
 
 extern void shoop_platform_init(void);
 extern void shoop_rust_main(void);
@@ -215,6 +218,9 @@ int main(void) {
     shoop_platform_init();
     xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP 1GiB\r\n");
     xil_printf("SHOOP_BUILD %s\r\n", shoop_build_identity);
+#ifdef SHOOP_USB_MIDI
+    shoop_usb_start();
+#endif
     configASSERT(xTaskCreate(network, "control", 65536, NULL, 3, NULL) == pdPASS);
     vTaskStartScheduler();
     vApplicationAssert("scheduler returned", 0);
