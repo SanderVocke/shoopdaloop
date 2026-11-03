@@ -125,6 +125,11 @@ impl Acceptor {
                                 if item.description.is_empty() {
                                     let mut target = target.clone();
                                     target.can_attach = available.load(Ordering::Acquire);
+                                    if let Ok(Some(process)) =
+                                        shoop_host_processes::identity(std::process::id())
+                                    {
+                                        target.process = Some(process);
+                                    }
                                     if crate::launch::write_message(&mut item.description, &target)
                                         .is_err()
                                     {

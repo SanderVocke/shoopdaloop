@@ -526,6 +526,41 @@ mod tests {
             .any(|host| host.source == fixture.source()));
         assert_eq!(std::fs::read_dir(fixture._root.path()).unwrap().count(), 1);
     }
+    #[cfg(target_os = "linux")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn discovers_a_compatible_host_after_its_executable_is_moved_or_removed() {
+        let fixture = Fixture::start(AppTransport::Socket, false);
+        let directory = fixture._root.path().join("moved bundle");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::rename(&fixture.identity.executable, directory.join("shoop_host")).unwrap();
+        let current = identity(fixture.child.id()).unwrap().unwrap();
+        assert_eq!(current.pid, fixture.identity.pid);
+        assert_eq!(current.started, fixture.identity.started);
+        let observed = scan(vec![], vec![]);
+        let host = observed
+            .hosts
+            .iter()
+            .find(|host| host.source == Source::Process(current.clone()))
+            .unwrap();
+        assert!(host.report.is_ok(), "{:?}", host.report);
+        assert_eq!(
+            host.target.as_ref().unwrap().instance,
+            fixture.target.as_ref().unwrap().instance
+        );
+        std::fs::remove_file(&current.executable).unwrap();
+        let observed = scan(vec![], observed.hosts);
+        let host = observed
+            .hosts
+            .iter()
+            .find(|host| {
+                host.target.as_ref().is_some_and(|target| {
+                    target.instance == fixture.target.as_ref().unwrap().instance
+                })
+            })
+            .unwrap();
+        assert!(host.report.is_ok());
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn keeps_every_candidate_and_prefers_os_sources_over_manual_targets() {
         let mut hosts: Vec<_> = (0..90)

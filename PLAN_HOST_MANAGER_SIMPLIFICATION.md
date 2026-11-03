@@ -356,9 +356,12 @@ Depends on Stages 0–4.
   build and all four-target dependency-boundary checks pass. New admission tests
   pass all 24 host tests; final full-suite verification includes the added cases.
 - Incoming CodeQL review flagged a user-controlled endpoint command argument.
-  Bound the address to a single `--host-address=value` argument; a parser regression
-  proves flag-looking endpoint values cannot select another application role.
-  Recheck CodeQL and resolve its thread after final analysis.
+  Binding it to a single `--host-address=value` argument prevented argument
+  injection, but did not clear CodeQL's tainted-command finding. Manager and sibling
+  launches now pass the endpoint through the bounded startup pipe and use fixed
+  `--ui-only --host-stdin` arguments. Real sibling tests and native GUI attachment
+  exercise this path; manual `--host-address` remains available under Advanced.
+  Recheck CodeQL and its thread after final analysis.
 - Target branch recheck found `64a4ad06` (click-track generation) on top of `3aabf437`.
   Merge and revalidate it before the final push. Remaining delivery work is the
   final native/web/coverage matrix, automated review and final evidence mapping.
@@ -368,3 +371,28 @@ Depends on Stages 0–4.
   2,569 workspace tests (4 skipped), with CI tracing and `umask 0022`.
   Screenshots and documentation are committed; PR metadata and final remote checks
   remain to be recorded.
+- Final process-lifetime regression: moving a running Linux host's executable
+  reproduced an OS/description identity mismatch. Inspection now reports the live
+  OS executable path. The regression proves discovery retains the same runtime
+  instance after moving and unlinking its executable, without any disk metadata.
+- Native UI handoff check: manager Open UI attached over the stdin pipe; closing
+  only the UI left the host available and its exited UI child was reaped. Graceful
+  Stop completed afterward. Isolated configuration/data/state/cache directories
+  remained empty. The log screenshot now shows an explicitly enabled real log.
+- Final handoff/path-fix candidate passes all 2,569 workspace tests (4 intentional
+  canary skips), the warning-denying workspace/no-default builds, formatting and
+  tracing/test-attribute policies. A separate `umask 0077` run passes all 38
+  launch/discovery/logging/role tests; the ordinary full run uses `umask 0022`.
+
+## Acceptance evidence map
+
+| Criterion | Implementation and verification |
+| --- | --- |
+| 1. Keyless connections | Versioned socket negotiation, app admission and engine bootstrap; real app/management/shared-memory/socket/LAN tests and packaged engine canaries. Removed credential flags are rejected. |
+| 2. Live OS discovery | `shoop_host_processes` native fixtures passed Linux/macOS/Windows; manager discovery tests use real candidate-owned sockets and arbitrary ports. Linux executable move/unlink regression retains the same instance. |
+| 3. Harmless inspection | Shared-attachment admission tests reject incompatible roles/versions; repeated probes and fresh managers run through recording/playback without acquiring control or consuming the first attachment. |
+| 4. File-free workflow | Configuration/readiness/UI endpoint pipes, actual native New host/Open UI/Stop, sibling-launch and failed-UI-spawn tests; isolated application-state directories remain empty. |
+| 5. Host lifetime | Real manager termination/reopening preserves PID/start/instance; recording and socket reattachment tests use fresh manager models. Child reapers wait without controlling ready-host lifetime. |
+| 6. Advanced profiles | Advanced menu screenshots and form/action tests; endpoint-only schema excludes runtime IDs; no automatic load/save. Manual aliases deduplicate with local discoveries. |
+| 7. Correct termination | Real child identity/termination fixtures, unresponsive-host tests, local Force stop dialog/action and native GUI verification. Changed identities and manual remote PIDs refuse OS termination; graceful Stop retains live-controller protection. |
+| 8. Complete delivery | Eight native screenshots, current app/host/network/architecture docs and PR #916 metadata. Final CI and automated-review results are recorded in the completion entry below once verified. |

@@ -3676,12 +3676,9 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     options.export_profile = args.export_profile.clone();
     options.log_file = args.log_file.clone();
     let original: Vec<_> = std::env::args_os().skip(1).collect();
-    shoop_host::launch::pair(&config, options, &companion, |target| {
+    shoop_host::launch::pair(&config, options, &companion, |_target| {
         let mut command = std::process::Command::new(&executable);
-        command
-            .args(&original)
-            .arg("--ui-only")
-            .arg(format!("--host-address={}", target.management));
+        command.args(&original).arg("--ui-only").arg("--host-stdin");
         command
     })?;
     Ok(true)

@@ -66,6 +66,15 @@ pub struct AppArgs {
     #[arg(long, group = "host_target", conflicts_with = "host_only")]
     pub host_address: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
+    #[arg(
+        long,
+        hide = true,
+        group = "host_target",
+        requires = "ui_only",
+        conflicts_with = "host_only"
+    )]
+    pub host_stdin: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
@@ -148,6 +157,13 @@ pub struct AppArgs {
 impl AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn host_target(&self) -> anyhow::Result<Option<shoop_host::remote::Target>> {
+        if self.host_stdin {
+            let address: String = shoop_host::launch::read_message(std::io::stdin().lock())?;
+            return Ok(Some(shoop_host::connection::describe(
+                &address,
+                std::time::Duration::from_secs(3),
+            )?));
+        }
         let address = match (&self.host_address, &self.remote_profile) {
             (Some(address), _) => address.clone(),
             (_, Some(path)) => {
@@ -281,6 +297,15 @@ mod native_tests {
             "127.0.0.1:12345",
             "--host-profile",
             "advanced.json"
+        ])
+        .is_err());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--ui-only", "--host-stdin"]).is_ok());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--host-stdin"]).is_err());
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--ui-only",
+            "--host-stdin",
+            "--host-address=127.0.0.1:12345"
         ])
         .is_err());
         for flag in [

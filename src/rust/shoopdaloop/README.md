@@ -48,7 +48,8 @@ target/debug/shoopdaloop --host-only
 options. Advanced connection profiles can be exported with `--export-profile PATH`
 and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
 select endpoints, never process or session identities, and are never saved or loaded
-automatically. The launcher exchanges bounded startup/readiness messages over pipes;
+automatically. The launcher exchanges bounded startup/readiness messages over pipes.
+Manager and sibling UI launches pass the live endpoint through a bounded stdin pipe;
 normal creation and attachment require no configuration or profile files.
 
 Compatible clients connect without keys, certificates or trust records. Protocol

@@ -121,7 +121,9 @@ UI, devices or Lua runtime. Native endpoint discovery and optional profile handl
 Host-only accepts optional listen endpoints and device/pool configuration. UI-only
 accepts a live host address or an advanced connection profile. Combined launch
 exchanges bounded configuration/readiness messages over pipes and then leaves
-independent host/UI siblings. Rollback applies only to the launcher's own unready
+independent host/UI siblings. Manager and sibling UI launches pass the endpoint
+through a bounded stdin message, using fixed role flags on the UI command line.
+Rollback applies only to the launcher's own unready
 host. No original pipe or child handle is required by later status/shutdown.
 
 The manager discovers standalone hosts through live OS process and owned-socket

@@ -172,7 +172,10 @@ fn shutdown(host: &mut Host, client: &mut Client) {
 
 #[shoop_test]
 fn ui_peer() {
-    let entry = if let Ok(address) = std::env::var("SHOOP_TEST_ADDRESS") {
+    let entry = if std::env::var_os("SHOOP_TEST_STDIN").is_some() {
+        let address: String = shoop_host::launch::read_message(std::io::stdin().lock()).unwrap();
+        connection::describe(&address, Duration::from_secs(2)).unwrap()
+    } else if let Ok(address) = std::env::var("SHOOP_TEST_ADDRESS") {
         connection::describe(&address, Duration::from_secs(2)).unwrap()
     } else if let Some(path) = std::env::var_os("SHOOP_TEST_ENTRY") {
         HostEntry::read(Path::new(&path)).unwrap()
@@ -493,11 +496,11 @@ fn launcher_peer() {
         &config,
         options,
         Path::new(env!("CARGO_BIN_EXE_shoop_host")),
-        |target| {
+        |_target| {
             let mut command = Process::new(std::env::current_exe().unwrap());
             command
                 .args(["--exact", "ui_peer", "--nocapture"])
-                .env("SHOOP_TEST_ADDRESS", &target.management)
+                .env("SHOOP_TEST_STDIN", "1")
                 .env("SHOOP_TEST_READY", root.join("ui-ready"))
                 .env("SHOOP_TEST_EXIT", root.join("ui-exit"));
             command

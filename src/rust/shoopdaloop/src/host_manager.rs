@@ -32,11 +32,9 @@ impl Source {
         }
     }
 }
-fn ui_command(target: &Target) -> Result<Command> {
+fn ui_command() -> Result<Command> {
     let mut command = Command::new(std::env::current_exe()?);
-    command
-        .arg("--ui-only")
-        .arg(format!("--host-address={}", target.management));
+    command.arg("--ui-only").arg("--host-stdin");
     Ok(command)
 }
 
@@ -775,9 +773,8 @@ impl Manager {
                             if matches!(host.source, Source::Process(_)) {
                                 target.use_local_addresses();
                             }
-                            let mut command = ui_command(&target)?;
-                            shoop_host::launch::independent(&mut command);
-                            shoop_host::launch::reap(command.spawn().context("Start looper UI")?);
+                            let mut command = ui_command()?;
+                            shoop_host::launch::launch_ui(&mut command, &target.management)?;
                             Ok("Looper UI launched".into())
                         });
                     }
@@ -1890,29 +1887,6 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn endpoint_values_cannot_change_the_spawned_ui_role() {
-        use clap::Parser;
-        for value in [
-            "--manage-hosts",
-            "--shutdown-host",
-            "--session=unexpected.shoop",
-        ] {
-            let mut target = target();
-            target.management = value.into();
-            let command = ui_command(&target).unwrap();
-            let argv = std::iter::once(command.get_program()).chain(command.get_args());
-            let parsed = AppArgs::try_parse_from(argv).unwrap();
-            assert!(
-                parsed.ui_only
-                    && !parsed.manage_hosts
-                    && !parsed.shutdown_host
-                    && parsed.session.is_none()
-            );
-            assert_eq!(parsed.host_address.as_deref(), Some(value));
-        }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
     fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
         let mut host = host();
         assert_eq!(host.state().0, "Dummy audio");
@@ -1988,7 +1962,7 @@ mod tests {
         );
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn explicit_profiles_are_advanced_inputs_and_ui_launch_uses_an_address() {
+    fn explicit_profiles_are_advanced_inputs_and_ui_launch_uses_a_pipe() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("advanced.json");
         target().profile().write(&path).unwrap();
@@ -1996,12 +1970,16 @@ mod tests {
         assert_eq!(manager.sources, ["127.0.0.1:15401"]);
         assert!(Manager::new(None).sources.is_empty());
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
-        let command = ui_command(&target()).unwrap();
+        let command = ui_command().unwrap();
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_string_lossy())
             .collect();
-        assert_eq!(args, ["--ui-only", "--host-address=127.0.0.1:15401"]);
+        let parsed = <AppArgs as clap::Parser>::try_parse_from(
+            std::iter::once("shoopdaloop".to_owned()).chain(args.iter().map(|arg| arg.to_string())),
+        )
+        .unwrap();
+        assert!(parsed.ui_only && parsed.host_stdin && parsed.host_address.is_none());
         use clap::Parser;
         assert!(AppArgs::try_parse_from([
             "shoopdaloop",

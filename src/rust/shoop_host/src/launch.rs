@@ -67,6 +67,24 @@ pub fn reap(mut child: Child) {
         let _ = child.wait();
     });
 }
+pub fn launch_ui(command: &mut Command, management: &str) -> Result<()> {
+    ensure!(
+        management.len() <= 320,
+        "Host endpoint exceeds its size limit"
+    );
+    let mut bytes = Vec::new();
+    write_message(&mut bytes, &management)?;
+    independent(command);
+    command.stdin(Stdio::piped());
+    let mut child = command.spawn().context("Start independent UI")?;
+    let result = child
+        .stdin
+        .take()
+        .context("UI startup pipe unavailable")
+        .and_then(|mut input| input.write_all(&bytes).context("Pass host endpoint to UI"));
+    reap(child);
+    result
+}
 pub fn spawn(
     config: &HostConfig,
     options: StartOptions,
@@ -140,14 +158,12 @@ pub fn pair(
     let (child, target) = spawn(config, options, host_executable)?;
     reap(child);
     let mut command = ui(&target);
-    independent(&mut command);
-    let child = command.spawn().with_context(|| {
+    launch_ui(&mut command, &target.management).with_context(|| {
         format!(
             "UI failed to start; ready host remains available at {}",
             target.management
         )
     })?;
-    reap(child);
     Ok(target)
 }
 
