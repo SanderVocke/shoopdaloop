@@ -56,7 +56,7 @@ class Qualification:
         self.port_base, self.updater_port = port_base, updater_port
         self.loader = self.artifacts / "loader/u-boot.bin"
         self.profile = self.private / "profile.json"
-        self.cli = ROOT / "target/debug/shoop-deploy"
+        self.cli = Path(os.environ.get("SHOOP_DEPLOY_BIN", ROOT / "target/debug/shoop-deploy"))
         self.results = []
         self.seed = 100000
 
@@ -144,6 +144,21 @@ class Qualification:
             assert cold["nonce"] > images[-1]["nonce"]
             self.protected(image, before, name)
             self.record(name, watchdog_resets=len(resets), boots=images, cold=cold)
+
+    def defaults(self):
+        image = self.factory("operator-defaults")
+        before = snapshot(image)
+        with BootQemu(self.loader, image, self.evidence / "operator-defaults", port_base=self.port_base, updater_port=5554) as vm:
+            vm.ready("SHOOP_HOST_READY", 150)
+            with (self.evidence / "operator-defaults.log").open("w") as log:
+                result = subprocess.run([self.cli, "--profile", self.profile, "deploy", self.artifacts / "firmware-b.itb"],
+                                        stdout=log, stderr=log, timeout=320)
+            output = (self.evidence / "operator-defaults.log").read_text()
+            assert result.returncode == 0 and "confirmed build=firmware-b" in output, output
+            journal = Path(str(self.profile) + ".deployment.json")
+            assert json.loads(journal.read_text())["done"]
+        self.protected(image, before, "operator-defaults")
+        self.record("operator-default-updater-port-and-adjacent-journal")
 
     def disk_faults(self, seed=20261103):
         import random
@@ -283,6 +298,8 @@ class Qualification:
         before = snapshot(image)
         with self.vm(image, "refusals") as vm:
             vm.ready("Listening for fastboot", 60)
+            status = self.command("recovery-status", "updater-status")
+            assert "shoop-state: confirmed" in status
             with FastbootFixture(self.updater_port) as client:
                 assert client.command("download:00000003") == b"DATA00000003"
                 assert client.exchange(3, b"abc") == b""

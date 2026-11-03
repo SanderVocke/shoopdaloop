@@ -74,3 +74,54 @@ fn bounded_status_and_truncation() {
     huge.extend_from_slice(&u64::MAX.to_le_bytes());
     assert!(decode_reply(&huge).is_err());
 }
+
+#[shoop_test]
+fn result_and_reply_variants_keep_their_frozen_wire_tags() {
+    let operation = Operation {
+        client: 7,
+        sequence: 8,
+    };
+    let mut bytes = [0; MAX_BYTES];
+    let request = Request::Result {
+        boot_nonce: 9,
+        operation,
+    };
+    let n = encode_request(request, &mut bytes).unwrap();
+    assert_eq!(&bytes[..14], b"\x2e\0SHOOPDP\x01\x02\0\0\0");
+    assert_eq!(decode_request(&bytes[..n]), Ok(request));
+    for reply in [
+        Reply::Accepted(operation),
+        Reply::Finished {
+            operation,
+            result: Ok(()),
+        },
+        Reply::Finished {
+            operation,
+            result: Err(Refusal::CleanupFailed),
+        },
+    ] {
+        let n = encode_reply(&reply, &mut bytes).unwrap();
+        assert_eq!(decode_reply(&bytes[..n]), Ok(reply));
+    }
+    for (index, reason) in [
+        Refusal::Version,
+        Refusal::Unsupported,
+        Refusal::Busy,
+        Refusal::Invalid,
+        Refusal::StaleBoot,
+        Refusal::NotReady,
+        Refusal::CleanupFailed,
+        Refusal::Conflict,
+        Refusal::Overloaded,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let reply = Reply::Refused(reason);
+        let n = encode_reply(&reply, &mut bytes).unwrap();
+        assert_eq!(n, 18);
+        assert_eq!(&bytes[10..14], &3u32.to_le_bytes());
+        assert_eq!(&bytes[14..18], &(index as u32).to_le_bytes());
+        assert_eq!(decode_reply(&bytes[..n]), Ok(reply));
+    }
+}

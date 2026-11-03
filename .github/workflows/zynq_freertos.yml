@@ -110,8 +110,23 @@ jobs:
           workspaces: |
             . -> target
             platforms/zynq7000/firmware -> target
+      - name: Install native client coverage tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+      - name: Install matching LLVM coverage tools
+        run: rustup component add llvm-tools-preview
       - name: Build and execute all network-deployment gates
-        run: python3 platforms/zynq7000/deployment/suite.py --fetch
+        run: python3 platforms/zynq7000/deployment/suite.py --fetch --native-coverage
+      - name: Publish real deployment client coverage
+        if: github.event.pull_request.user.login != 'dependabot[bot]' && hashFiles('work/zynq/deployment-suite/evidence/native-cli-coverage.lcov') != ''
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: work/zynq/deployment-suite/evidence/native-cli-coverage.lcov
+          disable_search: true
+          fail_ci_if_error: true
+          flags: zynq-deployment-cli
       - name: Save public deployment artifacts and execution evidence
         if: always()
         uses: actions/upload-artifact@v7

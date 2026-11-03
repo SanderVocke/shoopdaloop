@@ -19,7 +19,7 @@ def run(arguments, **kwargs):
     subprocess.run([str(a) for a in arguments], cwd=ROOT, check=True, **kwargs)
 
 
-def build(directory, fetch=False, port_base=16400):
+def build(directory, fetch=False, port_base=16400, native_coverage=False):
     artifacts, private = directory / "artifacts", directory / "private"
     artifacts.mkdir(); private.mkdir(mode=0o700)
     keys = private / "keys"; keys.mkdir(mode=0o700)
@@ -62,6 +62,9 @@ def build(directory, fetch=False, port_base=16400):
         shutil.copyfile(source, artifacts / target)
     shutil.copyfile(bundle.BOOT / "spl/u-boot-spl", artifacts / "loader/u-boot-spl")
     run(["cargo", "build", "--locked", "-p", "shoop_host", "--no-default-features", "--bin", "shoop-deploy", "--example", "zynq_probe"])
+    if native_coverage:
+        from native_coverage import build as build_cli
+        build_cli(directory)
     manifest = {str(p.relative_to(artifacts)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in sorted(artifacts.rglob("*")) if p.is_file()}
     (artifacts / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

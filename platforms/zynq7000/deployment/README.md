@@ -45,6 +45,11 @@ the credential, profiles and raw card images; **do not archive or publish it**.
 The artifact builder scans public output for the test credential and private-key
 markers. Failure packet captures are retained separately with shorter expiry.
 
+CI adds `--native-coverage` with cargo-llvm-cov 0.8.7 and matching LLVM tools.
+The workstation CLI is instrumented during real QEMU deployment/failure cases;
+its LCOV report joins the ordinary native report in Codecov. Arm firmware retains
+its normal bare-metal build settings. Coverage build data stays in `private/`.
+
 For individual builds:
 
 ```sh
@@ -125,6 +130,21 @@ TCP forwards are data `16400` and management `16401`; Fastboot UDP forwards
 `16554` to guest `5554`. All host listeners bind loopback. Never let two VMs or a
 host writer own the same writable card simultaneously. The suite creates
 independent cards per case and retains a card across warm and process restarts.
+
+To keep your own provisioned card running for interactive UI/network updates:
+
+```sh
+python3 platforms/zynq7000/deployment/emulator.py \
+  --loader work/zynq/my-loader/u-boot.bin --card work/zynq/device.img \
+  --credential-file /path/to/device.key
+```
+
+It prints the serial-log path, UI command and deployment command, and exports
+`work/zynq/deployment-interactive/profile.json`. The credential argument is the
+workstation copy used by clients; the guest obtains its credential and boot nonce
+from SD. Updater resets keep this emulator process/card alive. Ctrl+C or confirmed
+ordinary shutdown closes QEMU while retaining the card. Add `--tftp PUBLIC_DIR`
+for a card provisioned with the one-shot RAM-boot request.
 
 For RAM development boot, provision with `card.py --network-boot` and place a
 signed bundle at `shoop.itb` in the launcher's public TFTP directory. Export only

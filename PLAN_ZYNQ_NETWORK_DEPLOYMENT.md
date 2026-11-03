@@ -297,13 +297,13 @@ the transferred image actually runs, and success is reported after confirmation.
 Depends on Stage 4. Add deterministic cut points plus a small seeded randomized
 set; preserve replay seeds and the affected SD records for failures.
 
-- [ ] Cover the matrix below with actual QEMU execution and card persistence.
+- [x] Cover the matrix below with actual QEMU execution and card persistence.
   Use explicit torn/omitted-write injection in addition to killing QEMU; a process
   kill alone does not prove every storage failure boundary.
-- [ ] Test interrupted/resumed CLI sessions, lost UDP replies, slow/no server,
+- [x] Test interrupted/resumed CLI sessions, lost UDP replies, slow/no server,
   stale authority after rollback, attempted protected-region writes, incompatible
   metadata/handoff formats and counter overflow. Preserve useful error distinctions.
-- [ ] Demonstrate network installation from recovery with no functioning app,
+- [x] Demonstrate network installation from recovery with no functioning app,
   bounded watchdog rollback, and confirmed-image boot when the workstation is
   absent. Recheck memory/stack bounds and render-path allocation guards; commit.
 
@@ -468,3 +468,20 @@ revisions rather than treating moving documentation as a reproducible input.
   are refused; verified staging/reboot still passes on real QEMU. TFTP additionally
   reserves an LMB guard before transfer, enforcing the 32 MiB limit before copying
   into the loader's reserved memory. Final suite/CI validation remains in progress.
+
+- All deployment qualification phases passed on the restricted loader: native/UI
+  boot, A/B roundtrip, five watchdog modes, all 15 storage cases, all ten metadata/
+  image damage cases, interrupted/lossy networking, command/image refusals, real
+  FreeRTOS cleanup refusal/retry, missing server and oversized TFTP fallback.
+  The combined run is finishing the original full firmware fixture gate.
+- Added the documented interactive SD emulator command. Provision → launch →
+  one-command update → terminate → cold launch of the same card passed, with
+  fresh nonces and the updated image. Default UDP 5554 and adjacent CLI journal
+  also pass against actual QEMU.
+- CodeQL's two clear-text alerts referred to a fixed public test marker; its
+  naming is corrected and the audit still quarantines secret-bearing output.
+- Preserve Codecov's 80% patch floor by instrumenting the workstation CLI during
+  actual QEMU scenarios, with Arm builds unchanged. The measured CLI entry point
+  is 82.42% and deployment transport/orchestration 88.08%; CI merges this LCOV
+  report with native coverage. New successful-result/wire-tag contract tests pass
+  on native/Node/Chrome. Full native suite: 2,546 passed, five intentional skips.

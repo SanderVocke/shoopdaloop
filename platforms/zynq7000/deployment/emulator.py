@@ -1,9 +1,12 @@
 """Bounded bootloader execution with a persistent SD card and Ethernet."""
 import hashlib
+import argparse
 import json
 import os
 from pathlib import Path
 import socket
+import signal
+import shlex
 import subprocess
 import sys
 import threading
@@ -137,3 +140,49 @@ class BootQemu(Qemu):
         if self.process.poll() is None:
             self.process.kill()
             self.process.wait(timeout=5)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Keep a provisioned SD-backed Zynq host running for Ethernet deployment")
+    parser.add_argument("--loader", required=True, type=Path, help="Public-key-bearing u-boot.bin")
+    parser.add_argument("--card", required=True, type=Path, help="Exclusively owned 512 MiB regular-file SD image")
+    parser.add_argument("--credential-file", type=Path, help="Workstation copy of the card's credential, for profile export")
+    parser.add_argument("--directory", type=Path, default=ROOT / "work/zynq/deployment-interactive")
+    parser.add_argument("--port-base", type=int, default=16400)
+    parser.add_argument("--updater-port", type=int, default=16554)
+    parser.add_argument("--tftp", type=Path, help="Public bundle directory for an already-provisioned one-shot RAM boot")
+    args = parser.parse_args()
+    if not args.card.is_file() or args.card.stat().st_size != 512 << 20:
+        parser.error("--card must be a provisioned 512 MiB regular file")
+    if not 1 <= args.port_base < 65535 or not 1 <= args.updater_port <= 65535:
+        parser.error("invalid forwarded port")
+    directory = args.directory.resolve(); directory.mkdir(parents=True, exist_ok=True)
+    stopped = threading.Event()
+    signal.signal(signal.SIGTERM, lambda number, frame: stopped.set())
+    try:
+        with BootQemu(args.loader, args.card, directory, args.port_base, args.updater_port, tftp=args.tftp) as vm:
+            memory, cpus = vm.qmp("query-memory-size-summary"), vm.qmp("query-cpus-fast")
+            if memory["base-memory"] != 1 << 30 or len(cpus) != 1:
+                raise RuntimeError("Deployment VM violates the one-core/1 GiB contract")
+            (directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
+            print("Guest serial:", vm.serial, flush=True)
+            print(f"Updater: target/debug/shoop-deploy --updater 127.0.0.1:{args.updater_port} updater-status", flush=True)
+            if args.credential_file:
+                from remote_profile import write_profile
+                profile = directory / "profile.json"
+                write_profile(profile, args.credential_file.resolve(), args.port_base)
+                quoted = shlex.quote(str(profile))
+                print(f"UI: cargo run -p shoopdaloop -- --remote-profile {quoted}", flush=True)
+                print(f"Deploy: target/debug/shoop-deploy --profile {quoted} --updater 127.0.0.1:{args.updater_port} deploy IMAGE.itb", flush=True)
+            print("Ctrl+C stops QEMU and retains the card; confirmed host shutdown also exits.", flush=True)
+            while not stopped.wait(.25):
+                if vm.process.poll() is not None:
+                    raise RuntimeError("QEMU exited; inspect " + str(directory))
+                if vm.serial.exists() and "SHOOP_HOST_RETURNED" in vm.serial.read_text(errors="replace"):
+                    break
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

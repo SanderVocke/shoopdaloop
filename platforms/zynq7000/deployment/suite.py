@@ -13,7 +13,7 @@ from build_artifacts import build, PLATFORM
 from emulator import BootQemu, ROOT
 from qualification import Qualification
 
-PHASES = ["build", "records", "first-stage", "network-boot", "warm-boot", "ui", "roundtrip", "watchdogs",
+PHASES = ["build", "records", "first-stage", "network-boot", "warm-boot", "ui", "roundtrip", "defaults", "watchdogs",
           "disk-faults", "metadata-damage", "network-faults", "refusals", "cleanup-refusal", "no-server"]
 
 
@@ -49,8 +49,11 @@ def audit_public_output(directory):
 
 def worker(args):
     directory = args.directory.resolve()
+    if args.native_coverage:
+        from native_coverage import configure_runtime
+        configure_runtime(directory)
     if args.phase == "build":
-        build(directory, args.fetch, args.port_base)
+        build(directory, args.fetch, args.port_base, args.native_coverage)
         return
     q = Qualification(directory / "artifacts", directory / "private", directory / "evidence" / args.phase,
                       args.port_base, args.updater_port)
@@ -101,6 +104,9 @@ def worker(args):
             shutil.copyfile(directory / "artifacts/firmware-a.itb", tftp / "shoop.itb")
         probe.run(q.loader, image, q.profile, q.evidence / "clients", "firmware-a", ui=args.phase == "ui",
                   warm=args.phase == "warm-boot", tftp=tftp, port_base=args.port_base, updater_port=args.updater_port)
+    elif args.phase == "native-coverage":
+        from native_coverage import report
+        report(directory)
     elif args.phase == "original":
         subprocess.run([sys.executable, PLATFORM / "suite.py", *(["--fetch"] if args.fetch else [])], cwd=ROOT, check=True)
     else:
@@ -141,7 +147,8 @@ def main():
     parser.add_argument("--directory", type=Path, default=ROOT / "work/zynq/deployment-suite")
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--with-original", action="store_true", help="Also execute the original complete firmware suite")
-    parser.add_argument("--phase", choices=[*PHASES, "original"], help=argparse.SUPPRESS)
+    parser.add_argument("--native-coverage", action="store_true", help="Collect real QEMU deployment CLI coverage with cargo-llvm-cov")
+    parser.add_argument("--phase", choices=[*PHASES, "original", "native-coverage"], help=argparse.SUPPRESS)
     parser.add_argument("--port-base", type=int, default=16400)
     parser.add_argument("--updater-port", type=int, default=16554)
     args = parser.parse_args()
@@ -151,7 +158,7 @@ def main():
     directory = args.directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
     evidence = directory / "evidence"; evidence.mkdir()
-    phases = [*PHASES, *(["original"] if args.with_original else [])]
+    phases = [*PHASES, *(["original"] if args.with_original else []), *(["native-coverage"] if args.native_coverage else [])]
     result = {"passed": False, "ram_bytes": 1 << 30, "card_bytes": 512 << 20, "expected_phases": phases, "phases": []}
     try:
         for name in phases:
