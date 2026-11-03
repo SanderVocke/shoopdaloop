@@ -167,7 +167,9 @@ impl NewEngineSelfTest {
                             | Step::LargeLoaded
                             | Step::LargeResaving
                             | Step::LargePlayback
-                    ) {
+                    ) || (self.large
+                        && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
+                    {
                         Duration::from_secs(120)
                     } else {
                         STEP_TIMEOUT

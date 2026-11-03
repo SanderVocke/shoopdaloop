@@ -112,7 +112,17 @@ fn command(
     loop {
         connection.poll(client).unwrap();
         if let Some(outcome) = client.results().get(&operation) {
-            return outcome.clone();
+            let projected = match outcome {
+                Outcome::Confirmed { revision, .. }
+                | Outcome::TrackCreated { revision, .. }
+                | Outcome::LoopCreated { revision, .. } => client
+                    .snapshot()
+                    .is_some_and(|snapshot| snapshot.revision >= *revision),
+                _ => true,
+            };
+            if projected {
+                return outcome.clone();
+            }
         }
         assert!(Instant::now() < deadline, "operation timed out");
         thread::sleep(Duration::from_millis(2));
@@ -192,12 +202,19 @@ fn bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master
                 thread::sleep(Duration::from_millis(10));
             }
             (client, connection) = attach(&host.entry, 802);
-        } else {
-            while !client.results().contains_key(&operation) {
-                connection.poll(&mut client).unwrap();
-                assert!(Instant::now() < deadline, "bus control did not finish");
-                thread::sleep(Duration::from_millis(2));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            connection.poll(&mut client).unwrap();
+            let snapshot = client.snapshot().unwrap();
+            if snapshot.results.iter().any(|result| {
+                result.id == operation
+                    && matches!(result.outcome, Outcome::Confirmed { revision } if snapshot.revision >= revision)
+            }) {
+                break;
             }
+            assert!(Instant::now() < deadline, "bus control was not projected");
+            thread::sleep(Duration::from_millis(2));
         }
         assert_eq!(
             client

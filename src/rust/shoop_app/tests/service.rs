@@ -258,6 +258,24 @@ fn buses_round_trip_order_routes_zero_and_reconcile_admitted_mutations_after_ui_
             .buses
             .iter()
             .all(|bus| bus.balance == 0.));
+        for operation in [
+            ControlOperation::SetBusGain {
+                buses: vec![cue, wide],
+                gain_db: -6.,
+            },
+            ControlOperation::SetBusMuted {
+                buses: vec![cue, wide],
+                muted: true,
+            },
+        ] {
+            assert!(matches!(
+                run(&mut f, &mut client, Command::Control(operation)),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(client.snapshot().unwrap().buses[1..]
+            .iter()
+            .all(|bus| bus.gain_db == -6. && bus.muted));
         assert!(matches!(
             run(
                 &mut f,
@@ -327,6 +345,8 @@ fn buses_round_trip_order_routes_zero_and_reconcile_admitted_mutations_after_ui_
         assert_eq!(loaded.buses[2].gain_db, -6.);
         assert_eq!(loaded.buses[2].balance, 0.25);
         assert!(loaded.buses[2].muted);
+        assert_eq!(loaded.buses[0].gain_db, -6.);
+        assert!(loaded.buses[0].muted);
         let ids = loaded.buses.iter().map(|b| b.id).collect::<Vec<_>>();
         for bus in ids {
             assert!(matches!(

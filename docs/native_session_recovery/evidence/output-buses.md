@@ -52,9 +52,16 @@ that both surviving buses remain usable. Formatting, test-attribute usage, parit
 closed tracing inventory and all four target dependency-boundary checks pass;
 the service and adapter also compile without their default features.
 
+CI identified a native test ordering race: operation results can precede the
+snapshot at their confirmed revision. Native test helpers now await that revision;
+all ten recovery tests pass with CI tracing, and the bus socket/shared-memory
+case passes twenty consecutive traced repetitions. The 33 MiB browser canary's
+new zero-bus file stages use the same 120-second budget as its other large-media
+stages; ordinary-stage deadlines remain unchanged.
+
 The [selected Miri report](miri/output-buses/result.json) and its hashed log cover
 the selected engine test
-`ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio` passed under
+`ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio`, which passed under
 nightly-2026-05-04 Miri with seed 0 and default isolation and borrow checks. Its
 source is `59812699`; subsequent production changes are in service/adapter admission,
 while the native engine test adds independent-meter assertions. The recorded wall

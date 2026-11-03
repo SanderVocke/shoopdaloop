@@ -170,6 +170,19 @@ service regression verifies that a rejected group leaves all bus balances intact
 Bus slots also remain reserved until removal confirms, so a simultaneous add
 cannot steal a still-live slot if removal refuses. The injected-refusal service
 test now queues both operations and verifies the survivor and new bus independently.
+Linux CI exposed a race in the new native test's result helper: confirmed results
+can precede their corresponding projected snapshot. The helper now waits for
+the confirmed revision, and the recovery case also waits for the old operation's
+retained result in the fresh client's snapshot before asserting controls. This
+keeps the real delivery ordering and unchanged deadlines.
+The same ordering issue explained Windows CI's comparison of a pre-reorder
+snapshot with the recovered display order. The service round-trip also exercises
+successful multi-bus Lua gain/mute commands and their persisted controls.
+The 33 MiB browser scenario retains that media during the new zero-bus file
+round-trip. Its added save/load stages use the existing 120-second large-media
+budget; ordinary bus stages retain their 30-second deadline. CI's preceding
+large load took 75 seconds, so a 30-second zero-bus reload was not an appropriate
+verification budget for that same fixture.
 
 ## Execution contract
 
