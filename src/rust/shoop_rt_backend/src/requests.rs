@@ -4,14 +4,16 @@ use alloc::collections::{BTreeMap, VecDeque};
 use alloc::string::String;
 
 use shoop_backend::{
-    BackendBusControl, BackendLoopId, BackendMixerLink, BackendPortId, BackendTrackControl,
-    BackendTrackId,
+    BackendBusControl, BackendBusId, BackendLoopId, BackendMixerLink, BackendPortId,
+    BackendTrackControl, BackendTrackId,
 };
 use shoop_rt_protocol::Request;
 
 /// What a request is for, so that its outcome updates the mirror or becomes a failure.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    CreateBus(BackendBusId),
+    RemoveBus(BackendBusId),
     CreateStrip(BackendTrackId),
     RemoveStrip(BackendTrackId),
     CreateLoop(BackendLoopId),
@@ -30,7 +32,7 @@ pub(crate) enum Purpose {
         link: BackendMixerLink,
         connected: bool,
     },
-    BusControl(BackendBusControl),
+    BusControl(BackendBusId, BackendBusControl),
     InjectMidi(BackendTrackId),
     Smoothing(u32),
     Persistence,

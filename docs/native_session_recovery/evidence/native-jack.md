@@ -59,8 +59,9 @@ policy for unrelated hardware; it does not replace strict JACK acceptance.
 
 ## Compatibility and scope
 
-The engine protocol is version 3, host setup is version 2, and the application
-protocol is version 12. Existing driver tags remain unchanged. Version checks
+The engine protocol is version 4, host setup is version 3, and the application
+protocol is version 13. These versions combine native JACK with output-bus
+parity from the target branch. Existing driver tags remain unchanged. Version checks
 reject older peers before exchanging the expanded JACK configuration and
 instance metadata. Existing JSON JACK profiles receive backward-compatible port
 defaults.
@@ -80,8 +81,9 @@ outside this restoration.
 ## Local validation results
 
 - Full warning-denying native workspace build passed.
-- Full retained workspace suite after merging target `64a4ad06` and adding the
-  JACK preparation and buffer-change regressions: 2,554 passed, four pre-existing skips.
+- Full retained workspace suite after merging output-bus target `e68b15ac`:
+  2,562 passed, four pre-existing skips, including the JACK preparation and
+  buffer-change regressions.
 - Strict JACK runner passed with hardware skips disabled, including both host
   transports and production service/session scenarios.
 - All four native feature combinations passed build checks and host library tests.
@@ -92,15 +94,21 @@ outside this restoration.
   including save/load/resave and restored playback at 900×600 (Node v24.19.0,
   Chromium 154.0.8037.57).
 
-## Pull request validation
+## Pull request validation checkpoints
 
 [PR #925](https://github.com/SanderVocke/shoopdaloop/pull/925) targets
-`feat/backend-replacement`, including target commit `64a4ad06`.
+`feat/backend-replacement`, including output-bus target commit `e68b15ac`.
+Before that target update,
 [Source CI at `60262f2e`](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645635124)
 passed all scheduled jobs: Linux, Windows and macOS debug/release; browser
 debug/release with Node/Wasm, Chromium and Firefox checks; strict native JACK;
 coverage; and bare-metal builds. Documentation, CodeQL and both Codecov checks
 also passed. Patch coverage is 93.04% against the unchanged 80% gate.
+
+The combined output-bus/JACK source passed the local gates above, including
+strict JACK service/session acceptance and the expanded browser bus workflow
+with zero xruns. Protocol versions 4/3/13 distinguish the combined wire layouts
+from both preceding branches. Current CI results are linked from the PR.
 
 Real JACK provider acceptance uses Linux JACK2 with its dummy backend. The
 Windows/macOS results establish distribution build and test compatibility;

@@ -13,9 +13,9 @@ P01/P02/P11 remain open for their deferred dependencies.
 | Direct audio/MIDI/trigger tracks and primitive loops | Preserve names, order, topology, media, supported controls and sync relationships | Service maps document IDs to fresh live IDs; RT owns playback/resources |
 | Loop/channel length, gain, offsets, capture alignment and preplay | Preserve supported stored values and exact media timing | Validate every value; reject an unsupported non-default value before mutation; this does not enable P09/P10/P12 editing |
 | Selection, target and global policies | Preserve document values supported by the core | Service-owned; reject unsupported recording/default-playback policies |
-| Master, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
+| Ordinary buses, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
-| FX/synth/dry-wet, composites, non-Master buses | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08/P13 remain open; no flattening or dropped state |
+| FX/synth/dry-wet and composites | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08 remain open; no flattening or dropped state |
 | Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
@@ -27,7 +27,7 @@ P01/P02/P11 remain open for their deferred dependencies.
 | Metadata | 8 MiB, including the persistence manifest |
 | Decoded media | 256 MiB aggregate audio/MIDI, independent of the old 32 MiB media-view message |
 | Input/output file | 512 MiB compressed/encoded bytes; reject before decoding/output allocation beyond this budget |
-| Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; fixed stereo Master and supported routes |
+| Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; zero-or-more ordinary buses within the negotiated pool (at most eight buses of eight channels), and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |

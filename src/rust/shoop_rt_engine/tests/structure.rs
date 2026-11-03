@@ -15,6 +15,137 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const RAMP: usize = 4;
 
+#[shoop_test]
+fn ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio() {
+    let mut h = Harness::new(&description());
+    h.input = Box::new(|_, _| 1.);
+    h.done(Request::RemoveBus { bus: BusId::MASTER });
+    let source = strip(0, 1);
+    h.done(Request::CreateStrip {
+        strip: source,
+        shape: shape(1, 1, false),
+    });
+    h.done(connect(source, PortKind::AudioIn, audio_in(0), true));
+    h.done(connect(source, PortKind::AudioOut, audio_out(0), true));
+    h.done(Request::StripControl {
+        strip: source,
+        control: StripControl::Monitoring(true),
+    });
+    let wide = BusId(SlotId::new(0, 2));
+    let other = BusId(SlotId::new(1, 1));
+    h.done(Request::CreateBus {
+        bus: wide,
+        channels: 8,
+    });
+    h.done(Request::CreateBus {
+        bus: other,
+        channels: 2,
+    });
+    for (bus, width) in [(wide, 8), (other, 1)] {
+        for index in 0..width {
+            h.done(Request::Route {
+                port: StripPort {
+                    strip: source,
+                    kind: PortKind::AudioOut,
+                    index: 0,
+                },
+                bus: BusPort { bus, index },
+                connected: true,
+            });
+            h.done(Request::Connect {
+                port: EnginePort::Bus(BusPort { bus, index }),
+                host: audio_out(1),
+                connected: true,
+            });
+        }
+    }
+    h.done(Request::BusControl {
+        bus: wide,
+        control: BusControl::Gain(0.25),
+    });
+    h.run(8, 4);
+    assert_eq!(h.outputs[0].last(), Some(&1.));
+    assert_eq!(h.outputs[1].last(), Some(&3.));
+    for (id, expected) in [(wide, &[0.25; 8][..]), (other, &[1., 0.][..])] {
+        let peaks = h
+            .telemetry
+            .iter()
+            .rev()
+            .find_map(|(_, record)| match record {
+                Telemetry::Bus { bus, peaks } if *bus == id => Some(peaks.as_slice()),
+                _ => None,
+            });
+        assert_eq!(peaks, Some(expected));
+    }
+    assert_eq!(
+        h.apply_in(
+            Request::BusControl {
+                bus: wide,
+                control: BusControl::Balance(0.5)
+            },
+            1
+        ),
+        Outcome::Refused(Refusal::InvalidValue)
+    );
+    h.done(Request::BusControl {
+        bus: other,
+        control: BusControl::Mute(true),
+    });
+    h.run(8, 4);
+    assert_eq!(h.outputs[1].last(), Some(&2.));
+    let peaks = h
+        .telemetry
+        .iter()
+        .rev()
+        .find_map(|(_, record)| match record {
+            Telemetry::Bus { bus, peaks } if *bus == other => Some(peaks.as_slice()),
+            _ => None,
+        });
+    assert_eq!(peaks, Some(&[0., 0.][..]));
+    h.done(Request::RemoveBus { bus: wide });
+    h.done(Request::RemoveBus { bus: other });
+    h.run(8, 4);
+    assert_eq!(h.outputs[0].last(), Some(&1.));
+    assert_eq!(h.outputs[1].last(), Some(&0.));
+    assert_eq!(
+        h.apply_in(
+            Request::BusControl {
+                bus: wide,
+                control: BusControl::Gain(1.)
+            },
+            1
+        ),
+        Outcome::Refused(Refusal::InvalidId)
+    );
+    for generation in 3..13 {
+        let bus = BusId(SlotId::new(0, generation));
+        h.done(Request::CreateBus { bus, channels: 1 });
+        h.done(Request::RemoveBus { bus });
+    }
+    assert_eq!(
+        h.apply_in(
+            Request::CreateBus {
+                bus: BusId(SlotId::new(8, 1)),
+                channels: 1
+            },
+            1
+        ),
+        Outcome::Refused(Refusal::Capacity)
+    );
+    assert_eq!(
+        h.apply_in(
+            Request::CreateBus {
+                bus: BusId(SlotId::new(0, 13)),
+                channels: 9
+            },
+            1
+        ),
+        Outcome::Refused(Refusal::Capacity)
+    );
+    h.run(8, 4);
+    assert_eq!(h.outputs[0].last(), Some(&1.));
+}
+
 fn transition(id: LoopSlotId, mode: LoopMode) -> Request {
     Request::LoopTransition {
         loop_id: id,
@@ -720,7 +851,7 @@ fn routes_connect_single_strip_outputs_to_single_master_channels() {
                 index: 0,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             },
             connected: true,

@@ -84,12 +84,12 @@ the dummy driver; Lua controller MIDI remains client-local. Saved JACK preferenc
 map to CPAL's JACK host or default device with a diagnostic. Unusable device settings
 fall back to dummy with a visible warning and do not overwrite the saved preference.
 Driver and capacity changes apply at host startup. Live driver switching is a
-tracked temporary gap, as are FX/synths, additional buses, composite/grab/dry-wet
+tracked temporary gap, as are FX/synths, composite/grab/dry-wet
 operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
 The authoritative capability checks refuse unsupported operations.
 
 Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
-targets/policies, supported track/Master controls, routes/connections, piano MIDI and
+targets/policies, supported track/bus controls, routes/connections, piano MIDI and
 bounded waveform/MIDI detail reads are available. Configured track/loop/channel/media
 pools are prepared at startup; exhausted capacity produces a refusal.
 
@@ -97,7 +97,7 @@ Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard M
 import/export use the session service. Save while playing is supported; active or
 scheduled recording refuses without stopping it. Load starts restored loops stopped
 and asks before sample-rate conversion, leaving the device unchanged. Unsupported
-FX/dry-wet/composite/bus/script documents refuse as a whole. Audio mapping, channel
+FX/dry-wet/composite/script documents and buses exceeding prepared limits refuse as a whole. Audio mapping, channel
 selection, optional import length changes and SMF loss warnings remain explicit.
 Native output replaces its target atomically; browser completion means download
 handoff. Limits and supported fields are in the
@@ -115,6 +115,19 @@ packages omit it and carry built-ins beside the executable on Linux/Windows or i
 `Contents/Resources` on macOS. `shoop_host` ships beside the UI executable, including
 inside `Contents/MacOS`. Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
+
+## Output buses
+
+The mixer supports ordinary named buses, persisted display order, gain/mute,
+stereo balance and per-channel meters. The startup pool defaults to eight buses
+with up to eight channels each; Audio settings configure the prepared count and
+width for the next start. The add dialog uses the running host's negotiated limits.
+Master is the default stereo bus and can be removed. Zero-bus sessions save/load
+normally; New Session creates a fresh default even after every bus was removed.
+Track defaults map matching widths one-to-one and mono to every destination
+channel; absent/incompatible names leave a track unconnected. Explicit bus and
+direct system routes coexist. Lua bus indices follow stable logical order rather
+than mixer drag order, including after save/load. Bus FX remains unavailable.
 
 ## Browser
 

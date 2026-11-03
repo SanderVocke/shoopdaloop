@@ -21,11 +21,13 @@ pub use replacement::{ReplacementEdit, StripPreset};
 pub use schema::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 /// Longest host port or device name, in UTF-8 bytes.
 pub const MAX_NAME_BYTES: usize = 64;
 /// Most audio channels per strip direction reported in telemetry.
 pub const MAX_STRIP_CHANNELS: usize = 8;
+/// Prepared bus slots; route masks cover all bus channels.
+pub const MAX_BUSES: usize = 8;
 /// Longest inline MIDI message.
 pub const MAX_MIDI_BYTES: usize = 16;
 /// Samples per bulk audio chunk.

@@ -1197,6 +1197,23 @@ pub struct HostPortState {
 pub const MASTER_BUS_NAME: &str = "Master";
 pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BusLimits {
+    pub buses: u32,
+    pub channels: u32,
+    pub total_channels: u32,
+}
+impl Default for BusLimits {
+    fn default() -> Self {
+        Self {
+            buses: MAX_BUSES as u32,
+            channels: MAX_BUS_CHANNELS as u32,
+            total_channels: MAX_TOTAL_BUS_CHANNELS as u32,
+        }
+    }
+}
+
 pub const MAX_BUS_NAME_BYTES: usize = 128;
 pub const MAX_BUSES: usize = 64;
 pub const MAX_BUS_CHANNELS: usize = 64;
@@ -2011,6 +2028,7 @@ pub struct AppNotification {
 
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub bus_limits: BusLimits,
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
@@ -3772,7 +3790,10 @@ impl ControlOperation {
 /// Capacities the new engine backend prepares at startup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct NewEnginePools {
+    pub buses: u32,
+    pub bus_channels: u32,
     /// Tracks, including the sync track.
     pub tracks: u32,
     /// Loop slots shared by all tracks.
@@ -3785,6 +3806,8 @@ pub struct NewEnginePools {
 impl Default for NewEnginePools {
     fn default() -> Self {
         Self {
+            buses: 8,
+            bus_channels: 8,
             tracks: 16,
             loops: 128,
             channels: 2,
@@ -3815,7 +3838,9 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if !(1..=64).contains(&self.pools.tracks)
+        if !(1..=8).contains(&self.pools.buses)
+            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
             || !(1..=16).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)

@@ -15,7 +15,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -97,6 +97,8 @@ impl WorkletConfig {
             engine.max_frames,
             engine.strip_channels.into(),
             engine.master_channels.into(),
+            engine.buses.into(),
+            engine.bus_channels.into(),
             engine.smoothing_frames as usize,
             engine.smoothing_limit_frames as usize,
             engine.ramp_frames as usize,
@@ -156,6 +158,8 @@ impl WorkletConfig {
         let max_frames = r.usize()?;
         let strip_channels = r.narrow()?;
         let master_channels = r.narrow()?;
+        let buses = r.narrow()?;
+        let bus_channels = r.narrow()?;
         let smoothing_frames = r.u32()?;
         let smoothing_limit_frames = r.u32()?;
         let ramp_frames = r.u32()?;
@@ -204,6 +208,8 @@ impl WorkletConfig {
                 segments,
                 strip_channels,
                 master_channels,
+                buses,
+                bus_channels,
                 master_connections,
                 smoothing_frames,
                 smoothing_limit_frames,

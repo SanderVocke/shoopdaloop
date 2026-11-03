@@ -59,26 +59,27 @@ pub struct Track {
     pub loops: Vec<Loop>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct MasterChannel {
+pub struct BusChannel {
     pub id: BusChannelId,
     pub label: String,
     pub port: Port,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Master {
+pub struct Bus {
     pub id: BusId,
     pub name: String,
     pub gain_db: f32,
     pub balance: f32,
     pub muted: bool,
-    pub channels: Vec<MasterChannel>,
+    pub channels: Vec<BusChannel>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Session {
     pub sample_rate: u32,
     pub global: GlobalControlState,
     pub tracks: Vec<Track>,
-    pub master: Master,
+    pub buses: Vec<Bus>,
+    pub bus_display_order: Vec<BusId>,
     pub global_ports: Vec<Port>,
     pub routes: Vec<MixerRouteState>,
     pub selected: Vec<LoopId>,

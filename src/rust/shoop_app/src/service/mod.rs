@@ -49,6 +49,10 @@ struct Track {
     view: TrackState,
     loops: Vec<LoopId>,
 }
+struct Bus {
+    backend: BackendBusId,
+    view: BusState,
+}
 struct Loop {
     backend: BackendLoopId,
     track: TrackId,
@@ -68,6 +72,10 @@ struct Port {
 #[derive(Clone, Debug)]
 enum Effect {
     None,
+    BusCreated(BusId),
+    BusRemoved(BusId),
+    BusControl(BusId),
+    BusControls(Vec<BusId>),
     TrackCreated(TrackId, Vec<LoopId>),
     LoopCreated(TrackId, LoopId),
     TrackRemoved(TrackId),
@@ -133,6 +141,10 @@ pub struct Service {
     loops: BTreeMap<LoopId, Loop>,
     ports: BTreeMap<PortId, Port>,
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
+    buses: BTreeMap<BusId, Bus>,
+    bus_order: Vec<BusId>,
+    next_bus: u64,
+    next_channel: u64,
     next_track: u64,
     next_loop: u64,
     next_port: u64,
@@ -185,6 +197,10 @@ impl Service {
             loops: BTreeMap::new(),
             ports: BTreeMap::new(),
             channels: BTreeMap::new(),
+            buses: BTreeMap::new(),
+            bus_order: Vec::new(),
+            next_bus: 1,
+            next_channel: 1,
             next_track: 1,
             next_loop: 1,
             next_port: 1,
@@ -211,7 +227,7 @@ impl Service {
             bootstrap_track: None,
             bootstrap_loop: None,
         };
-        service.register_master()?;
+        service.register_buses()?;
         let created = service.backend.create_direct_track(DirectTrackRequest {
             port_name_base: "sync_loop".to_owned(),
             audio_channels: 1,
@@ -659,6 +675,7 @@ impl Service {
             _ => {
                 3 * self.loops.len()
                     + 16 * self.tracks.len()
+                    + 16 * self.buses.len()
                     + 64
                     + self.piano_notes.values().map(BTreeSet::len).sum::<usize>()
             }

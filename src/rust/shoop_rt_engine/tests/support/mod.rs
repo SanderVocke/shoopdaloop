@@ -24,6 +24,8 @@ pub fn description() -> EngineDescription {
         ],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: vec![(0, 0), (1, 1)],
         smoothing_frames: 0,
         smoothing_limit_frames: 8,
@@ -66,7 +68,7 @@ pub fn route(strip: StripId, channel: u8, target: u8, connected: bool) -> Reques
             index: channel,
         },
         bus: BusPort {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             index: target,
         },
         connected,
@@ -74,7 +76,7 @@ pub fn route(strip: StripId, channel: u8, target: u8, connected: bool) -> Reques
 }
 pub fn master(index: u8) -> EnginePort {
     EnginePort::Bus(BusPort {
-        bus: BusId::Master,
+        bus: BusId::MASTER,
         index,
     })
 }

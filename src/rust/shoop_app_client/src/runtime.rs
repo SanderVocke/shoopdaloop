@@ -593,6 +593,7 @@ impl Runtime {
             .client
             .snapshot()
             .map(|state| AppSnapshot {
+                bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
                 track_processors: Arc::clone(&state.track_processors),
@@ -1193,19 +1194,22 @@ impl Runtime {
         ControlSnapshot {
             loops,
             tracks,
-            buses: state
-                .buses
-                .iter()
-                .enumerate()
-                .map(|(index, bus)| ControlBus {
-                    id: bus.id,
-                    index: index as i64,
-                    channel_count: bus.channels.len(),
-                    gain_db: bus.gain_db,
-                    balance: bus.balance,
-                    muted: bus.muted,
-                })
-                .collect(),
+            buses: {
+                let mut buses = state.buses.iter().collect::<Vec<_>>();
+                buses.sort_by_key(|bus| bus.id);
+                buses
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, bus)| ControlBus {
+                        id: bus.id,
+                        index: index as i64,
+                        channel_count: bus.channels.len(),
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                    })
+                    .collect()
+            },
             apply_n_cycles: state.global.apply_n_cycles,
             solo: state.global.solo,
             sync_active: state.global.sync,

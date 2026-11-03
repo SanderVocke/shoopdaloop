@@ -9,6 +9,8 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
         max_frames: 1,
         strip_channels: 2,
         master_channels: 3,
+        buses: 8,
+        bus_channels: 8,
         smoothing_frames: 4,
         smoothing_limit_frames: 5,
         ramp_frames: 6,

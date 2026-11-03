@@ -2,7 +2,7 @@
 
 Restore direct JACK audio and MIDI in the replacement backend. Selecting JACK must run the new engine through a native JACK client, with callback-local audio and MIDI, instead of translating the selection to CPAL.
 
-Status: complete. Implementation PR: https://github.com/SanderVocke/shoopdaloop/pull/925. Baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
+Status: implementation complete; CI revalidation after merging target `e68b15ac` (output-bus parity). Implementation PR: https://github.com/SanderVocke/shoopdaloop/pull/925. Baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
 
 Target branch and final PR base: `feat/backend-replacement`.
 Implementation branch: `feat/backend-replacement-native-jack`.
@@ -145,9 +145,9 @@ Depends on all preceding stages.
 
 - [x] Review the final diff for unrelated changes, real-time contract violations, feature leakage, incorrect status, and acceptance gaps. Reconcile changes on the target branch and rerun affected checks if the baseline moves.
 - [x] Push `feat/backend-replacement-native-jack` and open a PR with base **`feat/backend-replacement`**. Lead the description with restored native JACK behavior; include configuration compatibility, fixed-port scope, test evidence, and restart/failure semantics.
-- [x] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
+- [ ] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
 - [x] Check for automated PR reviews. Address feedback, push fixes, and repeat review/check cycles until the automated reviewer approves where present. Document any remaining material limitations accurately.
-- [x] Update this plan's checkboxes and evidence, verify the PR base/head and final passing commit, and return the PR URL with validation results.
+- [ ] Update this plan's checkboxes and evidence, verify the PR base/head and final passing commit, and return the PR URL with validation results.
 
 Completion: an open implementation PR targeting `feat/backend-replacement`, with all immutable acceptance criteria evidenced, required CI passing, and automated review approval where provided.
 
@@ -191,4 +191,7 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - Review also identified that the engine's fixed startup command lead could be shorter than a subsequently enlarged JACK period. Scheduling now takes the maximum of configured lead and published JACK period. A portable engine regression verifies actual output timing across increasing and decreasing buffer sizes; it fails against the prior scheduling code and passes with the correction. Other driver scheduling policies are unchanged.
 - The dynamic-period correction passed the warning-denying workspace build, test-attribute audit, full suite (**2,554 passed, four pre-existing skips**), and strict real-JACK acceptance.
 - Source head `60262f2e` passed strict JACK acceptance, coverage, CodeQL and both Codecov checks (**93.04% patch coverage**). PR reviews and inline review threads are empty; the automated coverage feedback was addressed and its checks pass. Base remains `feat/backend-replacement` at `64a4ad06`; the PR is mergeable.
-- Final source validation: [Build and Test run 41645635124](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645635124) passed all 11 scheduled jobs: Linux, Windows and macOS debug/release; browser debug/release; strict native JACK acceptance; coverage; and bare-metal builds. The separate nightly-only job was intentionally skipped. All **20 commit checks** completed without a failure or pending check, including documentation, CodeQL and Codecov. The PR contains the implementation and completed plan/evidence; its latest head checks are available on [PR #925](https://github.com/SanderVocke/shoopdaloop/pull/925).
+- Previous full source validation, before the output-bus target update: [Build and Test run 41645635124](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645635124) passed all 11 scheduled jobs: Linux, Windows and macOS debug/release; browser debug/release; strict native JACK acceptance; coverage; and bare-metal builds. The separate nightly-only job was intentionally skipped. All **20 commit checks** completed without a failure or pending check, including documentation, CodeQL and Codecov.
+- The documentation completion head `bad77e7c` also passed all 20 checks. Final verification then found that the actual target had advanced to `e68b15ac` (output-bus parity, PR #926), despite cached PR metadata still reporting `64a4ad06`. The latest target was merged, preserving P13 completion and the native JACK P14 evidence.
+- Both branches independently used engine/host/application versions 3/2/12 for different incompatible wire changes. The combined branch therefore uses **4/3/13**, with canonical byte fixtures and the browser canary updated. Existing driver tags remain unchanged. The JACK control-timing regression now uses the target's generational Master bus identity.
+- Local validation of the combined output-bus/JACK source passed: warning-denying workspace build; **2,562 tests, four pre-existing skips**; strict JACK production audio/MIDI recording/replay/reconnect/save-load; all four native feature combinations and host library tests; browser build and generated codec/worklet contracts; and hosted Chromium workflow with **zero xruns**, including bus removal, zero-bus save/load and bus recreation. Formatting, test-attribute, tracing, parity and four-target dependency audits passed. CI/review completion is tracked on [PR #925](https://github.com/SanderVocke/shoopdaloop/pull/925).
