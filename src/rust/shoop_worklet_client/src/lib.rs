@@ -383,6 +383,7 @@ impl RemoteWorkletBackend {
                         HostMidiDirection::Output => BackendPortDirection::Output,
                     },
                     preferred_playback: false,
+                    available: true,
                 },
             );
         }
@@ -1023,6 +1024,7 @@ impl RemoteWorkletBackend {
                         name: port.name,
                         data_type: from_wire_data_type(port.data_type),
                         direction: from_wire_direction(port.direction),
+                        available: true,
                     },
                 )
             })

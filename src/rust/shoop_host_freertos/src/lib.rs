@@ -10,5 +10,11 @@ pub use embedded::{render_step, render_xruns, run};
 
 pub const SAMPLE_RATE: u32 = 48_000;
 pub const QUANTUM: usize = 256;
+pub const MIDI_PORTS: usize = if cfg!(feature = "usb-midi") { 16 } else { 1 };
+pub const MIDI_BLOCK_BYTES: usize = if cfg!(feature = "usb-midi") {
+    4096
+} else {
+    2048
+};
 pub const RECORDING_BYTES: usize = 128 * 1024 * 1024;
 pub const MEDIA_BYTES: u64 = 64 * 1024 * 1024;

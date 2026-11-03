@@ -11,6 +11,7 @@ use std::{
 };
 mod fixture;
 mod recovery;
+mod usb;
 
 fn pump(client: &mut Client, connection: &mut Connection) {
     fixture::advance();
@@ -97,6 +98,8 @@ pub fn run() {
     if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
         fixture::run(&mut client, &mut connection);
     }
+    let mut usb = std::env::var_os("SHOOP_ZYNQ_USB_SOCKET")
+        .map(|path| usb::run(&mut client, &mut connection, path));
     assert!(matches!(
         command(&mut client, &mut connection, Command::SetLoopSmoothingMs(7)),
         Outcome::Confirmed { .. }
@@ -121,6 +124,21 @@ pub fn run() {
         Outcome::Confirmed { .. }
     ));
     let shutdown = fresh.shutdown().expect("shutdown request");
+    if std::env::var("SHOOP_ZYNQ_USB_FAULT").as_deref() == Ok("nak") {
+        let started = Instant::now();
+        assert!(matches!(
+            finish(&mut fresh, &mut connection, shutdown),
+            Outcome::Refused { .. }
+        ));
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "USB shutdown exceeded the simulation harness deadline"
+        );
+        println!(
+            "Unresponsive USB OUT refused shutdown after bounded recovery and controller stop"
+        );
+        return;
+    }
     if std::env::var_os("SHOOP_ZYNQ_DRIVER_SOCKET").is_some() {
         assert!(matches!(
             finish(&mut fresh, &mut connection, shutdown),
@@ -133,6 +151,9 @@ pub fn run() {
             Outcome::Confirmed { .. }
         ));
         println!("Zynq production host smoke passed: attach, management, control, fresh attach, confirmed shutdown");
+        if let Some(peer) = usb.as_mut() {
+            peer.finish();
+        }
         return;
     }
     let shutdown = fresh.shutdown().expect("cleanup retry");

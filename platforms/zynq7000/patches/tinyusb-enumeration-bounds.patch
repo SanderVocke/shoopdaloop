@@ -1,0 +1,50 @@
+--- a/src/host/usbh.c
++++ b/src/host/usbh.c
+@@ -2078,14 +2078,16 @@
+ 
+     case ENUM_SET_ADDR: {
+       const tusb_desc_device_t *desc_device = (const tusb_desc_device_t *) _usbh_epbuf.ctrl;
+-      if (!(desc_device->bDescriptorType == TUSB_DESC_DEVICE && desc_device->bMaxPacketSize0 >= 8)) {
++      if (!(xfer->actual_len >= 8 && desc_device->bLength == 18 && desc_device->bDescriptorType == TUSB_DESC_DEVICE &&
++            (desc_device->bMaxPacketSize0 == 8 || desc_device->bMaxPacketSize0 == 16 ||
++             desc_device->bMaxPacketSize0 == 32 || desc_device->bMaxPacketSize0 == 64))) {
+         TU_LOG_USBH("Invalid Device descriptor\r\n");
+         is_enum_failed = true;
+         break;
+       }
+ 
+       const uint8_t new_addr = enum_get_new_address(desc_device->bDeviceClass == TUSB_CLASS_HUB);
+-      TU_ASSERT(new_addr != 0,);
++      if (new_addr == 0) { is_enum_failed = true; break; }
+ 
+       usbh_device_t* new_dev = get_device(new_addr);
+       new_dev->bus_info = *dev0_bus;
+@@ -2111,6 +2113,7 @@
+     // For string descriptor (langid, manufacturer, product, serila): always get the first 2 bytes
+     // to determine the length first. otherwise, some device may have buffer overflow.
+     case ENUM_GET_STRING_LANGUAGE_ID_LEN: {
++      if (xfer->actual_len < sizeof(tusb_desc_device_t)) { is_enum_failed = true; break; }
+       // save the received device descriptor
+       tusb_desc_device_t const *desc_device = (tusb_desc_device_t const *) _usbh_epbuf.ctrl;
+ 
+@@ -2215,7 +2218,9 @@
+       uint16_t const total_len = tu_le16toh(tu_unaligned_read16(desc_config + offsetof(tusb_desc_configuration_t, wTotalLength)));
+ 
+       // TODO not enough buffer to hold configuration descriptor
+-      TU_ASSERT(total_len <= CFG_TUH_ENUMERATION_BUFSIZE,);
++      if (xfer->actual_len < 9 || total_len < 9 || total_len > CFG_TUH_ENUMERATION_BUFSIZE) {
++        is_enum_failed = true; break;
++      }
+ 
+       // Get full configuration descriptor
+       // Assumption: xfer was a GET_DESCRIPTOR request, so the index is in wValue and not wIndex.
+@@ -2236,7 +2241,8 @@
+ 
+       // wTotalLength was only bounded on the 9-byte read, the device can report a larger value in the full descriptor
+       uint16_t const total_len = tu_le16toh(tu_unaligned_read16(_usbh_epbuf.ctrl + offsetof(tusb_desc_configuration_t, wTotalLength)));
+-      if (!TUH_VALIDATE_BASIC(total_len <= tu_le16toh(xfer->setup->wLength))) {
++      if (!TUH_VALIDATE_BASIC(total_len >= 9 && total_len <= xfer->actual_len &&
++                              total_len <= tu_le16toh(xfer->setup->wLength))) {
+         TU_LOG_USBH("Configuration wTotalLength %u exceeds requested length\r\n", total_len);
+         is_enum_failed = true;
+         break;

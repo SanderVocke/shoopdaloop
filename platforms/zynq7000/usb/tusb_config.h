@@ -14,6 +14,7 @@
 #define CFG_TUH_HUB 2
 #define CFG_TUH_MIDI 8
 #define CFG_TUH_ENDPOINT_MAX 8
+#define CFG_TUH_INTERFACE_MAX 32
 #define CFG_TUH_ENUMERATION_BUFSIZE 4096
 #define CFG_TUH_TASK_QUEUE_SZ 64
 #define CFG_TUH_TASK_EVENTS_PER_RUN 16
@@ -26,5 +27,6 @@
 #define CFG_TUH_MEM_ALIGN __attribute__((aligned(32)))
 #define CFG_TUSB_MEM_ALIGN __attribute__((aligned(32)))
 #define CFG_TUH_EHCI_FRAMELIST_SIZE 1024
+#define CFG_TUH_EHCI_WAIT_STATUS shoop_usb_wait_status
 
 #endif

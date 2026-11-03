@@ -101,11 +101,11 @@ def build():
         dirty = subprocess.check_output(["git", "-C", TINYUSB, "status", "--porcelain"], text=True).strip()
         if revision != PINS["tinyusb"] or dirty:
             raise SystemExit("TinyUSB source differs from its pin or has unrecorded modifications")
-        includes += [PLATFORM / "usb", TINYUSB / "src", TINYUSB / "src/portable/ehci"]
+        includes += [PLATFORM / "usb", TINYUSB / "src", TINYUSB / "src/portable/ehci", TINYUSB / "src/class/midi", TINYUSB / "src/host"]
         sources += [TINYUSB / "src" / name for name in (
             "tusb.c", "common/tusb_fifo.c", "host/usbh.c", "host/hub.c",
             "class/midi/midi_host.c", "portable/ehci/ehci.c")]
-        sources += [PLATFORM / "usb/hcd_zynq.c", PLATFORM / "usb/host.c"]
+        sources += [PLATFORM / "usb" / name for name in ("hcd_zynq.c", "host.c", "midi.c", "bridge.c", "descriptors.c")]
     if args.deployment:
         deployment = PLATFORM / "deployment"
         includes += [deployment, drivers / "sdps/src"]
@@ -120,6 +120,9 @@ def build():
         (drivers / "emacps/src/xemacps_intr.c", "emacps-read-clear.patch"),
         (kernel / "portable/GCC/ARM_CA9/portZynq7000.c", "freertos-fpu-irq.patch"),
         *([(TINYUSB / "src/portable/ehci/ehci.c", "tinyusb-zynq-ehci.patch")] if args.usb else []),
+        *([(TINYUSB / "src/class/midi/midi_host.c", "tinyusb-midi-error.patch")] if args.usb else []),
+        *([(TINYUSB / "src/host/usbh.c", "tinyusb-enumeration-bounds.patch")] if args.usb else []),
+        *([(TINYUSB / "src/host/hub.c", "tinyusb-hub-status.patch")] if args.usb else []),
     ]:
         patched = BUILD / "patched"
         patch_root = patched / "tinyusb" if original.is_relative_to(TINYUSB) else patched
@@ -144,8 +147,9 @@ def build():
         manifest = PLATFORM / "firmware/Cargo.toml"
         rust_flags = "-D warnings -C target-cpu=cortex-a9"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
-        if args.fixture:
-            cargo += ["--features", "fixture"]
+        features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
+        if features:
+            cargo += ["--features", ",".join(features)]
         run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags})
         rust_library = PLATFORM / "firmware/target/armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
     cc = os.environ.get("ARM_CC", "arm-none-eabi-gcc")
@@ -212,16 +216,28 @@ def build():
     for first, second in zip(sorted(regions), sorted(regions)[1:]):
         if first[1] > second[0]:
             raise SystemExit("Overlapping ELF load regions")
+    inputs = subprocess.check_output(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+                                      "--", "src/rust", "platforms/zynq7000", "Cargo.toml", "Cargo.lock"], cwd=ROOT).split(b"\0")
+    source_hash = hashlib.sha256()
+    for name in sorted(set(inputs)):
+        if not name:
+            continue
+        path = ROOT / os.fsdecode(name)
+        if path.is_file() and path.suffix in {".rs", ".c", ".h", ".ld", ".py", ".patch", ".toml", ".lock", ".json"}:
+            source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     elf.with_suffix(".json").write_text(json.dumps({"embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
         "elf_sha256": hashlib.sha256(image).hexdigest(),
+        "source_inputs_sha256": source_hash.hexdigest(),
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
         "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": 1 << 30, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
+    if args.usb:
+        elf.with_suffix('.licenses.txt').write_text('TinyUSB ' + PINS['tinyusb'] + '\n\n' + (TINYUSB / 'LICENSE').read_text())
     print(elf)
 
 

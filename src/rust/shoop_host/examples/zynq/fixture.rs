@@ -86,7 +86,11 @@ fn release(client: &mut Client, connection: &mut Connection, key: Key) {
     request(client, connection, Request::Cancel { key });
     assert!(matches!(reply(client, connection), Reply::Closed { .. }));
 }
-fn capture(client: &mut Client, connection: &mut Connection, transfer: u64) -> Arc<Image> {
+pub(super) fn capture(
+    client: &mut Client,
+    connection: &mut Connection,
+    transfer: u64,
+) -> Arc<Image> {
     let key = key(client, transfer);
     request(
         client,
@@ -166,10 +170,10 @@ fn stage(
         }
     }
 }
-fn confirmed(outcome: Outcome) {
+pub(super) fn confirmed(outcome: Outcome) {
     assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
 }
-fn action(
+pub(super) fn action(
     client: &mut Client,
     connection: &mut Connection,
     track: TrackId,
@@ -186,7 +190,12 @@ fn action(
         },
     ));
 }
-fn wait_playing(client: &mut Client, connection: &mut Connection, track: TrackId, loop_id: LoopId) {
+pub(super) fn wait_playing(
+    client: &mut Client,
+    connection: &mut Connection,
+    track: TrackId,
+    loop_id: LoopId,
+) {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if client
@@ -905,6 +914,25 @@ fn pool_exhaustion(client: &mut Client, connection: &mut Connection, small: Arc<
         recording_loop,
         LoopAction::RecordClicked,
     );
+    let recording_deadline = Instant::now() + Duration::from_secs(30);
+    while client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.id == recording_track)
+        .unwrap()
+        .loops[0]
+        .mode
+        != LoopMode::Recording
+    {
+        drive("S 256");
+        pump(client, connection);
+        assert!(
+            Instant::now() < recording_deadline,
+            "pool-capacity recording did not start"
+        );
+    }
     let before = drive("Q")[0];
     let mut pressure_checked = false;
     let mut exhausted = false;

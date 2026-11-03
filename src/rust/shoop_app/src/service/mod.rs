@@ -193,9 +193,9 @@ impl Service {
             last_authority: None,
             engine_closed: false,
             actors: BTreeMap::new(),
-            updates: VecDeque::new(),
+            updates: VecDeque::with_capacity(QUEUE_CAPACITY),
             pending: BTreeMap::new(),
-            results: VecDeque::new(),
+            results: VecDeque::with_capacity(MAX_RETAINED_RESULTS),
             tracks: BTreeMap::new(),
             track_order: Vec::new(),
             loops: BTreeMap::new(),
@@ -270,6 +270,19 @@ impl Service {
             .collect();
         Ok(())
     }
+    pub fn host_port_in_use(&self, id: &str) -> bool {
+        self.backend.host_port_in_use(id)
+            || self.connection_intent.iter().any(|((_, host), intent)| {
+                host == id && (intent.connected || intent.pending.is_some())
+            })
+            || self
+                .observed
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.host_port_id == id)
+    }
+
     pub fn host_report(&self) -> HostReport {
         HostReport {
             requested: self.host_settings.clone(),

@@ -130,8 +130,7 @@ audio+MIDI descriptors must still expose their supported MIDI function.
   Expose current device labels, availability and routing through the existing
   host/application surfaces, extending versioned messages only where needed.
   Do not rebuild the engine or relabel an existing route silently on hotplug.
-- Use serial identity where present and topology/interface/cable as a documented
-  fallback. Duplicate or absent serials must remain distinguishable. USB addresses
+- Use serial identity where present together with topology/interface/cable. Duplicate or absent serials must remain distinguishable. USB addresses
   and TinyUSB class indices are reusable handles, not persistent identities.
   Tag bindings and queued traffic with a connection generation; invalidate it and
   clear partial assembly before slot reuse.
@@ -182,12 +181,12 @@ uses the emulated controller and does not reproduce physical hub topology.
 - [x] Fetch/verify the requested base, preserve unrelated work, create
   `feat/zynq-usb-midi-host` and carry this plan onto it. Re-read its agent/build/test
   instructions and record base SHA, tools and prerequisite PR state.
-- [ ] Re-run the original firmware/deployment baselines. Record current memory,
+- [x] Re-run the original firmware/deployment baselines. Record current memory,
   task and MIDI-cleanup behavior before adding USB.
-- [ ] Select/pin TinyUSB; audit the Zynq/EHCI port and run a minimal QEMU register,
+- [x] Select/pin TinyUSB; audit the Zynq/EHCI port and run a minimal QEMU register,
   speed and scheduling probe. Confirm ZC702 hardware, representative devices and
   hub access for physical qualification; record unavailable resources honestly.
-- [ ] Freeze supported descriptor shapes, interface/endpoint pools, logical-port
+- [x] Freeze supported descriptor shapes, interface/endpoint pools, logical-port
   admission, SysEx/queue limits, inventory/binding semantics and shutdown deadlines.
   Budget stacks, queues, DMA/cache placement and worst-case simultaneous ownership.
 
@@ -199,10 +198,10 @@ finding may revise implementation steps, but cannot remove acceptance criteria.
 
 Depends on Stage 0.
 
-- [ ] Extend `platforms/zynq7000/{pins.json,build.py}` with reproducible TinyUSB
+- [x] Extend `platforms/zynq7000/{pins.json,build.py}` with reproducible TinyUSB
   sources/configuration and a board/HCD adapter. Add USB0 initialization,
   interrupt/task ownership and DMA/cache integration in the platform layer.
-- [ ] Implement bounded initialization/failure/teardown paths, diagnostics and
+- [x] Implement bounded initialization/failure/teardown paths, diagnostics and
   restart after reset. Keep dummy MIDI fixtures selectable for existing tests.
 - [ ] Enumerate a real device and complete control and bulk IN/OUT transfers;
   test full-speed and high-speed attachment and IRQ delivery under render/network
@@ -216,10 +215,10 @@ milestone before adding application routing.
 
 Depends on Stage 1; packet/clock tests can be developed after Stage 0.
 
-- [ ] Add packet/message codecs, per-cable assembly, monotonic/frame conversion,
+- [x] Add packet/message codecs, per-cable assembly, monotonic/frame conversion,
   fixed RX/TX handoff and deadline-aware output pumping. Integrate the bridge with
   `shoop_host_freertos`, the firmware FFI and prepared `MidiBuffer` arrays.
-- [ ] Add reserved recovery, backpressure, disconnect generations and transfer
+- [x] Add reserved recovery, backpressure, disconnect generations and transfer
   completion accounting. Report received/sent/refused/dropped/failed traffic.
 - [ ] Test channel/system messages, fragmented and interleaved SysEx, all cable
   indices, packet boundaries, partial writes, queue saturation and clock edges.
@@ -233,14 +232,14 @@ guards active. Commit the transport milestone.
 
 Depends on Stage 2.
 
-- [ ] Implement the bounded live inventory and binding policy. Expose device,
+- [x] Implement the bounded live inventory and binding policy. Expose device,
   direction, interface, cable, connected state and limits to existing control/UI
   discovery and routing flows. Version and test any required protocol additions
   across firmware, native and browser clients.
-- [ ] Map physical ports onto preallocated engine slots. Handle startup presence,
+- [x] Map physical ports onto preallocated engine slots. Handle startup presence,
   runtime attachment, one-direction devices, composite audio+MIDI interfaces,
   duplicate identities and explicit selection/reselection.
-- [ ] Extend shutdown, engine MIDI recovery and updater handoff to stop ingress,
+- [x] Extend shutdown, engine MIDI recovery and updater handoff to stop ingress,
   drain/reset live outputs and quiesce USB DMA/task ownership. Handle loss and
   timeout distinctly from successful USB completion.
 
@@ -253,7 +252,7 @@ the required cleanup. Commit the application milestone.
 
 Depends on Stages 1–3.
 
-- [ ] Enable and size TinyUSB hub/device/interface/endpoint resources. Exercise
+- [x] Enable and size TinyUSB hub/device/interface/endpoint resources. Exercise
   hub power/status/reset and enumerate all admitted downstream MIDI interfaces.
 - [ ] Test the full qualified profile, full-speed and high-speed devices,
   full-speed hubs, high-speed single-TT/multi-TT hubs and two-tier nesting.
@@ -330,15 +329,59 @@ no QEMU result is presented as physical hub, DMA/cache or timing qualification.
 
 ## Execution evidence (in progress)
 
-- Base fetched and branch created at `de38520c`; planning milestone `2660a158`.
-- Native workspace build with `RUSTFLAGS=-D warnings` passed.
-- Pinned Debian/compiler/Rust/QEMU tools are available in the session build
-  container. QEMU capability probe and USB-enabled empty-bus firmware boot pass.
-- Original echo, mismatch canary, production, UI and recovery gates pass. The
-  full fixture failed its recording-pool boundary assertion after the 100-cycle
-  soak passed. Keep the baseline and final regression criteria open until fixed.
-- Capacity and memory contracts are recorded in `platforms/zynq7000/usb/README.md`.
-- Physical qualification is deferred at the user's request, not waived.
+- Base fetched and verified at `de38520c`; planning milestone `2660a158` and
+  platform milestone `bc20f07c`. No physical USB test has been performed.
+- Native warning-denying workspace build and all 2550 Rust tests pass (5 skipped
+  under the repository's native suite policy). Tracing inventory and Rust test
+  attribute policy pass. Protocol v12 goldens, offline UI routes, encoded service
+  availability/identity fencing and saved missing-device reconnection pass.
+- Original echo, intentional mismatch, production, actual UI and recovery gates
+  pass. The complete original fixture now passes the 40 MiB media round trip,
+  100-cycle retained-heap check, full recording-pool exhaustion/reclamation and
+  injected cleanup-failure retry. Recording-pool fill waits for confirmed recording;
+  bounded service queues are preallocated to avoid later growth. Final baseline
+  reruns after the nonblocking cleanup changes remain pending.
+- Portable ASan/UBSan tests pass independent MIDI golden vectors, all cable IDs,
+  2..2048-byte SysEx, oversized/truncated/expired assembly, clock boundaries,
+  fixed queues, generations and completion-based reserved recovery. The actual
+  pinned TinyUSB core/MIDI/hub fake-HCD test passes 129 mounts/unmounts and 1497
+  control requests: eight interfaces across four devices, composite/one-direction
+  functions, short/malformed enumeration, control timeout, endpoint stalls,
+  address reuse, capacity refusal, nested FS/STT/MTT descriptors and hub change
+  bits at ports 8, 15 and 31. These do not prove physical TT scheduling.
+- Actual guest recording/playback preserves channel, system/realtime and 2048-byte
+  SysEx payloads across direct HS/FS, sixteen cables, two nested FS hubs and four
+  simultaneous devices with duplicate serials and unrelated input traffic.
+  UI detach/reattach, independent output assertions and completed shutdown resets
+  pass. Final combined suite is running against the latest controller fixes.
+- Actual 100-cycle hotplug with bidirectional traffic on every reattachment passes.
+  This exposed an EHCI QTD leak after cycle 32: endpoint teardown now quiesces
+  schedules and frees detached QTD/QHD ownership before reuse. Endpoint OUT stall
+  keeps render/control live; permanent OUT NAK refuses shutdown after five seconds
+  of guest time while stopping the controller. The final suite also checks that
+  no controller-handshake error is hidden by a successful high-level result.
+- USB-enabled signed deployment passes preboot-attached discovery, firmware A→B→A
+  network updates with exact USB reset delivery, fresh cold-entry nonce/discovery
+  and two failed trial boots followed by watchdog fallback. Final rerun remains
+  pending after the last EHCI teardown correction. The original SD/network suite
+  passed before USB; final regression and CI remain open.
+- Evidence-driven budget revision: the original 16-message queue cannot admit
+  the engine's normal 32-message reset burst; a 64-entry queue also overflowed at
+  SysEx/loop boundaries. Fixed queues now hold 256 complete events and the bridge
+  ceiling is 32 MiB inside the unchanged 128 MiB platform region. USB render block
+  storage is 4096 bytes per port; each individual message remains at most 2048.
+  Link-map and task/heap evidence must pass the final resource gate.
+- Evidence-driven identity rule revision: topology is always part of an ID, even
+  with a serial. This distinguishes duplicate serials without rekeying an existing
+  route when a second identical unit arrives. Four duplicate-serial QEMU devices
+  pass isolation; moving hardware to another hub port requires explicit reselection.
+- Build manifests pin source/patch/fixture/binary hashes and record source inputs.
+  Cached emulator builds reconstruct the reviewed patch set and reject unexpected
+  source changes. Test credentials/signing keys/private Ethernet captures are
+  excluded from public evidence; deployment outputs pass the existing secret audit.
+- Physical qualification remains deferred at the user's request, not waived.
+  `platforms/zynq7000/usb/QUALIFICATION.md` contains the required hardware matrix.
+  No physical PHY/VBUS, cache/DMA, TT, DIN or latency result is claimed.
 
 ## Source references
 

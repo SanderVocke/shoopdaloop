@@ -123,8 +123,24 @@ struct Replacement {
     published: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// A persistent physical identity bound to one prepared engine port.
+pub struct HostPortAlias {
+    pub slot: alloc::string::String,
+    pub id: alloc::string::String,
+    pub name: alloc::string::String,
+    pub available: bool,
+}
+
+/// Polled on the control thread; updates replace the complete alias inventory.
+pub trait HostPortInventory: Send {
+    fn poll(&mut self) -> Option<Vec<HostPortAlias>>;
+}
+
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
+    inventory_reconcile: bool,
     resource_limits: shoop_app_api::HostResourceLimits,
     client: ProtocolClient<C>,
     clock: K,
@@ -170,6 +186,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .map_err(|error| anyhow!("could not reach the engine: {error:?}"))?;
         tracing::debug!("backend.rt.connecting");
         Ok(Self {
+            host_port_inventory: None,
+            inventory_reconcile: false,
             resource_limits: shoop_app_api::HostResourceLimits::default(),
             client,
             clock,
@@ -196,6 +214,112 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             prepared_content: Default::default(),
             capture_validation: None,
         })
+    }
+
+    pub fn with_host_port_inventory(
+        mut self,
+        inventory: alloc::boxed::Box<dyn HostPortInventory>,
+    ) -> Self {
+        self.host_port_inventory = Some(inventory);
+        self
+    }
+
+    fn refresh_host_ports(&mut self) -> Result<()> {
+        if self.link != Link::Ready {
+            return Ok(());
+        }
+        let Some(aliases) = self
+            .host_port_inventory
+            .as_mut()
+            .and_then(|inventory| inventory.poll())
+        else {
+            return Ok(());
+        };
+        if aliases.len() > 256 {
+            return Err(anyhow!("host port inventory exceeds capacity"));
+        }
+        let mut mapped = alloc::collections::BTreeMap::new();
+        let mut identities = alloc::collections::BTreeSet::new();
+        for alias in aliases {
+            if alias.id.len() > 256 || alias.name.len() > 128 {
+                return Err(anyhow!("host port identity or label exceeds capacity"));
+            }
+            let slot = self
+                .mirror
+                .host_ports
+                .iter()
+                .find(|port| port.name.as_str() == alias.slot)
+                .ok_or_else(|| anyhow!("unknown prepared host port {}", alias.slot))?;
+            if (!alias.id.is_empty() && !identities.insert(alias.id.clone()))
+                || mapped.insert(slot.id, alias).is_some()
+            {
+                return Err(anyhow!("duplicate host port identity or slot"));
+            }
+        }
+        for port in &self.mirror.host_ports {
+            let previous = self.mirror.host_key(port);
+            let current = mapped
+                .get(&port.id)
+                .map_or(port.name.as_str(), |alias| alias.id.as_str());
+            if current != previous && !previous.is_empty() && self.host_identity_in_use(previous) {
+                return Err(anyhow!(
+                    "a connected host port cannot change device identity"
+                ));
+            }
+        }
+        self.mirror.host_aliases = mapped;
+        self.inventory_reconcile = true;
+        Ok(())
+    }
+
+    fn host_identity_in_use(&self, id: &str) -> bool {
+        self.mirror.links.iter().chain(self.mirror.desired_links.iter()).any(|link| link.host_port_id == id)
+            || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending|
+                matches!(&pending.purpose, requests::Purpose::Connect { host, .. } if host == id))
+    }
+
+    fn reconcile_host_ports(&mut self) -> Result<()> {
+        if !self.inventory_reconcile || self.ready().is_err() {
+            return Ok(());
+        }
+        let links: Vec<_> = self
+            .mirror
+            .desired_links
+            .iter()
+            .filter(|link| {
+                if self.mirror.links.contains(link) {
+                    return false;
+                }
+                let Some(host) = self.mirror.host_by_name(&link.host_port_id) else {
+                    return false;
+                };
+                let Some(port) = self.mirror.live_port(link.application_port_id) else {
+                    return false;
+                };
+                self.mirror.host_available(host)
+                    && mirror::host_data_type(host.kind) == port.descriptor.data_type
+                    && mirror::host_direction(host.direction) != port.descriptor.direction
+                    && !self
+                        .requests
+                        .outgoing
+                        .iter()
+                        .chain(self.requests.in_flight.values())
+                        .any(|pending| {
+                            matches!(&pending.purpose, requests::Purpose::Connect { port, host, .. }
+                        if *port == link.application_port_id && host == &link.host_port_id)
+                        })
+            })
+            .take(16)
+            .cloned()
+            .collect();
+        self.inventory_reconcile = !links.is_empty();
+        for link in links {
+            if self.ready().is_err() {
+                break;
+            }
+            self.queue_connection(link.application_port_id, &link.host_port_id, true)?;
+        }
+        Ok(())
     }
 
     /// Selects host-local admission ceilings before media operations start.

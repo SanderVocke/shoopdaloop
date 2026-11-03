@@ -9,6 +9,7 @@ workspace = true
 
 [features]
 fixture = []
+usb-midi = []
 
 [dependencies]
 shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }

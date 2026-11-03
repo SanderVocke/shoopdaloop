@@ -146,8 +146,9 @@ int shoop_stop_render(void) {
     shoop_fixture_stopping();
     shoop_render_wake();
 #endif
-    uint64_t deadline = shoop_millis() + 5000;
-    while (!atomic_load(&render_done) && shoop_millis() < deadline) shoop_delay(1);
+    static uint64_t deadline;
+    if (!deadline) deadline = shoop_millis() + 5000;
+    if (!atomic_load(&render_done)) return shoop_millis() < deadline ? 2 : 0;
     if (atomic_load(&render_done) != 1) return 0;
     render_stack_remaining = uxTaskGetStackHighWaterMark(render_task);
     vTaskDelete(render_task); render_task = NULL;
@@ -155,6 +156,10 @@ int shoop_stop_render(void) {
     return 1;
 }
 int shoop_cleanup_allowed(void) {
+#ifdef SHOOP_USB_MIDI
+    int usb = shoop_usb_stop();
+    if (usb != 1) return usb;
+#endif
 #if defined(SHOOP_DEPLOYMENT) && SHOOP_DEPLOY_FAULT == 6
     static unsigned failed;
     if (!failed++) { xil_printf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }

@@ -311,7 +311,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.canonical_imports.insert(id);
                 self.reads.forget(id);
             }
-            if let Some(image) = replacement.candidate.take() {
+            if let Some(mut image) = replacement.candidate.take() {
+                image.host_aliases = self.mirror.host_aliases.clone();
                 self.mirror = image;
                 self.prepared_content = replacement
                     .content

@@ -45,6 +45,11 @@ struct Fixture {
     refuse_next_loop: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
+    fixture_with_inventory(None)
+}
+fn fixture_with_inventory(
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
     let description = EngineDescription {
         sample_rate: 1000,
         max_frames: 16,
@@ -82,7 +87,10 @@ fn fixture() -> Fixture {
         refuse: Rc::clone(&refuse_next_loop),
         reply: None,
     });
-    let backend = RtBackend::connect(client, clock).unwrap();
+    let mut backend = RtBackend::connect(client, clock).unwrap();
+    if let Some(inventory) = inventory {
+        backend = backend.with_host_port_inventory(inventory);
+    }
     let initial_waits = waits.get();
     let mut service = Service::new(
         Box::new(backend),
@@ -204,6 +212,121 @@ fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
         panic!("{outcome:?}")
     };
     (track, loops)
+}
+
+#[shoop_test]
+fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes() {
+    struct Inventory(
+        std::sync::Arc<std::sync::Mutex<Option<Vec<shoop_rt_backend::HostPortAlias>>>>,
+    );
+    impl shoop_rt_backend::HostPortInventory for Inventory {
+        fn poll(&mut self) -> Option<Vec<shoop_rt_backend::HostPortAlias>> {
+            self.0.lock().unwrap().take()
+        }
+    }
+    let alias = |available| {
+        vec![shoop_rt_backend::HostPortAlias {
+            slot: "midi_in_1".into(),
+            id: "usb0/1:synth/in/0".into(),
+            name: "Synth input 1".into(),
+            available,
+        }]
+    };
+    let inventory = std::sync::Arc::new(std::sync::Mutex::new(Some(alias(true))));
+    let mut f = fixture_with_inventory(Some(Box::new(Inventory(inventory.clone()))));
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    let id = HostPortId::new("usb0/1:synth/in/0");
+    assert!(client
+        .snapshot()
+        .unwrap()
+        .connections
+        .host_ports
+        .iter()
+        .any(|p| p.id == id && p.available));
+    let (track, _) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("MIDI", true),
+    ));
+    let port = f
+        .service
+        .snapshot()
+        .connections
+        .application_ports
+        .iter()
+        .find(|p| {
+            matches!(p.owner, ApplicationPortOwner::Track {track_id, ..} if track_id == track)
+                && p.data_type == PortDataType::Midi
+                && p.direction == PortDirection::Input
+        })
+        .unwrap()
+        .id;
+    let operation = submit(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::SetPortConnected {
+            port,
+            host_port: id.clone(),
+            connected: true,
+        },
+    );
+    assert!(
+        f.service.host_port_in_use(id.as_str()),
+        "pending route lost its identity pin"
+    );
+    assert!(matches!(
+        complete(&mut f.service, &mut client, connection, operation, true),
+        Outcome::Confirmed { .. }
+    ));
+    let revision = client.snapshot().unwrap().revision;
+    *inventory.lock().unwrap() = Some(alias(false));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
+    assert!(client.snapshot().unwrap().revision > revision);
+    assert!(client
+        .snapshot()
+        .unwrap()
+        .connections
+        .host_ports
+        .iter()
+        .any(|p| p.id == id && !p.available));
+    assert!(
+        f.service.host_port_in_use(id.as_str()),
+        "offline route lost its identity pin"
+    );
+    let (offline_track, _) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Offline MIDI", true),
+    ));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+    }
+    let snapshot = f.service.snapshot();
+    assert!(snapshot.connections.application_ports.iter().filter(|p|
+        matches!(p.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == offline_track) &&
+        p.data_type == PortDataType::Midi).all(|p| !snapshot.connections.confirmed_links.iter()
+            .any(|link| link.application_port_id == p.id)));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::SetPortConnected {
+                port,
+                host_port: id.clone(),
+                connected: false,
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(!f.service.host_port_in_use(id.as_str()));
 }
 
 #[shoop_test]

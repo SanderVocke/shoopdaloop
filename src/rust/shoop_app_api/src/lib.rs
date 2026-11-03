@@ -1138,6 +1138,7 @@ pub struct HostPortState {
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+    pub available: bool,
 }
 
 pub const MASTER_BUS_NAME: &str = "Master";
@@ -3458,6 +3459,7 @@ mod tests {
             name: endpoint.clone(),
             data_type: PortDataType::Audio,
             direction: PortDirection::Output,
+            available: true,
         };
         let pending = PendingConnectionState {
             application_port_id: port_id,

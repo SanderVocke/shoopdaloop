@@ -282,6 +282,7 @@ pub(crate) struct Mirror {
     pub routes: BTreeSet<BackendMixerLink>,
     pub master: Master,
     pub host_ports: Vec<HostPort>,
+    pub host_aliases: BTreeMap<shoop_rt_protocol::HostPortId, crate::HostPortAlias>,
     pub strip_slots: Slots,
     pub loop_slots: Slots,
     pub connection_revision: u64,
@@ -299,6 +300,7 @@ impl Mirror {
         image.strip_slots.used.fill(false);
         image.loop_slots.used.fill(false);
         image.host_ports = self.host_ports.clone();
+        image.host_aliases = self.host_aliases.clone();
         image.next_track = self.next_track;
         image.next_loop = self.next_loop;
         image.next_port = self.next_port;
@@ -362,6 +364,7 @@ impl Mirror {
             routes: BTreeSet::new(),
             master: Master::default(),
             host_ports: Vec::new(),
+            host_aliases: BTreeMap::new(),
             strip_slots: Slots::default(),
             loop_slots: Slots::default(),
             connection_revision: 1,
@@ -443,7 +446,19 @@ impl Mirror {
     pub fn host_by_name(&self, name: &str) -> Option<&HostPort> {
         self.host_ports
             .iter()
-            .find(|port| port.name.as_str() == name)
+            .find(|port| self.host_key(port) == name)
+    }
+
+    pub fn host_key<'a>(&'a self, port: &'a HostPort) -> &'a str {
+        self.host_aliases
+            .get(&port.id)
+            .map_or(port.name.as_str(), |alias| alias.id.as_str())
+    }
+
+    pub fn host_available(&self, port: &HostPort) -> bool {
+        self.host_aliases
+            .get(&port.id)
+            .is_none_or(|alias| alias.available)
     }
 
     pub fn host_by_id(&self, id: shoop_rt_protocol::HostPortId) -> Option<&HostPort> {
@@ -575,18 +590,26 @@ impl Mirror {
     pub fn host_descriptors(&self) -> BTreeMap<String, BackendHostPortDescriptor> {
         self.host_ports
             .iter()
-            .map(|port| {
-                let id = port.name.as_str().to_owned();
-                (
+            .filter_map(|port| {
+                let id = self.host_key(port).to_owned();
+                if id.is_empty() {
+                    return None;
+                }
+                let name = self
+                    .host_aliases
+                    .get(&port.id)
+                    .map_or_else(|| id.clone(), |alias| alias.name.clone());
+                Some((
                     id.clone(),
                     BackendHostPortDescriptor {
                         id: id.clone(),
-                        name: id,
+                        name,
                         data_type: host_data_type(port.kind),
                         direction: host_direction(port.direction),
                         preferred_playback: port.preferred,
+                        available: self.host_available(port),
                     },
-                )
+                ))
             })
             .collect()
     }

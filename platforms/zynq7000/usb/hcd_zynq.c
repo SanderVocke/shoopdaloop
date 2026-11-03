@@ -7,7 +7,9 @@
 #include "xscugic.h"
 #include "xil_mmu.h"
 #include "xil_cache.h"
+#include "xil_printf.h"
 #include <string.h>
+#include <stdatomic.h>
 
 #define USB0_BASE 0xe0002000u
 #define USB0_IRQ 53u
@@ -16,6 +18,24 @@ extern XScuGic xInterruptController;
 extern unsigned char __usb_dma_start[], __usb_dma_end[];
 
 static ci_hs_regs_t *const controller = (ci_hs_regs_t *)USB0_BASE;
+static _Atomic bool controller_failed;
+
+bool shoop_usb_controller_failed(void) { return atomic_load(&controller_failed); }
+
+bool shoop_usb_wait_status(volatile uint32_t *reg, uint32_t mask, uint32_t expected) {
+    TickType_t start = xTaskGetTickCount();
+    while ((*reg & mask) != expected) {
+        if ((TickType_t)(xTaskGetTickCount() - start) >= pdMS_TO_TICKS(100)) {
+            controller->USBINTR = 0;
+            controller->USBCMD &= ~1u;
+            atomic_store(&controller_failed, true);
+            xil_printf("SHOOP_USB_FAILED controller-handshake mask=%08x expected=%08x\r\n", mask, expected);
+            return false;
+        }
+        vTaskDelay(1);
+    }
+    return true;
+}
 
 static void usb_irq(void *unused) {
     (void)unused;
@@ -31,8 +51,63 @@ static bool wait_clear(volatile uint32_t *reg, uint32_t mask) {
     return true;
 }
 
+static volatile uint32_t *reg32(uintptr_t address) {
+    return (volatile uint32_t *)address;
+}
+
+static bool ulpi(uint8_t address, uint8_t *value, bool write) {
+    volatile uint32_t *viewport = reg32(USB0_BASE + 0x170);
+    if (!(*viewport & (1u << 27))) {
+        *viewport = 1u << 31;
+        if (!wait_clear(viewport, 1u << 31)) return false;
+    }
+    *viewport = (1u << 30) | (write ? 1u << 29 : 0) | (uint32_t)address << 16 | (write ? *value : 0);
+    if (!wait_clear(viewport, 1u << 30)) return false;
+    if (!write) *value = *viewport >> 8;
+    return true;
+}
+
+static bool phy_write(uint8_t address, uint8_t value) {
+    return ulpi(address, &value, true);
+}
+
+static void board_reset(void) {
+    *reg32(0xf8000008) = 0xdf0d;
+    *reg32(0xf800012c) |= (1u << 2) | (1u << 22);
+    *reg32(0xf800071c) = 0x200;
+    for (unsigned pin = 28; pin <= 39; ++pin)
+        *reg32(0xf8000700 + 4 * pin) = pin == 29 || pin == 31 || pin == 36 ? 0x205 : 0x204;
+    *reg32(0xf8000210) |= 1;
+    *reg32(0xe000a000) = 0xff7f0000;
+    *reg32(0xe000a204) |= 1u << 7;
+    *reg32(0xe000a208) |= 1u << 7;
+    __asm__ volatile("dsb sy" ::: "memory");
+    vTaskDelay(pdMS_TO_TICKS(2));
+    *reg32(0xe000a000) = 0xff7f0080;
+    *reg32(0xf8000210) &= ~1u;
+    *reg32(0xf8000004) = 0x767b;
+    __asm__ volatile("dsb sy" ::: "memory");
+    vTaskDelay(pdMS_TO_TICKS(10));
+}
+
+static bool phy_init(void) {
+    uint8_t id[4], saved, scratch;
+    for (unsigned i = 0; i < sizeof(id); ++i) if (!ulpi(i, &id[i], false)) return false;
+    if (!(id[0] | id[1]) || (id[0] == 0xff && id[1] == 0xff)) return false;
+    if (!ulpi(0x16, &saved, false)) return false;
+    for (unsigned i = 0; i < 2; ++i) {
+        uint8_t test = i ? 0xaa : 0x55;
+        if (!phy_write(0x16, test) || !ulpi(0x16, &scratch, false) || scratch != test) return false;
+    }
+    if (!phy_write(0x16, saved) || !phy_write(0x0a, 0x86) ||
+        !phy_write(0x04, 0x41) || !phy_write(0x07, 0) || !phy_write(0x0b, 0x60)) return false;
+    xil_printf("SHOOP_USB_PHY vendor=%02x%02x product=%02x%02x\r\n", id[1], id[0], id[3], id[2]);
+    return true;
+}
+
 bool hcd_init(uint8_t rhport, const tusb_rhport_init_t *init) {
     if (rhport != 0 || init->role != TUSB_ROLE_HOST) return false;
+    board_reset();
     size_t size = (size_t)(__usb_dma_end - __usb_dma_start);
     if (!size || size > 0x100000 || ((uintptr_t)__usb_dma_start & 0xfffff)) return false;
     Xil_SetTlbAttributes((INTPTR)__usb_dma_start, NORM_NONCACHE);
@@ -42,10 +117,17 @@ bool hcd_init(uint8_t rhport, const tusb_rhport_init_t *init) {
     if (!wait_clear(&controller->USBCMD, USBCMD_RESET)) return false;
     controller->USBMODE = USBMODE_CM_HOST;
     controller->PORTSC1 = (controller->PORTSC1 & ~((3u << 30) | (1u << 28))) | (2u << 30);
+    if (!phy_init()) return false;
     XScuGic_SetPriorityTriggerType(&xInterruptController, USB0_IRQ,
         (configMAX_API_CALL_INTERRUPT_PRIORITY + 1) << portPRIORITY_SHIFT, 1);
     if (XScuGic_Connect(&xInterruptController, USB0_IRQ, usb_irq, NULL) != XST_SUCCESS) return false;
-    return ehci_init(0, USB0_BASE + 0x100, USB0_BASE + 0x140);
+    bool initialized = ehci_init(0, USB0_BASE + 0x100, USB0_BASE + 0x140);
+    if (initialized && (controller->PORTSC1 & 1)) {
+        controller->PORTSC1 = (controller->PORTSC1 & ~0x2au) | 2u;
+        controller->USBSTS = 1u << 2;
+        hcd_event_device_attach(0, false);
+    }
+    return initialized;
 }
 
 bool hcd_deinit(uint8_t rhport) {
@@ -60,7 +142,8 @@ bool hcd_deinit(uint8_t rhport) {
     XScuGic_Disable(&xInterruptController, USB0_IRQ);
     XScuGic_Disconnect(&xInterruptController, USB0_IRQ);
     __asm__ volatile("dsb sy" ::: "memory");
-    return ehci_deinit(0);
+    bool halted = ehci_deinit(0);
+    return phy_write(0x0c, 0x60) && halted;
 }
 
 void hcd_int_enable(uint8_t rhport) {

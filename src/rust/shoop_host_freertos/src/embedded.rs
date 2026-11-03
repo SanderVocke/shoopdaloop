@@ -8,7 +8,7 @@ use shoop_app_api::{
 use shoop_app_connection::{HeartbeatConfig, Management, Session};
 use shoop_app_protocol::{codec, WireMessage};
 use shoop_rt_backend::{EngineClock, RtBackend};
-use shoop_rt_engine::{prepare, EngineDescription, HostStatus, Phase, Render, Segment};
+use shoop_rt_engine::{prepare, EngineDescription, HostPorts, HostStatus, Phase, Render, Segment};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
@@ -38,6 +38,145 @@ extern "C" {
     fn shoop_deployment_request(client: *const u8, sequence: u64) -> i32;
     fn shoop_deployment_reset();
     fn shoop_memory_report();
+}
+
+#[cfg(feature = "usb-midi")]
+extern "C" {
+    fn shoop_usb_micros() -> u64;
+    fn shoop_usb_read(slot: u32, bytes: *mut u8, capacity: usize, arrival: *mut u64) -> usize;
+    fn shoop_usb_write(slot: u32, bytes: *const u8, len: usize, due: u64) -> bool;
+    fn shoop_usb_begin_stop();
+    fn shoop_usb_recover_port(slot: u32);
+    fn shoop_midi_offset(arrival: u64, now: u64, frames: u32, rate: u32) -> u32;
+    fn shoop_usb_port_snapshot(direction: u32, slot: u32, info: *mut UsbPortInfo) -> bool;
+    fn shoop_usb_release(direction: u32, slot: u32, generation: u32);
+}
+
+#[cfg(feature = "usb-midi")]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[repr(C)]
+struct UsbPortInfo {
+    generation: u32,
+    connected: u32,
+    direction: u32,
+    vendor: u16,
+    product: u16,
+    slot: u8,
+    index: u8,
+    address: u8,
+    interface_number: u8,
+    cable: u8,
+    speed: u8,
+    reserved: [u8; 2],
+    key: [u8; 128],
+    name: [u8; 128],
+}
+
+#[cfg(feature = "usb-midi")]
+const _: () = assert!(core::mem::size_of::<UsbPortInfo>() == 280);
+
+#[cfg(feature = "usb-midi")]
+struct UsbBinding {
+    direction: u32,
+    slot: u32,
+    id: String,
+    observed: Option<UsbPortInfo>,
+}
+
+#[cfg(feature = "usb-midi")]
+fn usb_port_info(direction: u32, slot: u32) -> Option<UsbPortInfo> {
+    let mut storage = core::mem::MaybeUninit::<UsbPortInfo>::uninit();
+    unsafe {
+        shoop_usb_port_snapshot(direction, slot, storage.as_mut_ptr())
+            .then(|| storage.assume_init())
+    }
+}
+
+#[cfg(feature = "usb-midi")]
+fn usb_text(bytes: &[u8]) -> &str {
+    let end = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
+    core::str::from_utf8(&bytes[..end]).unwrap_or("")
+}
+
+#[cfg(feature = "usb-midi")]
+struct UsbInventory(Vec<UsbBinding>);
+
+#[cfg(feature = "usb-midi")]
+impl UsbInventory {
+    fn new() -> Self {
+        Self(
+            (0..2)
+                .flat_map(|direction| {
+                    (0..crate::MIDI_PORTS).map(move |slot| UsbBinding {
+                        direction,
+                        slot: slot as u32,
+                        id: alloc::format!(
+                            "midi_{}_{}",
+                            if direction == 0 { "in" } else { "out" },
+                            slot + 1
+                        ),
+                        observed: None,
+                    })
+                })
+                .collect(),
+        )
+    }
+}
+
+#[cfg(feature = "usb-midi")]
+impl shoop_rt_backend::HostPortInventory for UsbInventory {
+    fn poll(&mut self) -> Option<Vec<shoop_rt_backend::HostPortAlias>> {
+        let mut changed = false;
+        for binding in &mut self.0 {
+            if let Some(info) = usb_port_info(binding.direction, binding.slot) {
+                if binding.observed != Some(info) {
+                    binding.observed = Some(info);
+                    changed = true;
+                }
+            }
+        }
+        changed.then(|| {
+            self.0
+                .iter()
+                .map(|binding| shoop_rt_backend::HostPortAlias {
+                    slot: binding.id.clone(),
+                    id: binding
+                        .observed
+                        .as_ref()
+                        .map_or("", |info| usb_text(&info.key))
+                        .into(),
+                    name: binding
+                        .observed
+                        .as_ref()
+                        .map_or("", |info| usb_text(&info.name))
+                        .into(),
+                    available: binding.observed.is_some_and(|info| info.connected != 0),
+                })
+                .collect()
+        })
+    }
+}
+
+#[cfg(feature = "usb-midi")]
+fn usb_release_unused(service: &Service) {
+    for direction in 0..2 {
+        for slot in 0..crate::MIDI_PORTS {
+            let Some(info) = usb_port_info(direction, slot as u32) else {
+                continue;
+            };
+            if info.connected == 0
+                && info.key[0] != 0
+                && !service.host_port_in_use(usb_text(&info.key))
+            {
+                unsafe {
+                    shoop_usb_release(direction, slot as u32, info.generation);
+                }
+            }
+        }
+    }
 }
 
 #[repr(C)]
@@ -153,6 +292,8 @@ struct Dummy {
     midi_in: Vec<MidiBuffer>,
     midi_out: Vec<MidiBuffer>,
     reset: bool,
+    #[cfg(feature = "usb-midi")]
+    usb_scratch: [u8; 2048],
 }
 
 #[cfg(feature = "fixture")]
@@ -234,6 +375,39 @@ pub fn fixture_stats() -> [u32; 6] {
 
 pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
     let dummy = &mut *owner.cast::<Dummy>();
+    #[cfg(feature = "usb-midi")]
+    let block_time = {
+        let now = shoop_usb_micros();
+        for (slot, buffer) in dummy.midi_in.iter_mut().enumerate() {
+            let mut floor = 0;
+            for _ in 0..64 {
+                let capacity = crate::MIDI_BLOCK_BYTES.saturating_sub(buffer.byte_len());
+                if capacity == 0 {
+                    break;
+                }
+                let mut arrival = 0;
+                let len = shoop_usb_read(
+                    slot as u32,
+                    dummy.usb_scratch.as_mut_ptr(),
+                    capacity,
+                    &mut arrival,
+                );
+                if len == 0 {
+                    break;
+                }
+                let offset =
+                    shoop_midi_offset(arrival, now, frames as u32, crate::SAMPLE_RATE).max(floor);
+                if buffer
+                    .push(offset, frames, &dummy.usb_scratch[..len])
+                    .is_err()
+                {
+                    break;
+                }
+                floor = offset;
+            }
+        }
+        now
+    };
     let (left, right) = dummy.output.split_at_mut(1);
     let mut outputs: [&mut [f32]; 2] = [&mut left[0], &mut right[0]];
     let inputs: [&[f32]; 2] = [&dummy.input[0], &dummy.input[1]];
@@ -253,25 +427,53 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
         input.clear();
     }
     let Ok(report) = result else {
+        #[cfg(feature = "usb-midi")]
+        shoop_usb_begin_stop();
         return -1;
     };
-    if report.phase == Phase::Disconnected {
-        let mut reset = rt_runtime::midi::ResetState::default();
-        reset.request();
-        dummy.reset = dummy.render.midi_recovery(0).is_some_and(|buffer| {
-            for index in 0..buffer.len() {
-                let Some((frame, bytes)) = buffer.get(index) else {
-                    return false;
-                };
-                let Some(expected) = reset.peek() else {
-                    return false;
-                };
-                if frame != 0 || bytes != expected || reset.acknowledge().is_err() {
-                    return false;
-                }
+    #[cfg(feature = "usb-midi")]
+    if report.phase != Phase::Disconnected {
+        for (slot, buffer) in dummy.midi_out.iter().enumerate() {
+            if dummy
+                .render
+                .midi_recovery(slot)
+                .is_some_and(|recovery| !recovery.is_empty())
+            {
+                shoop_usb_recover_port(slot as u32);
+                continue;
             }
-            !reset.pending()
+            for index in 0..buffer.len() {
+                let Some((offset, bytes)) = buffer.get(index) else {
+                    break;
+                };
+                let due = block_time.saturating_add(
+                    (u64::from(offset) * 1_000_000).div_ceil(u64::from(crate::SAMPLE_RATE)),
+                );
+                shoop_usb_write(slot as u32, bytes.as_ptr(), bytes.len(), due);
+            }
+        }
+    }
+    if report.phase == Phase::Disconnected {
+        dummy.reset = (0..crate::MIDI_PORTS).all(|port| {
+            let mut reset = rt_runtime::midi::ResetState::default();
+            reset.request();
+            dummy.render.midi_recovery(port).is_some_and(|buffer| {
+                for index in 0..buffer.len() {
+                    let Some((frame, bytes)) = buffer.get(index) else {
+                        return false;
+                    };
+                    let Some(expected) = reset.peek() else {
+                        return false;
+                    };
+                    if frame != 0 || bytes != expected || reset.acknowledge().is_err() {
+                        return false;
+                    }
+                }
+                !reset.pending()
+            })
         });
+        #[cfg(feature = "usb-midi")]
+        shoop_usb_begin_stop();
         return 1;
     }
     0
@@ -293,7 +495,10 @@ impl StoppedDummy {
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     let dummy = Box::from_raw(owner.cast::<Dummy>());
     if dummy.reset {
+        #[cfg(not(feature = "usb-midi"))]
         log("SHOOP_DUMMY_MIDI_RESET packets=32\n");
+        #[cfg(feature = "usb-midi")]
+        log("SHOOP_USB_MIDI_RECOVERY_REQUESTED\n");
     }
     dummy.status.set_driver(driver(DriverRunState::Stopped));
     StoppedDummy {
@@ -360,7 +565,9 @@ fn authenticate(
 
 pub fn run() {
     let description = EngineDescription {
+        host: HostPorts::numbered(2, 2, crate::MIDI_PORTS),
         max_frames: crate::QUANTUM,
+        midi_bytes: crate::MIDI_BLOCK_BYTES,
         resource_pages: crate::RECORDING_BYTES / 4096,
         segments: vec![Segment {
             strips: 8,
@@ -378,9 +585,15 @@ pub fn run() {
         status: engine.host,
         input: [[0.; crate::QUANTUM]; 2],
         output: [[0.; crate::QUANTUM]; 2],
-        midi_in: vec![MidiBuffer::new(256, 2048).expect("MIDI input")],
-        midi_out: vec![MidiBuffer::new(256, 2048).expect("MIDI output")],
+        midi_in: (0..crate::MIDI_PORTS)
+            .map(|_| MidiBuffer::new(256, crate::MIDI_BLOCK_BYTES).expect("MIDI input"))
+            .collect(),
+        midi_out: (0..crate::MIDI_PORTS)
+            .map(|_| MidiBuffer::new(256, crate::MIDI_BLOCK_BYTES).expect("MIDI output"))
+            .collect(),
         reset: false,
+        #[cfg(feature = "usb-midi")]
+        usb_scratch: [0; 2048],
     });
     let owner = Box::into_raw(dummy).cast::<c_void>();
     let mut render_owner = Some(owner);
@@ -401,6 +614,8 @@ pub fn run() {
     .expect("backend connection")
     .with_resource_limits(limits)
     .expect("backend limits");
+    #[cfg(feature = "usb-midi")]
+    let backend = backend.with_host_port_inventory(Box::new(UsbInventory::new()));
     let mut service = Service::new_with_resource_limits(
         Box::new(backend),
         ServiceOptions {
@@ -461,6 +676,8 @@ pub fn run() {
     let mut clients: Vec<Session<Stream<Socket>>> = Vec::with_capacity(4);
     let mut managers: Vec<Management<Stream<Socket>>> = Vec::with_capacity(4);
     let mut last = unsafe { shoop_millis() };
+    #[cfg(feature = "usb-midi")]
+    let mut last_usb = last;
     let mut shutdown_at = None;
     let mut render_cleaned = false;
     let mut updater_reset = false;
@@ -521,34 +738,52 @@ pub fn run() {
             client.receive(&mut service);
         }
         service.tick(elapsed);
+        #[cfg(feature = "usb-midi")]
+        if now.saturating_sub(last_usb) >= 100 {
+            usb_release_unused(&service);
+            last_usb = now;
+        }
         if service.shutdown_ready() {
             let update = service.updater_request();
             service.begin_host_cleanup().expect("shutdown authority");
-            if render_owner.is_some() && unsafe { shoop_stop_render() } == 1 {
+            let stopped = if render_owner.is_some() {
+                unsafe { shoop_stop_render() }
+            } else {
+                1
+            };
+            if stopped == 1 && render_owner.is_some() {
                 stopped_owner = Some(unsafe { retire_render(render_owner.take().unwrap()) });
             }
-            render_cleaned = render_cleaned
-                || (unsafe { shoop_cleanup_allowed() } != 0
-                    && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
-            if render_cleaned {
-                stopped_owner.take();
-            }
-            let cleaned = render_cleaned
-                && update.is_none_or(|operation| unsafe {
-                    shoop_deployment_request(
-                        operation.client.to_le_bytes().as_ptr(),
-                        operation.sequence,
-                    ) == 1
-                });
-            service.complete_shutdown(if cleaned {
-                Ok(())
+            let cleanup = if stopped != 1 {
+                stopped
+            } else if render_cleaned {
+                1
             } else {
-                Err(String::from("render/MIDI cleanup failed"))
-            });
-            if cleaned {
-                updater_reset = update.is_some();
-                shutdown_at = Some(now);
-                log("SHOOP_HOST_CLEANUP_COMPLETE\n");
+                unsafe { shoop_cleanup_allowed() }
+            };
+            if cleanup != 2 {
+                render_cleaned = render_cleaned
+                    || (cleanup == 1 && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
+                if render_cleaned {
+                    stopped_owner.take();
+                }
+                let cleaned = render_cleaned
+                    && update.is_none_or(|operation| unsafe {
+                        shoop_deployment_request(
+                            operation.client.to_le_bytes().as_ptr(),
+                            operation.sequence,
+                        ) == 1
+                    });
+                service.complete_shutdown(if cleaned {
+                    Ok(())
+                } else {
+                    Err(String::from("render/MIDI cleanup failed"))
+                });
+                if cleaned {
+                    updater_reset = update.is_some();
+                    shutdown_at = Some(now);
+                    log("SHOOP_HOST_CLEANUP_COMPLETE\n");
+                }
             }
         }
         managers.retain_mut(|manager| manager.pump(&mut service, elapsed));

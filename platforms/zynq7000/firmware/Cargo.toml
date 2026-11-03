@@ -9,6 +9,7 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [features]
+usb-midi = ["shoop_host_freertos/usb-midi"]
 fixture = ["shoop_host_freertos/fixture"]
 
 [dependencies]

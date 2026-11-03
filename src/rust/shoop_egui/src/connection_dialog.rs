@@ -366,6 +366,17 @@ impl ConnectionGraph {
             .host_ports
             .iter()
             .filter(|host| !is_application_owned_host(app_state, host))
+            .filter(|host| {
+                host.available
+                    || state
+                        .confirmed_links
+                        .iter()
+                        .any(|link| link.host_port_id == host.id)
+                    || state
+                        .pending_links
+                        .iter()
+                        .any(|link| link.host_port_id == host.id)
+            })
             .filter(|host| match presentation.tab {
                 ConnectionTab::Tracks => match host.direction {
                     PortDirection::Output => true,
@@ -393,7 +404,12 @@ impl ConnectionGraph {
                 PortDirection::Output => GraphColumn::SystemSources,
                 PortDirection::Input => GraphColumn::SystemSinks,
             };
-            let (group, label) = external_name_parts(&host.name);
+            let display_name = if host.available {
+                host.name.clone()
+            } else {
+                format!("{} (disconnected)", host.name)
+            };
+            let (group, label) = external_name_parts(&display_name);
             let error = state.errors.iter().rev().find_map(|error| {
                 (error.external_port.as_deref() == Some(host.id.as_str()))
                     .then(|| error.message.clone())
@@ -1674,6 +1690,7 @@ mod tests {
             name: name.to_owned(),
             data_type,
             direction,
+            available: true,
         }
     }
 
@@ -3154,6 +3171,48 @@ mod tests {
         recovered.textures_delta.clear();
         assert!(recovered.shapes.len() > 10);
         assert!(!dialog.endpoint_rects.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn offline_bound_ports_remain_visible_and_can_be_disconnected() {
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut ports = connections.host_ports.to_vec();
+        for port in &mut ports {
+            port.available = false;
+        }
+        connections.host_ports = ports.into();
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        let endpoints: Vec<_> = graph
+            .endpoints
+            .values()
+            .flatten()
+            .filter(|endpoint| matches!(endpoint.id, EndpointId::Host(_)))
+            .collect();
+        assert_eq!(endpoints.len(), 1);
+        assert!(endpoints[0].label.contains("disconnected"));
+        assert_eq!(graph.routes.len(), 1);
+        assert_eq!(
+            disconnect_intent(&graph.routes[0]),
+            AppIntent::SetPortConnected {
+                port_id: PortId::from_raw(12),
+                host_port_id: HostPortId::new("synth:midi_sink"),
+                connected: false,
+            }
+        );
+        Arc::make_mut(&mut state.connections).confirmed_links = Arc::from([]);
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(graph
+            .endpoints
+            .values()
+            .flatten()
+            .all(|endpoint| !matches!(endpoint.id, EndpointId::Host(_))));
     }
 
     #[shoop_wasm_test_support::shoop_test]

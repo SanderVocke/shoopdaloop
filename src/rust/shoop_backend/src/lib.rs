@@ -163,6 +163,7 @@ pub struct BackendHostPortDescriptor {
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
     pub preferred_playback: bool,
+    pub available: bool,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1141,6 +1142,9 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn host_port_in_use(&self, _id: &str) -> bool {
+        false
+    }
     /// Synchronous backends use cursor zero and complete before returning.
     fn mutation_cursor(&self) -> u64 {
         0
