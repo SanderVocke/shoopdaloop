@@ -86,7 +86,7 @@ depth, eight-event chunks and the requested quantum. Virtual byte reads transfer
 at most one configured page, rebasing headers even across split reads. Required
 I/O uses render work; optional byte exports still obey background allowances.
 
-The native eight-chunk stress fixture (16-byte pages, eight view slots, two
+The Linux x86_64 eight-chunk stress fixture (16-byte pages, eight view slots, two
 transactions, 48-byte packets and a 4,000-page reservation) reports 2,419,200
 bytes of state projections and 3,550,384 bytes of prepared metadata/state/scratch
 in total, plus 64,000 payload bytes. The current projection is 15,120 bytes.
@@ -106,7 +106,7 @@ For an ordinary immutable indexed MIDI upload, `prepare_midi_import` retains the
 base; `progress_midi_import` builds descriptors and checkpoints in bounded steps;
 `finish_midi_import` exposes the complete editable resource. Packet bodies remain
 in the original immutable upload. Failed preparation can be cancelled, including
-after partial progress. Running capture snapshots and cross-store shared bases
+after partial progress. Capture snapshots and cross-store shared bases
 refuse; shared snapshots fork within their originating store.
 
 Final release queues bounded node, descriptor, page or base work. Resource

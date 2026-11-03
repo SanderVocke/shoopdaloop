@@ -375,6 +375,12 @@ management/shutdown fixtures timed out in this environment (four tests skipped).
 The attempted Node runner stopped at sandbox read-only tool setup before executing
 its suites. Neither result is represented as a passing final gate; CI is authoritative.
 
+Delivery: implementation PR #927 targets `feat/backend-replacement` and remains
+unmerged. CI includes the existing complete Node suite plus pinned-Chrome suites
+for rt_runtime, shoop_loops and shoop_persistence_codec in the web debug job;
+the existing mixed-media browser application workflows remain enabled. This
+covers the planned browser verification through CI as requested.
+
 CI follow-up: coverage reproduced the LAN management/shutdown timeouts and a
 shutdown timeout after recovery stress. Reclamation was scanning all configured
 shared-store slots on every turn, including unused slots, across the stopped

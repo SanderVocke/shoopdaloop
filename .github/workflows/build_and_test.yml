@@ -775,6 +775,23 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
 
+      - name: Install pinned Chrome for library browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        uses: browser-actions/setup-chrome@v2
+        id: library_chrome
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Run runtime, loop and codec browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
+        run: >-
+          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
+          --package rt_runtime --package shoop_loops --package shoop_persistence_codec
+
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
