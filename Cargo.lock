@@ -4846,7 +4846,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
- "getrandom 0.4.3",
  "serde",
  "serde_json",
  "shoop_carla_native",
@@ -4866,6 +4865,25 @@ dependencies = [
  "rtrb",
  "shoop_dsp",
  "shoop_wasm_test_support",
+]
+
+[[package]]
+name = "shoop_dsp_link_demo"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rt_runtime",
+ "serde_json",
+ "shoop_dsp",
+ "shoop_dsp_host",
+ "shoop_dsp_link",
+ "shoop_dsp_link_native",
+ "shoop_dsp_link_node",
+ "shoop_remote_dsp",
+ "shoop_transport_socket",
+ "shoop_wasm_test_support",
+ "tempfile",
 ]
 
 [[package]]

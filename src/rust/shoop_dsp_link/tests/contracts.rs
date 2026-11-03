@@ -285,3 +285,36 @@ fn an_initial_input_gap_uses_the_known_transport_context() {
     service.push(&input, &mut dsp, |_| {}).unwrap();
     assert!(dsp.playing);
 }
+
+#[shoop_wasm_test_support::shoop_test]
+fn reversed_returns_keep_absolute_identity_beyond_the_32_bit_frame_boundary() {
+    let d = Descriptor {
+        start_frame: (1u64 << 32) + 7,
+        ..descriptor()
+    };
+    let mut returns = Returns::prepare(d).unwrap();
+    let mut input = Block::prepare(d).unwrap();
+    let mut output = Block::prepare(d).unwrap();
+    for j in (0..16).rev() {
+        input.set_header(Header {
+            generation: d.generation,
+            frame: d.start_frame + j * 3,
+            ..Header::default()
+        });
+        input.audio_mut().fill(j as f32 + 1.);
+        returns.accept(&input).unwrap();
+    }
+    assert_no_heap(|| {
+        for j in 0..16 {
+            assert!(returns
+                .consume_at(
+                    d.start_frame + j * 3 + u64::from(d.latency),
+                    true,
+                    &mut output
+                )
+                .unwrap());
+            assert_eq!(output.header().frame, d.start_frame + j * 3);
+            assert!(output.audio().iter().all(|v| *v == j as f32 + 1.));
+        }
+    });
+}

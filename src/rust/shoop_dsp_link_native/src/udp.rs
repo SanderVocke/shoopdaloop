@@ -31,6 +31,7 @@ pub struct Adapter {
     reset_remaining: u8,
     reset_until: u64,
     sent_until: u64,
+    outstanding_since: Option<Instant>,
 }
 impl Adapter {
     pub fn prepare(mut session: Session, endpoint: ServiceEndpoint) -> Result<Self> {
@@ -63,6 +64,7 @@ impl Adapter {
             reset_remaining: 0,
             reset_until: c.start_frame,
             sent_until: c.start_frame,
+            outstanding_since: None,
         })
     }
     pub fn stats(&self) -> Stats {
@@ -70,6 +72,18 @@ impl Adapter {
     }
     /// Platform service call, never a render endpoint operation.
     pub fn poll(&mut self) -> Result<bool> {
+        let result = self.poll_inner();
+        if result.is_err() {
+            self.endpoint.set_available(false);
+        }
+        result
+    }
+    fn poll_inner(&mut self) -> Result<bool> {
+        ensure!(
+            self.outstanding_since
+                .is_none_or(|since| since.elapsed() < Duration::from_secs(2)),
+            "DSP service made no progress for two seconds"
+        );
         let mut probe = [0];
         match self.session.tcp.peek(&mut probe) {
             Ok(0) => anyhow::bail!("DSP control disconnected"),
@@ -119,6 +133,7 @@ impl Adapter {
                 let n = wire::encode(header, c, input.audio(), &self.midi, &mut self.encoded)?;
                 if self.session.udp.send(&self.encoded[..n]).is_ok() {
                     self.stats.sent += 1;
+                    self.outstanding_since.get_or_insert_with(Instant::now);
                     self.sent_until = self.sent_until.max(h.frame + u64::from(d.quantum));
                 } else {
                     self.stats.send_dropped += 1;
@@ -154,7 +169,13 @@ impl Adapter {
                 }
             };
             let end = packet.header.frame + u64::from(d.quantum);
+            let advanced = end > self.stats.last_received_frame;
             self.stats.last_received_frame = self.stats.last_received_frame.max(end);
+            if self.stats.last_received_frame >= self.sent_until {
+                self.outstanding_since = None;
+            } else if advanced {
+                self.outstanding_since = Some(Instant::now());
+            }
             self.stats.received += 1;
             let Some(mut output) = self.endpoint.acquire_output() else {
                 self.stats.output_dropped += 1;

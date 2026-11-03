@@ -20,10 +20,6 @@ fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Serve(options) => server::run(options),
         Command::Client(options) => client::run(options),
-        Command::GenerateCredential { path } => {
-            let mut token = [0; 32];
-            getrandom::fill(&mut token).map_err(anyhow::Error::msg)?;
-            shoop_transport_socket::private::create(&path, &token)
-        }
+        Command::GenerateCredential { path } => shoop_dsp_link_native::create_credential(&path),
     }
 }

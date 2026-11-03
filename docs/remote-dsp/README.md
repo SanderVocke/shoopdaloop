@@ -8,6 +8,10 @@ integration is a separate milestone; see the
 processing-link node, native network demo, and boundaries for future IPC/Zynq
 adapters.
 
+The implemented graph demo and platform binding guide are in
+[`shoop_dsp_link_demo`](../../src/rust/shoop_dsp_link_demo/README.md); its
+[processing-link contract](link-contract.md) is independent of UDP and native OS APIs.
+
 ## Build and run
 
 Use the repository build environment. Default builds have no Carla dependency:

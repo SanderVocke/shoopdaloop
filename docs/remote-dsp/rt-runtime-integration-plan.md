@@ -233,14 +233,14 @@ Depends on Stage 0; uses the extracted descriptor from Stage 1.
 - [x] Implement MIDI rebasing/limits/recovery and bounded diagnostic snapshots.
       Refuse incompatible shapes, insufficient latency, overflowing source ranges
       and unsupported session configurations during preparation.
-- [ ] Test an actual graph using a deterministic exchange: multiple channels,
+- [x] Test an actual graph using a deterministic exchange: multiple channels,
       impulses and non-aligned delay `A`; callback sizes below/equal/above `Q`;
       irregular ranges splitting blocks; source origins and incarnation boundaries.
-- [ ] Inject late/stale/out-of-order logical results, full queues and service stalls;
+- [x] Inject late/stale/out-of-order logical results, full queues and service stalls;
       include transport-specific reorder/duplication/loss in UDP adapter tests.
       Test output commitment across partial blocks,
       graph activation without reset, explicit replacement and retirement.
-- [ ] Guard successful and failing render paths against heap activity. Verify
+- [x] Guard successful and failing render paths against heap activity. Verify
       bounded draining under a continuously producing peer and ownership return
       under exhaustion; check appropriate concurrent-queue invariants.
 - [x] Build portable libraries for Cortex-A32, Cortex-A64 and the retained
@@ -250,25 +250,25 @@ Depends on Stage 0; uses the extracted descriptor from Stage 1.
 
 Depends on Stages 1–2. No Linux policy is added to the portable interface.
 
-- [ ] Implement the native ownership queues/pools and an explicit service worker
+- [x] Implement the native ownership queues/pools and an explicit service worker
       owning UDP/control operations behind the common link. Prepare only a ready session; bound
       shutdown and reclaim resources after graph retirement on the control side.
-- [ ] Drain queued input in bounded batches and distinguish local queue drops,
+- [x] Drain queued input in bounded batches and distinguish local queue drops,
       invalid/stale traffic, late output, remote input concealment and retirement.
       Preserve fixed latency under stalls; do not add automatic reconnect in render.
-- [ ] Provide a runnable graph demo with configurable graph callback size,
+- [x] Provide a runnable graph demo with configurable graph callback size,
       `P/k/N`, fixed transport latency, delay-copy and Carla state selection.
       Native pacing, affinity and scheduling choices belong to this host adapter.
-- [ ] Verify real UDP delay-copy samples against `L+A`; verify a real pinned-Carla
+- [x] Verify real UDP delay-copy samples against `L+A`; verify a real pinned-Carla
       gain/state workflow through the same node. Require processed output and
       distinguish wire/control success from audio-deadline success.
-- [ ] Run the same graph correctness scenarios through the non-network reference
+- [x] Run the same graph correctness scenarios through the non-network reference
       and UDP bindings. Verify the node and shared service do not branch on UDP,
       TCP, process IDs or shared-memory mapping details.
-- [ ] For deterministic integration tests, coordinate/pump network work between
+- [x] For deterministic integration tests, coordinate/pump network work between
       graph calls outside render. Keep that simulated-time correctness mode
       separate from a paced demonstration; waiting there is not latency evidence.
-- [ ] Exercise server stop/restart, worker stall, preparation failure, removal and
+- [x] Exercise server stop/restart, worker stall, preparation failure, removal and
       reactivation with a fresh session. Check that unrelated graph nodes continue
       processing when remote output falls back.
 
@@ -276,17 +276,17 @@ Depends on Stages 1–2. No Linux policy is added to the portable interface.
 
 Depends on Stages 1–3; finishes this milestone without adding strip/session UI.
 
-- [ ] Document native build/run commands, latency accounting, capacities/fallback,
+- [x] Document native build/run commands, latency accounting, capacities/fallback,
       and the portable link/service contracts. Include adapter sketches for Zynq,
       shared-memory IPC and local socket bridging, identifying actual code versus
       future adapters. Do not describe the reference binding as production IPC.
 - [ ] Reproduce graph delay-copy and required real-Carla workflows from a clean
       checkout. Preserve both previous measurement campaigns; store any new demo
       evidence separately and avoid fragile CI timing-percentile thresholds.
-- [ ] Run formatting, Rust test policy, warning-denying workspace build, focused
+- [x] Run formatting, Rust test policy, warning-denying workspace build, focused
       graph/protocol/client regressions, complete native suite, tracing inventory,
       Cortex-A/M builds and affected WebAssembly checks using repository guidance.
-- [ ] Add a correctness-focused graph/UDP CI subset on supported native platforms
+- [x] Add a correctness-focused graph/UDP CI subset on supported native platforms
       plus the non-network core tests and bare-metal node compilation. Keep real-Carla validation mandatory
       in its prepared Linux environment; missing-runtime skips cannot satisfy it.
 - [ ] Push the branch and create a separate PR. While PR #915 is open, stack it
@@ -321,3 +321,26 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
   test attributes, warning-denying workspace build and closed tracing inventory
   (378 modules) passed. Portable link/node builds passed on Cortex-A32, Cortex-A64,
   Cortex-M and WebAssembly. Native graph demo and broader lifecycle checks remain.
+
+- The graph demo now runs a non-network reference or real UDP through the same
+  node. Focused validation passed all 20 core/node/demo tests, including real
+  Carla gain/state restoration and a two-second native no-progress watchdog.
+- Added graph activation/retirement/replacement, impulses, oversized SysEx with
+  budgeted host recovery, an unrelated dry path during service failure, and a
+  continuously-ready peer that cannot extend the render drain budget.
+- A repeated-reply watchdog regression failed before correction: duplicate data
+  kept a stalled link alive. Only advancing source results now renew progress.
+- The six-case native demo script passed with configured Carla, including a
+  software-paced UDP example. Carla's smoothing fixture uses an explicitly
+  reported warm-up; delay-copy remains bit-exact. Clean-checkout evidence and
+  final repository/remote gates are still pending.
+
+- Final local gates: **2575 native tests passed, four skipped**, with required
+  Carla. All 20 focused core/node/demo tests passed in release too. Warning-denying
+  workspace build, formatting, test policy, closed tracing (379 modules), 143
+  Python repository tests, all four portable targets and affected app/worklet
+  WebAssembly checks passed. The node's normal dependency tree contains only
+  rt_runtime, the portable link/DSP crates and no-default-feature rtrb.
+- CI now includes the link/node in Cortex-A/M builds and the native graph/UDP
+  correctness subset. Coverage requires the real Carla graph workflow; the 80%
+  patch floor is unchanged. Workflow filters include the stacked PR target.

@@ -377,3 +377,4 @@ src/rust/shoop_dsp_link_native/src/control.rs,control,excluded,Standalone DSP co
 src/rust/shoop_dsp_link_native/src/polling.rs,mixed_realtime_and_control,excluded,Native polling policy and explicit bounded service-gap counters.
 src/rust/shoop_dsp_link_native/src/udp.rs,control,excluded,Off-render UDP worker publishes link availability and explicit adapter statistics.
 src/rust/shoop_dsp_host/src/lib.rs,control,excluded,Library composition exposes the standalone native server without graph dependencies.
+src/rust/shoop_dsp_link_demo/src/main.rs,control,excluded,Standalone graph demonstration exports explicit sample and delivery evidence.

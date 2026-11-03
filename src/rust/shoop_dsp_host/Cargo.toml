@@ -17,7 +17,6 @@ anyhow = { workspace = true, features = ["std"] }
 clap = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
-getrandom = "0.4"
 socket2 = "0.6"
 
 [dev-dependencies]

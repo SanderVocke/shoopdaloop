@@ -12,6 +12,12 @@ use std::{
     time::Duration,
 };
 
+pub fn create_credential(path: &Path) -> Result<()> {
+    let mut token = [0; 32];
+    getrandom::fill(&mut token).map_err(anyhow::Error::msg)?;
+    shoop_transport_socket::private::create(path, &token)
+}
+
 pub struct Session {
     tcp: TcpStream,
     udp: UdpSocket,

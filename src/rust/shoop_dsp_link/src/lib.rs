@@ -252,6 +252,9 @@ pub trait Endpoint: Send {
 }
 
 pub fn validate_block(d: Descriptor, block: &impl Buffer) -> Result<(), Error> {
+    if d.quantum == 0 {
+        return Err(Error::Shape);
+    }
     let h = block.header();
     if h.generation != d.generation {
         return Err(Error::Stale);

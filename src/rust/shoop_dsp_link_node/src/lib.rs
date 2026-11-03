@@ -120,7 +120,12 @@ impl<E: Endpoint> RemoteNode<E> {
         self.stats
     }
     pub fn set_transport(&mut self, transport: Transport) -> Result<(), Error> {
-        if transport.tempo.is_some_and(|t| !t.is_finite() || t <= 0.) || self.input_fill != 0 {
+        if transport.tempo.is_some_and(|t| !t.is_finite() || t <= 0.)
+            || self.input_fill != 0
+            || (self.input_frame - self.descriptor.start_frame)
+                % u64::from(self.descriptor.dsp_frames)
+                != 0
+        {
             return Err(Error::InvalidParameter);
         }
         self.transport = transport;
