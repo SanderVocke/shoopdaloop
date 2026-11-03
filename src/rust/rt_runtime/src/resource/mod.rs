@@ -21,8 +21,15 @@ use index::{PageIndex, VersionIndex};
 pub use midi_index::{MidiIndexConfig, MidiIndexInfo, MidiIndexUsage, MidiIndexWork};
 use midi_index::{MidiOwner, MidiPool};
 pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
+mod audio_backing;
 mod render;
 mod request;
+#[allow(dead_code)] // Prepared history storage; engine integration is staged separately.
+mod rolling_history;
+pub mod shared_audio;
+#[allow(dead_code)] // Prepared shared backing; consumers are introduced separately.
+mod shared_pages;
+pub use audio_backing::AudioStoreId;
 pub use capture::{CaptureId, CaptureInfo, ResourceInfo};
 use render::WorkClass;
 pub use render::{RenderIo, RenderWork};
@@ -112,6 +119,7 @@ struct Version {
     capture: Option<CaptureInfo>,
     index: VersionIndex,
     midi: Option<MidiOwner>,
+    audio: Option<audio_backing::Take>,
 }
 #[derive(Clone, Copy)]
 struct Lease {
@@ -119,6 +127,7 @@ struct Lease {
     version: UploadId,
     private_tail: Option<usize>,
     tail_start: usize,
+    audio: Option<audio_backing::Export>,
 }
 #[derive(Clone, Copy, Default)]
 struct Page {
@@ -162,6 +171,8 @@ pub struct ResourceStore {
     midi_indexes: MidiPool,
     capture_groups: CapturePool,
     control_phase: bool,
+    audio_stores: Vec<Option<Box<shared_audio::AudioStore>>>,
+    audio_maintenance: usize,
 }
 fn retirement_stack(count: usize) -> Vec<usize> {
     let mut stack = vec![0; count];
@@ -225,6 +236,8 @@ impl ResourceStore {
             pages,
             free_pages: (0..limits.resource_pages).rev().collect(),
             reserved_pages: 0,
+            audio_stores: (0..limits.resource_slots).map(|_| None).collect(),
+            audio_maintenance: 0,
             resources: slots(limits.resource_slots),
             free_resources: (0..limits.resource_slots).rev().collect(),
             versions: slots(limits.resource_slots),
@@ -375,6 +388,7 @@ impl ResourceStore {
             capture: None,
             index: VersionIndex::default(),
             midi: None,
+            audio: None,
         });
         Ok(UploadId {
             slot: index as u32,
@@ -530,6 +544,11 @@ impl ResourceStore {
             .checked_sub(1)
             .ok_or(Error::InvalidState)?;
         if version.references == 0 {
+            if let Some(audio) = version.audio.take() {
+                self.with_audio(audio.store, |_, audio_store| {
+                    audio_store.release_take(audio.take)
+                })?;
+            }
             version.state = State::Retiring;
             if let Some(owner) = version.midi.take() {
                 self.midi_indexes.release(owner);
@@ -557,6 +576,17 @@ impl ResourceStore {
         if self.free_snapshots.is_empty() {
             return Err(Error::Capacity);
         }
+        let audio = match version.audio {
+            Some(take) => Some(self.with_audio(take.store, |_, store| {
+                let export = store.export(take.take)?;
+                Ok(audio_backing::Export {
+                    store: take.store,
+                    export,
+                    index: store.export_index(export)?,
+                })
+            })?),
+            None => None,
+        };
         let mutable_tail = version.tail.filter(|&page| {
             version.state == State::Capturing
                 && self.pages[page].used < self.config.limits().page_bytes
@@ -601,6 +631,7 @@ impl ResourceStore {
             private_tail,
             tail_start: version.written / self.config.limits().page_bytes
                 * self.config.limits().page_bytes,
+            audio,
         });
         version.references = refs;
         self.versions[active.slot as usize].value = Some(version);
@@ -661,6 +692,23 @@ impl ResourceStore {
         if cursor.position == lease.snapshot.description.bytes || output.is_empty() {
             return Ok(0);
         }
+        if let Some(audio) = lease.audio {
+            let count = output
+                .len()
+                .min(self.config.limits().page_bytes)
+                .min(lease.snapshot.description.bytes - cursor.position);
+            self.with_audio(audio.store, |store, audio_store| {
+                audio_store.read_span(
+                    store,
+                    audio.index,
+                    cursor.position,
+                    &mut output[..count],
+                    class,
+                )
+            })?;
+            cursor.position += count;
+            return Ok(count);
+        }
         let page_bytes = self.config.limits().page_bytes;
         let private_tail = lease
             .private_tail
@@ -690,6 +738,9 @@ impl ResourceStore {
     }
     pub fn release_snapshot(&mut self, id: SnapshotId) -> Result<(), Error> {
         let lease = get(&self.snapshots, id.slot, id.generation)?;
+        if let Some(audio) = lease.audio {
+            self.with_audio(audio.store, |_, store| store.release_export(audio.export))?;
+        }
         if let Some(page) = lease.private_tail {
             self.retired_pages.push(page);
         }
@@ -706,6 +757,10 @@ impl ResourceStore {
     pub fn reclaim(&mut self) -> usize {
         let mut steps = 0;
         while self.steps_remaining() > 0 {
+            if self.maintain_audio() {
+                steps += 1;
+                continue;
+            }
             if let Some(page) = self.retired_pages.pop() {
                 self.pages[page] = Page::default();
                 self.free_pages.push(page);
@@ -726,6 +781,10 @@ impl ResourceStore {
                     self.work.reclaimed_versions += 1;
                 }
             } else {
+                if self.maintain_audio() {
+                    steps += 1;
+                    continue;
+                }
                 break;
             }
             self.steps_remaining -= 1;

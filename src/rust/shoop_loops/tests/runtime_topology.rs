@@ -240,6 +240,12 @@ struct Harness {
         >,
     >,
     imports: Vec<rt_runtime::ResourceId>,
+    shared_audio: Option<resource::AudioStoreId>,
+}
+#[derive(Clone, Copy)]
+enum SharedInput {
+    Loaded,
+    History,
 }
 impl Harness {
     fn new(media: bool, journal: usize, reverse: bool, staging: TopologySettings) -> Self {
@@ -273,6 +279,29 @@ impl Harness {
         fault: Option<Frame>,
         node_pairs: NodePairSettings,
         spare: bool,
+    ) -> Self {
+        Self::with_audio_backing(
+            media,
+            journal,
+            reverse,
+            staging,
+            media_slots,
+            fault,
+            node_pairs,
+            spare,
+            None,
+        )
+    }
+    fn with_audio_backing(
+        media: bool,
+        journal: usize,
+        reverse: bool,
+        staging: TopologySettings,
+        media_slots: usize,
+        fault: Option<Frame>,
+        node_pairs: NodePairSettings,
+        spare: bool,
+        backing: Option<SharedInput>,
     ) -> Self {
         let config = Config {
             max_frames: 32,
@@ -319,13 +348,53 @@ impl Harness {
         .unwrap();
         let mut imports = Vec::new();
         let mut owned = Vec::new();
+        let mut shared_audio = None;
         if media {
             let bytes: Vec<_> = [4f32, 8., 12., 16.]
                 .into_iter()
                 .flat_map(|v| [v, v * 10.])
                 .flat_map(f32::to_le_bytes)
                 .collect();
-            let audio = upload(&mut resources, Format::Audio { channels: 2 }, &bytes);
+            let mut audio = upload(&mut resources, Format::Audio { channels: 2 }, &bytes);
+            if let Some(backing) = backing {
+                let store = resources
+                    .prepare_audio_store(
+                        resource::shared_audio::Config {
+                            channels: 2,
+                            history_frames: 4,
+                            views: 16,
+                            pages: 64,
+                        },
+                        Frame(0),
+                    )
+                    .unwrap();
+                let editable = match backing {
+                    SharedInput::Loaded => resources.fork_audio(store, audio.snapshot.id).unwrap(),
+                    SharedInput::History => {
+                        resources
+                            .render_io()
+                            .append_audio_history(
+                                store,
+                                Frame(0),
+                                &[4., 40., 8., 80., 12., 120., 16., 160.],
+                            )
+                            .unwrap();
+                        resources.grab_audio(store, Frame(0)..Frame(4)).unwrap()
+                    }
+                };
+                resources
+                    .render_io()
+                    .replace_audio(editable, Revision(1), 3, &[16., 160., 4., 40.])
+                    .unwrap();
+                resources.release_snapshot(audio.snapshot.id).unwrap();
+                resources.remove(audio.snapshot.resource).unwrap();
+                let snapshot = resources.snapshot(editable, Frame(4)).unwrap();
+                audio = media::Source {
+                    snapshot,
+                    index: resources.read_index(snapshot.id).unwrap(),
+                };
+                shared_audio = Some(store);
+            }
             let midi = upload(&mut resources, Format::Midi, &encoded_midi());
             imports.extend([audio.snapshot.resource, midi.snapshot.resource]);
             owned.push(media::Input {
@@ -438,6 +507,7 @@ impl Harness {
             returned: Vec::new(),
             graphs: Vec::new(),
             imports,
+            shared_audio,
         }
     }
     fn send(&mut self, lane: Lane, at: u64, operation: Operation, payload: Box<[u8]>) -> Sequence {
@@ -668,6 +738,13 @@ impl Harness {
             for _ in 0..128 {
                 stopped.resources().begin_callback();
                 stopped.resources().reclaim();
+            }
+            if let Some(audio) = self.shared_audio {
+                stopped.resources().cleanup_audio_store(audio).unwrap();
+                for _ in 0..128 {
+                    stopped.resources().begin_callback();
+                    stopped.resources().reclaim();
+                }
             }
             assert_eq!(stopped.resource_usage().free_pages, 128);
             assert_eq!(stopped.resource_usage().free_versions, 16);

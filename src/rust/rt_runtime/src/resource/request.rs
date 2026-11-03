@@ -5,6 +5,15 @@ use crate::buffer::MidiBuffer;
 /// completion, including on refusal/cancellation. Nothing is freed by rendering.
 pub enum Request {
     Create,
+    AudioGrab {
+        store: AudioStoreId,
+        start: Frame,
+        end: Frame,
+    },
+    AudioFork {
+        store: AudioStoreId,
+        snapshot: SnapshotId,
+    },
     Remove {
         resource: ResourceId,
     },
@@ -138,6 +147,15 @@ impl ResourceCommand {
         self.envelope(store.config())?;
         let reply = match &mut self.request {
             Request::Create => Reply::Created(store.create()?),
+            Request::AudioGrab {
+                store: audio,
+                start,
+                end,
+            } => Reply::Created(store.grab_audio(*audio, *start..*end)?),
+            Request::AudioFork {
+                store: audio,
+                snapshot,
+            } => Reply::Created(store.fork_audio(*audio, *snapshot)?),
             Request::Remove { resource } => {
                 store.remove(*resource)?;
                 Reply::Done
