@@ -305,6 +305,7 @@ src/rust/shoopdaloop/src/application.rs,application_ui_and_control,instrumented_
 src/rust/shoop_app/src/service/management.rs,app_session,instrumented_indirect,Management operations use the authoritative service admission and shutdown boundaries.
 src/rust/shoop_host/src/lib.rs,app_session,excluded,Native composition exports.
 src/rust/shoop_host/src/main.rs,app_session,instrumented_indirect,CLI configuration enters the traced host session boundary.
+src/rust/shoop_host/src/audio_args.rs,app_session,excluded,Parses and validates native startup overrides before the traced host boundary.
 src/rust/shoop_host/src/config.rs,app_session,excluded,Bounded host configuration validation.
 src/rust/shoop_host/src/engine.rs,app_session,instrumented_indirect,Native configuration maps settings inside traced engine startup.
 src/rust/shoop_host/src/serve.rs,app_session,instrumented_direct,Independent host session lifecycle boundary.

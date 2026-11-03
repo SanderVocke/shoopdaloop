@@ -507,3 +507,34 @@ The warning-denying workspace build, all 2,599 Rust tests (4 intentional skips),
 145 Python tests, tracing/test policies and dependency boundaries pass. Strict
 isolated-server JACK acceptance passes for audio/MIDI, recording/replay, routing,
 reconnection, independent hosts and native engine/application startup.
+
+### JACK configuration audit
+
+The host manager now offers native JACK alongside CPAL and Dummy. The New host
+form exposes the JACK client name, local audio/MIDI port lists and editable
+startup connection pairs. Sample rate and buffer size come from the JACK server;
+CPAL device/channel selectors and Dummy timing controls are shown only for their
+respective drivers. Unavailable compiled drivers cannot be selected or launched.
+
+Both `shoop_host` and `shoopdaloop` accept shared `--audio-driver` and JACK startup
+options. Application overrides use the selected driver's saved settings as their
+base, apply only to this launch and do not persist. Host options can override an
+advanced JSON configuration. Attaching to an existing host rejects audio startup
+overrides; detached application launches remove those flags from the UI sibling.
+JACK-only native application and manager builds default to JACK. The standalone
+host retains its explicit Dummy default. Driver documentation and examples now
+describe native JACK rather than the retired CPAL substitution.
+
+Validation: warning-denying workspace build; 2,606 Rust tests passed with four
+intentional canary skips; 145 Python tests passed. Driver-free, JACK-only,
+CPAL-only and combined native builds and targeted CLI/form tests passed. Browser
+application/worklet builds, four-target dependency checks, formatting, test
+attributes and the closed 367-module tracing inventory passed. The isolated real
+JACK acceptance run passed, including the new executable-level CLI/custom-port
+scenario.
+
+Native GUI verification created a custom-port JACK host, closed and reopened the
+manager, rediscovered the same process and instance, and confirmed graceful
+shutdown. All four isolated XDG state directories remained empty. Native captures
+are `docs/screenshots/host-manager-jack.png` and
+`docs/screenshots/host-manager-jack-running.png`. CI was not inspected.

@@ -63,6 +63,66 @@ impl Drop for ChildOwner {
         let _ = self.0.wait();
     }
 }
+
+#[shoop_test(no_wasm = "native host executable and JACK server")]
+fn standalone_cli_starts_direct_jack_with_custom_ports_and_reports_configuration() {
+    let _peer = match jack::Client::new("jack-cli-probe", jack::ClientOptions::NO_START_SERVER) {
+        Ok((client, _)) => client,
+        Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
+        Err(error) => panic!("required JACK server unavailable: {error}"),
+    };
+    let root = tempfile::tempdir().unwrap();
+    let profile = root.path().join("explicit-export.json");
+    let mut child = ChildOwner(
+        std::process::Command::new(env!("CARGO_BIN_EXE_shoop_host"))
+            .args([
+                "--audio-driver",
+                "jack",
+                "--jack-client-name",
+                "CLI-Studio",
+                "--jack-audio-inputs",
+                "capture_l,capture_r",
+                "--jack-audio-outputs",
+                "main_l,main_r",
+                "--jack-midi-inputs=",
+                "--jack-midi-outputs",
+                "events",
+                "--export-profile",
+            ])
+            .arg(&profile)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let target = loop {
+        if let Ok(profile) = shoop_host::remote::RemoteProfile::read(&profile) {
+            if let Ok(target) = connection::resolve_target(&profile, Duration::from_secs(1)) {
+                break target;
+            }
+        }
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "CLI host exited before readiness"
+        );
+        assert!(Instant::now() < deadline, "CLI host did not become ready");
+        thread::sleep(Duration::from_millis(20));
+    };
+    let report = connection::host_report(&target, Duration::from_secs(2)).unwrap();
+    connection::shutdown_ownerless(&target, Duration::from_secs(5)).unwrap();
+    assert_eq!(report.effective.audio_driver, AudioDriverState::Running);
+    let AudioDriverConfig::Jack(jack) = &report.requested.unwrap().driver else {
+        panic!("CLI did not start direct JACK");
+    };
+    assert_eq!(jack.client_name, "CLI-Studio");
+    assert_eq!(jack.audio_inputs, ["capture_l", "capture_r"]);
+    assert_eq!(jack.audio_outputs, ["main_l", "main_r"]);
+    assert!(jack.midi_inputs.is_empty());
+    assert_eq!(jack.midi_outputs, ["events"]);
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}
 enum Delivery {
     Local {
         service: Box<Service>,

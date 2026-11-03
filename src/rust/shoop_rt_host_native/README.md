@@ -131,9 +131,9 @@ deactivates JACK, and cleans up the render owner off the callback thread.
 JACK and CPAL are independently selectable at build time:
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features jack
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features cpal
-cargo build -p shoopdaloop -p shoop_host --no-default-features
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features jack
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features cpal
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
 ```
 
 Native distribution defaults enable both. JACK is loaded at runtime; browser

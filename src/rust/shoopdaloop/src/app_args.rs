@@ -14,6 +14,9 @@ pub enum SettingsTest {
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
+    #[command(flatten)]
+    pub audio: shoop_host::audio_args::AudioArgs,
+    #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
     pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -26,15 +29,22 @@ pub struct AppArgs {
     #[arg(
         long = "host-profile",
         visible_alias = "remote-profile",
-        group = "host_target"
+        group = "host_target",
+        conflicts_with = "audio_options"
     )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Connect to a host's data or management address (HOST:PORT).
-    #[arg(long, group = "host_target")]
+    #[arg(long, group = "host_target", conflicts_with = "audio_options")]
     pub host_address: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, hide = true, group = "host_target", requires = "ui_only")]
+    #[arg(
+        long,
+        hide = true,
+        group = "host_target",
+        conflicts_with = "audio_options",
+        requires = "ui_only"
+    )]
     pub host_stdin: bool,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_target")]
@@ -117,6 +127,20 @@ pub struct AppArgs {
 }
 
 impl AppArgs {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configured_audio_driver(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> Result<shoop_egui::AudioDriverConfig, String> {
+        let kind = self
+            .audio
+            .audio_driver
+            .map(|driver| Ok(driver.kind()))
+            .unwrap_or_else(|| shoop_egui::selected_audio_driver(settings))?;
+        let config = shoop_egui::audio_driver_config_from_snapshot(settings, kind)?;
+        self.audio.apply(config).map_err(|error| error.to_string())
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn host_target(&self) -> anyhow::Result<Option<shoop_host::remote::Target>> {
         if self.host_stdin {
@@ -327,6 +351,77 @@ mod native_tests {
             assert_eq!(args.selected_engine_transport(&settings).unwrap(), kind);
         }
         assert!(AppArgs::try_parse_from(["shoopdaloop", "--engine-transport=ipc"]).is_err());
+    }
+
+    #[cfg(feature = "jack")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn jack_cli_uses_the_saved_jack_profile_without_changing_preferences() {
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::SELECTED_AUDIO_DRIVER, "dummy".into());
+        draft.set(shoop_egui::JACK_AUDIO_OUTPUTS, "left,right".into());
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        for transport in ["in_process", "socket", "shared_memory"] {
+            let args = AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--session-transport",
+                transport,
+                "--audio-driver",
+                "jack",
+                "--jack-client-name",
+                "Live",
+                "--jack-midi-inputs=",
+            ])
+            .unwrap();
+            let shoop_egui::AudioDriverConfig::Jack(config) =
+                args.configured_audio_driver(&settings).unwrap()
+            else {
+                panic!("direct JACK expected");
+            };
+            assert_eq!(config.client_name, "Live");
+            assert_eq!(config.audio_outputs, ["left", "right"]);
+            assert!(config.midi_inputs.is_empty());
+        }
+        assert_eq!(
+            settings.get(shoop_egui::SELECTED_AUDIO_DRIVER).unwrap(),
+            "dummy"
+        );
+        assert_eq!(
+            settings.get(shoop_egui::JACK_CLIENT_NAME).unwrap(),
+            "ShoopDaLoop"
+        );
+        for target in ["--host-address", "--host-profile", "--remote-profile"] {
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--audio-driver",
+                "jack",
+                target,
+                "existing-host",
+            ])
+            .is_err());
+        }
+        let original = [
+            "--session-transport=socket",
+            "--audio-driver=jack",
+            "--jack-client-name",
+            "Live",
+        ];
+        let mut child = vec![std::ffi::OsString::from("shoopdaloop")];
+        child.extend(shoop_host::audio_args::AudioArgs::without_overrides(
+            original.map(std::ffi::OsString::from),
+        ));
+        child.extend(["--ui-only", "--host-stdin"].map(std::ffi::OsString::from));
+        let args = AppArgs::try_parse_from(child).unwrap();
+        assert!(args.audio.audio_driver.is_none() && args.host_stdin && args.ui_only);
     }
 
     #[shoop_wasm_test_support::shoop_test]

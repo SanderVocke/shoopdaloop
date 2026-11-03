@@ -12,9 +12,11 @@ fn run() -> anyhow::Result<()> {
     use std::{io::Read, path::PathBuf};
     #[derive(Parser)]
     struct Args {
+        #[command(flatten)]
+        audio: shoop_host::audio_args::AudioArgs,
         #[arg(long)]
         config: Option<PathBuf>,
-        #[arg(long, hide = true, conflicts_with = "config")]
+        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
         launch_stdin: bool,
         #[arg(long)]
         lan: bool,
@@ -83,7 +85,7 @@ fn run() -> anyhow::Result<()> {
             .with_ansi(false)
             .init();
     }
-    let config = match startup_config {
+    let mut config = match startup_config {
         Some(config) => config,
         None if args.config.is_none() => shoop_host::config::HostConfig::default(),
         None => {
@@ -95,6 +97,8 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_slice(&bytes)?
         }
     };
+    config.settings.driver = args.audio.apply(config.settings.driver)?;
+    config.validate()?;
     tracing::info!(
         "Starting host {} (PID {})",
         options.name,

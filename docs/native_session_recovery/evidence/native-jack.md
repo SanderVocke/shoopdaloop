@@ -59,8 +59,8 @@ policy for unrelated hardware; it does not replace strict JACK acceptance.
 
 ## Compatibility and scope
 
-The engine protocol is version 4, host setup is version 3, and the application
-protocol is version 13. These versions combine native JACK with output-bus
+The engine protocol is version 4, host setup is version 4, and the application
+protocol is version 14 on the host-manager branch. These versions combine native JACK with output-bus
 parity from the target branch. Existing driver tags remain unchanged. Version checks
 reject older peers before exchanging the expanded JACK configuration and
 instance metadata. Existing JSON JACK profiles receive backward-compatible port

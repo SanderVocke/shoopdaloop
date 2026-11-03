@@ -486,6 +486,8 @@ fn load_settings_manager(
 fn default_audio_driver_kind() -> AudioDriverKind {
     if cfg!(feature = "cpal") {
         AudioDriverKind::Cpal
+    } else if cfg!(feature = "jack") {
+        AudioDriverKind::Jack
     } else {
         AudioDriverKind::Dummy
     }
@@ -2431,14 +2433,16 @@ impl Runtime {
             return Self::attach(settings, target);
         }
         let mut startup_warnings = Vec::new();
-        let configured_driver = shoop_egui::selected_audio_driver(settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind))
-            .unwrap_or_else(|error| {
+        let configured_driver = match args.configured_audio_driver(settings) {
+            Ok(driver) => driver,
+            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error) => {
                 startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
                 ));
                 AudioDriverConfig::default()
-            });
+            }
+        };
         let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
             startup_warnings.push(format!(
                 "Could not use engine capacities: {error}; using defaults"
@@ -3604,8 +3608,8 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
-            driver: shoop_egui::selected_audio_driver(&settings)
-                .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+            driver: args
+                .configured_audio_driver(&settings)
                 .map_err(anyhow::Error::msg)?,
             pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
                 .map_err(anyhow::Error::msg)?,
@@ -3628,7 +3632,8 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     options.export_profile = args.export_profile.clone();
     options.log_file = args.log_file.clone();
-    let original: Vec<_> = std::env::args_os().skip(1).collect();
+    let original =
+        shoop_host::audio_args::AudioArgs::without_overrides(std::env::args_os().skip(1));
     shoop_host::launch::pair(&config, options, &companion, |_target| {
         let mut command = std::process::Command::new(&executable);
         command.args(&original).arg("--ui-only").arg("--host-stdin");

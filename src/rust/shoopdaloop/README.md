@@ -83,10 +83,56 @@ mode ends with its page. Shared-memory mode cannot reattach after UI exit.
 
 ## Drivers, controls and files
 
-Default native builds include CPAL+midir. Without default features the RT host uses
-the dummy driver; Lua controller MIDI remains client-local. Saved JACK preferences
-map to CPAL's JACK host or default device with a diagnostic. Unusable device settings
-fall back to dummy with a visible warning and do not overwrite the saved preference.
+Default native builds include CPAL+midir and native JACK audio/MIDI. The application
+and Host Manager default to CPAL, or JACK in a JACK-only build; the standalone host
+defaults to Dummy. Driver-free builds use Dummy. Lua controller MIDI remains client-local.
+JACK connects directly to the JACK server; CPAL's JACK API is a separate CPAL selection.
+Unusable device settings fall back to Dummy with a visible warning and do not
+overwrite the saved preference.
+
+**Settings → Audio** selects the application's preferred driver for its next launch.
+In Host Manager, **New host → Audio driver → JACK** exposes the client name; expand
+**JACK ports and connections** to configure local audio/MIDI port names and startup
+source/destination pairs. The JACK server supplies sample rate and buffer size.
+No profile files are required.
+
+Both native launch executables accept the same audio overrides:
+
+```sh
+shoop_host --audio-driver jack --jack-client-name Studio
+shoopdaloop --audio-driver jack --session-transport socket
+shoop_host --audio-driver jack --jack-audio-inputs capture_l,capture_r \
+  --jack-audio-outputs main_l,main_r --jack-midi-inputs= \
+  --jack-connect 'main_l->system:playback_1' \
+  --jack-connect 'main_r->system:playback_2'
+```
+
+`--audio-driver` accepts `dummy`, `cpal`, or `jack`. JACK port lists are comma-separated;
+an empty list disables that direction. Repeat `--jack-connect` for startup connections.
+Use local short names or external `client:port` names. Application flags override the
+chosen driver's saved profile for this launch only. For `shoop_host --config FILE`,
+flags override the JSON driver configuration; unspecified fields keep their configured
+values when the driver kind matches. Explicitly selecting a driver omitted from the
+build fails with a diagnostic. Audio overrides cannot be used when attaching to an
+existing host. `--help` lists the available options.
+
+Advanced JSON configuration also supports the complete JACK startup configuration:
+
+```json
+{
+  "driver": {
+    "Jack": {
+      "client_name": "Studio",
+      "audio_inputs": ["capture_l", "capture_r"],
+      "audio_outputs": ["main_l", "main_r"],
+      "midi_inputs": ["keys"],
+      "midi_outputs": ["events"],
+      "connections": [["main_l", "system:playback_1"], ["main_r", "system:playback_2"]]
+    }
+  }
+}
+```
+
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet
 operations, timing/alignment edits, click generation/preview/insertion and loop duplication.

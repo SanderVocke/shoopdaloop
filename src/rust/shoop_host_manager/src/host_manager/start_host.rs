@@ -1,7 +1,8 @@
 use anyhow::{ensure, Context, Result};
 use eframe::egui;
 use shoop_app_api::{
-    AudioDriverConfig, CpalAudioDriverConfig, DummyAudioDriverConfig, HostSettings, NewEnginePools,
+    AudioDriverConfig, AudioDriverKind, CpalAudioDriverConfig, DummyAudioDriverConfig,
+    HostSettings, JackAudioDriverConfig, NewEnginePools,
 };
 use shoop_host::{
     config::{AppTransport, HostConfig},
@@ -79,7 +80,10 @@ pub(super) struct Dialog {
     pub pending: bool,
     pub error: Option<String>,
     name: String,
-    physical_audio: bool,
+    driver: AudioDriverKind,
+    jack_client_name: String,
+    jack_ports: [String; 4],
+    jack_connections: Vec<(String, String)>,
     device_defaults: bool,
     sample_rate: u32,
     buffer_size: u32,
@@ -105,12 +109,28 @@ pub(super) struct Dialog {
 }
 impl Default for Dialog {
     fn default() -> Self {
+        let jack = JackAudioDriverConfig::default();
         Self {
             open: true,
             pending: false,
             error: None,
             name: "ShoopDaLoop".into(),
-            physical_audio: cfg!(feature = "cpal"),
+            driver: if cfg!(feature = "cpal") {
+                AudioDriverKind::Cpal
+            } else if cfg!(feature = "jack") {
+                AudioDriverKind::Jack
+            } else {
+                AudioDriverKind::Dummy
+            },
+            jack_client_name: jack.client_name,
+            jack_ports: [
+                jack.audio_inputs,
+                jack.audio_outputs,
+                jack.midi_inputs,
+                jack.midi_outputs,
+            ]
+            .map(|ports| ports.join(", ")),
+            jack_connections: jack.connections,
             device_defaults: true,
             sample_rate: 48000,
             buffer_size: 256,
@@ -139,7 +159,7 @@ impl Default for Dialog {
 impl Dialog {
     pub fn new() -> Self {
         let mut dialog = Self::default();
-        if dialog.physical_audio {
+        if dialog.driver == AudioDriverKind::Cpal {
             dialog.refresh_devices();
         }
         dialog
@@ -230,34 +250,58 @@ impl Dialog {
             }
             .validate()?;
         }
-        let driver = if self.physical_audio {
-            ensure!(cfg!(feature = "cpal"), "CPAL is unavailable in this build");
-            AudioDriverConfig::Cpal(CpalAudioDriverConfig {
-                host: self.cpal_host.clone(),
-                input_device: self.input.clone(),
-                output_device: self.output.clone(),
-                input_channels: self.input_channels.clone(),
-                output_channels: self.output_channels.clone(),
-                sample_rate: if self.device_defaults {
-                    0
-                } else {
-                    self.sample_rate
-                },
-                buffer_size: if self.device_defaults {
-                    0
-                } else {
-                    self.buffer_size
-                },
-                midi_inputs: midi_ports(&self.midi_inputs),
-                midi_outputs: midi_ports(&self.midi_outputs),
-                client_name: self.name.clone(),
-                ..Default::default()
-            })
-        } else {
-            AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+        let driver = match self.driver {
+            AudioDriverKind::Jack => {
+                ensure!(cfg!(feature = "jack"), "JACK is unavailable in this build");
+                let [audio_inputs, audio_outputs, midi_inputs, midi_outputs] =
+                    self.jack_ports.each_ref().map(|value| {
+                        value
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty())
+                            .map(str::to_owned)
+                            .collect()
+                    });
+                let jack = JackAudioDriverConfig {
+                    client_name: self.jack_client_name.clone(),
+                    audio_inputs,
+                    audio_outputs,
+                    midi_inputs,
+                    midi_outputs,
+                    connections: self.jack_connections.clone(),
+                };
+                jack.validate().map_err(anyhow::Error::msg)?;
+                AudioDriverConfig::Jack(jack)
+            }
+            AudioDriverKind::Cpal => {
+                ensure!(cfg!(feature = "cpal"), "CPAL is unavailable in this build");
+                AudioDriverConfig::Cpal(CpalAudioDriverConfig {
+                    host: self.cpal_host.clone(),
+                    input_device: self.input.clone(),
+                    output_device: self.output.clone(),
+                    input_channels: self.input_channels.clone(),
+                    output_channels: self.output_channels.clone(),
+                    sample_rate: if self.device_defaults {
+                        0
+                    } else {
+                        self.sample_rate
+                    },
+                    buffer_size: if self.device_defaults {
+                        0
+                    } else {
+                        self.buffer_size
+                    },
+                    midi_inputs: midi_ports(&self.midi_inputs),
+                    midi_outputs: midi_ports(&self.midi_outputs),
+                    client_name: self.name.clone(),
+                    ..Default::default()
+                })
+            }
+            AudioDriverKind::Dummy => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                 sample_rate: self.sample_rate,
                 buffer_size: self.buffer_size,
-            })
+            }),
+            AudioDriverKind::WebAudio => anyhow::bail!("Web Audio is unavailable in native hosts"),
         };
         let config = HostConfig {
             settings: HostSettings {
@@ -337,28 +381,41 @@ impl Dialog {
                 ui.text_edit_singleline(&mut self.name);
                 ui.end_row();
                 ui.label("Audio driver");
-                let previous = self.physical_audio;
+                let previous = self.driver;
                 egui::ComboBox::from_id_salt("new_host_driver")
-                    .selected_text(if self.physical_audio {
-                        "System audio (CPAL)"
-                    } else {
-                        "Dummy"
+                    .selected_text(match self.driver {
+                        AudioDriverKind::Cpal => "System audio (CPAL)",
+                        AudioDriverKind::Jack => "JACK",
+                        _ => "Dummy",
                     })
                     .show_ui(ui, |ui| {
                         ui.add_enabled_ui(cfg!(feature = "cpal"), |ui| {
                             ui.selectable_value(
-                                &mut self.physical_audio,
-                                true,
+                                &mut self.driver,
+                                AudioDriverKind::Cpal,
                                 "System audio (CPAL)",
                             );
                         });
-                        ui.selectable_value(&mut self.physical_audio, false, "Dummy");
+                        ui.add_enabled_ui(cfg!(feature = "jack"), |ui| {
+                            ui.selectable_value(&mut self.driver, AudioDriverKind::Jack, "JACK");
+                        })
+                        .response
+                        .on_disabled_hover_text("JACK is unavailable in this build");
+                        ui.selectable_value(&mut self.driver, AudioDriverKind::Dummy, "Dummy");
                     });
-                if !previous && self.physical_audio {
+                if previous != self.driver && self.driver == AudioDriverKind::Cpal {
                     self.refresh_devices();
                 }
                 ui.end_row();
-                if self.physical_audio {
+                if self.driver == AudioDriverKind::Jack {
+                    ui.label("JACK client name");
+                    ui.text_edit_singleline(&mut self.jack_client_name);
+                    ui.end_row();
+                    ui.label("Rate / buffer");
+                    ui.label("Set by JACK server");
+                    ui.end_row();
+                }
+                if self.driver == AudioDriverKind::Cpal {
                     ui.label("Audio API");
                     let previous_host = self.cpal_host.clone();
                     selector(
@@ -396,7 +453,9 @@ impl Dialog {
                     ui.checkbox(&mut self.device_defaults, "Device defaults");
                     ui.end_row();
                 }
-                if !self.physical_audio || !self.device_defaults {
+                if self.driver == AudioDriverKind::Dummy
+                    || (self.driver == AudioDriverKind::Cpal && !self.device_defaults)
+                {
                     ui.label("Sample rate");
                     ui.add(
                         egui::DragValue::new(&mut self.sample_rate)
@@ -414,7 +473,7 @@ impl Dialog {
                     ui.end_row();
                 }
             });
-        if self.physical_audio {
+        if self.driver == AudioDriverKind::Cpal {
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
@@ -430,6 +489,45 @@ impl Dialog {
                 }
                 if let Some(error) = &self.devices.error {
                     ui.colored_label(super::MUTED, error);
+                }
+            });
+        }
+        if self.driver == AudioDriverKind::Jack {
+            ui.collapsing("JACK ports and connections", |ui| {
+                egui::Grid::new("new_host_jack_ports")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        for (label, value) in ["Audio inputs", "Audio outputs", "MIDI inputs", "MIDI outputs"]
+                            .into_iter().zip(&mut self.jack_ports) {
+                            ui.label(label);
+                            ui.text_edit_singleline(value)
+                                .on_hover_text("Comma-separated local port names. Empty means no ports.");
+                            ui.end_row();
+                        }
+                    });
+                ui.label("Startup connections").on_hover_text(
+                    "Use local short names or external client:port names. Connections can also be made in a JACK patchbay.",
+                );
+                let mut remove = None;
+                egui::Grid::new("new_host_jack_connections")
+                    .num_columns(4)
+                    .show(ui, |ui| {
+                        for (index, (source, target)) in self.jack_connections.iter_mut().enumerate() {
+                            ui.add_sized([190.0, ui.spacing().interact_size.y], egui::TextEdit::singleline(source).hint_text("Source"));
+                            ui.label("to");
+                            ui.add_sized([190.0, ui.spacing().interact_size.y], egui::TextEdit::singleline(target).hint_text("Destination"));
+                            if ui.small_button("Remove").clicked() {
+                                remove = Some(index);
+                            }
+                            ui.end_row();
+                        }
+                    });
+                if let Some(index) = remove {
+                    self.jack_connections.remove(index);
+                }
+                if ui.small_button("Add connection").clicked() {
+                    self.jack_connections.push(Default::default());
                 }
             });
         }
@@ -531,7 +629,7 @@ impl Dialog {
                     }
                 });
         });
-        if self.physical_audio {
+        if self.driver == AudioDriverKind::Cpal {
             ui.collapsing("Channels and MIDI", |ui| {
                 egui::Grid::new("new_host_channels")
                     .num_columns(2)
@@ -647,7 +745,7 @@ mod tests {
 
     fn form(_root: &std::path::Path) -> Dialog {
         Dialog {
-            physical_audio: false,
+            driver: AudioDriverKind::Dummy,
             ..Default::default()
         }
     }
@@ -677,6 +775,84 @@ mod tests {
         assert_eq!(midi_ports(&dialog.midi_inputs), ["none"]);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
+
+    #[cfg(feature = "jack")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn jack_selection_exposes_ports_and_connections_without_device_rate_controls() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        let mut screen = Screen::new(egui::vec2(800.0, 1000.0));
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        screen.click("Dummy", |ui| dialog.fields(ui));
+        screen.click("JACK", |ui| dialog.fields(ui));
+        assert_eq!(dialog.driver, AudioDriverKind::Jack);
+        assert!(screen.contains("JACK client name") && screen.contains("Set by JACK server"));
+        assert!(!screen.contains("Sample rate") && !screen.contains("Buffer size"));
+        assert!(!screen.contains("Audio API") && !screen.contains("Channels and MIDI"));
+        screen.click("JACK ports and connections", |ui| dialog.fields(ui));
+        assert!(screen.contains("Audio inputs") && screen.contains("MIDI outputs"));
+        screen.click("Add connection", |ui| dialog.fields(ui));
+        assert!(dialog.request().is_err());
+        dialog.jack_client_name = "Studio".into();
+        dialog.jack_ports =
+            ["capture_l, capture_r", "main_l,main_r", "", "events"].map(str::to_owned);
+        dialog.jack_connections[0] = ("main_l".into(), "system:playback_1".into());
+        let request = dialog.request().unwrap();
+        let AudioDriverConfig::Jack(jack) = &request.config.driver else {
+            panic!("direct JACK expected");
+        };
+        assert_eq!(jack.client_name, "Studio");
+        assert_eq!(jack.audio_inputs, ["capture_l", "capture_r"]);
+        assert_eq!(jack.audio_outputs, ["main_l", "main_r"]);
+        assert!(jack.midi_inputs.is_empty());
+        assert_eq!(jack.midi_outputs, ["events"]);
+        assert_eq!(
+            jack.connections[0],
+            ("main_l".into(), "system:playback_1".into())
+        );
+        let decoded: HostConfig =
+            serde_json::from_slice(&serde_json::to_vec(&request.config).unwrap()).unwrap();
+        assert_eq!(decoded.settings, request.config.settings);
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        screen.click("Remove", |ui| dialog.fields(ui));
+        assert!(dialog.jack_connections.is_empty());
+        dialog.jack_ports[0] = "main_l".into();
+        assert!(dialog
+            .request()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unique"));
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unavailable_drivers_cannot_be_selected_or_launched() {
+        for (kind, label, available) in [
+            (AudioDriverKind::Jack, "JACK", cfg!(feature = "jack")),
+            (
+                AudioDriverKind::Cpal,
+                "System audio (CPAL)",
+                cfg!(feature = "cpal"),
+            ),
+        ] {
+            if available {
+                continue;
+            }
+            let mut dialog = Dialog {
+                driver: AudioDriverKind::Dummy,
+                ..Default::default()
+            };
+            let mut screen = Screen::new(egui::vec2(800.0, 700.0));
+            screen.frame(vec![], |ui| dialog.fields(ui));
+            screen.click("Dummy", |ui| dialog.fields(ui));
+            screen.click(label, |ui| dialog.fields(ui));
+            assert_eq!(dialog.driver, AudioDriverKind::Dummy);
+            dialog.driver = kind;
+            assert!(dialog.request().is_err());
+        }
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn optional_logging_validates_only_an_explicit_output() {
         let root = tempfile::tempdir().unwrap();
@@ -761,7 +937,7 @@ mod tests {
     fn audio_capacity_midi_and_lan_controls_feed_the_shared_configuration() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
-        dialog.physical_audio = true;
+        dialog.driver = AudioDriverKind::Cpal;
         dialog.device_defaults = false;
         dialog.output = "Speakers".into();
         dialog.devices.outputs = vec!["Speakers".into(), "Headphones".into()];
