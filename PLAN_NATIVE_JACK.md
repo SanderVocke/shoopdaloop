@@ -2,10 +2,10 @@
 
 Restore direct JACK audio and MIDI in the replacement backend. Selecting JACK must run the new engine through a native JACK client, with callback-local audio and MIDI, instead of translating the selection to CPAL.
 
-Status: implementation complete; final validation and PR delivery in progress. Baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
+Status: complete. Implementation PR: https://github.com/SanderVocke/shoopdaloop/pull/925. Baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
 
 Target branch and final PR base: `feat/backend-replacement`.
-Proposed implementation branch: `feat/backend-replacement-native-jack`.
+Implementation branch: `feat/backend-replacement-native-jack`.
 
 ## Goals and scope
 
@@ -145,9 +145,9 @@ Depends on all preceding stages.
 
 - [x] Review the final diff for unrelated changes, real-time contract violations, feature leakage, incorrect status, and acceptance gaps. Reconcile changes on the target branch and rerun affected checks if the baseline moves.
 - [x] Push `feat/backend-replacement-native-jack` and open a PR with base **`feat/backend-replacement`**. Lead the description with restored native JACK behavior; include configuration compatibility, fixed-port scope, test evidence, and restart/failure semantics.
-- [ ] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
-- [ ] Check for automated PR reviews. Address feedback, push fixes, and repeat review/check cycles until the automated reviewer approves where present. Document any remaining material limitations accurately.
-- [ ] Update this plan's checkboxes and evidence, verify the PR base/head and final passing commit, and return the PR URL with validation results.
+- [x] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
+- [x] Check for automated PR reviews. Address feedback, push fixes, and repeat review/check cycles until the automated reviewer approves where present. Document any remaining material limitations accurately.
+- [x] Update this plan's checkboxes and evidence, verify the PR base/head and final passing commit, and return the PR URL with validation results.
 
 Completion: an open implementation PR targeting `feat/backend-replacement`, with all immutable acceptance criteria evidenced, required CI passing, and automated review approval where provided.
 
@@ -163,25 +163,25 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 
 - Stage 0: implementation branch created from `3aabf43789708a5640a8f5b368f737651ef1d29d`; approved plan committed as `b0c4515b`.
 - Initial Stage 1 milestone: saved port defaults are two audio inputs/outputs and one MIDI input/output, named `audio_in_1`, `audio_out_1`, `midi_in_1` and so on. Port lists are configurable; engine names use the stable `jack:` prefix, independent of JACK's resolved client-name suffix. Startup connection pairs use local short names or external `client:port` names; absent required endpoints fail startup with diagnostics. Port capacity remains 64 per kind/direction.
-- Protocol identity uses appended tag 3; engine protocol version increases from 2 to 3 so older peers refuse clearly. Existing driver tags are unchanged. Host-setup conversion will be finalized with the native driver rather than exposing a partial JACK path.
+- Protocol identity uses appended tag 3; engine protocol version increases from 2 to 3 so older peers refuse clearly. Existing driver tags are unchanged. Host-setup conversion was finalized with the native driver rather than exposing a partial JACK path.
 - Stage 1 validation: warning-denying builds of protocol, API, adapter, and settings UI passed. Protocol/host configuration and recovery tests passed, including old JACK-profile deserialization and codec tag stability. Test-attribute policy passed.
 - The JACK crate requires an unsafe shutdown callback declaration. A small native-only notification adapter isolates that declaration with an atomic-store-only body; `shoop_rt_host_native` retains `forbid(unsafe_code)` and safe JACK APIs. No unsafe pointer/FFI operations are added to the host.
 
 - Stages 1–4 are implemented together as a coherent driver/integration milestone, with cross-crate enum matches and feature forwarding updated atomically. Host setup version 2 carries named JACK ports, startup connections and resolved instance names; application protocol version 12 rejects peers using the previous JACK profile layout.
 - Local strict JACK acceptance passed for direct callback samples/timestamps, MIDI recovery, invalid ports, failed connection rollback, name collisions, buffer-size changes, server loss, missing library/server, application startup, process adapter, and in-process/independent service recording/replay/reconnect plus `.shoop` save/load.
 - Warning-denying complete native workspace builds passed. All four native driver feature combinations passed `cargo check`. The engine/host dependency-boundary audit passed for Linux, Windows, macOS and WebAssembly. All 143 Python script tests passed; tracing, parity, formatting and test-attribute audits passed.
-- Browser application and worklet compilation passed. The generated codec and worklet Node artifact contracts passed with engine protocol version 3. Browser smoke and final CI evidence will be recorded before delivery.
-- An existing runtime stress test exhausted its iteration bound while native tests overlapped browser compilation. It passed all 10 isolated repetitions and the subsequent full run. Full-suite runs identified and corrected only the expected JACK settings field-count/missing-backend fixtures and application protocol byte fixtures; final clean-suite evidence is pending below.
+- Browser application and worklet compilation passed. The generated codec and worklet Node artifact contracts passed with engine protocol version 3. Browser smoke and final CI evidence follow below.
+- An existing runtime stress test exhausted its iteration bound while native tests overlapped browser compilation. It passed all 10 isolated repetitions and the subsequent full run. Full-suite runs identified and corrected only the expected JACK settings field-count/missing-backend fixtures and application protocol byte fixtures; final clean-suite evidence follows below.
 
 - Core native driver/integration milestone committed as `93e5e38d`. Final native workspace run: **2,550 passed, four pre-existing skips**, with the suite's established optional-hardware policy. Strict real-JACK acceptance passed separately with the skip flag removed.
 - JACK-only, CPAL-only, combined, and driver-free checks and native-host/host-library tests all passed. The strict CI job runs these same combinations.
 - Hosted Chromium browser core smoke passed at 900×600 with **zero xruns**, including record/play, waveform/MIDI detail, `.shoop` save/load/resave and restored playback. Node v24.19.0 and Chromium 154.0.8037.57 were used locally; the existing CI web matrix retains its pinned browser tooling.
 - Final formatting, warning-denying workspace build, test-attribute, tracing and parity audits passed. Workflow YAML parses. Native protocol byte fixtures and the browser canary are updated to their new versions.
-- Remaining Stage 5 platform evidence and Stage 6 PR/CI/review completion will be recorded from the implementation PR.
+- Stage 5 platform evidence and Stage 6 PR/CI/review completion are recorded below from the implementation PR.
 
 - PR opened: https://github.com/SanderVocke/shoopdaloop/pull/925, targeting `feat/backend-replacement`. The target advanced to `64a4ad06` (click generation); it was merged without conflicts and the combined warning-denying build and full suite passed: **2,552 passed, four pre-existing skips**.
 - Final review corrected preparation for server periods larger than the engine render block: JACK retains the actual server buffer metadata and uses at least that period as control lead while rendering bounded sub-blocks. The regression test failed before the fix and passes afterward; strict JACK acceptance and the warning-denying workspace build passed again on the merged source.
-- Full retained workspace suite after that correction: **2,553 passed, four pre-existing skips**. PR CI initially passed strict JACK acceptance, all four driver feature combinations, coverage, bare-metal builds, CodeQL, and documentation; the platform/browser matrix is still being monitored.
+- Full retained workspace suite after that correction: **2,553 passed, four pre-existing skips**. PR CI initially passed strict JACK acceptance, all four driver feature combinations, coverage, bare-metal builds, CodeQL, and documentation; final platform/browser results follow below.
 - Codecov identified that the real-JACK acceptance job was outside the coverage collector (69.35% patch coverage). The coverage workflow now instruments the same strict production-path runner and merges its profiles with the retained suite, preserving the existing 80% patch gate.
 - The instrumented strict runner passed locally. Its LCOV report includes 96.4% of `jack_driver.rs`, 96.1% of the direct callback adapter, and 100% of the notification adapter. Workflow YAML and shell syntax checks passed. The merged-source browser build and hosted core workflow also passed again with zero xruns.
 - PR CI on `075f552c` passed strict JACK acceptance, the four driver configurations, all default Linux/macOS/Windows builds, and complete Windows-debug/Linux-release jobs. Real JACK provider acceptance is Linux JACK2 with the dummy backend; macOS/Windows JACK runtime providers are not claimed tested.
@@ -190,3 +190,5 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - The corrected coverage job passed on `7b76f30c`; Codecov patch and project checks passed, with **93.00% patch coverage** against an unchanged 80% threshold. The target commit has no uploaded baseline coverage report, so the project check does not provide a numerical comparison.
 - Review also identified that the engine's fixed startup command lead could be shorter than a subsequently enlarged JACK period. Scheduling now takes the maximum of configured lead and published JACK period. A portable engine regression verifies actual output timing across increasing and decreasing buffer sizes; it fails against the prior scheduling code and passes with the correction. Other driver scheduling policies are unchanged.
 - The dynamic-period correction passed the warning-denying workspace build, test-attribute audit, full suite (**2,554 passed, four pre-existing skips**), and strict real-JACK acceptance.
+- Source head `60262f2e` passed strict JACK acceptance, coverage, CodeQL and both Codecov checks (**93.04% patch coverage**). PR reviews and inline review threads are empty; the automated coverage feedback was addressed and its checks pass. Base remains `feat/backend-replacement` at `64a4ad06`; the PR is mergeable.
+- Final source validation: [Build and Test run 41645635124](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645635124) passed all 11 scheduled jobs: Linux, Windows and macOS debug/release; browser debug/release; strict native JACK acceptance; coverage; and bare-metal builds. The separate nightly-only job was intentionally skipped. All **20 commit checks** completed without a failure or pending check, including documentation, CodeQL and Codecov. The PR contains the implementation and completed plan/evidence; its latest head checks are available on [PR #925](https://github.com/SanderVocke/shoopdaloop/pull/925).

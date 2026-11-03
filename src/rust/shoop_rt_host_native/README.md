@@ -52,9 +52,9 @@ let report = host.stop();
 The host fills in the device's part of the `EngineDescription`: sample rate, host
 ports, Master's initial connections to the first outputs (which the engine
 reports as preferred host ports) and a control lead of at least one buffer, since
-the control endpoint runs concurrently with rendering. Opening other devices or
-another sample rate or buffer size is a lifecycle operation: stop, then start
-again.
+the control endpoint runs concurrently with rendering. Requesting another device,
+sample rate or buffer size requires stop/start. JACK server buffer-size changes
+are handled in place, as described below.
 
 Host ports, in the engine's numbering (audio inputs, audio outputs, MIDI inputs,
 MIDI outputs):
@@ -146,7 +146,8 @@ session management are not provided by this driver.
 | Thread | Work |
 | --- | --- |
 | Caller | `start`, `stop`, discovery; the client and control endpoint |
-| Driver: dummy thread or CPAL output callback | The render owner: one engine callback per block |
+| Driver: dummy thread, CPAL output or JACK process callback | Owns rendering and processes audio blocks |
+| JACK monitor | Publishes server shutdown from the control side |
 | CPAL input callback | Pushes captured frames into the duplex bridge |
 | midir input callbacks | Stamp messages with the host clock and push them into a MIDI input bridge |
 | MIDI output pump | Sends render output and MIDI recovery to midir ports |

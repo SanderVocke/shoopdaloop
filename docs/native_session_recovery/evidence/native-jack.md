@@ -92,5 +92,16 @@ outside this restoration.
   including save/load/resave and restored playback at 900×600 (Node v24.19.0,
   Chromium 154.0.8037.57).
 
-The implementation PR supplies the default Windows/macOS distribution builds,
-Linux strict JACK job and existing pinned browser matrix results.
+## Pull request validation
+
+[PR #925](https://github.com/SanderVocke/shoopdaloop/pull/925) targets
+`feat/backend-replacement`, including target commit `64a4ad06`.
+[Source CI at `60262f2e`](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645635124)
+passed all scheduled jobs: Linux, Windows and macOS debug/release; browser
+debug/release with Node/Wasm, Chromium and Firefox checks; strict native JACK;
+coverage; and bare-metal builds. Documentation, CodeQL and both Codecov checks
+also passed. Patch coverage is 93.04% against the unchanged 80% gate.
+
+Real JACK provider acceptance uses Linux JACK2 with its dummy backend. The
+Windows/macOS results establish distribution build and test compatibility;
+JACK runtime providers on those platforms were not exercised.
