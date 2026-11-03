@@ -1,8 +1,10 @@
 # Scoped runtime execution and shared loop callback plans
 
-Status: In progress. Core baseline and seven native bus/session canaries pass.
-The [execution contract](scoped-processing-contract.md) is specified before code
-changes. Browser canaries remain part of the delivery gates.
+Status: In progress. Scoped execution, shared callback media, both real-media
+canaries and guarded adversarial cases are implemented. Complete native,
+browser/worklet and delivery gates are underway. See the
+[API and reproduction guide](scoped-processing.md) and
+[execution contract](scoped-processing-contract.md).
 
 Branch: `feat/scoped-loop-processing`, created from `feat/backend-replacement`
 at `e68b15ac551ff1899554311ddfe2d5e4dda1d3ea` (merged
@@ -146,7 +148,7 @@ mark those parity rows complete through this foundation alone.
 - [x] Inspect the runtime executor/planner, loop resource lifecycle, master phase
       separation and merged bus work.
 - [x] Create the independent implementation branch from the updated backend base.
-- [ ] Recheck branch/base changes and repository guidance before implementation;
+- [x] Recheck branch/base changes and repository guidance before implementation;
       record baseline runtime/loop tests and current native/browser bus canaries.
 - [x] Write `scoped-processing-contract.md`: scopes/cadence, frame authority,
       dependency validation, plan/resource ownership, failure table and the exact
@@ -165,12 +167,12 @@ Depends on Stage 0.
 - [x] Add a deterministic full-block test processor with recorded frame origins,
       call sizes and nontrivial known audio/MIDI behavior. Keep it independent of
       Carla and the DSP-host stack.
-- [ ] Add the bus-shaped scope canary and capture the current global-subdivision
+- [x] Add the bus-shaped scope canary and capture the current global-subdivision
       failure before correcting execution.
 - [x] Define the real loop-media dry/FX/wet fixture and independent expected
       samples/events. Exercise internal wraps and a recording transition within
       a parent block; account for any declared DSP delay explicitly.
-- [ ] Cover multiple channels, shared timing, repeated callbacks, irregular host
+- [x] Cover multiple channels, shared timing, repeated callbacks, irregular host
       partitions and origins beyond 32 bits. Compare subdivision variants against
       the same absolute-frame oracle rather than deriving expectations from plans.
 
@@ -185,11 +187,11 @@ Depends on Stages 0-1; retains existing interleaved planner semantics.
       interfaces, block requirements and signal/planning dependency order.
 - [x] Implement local `plan -> process -> finish` execution and full-parent-block
       processing in one executor with one outer callback envelope.
-- [ ] Implement scoped action delivery and activation according to the contract;
+- [x] Implement scoped action delivery and activation according to the contract;
       preserve MIDI offsets, receipt frames, generation checks and owner lifetimes.
 - [x] Add a planner whose next decision depends on real processing observations.
       Verify that it stays interleaved and does not subdivide an external probe.
-- [ ] Test invalid grouping/cycles, incompatible block placement, scope-local
+- [x] Test invalid grouping/cycles, incompatible block placement, scope-local
       activation, stale candidates, capacity refusal and off-render retirement.
 
 Verification: the bus-shaped canary and existing runtime suites pass; heap guards
@@ -211,12 +213,12 @@ Depends on the Stage 0 ownership contract and Stage 2 execution support.
       until their consumers complete; avoid copying mutable planner authorities.
 - [x] Refactor playback/capture execution and observation collection so consumers
       can run on opposite sides of DSP using the same timing plan.
-- [ ] Preserve capture-start preflight, refusal, group atomicity, actual media
+- [x] Preserve capture-start preflight, refusal, group atomicity, actual media
       completion and MIDI initial-state handling. Never advance the old interval
       API using synthetic consumer observations.
 - [x] Make the real dry/FX/wet canary pass, including DSP-produced MIDI captured
       downstream and one advancement of each coordinated logical owner.
-- [ ] Update in-tree loop examples/adapters and document the separation between
+- [x] Update in-tree loop examples/adapters and document the separation between
       timing ownership and media execution regions.
 
 Verification: exact media/call-count assertions pass in both canaries; sync and
@@ -240,23 +242,33 @@ production/browser delivery checks remain outstanding.
 
 Depends on Stages 2-3.
 
-- [ ] Exercise capture exhaustion/refused transitions, plan exhaustion, delayed
+- [x] Exercise capture exhaustion/refused transitions, plan exhaustion, delayed
       consumer completion and post-publication faults. Assert truthful receipts,
       retained old snapshots and correct cleanup without replay or fake success.
-- [ ] Test MIDI overflow/recovery, capture-start checkpoints, consumer offsets and
+- [x] Test MIDI overflow/recovery, capture-start checkpoints, consumer offsets and
       events exactly on scope, loop, callback and graph-activation boundaries.
-- [ ] Verify commands targeting one scope do not fragment unrelated full-block
+- [x] Verify commands targeting one scope do not fragment unrelated full-block
       nodes. Test compatible child graph changes and documented cross-scope
       refusals without silently quantizing existing operations.
-- [ ] Run dense-boundary cases and record plan/scratch storage and work counts.
+- [x] Run dense-boundary cases and record plan/scratch storage and work counts.
       Confirm no per-scope budget renewal, allocation/deallocation or unbounded
       ready-work draining, including teardown and replacement paths.
-- [ ] Adapt production engine/host consumers as needed and run existing bus,
+- [x] Adapt production engine/host consumers as needed and run existing bus,
       persistence, recovery, program, topology and capture regressions. Keep
       application FX capabilities disabled.
 
 Verification: debug and release correctness/heap guards pass; admission and failure
 behavior match the frozen contract and #926's bus behavior remains intact.
+
+Baseline evidence: core suites and seven native bus/session canaries passed before
+implementation; #926 head `fe897c4d54ce5032e18d5c5655781ba539ea0b4b`
+has successful web debug/release checks. The backend base remains `e68b15ac` on
+recheck. New debug tests cover actual DSP/capture failures, missing observations,
+capture exhaustion with retained owning exports, MIDI overflow and reserved host
+recovery, synchronized owners, exact child activation and parent-interface refusal.
+Plan capacity refusal is tested during preparation; valid dense callbacks retain
+the full worst-case allowance. The example reports 8,704 plan bytes per owner for
+32 spans on the native evidence host and one DSP call for all 32 local boundaries.
 
 ### 5. End-to-end validation and delivery
 
@@ -276,7 +288,7 @@ Depends on Stages 0-4.
 - [ ] Add correctness-focused CI coverage for both canaries, including real media,
       MIDI and full-block invocation counts. Retain existing native/browser and
       bare-metal gates and coverage thresholds.
-- [ ] Document the resulting APIs, limits, event/activation matrix and migration
+- [x] Document the resulting APIs, limits, event/activation matrix and migration
       points for the DSP PR stack and later bus/Carla integration. Preserve prior
       benchmark/evidence archives and completed parity records.
 - [ ] Push this branch and open a separate PR against `feat/backend-replacement`.

@@ -202,7 +202,7 @@ struct Buffers {
     injected: Vec<MidiBuffer>,
 }
 impl Buffers {
-    fn new(config: PreparedConfig, ports: PortCounts) -> Result<Self, Error> {
+    fn new(config: PreparedConfig, ports: PortCounts, history: bool) -> Result<Self, Error> {
         let limits = config.limits();
         let midi = |count| {
             (0..count)
@@ -214,7 +214,7 @@ impl Buffers {
             output: vec![0.0; ports.audio_outputs * limits.max_frames].into_boxed_slice(),
             midi_input: midi(ports.midi_inputs)?,
             midi_output: midi(ports.midi_outputs)?,
-            midi_callback: midi(ports.midi_outputs)?,
+            midi_callback: midi(if history { ports.midi_outputs } else { 0 })?,
             injected: midi(ports.midi_inputs)?,
         };
         for sample in buffers.input.iter_mut().chain(&mut buffers.output) {
@@ -239,6 +239,7 @@ struct Slot<P> {
     ports: PortCounts,
     access: ConsumerAccess,
     cadence: Cadence,
+    history_required: bool,
     processor: Option<P>,
     buffers: Buffers,
 }
@@ -444,13 +445,15 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         );
         let limits = config.limits();
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
+        let history = nodes.iter().any(|node| node.cadence == Cadence::Callback);
         for node in nodes {
-            let buffers = Buffers::new(config, node.ports)?;
+            let buffers = Buffers::new(config, node.ports, history)?;
             slots[node.id.slot() as usize] = Some(Slot {
                 id: node.id,
                 ports: node.ports,
                 access: node.access,
                 cadence: node.cadence,
+                history_required: node.cadence == Cadence::Callback,
                 processor: Some(node.processor),
                 buffers,
             });
@@ -537,6 +540,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
 
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
+    }
+    pub fn prepare_frame_origin(&mut self, frame: Frame) -> Result<(), Error> {
+        self.clock.prepare_frame_origin(frame)
     }
     pub fn diagnostics(&self) -> Diagnostics {
         self.diagnostics
@@ -1153,6 +1159,25 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             };
             self.observations.clear();
             if start == 0 {
+                for slot in self.slots.iter_mut().flatten() {
+                    slot.history_required = slot.cadence == Cadence::Callback;
+                }
+                if let Some(plan) = &self.active {
+                    for edge in &plan.descriptor().connections {
+                        if edge
+                            .destination
+                            .node
+                            .is_some_and(|id| self.catalog.cadence(id) == Ok(Cadence::Callback))
+                        {
+                            if let Some(source) = edge.source.node {
+                                self.slots[source.slot() as usize]
+                                    .as_mut()
+                                    .ok_or(Error::InvalidId)?
+                                    .history_required = true;
+                            }
+                        }
+                    }
+                }
                 self.run_graph_range(audio, midi, 0, audio.frames, RunPhase::Prefix)?;
             }
             let end =
@@ -1271,6 +1296,25 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 }
                 Err(_) => None,
             };
+            let spans = decision.map_or(&[][..], |view| self.planner.spans(view.slot));
+            if self.mode == PlanningMode::Callback && !spans.is_empty() {
+                if spans.len() > stride {
+                    return Err(Error::Capacity);
+                }
+                let mut expected = interval.start;
+                for span in spans {
+                    if span.interval.start != expected
+                        || span.interval.end <= expected
+                        || span.interval.end > interval.end
+                    {
+                        return Err(Error::InvalidFrame);
+                    }
+                    expected = span.interval.end;
+                }
+                if expected != interval.end {
+                    return Err(Error::Incomplete);
+                }
+            }
             let mut block = ProcessBlock {
                 graph_epoch: self.epoch,
                 frame,
@@ -1280,7 +1324,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 midi_outputs: &mut buffers.midi_output,
                 resources: self.resources.io(),
                 decision,
-                spans: decision.map_or(&[], |view| self.planner.spans(view.slot)),
+                spans,
                 observations: self
                     .observations
                     .writer(step.node, slot.access.observations),
@@ -1306,15 +1350,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 }
             }
             record_midi_overflow(result, &mut self.diagnostics)?;
-            let accumulate = cadence == Cadence::Callback
-                || plan.descriptor().connections.iter().any(|edge| {
-                    edge.source.node == Some(step.node)
-                        && edge
-                            .destination
-                            .node
-                            .is_some_and(|id| self.catalog.cadence(id) == Ok(Cadence::Callback))
-                });
-            if accumulate {
+            if slot.history_required {
                 for (output, parent) in buffers.midi_output.iter().zip(&mut buffers.midi_callback) {
                     record_midi_overflow(
                         parent.merge_window(output, 0, frames, start, audio.frames),

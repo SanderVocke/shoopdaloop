@@ -21,6 +21,15 @@ impl RenderRuntime {
         self.next_frame
     }
 
+    /// Set an absolute device origin before the first nonempty callback.
+    pub fn prepare_frame_origin(&mut self, frame: Frame) -> Result<(), Error> {
+        if self.next_frame != Frame(0) {
+            return Err(Error::InvalidState);
+        }
+        self.next_frame = frame;
+        Ok(())
+    }
+
     pub fn config(&self) -> PreparedConfig {
         self.config
     }

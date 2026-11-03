@@ -77,6 +77,7 @@ struct Capture {
 struct Row {
     binding: Binding,
     group: CaptureGroupId,
+    resources: [Option<rt_runtime::ResourceId>; 2],
     capture: Option<Capture>,
     revision: u64,
     frozen: [Option<Snapshot>; 2],
@@ -156,6 +157,7 @@ impl CallbackPlanner {
                 .iter()
                 .any(|row: &Row| row.binding.target == binding.target)
                 || binding.channels == 0
+                || binding.channels > config.limits().max_ports
                 || !binding.gain.is_finite()
                 || binding.playback == binding.capture
             {
@@ -222,6 +224,10 @@ impl CallbackPlanner {
             rows.push(Row {
                 binding,
                 group,
+                resources: [
+                    members.first().map(|member| member.resource),
+                    members.get(1).map(|member| member.resource),
+                ],
                 capture: None,
                 revision: 0,
                 frozen: [None; 2],
@@ -241,6 +247,14 @@ impl CallbackPlanner {
                 || ledger.playback(target)?.is_some()
             {
                 return Err(Error::InvalidShape.into());
+            }
+            if let Some(source) = input.midi {
+                let mut cursor = resources.render_io().midi_seek(source.index, 0)?.cursor;
+                while let Some(event) = resources.render_io().midi_next(&mut cursor)? {
+                    if event.byte_len() > row.binding.packet_bytes {
+                        return Err(Error::Capacity.into());
+                    }
+                }
             }
             let id = ledger
                 .adopt(&mut resources.io(), input)
@@ -291,6 +305,9 @@ impl CallbackPlanner {
     pub fn frame(&self) -> Frame {
         self.resolver.frame()
     }
+    pub fn prepare_frame_origin(&mut self, frame: Frame) -> Result<(), crate::Error> {
+        self.resolver.prepare_frame_origin(frame)
+    }
     pub fn state(&self, target: LoopId) -> Result<State, crate::Error> {
         self.resolver.state(target)
     }
@@ -309,15 +326,12 @@ impl CallbackPlanner {
             .map_err(|_| Error::InvalidId)
     }
     fn node_slot(&self, node: NodeId) -> Option<(usize, bool)> {
-        self.rows.iter().enumerate().find_map(|(slot, row)| {
-            if row.binding.playback == node {
-                Some((slot, false))
-            } else if row.binding.capture == node {
-                Some((slot, true))
-            } else {
-                None
-            }
-        })
+        let index = self
+            .bindings
+            .binary_search_by_key(&node, |binding| binding.consumer)
+            .ok()?;
+        let slot = self.bindings[index].decision_slot;
+        Some((slot, self.rows[slot].binding.capture == node))
     }
     fn range(&self, slot: usize) -> core::ops::Range<usize> {
         slot * self.span_limit..slot * self.span_limit + self.lengths[slot]
@@ -377,11 +391,16 @@ impl CallbackPlanner {
             self.abandon(slot, &mut resources.planner_io(Frame(0), at))?;
         }
         self.ledger.release_all(&mut resources.io())?;
-        for row in &self.rows {
+        for row in &mut self.rows {
             resources
                 .planner_io(at, at)
                 .capture()
                 .release_group(row.group)?;
+            for resource in &mut row.resources {
+                if let Some(resource) = resource.take() {
+                    resources.remove(resource)?;
+                }
+            }
         }
         Ok(())
     }
@@ -558,8 +577,8 @@ impl Planner for CallbackPlanner {
                     .resolver
                     .decisions()
                     .map_err(runtime_error)?
-                    .iter()
-                    .find(|decision| decision.state.id == row.binding.target)
+                    .get(slot)
+                    .filter(|decision| decision.state.id == row.binding.target)
                     .ok_or(Error::InvalidId)?;
                 let source = self.ledger.view(
                     self.ledger
@@ -621,6 +640,25 @@ impl Planner for CallbackPlanner {
         let mut capture = self.rows[slot].capture.ok_or(Error::InvalidState)?;
         let result = (|| {
             let mut io = c.resources.subrange(range.start, c.interval.end)?;
+            if binding.midi {
+                let input = c.midi_inputs.first().ok_or(Error::InvalidShape)?;
+                if input.is_recovery() {
+                    return Err(Error::Full);
+                }
+                let mut events = 0usize;
+                let mut bytes = 0usize;
+                for event in 0..input.len() {
+                    let (offset, packet) = input.get(event).ok_or(Error::InvalidEvent)?;
+                    let frame = c.interval.start.checked_add(offset as usize)?;
+                    if range.start <= frame && frame < range.end {
+                        events = events.checked_add(1).ok_or(Error::Capacity)?;
+                        bytes = bytes.checked_add(packet.len()).ok_or(Error::Capacity)?;
+                    }
+                }
+                if events > binding.midi_events || bytes > binding.midi_bytes {
+                    return Err(Error::Capacity);
+                }
+            }
             if capture.take.is_none() {
                 if binding.midi {
                     let input = c.midi_inputs.first().ok_or(Error::InvalidShape)?;
