@@ -4697,6 +4697,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_app_protocol",
  "shoop_scripting",
+ "shoop_session",
  "shoop_transport",
  "shoop_wasm_test_support",
  "tracing",

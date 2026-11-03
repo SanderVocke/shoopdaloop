@@ -619,6 +619,25 @@ impl Runtime {
                 view.capabilities = view.capabilities.with(capability, false);
             }
         }
+        view.capabilities = view.capabilities.with(
+            BackendCapability::ClickTrackInsertion,
+            self.persistence_io.is_some()
+                && view
+                    .capabilities
+                    .supports(BackendCapability::LoopContentImport),
+        );
+        view.click_track = ClickTrackState {
+            sounds: shoop_session::click_sound_ids()
+                .map(|id| ClickSoundDescriptor {
+                    id: id.into(),
+                    name: id.into(),
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            max_click_count: shoop_session::MAX_CLICK_TRACK_CLICKS,
+            max_output_frames: shoop_session::MAX_CLICK_TRACK_FRAMES,
+            ..Default::default()
+        };
         view.revision = self.snapshot.revision.saturating_add(1);
         view.notifications = self
             .notifications
