@@ -1,0 +1,28 @@
+[package]
+name = "shoop_dsp_link_demo"
+version.workspace = true
+edition = "2021"
+
+[features]
+default = []
+carla = ["shoop_dsp_host/carla"]
+
+[dependencies]
+rt_runtime = { path = "../rt_runtime" }
+shoop_dsp = { path = "../shoop_dsp" }
+shoop_dsp_link = { path = "../shoop_dsp_link" }
+shoop_dsp_link_node = { path = "../shoop_dsp_link_node" }
+shoop_dsp_link_native = { path = "../shoop_dsp_link_native" }
+shoop_dsp_host = { path = "../shoop_dsp_host" }
+shoop_remote_dsp = { path = "../shoop_remote_dsp" }
+anyhow = { workspace = true, features = ["std"] }
+clap = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+shoop_transport_socket = { path = "../shoop_transport_socket" }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

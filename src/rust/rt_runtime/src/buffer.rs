@@ -241,6 +241,15 @@ impl MidiBuffer {
     pub fn is_recovery(&self) -> bool {
         self.recovering
     }
+    /// Replace ordinary events with the prepared channel reset, even when the
+    /// ordinary event arena is full. Further ordinary writes wait for clear().
+    pub fn request_reset(&mut self, offset: u32, frames: usize) -> Result<(), Error> {
+        if offset as usize >= frames {
+            return Err(Error::InvalidEvent);
+        }
+        self.force_reset(offset);
+        Ok(())
+    }
     pub(crate) fn force_reset(&mut self, offset: u32) {
         for index in 0..crate::midi::ResetState::EVENTS {
             let start = index * 3;

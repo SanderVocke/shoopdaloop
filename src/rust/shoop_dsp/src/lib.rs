@@ -7,6 +7,7 @@ use alloc::{vec, vec::Vec};
 pub const MAX_CHANNELS: usize = 16;
 pub const MAX_FRAMES: usize = 8192;
 pub const MAX_MIDI_BYTES: usize = 64;
+pub const MAX_MIDI_EVENTS: usize = 65536;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -111,11 +112,18 @@ pub struct MidiBuffer {
     capacity: usize,
 }
 impl MidiBuffer {
+    /// Construct prepared storage. Use try_new for an externally selected capacity.
     pub fn new(capacity: usize) -> Self {
-        Self {
+        Self::try_new(capacity).expect("prepared MIDI capacity exceeds its bound")
+    }
+    pub fn try_new(capacity: usize) -> Result<Self, Error> {
+        if capacity > MAX_MIDI_EVENTS {
+            return Err(Error::Capacity);
+        }
+        Ok(Self {
             events: Vec::with_capacity(capacity),
             capacity,
-        }
+        })
     }
     pub fn clear(&mut self) {
         self.events.clear();
@@ -256,6 +264,21 @@ impl Processor for DelayCopy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[shoop_wasm_test_support::shoop_test]
+    fn checked_midi_storage_refuses_excessive_sizes_before_allocation() {
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            assert!(matches!(
+                MidiBuffer::try_new(usize::MAX),
+                Err(Error::Capacity)
+            ));
+        });
+        let mut buffer = MidiBuffer::try_new(1).unwrap();
+        let event = MidiEvent::new(0, 0, &[0x90, 60, 100]).unwrap();
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            buffer.push(event).unwrap();
+            assert_eq!(buffer.push(event), Err(Error::Capacity));
+        });
+    }
     #[global_allocator]
     static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
         shoop_wasm_test_support::heap::TrackingAllocator;

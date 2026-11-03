@@ -1,0 +1,16 @@
+[package]
+name = "shoop_dsp_link_node"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+rtrb = { workspace = true }
+rt_runtime = { path = "../rt_runtime" }
+shoop_dsp_link = { path = "../shoop_dsp_link" }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+shoop_dsp = { path = "../shoop_dsp" }
+
+[lints]
+workspace = true

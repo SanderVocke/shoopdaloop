@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/network-dsp-host"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -59,7 +59,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops -p shoop_dsp -p shoop_remote_dsp --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p shoop_loops -p shoop_dsp -p shoop_remote_dsp -p shoop_dsp_link -p shoop_dsp_link_node --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -67,7 +67,7 @@ jobs:
         run: |
           for target in armv7a-none-eabi aarch64-unknown-none; do
             cargo build --locked --lib --no-default-features \
-              -p shoop_rt_engine -p shoop_app -p shoop_app_connection -p shoop_rt_backend -p shoop_script_resources \
+              -p shoop_rt_engine -p shoop_app -p shoop_app_connection -p shoop_rt_backend -p shoop_script_resources -p shoop_dsp_link -p shoop_dsp_link_node \
               --target "$target"
           done
 
@@ -122,7 +122,7 @@ jobs:
         run: |
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
           cargo llvm-cov nextest --locked --workspace \
-            --features shoop_engine/app_backend,shoop_backend/native-fx,shoop_dsp_host/carla --profile ci \
+            --features shoop_engine/app_backend,shoop_backend/native-fx,shoop_dsp_host/carla,shoop_dsp_link_demo/carla --profile ci \
             --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
@@ -558,11 +558,14 @@ jobs:
           RUSTFLAGS: -D warnings
         shell: bash
         run: |
-          cargo test --locked -p shoop_dsp -p shoop_remote_dsp -p shoop_dsp_host -p shoop_carla_native --features shoop_dsp_host/carla ${{ matrix.cargo_args }}
+          cargo test --locked -p shoop_dsp -p shoop_remote_dsp -p shoop_dsp_host -p shoop_carla_native -p shoop_dsp_link -p shoop_dsp_link_node -p shoop_dsp_link_demo --features shoop_dsp_host/carla,shoop_dsp_link_demo/carla ${{ matrix.cargo_args }}
           cargo build --locked -p shoop_dsp_host --no-default-features ${{ matrix.cargo_args }}
           binary="target/${{ matrix.profile }}/shoop_dsp_host"
           if [ "${{ runner.os }}" = "Windows" ]; then binary="${binary}.exe"; fi
           python3 scripts/sweep_remote_dsp.py --binary "$binary" --profile smoke --output "${{ runner.temp }}/network-dsp-smoke"
+          graph_binary="target/${{ matrix.profile }}/shoop_dsp_link_demo"
+          if [ "${{ runner.os }}" = "Windows" ]; then graph_binary="${graph_binary}.exe"; fi
+          python3 scripts/smoke_dsp_link.py --binary "$graph_binary" --output "${{ runner.temp }}/dsp-link-smoke"
 
       - name: Test independent runtime, loop library and native hosts
         if: matrix.target != 'web'

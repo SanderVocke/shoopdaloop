@@ -1,0 +1,18 @@
+[package]
+name = "shoop_dsp_link_native"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+shoop_dsp_link = { path = "../shoop_dsp_link" }
+shoop_remote_dsp = { path = "../shoop_remote_dsp", features = ["serde"] }
+shoop_transport_socket = { path = "../shoop_transport_socket" }
+anyhow = { workspace = true, features = ["std"] }
+clap = { workspace = true }
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true }
+getrandom = "0.4"
+socket2 = "0.6"
+
+[lints]
+workspace = true

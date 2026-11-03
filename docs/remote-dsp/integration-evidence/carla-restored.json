@@ -1,0 +1,62 @@
+{
+  "algorithm_latency_frames": null,
+  "backend": "udp",
+  "callback_frames": 64,
+  "channels": 2,
+  "correctness_errors": 0,
+  "dsp_frames": 64,
+  "fallback_samples": 0,
+  "link_latency_frames": 1248,
+  "midi_output_events": 144,
+  "mismatch_examples": [],
+  "mode": "stepped",
+  "node": {
+    "concealed": 0,
+    "fallback": 0,
+    "input_dropped": 0,
+    "midi_dropped": 0,
+    "midi_resets": 0,
+    "observation_dropped": 0,
+    "processed": 434,
+    "received": 508,
+    "rejected": 0,
+    "retired": false,
+    "submitted": 512
+  },
+  "quantum": 16,
+  "sample_rate": 48000,
+  "service": {
+    "adapter": {
+      "invalid": 0,
+      "last_received_frame": 8192,
+      "output_dropped": 0,
+      "received": 512,
+      "send_dropped": 0,
+      "sent": 512
+    },
+    "oracle_complete": true,
+    "server": {
+      "blocks": 128,
+      "concealed_packets": 0,
+      "diagnostics_truncated": false,
+      "duplicates": 0,
+      "fault": null,
+      "future": 0,
+      "invalid": 0,
+      "midi_resets": 0,
+      "process_ns": 1503519,
+      "received": 512,
+      "retired": false,
+      "send_dropped": 0,
+      "sent": 512,
+      "stale": 0
+    }
+  },
+  "source_frames": 8192,
+  "timing_claim": "simulated-time correctness; service waits occur outside render",
+  "total_known_latency_frames": null,
+  "unverified_samples": 0,
+  "verified_samples": 5696,
+  "warmup_frames": 4096,
+  "warmup_samples": 8192
+}

@@ -367,3 +367,14 @@ src/rust/shoop_dsp_host/src/server.rs,mixed_realtime_and_control,excluded,Standa
 src/rust/shoop_dsp_host/src/client.rs,control,excluded,Measurement requester exports timings histograms and sample correctness.
 src/rust/shoop_dsp_host/src/polling.rs,mixed_realtime_and_control,excluded,Polling selection and bounded service-gap counters are exported in measurements.
 src/rust/shoop_transport_socket/src/private.rs,control,excluded,Protected filesystem and platform ACL adapter.
+src/rust/shoop_dsp_link/src/lib.rs,types,excluded,Portable logical block shape and lease contracts; no runtime side effects.
+src/rust/shoop_dsp_link/src/memory.rs,realtime,excluded,Prepared ownership queues publish availability without render events.
+src/rust/shoop_dsp_link/src/returns.rs,realtime,excluded,Frame consumption is bounded and verified with deterministic outcomes.
+src/rust/shoop_dsp_link/src/service.rs,mixed_realtime_and_control,excluded,Shared DSP execution exposes bounded service counters; native Carla retains its process spans.
+src/rust/shoop_dsp_link_node/src/lib.rs,realtime,excluded,Graph node exports bounded delivery and diagnostic observations without render allocation.
+src/rust/shoop_dsp_link_native/src/lib.rs,control,excluded,Native session owner preserves existing bounded authentication and control operations.
+src/rust/shoop_dsp_link_native/src/control.rs,control,excluded,Standalone DSP control contract and framing outside rendering.
+src/rust/shoop_dsp_link_native/src/polling.rs,mixed_realtime_and_control,excluded,Native polling policy and explicit bounded service-gap counters.
+src/rust/shoop_dsp_link_native/src/udp.rs,control,excluded,Off-render UDP worker publishes link availability and explicit adapter statistics.
+src/rust/shoop_dsp_host/src/lib.rs,control,excluded,Library composition exposes the standalone native server without graph dependencies.
+src/rust/shoop_dsp_link_demo/src/main.rs,control,excluded,Standalone graph demonstration exports explicit sample and delivery evidence.
