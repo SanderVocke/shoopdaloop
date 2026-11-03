@@ -47,6 +47,9 @@ This runner creates an isolated named JACK server, removes
 captures logs in `target/native-jack`. Failure to provide JACK is a test failure.
 The `Native JACK audio and MIDI acceptance` CI job runs the same strict runner
 and checks JACK-only, CPAL-only, combined, and driver-free native configurations.
+The Linux coverage job also runs it with LLVM instrumentation and merges those
+profiles with the retained workspace suite, so real JACK paths contribute to
+the existing coverage gates.
 
 The general workspace suite can separately use its established missing-backend
 policy for unrelated hardware; it does not replace strict JACK acceptance.
