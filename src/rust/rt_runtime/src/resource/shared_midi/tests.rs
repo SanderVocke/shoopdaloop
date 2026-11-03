@@ -28,6 +28,8 @@ fn setup(chunks: usize, horizon: u64) -> (ResourceStore, MidiStore, MidiBuffer) 
             max_events: 32,
             max_bytes: 256,
             max_packet: 48,
+            transactions: 2,
+            edit_steps: 3,
         },
         Frame(0),
         &MidiState::default(),
@@ -325,7 +327,7 @@ fn prepared_memory_reports_state_separately_from_packets() {
     let capacity = midi.capacity();
     assert_eq!(
         capacity.state_bytes,
-        (capacity.chunks + 9) * size_of::<MidiState>()
+        (capacity.chunks + 15) * size_of::<MidiState>()
     );
     assert!(capacity.metadata_bytes > capacity.state_bytes);
     #[cfg(not(target_arch = "wasm32"))]
@@ -336,4 +338,219 @@ fn prepared_memory_reports_state_separately_from_packets() {
             size_of::<MidiState>()
         );
     }
+}
+
+#[shoop_test]
+fn private_splice_rebuilds_a_long_suffix_in_reserved_bounded_steps() {
+    let (mut store, mut midi, mut input) = setup(16, 256);
+    let packets: Vec<(u64, [u8; 3])> = (0..60)
+        .map(|i| {
+            (
+                i / 2,
+                match i {
+                    0 => [0x90, 60, 80],
+                    2 => [0xb0, 1, 10],
+                    16 => [0x80, 60, 0],
+                    _ => [0xb1, 2, i as u8],
+                },
+            )
+        })
+        .collect();
+    let originals: Vec<(u64, &[u8])> = packets.iter().map(|(at, data)| (*at, &data[..])).collect();
+    let inserted = [0xb0, 1, 99];
+    let mut expected: Vec<(u64, &[u8])> = originals
+        .iter()
+        .copied()
+        .filter(|(at, _)| !((1..10).contains(at)))
+        .collect();
+    expected.push((1, &inserted));
+    expected.sort_by_key(|e| e.0);
+    assert_no_heap(|| {
+        for start in [0, 16] {
+            input.clear();
+            for &(at, data) in originals
+                .iter()
+                .filter(|(at, _)| *at >= start && *at < start + 16)
+            {
+                input.push((at - start) as u32, 16, data).unwrap();
+            }
+            midi.append(&mut store.render_io(), Frame(start), 16, &input)
+                .unwrap();
+        }
+        let take = midi
+            .grab(&mut store.render_io(), Frame(0)..Frame(32))
+            .unwrap();
+        let sibling = midi.fork(take).unwrap();
+        let export = midi.export(take).unwrap();
+        let mut stale = midi.cursor(midi.take_index(take).unwrap()).unwrap();
+        input.clear();
+        input.push(0, 9, &inserted).unwrap();
+        let edit = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                1,
+                9,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        input.clear();
+        assert_eq!(
+            midi.commit_edit(&mut store.render_io(), edit),
+            Err(Error::Busy)
+        );
+        assert_eq!(
+            midi.progress_edit(&mut store.render_io(), edit, 0),
+            Ok(EditStatus::Building)
+        );
+        let mut steps = 0;
+        while midi.edit_status(edit) == Ok(EditStatus::Building) {
+            store.begin_callback();
+            store.charge_external(16, 1).unwrap();
+            let before = midi.work();
+            let pages = store.usage().free_pages;
+            midi.progress_edit(&mut store.render_io(), edit, 3).unwrap();
+            assert_eq!(store.usage().free_pages, pages);
+            let work = midi.work();
+            assert!(work.records - before.records <= 3);
+            assert!(work.index_steps - before.index_steps <= 2 * (midi.depth + 1));
+            check(
+                &mut store,
+                &mut midi,
+                take,
+                32,
+                &originals,
+                &MidiState::default(),
+            );
+            input.clear();
+            input.push(0, 1, &[0xb2, 7, steps as u8]).unwrap();
+            midi.append(&mut store.render_io(), Frame(32 + steps), 1, &input)
+                .unwrap();
+            steps += 1;
+            assert!(steps < 100);
+        }
+        assert!(steps > 10);
+        let pages = store.usage().free_pages;
+        assert_eq!(
+            midi.commit_edit(&mut store.render_io(), edit),
+            Ok(Revision(1))
+        );
+        assert_eq!(store.usage().free_pages, pages);
+        assert_eq!(midi.next(&mut stale), Err(Error::StaleRevision));
+        check(
+            &mut store,
+            &mut midi,
+            take,
+            32,
+            &expected,
+            &MidiState::default(),
+        );
+        check(
+            &mut store,
+            &mut midi,
+            sibling,
+            32,
+            &originals,
+            &MidiState::default(),
+        );
+        let position = midi
+            .seek(&mut store.render_io(), midi.take_index(take).unwrap(), 31)
+            .unwrap();
+        assert_eq!(position.state.channel(0).unwrap().controller(1), Some(99));
+        assert!(position.state.channel(0).unwrap().note(60).unwrap().held());
+        midi.release_take(take).unwrap();
+        midi.release_take(sibling).unwrap();
+        midi.release_export(export).unwrap();
+        cleanup(&mut store, &mut midi);
+    });
+}
+
+#[shoop_test]
+fn cancellation_and_stale_ready_commit_preserve_the_complete_old_revision() {
+    let (mut store, mut midi, mut input) = setup(4, 64);
+    assert_no_heap(|| {
+        input.push(0, 8, &[0x90, 60, 80]).unwrap();
+        input.push(4, 8, &[0x80, 60, 0]).unwrap();
+        midi.append(&mut store.render_io(), Frame(0), 8, &input)
+            .unwrap();
+        let take = midi
+            .grab(&mut store.render_io(), Frame(0)..Frame(8))
+            .unwrap();
+        input.clear();
+        input.push(0, 1, &[0xb0, 1, 20]).unwrap();
+        let a = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                2,
+                1,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        let b = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                3,
+                1,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                3,
+                1,
+                &input,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        for edit in [a, b] {
+            while midi.progress_edit(&mut store.render_io(), edit, 1) == Ok(EditStatus::Building) {}
+        }
+        midi.commit_edit(&mut store.render_io(), a).unwrap();
+        assert_eq!(
+            midi.commit_edit(&mut store.render_io(), b),
+            Err(Error::StaleRevision)
+        );
+        midi.cancel_edit(b).unwrap();
+        assert_eq!(midi.edit_status(b), Err(Error::InvalidId));
+        drain(&mut store, &mut midi);
+        let c = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(1),
+                0,
+                1,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        midi.progress_edit(&mut store.render_io(), c, 1).unwrap();
+        midi.cancel_edit(c).unwrap();
+        check(
+            &mut store,
+            &mut midi,
+            take,
+            8,
+            &[
+                (0, &[0x90, 60, 80]),
+                (2, &[0xb0, 1, 20]),
+                (4, &[0x80, 60, 0]),
+            ],
+            &MidiState::default(),
+        );
+        midi.release_take(take).unwrap();
+        cleanup(&mut store, &mut midi);
+    });
 }

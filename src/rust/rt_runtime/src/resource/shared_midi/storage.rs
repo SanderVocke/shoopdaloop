@@ -178,6 +178,19 @@ impl MidiStore {
                     self.free_blocks.push(index);
                 }
             }
+            Garbage::Edit(index, event) => {
+                store.charge_work(class, 0, 1)?;
+                let edit = self.edits[index].value.expect("retiring edit");
+                if event < edit.input_count {
+                    let block = self.edit_records[index * self.config.max_events + event].block;
+                    let b = self.blocks[block].as_mut().expect("owned edit packet");
+                    b.references -= 1;
+                    if b.references == 0 {
+                        self.enqueue(Garbage::Block(block, 0), job.owner, immediate);
+                    }
+                    self.enqueue(Garbage::Edit(index, event + 1), job.owner, immediate);
+                }
+            }
         }
         self.pending[job.owner] -= 1;
         self.work.add(0, 0, 0, 1);

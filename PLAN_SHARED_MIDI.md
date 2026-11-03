@@ -241,12 +241,12 @@ metadata reporting also includes packet leases and reclamation stacks.
 
 ### M3 — Prove edit-index maintenance and publication readiness
 
-- [ ] Implement the smallest private splice/index-builder transaction using
+- [x] Implement the smallest private splice/index-builder transaction using
   fixed scratch, checkpoint credits and an explicit per-step work quantum.
-- [ ] Prove that changing an early event invalidates the appropriate later state,
+- [x] Prove that changing an early event invalidates the appropriate later state,
   that retained payload ranges stay shared, and that affected checkpoints are
   rebuilt without a callback-wide suffix scan.
-- [ ] Define and test admission, progress, cancellation, readiness, stale-revision
+- [x] Define and test admission, progress, cancellation, readiness, stale-revision
   rejection and atomic commit. Old snapshots and committed seeks remain usable
   throughout; no half-indexed revision can escape.
 
@@ -257,6 +257,18 @@ are exhausted, and exact post-commit seek state. Run capture/playback concurrent
 with preparation. If the approach fails this gate, revise the representation or
 index algorithm and document the evidence; do not weaken acceptance or substitute
 state-reset semantics. Commit the proven maintenance contract before M4.
+
+M3 gate passed: guarded long-suffix replacement rebuilds with at most three
+consumed records per step while ordinary byte/validation credits are exhausted.
+Original seeks/readers and continuing nonempty history capture remain usable.
+Preparation changes no committed take; progress allocates no packet pages; ready
+commit changes the complete root/state/index/revision together. A changed early
+controller persists through the suffix, and deleting a note-off leaves the note
+held. Cancellation and competing ready transactions exercise immediate handle
+invalidation and stale-revision rejection. Source pins and staged revisions have
+separate conservative owner credits; transaction credits return after bounded
+retirement. The prototype already handles circular interval ordering; M4 adds the
+independent wrap/repeated-pass admission oracle before integrating it further.
 
 ### M4 — Independently editable takes and wrapping replacement
 

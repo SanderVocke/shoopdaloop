@@ -8,9 +8,11 @@ use crate::{buffer::MidiBuffer, midi::Message, midi_state::MidiState, Error, Fra
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
 
+mod edit;
 mod history;
 mod read;
 mod storage;
+pub use edit::{EditId, EditStatus};
 pub use read::{Cursor, Event, Position};
 
 pub const EVENTS_PER_CHUNK: usize = 8;
@@ -24,6 +26,8 @@ pub struct Config {
     pub max_events: usize,
     pub max_bytes: usize,
     pub max_packet: usize,
+    pub transactions: usize,
+    pub edit_steps: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -146,6 +150,7 @@ enum Garbage {
     Node(usize),
     Chunk(usize, usize),
     Block(usize, usize),
+    Edit(usize, usize),
 }
 #[derive(Clone, Copy)]
 struct Job {
@@ -189,6 +194,10 @@ pub struct MidiStore {
     pending: Box<[usize]>,
     closed: bool,
     work: Work,
+    edits: Vec<Slot<edit::Edit>>,
+    free_edits: Vec<usize>,
+    edit_records: Box<[Record]>,
+    edit_states: Box<[MidiState]>,
 }
 
 fn touched<T: Copy>(count: usize, value: T) -> Vec<T> {
@@ -229,6 +238,8 @@ impl MidiStore {
             || config.chunks == 0
             || !config.chunks.is_power_of_two()
             || config.views == 0
+            || config.transactions == 0
+            || config.edit_steps == 0
             || config.max_events == 0
             || config.max_events > store.config.limits().midi_events_per_port
             || config.max_bytes > store.config.limits().midi_bytes_per_port
@@ -258,13 +269,15 @@ impl MidiStore {
         let depth = config.chunks.trailing_zeros() as usize;
         let chunks = config
             .views
-            .checked_add(4)
+            .checked_add(config.transactions)
+            .and_then(|n| n.checked_add(4))
             .and_then(|n| n.checked_mul(config.chunks))
             .and_then(|n| n.checked_add(config.max_events + 1))
             .ok_or(Error::Capacity)?;
         let nodes = config
             .views
-            .checked_add(4)
+            .checked_add(config.transactions)
+            .and_then(|n| n.checked_add(4))
             .and_then(|n| n.checked_mul(config.chunks.checked_mul(2)?.checked_sub(1)?))
             .and_then(|n| n.checked_add(config.max_events.checked_add(1)?.checked_mul(depth + 1)?))
             .ok_or(Error::Capacity)?;
@@ -278,6 +291,7 @@ impl MidiStore {
             .ok_or(Error::Capacity)?;
         let state_bytes = chunks
             .checked_add(config.views)
+            .and_then(|n| n.checked_add(config.transactions.checked_mul(3)?))
             .and_then(|n| n.checked_add(1))
             .and_then(|n| n.checked_mul(size_of::<MidiState>()))
             .ok_or(Error::Capacity)?;
@@ -304,6 +318,21 @@ impl MidiStore {
             .and_then(|n| n.checked_add(garbage.checked_mul(2 * size_of::<Job>())?))
             .and_then(|n| n.checked_add(state_bytes))
             .and_then(|n| n.checked_add(page_bytes))
+            .and_then(|n| {
+                n.checked_add(
+                    config
+                        .transactions
+                        .checked_mul(size_of::<Slot<edit::Edit>>() + 2 * size_of::<usize>())?,
+                )
+            })
+            .and_then(|n| {
+                n.checked_add(
+                    config
+                        .transactions
+                        .checked_mul(config.max_events)?
+                        .checked_mul(size_of::<Record>())?,
+                )
+            })
             .and_then(|n| n.checked_add(store.pages.len().checked_mul(size_of::<usize>())?))
             .and_then(|n| {
                 n.checked_add(
@@ -318,6 +347,11 @@ impl MidiStore {
         let mut chunk_states = vec![MidiState::default(); chunks].into_boxed_slice();
         let mut states = vec![MidiState::default(); config.views].into_boxed_slice();
         let mut scratch = vec![0; page_bytes].into_boxed_slice();
+        let mut edit_states =
+            vec![MidiState::default(); config.transactions * 3].into_boxed_slice();
+        for state in &mut edit_states {
+            *core::hint::black_box(state) = MidiState::default();
+        }
         for state in chunk_states.iter_mut().chain(states.iter_mut()) {
             *core::hint::black_box(state) = MidiState::default();
         }
@@ -375,9 +409,20 @@ impl MidiStore {
             records: [Record::default(); EVENTS_PER_CHUNK],
             retired: jobs(garbage),
             immediate: jobs(garbage),
-            pending: vec![0; config.views + 2].into_boxed_slice(),
+            pending: touched(config.views + config.transactions + 2, 0).into_boxed_slice(),
             closed: false,
             work: Work::default(),
+            edits: touched(
+                config.transactions,
+                Slot {
+                    generation: 1,
+                    value: None,
+                },
+            ),
+            free_edits: (0..config.transactions).rev().collect(),
+            edit_records: touched(config.transactions * config.max_events, Record::default())
+                .into_boxed_slice(),
+            edit_states,
         })
     }
     fn check(&self, store: &ResourceStore) -> Result<(), Error> {
@@ -499,6 +544,13 @@ impl MidiStore {
         if owner < self.views.len() && self.pending[owner] == 0 {
             self.debt -= 1;
             release(&mut self.views, &mut self.free_views, owner);
+        } else if owner >= self.views.len() + 2 && self.pending[owner] == 0 {
+            self.debt -= 1;
+            release(
+                &mut self.edits,
+                &mut self.free_edits,
+                owner - self.views.len() - 2,
+            );
         }
     }
     pub fn begin_cleanup(&mut self) -> Result<(), Error> {

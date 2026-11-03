@@ -366,3 +366,4 @@ src/rust/rt_runtime/src/resource/shared_midi/storage.rs,generic_realtime_library
 src/rust/rt_runtime/src/resource/shared_midi/history.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/read.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/tests.rs,test_support,excluded,Heap-guarded packet and state lifecycle fixtures; no production boundary.
+src/rust/rt_runtime/src/resource/shared_midi/edit.rs,generic_realtime_library,excluded,Prepared MIDI splice transactions and explicit bounded index progress; no host tracing dependency.
