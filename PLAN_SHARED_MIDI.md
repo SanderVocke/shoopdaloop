@@ -390,10 +390,12 @@ preparation and expose only prepared entries to maintenance, preserving fair
 rotation while avoiding the unused-slot multiplier. Validation follows CI per
 the user's instruction.
 
-Integration refresh: upstream advanced to `64a4ad0634de1664b1ff723b36c635cd243d819b`
-(click-track generation, PR #923). This branch merges that head, preserving the
-new codec-provider click metadata alongside shared-MIDI tests. Audio PR #909
-remains open at `2f0d1a88`; its required foundation remains an explicit dependency.
+Integration refresh: this branch merges upstream through
+`e68b15ac551ff1899554311ddfe2d5e4dda1d3ea` (output bus parity, PR #926), including
+click-track generation from PR #923. The codec fixtures use the bus collection
+and explicit display order while retaining both upstream bus round trips and
+the shared audio/MIDI persistence proofs. Audio PR #909 remains open at
+`2f0d1a88`; its required foundation remains an explicit dependency.
 
 - [x] Document public contracts, readiness/work bounds, measured memory, capacity
   tradeoffs and remaining P04/P05 gaps; keep this plan and parity evidence current.
@@ -438,8 +440,10 @@ M7 verification record: all required checks passed on implementation head
   base-report comparison warning is recorded; no code-review submissions or
   requested code changes arrived, and no reviewer approval is claimed.
 
-This completion commit changes only this execution record. The PR's checks
-validate its final head again; the implementation remains unmerged and retains
+The verification record above identifies the implementation tree it tested.
+The output-bus integration refresh is subsequently validated by the PR's final-head
+checks, with consolidated run links recorded in the PR description. The final
+head must pass before delivery. The implementation remains unmerged and retains
 its explicit audio-foundation dependency. Application P04/P05 flags stay open.
 
 ## Execution contract

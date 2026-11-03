@@ -4723,6 +4723,7 @@ mod tests {
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
         assert!(!runtime.audio_preview_available());

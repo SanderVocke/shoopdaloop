@@ -45,24 +45,36 @@ impl Service {
                 loop_id,
                 action,
             } => self.loop_action(track, loop_id, action),
-            Command::Bus { bus, action } => {
-                if bus != BusId::from_raw(1) {
-                    return Err(CommandError::invalid("unknown bus"));
+            Command::Bus { bus, action } => self.bus_action(bus, action),
+            Command::AddBus(spec) => {
+                if spec.fx.is_some() {
+                    return Err(CommandError::unsupported(BackendCapability::BusFx));
                 }
-                let control = match action {
-                    BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
-                    BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
-                    BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
-                    BusAction::Remove => {
-                        return Err(CommandError::invalid("the Master bus cannot be removed"))
-                    }
-                    BusAction::MoveBefore(_) => return Ok(Effect::None),
-                    _ => return Err(CommandError::unsupported(BackendCapability::BusFx)),
-                };
-                self.backend.set_bus_control(MASTER_BUS_ID, control)?;
-                Ok(Effect::None)
+                let request = BackendBusRequest {
+                    name: spec.name,
+                    channel_count: spec.channel_count,
+                    fx: None,
+                }
+                .normalized()?;
+                let limits = self.backend.bus_limits();
+                if self.buses.len() >= limits.buses as usize
+                    || request.channel_count > limits.channels
+                {
+                    return Err(CommandError::invalid("prepared bus capacity exceeded"));
+                }
+                self.next_bus
+                    .checked_add(1)
+                    .ok_or_else(|| CommandError::invalid("bus identity exhausted"))?;
+                self.next_channel
+                    .checked_add(u64::from(request.channel_count))
+                    .ok_or_else(|| CommandError::invalid("channel identity exhausted"))?;
+                self.next_port
+                    .checked_add(u64::from(request.channel_count))
+                    .ok_or_else(|| CommandError::invalid("port identity exhausted"))?;
+                let created = self.backend.create_bus(request.clone())?;
+                let id = self.insert_bus(created, request.name, StructuralState::Creating)?;
+                Ok(Effect::BusCreated(id))
             }
-            Command::AddBus(_) => Err(CommandError::unsupported(BackendCapability::BusManagement)),
             Command::Global(action) => {
                 self.global_action(action)?;
                 Ok(Effect::None)
@@ -170,6 +182,54 @@ impl Service {
         }
     }
 
+    fn bus_action(&mut self, id: BusId, action: BusAction) -> CommandResult {
+        let bus = self
+            .buses
+            .get(&id)
+            .filter(|b| b.view.structural_state != StructuralState::Removing)
+            .ok_or_else(|| CommandError::invalid("stale or unknown bus"))?;
+        let backend = bus.backend;
+        match action {
+            BusAction::Remove => {
+                self.backend.remove_bus(backend)?;
+                self.buses
+                    .get_mut(&id)
+                    .expect("validated bus")
+                    .view
+                    .structural_state = StructuralState::Removing;
+                Ok(Effect::BusRemoved(id))
+            }
+            BusAction::MoveBefore(target) => {
+                if target.is_some_and(|t| !self.buses.contains_key(&t)) {
+                    return Err(CommandError::invalid("unknown bus order target"));
+                }
+                if target != Some(id) {
+                    self.bus_order.retain(|b| *b != id);
+                    let index = target
+                        .and_then(|t| self.bus_order.iter().position(|b| *b == t))
+                        .unwrap_or(self.bus_order.len());
+                    self.bus_order.insert(index, id);
+                }
+                Ok(Effect::None)
+            }
+            action => {
+                let control = match action {
+                    BusAction::GainChanged(v) => BackendBusControl::GainDb(v),
+                    BusAction::BalanceChanged(v) => BackendBusControl::Balance(v),
+                    BusAction::MuteChanged(v) => BackendBusControl::Mute(v),
+                    _ => return Err(CommandError::unsupported(BackendCapability::BusFx)),
+                };
+                self.backend.set_bus_control(backend, control)?;
+                self.buses
+                    .get_mut(&id)
+                    .expect("validated bus")
+                    .view
+                    .control_error = None;
+                Ok(Effect::BusControl(id))
+            }
+        }
+    }
+
     fn track(&self, id: TrackId) -> core::result::Result<&Track, CommandError> {
         self.tracks
             .get(&id)
@@ -214,13 +274,6 @@ impl Service {
                 BackendCapability::LatencyCompensation,
             ));
         }
-        if spec
-            .initial_output_bus_names
-            .iter()
-            .any(|name| name != "Master")
-        {
-            return Err(CommandError::invalid("unknown initial output bus"));
-        }
         let slot_count = self
             .tracks
             .values()
@@ -257,8 +310,8 @@ impl Service {
             }
         }
         self.connect_track_inputs(id)?;
-        if !spec.initial_output_bus_names.is_empty() {
-            self.route_track_to_master(id)?;
+        for name in &spec.initial_output_bus_names {
+            self.route_track_to_bus(id, name)?;
         }
         Ok(Effect::TrackCreated(id, loops))
     }
@@ -824,15 +877,17 @@ impl Service {
             .ports
             .iter()
             .filter_map(|(id, entry)| {
-                (matches!(entry.view.owner, ApplicationPortOwner::Bus { .. })
+                (matches!(entry.view.owner, ApplicationPortOwner::Bus { bus_id } if self.buses.get(&bus_id).is_some_and(|bus| bus.backend == MASTER_BUS_ID))
                     && entry.view.data_type == PortDataType::Audio
                     && entry.view.direction == PortDirection::Output)
                     .then_some(*id)
             })
             .collect();
-        for (port, sink) in outputs.into_iter().zip(sinks) {
-            self.connect_port(port, &sink.id, true)
-                .map_err(|error| anyhow!(error.message))?;
+        for (index, port) in outputs.into_iter().enumerate() {
+            if let Some(sink) = sinks.get(index).or_else(|| sinks.last()) {
+                self.connect_port(port, &sink.id, true)
+                    .map_err(|error| anyhow!(error.message))?;
+            }
         }
         Ok(())
     }
@@ -873,7 +928,11 @@ impl Service {
         }
         Ok(())
     }
-    fn route_track_to_master(&mut self, track: TrackId) -> core::result::Result<(), CommandError> {
+    fn route_track_to_bus(
+        &mut self,
+        track: TrackId,
+        name: &str,
+    ) -> core::result::Result<(), CommandError> {
         let outputs: Vec<_> = self.tracks[&track]
             .view
             .port_ids
@@ -884,10 +943,26 @@ impl Service {
             })
             .copied()
             .collect();
-        let channels: Vec<_> = self.channels.keys().copied().collect();
-        for (index, port) in outputs.into_iter().enumerate() {
-            if let Some(channel) = channels.get(index % channels.len().max(1)) {
-                self.route(port, *channel, true)?;
+        let Some(bus) = self
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .find(|b| {
+                b.view.structural_state != StructuralState::Removing
+                    && b.view.name == name
+                    && (outputs.len() == b.view.channels.len() || outputs.len() == 1)
+            })
+        else {
+            return Ok(());
+        };
+        let channels = bus.view.channels.iter().map(|c| c.id).collect::<Vec<_>>();
+        if outputs.len() == 1 {
+            for channel in channels {
+                self.route(outputs[0], channel, true)?;
+            }
+        } else {
+            for (port, channel) in outputs.into_iter().zip(channels) {
+                self.route(port, channel, true)?;
             }
         }
         Ok(())
@@ -896,7 +971,7 @@ impl Service {
 
 use super::projection::data_type;
 
-fn host_port_order(id: &str) -> (String, u64) {
+pub(super) fn host_port_order(id: &str) -> (String, u64) {
     let suffix = id.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
     (id[..suffix].to_owned(), id[suffix..].parse().unwrap_or(0))
 }

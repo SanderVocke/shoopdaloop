@@ -126,6 +126,9 @@ pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mid
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
+pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
+    SettingKey::new("audio.new_engine.bus_channels");
 pub const NEW_ENGINE_TRACKS: SettingKey<u32> = SettingKey::new("audio.new_engine.tracks");
 pub const NEW_ENGINE_LOOPS: SettingKey<u32> = SettingKey::new("audio.new_engine.loops");
 pub const NEW_ENGINE_CHANNELS: SettingKey<u32> = SettingKey::new("audio.new_engine.channels");
@@ -754,6 +757,8 @@ pub fn register_audio_backend_settings(
             1,
             8,
         ),
+        (55, NEW_ENGINE_BUSES, defaults.buses, "Buses", "Output buses prepared at startup, including the default bus.", 1, 8),
+        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus.", 2, 8),
         (
             54,
             NEW_ENGINE_LOOP_MEMORY_MB,
@@ -780,6 +785,8 @@ pub fn new_engine_pools_from_snapshot(
 ) -> Result<NewEnginePools, String> {
     let get = |key| snapshot.get(key).map_err(|error| error.to_string());
     Ok(NewEnginePools {
+        buses: get(NEW_ENGINE_BUSES)?,
+        bus_channels: get(NEW_ENGINE_BUS_CHANNELS)?,
         tracks: get(NEW_ENGINE_TRACKS)?,
         loops: get(NEW_ENGINE_LOOPS)?,
         channels: get(NEW_ENGINE_CHANNELS)?,
@@ -1842,16 +1849,25 @@ impl AppWidget {
     ) {
         ui.horizontal(|ui| {
             ui.heading("Buses");
-            let add_bus = crate::add_with_capability(
-                ui,
-                crate::BackendCapability::BusManagement,
-                egui::Button::new("+ Add bus"),
-            );
+            let add_bus = ui
+                .add_enabled_ui(state.buses.len() < state.bus_limits.buses as usize, |ui| {
+                    crate::add_with_capability(
+                        ui,
+                        crate::BackendCapability::BusManagement,
+                        egui::Button::new("+ Add bus"),
+                    )
+                })
+                .inner;
             #[cfg(test)]
             {
                 self.add_bus_open_rect = Some(add_bus.rect);
             }
-            if add_bus.clicked() {
+            let add_bus = add_bus.on_hover_text(format!(
+                "{} of {} prepared buses in use",
+                state.buses.len(),
+                state.bus_limits.buses
+            ));
+            if add_bus.clicked() && state.buses.len() < state.bus_limits.buses as usize {
                 self.open_add_bus_dialog(state.buses.len());
             }
         });
@@ -2104,7 +2120,7 @@ impl AppWidget {
                         ui.label("Channels");
                         ui.add(
                             egui::DragValue::new(&mut self.add_bus_channels)
-                                .range(1..=crate::MAX_BUS_CHANNELS as u32),
+                                .range(1..=state.bus_limits.channels.max(1)),
                         );
                         ui.end_row();
                         ui.label("Effect");
@@ -3934,6 +3950,8 @@ mod tests {
         assert_eq!(
             new_engine_pools_from_snapshot(&resolved).unwrap(),
             NewEnginePools {
+                buses: 8,
+                bus_channels: 8,
                 tracks: 4,
                 loops: 33,
                 channels: 1,
@@ -4339,6 +4357,37 @@ mod tests {
         let disabled = widget.add_bus_accept_rect.unwrap().center();
         assert!(click(&context, &mut widget, &state, disabled).is_empty());
         assert!(widget.add_bus_open);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn add_bus_dialog_uses_negotiated_channels_and_refuses_a_stale_fx_choice() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            bus_limits: crate::BusLimits {
+                buses: 8,
+                channels: 4,
+                total_channels: 32,
+            },
+            capabilities: crate::BackendCapabilities::FULL
+                .with(crate::BackendCapability::BusFx, false),
+            ..Default::default()
+        };
+        crate::set_backend_capabilities(&context, state.capabilities);
+        let mut widget = AppWidget::default();
+        widget.open_add_bus_dialog(0);
+        widget.add_bus_name = "Cue".into();
+        widget.add_bus_channels = 64;
+        widget.add_bus_processor = Some(TrackProcessorTypeId::new("builtin_fx"));
+        frame(&context, &mut widget, &state, Vec::new());
+        frame(&context, &mut widget, &state, Vec::new());
+        let add = widget.add_bus_accept_rect.unwrap().center();
+        let actions = click(&context, &mut widget, &state, add);
+        assert!(
+            matches!(actions.as_slice(), [AppAction::AddBus(spec)] if spec.channel_count == 4 && spec.fx.is_none()),
+            "actions: {actions:?}, channels: {}",
+            widget.add_bus_channels
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

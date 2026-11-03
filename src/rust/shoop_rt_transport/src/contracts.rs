@@ -14,6 +14,8 @@ const LIMITS: Limits = Limits {
     loops: 16,
     strip_audio_channels: 2,
     master_channels: 2,
+    buses: 8,
+    bus_channels: 8,
     host_audio_inputs: 2,
     host_audio_outputs: 2,
     host_midi_inputs: 1,

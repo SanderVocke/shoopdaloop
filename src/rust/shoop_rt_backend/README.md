@@ -7,7 +7,7 @@ own clock or use `begin` and pump the adapter without blocking.
 
 `shoop_rt_backend` implements the application's `Backend` trait (from
 `shoop_backend`) over the [`shoop_rt_protocol`](../shoop_rt_protocol) client. It is
-the only place where application concepts (tracks, ports, the Master bus, sessions)
+the only place where application concepts (tracks, ports, buses, sessions)
 meet engine terms (strips, loop slots, host ports, routes). It depends on no engine
 or host crate: the composition root chooses a carrier and a clock and hands them over.
 
@@ -33,7 +33,8 @@ let backend = RtBackend::connect(client, clock)?;
   the client and the clock, for example to connect a new backend to the same
   engine. A new handshake ignores the engine's answer to an earlier goodbye.
 
-The engine must have a two-channel Master.
+The fresh engine supplies an ordinary two-channel default bus. It may be removed;
+zero active buses is valid. Bus limits are negotiated independently of track slots.
 
 ## Identities and the mirror
 
@@ -83,8 +84,8 @@ unanswered, no content read is in progress and telemetry newer than the last out
 has arrived. With `NoWait` it returns after one pump.
 
 On connection the resynchronization stream replaces the host port inventory and the
-Master's controls and connections; engine strips the application does not know are
-removed. `Disconnected` or a refused handshake marks the driver as failed in the
+bus controls and connections. An existing unknown session is refused rather than
+adopted or destroyed. `Disconnected` or a refused handshake marks the driver as failed in the
 snapshot and every later operation is refused.
 
 ## Mapping
@@ -108,30 +109,30 @@ snapshot and every later operation is refused.
   callbacks at 48 kHz, a 10 s stereo loop takes about 82 polls (1.3 s).
 - **Host ports** come from the resynchronization; their names are the application's
   host port identities. An engine input (capture) is an application output port.
-- **Master** has the fixed application identities of the legacy Master: bus, channel
-  and output port IDs. Its outputs connect to host outputs; mixer routes connect one
-  track output port to one Master channel.
+- **Buses** reserve generation-safe prepared slots. Creation/removal and controls
+  reconcile through receipts; removal prunes owned ports, incoming routes and
+  output links. The default pool holds eight buses with up to eight channels each.
+  `bus_limits()` reports the actual pool; bus/channel/port application IDs are
+  never reused. Mixer routes connect one track audio output to one bus channel;
+  bus outputs connect explicitly to host outputs. Bus FX remains unavailable.
 - **The global FX control port** exists as in the legacy backends; its connections are
   accepted and confirmed without reaching the engine.
 - **Smoothing** in milliseconds becomes `SetSmoothing` frames at the engine's sample
   rate; values above the limit the engine announces are refused by the call.
-- **New session** (`replace_session`, `replace_session_async`) accepts a structure-only
-  document of the core set: direct tracks with regular playback and no FX, at most the
-  Master bus, one global FX control port, routes to Master. The whole document is
-  checked first; one that needs anything else is rejected without changes. The
-  replacement then removes every track, resets Master's controls and connections and
-  creates the new structure. The asynchronous variant is ready when every request of
-  the replacement has its outcome.
+- **Session replacement** validates direct tracks and ordinary buses against
+  prepared capacity, stages a complete private candidate, and atomically publishes
+  it with fresh mappings. Empty bus collections are valid. Capture includes every
+  confirmed bus and explicit connection intent; media-bearing replacement retains
+  the core persistence contract. Invalid, oversized or FX-bearing candidates leave
+  the running session intact.
 
 ## Refused
 
-The backend reports no optional capability except `MidiInjection` when the engine
-announces it. Every other operation is refused with the capability's explanation:
-session capture and loading with content, composite loops, grab, the replacing and
-dry/wet modes, dry/wet and processor tracks, track and bus FX, latency compensation,
-take alignment, loop content import, loop length and timing edits, buses other than
-Master and audio driver switching. Track-less loops (`create_loop`) are refused as
-well. Nothing is routed to another engine.
+Production capabilities include core capture/load/content import, MIDI injection
+and bus management when their engine support is ready. Composite loops, grab,
+replacing and dry/wet modes, processors and track/bus FX, latency compensation,
+take alignment, timing edits and live driver switching remain unavailable.
+Track-less loop creation remains refused. No operation falls back to another engine.
 
 ## Tests
 

@@ -10,6 +10,8 @@ const LIMITS: Limits = Limits {
     loops: 16,
     strip_audio_channels: 2,
     master_channels: 2,
+    buses: 8,
+    bus_channels: 8,
     host_audio_inputs: 2,
     host_audio_outputs: 2,
     host_midi_inputs: 1,
@@ -36,6 +38,20 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CreateBus {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        },
+        Request::RemoveBus {
+            bus: BusId(SlotId::new(7, 42)),
+        },
+        Request::ReplacementEdit {
+            id: 2,
+            edit: ReplacementEdit::Bus {
+                bus: BusId(SlotId::new(7, 42)),
+                channels: 8,
+            },
+        },
         Request::CancelBulk,
         Request::ReplacementBegin { id: 1 },
         Request::ReplacementEdit {
@@ -91,14 +107,17 @@ fn client_samples() -> Vec<ClientMessage> {
                     index: 1,
                 },
                 bus: BusPort {
-                    bus: BusId::Master,
+                    bus: BusId::MASTER,
                     index: 1,
                 },
             },
         },
         Request::ReplacementEdit {
             id: 1,
-            edit: ReplacementEdit::Master(BusControl::Mute(true)),
+            edit: ReplacementEdit::BusControl {
+                bus: BusId::MASTER,
+                control: BusControl::Mute(true),
+            },
         },
         Request::ReplacementPrepare { id: 1 },
         Request::ReplacementCommit { id: 1 },
@@ -186,7 +205,7 @@ fn client_samples() -> Vec<ClientMessage> {
         },
         Request::Connect {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             }),
             host: HostPortId(2),
@@ -199,13 +218,13 @@ fn client_samples() -> Vec<ClientMessage> {
                 index: 1,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             },
             connected: false,
         },
         Request::BusControl {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Mute(true),
         },
         Request::InjectMidi {
@@ -279,7 +298,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             peaks,
         }),
         EngineMessage::Telemetry(Telemetry::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             peaks,
         }),
         EngineMessage::State(StateRecord::HostPort(HostPort {
@@ -306,7 +325,7 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::State(StateRecord::Connection {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             }),
             host: HostPortId(3),
@@ -318,12 +337,12 @@ fn engine_samples() -> Vec<EngineMessage> {
                 index: 0,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             },
         }),
         EngineMessage::State(StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Gain(0.5),
         }),
         EngineMessage::Bulk(BulkChunk {
@@ -346,6 +365,11 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::LimitsChanged(LIMITS),
         EngineMessage::Disconnected(DisconnectReason::Fault),
+        EngineMessage::State(StateRecord::BusShape {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        }),
+        EngineMessage::State(StateRecord::BusGenerations { generation: 42 }),
         EngineMessage::State(StateRecord::Generations {
             strips: u32::MAX,
             loops: 7,
@@ -414,7 +438,7 @@ fn malformed_records_are_refused_without_panicking() {
         correlation: 1,
         request: Request::Connect {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 7,
             }),
             host: HostPortId(2),
@@ -423,8 +447,8 @@ fn malformed_records_are_refused_without_panicking() {
     };
     let len = encode_client(&connect, &mut buf).unwrap();
     let tag = buf[..len]
-        .windows(3)
-        .position(|bytes| bytes == [1, 0, 7])
+        .windows(10)
+        .position(|bytes| bytes == [1, 0, 0, 0, 0, 1, 0, 0, 0, 7])
         .unwrap();
     let mut record = buf[..len].to_vec();
     record[tag] = 2;

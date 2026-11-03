@@ -11954,6 +11954,7 @@ impl ApplicationModel {
             .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
             .collect::<BTreeMap<_, _>>();
         AppSnapshot {
+            bus_limits: Default::default(),
             revision: self.revision,
             tracks: self
                 .tracks

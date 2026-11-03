@@ -1,5 +1,50 @@
 use super::*;
 use shoop_wasm_test_support::shoop_test;
+
+#[shoop_test]
+fn session_files_preserve_ordinary_bus_shapes_order_and_an_empty_bus_set() {
+    for empty in [false, true] {
+        let mut bundle = SessionBundle::new(SessionDocument::empty(1000));
+        if empty {
+            bundle.document.buses.clear();
+            bundle.document.bus_display_order.clear();
+        } else {
+            let mut bus = bundle.document.buses[0].clone();
+            bus.id = 23;
+            bus.name = "Cue".into();
+            bus.gain_db = -6.;
+            bus.muted = true;
+            let template = bus.ports[0].clone();
+            bus.ports = (0..8)
+                .map(|index| {
+                    let mut port = template.clone();
+                    port.id = 1000 + index;
+                    port.name = format!("cue_out_{index}");
+                    port.external_connections = vec![format!("missing:playback_{index}")];
+                    port
+                })
+                .collect();
+            bus.channels = (0..8)
+                .map(|index| BusChannelDocument {
+                    id: 100 + index,
+                    label: format!("Channel {}", index + 1),
+                    output_port_id: 1000 + index,
+                })
+                .collect();
+            bundle.document.buses.push(bus);
+            bundle.document.bus_display_order = vec![23, 1];
+        }
+        let expected = bundle.document.buses.clone();
+        let order = bundle.document.bus_display_order.clone();
+        let image = crate::document::from_bundle(bundle).unwrap();
+        let saved = crate::document::to_bundle(&image).unwrap();
+        let bytes = encode_session(&saved, "bus-parity").unwrap();
+        let reloaded = decode_session(&bytes).unwrap();
+        assert_eq!(reloaded.document.buses, expected);
+        assert_eq!(reloaded.document.bus_display_order, order);
+        crate::document::from_bundle(reloaded).unwrap();
+    }
+}
 pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {
         object: Some(object),
@@ -46,7 +91,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
                 muted: false,
             },
         }],
-        master: image::Master {
+        buses: vec![image::Bus {
             id: BusId::from_raw(1),
             name: "Master".into(),
             gain_db: 0.,
@@ -55,7 +100,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
             channels: ["Left", "Right"]
                 .into_iter()
                 .enumerate()
-                .map(|(index, label)| image::MasterChannel {
+                .map(|(index, label)| image::BusChannel {
                     id: BusChannelId::from_raw(index as u64 + 1),
                     label: label.into(),
                     port: image::Port {
@@ -74,7 +119,8 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
                     },
                 })
                 .collect(),
-        },
+        }],
+        bus_display_order: vec![BusId::from_raw(1)],
         global_ports: vec![],
         routes: vec![],
         selected: vec![],

@@ -195,7 +195,9 @@ impl Job {
 
 impl ControlEndpoint {
     fn configuration_nodes(&self) -> usize {
-        1 + 2 * self.next.strips.iter().flatten().count() + self.next.loops.iter().flatten().count()
+        self.next.buses.iter().flatten().count()
+            + 2 * self.next.strips.iter().flatten().count()
+            + self.next.loops.iter().flatten().count()
     }
     fn configure_replacement(&mut self, job: &mut Job) -> bool {
         if job.configured {
@@ -258,18 +260,23 @@ impl ControlEndpoint {
                 self.submit_configuration(job, self.pool.fader(slot), base);
             }
         }
-        let master = self.next.master;
-        self.submit_configuration(
-            job,
-            self.pool.master(),
-            crate::NodeConfiguration {
-                bank: self.next.master_outputs.active as u8,
-                gain: master.gain,
-                balance: master.balance,
-                muted: master.mute,
-                ..base
-            },
-        );
+        for slot in 0..self.next.buses.len() {
+            let Some(bus) = self.next.buses[slot] else {
+                continue;
+            };
+            self.submit_configuration(
+                job,
+                self.pool.bus(slot),
+                crate::NodeConfiguration {
+                    outputs: bus.channels,
+                    bank: bus.outputs.active as u8,
+                    gain: bus.gain,
+                    balance: bus.balance,
+                    muted: bus.mute,
+                    ..base
+                },
+            );
+        }
         true
     }
     fn submit_configuration(
@@ -392,6 +399,12 @@ impl ControlEndpoint {
             };
             if self.next.find_loop(entry.id).is_none() && self.next.strip(entry.strip).is_some() {
                 self.fades[count] = self.pool.fader(slot);
+                count += 1;
+            }
+        }
+        for slot in 0..self.model.buses.len() {
+            if self.model.buses[slot].is_some_and(|bus| self.next.bus(bus.id).is_none()) {
+                self.fades[count] = self.pool.bus(slot);
                 count += 1;
             }
         }
@@ -602,7 +615,7 @@ impl ControlEndpoint {
             model.loops[slot].map(|l| (l.id, l.sync)) != next.loops[slot].map(|l| (l.id, l.sync))
         });
         job.graph_needed = job.edits > 0
-            || model.master_outputs != next.master_outputs
+            || model.buses != next.buses
             || (0..model.strips.len()).any(|slot| {
                 let shape = |strip: Option<crate::model::Strip>| {
                     strip.map(|s| {
@@ -848,6 +861,7 @@ impl ControlEndpoint {
             + stopping * (PLANNED + 1)
             + 4 * self.next.strips.len()
             + self.next.loops.len()
+            + 2 * self.next.buses.len()
             + 2;
         if !self.room(bound) {
             return false;
@@ -929,13 +943,29 @@ impl ControlEndpoint {
                 );
             }
         }
-        if self.next.master_outputs.swapped {
-            self.submit_job_op(
-                job,
-                Frame(activation),
-                self.pool.master(),
-                EngineOp::Crossfade,
-            );
+        for slot in 0..self.next.buses.len() {
+            let Some(bus) = self.next.buses[slot] else {
+                continue;
+            };
+            if self.model.bus(bus.id).is_none() {
+                self.submit_job_op(
+                    job,
+                    Frame(base),
+                    self.pool.bus(slot),
+                    EngineOp::Reset {
+                        inputs: 0,
+                        outputs: bus.channels,
+                    },
+                );
+            }
+            if bus.outputs.swapped {
+                self.submit_job_op(
+                    job,
+                    Frame(activation),
+                    self.pool.bus(slot),
+                    EngineOp::Crossfade,
+                );
+            }
         }
         let graph_epoch = self.graph_epoch;
         let topology_epoch = self.topology_epoch;
@@ -1103,12 +1133,16 @@ impl ControlEndpoint {
                     );
                 }
             }
-            self.submit_job_op(
-                job,
-                Frame(0),
-                self.pool.master(),
-                EngineOp::DiscardConfiguration { token },
-            );
+            for slot in 0..self.next.buses.len() {
+                if self.next.buses[slot].is_some() {
+                    self.submit_job_op(
+                        job,
+                        Frame(0),
+                        self.pool.bus(slot),
+                        EngineOp::DiscardConfiguration { token },
+                    );
+                }
+            }
             job.configured = false;
         }
         if !self.room(3) {
