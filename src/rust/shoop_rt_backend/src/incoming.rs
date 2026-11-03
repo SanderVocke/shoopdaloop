@@ -437,11 +437,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     format!("bus creation refused: {}", refusal_text(refusal)),
                 );
             }
-            (Purpose::RemoveBus(id), None) => self.mirror.drop_bus(id),
+            (Purpose::RemoveBus(id), None) => {
+                if let Some(bus) = self.mirror.buses.get(&id) {
+                    self.mirror.bus_slots.release(bus.slot.0);
+                }
+                self.mirror.drop_bus(id);
+            }
             (Purpose::RemoveBus(id), Some(refusal)) => {
                 if let Some(bus) = self.mirror.buses.get_mut(&id) {
                     bus.removing = false;
-                    self.mirror.bus_slots.restore(bus.slot.0);
                 }
                 self.failure(
                     BackendMutationKind::BusStructure,

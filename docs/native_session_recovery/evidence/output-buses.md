@@ -3,7 +3,8 @@
 This covers P13 under the user-approved scope in
 [the implementation plan](../../../PLAN_OUTPUT_BUSES.md): ordinary output buses,
 including zero buses, within negotiated replacement-engine limits. Bus FX (P08)
-remains unavailable. The implementation branch is `feat/output-bus-parity`, based
+remains unavailable. [PR #926](https://github.com/SanderVocke/shoopdaloop/pull/926)
+targets `feat/backend-replacement`. The implementation branch is `feat/output-bus-parity`, based
 on integration head `64a4ad0634de1664b1ff723b36c635cd243d819b`.
 
 ## Acceptance coverage
@@ -41,8 +42,11 @@ receive the new default bus limits.
 
 Local Linux validation uses warning-denying builds, heap-guarded native engine
 tests and production dummy-host processes. The complete nextest suite passed
-2,543 tests with four optional/platform skips. A later recovery-test expansion is
-being rerun before delivery. Formatting, test-attribute usage, parity inventory,
+2,543 tests with four optional/platform skips, including the admitted bus mutation
+recovery expansion. Final multi-target Lua balance prevalidation and delayed
+slot reclamation after confirmed bus removal are being rerun before delivery.
+The refusal fixture queues a new bus while an old bus removal refuses and verifies
+that both surviving buses remain usable. Formatting, test-attribute usage, parity inventory,
 closed tracing inventory and all four target dependency-boundary checks pass;
 the service and adapter also compile without their default features.
 
@@ -52,10 +56,11 @@ nightly-2026-05-04 Miri with seed 0, default isolation and borrow checks (259 se
 Its render/control heap guards remain active. This is focused ownership/generation
 coverage, not a claim that the entire native test suite ran under Miri.
 
-The actual hosted Chromium AudioWorklet canary passed at 900×600 with fake
-microphone input and zero xruns. Built-worklet and codec-worker artifact contracts
-both pass. Single-file and final-head CI results will be recorded before closing
-P13. Local device tests do not claim physical hardware coverage. Direct `file:`
+The actual hosted and single-file Chromium AudioWorklet canaries passed at 900×600
+with fake microphone input and zero xruns when run without competing native test
+loads. Built-worklet and codec-worker artifact contracts both pass. Final-head CI
+results will be recorded before closing P13. Local device tests do not claim
+physical hardware coverage. Direct `file:`
 navigation is blocked by this environment's browser policy; the single-file
 canary therefore serves a directory containing only its embedded HTML.
 

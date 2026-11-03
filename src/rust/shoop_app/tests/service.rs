@@ -241,6 +241,27 @@ fn buses_round_trip_order_routes_zero_and_reconcile_admitted_mutations_after_ui_
             run(
                 &mut f,
                 &mut client,
+                Command::Control(ControlOperation::SetBusBalance {
+                    buses: vec![cue, wide],
+                    balance: 0.5,
+                })
+            ),
+            Outcome::Refused { .. }
+        ));
+        for _ in 0..20 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .all(|bus| bus.balance == 0.));
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
                 Command::Bus {
                     bus: wide,
                     action: BusAction::MoveBefore(Some(master))
@@ -469,6 +490,36 @@ fn refused_bus_structure_reconciles_ports_and_retains_a_removable_survivor() {
     let bus = client.snapshot().unwrap().buses[1].id;
     assert_ne!(bus, reserved);
     f.refuse_next_bus.set(true);
+    let removal = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Bus {
+            bus,
+            action: BusAction::Remove,
+        },
+    );
+    let addition = submit(&mut f.service, &mut client, ConnectionId(1), add());
+    assert!(matches!(
+        complete(&mut f.service, &mut client, ConnectionId(1), removal, false,),
+        Outcome::Refused { .. }
+    ));
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            addition,
+            false
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let state = client.snapshot().unwrap();
+    assert_eq!(state.buses[1].id, bus);
+    assert_eq!(state.buses[1].structural_state, StructuralState::Confirmed);
+    assert!(state.buses[1].structural_error.is_some());
+    assert_eq!(state.connections.application_ports.len(), before + 4);
+    let added = state.buses[2].id;
     assert!(matches!(
         command(
             &mut f.service,
@@ -479,21 +530,16 @@ fn refused_bus_structure_reconciles_ports_and_retains_a_removable_survivor() {
                 action: BusAction::Remove
             }
         ),
-        Outcome::Refused { .. }
+        Outcome::Confirmed { .. }
     ));
-    let state = client.snapshot().unwrap();
-    assert_eq!(state.buses[1].id, bus);
-    assert_eq!(state.buses[1].structural_state, StructuralState::Confirmed);
-    assert!(state.buses[1].structural_error.is_some());
-    assert_eq!(state.connections.application_ports.len(), before + 2);
     assert!(matches!(
         command(
             &mut f.service,
             &mut client,
             ConnectionId(1),
             Command::Bus {
-                bus,
-                action: BusAction::Remove
+                bus: added,
+                action: BusAction::Remove,
             }
         ),
         Outcome::Confirmed { .. }

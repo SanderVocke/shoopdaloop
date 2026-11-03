@@ -66,6 +66,17 @@ fn ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio() {
     h.run(8, 4);
     assert_eq!(h.outputs[0].last(), Some(&1.));
     assert_eq!(h.outputs[1].last(), Some(&3.));
+    for (id, expected) in [(wide, &[0.25; 8][..]), (other, &[1., 0.][..])] {
+        let peaks = h
+            .telemetry
+            .iter()
+            .rev()
+            .find_map(|(_, record)| match record {
+                Telemetry::Bus { bus, peaks } if *bus == id => Some(peaks.as_slice()),
+                _ => None,
+            });
+        assert_eq!(peaks, Some(expected));
+    }
     assert_eq!(
         h.apply_in(
             Request::BusControl {
@@ -82,6 +93,15 @@ fn ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio() {
     });
     h.run(8, 4);
     assert_eq!(h.outputs[1].last(), Some(&2.));
+    let peaks = h
+        .telemetry
+        .iter()
+        .rev()
+        .find_map(|(_, record)| match record {
+            Telemetry::Bus { bus, peaks } if *bus == other => Some(peaks.as_slice()),
+            _ => None,
+        });
+    assert_eq!(peaks, Some(&[0., 0.][..]));
     h.done(Request::RemoveBus { bus: wide });
     h.done(Request::RemoveBus { bus: other });
     h.run(8, 4);

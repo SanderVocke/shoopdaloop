@@ -12,8 +12,8 @@ Implementation in progress on `feat/output-bus-parity`. Written under
   including the intervening click-track restoration.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, with
   executable bus behavior preserved in `shoop_app_reference`.
-- Implementation branch: create `feat/output-bus-parity` from the current
-  integration branch when implementation begins. Deliver its PR into
+- Implementation branch: `feat/output-bus-parity`, created from the current
+  integration branch. Deliver its PR into
   **`feat/backend-replacement`**; do not target `master` or merge without instructions.
 - User-approved scope: retain replacement-backend capacity limits, allow zero
   buses, treat Master as an ordinary default bus, and exclude bus FX.
@@ -150,14 +150,24 @@ snapshots; old saved pool settings receive the new defaults.
 
 Implementation checkpoint: warning-denying workspace build, all-target and
 no-default-feature service/adapter checks pass. The complete native suite passed
-2,543 tests (four optional/platform skips); the subsequent admitted-mutation
-recovery expansion passes its focused typed/encoded test and is being rerun in
-the complete suite. Hosted browser multi-bus/media/zero-bus workflows and built
-worklet/codec contracts pass. The guarded multi-bus audio test passes Miri on
+2,543 tests (four optional/platform skips), including admitted creation/control/
+removal recovery. Hosted and single-file browser multi-bus/media/zero-bus workflows
+pass at 900×600 with zero xruns; built worklet/codec contracts pass. The single-file
+HTML was served alone over localhost because managed Chromium blocks direct
+`file:` navigation. The guarded multi-bus audio test passes Miri on
 nightly-2026-05-04, seed 0. Dependency boundaries pass for all four targets.
 [Acceptance evidence](docs/native_session_recovery/evidence/output-buses.md)
-maps criteria to executable coverage. Single-file browser and final CI/delivery
-remain pending; P13 is still open until those gates pass.
+maps criteria to executable coverage. [PR #926](https://github.com/SanderVocke/shoopdaloop/pull/926)
+targets the integration branch. Final platform CI/delivery remain pending; P13
+is still open until those gates pass.
+
+Final review found a multi-target Lua balance validation gap: a stereo target
+could be queued before a later non-stereo target refused. Prevalidate every
+target's control normalization before queueing any mutation; the typed/encoded
+service regression verifies that a rejected group leaves all bus balances intact.
+Bus slots also remain reserved until removal confirms, so a simultaneous add
+cannot steal a still-live slot if removal refuses. The injected-refusal service
+test now queues both operations and verifies the survivor and new bus independently.
 
 ## Execution contract
 
@@ -283,7 +293,7 @@ documentation links and tracing/dependency boundary checks.
 
 ### Stage 7 — final end-to-end validation and delivery
 
-- [ ] Run one production scenario through typed local delivery, native socket and
+- [x] Run one production scenario through typed local delivery, native socket and
   supported shared-memory delivery, and hosted/single-file browsers: create mono,
   stereo and prepared-maximum buses; record/play into multiple buses; change
   controls/routes/order; save/load; reconnect; remove every bus; save/load again;

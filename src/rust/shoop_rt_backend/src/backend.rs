@@ -834,7 +834,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .ok_or_else(|| anyhow!("unknown bus"))?;
         bus.removing = true;
         let slot = bus.slot;
-        self.mirror.bus_slots.release(slot.0);
         self.requests
             .push(Request::RemoveBus { bus: slot }, Purpose::RemoveBus(id));
         Ok(())

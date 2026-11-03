@@ -200,13 +200,19 @@ impl Service {
         Ok(())
     }
     fn control_buses(&mut self, buses: Vec<BusId>, action: BusAction) -> CommandResult {
-        if buses.iter().any(|id| {
-            !self
+        let control = match action {
+            BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
+            BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
+            BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
+            _ => return Err(CommandError::unsupported(BackendCapability::BusFx)),
+        };
+        for id in &buses {
+            let bus = self
                 .buses
                 .get(id)
-                .is_some_and(|b| b.view.structural_state != StructuralState::Removing)
-        }) {
-            return Err(CommandError::invalid("unknown bus"));
+                .filter(|b| b.view.structural_state != StructuralState::Removing)
+                .ok_or_else(|| CommandError::invalid("unknown bus"))?;
+            control.normalized(bus.view.channels.len())?;
         }
         for bus in &buses {
             self.execute(Command::Bus {
