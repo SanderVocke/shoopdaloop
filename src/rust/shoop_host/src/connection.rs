@@ -51,7 +51,7 @@ impl RecordPort for Port {
     }
 }
 
-fn open(
+pub(crate) fn open(
     entry: &HostTarget,
     address: &str,
     token: &[u8; 32],

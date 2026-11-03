@@ -3713,6 +3713,36 @@ impl ControlOperation {
     }
 }
 
+/// Host-local admission ceilings within the shared protocol limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostResourceLimits {
+    pub media_bytes: u64,
+    pub metadata_bytes: u64,
+    pub objects: u32,
+    pub midi_events: usize,
+}
+
+impl Default for HostResourceLimits {
+    fn default() -> Self {
+        Self {
+            media_bytes: 256 * 1024 * 1024,
+            metadata_bytes: 8 * 1024 * 1024,
+            objects: 4096,
+            midi_events: 1_000_000,
+        }
+    }
+}
+
+impl HostResourceLimits {
+    pub fn is_valid(self) -> bool {
+        let ceiling = Self::default();
+        (1..=ceiling.media_bytes).contains(&self.media_bytes)
+            && (1..=ceiling.metadata_bytes).contains(&self.metadata_bytes)
+            && (1..=ceiling.objects).contains(&self.objects)
+            && (1..=ceiling.midi_events).contains(&self.midi_events)
+    }
+}
+
 /// Capacities the new engine backend prepares at startup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1271,6 +1271,169 @@ fn explicit_ownerless_shutdown_cannot_evict_a_live_ui_and_fences_previous_owners
 }
 
 #[shoop_test]
+fn deployment_is_boot_bound_exclusive_idempotent_and_preserves_shutdown_kind() {
+    use shoop_deployment_protocol as d;
+    let mut f = fixture();
+    assert_eq!(
+        f.service.deployment(d::Request::Status),
+        d::Reply::Refused(d::Refusal::Unsupported)
+    );
+    f.service
+        .set_deployment_info(d::Info {
+            profile: "shoop-zynq7000-1g-v1".into(),
+            build: "a".into(),
+            hash: [1; 32],
+            slot: Some(0),
+            confirmed: true,
+            trial: false,
+            boot_nonce: 123,
+            last_operation: None,
+            session_version: VERSION,
+            busy: false,
+            ready: false,
+        })
+        .unwrap();
+    let operation = d::Operation {
+        client: 800,
+        sequence: 1,
+    };
+    let enter = d::Request::Enter {
+        boot_nonce: 123,
+        operation,
+    };
+    assert_eq!(
+        f.service.deployment(d::Request::Enter {
+            boot_nonce: 122,
+            operation
+        }),
+        d::Reply::Refused(d::Refusal::StaleBoot)
+    );
+    let mut ui = attach(&mut f.service, 799, ConnectionId(1), false);
+    assert_eq!(
+        f.service.deployment(enter),
+        d::Reply::Refused(d::Refusal::Busy)
+    );
+    f.service
+        .handle(ConnectionId(1), ui.detach().unwrap())
+        .unwrap();
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.updater_request(), Some(operation));
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+    f.service.begin_host_cleanup().unwrap();
+    f.service
+        .complete_shutdown(Err("injected cleanup failure".into()));
+    assert_eq!(f.service.updater_request(), None);
+    assert_eq!(
+        f.service.deployment(enter),
+        d::Reply::Finished {
+            operation,
+            result: Err(d::Refusal::CleanupFailed)
+        }
+    );
+    let ordinary = OperationId {
+        client: ClientId(801),
+        sequence: 1,
+    };
+    assert!(matches!(
+        f.service.management(ManagementRequest::ClaimShutdown {
+            version: VERSION,
+            operation: ordinary
+        }),
+        ManagementReply::Accepted { .. }
+    ));
+    assert_eq!(
+        f.service.updater_request(),
+        None,
+        "failed deployment must not convert ordinary shutdown into reset"
+    );
+    assert_eq!(
+        f.service.deployment(d::Request::Enter {
+            boot_nonce: 123,
+            operation: d::Operation {
+                client: 801,
+                sequence: 1
+            }
+        }),
+        d::Reply::Refused(d::Refusal::Conflict)
+    );
+}
+
+#[shoop_test]
+fn deployment_status_and_success_remain_reconcilable_after_cleanup() {
+    use shoop_deployment_protocol as d;
+    let mut f = fixture();
+    let identity = d::Info {
+        profile: "shoop-zynq7000-1g-v1".into(),
+        build: "firmware-a".into(),
+        hash: [1; 32],
+        slot: Some(0),
+        confirmed: true,
+        trial: false,
+        boot_nonce: 123,
+        last_operation: None,
+        session_version: VERSION,
+        busy: false,
+        ready: true,
+    };
+    f.service.set_deployment_info(identity.clone()).unwrap();
+    assert_eq!(
+        f.service.deployment(d::Request::Status),
+        d::Reply::Info(identity.clone())
+    );
+    let operation = d::Operation {
+        client: 900,
+        sequence: 1,
+    };
+    let enter = d::Request::Enter {
+        boot_nonce: 123,
+        operation,
+    };
+    let result = d::Request::Result {
+        boot_nonce: 123,
+        operation,
+    };
+    assert_eq!(
+        f.service.deployment(result),
+        d::Reply::Refused(d::Refusal::Conflict)
+    );
+    assert_eq!(f.service.deployment(enter), d::Reply::Accepted(operation));
+    assert_eq!(f.service.deployment(result), d::Reply::Accepted(operation));
+    let d::Reply::Info(pending) = f.service.deployment(d::Request::Status) else {
+        panic!()
+    };
+    assert!(pending.busy);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready() {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+    f.service.begin_host_cleanup().unwrap();
+    f.service.complete_shutdown(Ok(()));
+    assert_eq!(f.service.updater_request(), None);
+    let finished = d::Reply::Finished {
+        operation,
+        result: Ok(()),
+    };
+    assert_eq!(f.service.deployment(result), finished);
+    assert_eq!(f.service.deployment(enter), finished);
+    let d::Reply::Info(closed) = f.service.deployment(d::Request::Status) else {
+        panic!()
+    };
+    assert!(!closed.ready && !closed.busy);
+    assert_eq!(closed.boot_nonce, identity.boot_nonce);
+    assert_eq!(closed.hash, identity.hash);
+}
+
+#[shoop_test]
 fn recovered_startup_catalog_is_visible_but_does_not_run_and_shutdown_discards_unsent_commands() {
     use shoop_app_client::runtime::{Runtime, Startup, StartupScript};
     let mut f = fixture();

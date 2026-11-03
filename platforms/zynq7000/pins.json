@@ -1,0 +1,27 @@
+{
+  "embeddedsw": "97f2baf7f69e9d5f447650110af0d8841e501277",
+  "gcc": "14.2.1",
+  "qemu": "10.0.13",
+  "rust": "1.99.1",
+  "u_boot": "5508406582f6f7120dce0c4b3059819a41788db2",
+  "u_boot_release": "2026.10",
+  "qemu_source": "98f88efe8f07067667b8d9b1a5ce9551d34036c1",
+  "qemu_meson": "1.5.1",
+  "qemu_pycotap": "1.3.1",
+  "debian_packages": {
+    "gcc-arm-none-eabi": "15:14.2.rel1-1",
+    "binutils-arm-none-eabi": "2.44-3+23+b1",
+    "libnewlib-arm-none-eabi": "4.5.0.20241231-1",
+    "qemu-system-arm": "1:10.0.13+ds-0+deb13u1",
+    "bison": "2:3.8.2+dfsg-1+b2",
+    "flex": "2.6.4-8.2+b4",
+    "device-tree-compiler": "1.7.2-2+b1",
+    "ninja-build": "1.12.1-1",
+    "libglib2.0-dev": "2.84.4-3~deb13u5",
+    "libslirp-dev": "4.8.0-1+deb13u1"
+  },
+  "reference_ps_init_sha256": {
+    "board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c": "7797868ad02b590c0d74272f017f611a3e9d252d1826206b83943424cfd3b173",
+    "arch/arm/mach-zynq/include/mach/ps7_init_gpl.h": "fb0664812b51de0a0fb0844f7d6c9317f17acb921af74896b2d0435bfe635619"
+  }
+}

@@ -150,7 +150,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         use crate::{
             mirror::db_amplitude,
             persistence::{Job, Work},
-            prepared::{Upload, MAX_MEDIA_BYTES},
+            prepared::Upload,
             requests::Purpose,
         };
         use alloc::{collections::VecDeque, sync::Arc};
@@ -175,9 +175,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .flat_map(|content| &content.midi)
             .map(|channel| channel.events.len())
             .sum::<usize>()
-            > crate::prepared::MAX_MIDI_EVENTS
+            > self.resource_limits.midi_events
         {
-            return Err(anyhow!("session exceeds the one-million-event MIDI budget"));
+            return Err(anyhow!("session exceeds the host MIDI event budget"));
         }
         if self.mirror.loops.values().any(|entry| {
             entry.view.mode == shoop_rt_protocol::LoopMode::Recording
@@ -279,9 +279,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     prepared_bytes = prepared_bytes
                         .checked_add(upload.description.bytes)
                         .ok_or_else(|| anyhow!("prepared media size overflow"))?;
-                    if prepared_bytes > MAX_MEDIA_BYTES {
+                    if prepared_bytes > self.resource_limits.media_bytes {
                         return Err(anyhow!(
-                            "session engine image exceeds the 256 MiB prepared media budget"
+                            "session engine image exceeds the host prepared media budget"
                         ));
                     }
                     pair[medium] = Some(token);
@@ -390,7 +390,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 true,
                 contents.values().cloned(),
                 usize::from(self.limits().strip_audio_channels),
-                MAX_MEDIA_BYTES,
+                self.resource_limits.media_bytes,
             )?,
             content: contents,
             connection_failures: failures,

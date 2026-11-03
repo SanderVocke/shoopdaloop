@@ -4667,6 +4667,7 @@ dependencies = [
  "shoop_app_client",
  "shoop_app_protocol",
  "shoop_backend",
+ "shoop_deployment_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_protocol",
@@ -4711,6 +4712,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_app_client",
  "shoop_app_protocol",
+ "shoop_deployment_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_transport",
@@ -4817,6 +4819,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_deployment_protocol"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_egui"
 version = "0.3.0"
 dependencies = [
@@ -4909,12 +4921,14 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+ "sha2",
  "shoop_app",
  "shoop_app_api",
  "shoop_app_client",
  "shoop_app_connection",
  "shoop_app_protocol",
  "shoop_backend",
+ "shoop_deployment_protocol",
  "shoop_host",
  "shoop_rt_backend",
  "shoop_rt_engine",
@@ -4926,6 +4940,23 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "shoop_host_freertos"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_app",
+ "shoop_app_api",
+ "shoop_app_connection",
+ "shoop_app_protocol",
+ "shoop_deployment_protocol",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_transport",
 ]
 
 [[package]]

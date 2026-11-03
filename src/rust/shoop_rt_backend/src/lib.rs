@@ -125,6 +125,7 @@ struct Replacement {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    resource_limits: shoop_app_api::HostResourceLimits,
     client: ProtocolClient<C>,
     clock: K,
     link: Link,
@@ -169,6 +170,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .map_err(|error| anyhow!("could not reach the engine: {error:?}"))?;
         tracing::debug!("backend.rt.connecting");
         Ok(Self {
+            resource_limits: shoop_app_api::HostResourceLimits::default(),
             client,
             clock,
             link: Link::Connecting,
@@ -194,6 +196,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             prepared_content: Default::default(),
             capture_validation: None,
         })
+    }
+
+    /// Selects host-local admission ceilings before media operations start.
+    pub fn with_resource_limits(
+        mut self,
+        limits: shoop_app_api::HostResourceLimits,
+    ) -> Result<Self> {
+        if !limits.is_valid()
+            || !self.mirror.tracks.is_empty()
+            || !self.requests.is_empty()
+            || !self.canonical_content.is_empty()
+            || self.replacement.is_some()
+            || !self.reads.idle()
+        {
+            return Err(anyhow!("resource limits require an idle fresh backend"));
+        }
+        self.resource_limits = limits;
+        self.reads.resource_limits = limits;
+        Ok(self)
     }
 
     /// Connects and waits through the clock until the engine's state is mirrored.

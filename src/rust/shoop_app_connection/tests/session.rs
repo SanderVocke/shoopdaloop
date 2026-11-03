@@ -97,6 +97,38 @@ fn portable_host_driven_connection_attaches_confirms_and_detaches() {
 }
 
 #[shoop_test]
+fn management_deployment_envelope_handles_backpressure_and_future_versions() {
+    use shoop_deployment_protocol as d;
+    let mut service = service();
+    for version in [d::VERSION, d::VERSION + 1] {
+        let mut management = shoop_app_connection::Management::new(Memory {
+            limit: 1,
+            ..Default::default()
+        });
+        let mut bytes = [0; d::MAX_BYTES];
+        let n = d::encode_request(d::Request::Status, &mut bytes).unwrap();
+        bytes[9] = version;
+        management.port.input.push_back(bytes[..n].to_vec());
+        assert!(management.pump(&mut service, Duration::from_millis(1)));
+        assert!(matches!(
+            codec::decode(&management.port.output.pop_front().unwrap()),
+            Ok(WireMessage::CarrierReady)
+        ));
+        assert!(management.pump(&mut service, Duration::from_millis(1)));
+        let reply = d::decode_reply(&management.port.output.pop_front().unwrap()).unwrap();
+        assert_eq!(
+            reply,
+            d::Reply::Refused(if version == d::VERSION {
+                d::Refusal::Unsupported
+            } else {
+                d::Refusal::Version
+            })
+        );
+        assert!(!management.pump(&mut service, Duration::from_millis(1)));
+    }
+}
+
+#[shoop_test]
 fn timed_out_connection_releases_only_its_authority_and_cannot_evict_replacement() {
     let mut service = service();
     let mut session = Session::new(ConnectionId(1), Memory::default());
