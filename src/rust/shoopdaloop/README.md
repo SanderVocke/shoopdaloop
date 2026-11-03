@@ -193,7 +193,7 @@ Run `shoopdaloop --manage-hosts`, or choose **Session → Host Manager…** in t
 native looper UI. This opens a separate management process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
-Local hosts are discovered automatically. **Add remote profile…** adds a profile
+Local hosts are discovered automatically. **Add host** adds a remote profile
 for this manager session; `--manage-hosts --remote-profile remote.json` selects one
 at startup. `--host-registry PATH` selects an alternative local registry.
 Status queries run in the background and refresh every two seconds after each
@@ -201,9 +201,12 @@ scan. Unreachable endpoints are shown explicitly; a timeout does not prove a hos
 has exited. Up to 64 local registrations/profiles are monitored per manager.
 
 Select a host to inspect effective audio state, DSP load, xruns, requested startup
-settings and diagnostics. Dummy audio is shown as a warning. **Open UI** launches
+settings and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
+**Audio fallback** warnings. **Overview** shows audio health, with configuration and
+connection information under **Advanced details**. **Open UI** launches
 a socket UI only when no controller is connected. Shared-memory hosts cannot
-reattach. **Stop host…** confirms the loss of the in-memory session and requests
+reattach. The host’s **••• → Stop host…** action confirms the loss of the
+in-memory session and requests
 authenticated ownerless cleanup. A connected controller refuses shutdown, even if
 it attaches after the manager's last refresh. Save needed work through the looper
 UI before stopping. Driver and capacity editing/restart and tray integration are
@@ -213,16 +216,20 @@ Every native host writes private logs under `REGISTRY/logs/PID.log`, including
 startup errors before discovery registration. The default registry is the same
 per-user sessions directory used by `--list-hosts`. Logs rotate at 1 MiB with
 three backups per PID and remain after exit; old process logs can be removed
-manually. `RUST_LOG` controls verbosity (default `info`). **View logs** displays the
-latest 64 KiB and can refresh/copy it; remote logs stay on the host machine.
-**Open host log…** also browses logs of exited hosts and failed startups.
-**Copy diagnostics** copies the current report without credential contents.
+manually. `RUST_LOG` controls verbosity (default `info`). The **Logs** tab displays the
+latest 64 KiB with refresh/copy controls; remote logs
+stay on the host machine. **Open saved log…** also browses logs of exited hosts and
+failed startups. **••• → Copy diagnostics** copies the current report without
+credential contents. Success messages dismiss after five seconds without moving
+the layout; errors stay visible until dismissed.
 
-Screenshots captured from the native manager with dummy hosts and an unreachable
-remote profile:
+Screenshots captured from the native manager with intentional dummy audio, a
+CPAL fallback, and an unreachable remote profile:
 
 ![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
 
 ![Host Manager persistent log viewer](../../../docs/screenshots/host-manager-logs.png)
 
 ![Host Manager observing a connected controller](../../../docs/screenshots/host-manager-controller.png)
+
+![Host Manager warning for an audio fallback](../../../docs/screenshots/host-manager-fallback.png)
