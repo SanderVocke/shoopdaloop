@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "profile": "shoop-zynq7000-1g-v1",
+  "sector_bytes": 512,
+  "card_bytes": 536870912,
+  "bundle_max_bytes": 33554432,
+  "boot": {"lba": 2048, "sectors": 131072, "type": 12},
+  "metadata": {"lba": 133120, "sectors": 8192, "type": 218},
+  "slot_a": {"lba": 141312, "sectors": 131072, "type": 218},
+  "slot_b": {"lba": 272384, "sectors": 131072, "type": 218},
+  "config_offsets": [0, 8],
+  "state_offsets": [16, 24],
+  "counter_offsets": [32, 40]
+}

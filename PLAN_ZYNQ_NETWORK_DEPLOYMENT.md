@@ -1,0 +1,387 @@
+# Zynq network deployment and emulated SD boot
+
+## Status and delivery
+
+Execution authorized on 2026-11-03. Plan written using `.agents/prompts/write_plan.md`.
+Implementation is in progress. Prerequisite: the completed
+`PLAN_ZYNQ_FREERTOS_HOST.md` and [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914).
+The inspected host head is `d58beffcd6d4e60a1d75a4ff29587c1f28458480`;
+`feat/backend-replacement` is at `3aabf437`. PR #914 is currently open.
+
+Implement on a new `feat/zynq-network-deployment` branch containing the host
+prerequisite. Deliver a separate, unmerged PR targeting **`feat/backend-replacement`**.
+If #914 is still open, document the shared prerequisite commits; reconcile its
+eventual merge without merging either PR on the user's behalf.
+
+## Goals and scope
+
+Provide a reproducible deployment boot chain:
+
+`BootROM → first-stage loader → U-Boot → Shoop FreeRTOS host`
+
+After one initial SD provisioning, a workstation can network-boot a development
+image or install a persistent firmware update over Ethernet. Normal startup must
+work without a network boot server. A failed/interrupted update must preserve a
+working image and a network recovery path.
+
+Use upstream U-Boot for Zynq GEM networking, TFTP, Fastboot over UDP, MMC and image
+verification. Supply the Shoop-specific handoff, update policy and host tooling.
+Use a **512 MiB file-backed emulated SD card**, independently of the existing
+**one-core, 1 GiB PS DDR** contract. The deployed application remains FreeRTOS +
+AMD lwIP with dummy audio/MIDI and target-side Rust `no_std` + `alloc`.
+
+Include initial card-image creation, a buildable reference first stage, network
+RAM boot, local SD boot, configuration/credential provisioning, authenticated
+reboot into the updater, A/B updates, boot confirmation, watchdog recovery,
+interruption tests, documentation and CI. Linux on the RT host is unnecessary.
+
+Physical-board testing, real DDR training/BootROM certification, QSPI/eMMC update
+backends, remote replacement of the first-stage loader/U-Boot, FPGA bitstream
+deployment, real audio, fleet management and general-purpose OTA services are
+outside scope. TFTP is the required pull transport; HTTP/USB are future options.
+The network policy remains an explicitly trusted LAN.
+
+## Immutable acceptance criteria
+
+1. **Boot chain and provenance:** pinned sources/tools produce the reference
+   first-stage loader, U-Boot, firmware update bundle and provisioned SD image.
+   QEMU boots real U-Boot on `xilinx-zynq-a9`, one CPU and exactly 1 GiB RAM.
+   Document the earliest stage QEMU actually executes and the stages it bypasses.
+2. **Network RAM boot:** U-Boot fetches and validates a Shoop image through the
+   emulated GEM network, loads it into RAM and hands over to the actual FreeRTOS
+   host. Native-client attachment, rendering progress and confirmed shutdown pass.
+   Host-side injection of the application ELF or its boot nonce cannot pass this gate.
+3. **Persistent SD boot:** U-Boot reads firmware and deployment state through the
+   emulated SD controller. A fresh QEMU process using the same updated card boots
+   the installed image without TFTP/Fastboot or host-side SD edits. The image
+   builder and normal deployment never require mounting a card or privileged I/O.
+4. **Convenient network update:** one workstation command authenticates to a
+   running host, requests clean updater entry, transfers a versioned image over
+   Ethernet, installs only the inactive slot, boots it and reports success only
+   after durable application health confirmation. A known-good fallback remains.
+5. **Recoverability:** interrupted transfer/write/activation/confirmation,
+   malformed or wrong-target images, failed trial boots, application hangs and
+   damaged metadata follow a tested, bounded recovery policy. A failed candidate
+   rolls back automatically; if no valid slot/state remains, U-Boot offers network
+   recovery. Recovery must work when the application cannot run.
+6. **Identity, ownership and RT behavior:** every application entry receives a
+   fresh nonzero boot nonce, including reset and rollback. Deployment preserves
+   device credentials/configuration and refuses stale/competing authority.
+   Ordinary shutdown retains its existing semantics. No SD/update I/O, allocation
+   or boot-state work enters rendering; the 1 GiB and existing resource bounds hold.
+7. **CI and delivery:** PR CI executes network boot, SD boot, successful update,
+   rollback and interruption tests with bounded child processes and retained
+   evidence. Existing full firmware/native/browser/portable gates remain enabled
+   and green on the final PR head. Inspect and address arriving automated review;
+   leave the PR unmerged and the worktree clean.
+
+## Design rules
+
+### First stage, boot memory and handoff
+
+- Prefer a released mainline U-Boot with its Zynq SPL as the reference first stage
+  performing the FSBL role. Pin the exact commit and configuration. A pinned AMD
+  FSBL may replace SPL if a demonstrated compatibility requirement warrants it;
+  record the reason and build inputs. Deliver the selected SD boot files, e.g.
+  `boot.bin` + `u-boot.img` for SPL, or `BOOT.BIN` for an AMD FSBL chain.
+- Reuse the current compiler/AMD/QEMU pins where compatible. Pin any additional
+  cross compiler, U-Boot tools, Fastboot client and image-generation dependencies.
+  Build without a Vitis installation; check in licensed reference PS initialization
+  inputs and distinguish these from an eventual physical board's exported setup.
+- First prove boot/reset/SD support on pinned QEMU 10.0.13. Newer QEMU documentation
+  is guidance, not evidence that this version implements identical boot-mode or
+  watchdog behavior. Version changes or narrowly scoped model adaptations need
+  recorded evidence and reproducible pins.
+- QEMU may seed the earliest supported loader because it lacks the physical boot
+  environment. Prefer a first-stage handoff test when executable in the model;
+  label direct U-Boot entry explicitly. Subsequent firmware selection, nonce
+  generation, SD operations and updater state transitions must execute in the guest.
+- Preserve the host's low-memory reservation, platform below 128 MiB and Rust
+  arena at 128–896 MiB. Bound update bundles to 32 MiB. Budget U-Boot relocation,
+  malloc, stacks, FDT and transfer/ELF staging within the upper 128 MiB before
+  loading the host; this region stays unavailable to host allocators. Assert all
+  live ranges, ELF file/memory sizes and entry points before copying or clearing
+  sections. Account for the 768 MiB NOLOAD arena and self-overwriting ELF loads.
+- Introduce a versioned, validated handoff in reserved low memory, retaining the
+  nonce at `0x8000`. Include board/profile identity, slot/bundle identity, network
+  configuration, credential and boot-state references. Quiesce GEM DMA, timers,
+  interrupts and caches/MMU as required before entering the host; reinitialize
+  SD and networking ownership on each side. Never return to an overwritten loader.
+
+### SD layout and persistent state
+
+Use a machine-readable, sector-aligned layout shared by the image builder,
+U-Boot and the firmware. Initial layout, finalized before implementing writes:
+
+| Region on 512 MiB card | Budget | Ownership |
+| --- | ---: | --- |
+| MBR/alignment | 1 MiB | Factory provisioning |
+| Boot FAT partition | 64 MiB | First stage/U-Boot; immutable to network updater |
+| Raw deployment metadata/config partition | 4 MiB | Bounded boot/runtime metadata API |
+| Raw firmware slot A | 64 MiB | Validated bundle plus slot descriptor |
+| Raw firmware slot B | 64 MiB | Validated bundle plus slot descriptor |
+| Remainder | Unassigned | Never an implicit update target |
+
+- Generate the card entirely as a regular file, including partitions and FAT
+  contents. Use independent card copies per test and retain a card unchanged
+  across guest warm resets and complete process restarts. No shared writable card
+  between concurrent QEMU instances; no host writer while the guest owns it.
+- Share a versioned, fixed-size metadata codec/state machine between bootloader,
+  firmware and tooling through common definitions and cross-language golden
+  vectors. Use bounds, checksums, generation numbers, redundant records and
+  write/readback ordering; do not assume FAT rename or one SD-sector write is atomic.
+- Separate configuration, boot-nonce durability and A/B selection records.
+  Provision a per-device counter seed; advance and read back redundant counter
+  copies before every application handoff. Rollback must never roll back this
+  counter. A single damaged copy must not permit nonce reuse; if freshness cannot
+  be established, stay in recovery. Check wrap and never reset identity on update.
+- Keep a confirmed slot, optional pending candidate, bounded attempts, bundle
+  digests and operation identity. Mark a candidate pending only after a complete
+  verified write/readback; durably consume an attempt before jumping. Retain the
+  confirmed image until the candidate confirms itself. Partial metadata changes
+  select the last valid committed state or enter recovery explicitly.
+- The FreeRTOS side needs a minimal bounded raw-sector SD interface, likely using
+  pinned AMD `xsdps`; a guest filesystem is unnecessary. Perform boot-state I/O
+  outside rendering. Handle failed/timed-out writes without false confirmation.
+  Do not silently add `std` to target dependencies.
+
+### Bundle, provisioning and deployment protocol
+
+- Package a board/profile identifier, version/build identity, entry/load contract
+  and firmware digest in a bounded FIT-based bundle. Use U-Boot's verification
+  support with an explicit signing-key input and a public key embedded in the
+  provisioned loader. CI generates disposable test keys; production private keys
+  are never committed or archived. Reject invalid signatures, lengths, address
+  ranges and wrong-target bundles before activation and again before execution.
+- Explicitly connect FIT verification to ELF loading/handoff; plain `bootelf`
+  does not automatically authenticate a signed container. Fastboot's standard
+  Android boot flow and `set_active` stub are not the Shoop boot/rollback policy.
+- Provision device MAC/IP/network settings and the existing 32-byte credential
+  separately from generic update bundles. Pass validated values to the host;
+  update artifacts must not contain a device's live credential. Firmware updates
+  preserve boot files, configuration, keys and counter records. Never silently
+  reformat a mismatched or damaged card.
+- Use Fastboot UDP for workstation push and TFTP for development pull. Export
+  only bounded inactive-slot/update operations: do not expose arbitrary MMC
+  writes, partition-table/bootloader replacement or an unrestricted U-Boot shell.
+  Validate a staged image before publishing it as bootable. In recovery with no
+  confirmed slot, a verified initial installation may populate a designated slot.
+- Add explicit deployment capability/status and reboot-to-updater behavior to
+  authenticated management, using existing authority and operation-id rules.
+  Ordinary native hosts may report unsupported. Version shared messages correctly
+  and preserve normal shutdown; do not create a Zynq-only fork of the session wire
+  format. Refuse competing ownership and unsupported/busy operations clearly.
+- Clean updater entry stops rendering, acknowledges all MIDI reset messages and
+  completes cleanup before durably recording the request and resetting. A failed
+  cleanup cannot trigger reset. Lost replies are reconciled by operation identity
+  and observed boot/update state, not by replaying unsafe writes.
+- The deployment CLI drives request, discovery/reconnect, transfer, verification,
+  trial boot and confirmation with deadlines and useful progress. It can resume
+  after interruption and explicitly distinguish installed, trial, confirmed,
+  rolled back and recovery states. Serial is a diagnostic/manual recovery aid;
+  the normal deployment command must need only Ethernet and the supplied profile.
+
+### Health and failure model
+
+- A candidate confirms only after validating its handoff/config, starting service
+  and endpoints, observing render progress and persisting the success record.
+  Publish the running bundle/slot and confirmation status for the workstation.
+  Confirmation cannot depend on a workstation remaining connected.
+- Configure bounded trial attempts and a watchdog/reset path. Feed it only when
+  required task progress is observed; an idle timer must not hide a stuck renderer
+  or control task. A hang before health confirmation must return to U-Boot and
+  eventually the confirmed slot. Demonstrate the modeled reset path rather than
+  substituting a host-script restart for the watchdog test.
+- Local confirmed-image boot has no server dependency. No valid image, exhausted
+  candidates or unusable identity state enters a documented network recovery
+  mode; corrupted counters/configuration require explicit reprovisioning where
+  safe automatic repair is impossible. Network recovery does not require Shoop
+  to start. Bootloader replacement and destroyed boot media require local recovery.
+- Emulated power loss proves the specified image/write fault model, not physical
+  SD controller durability or flash behavior. Record exactly which guest writes
+  were committed, torn or omitted; test both warm reset and cold process restart.
+
+## Staged implementation
+
+### Stage 0 — Establish baseline and freeze deployment contracts
+
+- [x] Fetch the actual base/prerequisite state, preserve unrelated changes and
+  create `feat/zynq-network-deployment`. Carry this plan onto the branch; record
+  SHAs and PR dependency. Preserve the completed host plan as historical evidence.
+- [x] Pin the first-stage/U-Boot source and build tools; resolve the reference
+  1 GiB PS/SD configuration and verify QEMU reset/SD/watchdog capabilities.
+  Freeze SD layout, metadata/handoff versions, transfer bounds and failure policy.
+- [x] Identify exact integration points in `platforms/zynq7000/{build,qemu,suite}.py`,
+  `host.c`, `shoop_host_freertos` and authenticated host management. Re-run the
+  existing three-gate suite and focused management/transport tests; commit baseline.
+
+Verification: build provenance and write/ownership boundaries are reviewable;
+no unresolved boot/reset capability is hidden behind a promised later workaround.
+
+### Stage 1 — Build the loader and provision a real emulated SD card
+
+Depends on Stage 0.
+
+- [ ] Add deterministic first-stage/U-Boot builds and required Zynq configuration,
+  producing the selected boot files, maps and manifests. Keep source patches
+  separate, justified and hashed. Build the first stage even if CI must enter
+  U-Boot directly; add the executable first-stage handoff check where supported.
+- [ ] Add regular-file SD image generation/provisioning with explicit keys/device
+  configuration and initial A image. Extend the launcher for SD, bootloader entry,
+  TFTP service, UDP forwarding and complete serial/QMP/reset evidence. Restrict
+  host listeners to loopback; retain existing direct-load firmware development mode.
+- [ ] Prove U-Boot GEM exchange and guest SD read/write/readback across a fresh
+  QEMU process, including correct card geometry, protected partition boundaries
+  and a default local boot path. Commit the first deployment milestone.
+
+Verification: U-Boot accesses the actual emulated controllers; no host process
+performs guest SD reads/writes on its behalf. First-stage build evidence and
+QEMU entry-point coverage are reported separately.
+
+### Stage 2 — Deployment gate 1: network and local boot through U-Boot
+
+Depends on Stage 1.
+
+- [ ] Implement shared metadata validation, durable boot-nonce allocation and
+  device provisioning/handoff. Integrate runtime network/credential configuration
+  and the bounded FreeRTOS SD metadata interface. Keep direct-load tests explicit.
+- [ ] Add bundle creation/verification and bounded ELF load/handoff. Prove TFTP
+  RAM boot through GEM and local boot of slot A through SD, with nonce/config
+  supplied exclusively by U-Boot. Enforce all loader and firmware memory ranges.
+- [ ] Execute authenticated native-client smoke and the actual UI workflow after
+  loader handoff. Cold boot without a TFTP server and warm reset at identical
+  endpoints; verify fresh authority and exact running bundle identity. Commit.
+
+Verification: real FreeRTOS networking/rendering starts from both image sources,
+old authority is refused, and the tests cannot pass by injecting the app ELF,
+nonce or slot selection from the host launcher.
+
+### Stage 3 — Deployment gate 2 foundation: A/B state and health confirmation
+
+Depends on Stage 2.
+
+- [ ] Implement bounded trial selection, durable attempt accounting, independent
+  nonce progression, application health confirmation and confirmed-slot fallback.
+  Share the authoritative state transitions across loader/runtime tooling.
+- [ ] Add supported watchdog/reset integration and updater-entry persistence.
+  Test pre-ready crashes and post-start task stalls, success confirmation and
+  cold boot of the last confirmed image without workstation involvement.
+- [ ] Test metadata codecs, torn-record selection, single-copy damage and boundary
+  conditions; confirm safe recovery when both copies/configuration are unusable.
+  Compare card regions before/after operations and commit the state-machine milestone.
+
+Verification: confirmation is a guest durable write, failed trials terminate,
+rollback retains fresh boot identity, and watchdog recovery uses a guest reset.
+
+### Stage 4 — Deployment gate 2 completion: one-command Ethernet updates
+
+Depends on Stage 3.
+
+- [ ] Add capability-aware authenticated updater entry, lost-reply reconciliation
+  and explicit status reporting. Prove ownership refusal, cleanup failure refusal
+  and unchanged ordinary shutdown across native and FreeRTOS hosts.
+- [ ] Configure Fastboot UDP with restricted staging/commit operations and add
+  workstation deployment/status commands. Preserve the confirmed slot, boot files
+  and device configuration; check readback and signatures before marking pending.
+- [ ] Update A → B and B → A using distinguishable firmware identities. Have the
+  CLI observe durable confirmation, then disconnect the workstation and cold boot
+  the installed image using only the retained card. Document commands and commit.
+
+Verification: a single operator command completes each network-only deployment;
+the transferred image actually runs, and success is reported after confirmation.
+
+### Stage 5 — Deployment gate 3: interrupted updates and autonomous recovery
+
+Depends on Stage 4. Add deterministic cut points plus a small seeded randomized
+set; preserve replay seeds and the affected SD records for failures.
+
+- [ ] Cover the matrix below with actual QEMU execution and card persistence.
+  Use explicit torn/omitted-write injection in addition to killing QEMU; a process
+  kill alone does not prove every storage failure boundary.
+- [ ] Test interrupted/resumed CLI sessions, lost UDP replies, slow/no server,
+  stale authority after rollback, attempted protected-region writes, incompatible
+  metadata/handoff formats and counter overflow. Preserve useful error distinctions.
+- [ ] Demonstrate network installation from recovery with no functioning app,
+  bounded watchdog rollback, and confirmed-image boot when the workstation is
+  absent. Recheck memory/stack bounds and render-path allocation guards; commit.
+
+| Failure point | Required observable result |
+| --- | --- |
+| Download, inactive-slot erase/write, readback | Confirmed image still boots; incomplete slot is not selected |
+| Candidate publication or attempt-record write | Valid previous state or bounded trial; never execute unverified bytes |
+| Candidate starts but never confirms, crashes or hangs | Watchdog/reset, bounded attempts, automatic confirmed-slot rollback |
+| Success-record write interrupted | Valid confirmation or safe retry/fallback; no false success |
+| One metadata/counter record damaged | Valid state recovered without nonce reuse or rewriting protected regions |
+| Both state copies unusable / both images invalid | Explicit network recovery; no fabricated confirmation or boot identity |
+
+Verification: failures have guest evidence and precise outcomes, not merely a
+host timeout. The invariant is a usable confirmed image or an honest recovery mode.
+
+### Stage 6 — Permanent CI, final validation and PR delivery
+
+Depends on all previous stages.
+
+- [ ] Add bounded Linux PR CI for loader builds, SD generation, TFTP/local boot,
+  network A/B update, watchdog rollback and representative interruption cases.
+  Keep broader seeded fault coverage separately invocable/scheduled if necessary.
+  Cache reproducible build inputs only; never reuse mutable cards, keys or state.
+- [ ] Retain compact manifests, boot/config versions, image hashes, QMP CPU/RAM
+  facts, loader/runtime serial logs, deployment transcripts and result records.
+  Keep redacted metadata/card diagnostics and packet captures for failures;
+  never archive live credentials/private keys. Provide a single full validation command.
+- [ ] Run that command from fresh and cached builds with two distinct signed
+  firmware identities. Exercise factory SD boot → update → health confirmation →
+  server-free cold boot → failed candidate → automatic rollback → network recovery.
+  Run the original full host suite and required native/browser/no_std, formatting,
+  warning-denying build, tracing/boundary and applicable test-attribute checks.
+- [ ] Review final diffs, source/licenses, memory/SD maps, provisioning and recovery
+  docs against every criterion. Push the milestone commits; create/update the PR
+  onto `feat/backend-replacement`. Resolve base movement and automated review,
+  repeat affected checks and obtain green required/applicable CI on the final head.
+  Link evidence in the PR; leave it unmerged and the worktree clean.
+
+Verification: the documented operator workflow works through Ethernet and the
+emulated SD card end to end; first-stage and physical-board limitations are stated
+precisely, and the final PR contains reproducible passing evidence.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Primary references
+
+These explain the available components; implementation must pin actual source
+revisions rather than treating moving documentation as a reproducible input.
+
+- [U-Boot Zynq support and SPL/SD boot files](https://docs.u-boot-project.org/en/v2026.10/board/xilinx/zynq.html).
+- [Fastboot UDP, storage backends and custom board operations](https://docs.u-boot-project.org/en/latest/android/fastboot.html).
+- [ELF launching](https://docs.u-boot-project.org/en/latest/usage/cmd/bootelf.html)
+  and [FIT verification](https://docs.u-boot-project.org/en/latest/usage/fit/signature.html).
+- [Boot-count fallback and application confirmation responsibility](https://docs.u-boot-project.org/en/latest/api/bootcount.html).
+- [QEMU Zynq devices and loader/SD examples](https://www.qemu.org/docs/master/system/arm/xlnx-zynq.html),
+  currently a newer model/manual than the project's pinned QEMU; verify capabilities.
+
+## Execution evidence
+
+- Created `feat/zynq-network-deployment` from `d58beffc`; prerequisite #914 remains
+  open against `feat/backend-replacement` at `3aabf437`.
+- U-Boot v2026.10 resolves to `5508406582f6f7120dce0c4b3059819a41788db2`.
+  Existing GCC 14.2.1 builds U-Boot proper and its Zynq SPL without Vitis.
+- On stock QEMU 10.0.13, U-Boot identifies a ZC702 with 1 GiB DDR, fetches 2048
+  bytes over real GEM/TFTP, writes/reads the 512 MiB SD card (CRC `9f5edd58`) and
+  restarts itself through the guest SLCR reset register.
+- Source inspection confirms that QEMU 10.0.13 leaves the Cadence system
+  watchdog unimplemented and treats the private watchdog as an interrupt timer.
+  A narrow, pinned Cadence watchdog model is being added for autonomous reset
+  testing, including hangs with CPU interrupts disabled. Original firmware tests
+  continue to use stock QEMU; deployment tests record the model patch provenance.
+- The baseline full firmware suite passes all seven phases (716 seconds), and
+  all 36 focused connection/transport/host tests pass. The shared C boot-state
+  tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+- The watchdog-enabled QEMU is built from upstream `98f88efe` plus the checked-in
+  Cadence model patch. MMIO programming and virtual-time advancement produce
+  QMP `WATCHDOG` and guest `RESET` events without a host restart request.
