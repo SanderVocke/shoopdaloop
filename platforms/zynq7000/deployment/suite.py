@@ -10,10 +10,10 @@ import sys
 import time
 
 from build_artifacts import build, PLATFORM
-from emulator import ROOT
+from emulator import BootQemu, ROOT
 from qualification import Qualification
 
-PHASES = ["build", "records", "network-boot", "warm-boot", "ui", "roundtrip", "watchdogs",
+PHASES = ["build", "records", "first-stage", "network-boot", "warm-boot", "ui", "roundtrip", "watchdogs",
           "disk-faults", "metadata-damage", "network-faults", "refusals", "cleanup-refusal", "no-server"]
 
 
@@ -31,6 +31,21 @@ def worker(args):
                         "-I", PLATFORM / "deployment", PLATFORM / "deployment/tests/boot_state.c",
                         PLATFORM / "deployment/boot_state.c", "-o", executable], check=True)
         subprocess.run([executable], check=True, env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})
+    elif args.phase == "first-stage":
+        import re
+        image = q.factory("first-stage")
+        with BootQemu(directory / "artifacts/loader/u-boot-spl", image, q.evidence / "probe",
+                      port_base=args.port_base, updater_port=args.updater_port, first_stage=True) as vm:
+            time.sleep(3)
+            vm.qmp("stop")
+            registers = vm.qmp("human-monitor-command", {"command-line": "info registers"})
+            pc = int(re.search(r"R15=([0-9a-fA-F]+)", registers)[1], 16)
+            memory, cpus = vm.qmp("query-memory-size-summary"), vm.qmp("query-cpus-fast")
+            assert memory["base-memory"] == 1 << 30 and len(cpus) == 1
+            assert 0x400 <= pc < 0x430, "Reference SPL no longer matches the documented PS-init polling limitation"
+            result = {"entry": "reference Zynq SPL ELF", "bootrom_executed": False, "uboot_handoff": False,
+                      "pc": pc, "limitation": "reference PS-init SLCR 0xf8000b74 polling", "memory": memory, "cpus": cpus}
+            (q.evidence / "coverage.json").write_text(json.dumps(result, indent=2) + "\n")
     elif args.phase in {"network-boot", "warm-boot", "ui"}:
         import probe
         network = args.phase == "network-boot"

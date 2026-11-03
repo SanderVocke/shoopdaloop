@@ -60,6 +60,7 @@ def build(directory, fetch=False, port_base=16400):
                            (ROOT / "work/zynq/qemu-build/shoop-build.json", "emulator-build.json"),
                            (PLATFORM / "pins.json", "pins.json")]:
         shutil.copyfile(source, artifacts / target)
+    shutil.copyfile(bundle.BOOT / "spl/u-boot-spl", artifacts / "loader/u-boot-spl")
     run(["cargo", "build", "--locked", "-p", "shoop_host", "--no-default-features", "--bin", "shoop-deploy", "--example", "zynq_probe"])
     manifest = {str(p.relative_to(artifacts)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in sorted(artifacts.rglob("*")) if p.is_file()}

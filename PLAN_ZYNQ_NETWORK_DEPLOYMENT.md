@@ -86,8 +86,10 @@ The network policy remains an explicitly trusted LAN.
   `boot.bin` + `u-boot.img` for SPL, or `BOOT.BIN` for an AMD FSBL chain.
 - Reuse the current compiler/AMD/QEMU pins where compatible. Pin any additional
   cross compiler, U-Boot tools, Fastboot client and image-generation dependencies.
-  Build without a Vitis installation; check in licensed reference PS initialization
-  inputs and distinguish these from an eventual physical board's exported setup.
+  Build without a Vitis installation; pin and hash licensed upstream reference PS
+  initialization inputs and distinguish these from an eventual physical board's
+  exported setup. The pinned upstream source carries the 12,814-line generated
+  reference input; avoid a second vendored generated copy.
 - First prove boot/reset/SD support on pinned QEMU 10.0.13. Newer QEMU documentation
   is guidance, not evidence that this version implements identical boot-mode or
   watchdog behavior. Version changes or narrowly scoped model adaptations need
@@ -439,3 +441,13 @@ revisions rather than treating moving documentation as a reproducible input.
   pass. Authenticated management tests cover busy/stale/idempotent requests,
   cleanup failure, independent deployment versioning and native unsupported status.
   Storage fault injection and permanent qualification/CI remain in progress.
+
+- Design refinement: retain the GPL reference PS initialization in the pinned
+  U-Boot source rather than duplicating 12,814 generated lines. Explicit hashes of
+  its implementation/header are checked against `pins.json` and included in build
+  provenance. This preserves reproducibility/licensing and makes board-specific
+  replacement explicit. Goals and acceptance criteria are unchanged.
+- Delivery opened as draft PR #924 onto `feat/backend-replacement`; initial CI
+  includes the new deployment job and all existing gates. Fault qualification
+  found an invalid-configuration loader path that attempted app entry; it is
+  being fixed to remain in recovery before consuming an application nonce.

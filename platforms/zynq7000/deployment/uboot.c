@@ -43,9 +43,10 @@ static void watchdog(unsigned seconds) {
         writel(0x1999, 0xf8005008);
     }
 }
-static void configure_network(void) {
+static int configure_network(void) {
     char ip[32];
-    if (shoop_config_load(&io, &configuration)) {
+    int invalid = shoop_config_load(&io, &configuration);
+    if (invalid) {
         memset(&configuration, 0, sizeof configuration);
         env_set("ethaddr", "02:00:00:00:00:01");
         env_set("ipaddr", "10.0.2.15"); env_set("netmask", "255.255.255.0");
@@ -71,6 +72,7 @@ static void configure_network(void) {
     if (eth_get_ops(eth_get_dev())->write_hwaddr)
         eth_get_ops(eth_get_dev())->write_hwaddr(eth_get_dev());
     printf("SHOOP_NETWORK ip=%s server=%s\n", env_get("ipaddr"), env_get("serverip"));
+    return invalid;
 }
 static int open_card(void) {
     struct mmc *mmc = find_mmc_device(0);
@@ -283,9 +285,9 @@ static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const ar
     if (argc != 2 || (strcmp(argv[1], "boot") && strcmp(argv[1], "netboot") && strcmp(argv[1], "recovery"))) return CMD_RET_USAGE;
     int storage = open_card();
     storage_valid = !storage;
-    configure_network();
+    int configuration_invalid = configure_network();
     if (storage) puts("SHOOP_CARD_INVALID\n");
-    else {
+    else if (!configuration_invalid) {
         struct shoop_state state;
         if (!shoop_state_load(&io, &state) && strcmp(argv[1], "recovery")) {
             uint32_t mode = state.mode;
@@ -305,7 +307,7 @@ static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const ar
         puts("SHOOP_UPDATER_READY\n");
         run_command("fastboot udp", 0);
         struct shoop_state state;
-        if (!storage && !shoop_state_load(&io, &state)) boot_local(&state);
+        if (!storage && !configuration_invalid && !shoop_state_load(&io, &state)) boot_local(&state);
     }
 }
 U_BOOT_CMD(shoop, 2, 0, do_shoop, "Shoop SD boot and network deployment", "boot | netboot | recovery");

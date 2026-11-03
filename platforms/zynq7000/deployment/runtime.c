@@ -52,6 +52,7 @@ int shoop_deploy_init(void) {
     memcpy(&handoff, (const void *)SHOOP_HANDOFF_ADDRESS, sizeof handoff);
 #if SHOOP_DEPLOY_FAULT == 5
     xil_printf("SHOOP_DEPLOY_TEST_HANDOFF_VERSION\r\n"); ++handoff.version;
+    handoff.crc = shoop_crc32(&handoff, 508);
 #endif
     if (!shoop_handoff_valid(&handoff) || strcmp(handoff.build, shoop_build_identity)) return 0;
     if (XSdPs_CfgInitialize(&sd, &XSdPs_ConfigTable[0], 0xe0100000) != XST_SUCCESS ||

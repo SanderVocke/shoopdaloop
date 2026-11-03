@@ -46,6 +46,7 @@ class FaultDisk:
         self.stop = threading.Event()
         self.error = None
         self.events = []
+        self.readback = None
         self.connection = None
         self.listener = socket.socket(socket.AF_UNIX)
         self.listener.bind(str(self.path))
@@ -110,6 +111,10 @@ class FaultDisk:
                         response = os.pread(disk.fileno(), length, offset)
                         if len(response) != length:
                             error, response = errno.EIO, b""
+                        elif self.readback is not None and offset <= self.readback < offset + length:
+                            corrupt = bytearray(response); corrupt[self.readback - offset] ^= 1
+                            response = bytes(corrupt); self.readback = None
+                            self.events.append({"offset": offset, "bytes": length, "result": "corrupted-readback"})
                     elif command == 1:
                         event = {"offset": offset, "bytes": length, "lba": offset // 512,
                                  "sha256": hashlib.sha256(data).hexdigest(), "result": "committed"}
@@ -121,11 +126,14 @@ class FaultDisk:
                                 event["nonce"] = struct.unpack_from("<Q", data, 16)[0]
                         action = self.rule(event) if self.rule is not None and not self.hit.is_set() else None
                         if action:
-                            if action not in {"omit", "tear", "cut"}:
+                            if action not in {"omit", "tear", "cut", "readback"}:
                                 raise ValueError("Unknown disk fault")
                             event["result"] = action
-                            event["committed_bytes"] = min(199, length) if action != "omit" else 0
-                            if action != "omit":
+                            event["committed_bytes"] = length if action == "readback" else min(199, length) if action != "omit" else 0
+                            if action == "readback":
+                                os.pwrite(disk.fileno(), data, offset)
+                                self.readback = offset
+                            elif action != "omit":
                                 os.pwrite(disk.fileno(), data[:199], offset)
                             os.fsync(disk.fileno())
                             self.events.append(event)

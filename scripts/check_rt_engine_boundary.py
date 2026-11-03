@@ -26,6 +26,7 @@ PACKAGES = (
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
 )
 FORBIDDEN = {
+    "shoop_deployment_protocol",
     "shoop_host", "shoop_app", "shoop_app_api", "shoop_backend", "shoop_engine", "shoop_egui",
     "shoopdaloop", "shoop_session", "shoop_worklet_client", "shoop_audio_worklet",
     "shoop_audio_protocol",

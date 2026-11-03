@@ -93,7 +93,7 @@ int shoop_nonce_reserve(const struct shoop_io *io, uint64_t *out) {
     const uint32_t sectors[] = { SHOOP_COUNTER_0_LBA, SHOOP_COUNTER_1_LBA };
     unsigned valid = 0;
     for (unsigned i = 0; i < 2; ++i) {
-        if (io->read(io->context, sectors[i], &record) || !shoop_record_valid(&record, 3)) continue;
+        if (io->read(io->context, sectors[i], &record) || !shoop_record_valid(&record, 3) || !record.value) continue;
         ++valid;
         if (record.value > next.value) next.value = record.value;
     }

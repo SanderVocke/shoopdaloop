@@ -161,6 +161,7 @@ class Qualification:
         # Every critical record boundary gets a torn write. Additional seeded
         # omissions/cuts exercise the same real controller path and are replayable.
         cases = [(name, match, phase, "tear") for name, match, phase in rules]
+        cases.append(("readback", {"lba": LAYOUT["slot_b"]["lba"] + 1}, "install", "readback"))
         randomizer = random.Random(seed)
         cases += [(name + "-" + mode, match, phase, mode) for mode in ["omit", "cut"]
                   for name, match, phase in randomizer.sample(rules, 2)]
@@ -205,10 +206,13 @@ class Qualification:
                     ("config-one", "config", [0], False), ("state-both", "state", [0, 1], True),
                     ("counter-both", "counter", [0, 1], True), ("config-both", "config", [0, 1], True),
                     ("state-version", "state", [0, 1], True), ("config-version", "config", [0, 1], True),
-                    ("counter-wrap", "counter", [0, 1], True)]
+                    ("counter-wrap", "counter", [0, 1], True), ("images-both", "images", [], True)]
         for name, region, copies, recovery in variants:
             image = self.factory(name)
             with image.open("r+b") as disk:
+                if region == "images":
+                    for slot in ["slot_a", "slot_b"]:
+                        disk.seek(LAYOUT[slot]["lba"] * 512); disk.write(bytes(512))
                 for copy in copies:
                     offset = (LAYOUT["metadata"]["lba"] + LAYOUT[region + "_offsets"][copy]) * 512
                     disk.seek(offset)
@@ -227,7 +231,7 @@ class Qualification:
                 with self.vm(image, name) as vm:
                     vm.ready("Listening for fastboot", 90)
                     assert not boots(vm.serial.read_text()), "Unusable identity/state reached the app"
-                    if region == "state":
+                    if region in {"state", "images"}:
                         self.command(name, "stage", self.artifacts / "firmware-b.itb", "--reboot")
                         vm.ready("SHOOP_HOST_READY", 150)
                         assert boots(vm.serial.read_text())[-1]["build"] == "firmware-b"

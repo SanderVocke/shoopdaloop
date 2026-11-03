@@ -35,6 +35,9 @@ def main():
     revision = subprocess.check_output(["git", "-C", SOURCE, "rev-parse", "HEAD"], text=True).strip()
     if revision != PINS["u_boot"]:
         raise SystemExit("U-Boot source differs from the pinned revision")
+    reference = {path: hashlib.sha256((SOURCE / path).read_bytes()).hexdigest() for path in PINS["reference_ps_init_sha256"]}
+    if reference != PINS["reference_ps_init_sha256"]:
+        raise SystemExit("Reference PS initialization differs from its recorded inputs")
     changes = subprocess.check_output(["git", "-C", SOURCE, "diff", "--name-only"], text=True).splitlines()
     if set(changes) - {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}:
         raise SystemExit("Unrecorded U-Boot source changes")
@@ -72,6 +75,7 @@ def main():
     manifest = {"source": revision, "profile": "zynq-zc702", "first_stage": "U-Boot Zynq SPL",
                 "patch_sha256": hashlib.sha256(PATCH.read_bytes()).hexdigest(),
                 "reference_ps_init": "board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c",
+                "reference_ps_init_sha256": reference,
                 "source_sha256": {source: hashlib.sha256((DEPLOYMENT / source).read_bytes()).hexdigest() for source in copies},
                 "config_sha256": hashlib.sha256((BUILD / ".config").read_bytes()).hexdigest(),
                 "files": {name: hashlib.sha256((BUILD / name).read_bytes()).hexdigest() for name in ["u-boot.bin", "u-boot-nodtb.bin", "u-boot.dtb", "spl/boot.bin", "spl/u-boot-spl"]}}

@@ -64,6 +64,8 @@ static void nonce_faults(void) {
     struct shoop_counter counter = { .value = UINT64_MAX };
     shoop_record_seal(&counter, 3); memcpy(disk[4], &counter, 512);
     assert(shoop_nonce_reserve(&io, &nonce) == SHOOP_EXHAUSTED);
+    counter.value = 0; shoop_record_seal(&counter, 3); memcpy(disk[4], &counter, 512);
+    assert(shoop_nonce_reserve(&io, &nonce) == SHOOP_INVALID);
 }
 static void trials_and_confirmation(void) {
     initialize();

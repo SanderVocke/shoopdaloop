@@ -19,5 +19,9 @@
     "ninja-build": "1.12.1-1",
     "libglib2.0-dev": "2.84.4-3~deb13u5",
     "libslirp-dev": "4.8.0-1+deb13u1"
+  },
+  "reference_ps_init_sha256": {
+    "board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c": "7797868ad02b590c0d74272f017f611a3e9d252d1826206b83943424cfd3b173",
+    "arch/arm/mach-zynq/include/mach/ps7_init_gpl.h": "fb0664812b51de0a0fb0844f7d6c9317f17acb921af74896b2d0435bfe635619"
   }
 }
