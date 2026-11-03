@@ -214,9 +214,9 @@ static void usb_run(void *unused) {
         for (unsigned slot = 0; slot < SHOOP_MIDI_PORTS; ++slot) {
             struct shoop_usb_counters counters;
             shoop_usb_counters(direction, slot, &counters);
-            xil_printf("SHOOP_USB_COUNTER direction=%u slot=%u received=%u completed=%u refused=%u dropped=%u malformed=%u assembly_dropped=%u\r\n",
+            xil_printf("SHOOP_USB_COUNTER direction=%u slot=%u received=%u completed=%u refused=%u dropped=%u malformed=%u assembly_dropped=%u recovery_requests=%u packets=%u queued=%u\r\n",
                 direction, slot, counters.received, counters.completed, counters.refused, counters.dropped,
-                counters.malformed, counters.assembly_dropped);
+                counters.malformed, counters.assembly_dropped, counters.recovery_requests, counters.packets, counters.queued);
         }
     }
     xil_printf("SHOOP_USB_STOP drained=%u controller_stopped=%u lost_packets=%u errors=%u stack_free=%u elapsed_us=%u\r\n",

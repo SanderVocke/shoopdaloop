@@ -501,5 +501,144 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
         topology("drained");
     }
     println!("Hotplug preserved physical IDs, offline bindings and live control");
+    if cables == 1 && devices == 1 {
+        let application_port = |direction| {
+            ports.iter().find(|port| port.direction == direction &&
+            matches!(port.owner, ApplicationPortOwner::Track {track_id, ..} if track_id == track)).unwrap().id
+        };
+        let in_port = application_port(PortDirection::Input);
+        let out_port = application_port(PortDirection::Output);
+        peer.read();
+        peer.bytes.clear();
+        for (port, host_port) in [(out_port, output.clone()), (in_port, input.clone())] {
+            confirmed(command(
+                client,
+                connection,
+                Command::SetPortConnected {
+                    port,
+                    host_port,
+                    connected: false,
+                },
+            ));
+        }
+        topology("drained");
+        topology("detach");
+        wait(client, connection, |client| {
+            !client
+                .snapshot()
+                .unwrap()
+                .connections
+                .host_ports
+                .iter()
+                .any(|port| port.id == input || port.id == output)
+        });
+        assert!(
+            matches!(
+                command(
+                    client,
+                    connection,
+                    Command::SetPortConnected {
+                        port: in_port,
+                        host_port: input.clone(),
+                        connected: true,
+                    }
+                ),
+                Outcome::Refused { .. }
+            ),
+            "retired identity accepted a late connection"
+        );
+        topology("replace");
+        wait(client, connection, |client| {
+            client
+                .snapshot()
+                .unwrap()
+                .connections
+                .host_ports
+                .iter()
+                .any(|port| port.data_type == PortDataType::Midi && port.available)
+        });
+        let ports = &client.snapshot().unwrap().connections.host_ports;
+        let replacement_input = ports
+            .iter()
+            .find(|port| {
+                port.data_type == PortDataType::Midi
+                    && port.id.as_str().ends_with("/in/0")
+                    && port.available
+            })
+            .unwrap()
+            .id
+            .clone();
+        let replacement_output = ports
+            .iter()
+            .find(|port| {
+                port.data_type == PortDataType::Midi
+                    && port.id.as_str().ends_with("/out/0")
+                    && port.available
+            })
+            .unwrap()
+            .id
+            .clone();
+        assert_ne!(replacement_input, input);
+        assert_ne!(replacement_output, output);
+        peer.read();
+        peer.bytes.clear();
+        let unrouted = [packets(&[0x90, 96, 100], 0), packets(&[0x80, 96, 0], 0)].concat();
+        peer.stream.write_all(&unrouted).unwrap();
+        let count = expected_count + 2 * cycles + 2;
+        let consumption = std::thread::spawn(move || topology(&format!("consumed 0 {count}")));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !consumption.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "replacement input was not consumed"
+            );
+            pump(client, connection);
+        }
+        consumption.join().unwrap();
+        for _ in 0..20 {
+            pump(client, connection);
+        }
+        peer.read();
+        assert!(
+            !peer
+                .bytes
+                .windows(unrouted.len())
+                .any(|bytes| bytes == unrouted),
+            "an old route delivered MIDI to a replacement device"
+        );
+        for (port, host_port) in [(in_port, replacement_input), (out_port, replacement_output)] {
+            confirmed(command(
+                client,
+                connection,
+                Command::SetPortConnected {
+                    port,
+                    host_port,
+                    connected: true,
+                },
+            ));
+        }
+        let selected = [packets(&[0x90, 97, 105], 0), packets(&[0x80, 97, 0], 0)].concat();
+        peer.stream.write_all(&selected).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            peer.read();
+            if peer
+                .bytes
+                .windows(selected.len())
+                .any(|bytes| bytes == selected)
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "selected replacement did not exchange MIDI"
+            );
+            pump(client, connection);
+        }
+        topology("drained");
+        println!(
+            "Retired identity stayed isolated; replacement exchanged MIDI after explicit selection"
+        );
+    }
     peer
 }

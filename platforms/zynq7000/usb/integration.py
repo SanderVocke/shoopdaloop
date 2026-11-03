@@ -56,6 +56,7 @@ def main():
     emulator, manifest = usb_emulator()
     symbols = subprocess.check_output(['arm-none-eabi-nm', '--defined-only', ROOT / 'work/zynq/build/host-usb.elf'], text=True)
     consumed = int(re.search(r'^([0-9a-fA-F]+) B shoop_usb_consumed$', symbols, re.MULTILINE)[1], 16)
+    queue_table = int(re.search(r'^([0-9a-fA-F]+) [RDT] shoop_usb_output_queue_heads$', symbols, re.MULTILINE)[1], 16)
     pending = int(re.search(r'^([0-9a-fA-F]+) B shoop_usb_pending_packets$', symbols, re.MULTILINE)[1], 16)
     environment = dict(os.environ, QEMU=str(emulator), SHOOP_ZYNQ_USB_SOCKET=str(directory / 'midi.sock'),
                        SHOOP_ZYNQ_USB_CABLES=str(args.cables), SHOOP_ZYNQ_USB_DEVICES=str(args.devices),
@@ -73,6 +74,11 @@ def main():
     with Qemu(ROOT / 'work/zynq/build/host-usb.elf', directory,
               [(args.port_base, 15400), (args.port_base + 1, 15401)]) as vm:
         vm.ready('SHOOP_USB_READY')
+        def words(address, count):
+            output = vm.qmp('human-monitor-command', {'command-line': f'xp /{count}wx {address:#x}'})
+            return [int(word, 16) for line in output.splitlines() for word in line.partition(':')[2].split()]
+        queue_heads = words(queue_table, 16)
+        assert len(queue_heads) == 16 and all(0x100000 <= address < 0x8000000 for address in queue_heads)
         attach(vm, directory, args.cables, not args.full_speed, args.tiers, open_peer=False, fault=args.fault)
         vm.ready(f'rx={args.cables} tx={args.cables}')
         peers = []
@@ -129,10 +135,11 @@ def main():
                         try:
                             if command == 'detach':
                                 vm.qmp('device_del', {'id': 'midi-device'})
-                            elif command == 'attach':
+                            elif command in ['attach', 'replace']:
                                 vm.qmp('device_add', {'driver': 'usb-shoop-midi', 'id': 'midi-device',
                                     'chardev': 'midi', 'bus': usb0_bus(vm), 'port': '1' + '.1' * args.tiers,
-                                    'cables': args.cables, 'high-speed': not args.full_speed, 'serial': 'shoop-midi-serial'})
+                                    'cables': args.cables, 'high-speed': not args.full_speed,
+                                    'serial': 'replacement-midi-serial' if command == 'replace' else 'shoop-midi-serial'})
                             elif command.startswith('consumed '):
                                 _, slot, count = command.split()
                                 slot, count = int(slot), int(count)
@@ -149,13 +156,13 @@ def main():
                             elif command == 'drained':
                                 deadline = time.monotonic() + 10
                                 while True:
-                                    output = vm.qmp('human-monitor-command', {'command-line': f'xp /8wx {pending:#x}'})
-                                    values = [int(word, 16) for line in output.splitlines()
-                                              for word in line.partition(':')[2].split()]
-                                    if len(values) == 8 and not any(values):
+                                    queues = [words(address, 3) for address in queue_heads]
+                                    idle = all(len(queue) == 3 and queue[0] == queue[1] and not queue[2] for queue in queues)
+                                    values = words(pending, 8)
+                                    if idle and len(values) == 8 and not any(values):
                                         break
                                     if time.monotonic() >= deadline:
-                                        raise TimeoutError(f'USB OUT completion owners did not drain: {values}')
+                                        raise TimeoutError(f'USB OUT queues/completion owners did not drain: {queues} {values}')
                                     time.sleep(.02)
                             else:
                                 raise ValueError(command)
@@ -205,6 +212,9 @@ def main():
                 else:
                     assert 'SHOOP_USB_STOP drained=1 controller_stopped=1 lost_packets=0 errors=0' in serial
             assert 'SHOOP_USB_FAILED' not in serial, 'Controller handshake failed'
+            outputs = [dict((key, int(value)) for key, value in re.findall(r'(\w+)=(\d+)', line))
+                       for line in serial.splitlines() if line.startswith('SHOOP_USB_COUNTER direction=1 ')]
+            assert len(outputs) == 16 and all(counter['queued'] == 0 for counter in outputs), 'Output queues survived USB teardown'
             memory = [dict((k, int(v)) for k, v in re.findall(r'(\w+)=(\d+)', line))
                       for line in serial.splitlines() if line.startswith('SHOOP_MEMORY ')]
             assert memory and (args.fault == 'nak' or memory[-1]['used'] == 0)

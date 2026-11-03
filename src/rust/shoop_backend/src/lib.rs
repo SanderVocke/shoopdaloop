@@ -1142,6 +1142,9 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn release_host_port_identity(&mut self, _id: &str) -> bool {
+        false
+    }
     fn host_port_in_use(&self, _id: &str) -> bool {
         false
     }

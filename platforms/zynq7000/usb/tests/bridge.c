@@ -82,9 +82,12 @@ int main(void) {
     assert(!shoop_usb_drained());
     shoop_usb_unmount(0);
     assert(shoop_usb_drained());
+    struct shoop_usb_counters counters;
+    assert(shoop_usb_counters(0,0,&counters) && counters.dropped==SHOOP_MIDI_QUEUE+2 && !counters.queued);
+    assert(shoop_usb_counters(1,0,&counters) && counters.dropped==SHOOP_MIDI_QUEUE+2 && !counters.queued);
     assert(shoop_usb_mount(1, 3, 1, 15, 15, 0xcafe, 0x4010, 0, "usb0/2:fixture", "Interface"));
     assert(!shoop_usb_mount(2, 4, 1, 1, 1, 0xcafe, 0x4010, 0, "usb0/3:excess", "Excess"));
     assert(!shoop_usb_mount(2, 4, 1, 17, 1, 0xcafe, 0x4010, 0, "usb0/3:excess", "Excess"));
-    puts("USB MIDI admission, queue bounds, generations, scheduling and completed recovery passed");
+    puts("USB MIDI admission, queue bounds, generations, scheduling, counted loss and completed recovery passed");
     return 0;
 }

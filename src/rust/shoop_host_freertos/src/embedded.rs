@@ -161,7 +161,7 @@ impl shoop_rt_backend::HostPortInventory for UsbInventory {
 }
 
 #[cfg(feature = "usb-midi")]
-fn usb_release_unused(service: &Service) {
+fn usb_release_unused(service: &mut Service) {
     for direction in 0..2 {
         for slot in 0..crate::MIDI_PORTS {
             let Some(info) = usb_port_info(direction, slot as u32) else {
@@ -169,7 +169,7 @@ fn usb_release_unused(service: &Service) {
             };
             if info.connected == 0
                 && info.key[0] != 0
-                && !service.host_port_in_use(usb_text(&info.key))
+                && service.release_host_port_identity(usb_text(&info.key))
             {
                 unsafe {
                     shoop_usb_release(direction, slot as u32, info.generation);
@@ -740,7 +740,7 @@ pub fn run() {
         service.tick(elapsed);
         #[cfg(feature = "usb-midi")]
         if now.saturating_sub(last_usb) >= 100 {
-            usb_release_unused(&service);
+            usb_release_unused(&mut service);
             last_usb = now;
         }
         if service.shutdown_ready() {

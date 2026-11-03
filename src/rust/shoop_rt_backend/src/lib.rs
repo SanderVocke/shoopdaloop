@@ -141,6 +141,8 @@ pub trait HostPortInventory: Send {
 pub struct RtBackend<C, K> {
     host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
     inventory_reconcile: bool,
+    retired_host_ports:
+        alloc::collections::BTreeMap<shoop_rt_protocol::HostPortId, alloc::string::String>,
     resource_limits: shoop_app_api::HostResourceLimits,
     client: ProtocolClient<C>,
     clock: K,
@@ -188,6 +190,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         Ok(Self {
             host_port_inventory: None,
             inventory_reconcile: false,
+            retired_host_ports: alloc::collections::BTreeMap::new(),
             resource_limits: shoop_app_api::HostResourceLimits::default(),
             client,
             clock,
@@ -240,7 +243,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         let mut mapped = alloc::collections::BTreeMap::new();
         let mut identities = alloc::collections::BTreeSet::new();
-        for alias in aliases {
+        for mut alias in aliases {
             if alias.id.len() > 256 || alias.name.len() > 128 {
                 return Err(anyhow!("host port identity or label exceeds capacity"));
             }
@@ -250,6 +253,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .iter()
                 .find(|port| port.name.as_str() == alias.slot)
                 .ok_or_else(|| anyhow!("unknown prepared host port {}", alias.slot))?;
+            if let Some(retired) = self.retired_host_ports.get(&slot.id) {
+                if alias.id == *retired && !alias.available {
+                    alias.id.clear();
+                    alias.name.clear();
+                } else {
+                    self.retired_host_ports.remove(&slot.id);
+                }
+            }
             if (!alias.id.is_empty() && !identities.insert(alias.id.clone()))
                 || mapped.insert(slot.id, alias).is_some()
             {
@@ -273,7 +284,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn host_identity_in_use(&self, id: &str) -> bool {
-        self.mirror.links.iter().chain(self.mirror.desired_links.iter()).any(|link| link.host_port_id == id)
+        let references = |image: &mirror::Mirror| {
+            image
+                .links
+                .iter()
+                .chain(image.desired_links.iter())
+                .any(|link| link.host_port_id == id)
+        };
+        references(&self.mirror)
+            || self.replacement.as_ref().and_then(|replacement| replacement.candidate.as_ref())
+                .is_some_and(references)
             || self.requests.outgoing.iter().chain(self.requests.in_flight.values()).any(|pending|
                 matches!(&pending.purpose, requests::Purpose::Connect { host, .. } if host == id))
     }

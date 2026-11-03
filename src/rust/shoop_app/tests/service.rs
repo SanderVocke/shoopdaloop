@@ -244,6 +244,22 @@ fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes()
         .host_ports
         .iter()
         .any(|p| p.id == id && p.available));
+    assert!(!f.service.release_host_port_identity(id.as_str()));
+    *inventory.lock().unwrap() = Some(alias(false));
+    assert!(
+        !f.service.release_host_port_identity(id.as_str()),
+        "unpublished device loss released an online identity"
+    );
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
+    assert!(f.service.release_host_port_identity(id.as_str()));
+    *inventory.lock().unwrap() = Some(alias(true));
+    for _ in 0..3 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, true);
+    }
     let (track, _) = created(command(
         &mut f.service,
         &mut client,
@@ -327,6 +343,7 @@ fn live_host_availability_reaches_encoded_clients_and_pins_disconnected_routes()
         Outcome::Confirmed { .. }
     ));
     assert!(!f.service.host_port_in_use(id.as_str()));
+    assert!(f.service.release_host_port_identity(id.as_str()));
 }
 
 #[shoop_test]

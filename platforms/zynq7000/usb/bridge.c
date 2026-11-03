@@ -27,6 +27,17 @@ struct port {
 
 static struct port ports[2][SHOOP_MIDI_PORTS];
 _Atomic uint32_t shoop_usb_consumed[SHOOP_MIDI_PORTS];
+#define OUTPUT_HEAD(n) &ports[1][n].head
+const _Atomic uint32_t *const shoop_usb_output_queue_heads[16] __attribute__((used, section(".usb_observation"))) = {
+    OUTPUT_HEAD(0), OUTPUT_HEAD(1), OUTPUT_HEAD(2), OUTPUT_HEAD(3),
+    OUTPUT_HEAD(4), OUTPUT_HEAD(5), OUTPUT_HEAD(6), OUTPUT_HEAD(7),
+    OUTPUT_HEAD(8), OUTPUT_HEAD(9), OUTPUT_HEAD(10), OUTPUT_HEAD(11),
+    OUTPUT_HEAD(12), OUTPUT_HEAD(13), OUTPUT_HEAD(14), OUTPUT_HEAD(15),
+};
+#undef OUTPUT_HEAD
+_Static_assert(SHOOP_MIDI_PORTS == 16, "output observation table capacity");
+_Static_assert(offsetof(struct port, tail) == offsetof(struct port, head) + 4, "queue observation layout");
+_Static_assert(offsetof(struct port, recovery) == offsetof(struct port, head) + 8, "queue observation layout");
 _Static_assert(sizeof(struct shoop_usb_port_info) == 280, "port information ABI");
 _Static_assert(sizeof(ports) <= 32 * 1024 * 1024, "MIDI bridge exceeds 32 MiB");
 
@@ -80,6 +91,11 @@ static struct event *front(struct port *port) {
 
 static void pop(struct port *port) {
     atomic_fetch_add_explicit(&port->tail, 1, memory_order_release);
+}
+
+static void discard(struct port *port) {
+    pop(port);
+    atomic_fetch_add(&port->dropped, 1);
 }
 
 static int find_slot(unsigned direction, const char *key) {
@@ -148,8 +164,11 @@ void shoop_usb_unmount(uint8_t index) {
             if (port->info.index != index || !port->info.connected) continue;
             port->info.connected = 0;
             atomic_store_explicit(&port->state, port->info.generation * 2, memory_order_release);
-            if (direction) atomic_store(&port->recovery, 0);
-            else atomic_fetch_add(&port->recovery, 1);
+            if (direction) {
+                atomic_store(&port->recovery, 0);
+                for (unsigned n = 0; n < SHOOP_MIDI_QUEUE && front(port); ++n) discard(port);
+                port->offset = 0;
+            } else atomic_fetch_add(&port->recovery, 1);
             memset(&port->decoder, 0, sizeof(port->decoder));
             publish(port);
         }
@@ -199,14 +218,17 @@ size_t shoop_usb_read(unsigned slot, uint8_t *bytes, size_t capacity, uint64_t *
         if (!event) return 0;
         uint32_t state = atomic_load_explicit(&port->state, memory_order_acquire);
         if (!(state & 1) || event->generation != state >> 1 || event->recovery_epoch != epoch) {
-            pop(port);
+            discard(port);
             continue;
         }
         if (event->len > capacity) return 0;
         size_t len = event->len;
         memcpy(bytes, event->bytes, len); *arrival = event->at;
         pop(port);
-        if (state != atomic_load_explicit(&port->state, memory_order_acquire)) return 0;
+        if (state != atomic_load_explicit(&port->state, memory_order_acquire)) {
+            atomic_fetch_add(&port->dropped, 1);
+            return 0;
+        }
         atomic_fetch_add(&shoop_usb_consumed[slot], 1);
         return len;
     }
@@ -239,7 +261,7 @@ bool shoop_usb_prepare_packet(unsigned slot, uint64_t now, uint8_t packet[4],
     *owner = (struct shoop_usb_packet_owner){.slot = slot, .generation = state >> 1};
     if (atomic_load(&port->recovery)) {
         if (!port->resetting) {
-            for (unsigned i = 0; i < SHOOP_MIDI_QUEUE && front(port); ++i) pop(port);
+            for (unsigned i = 0; i < SHOOP_MIDI_QUEUE && front(port); ++i) discard(port);
             port->reset_sent = port->reset_done = port->offset = 0;
             port->resetting = true;
         }
@@ -254,10 +276,10 @@ bool shoop_usb_prepare_packet(unsigned slot, uint64_t now, uint8_t packet[4],
     for (unsigned i = 0; i < SHOOP_MIDI_QUEUE; ++i) {
         struct event *event = front(port);
         if (!event) return false;
-        if (event->generation != state >> 1) { pop(port); port->offset = 0; continue; }
+        if (event->generation != state >> 1) { discard(port); port->offset = 0; continue; }
         if (event->at > now) return false;
         size_t bytes = shoop_midi_packet(event->bytes, event->len, port->offset, port->info.cable, packet);
-        if (!bytes) { pop(port); port->offset = 0; continue; }
+        if (!bytes) { discard(port); port->offset = 0; continue; }
         owner->reserved = bytes;
         owner->last = port->offset + bytes == event->len;
         return true;
@@ -319,11 +341,15 @@ void shoop_usb_expire(uint64_t now) {
     for (unsigned direction = 0; direction < 2; ++direction) {
         for (unsigned i = 0; i < SHOOP_MIDI_PORTS; ++i) {
             struct port *port = &ports[direction][i];
+            if (direction && !(atomic_load(&port->state) & 1)) {
+                for (unsigned n = 0; n < SHOOP_MIDI_QUEUE && front(port); ++n) discard(port);
+                port->offset = 0;
+            }
             uint32_t generation = atomic_exchange(&port->release_generation, 0);
             if (!generation || generation != port->info.generation || port->info.connected) continue;
             port->info.key[0] = port->info.name[0] = 0;
             if (direction) {
-                for (unsigned n = 0; n < SHOOP_MIDI_QUEUE && front(port); ++n) pop(port);
+                for (unsigned n = 0; n < SHOOP_MIDI_QUEUE && front(port); ++n) discard(port);
                 port->offset = 0;
             }
             publish(port);

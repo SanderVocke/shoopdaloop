@@ -4,7 +4,7 @@ MEMORY {
   rust (rw) : ORIGIN = 0x08000000, LENGTH = 0x30000000
 }
 SECTIONS {
-  .text : { KEEP(*(.vectors)) KEEP(*(.boot)) *(.text*) *(.rodata*) *(.glue*) *(.vfp11_veneer) } > platform
+  .text : { KEEP(*(.vectors)) KEEP(*(.boot)) *(.text*) *(.rodata*) KEEP(*(.usb_observation)) *(.glue*) *(.vfp11_veneer) } > platform
   .ARM.extab : { *(.ARM.extab*) } > platform
   .ARM.exidx : { __exidx_start = .; *(.ARM.exidx*) __exidx_end = .; } > platform
   .init_array : {

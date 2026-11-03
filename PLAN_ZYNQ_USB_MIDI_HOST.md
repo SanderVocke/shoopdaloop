@@ -293,7 +293,7 @@ high-speed/direct-device coverage precisely. Commit the CI milestone.
 
 Depends on all previous stages.
 
-- [ ] Run clean/cached firmware builds and both the original direct-load suite
+- [x] Run clean/cached firmware builds and both the original direct-load suite
   and SD/network deployment suite. Test USB startup after U-Boot entry, successful
   update, updater cleanup and rollback with devices connected.
 - [ ] On ZC702, connect a keyboard, bidirectional instrument and USB-to-DIN
@@ -304,11 +304,11 @@ Depends on all previous stages.
   repeated hotplug. Report physical latency/jitter, traffic correctness, renderer
   xruns, queue counters, memory and stack margins. Hardware criteria remain open
   if hardware evidence is unavailable; software success is a partial milestone.
-- [ ] Run target `.agents/info/test.md` gates: formatting, warning-denying build,
+- [x] Run target `.agents/info/test.md` gates: formatting, warning-denying build,
   complete Rust tests, tracing inventory and native/browser checks. Run
   `scripts/check_shoop_test_usage.py` if Rust tests changed. Required real-host
   tests cannot pass via a missing-backend allowance.
-- [ ] Document ZC702 host wiring/power, build/run commands, port identities,
+- [x] Document ZC702 host wiring/power, build/run commands, port identities,
   supported descriptors/capacities, hub matrix, SysEx/recovery behavior and exact
   QEMU/hardware coverage. Review each immutable criterion against retained evidence.
 - [ ] Commit completed milestones, push the implementation branch and open the
@@ -396,9 +396,50 @@ no QEMU result is presented as physical hub, DMA/cache or timing qualification.
 - PR #928 targets the unchanged prerequisite at `de38520c`. Firmware, USB,
   deployment, native/browser, coverage, documentation and CodeQL CI are running;
   no automated review has arrived yet.
+- Local native regression passes all 2550 tests; Node Wasm passes 2142 tests in
+  33 packages. Warning-denying native and browser/worklet builds pass, as do
+  Chromium core and Web MIDI record/save/load/playback workflows with zero xruns.
+  The complete original seven-phase firmware suite passes, including the 40 MiB
+  fixture, 100-cycle heap window and recording-pool exhaustion/reclamation.
+- The final robustness pass counts queued-message loss on disconnect/recovery,
+  separately from pending USB packet loss, and verifies empty output queues at
+  teardown. Descriptor validation rejects duplicate default interfaces and active
+  endpoint aliases across interfaces. Portable sanitizer tests pass; the complete
+  USB suite is rerunning these changes before the next commit.
+- CI on `db10380b` passes original firmware, all twelve USB phases, bare-metal
+  builds, Linux release and documentation; remaining platform/deployment/coverage
+  checks are in progress. No automated review has arrived.
+- The complete original SD/network-deployment suite now passes locally and in
+  CI. The twelve-phase USB suite also passes locally and in CI. Final robustness
+  changes then pass direct HS, direct FS and 100-cycle guest runs, with exact
+  MIDI/reset delivery and empty queues/completion ownership at each drain point.
+- Control retires an offline, unreferenced physical identity before requesting
+  C slot reclamation. A retirement marker suppresses old snapshots until USB
+  acknowledges it; pending session replacements retain their device pins. Native
+  adapter/service tests pass, all 2550 Rust tests pass again, and the 68 affected
+  Node Wasm tests pass. The actual guest rejects a late old-ID connection, leaves
+  a different-serial replacement unrouted, then exchanges MIDI after selection.
+- All native-platform, firmware, USB, deployment, coverage-upload and browser-debug
+  CI jobs pass on `db10380b`. Browser release failed its 120-second large-load
+  deadline. The identical uploaded release artifact passes the complete large-file
+  workflow locally on the exact pinned Chrome 147.0.7727.117 with zero xruns;
+  final-head browser CI still needs to pass without changing test limits.
 - Physical qualification remains deferred at the user's request, not waived.
   `platforms/zynq7000/usb/QUALIFICATION.md` contains the required hardware matrix.
   No physical PHY/VBUS, cache/DMA, TT, DIN or latency result is claimed.
+
+## Acceptance review before physical qualification
+
+| Criterion | Software evidence | Still required |
+| --- | --- | --- |
+| 1. Real host operation | Guest IRQ/EHCI/TinyUSB control and bulk IN/OUT; production ARM builds | ZC702 USB0 transfers |
+| 2. Discovery/routing | Preboot/runtime discovery, duplicates, cables/interfaces, saved routes, retired identities and actual replacement isolation | Native UI selection on the board |
+| 3. Compatibility | Four devices/16 cables, eight interfaces, nested FS model, fake FS/STT/MTT and actual EHCI TT selection | Physical device/hub/DIN matrix |
+| 4. MIDI correctness | Golden codecs/clocks and exact guest recording/playback with 2048-byte SysEx/realtime | Physical payload capture and latency/jitter |
+| 5. Failure behavior | Descriptor bounds/aliases, queue pressure/loss counts, stalls/NAK, generations, 100 hotplugs | Real hub loss, device faults and concurrent load |
+| 6. RT/memory | Allocation guards, fixed pools, map bounds, heap/stack evidence and resource reuse | Silicon DMA/cache and load margins |
+| 7. Shutdown/deployment | Observed USB reset completion, bounded refusal, U-Boot/update/cold entry/watchdog rollback | Board PHY/reset/power during these workflows |
+| 8. Evidence/delivery | Reproducible scripts/manifests, docs and unmerged PR #928 | Final-head CI/review, physical evidence and clean final worktree |
 
 ## Source references
 

@@ -270,6 +270,16 @@ impl Service {
             .collect();
         Ok(())
     }
+    pub fn release_host_port_identity(&mut self, id: &str) -> bool {
+        self.observed
+            .connections
+            .host_ports
+            .get(id)
+            .is_some_and(|port| !port.available)
+            && !self.host_port_in_use(id)
+            && self.backend.release_host_port_identity(id)
+    }
+
     pub fn host_port_in_use(&self, id: &str) -> bool {
         self.backend.host_port_in_use(id)
             || self.connection_intent.iter().any(|((_, host), intent)| {

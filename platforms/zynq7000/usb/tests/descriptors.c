@@ -19,6 +19,19 @@ int main(void) {
         broken[fields[i]]=0;
         assert(!shoop_usb_configuration_valid(broken,sizeof(broken)));
     }
+    uint8_t multiple[97];
+    memcpy(multiple,configuration,sizeof(configuration));
+    memcpy(multiple+53,configuration+9,44);
+    multiple[2]=sizeof(multiple); multiple[4]=2; multiple[55]=1;
+    assert(!shoop_usb_configuration_valid(multiple,sizeof(multiple)));
+    multiple[71]=0x82; multiple[85]=2;
+    assert(shoop_usb_configuration_valid(multiple,sizeof(multiple)));
+    multiple[55]=0;
+    assert(!shoop_usb_configuration_valid(multiple,sizeof(multiple)));
+    multiple[55]=1; multiple[71]=0x81;
+    assert(!shoop_usb_configuration_valid(multiple,sizeof(multiple)));
+    multiple[71]=0x82; multiple[85]=1;
+    assert(!shoop_usb_configuration_valid(multiple,sizeof(multiple)));
     uint8_t malformed[4096];
     for (unsigned position=9;position<sizeof(configuration);++position) {
         for (unsigned value=0;value<256;++value) {

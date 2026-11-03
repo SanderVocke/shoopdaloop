@@ -104,8 +104,12 @@ with duplicate serials remain distinct without changing an existing route's ID.
 Moving a device to another physical hub port changes its identity and requires
 reselection. USB address and TinyUSB class index never identify a saved route.
 
-Bindings stay pinned while a confirmed, desired or pending route references them.
-Disconnected, unreferenced bindings can be reclaimed. A generation invalidates
+Bindings stay pinned while a confirmed, desired or pending route references them,
+including routes in a session replacement. Control retires an offline identity
+before USB may reclaim its slot; old snapshots cannot resurrect that binding.
+Disconnected, unreferenced bindings can be reclaimed. Offline routed bindings
+reserve logical-port capacity; disconnect unused routes and reattach a device
+that was refused for capacity. A generation invalidates
 queued traffic on disconnect/reuse. Device/interface/cable admission is bounded;
 refusal logs identify descriptor, topology or port resource failures. Unsupported
 classes are ignored; supported MIDI functions in composite audio devices remain
@@ -133,7 +137,9 @@ so engine event order follows message completion. Playback packetizes each
 complete SysEx with realtime represented as separate engine events. Reserved recovery sends
 All Sound Off and All Notes Off on all sixteen channels (32 messages); ordinary
 output waits for recovery completion. Pressure counters distinguish accepted,
-completed, refused, dropped, malformed and recovery events.
+completed, refused, dropped, malformed and recovery events. Messages superseded by recovery
+or invalidated on disconnect count as dropped; pending USB packet loss is reported
+separately. Final counters include queued messages and completed packet counts.
 
 Shutdown stops ingress, waits for engine recovery and drains live-device USB
 transfers for at most five seconds of guest/platform time. Queue acceptance does
@@ -171,14 +177,15 @@ The complete USB suite uses actual guest IRQ/controller/TinyUSB traffic through
 engine recording, saved MIDI and playback. Cases include direct HS/FS, sixteen
 cables, two nested FS hubs, four simultaneous devices with duplicate serials,
 2048-byte SysEx with interleaved realtime, 100 hotplug cycles with bidirectional
-traffic after every reattach, content-mismatch canary, OUT stall and permanent
+traffic after every reattach, retirement and explicit selection of a different-serial
+replacement, content-mismatch canary, OUT stall and permanent
 NAK. A deployment gate attaches a device before U-Boot, then verifies discovery,
 exact reset delivery before network updates, cold reentry and watchdog rollback.
 
 Evidence is under `work/zynq/usb-suite/`, with portable results in
 `work/zynq/usb-portable/`. Per-case results retain firmware/emulator hashes,
 launch/QMP topology, independent raw USB traffic, serial diagnostics and memory
-readings. The read-only input/completion counters synchronize tests after actual
+readings. The read-only queue/input/completion observations synchronize tests after actual
 transfers; they never inject into engine MIDI buffers. Direct-load ELF files, test credential inputs, SD images, keys and unredacted
 Ethernet captures are private and excluded from USB CI artifacts. Public ELF
 evidence uses the generic deployment images, which contain no credential.

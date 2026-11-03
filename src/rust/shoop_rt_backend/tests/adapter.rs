@@ -88,6 +88,7 @@ fn physical_host_ids_route_to_prepared_slots_and_preserve_disconnected_bindings(
         .confirmed_links
         .iter()
         .any(|link| link.host_port_id == "usb/synth/in/0"));
+    assert!(!backend.release_host_port_identity("usb/synth/in/0"));
     let mut replacement = aliases(true);
     replacement[0].id = "usb/replacement/in/0".into();
     *state.lock().unwrap() = Some(replacement);
@@ -111,6 +112,17 @@ fn physical_host_ids_route_to_prepared_slots_and_preserve_disconnected_bindings(
         .connections
         .confirmed_links
         .is_empty());
+    assert!(backend.release_host_port_identity("usb/synth/in/0"));
+    *state.lock().unwrap() = Some(aliases(false));
+    assert!(!backend
+        .poll()
+        .unwrap()
+        .connections
+        .host_ports
+        .contains_key("usb/synth/in/0"));
+    assert!(backend
+        .set_port_connected(input, "usb/synth/in/0", true)
+        .is_err());
     *state.lock().unwrap() = Some(vec![HostPortAlias {
         slot: "midi_in_1".into(),
         id: "usb/synth/in/0".into(),
@@ -631,7 +643,14 @@ fn a_saved_missing_device_reconnects_on_a_different_prepared_slot() {
                 replacement = Some(mapping);
                 break;
             }
-            BackendAsyncResult::Pending(_) => restored.clock_mut().render(1),
+            BackendAsyncResult::Pending(_) => {
+                assert!(
+                    restored.host_port_in_use(id),
+                    "pending replacement lost its device pin"
+                );
+                assert!(!restored.release_host_port_identity(id));
+                restored.clock_mut().render(1);
+            }
         }
     }
     let mapping = replacement.expect("offline session replacement");
