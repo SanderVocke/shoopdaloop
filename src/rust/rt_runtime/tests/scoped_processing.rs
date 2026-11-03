@@ -415,12 +415,42 @@ fn local_activation_keeps_its_frame_refuses_parent_changes_and_retires_owners_of
             )
             .is_ok());
     }
+    for (offset, packet) in [(2, [0x90, 60, 100]), (4, [0x80, 60, 64])] {
+        assert!(control
+            .submit(
+                Lane::Normal,
+                Command::Schedule {
+                    at: at.checked_add(offset).unwrap(),
+                    action: Action::Midi {
+                        node: node(0),
+                        port: 0
+                    },
+                    payload: packet.into(),
+                }
+            )
+            .is_ok());
+    }
     let before = calls[1].load(Ordering::Relaxed);
     process(&mut runtime, &mut output, &mut midi_out, 8);
     assert_eq!(output, [6.0, 6.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0]);
     assert_eq!(calls[1].load(Ordering::Relaxed), before + 1);
     assert_eq!(runtime.epoch(), Epoch(2));
-    let replies: Vec<_> = std::iter::from_fn(|| control.try_execution()).collect();
+    assert_eq!(midi_out[0].get(0), Some((2, &[0x90, 60, 100][..])));
+    assert_eq!(midi_out[0].get(1), Some((4, &[0x80, 60, 64][..])));
+    assert_eq!(midi_out[0].len(), 2);
+    let executions: Vec<_> = std::iter::from_fn(|| control.try_execution()).collect();
+    assert_eq!(executions.len(), 5);
+    for reply in executions
+        .iter()
+        .filter(|reply| matches!(reply.action, Action::Midi { .. }))
+    {
+        assert_eq!(reply.result, Ok(()));
+        assert_eq!(reply.actual_frame, reply.requested_frame);
+    }
+    let replies: Vec<_> = executions
+        .iter()
+        .filter(|reply| matches!(reply.action, Action::Planner { .. }))
+        .collect();
     assert_eq!(replies.len(), 3);
     assert_eq!(replies[0].result, Err(Error::InvalidGraph));
     assert_eq!(replies[0].actual_frame, at.checked_add(1).unwrap());

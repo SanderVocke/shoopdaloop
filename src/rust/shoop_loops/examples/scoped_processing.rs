@@ -39,7 +39,7 @@ fn main() {
             Command::Schedule {
                 at: Frame(0),
                 action: Action::Planner {
-                    planner: planner(),
+                    planner: fixture::planner(),
                     operation: shoop_loops::runtime::Operation::Transition {
                         target: id(),
                         timing: Timing::At,
@@ -258,7 +258,38 @@ fn main() {
     render(&mut runtime, 17).unwrap();
     assert!(std::iter::from_fn(|| control.try_execution())
         .any(|reply| reply.result == Err(Error::InvalidFrame) && reply.actual_frame == Frame(3)));
-    let (_, resources, _, _) = parts_length(1);
-    assert_eq!(resources.config().limits().max_frames, 32);
+    let (config, mut resources, topology, imports) = parts_length(1);
+    let before = resources.usage();
+    let refusal = CallbackPlanner::prepare(
+        config,
+        topology,
+        &mut resources,
+        Settings {
+            planner: fixture::planner(),
+            normal_requests: 4,
+            media_slots: 8,
+            export_slots: 4,
+        },
+        vec![Binding {
+            target: id(),
+            playback: node(0),
+            capture: node(2),
+            channels: 2,
+            midi: true,
+            gain: 1.0,
+            smoothing: Smoothing::None,
+            midi_events: 1024,
+            midi_bytes: 8192,
+            packet_bytes: 8192,
+        }],
+        imports,
+        31,
+    );
+    assert!(matches!(
+        refusal,
+        Err(shoop_loops::runtime::Failure::Runtime(Error::InvalidConfig))
+    ));
+    assert_eq!(resources.usage(), before);
+    println!("plan_capacity: required_spans=32 offered_spans=31 refused_before_publication=true");
     println!("scope_actions: interior_callback_parameter=InvalidFrame effective_frame=3");
 }
