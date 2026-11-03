@@ -18,7 +18,7 @@ pub struct AppArgs {
     #[arg(long, conflicts_with_all = ["host_only", "ui_only", "shutdown_host", "engine_transport", "session", "probe_engine_transport", "probe_persistence", "probe_builtins", "tracing"])]
     pub manage_hosts: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
+    #[arg(long, conflicts_with = "ui_only")]
     pub host_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
@@ -57,15 +57,20 @@ pub struct AppArgs {
     #[arg(
         long = "host-profile",
         visible_alias = "remote-profile",
+        group = "host_target",
         conflicts_with = "host_only"
     )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "remote_profile")]
+    /// Connect to a host's data or management address (HOST:PORT).
+    #[arg(long, group = "host_target", conflicts_with = "host_only")]
+    pub host_address: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "host_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Shut down the selected ownerless host using current management authority.
-    #[arg(long, requires = "remote_profile", conflicts_with = "ui_only")]
+    #[arg(long, requires = "host_target", conflicts_with = "ui_only")]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
@@ -141,6 +146,23 @@ pub struct AppArgs {
 }
 
 impl AppArgs {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn host_target(&self) -> anyhow::Result<Option<shoop_host::remote::Target>> {
+        let address = match (&self.host_address, &self.remote_profile) {
+            (Some(address), _) => address.clone(),
+            (_, Some(path)) => {
+                return Ok(Some(shoop_host::connection::resolve_target(
+                    &shoop_host::remote::RemoteProfile::read(path)?,
+                    std::time::Duration::from_secs(3),
+                )?))
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(shoop_host::connection::describe(
+            &address,
+            std::time::Duration::from_secs(3),
+        )?))
+    }
     pub fn selected_engine_transport(
         &self,
         settings: &shoop_settings::SettingsSnapshot,
@@ -228,6 +250,47 @@ fn hex_digit(value: u8) -> Result<u8, clap::error::ErrorKind> {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_host_roles_do_not_require_profile_or_config_files() {
+        assert!(
+            AppArgs::try_parse_from(["shoopdaloop", "--host-only"])
+                .unwrap()
+                .host_only
+        );
+        for role in ["--ui-only", "--shutdown-host"] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", role]).is_err());
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                role,
+                "--host-address",
+                "127.0.0.1:12345"
+            ])
+            .is_ok());
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                role,
+                "--host-profile",
+                "advanced.json"
+            ])
+            .is_ok());
+        }
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--host-address",
+            "127.0.0.1:12345",
+            "--host-profile",
+            "advanced.json"
+        ])
+        .is_err());
+        for flag in [
+            "--credential-file",
+            "--generate-credential",
+            "--host-registry",
+        ] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", flag, "removed"]).is_err());
+        }
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn cli_parses_session_source() {

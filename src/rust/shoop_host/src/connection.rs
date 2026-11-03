@@ -104,10 +104,27 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
-pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
+fn prepare(entry: &impl ConnectionTarget, deadline: Instant) -> Result<HostTarget> {
     let entry = entry.target();
-    entry.validate()?;
+    entry.profile().validate()?;
+    let target = if entry.instance == 0 {
+        let mut target = describe(&entry.management, remaining(deadline)?)?;
+        target.endpoint = entry.endpoint;
+        target.management = entry.management;
+        target.network = entry.network;
+        target
+    } else {
+        entry
+    };
+    target.validate()?;
+    Ok(target)
+}
+pub fn resolve_target(entry: &impl ConnectionTarget, timeout: Duration) -> Result<HostTarget> {
+    prepare(entry, Instant::now() + timeout)
+}
+pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
     let deadline = Instant::now() + timeout;
+    let entry = prepare(entry, deadline)?;
     let mut port =
         open(&entry, &entry.endpoint, deadline).context("connect to session data connection")?;
     greeting(&mut port, deadline)?;
@@ -218,9 +235,8 @@ pub fn management(
     request: ManagementRequest,
     timeout: Duration,
 ) -> Result<ManagementReply> {
-    let entry = entry.target();
-    entry.validate()?;
     let deadline = Instant::now() + timeout;
+    let entry = prepare(entry, deadline)?;
     let mut port = open(&entry, &entry.management, deadline)
         .context("connect to session management connection")?;
     greeting(&mut port, deadline)?;
@@ -296,9 +312,8 @@ pub fn host_report(
     entry: &impl ConnectionTarget,
     timeout: Duration,
 ) -> Result<shoop_app_protocol::HostReport> {
-    let entry = entry.target();
-    entry.validate()?;
     let deadline = Instant::now() + timeout;
+    let entry = prepare(entry, deadline)?;
     let mut port = open(&entry, &entry.management, deadline)?;
     greeting(&mut port, deadline)?;
     let mut record = [0; MAX_RECORD_BYTES];

@@ -357,3 +357,5 @@ src/rust/shoopdaloop/src/host_manager/start_host.rs,native_ui,excluded,Explicit 
 src/rust/shoop_host_processes/src/lib.rs,native_ui,excluded,OS process and socket inspection and explicit process termination; no render-thread work.
 src/rust/shoop_host_processes/src/windows.rs,native_ui,excluded,Small owned Windows process-handle and creation-time adapter.
 src/rust/shoop_host_processes/src/linux.rs,native_ui,excluded,Read-only procfs socket ownership join; no persistent discovery state.
+src/rust/shoopdaloop/src/host_manager/discovery.rs,native_ui,excluded,Live OS process discovery and bounded background probes; no render-thread work.
+src/rust/shoop_host_processes/src/macos.rs,native_ui,excluded,Candidate-only libproc FD inspection; checked socket-kind unions isolated in the native helper.

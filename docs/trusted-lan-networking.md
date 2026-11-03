@@ -3,85 +3,48 @@
 A native UI can control a session host on another Linux, macOS or Windows
 machine. The host owns audio/MIDI devices, playback, recording and accepted
 operations. The UI owns files, dialogs, codecs, scripts and controller bindings.
-Both sides must use the same application protocol version (currently 10).
+Both sides must use application protocol version 12.
 
-Connections use unencrypted TCP and the existing 32-byte token check. This mode
-targets trusted LANs; TLS, pairing, automatic discovery and Internet traversal
-are outside its scope. Audio streaming and simultaneous controlling UIs are not
-provided. Browser remote connections are not implemented.
+Connections use TCP with keyless compatibility negotiation. Compatible clients may
+connect to compatible hosts; certificates, credentials and trust records are absent.
+Audio streaming, simultaneous controlling UIs and browser remote connections remain
+outside scope.
 
-Local hosts also require an explicit profile. For loopback-only operation, omit
-`--lan` and export a local profile with the same `--credential-file` and
-`--export-profile` options. Local profiles contain `"local": true`; only these may
-carry a shared-memory descriptor. The manager never discovers hosts automatically,
-remembers loaded profiles across launches, or creates a per-user host directory.
-Profiles and credentials are explicit user-owned configuration. Disk logs are
-created only when `--log-file PATH` is requested.
+## Start and connect
 
-## Start a host
+For local operation, open **Host Manager → New host…**. The form configures audio,
+MIDI, capacity and connections and starts a detached process with OS-assigned ports.
+The manager rediscovers local hosts by process and owned-socket inspection. It does
+not scan ports, remember hosts on disk or use a registry/discovery listener.
 
-Create a UTF-8 `host.json` containing `{}` to select the dummy driver, or use the
-existing host driver/pool configuration. Generate a credential once:
+For CLI operation, `shoop_host` starts with dummy audio and local assigned ports;
+`--config PATH` is optional. `shoopdaloop --host-only` forwards host options.
+For a LAN server at `192.168.1.50`, explicit ports are useful for firewall rules:
 
 ```sh
-shoop_host --generate-credential host.key
+shoop_host --lan --endpoint 192.168.1.50:15400 --management-endpoint 192.168.1.50:15401
+shoopdaloop --ui-only --host-address 192.168.1.50:15401
 ```
 
-For a server at `192.168.1.50`, choose two available ports:
+Use `shoop_host.exe` on Windows. Without `--lan`, socket setup accepts loopback
+addresses only. LAN delivery requires socket transport. IPv6 addresses use brackets,
+such as `[fd00::50]:15400`. DNS hostnames are accepted within a bounded connection
+deadline. With wildcard listeners, a client can inspect the host through its concrete
+IP and actual port; `--advertise-data HOST:PORT` and
+`--advertise-management HOST:PORT` optionally supply client-facing destinations.
 
-```sh
-shoop_host --config host.json --lan --endpoint 192.168.1.50:15400 --management-endpoint 192.168.1.50:15401 --credential-file host.key --export-profile remote.json
-```
+The manager's **Advanced → Connect to address…** accepts either host endpoint.
+**Import profile…** and **Export profile…** serve explicit advanced configuration;
+`--export-profile PATH` and `--host-profile PATH` provide CLI equivalents. Profiles
+are keyless endpoint selections and omit process/session identities. They are not
+saved or restored automatically. Old credential-bearing profiles and wire versions
+are rejected. Remote hosts are added explicitly; discovery is local to the machine.
 
-Use `shoop_host.exe` on Windows. Alternatively the application can forward the
-same host options with `shoopdaloop --host-only --host-config host.json ...`.
-Allow the chosen TCP ports through the server's LAN firewall.
-
-Without `--lan`, listeners and process/engine sockets retain their loopback-only
-policy. LAN delivery requires sockets and an explicit credential file. Use
-`--export-profile` to create a reusable profile. A restarted or replacement host
-at the same endpoints accepts the same profile and credential. Exporting to an
-existing matching profile preserves it; a different endpoint/credential target
-requires a separate file. Export is optional on subsequent starts.
-
-To bind a wildcard interface, supply concrete advertised destinations with
-`--advertise-data HOST:PORT` and `--advertise-management HOST:PORT`. Wildcard
-addresses and zero ports are not usable profile destinations. IPv6 destinations
-use bracket notation, for example `[fd00::50]:15400`. Native clients can also use
-DNS hostnames. DNS, TCP setup, token exchange and endpoint greeting share the
-connection deadline; resolver concurrency and pending requests are bounded.
-Local credential-file permission validation precedes this network deadline.
-
-## Connect a UI
-
-Copy `remote.json` and the matching `host.key` to the UI machine. The exported
-profile references the credential filename relative to the profile's directory;
-it contains neither the token bytes nor a server filesystem path. An absolute
-client-local credential path is also supported.
-
-The credential file must remain owned by the current user and deny access to
-other users. On Unix, use `chmod 600 host.key`. On Windows, ensure the copied file
-has a protected ACL granting the current owner access (SYSTEM and Administrators
-are allowed), as for existing local host credentials. For a new copy with only
-inherited permissions, PowerShell can remove inheritance and grant the current
-user access:
-
-```powershell
-$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-icacls .\host.key /inheritance:r /grant:r "${me}:(F)"
-```
-
-Open **Session → Open remote profile…**, or start explicitly:
-
-```sh
-shoopdaloop --ui-only --host-profile remote.json
-```
-
-Endpoints select the host. Profiles and greetings contain no host/session IDs.
-Every connection authenticates, checks the protocol version, acquires exclusive
-control and synchronizes a complete snapshot. A healthy controlling UI is not
-evicted by another connection. Local and network hosts both use explicitly supplied profiles. There is no registry,
-PID discovery/pruning, network scan, or remembered host list.
+Inspection negotiates a separate intent before session admission and returns a
+bounded current host description. It never acquires a controller, consumes a shared
+attachment or changes musical state. Actual attachment checks protocol compatibility,
+acquires exclusive control and synchronizes a complete snapshot. A healthy controller
+cannot be evicted by another attachment or an ownerless shutdown request.
 
 After loss, the last projection is marked stale. **Connect to endpoint** runs the
 same connection flow against whatever the endpoint currently owns, including a
@@ -98,7 +61,7 @@ MIDI reset, device stop and cleanup. An uncertain shutdown retry checks the same
 operation. To shut down a host with no live controller:
 
 ```sh
-shoopdaloop --shutdown-host --host-profile remote.json
+shoopdaloop --shutdown-host --host-address 192.168.1.50:15401
 ```
 
 Saved files, WAV and MIDI imports/exports stay on the UI machine. Transfers use
@@ -124,8 +87,7 @@ portable management request is `ManagementRequest::Settings`. Reports use bounde
 `HostSettings` is shared by native `host.json` and local UI launch defaults and
 validation. The native UI already stores user preferences as JSON. While
 connected to an external host, preference saves apply to future local launches;
-they do not reconfigure that host. The panel is read-only. Edit its startup JSON
-and restart the host for driver/pool changes. The native `shoopdaloop --manage-hosts` window can inspect local hosts and explicitly
+they do not reconfigure that host. The panel is read-only. Create a new host for driver/pool changes; the manager form also configures startup settings. The native `shoopdaloop --manage-hosts` window can inspect local hosts and explicitly
 added remote profiles without taking control. Remote configuration editing/hot
 swapping remain future work.
 
@@ -145,11 +107,10 @@ An exported `remote.json` looks like this (replace the address):
 
 ```json
 {
-  "version": 10,
+  "version": 12,
   "name": "Studio host",
   "endpoint": "192.168.1.50:15400",
   "management": "192.168.1.50:15401",
-  "credential": "host.key",
   "network": { "heartbeat_interval_ms": 1000, "heartbeat_timeout_ms": 5000, "snapshot_hz": 30 }
 }
 ```
@@ -167,7 +128,7 @@ connection and releases its controlling lease; rendering, recording and accepted
 work continue. Fresh attachment generations fence the departed controller.
 
 The native host admits at most four data connections, four management connections
-and four pending token handshakes per listener. A LAN stream has bounded reliable,
+and sixteen pending compatibility/inspection handshakes per listener. Pending greetings and description writes have a two-second deadline. A LAN stream has bounded reliable,
 telemetry and bulk queues (8/1/8 records), and requests a bounded socket send
 buffer. Application scheduling limits queued records to eight, coalesces only
 unsent periodic snapshots and preserves started transfers. Initial synchronization
@@ -186,8 +147,7 @@ or for committing a large image into the engine.
 `shoop_transport::stream` owns record buffering and partial I/O over `ByteIo`.
 The host implements immediate `try_read`/`try_write` results (progress,
 would-block, interruption, EOF or failure). The prepared stream pump does not
-allocate, sleep or wait. `shoop_transport::handshake` reuses the token/ack format
-and accepts elapsed time; the host supplies entropy or provisioned credentials.
+allocate, sleep or wait. `shoop_transport::handshake` validates a versioned magic and connection/inspection intent and accepts elapsed time. The native host handles descriptions outside portable session admission.
 
 `shoop_app_connection` uses `no_std` with `alloc` and implements session data,
 management, heartbeats, state/media scheduling and segmented client uploads over
@@ -219,12 +179,12 @@ builds and simulated adapter tests, not an RTOS implementation or board executio
 
 ## Verification
 
-- `cargo test -p shoop_transport`: fragmented streams, bounded queues, token
-  exchange/deadlines and allocator-guarded prepared progression.
+- `cargo test -p shoop_transport`: fragmented streams, bounded queues, fragmented compatibility greetings
+  and deadlines and allocator-guarded prepared progression.
 - `cargo test -p shoop_app_connection`: fake-clock heartbeat and authority tests,
   host-driven service progression and the throttled bidirectional transfer test.
 - `cargo test -p shoop_host --features testing`: two-process LAN/IPv6/DNS,
-  non-loopback Linux, credential/version refusal, silent network loss and existing
+  non-loopback Linux, compatibility/version refusal, silent network loss and existing
   local recovery cases.
 - The native UI recovery test opens a remote profile, retains recording across
   close/reattach and confirms host shutdown.

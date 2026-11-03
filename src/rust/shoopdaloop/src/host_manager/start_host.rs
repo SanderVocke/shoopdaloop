@@ -1,11 +1,11 @@
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use eframe::egui;
 use shoop_app_api::{
     AudioDriverConfig, CpalAudioDriverConfig, DummyAudioDriverConfig, HostSettings, NewEnginePools,
 };
 use shoop_host::{
     config::{AppTransport, HostConfig},
-    remote::RemoteProfile,
+    remote::{RemoteProfile, Target},
     serve::StartOptions,
 };
 use std::{
@@ -61,23 +61,19 @@ fn discover(host: String) -> Devices {
 }
 
 pub(super) struct Request {
-    pub profile: PathBuf,
     pub config: HostConfig,
     pub options: StartOptions,
 }
 impl Request {
-    pub fn start(self) -> Result<PathBuf> {
+    pub fn start(self) -> Result<Target> {
         self.config.validate()?;
-        ensure!(
-            !self.profile.exists(),
-            "Profile already exists; select a new path"
-        );
         let executable = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
-        let (mut child, _) = shoop_host::launch::spawn(&self.config, self.options, &executable)?;
+        let (mut child, target) =
+            shoop_host::launch::spawn(&self.config, self.options, &executable)?;
         std::thread::spawn(move || {
             let _ = child.wait();
         });
-        Ok(self.profile)
+        Ok(target)
     }
 }
 
@@ -105,7 +101,6 @@ pub(super) struct Dialog {
     endpoint: String,
     management: String,
     advertised_host: String,
-    profile: PathBuf,
     log_enabled: bool,
     log_file: PathBuf,
     devices: Devices,
@@ -137,7 +132,6 @@ impl Default for Dialog {
             endpoint: "127.0.0.1:0".into(),
             management: "127.0.0.1:0".into(),
             advertised_host: String::new(),
-            profile: PathBuf::new(),
             log_enabled: false,
             log_file: PathBuf::new(),
             devices: Devices::default(),
@@ -186,20 +180,11 @@ impl Dialog {
             !self.name.trim().is_empty() && self.name.len() <= 128,
             "Name required (max 128 bytes)"
         );
-        let profile = destination(&self.profile).context("Profile path")?;
         let log_file = if self.log_enabled {
             Some(destination(&self.log_file).context("Log path")?)
         } else {
             None
         };
-        ensure!(
-            !profile.exists(),
-            "Profile already exists; select a new path"
-        );
-        ensure!(
-            log_file.as_ref().is_none_or(|path| path != &profile),
-            "Log path must differ from the profile path"
-        );
         let endpoint: SocketAddr = self.endpoint.parse().context("Invalid data bind address")?;
         let management: SocketAddr = self
             .management
@@ -222,9 +207,8 @@ impl Dialog {
         options.endpoint = endpoint;
         options.management_endpoint = management;
         options.lan = self.lan;
-        options.export_profile = Some(profile.clone());
         options.log_file = log_file;
-        if !self.advertised_host.trim().is_empty() {
+        if self.lan && !self.advertised_host.trim().is_empty() {
             ensure!(
                 endpoint.port() != 0 && management.port() != 0,
                 "Advertised endpoints require fixed bind ports"
@@ -245,12 +229,9 @@ impl Dialog {
                 network: options.network,
                 local: !self.lan,
                 transport: AppTransport::Socket,
-                shared_memory: None,
                 log_file: None,
             }
             .validate()?;
-        } else if endpoint.ip().is_unspecified() || management.ip().is_unspecified() {
-            bail!("Advertise host is required for wildcard bind addresses");
         }
         let driver = if self.physical_audio {
             ensure!(cfg!(feature = "cpal"), "CPAL is unavailable in this build");
@@ -292,11 +273,7 @@ impl Dialog {
             ..Default::default()
         };
         config.validate()?;
-        Ok(Request {
-            profile,
-            config,
-            options,
-        })
+        Ok(Request { config, options })
     }
     pub fn failed(&mut self, message: String) {
         self.pending = false;
@@ -460,30 +437,13 @@ impl Dialog {
             });
         }
         ui.separator();
-        let previous_profile = self.profile.clone();
-        egui::Grid::new("new_host_files")
-            .num_columns(2)
-            .spacing([10.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("Profile file");
-                path_field(ui, &mut self.profile, true, "host-profile.json");
-                ui.end_row();
-                if self.profile != previous_profile {
-                    if self.log_file.as_os_str().is_empty()
-                        || self.log_file == previous_profile.with_extension("log")
-                    {
-                        self.log_file = self.profile.with_extension("log");
-                    }
-                }
-                ui.label("Disk logging");
-                ui.checkbox(&mut self.log_enabled, "Enabled");
-                ui.end_row();
-                if self.log_enabled {
-                    ui.label("Log file");
-                    path_field(ui, &mut self.log_file, true, "host.log");
-                    ui.end_row();
-                }
-            });
+        ui.collapsing("Logging", |ui| {
+            ui.checkbox(&mut self.log_enabled, "Disk logging");
+            if self.log_enabled {
+                ui.label("Log file");
+                path_field(ui, &mut self.log_file, "host.log");
+            }
+        });
         ui.collapsing("Capacity and session defaults", |ui| {
             egui::Grid::new("new_host_capacity")
                 .num_columns(2)
@@ -521,8 +481,8 @@ impl Dialog {
             let was_lan = self.lan;
             ui.checkbox(&mut self.lan, "LAN access");
             if self.lan != was_lan {
-                self.endpoint = if self.lan { "0.0.0.0:15400" } else { "127.0.0.1:0" }.into();
-                self.management = if self.lan { "0.0.0.0:15401" } else { "127.0.0.1:0" }.into();
+                self.endpoint = if self.lan { "0.0.0.0:0" } else { "127.0.0.1:0" }.into();
+                self.management = if self.lan { "0.0.0.0:0" } else { "127.0.0.1:0" }.into();
                 if self.lan {
                     self.transport = AppTransport::Socket;
                 }
@@ -540,8 +500,16 @@ impl Dialog {
                                 "Shared memory"
                             })
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.transport, AppTransport::Socket, "Socket");
-                                ui.selectable_value(&mut self.transport, AppTransport::SharedMemory, "Shared memory");
+                                ui.selectable_value(
+                                    &mut self.transport,
+                                    AppTransport::Socket,
+                                    "Socket",
+                                );
+                                ui.selectable_value(
+                                    &mut self.transport,
+                                    AppTransport::SharedMemory,
+                                    "Shared memory",
+                                );
                             });
                     });
                     ui.end_row();
@@ -552,7 +520,9 @@ impl Dialog {
                     ui.text_edit_singleline(&mut self.management);
                     ui.end_row();
                     if self.lan {
-                        ui.label("Advertise host").on_hover_text("Client-facing hostname or IP. Required for wildcard listeners; bind ports must be fixed.");
+                        ui.label("Advertise host").on_hover_text(
+                            "Optional client-facing hostname or IP; requires fixed bind ports.",
+                        );
                         ui.text_edit_singleline(&mut self.advertised_host);
                         ui.end_row();
                     }
@@ -608,7 +578,7 @@ fn selector(
             }
         });
 }
-fn path_field(ui: &mut egui::Ui, path: &mut PathBuf, save: bool, file_name: &str) {
+fn path_field(ui: &mut egui::Ui, path: &mut PathBuf, file_name: &str) {
     ui.horizontal(|ui| {
         let mut value = path.to_string_lossy().into_owned();
         if ui
@@ -619,11 +589,7 @@ fn path_field(ui: &mut egui::Ui, path: &mut PathBuf, save: bool, file_name: &str
         }
         if ui.small_button("Browse…").clicked() {
             let dialog = rfd::FileDialog::new().set_file_name(file_name);
-            let selected = if save {
-                dialog.save_file()
-            } else {
-                dialog.pick_file()
-            };
+            let selected = dialog.save_file();
             if let Some(selected) = selected {
                 *path = selected;
             }
@@ -676,10 +642,9 @@ mod tests {
     use super::super::tests::Screen;
     use super::*;
 
-    fn form(root: &std::path::Path) -> Dialog {
+    fn form(_root: &std::path::Path) -> Dialog {
         Dialog {
             physical_audio: false,
-            profile: root.join("profile.json"),
             ..Default::default()
         }
     }
@@ -701,37 +666,36 @@ mod tests {
         );
         assert_eq!(request.config.pools.loop_memory_mb, 16);
         assert!(request.options.log_file.is_none());
-        assert_eq!(
-            request.options.export_profile.as_ref(),
-            Some(&request.profile)
-        );
+        assert!(request.options.export_profile.is_none());
         assert_eq!(midi_ports(&dialog.midi_inputs), ["none"]);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn existing_profiles_and_aliasing_output_paths_are_rejected() {
+    fn optional_logging_validates_only_an_explicit_output() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
+        assert!(dialog.request().unwrap().options.log_file.is_none());
         dialog.log_enabled = true;
-        dialog.log_file = root.path().join("./profile.json");
         assert!(dialog.request().is_err());
-        dialog.log_enabled = false;
-        std::fs::write(&dialog.profile, b"existing configuration").unwrap();
-        assert!(dialog.request().is_err());
+        dialog.log_file = root.path().join("host.log");
         assert_eq!(
-            std::fs::read(&dialog.profile).unwrap(),
-            b"existing configuration"
+            dialog.request().unwrap().options.log_file,
+            Some(root.path().canonicalize().unwrap().join("host.log"))
         );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn lan_requires_client_addresses_and_socket_delivery() {
+    fn lan_uses_assigned_ports_and_supports_optional_advertised_addresses() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
         dialog.lan = true;
+        dialog.endpoint = "0.0.0.0:0".into();
+        dialog.management = "0.0.0.0:0".into();
+        assert!(dialog.request().is_ok());
+        dialog.advertised_host = "studio.local".into();
+        assert!(dialog.request().is_err());
         dialog.endpoint = "0.0.0.0:15400".into();
         dialog.management = "0.0.0.0:15401".into();
-        assert!(dialog.request().is_err());
-        dialog.advertised_host = "studio.local".into();
         let request = dialog.request().unwrap();
         assert_eq!(
             request.options.advertised_endpoint.as_deref(),
@@ -806,6 +770,7 @@ mod tests {
             "Capacity and session defaults",
             "Connection",
             "Channels and MIDI",
+            "Logging",
         ] {
             screen.click(label, |ui| dialog.fields(ui));
         }
@@ -817,8 +782,7 @@ mod tests {
         screen.click("Controller keyboard", |ui| dialog.fields(ui));
         screen.click("LAN access", |ui| dialog.fields(ui));
         assert!(dialog.lan && screen.contains("Advertise host"));
-        assert_eq!(dialog.endpoint, "0.0.0.0:15400");
-        dialog.advertised_host = "studio.local".into();
+        assert_eq!(dialog.endpoint, "0.0.0.0:0");
         dialog.log_enabled = true;
         dialog.log_file = root.path().join("studio.log");
         screen.frame(vec![], |ui| dialog.fields(ui));
@@ -863,59 +827,20 @@ mod tests {
         assert_eq!(dialog.error.as_deref(), Some("Device enumeration failed"));
         dialog.failed("Bind failed".into());
         assert!(dialog.request().is_ok());
-        assert!(!dialog.profile.exists());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn editing_a_profile_suggests_sibling_files_and_preserves_custom_paths() {
+    fn normal_start_form_has_no_file_requirements() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
-        dialog.profile = root.path().join("one.json");
-        dialog.log_file = root.path().join("one.log");
         let mut screen = Screen::new(egui::vec2(800.0, 700.0));
         screen.frame(vec![], |ui| dialog.fields(ui));
-        for name in ["two", "three"] {
-            let previous = dialog.profile.to_str().unwrap().to_owned();
-            screen.click(&previous, |ui| dialog.fields(ui));
-            let modifiers = egui::Modifiers {
-                ctrl: !cfg!(target_os = "macos"),
-                mac_cmd: cfg!(target_os = "macos"),
-                command: true,
-                ..Default::default()
-            };
-            screen.frame(
-                vec![
-                    egui::Event::Key {
-                        key: egui::Key::A,
-                        physical_key: None,
-                        pressed: true,
-                        repeat: false,
-                        modifiers,
-                    },
-                    egui::Event::Text(
-                        root.path()
-                            .join(format!("{name}.json"))
-                            .to_string_lossy()
-                            .into_owned(),
-                    ),
-                    egui::Event::Key {
-                        key: egui::Key::A,
-                        physical_key: None,
-                        pressed: false,
-                        repeat: false,
-                        modifiers,
-                    },
-                ],
-                |ui| dialog.fields(ui),
-            );
-            assert_eq!(dialog.profile, root.path().join(format!("{name}.json")));
-            if name == "two" {
-                assert_eq!(dialog.log_file, root.path().join("two.log"));
-                dialog.log_file = root.path().join("custom.log");
-            } else {
-                assert_eq!(dialog.log_file, root.path().join("custom.log"));
-            }
-        }
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+        assert!(screen.contains("Name") && screen.contains("Audio driver"));
+        assert!(!screen.contains("Profile") && !screen.contains("Log file"));
+        let request = dialog.request().unwrap();
+        assert!(request.options.export_profile.is_none());
+        assert!(request.options.log_file.is_none());
+        assert_eq!(request.options.endpoint.port(), 0);
     }
 }

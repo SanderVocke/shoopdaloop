@@ -1418,10 +1418,12 @@ impl UnifiedApp {
                         }
                         ui.close();
                     }
-                    if ui.button("Open host profile…").clicked() {
-                        self.open_remote_profile(ui.ctx());
-                        ui.close();
-                    }
+                    ui.menu_button("Advanced", |ui| {
+                        if ui.button("Import host profile…").clicked() {
+                            self.open_remote_profile(ui.ctx());
+                            ui.close();
+                        }
+                    });
                 });
             }
             if let Some(entry) = self.runtime.remote_entry.clone() {
@@ -1434,16 +1436,18 @@ impl UnifiedApp {
                             }
                             ui.close();
                         }
-                        if ui
-                            .add_enabled(
-                                !self.exit.open && !self.exit.is_pending(),
-                                egui::Button::new("Open host profile…"),
-                            )
-                            .clicked()
-                        {
-                            self.open_remote_profile(ui.ctx());
-                            ui.close();
-                        }
+                        ui.menu_button("Advanced", |ui| {
+                            if ui
+                                .add_enabled(
+                                    !self.exit.open && !self.exit.is_pending(),
+                                    egui::Button::new("Import host profile…"),
+                                )
+                                .clicked()
+                            {
+                                self.open_remote_profile(ui.ctx());
+                                ui.close();
+                            }
+                        });
                         if ui.button("Connected host settings…").clicked() {
                             self.host_panel.open = true;
                             ui.close();
@@ -2425,8 +2429,8 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
-        if let Some(path) = &args.remote_profile {
-            return Self::attach(settings, shoop_host::remote::RemoteProfile::read(path)?);
+        if let Some(target) = args.host_target()? {
+            return Self::attach(settings, target);
         }
         let mut startup_warnings = Vec::new();
         let configured_driver = shoop_egui::selected_audio_driver(settings)
@@ -2516,6 +2520,11 @@ impl Runtime {
         entry: impl Into<shoop_host::remote::Target>,
     ) -> anyhow::Result<Self> {
         let entry = entry.into();
+        let entry = if entry.process.is_none() {
+            shoop_host::connection::resolve_target(&entry, Duration::from_secs(3))?
+        } else {
+            entry
+        };
         let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
         let pending_script_paths = startup_scripts
             .iter()
@@ -3572,24 +3581,24 @@ fn create_app(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
+    use anyhow::Context;
     use shoop_host::{config::AppTransport, serve::StartOptions};
     if args.shutdown_host {
-        let profile =
-            shoop_host::remote::RemoteProfile::read(args.remote_profile.as_ref().unwrap())?;
-        shoop_host::connection::shutdown_ownerless(&profile, Duration::from_secs(15))?;
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
         println!("Host cleanup confirmed");
         return Ok(true);
     }
-    if args.ui_only || args.remote_profile.is_some() {
+    if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
         return Ok(false);
     }
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
     if args.host_only {
         let mut command = std::process::Command::new(companion);
-        command
-            .arg("--config")
-            .arg(args.host_config.as_ref().unwrap());
+        if let Some(config) = &args.host_config {
+            command.arg("--config").arg(config);
+        }
         if let Some(endpoint) = args.endpoint {
             command.arg("--endpoint").arg(endpoint.to_string());
         }
@@ -3667,13 +3676,13 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     options.export_profile = args.export_profile.clone();
     options.log_file = args.log_file.clone();
     let original: Vec<_> = std::env::args_os().skip(1).collect();
-    shoop_host::launch::pair(&config, options, &companion, |path| {
+    shoop_host::launch::pair(&config, options, &companion, |target| {
         let mut command = std::process::Command::new(&executable);
         command
             .args(&original)
             .arg("--ui-only")
-            .arg("--host-profile")
-            .arg(path);
+            .arg("--host-address")
+            .arg(&target.management);
         command
     })?;
     Ok(true)

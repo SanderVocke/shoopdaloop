@@ -173,16 +173,16 @@ malformed and incompatible greetings and timeouts.
 
 Depends on Stage 2.
 
-- [ ] Return and consume the live target/description from `launch::spawn` directly.
+- [x] Return and consume the live target/description from `launch::spawn` directly.
   Adapt sibling launch and manager Open UI to pass an endpoint or bounded in-memory
   descriptor to the UI without temporary/exported JSON.
-- [ ] Remove mandatory credential/profile/config-file requirements from normal native
+- [x] Remove mandatory credential/profile/config-file requirements from normal native
   entry points. Preserve CLI defaults and GUI audio defaults; keep explicit config
   input and profile import/export available to advanced callers.
-- [ ] Simplify New host to name/audio settings and Start; retain expandable capacity,
+- [x] Simplify New host to name/audio settings and Start; retain expandable capacity,
   MIDI, network and optional logging controls. Show ready/failure state and prevent
   duplicate submissions without requiring file paths for a normal start.
-- [ ] Move Import profile, Export profile and Connect to address under Advanced.
+- [x] Move Import profile, Export profile and Connect to address under Advanced.
   Update the keyless profile schema and argument validation; opening a manual target
   obtains the endpoint's current description without a saved instance identity.
 
@@ -196,16 +196,16 @@ and direct remote address connection still work.
 
 Depends on Stages 1–3.
 
-- [ ] Replace the manager's profile-source list with live OS discoveries plus
+- [x] Replace the manager's profile-source list with live OS discoveries plus
   explicitly added advanced targets. Probe only candidate-owned endpoints, correlate
   identities and deduplicate aliases. Select newly started hosts immediately.
-- [ ] Populate on startup and refresh in the background. Represent starting,
+- [x] Populate on startup and refresh in the background. Represent starting,
   unresponsive, incompatible and inspection-error states accurately; remove confirmed
   exited processes and handle process restart/PID reuse without selecting a new
   process as the old one.
-- [ ] Preserve Open UI, audio/fallback status, diagnostics and log viewing. Keep
+- [x] Preserve Open UI, audio/fallback status, diagnostics and log viewing. Keep
   socket reattachment and the shared-memory single-attachment limit truthful.
-- [ ] Keep graceful Stop through the host protocol. Add Force stop to local process
+- [x] Keep graceful Stop through the host protocol. Add Force stop to local process
   actions with explicit confirmation, identity revalidation, OS error reporting and
   observed-exit confirmation. Never report forced termination as graceful cleanup.
 
@@ -309,3 +309,30 @@ Depends on Stages 0–4.
   Architecture isolation passes for all four target graphs. Added small dedicated
   Linux/macOS/Windows inspection jobs so the feasibility gate no longer waits for
   full application packaging and companion canaries.
+
+- Native feasibility gate: real inspection fixtures passed Linux, macOS 15 and
+  Windows 2025 before enabling manager discovery (run `41638204897`, jobs
+  `125925106693`, `125925106559`, `125925106592`). The dedicated Windows job uses
+  the same Perfetto C++ settings as the existing native jobs.
+- Stages 3–4: normal creation/attachment and sibling launch use configuration pipes
+  and live addresses, with no profile/config output. New host has no profile/key
+  fields; logging remains opt-in. Advanced imports/exports/manual addresses stay
+  in memory. Profiles omit runtime process/instance/shared-memory resource IDs and
+  resolve a fresh description at connection time. A ready host survives UI spawn
+  failure and launcher exit.
+- Integrated process discovery runs four concurrent probes, handles both endpoint
+  roles/wildcards, deduplicates live instances, preserves selection by OS identity,
+  rejects obsolete scan generations and surfaces inspection errors. Graceful Stop
+  retains server-side live-owner protection. Force stop requires an OS source and
+  separate confirmation; tests terminate only disposable children and reject changed
+  identities and manual remote sources.
+- Two CI-shaped complete workspace runs passed 2,565 tests (4 skipped), including
+  actual child discovery, duplicate names/aliases, recording through fresh managers,
+  socket reattachment/playback, shared attachment availability, and the Force stop
+  dialog/action. Warning-denying workspace build and tracing/test policies pass.
+  File-free socket/shared/LAN canaries passed; packaged canaries now also drive a
+  fresh manager model before attachment, during recording and after process exit.
+- Final inspection refinement: macOS now queries only candidate processes' libproc
+  descriptors rather than enumerating unrelated processes' sockets through netstat2.
+  The checked union accesses remain isolated in the native helper. Final native CI
+  will re-prove this refinement and the complete manager implementation.

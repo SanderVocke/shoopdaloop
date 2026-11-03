@@ -114,18 +114,22 @@ MessagePort carries only engine protocol to the AudioWorklet.
 Generic record buffers/framing/carriers belong in `shoop_transport*`; engine
 credit/connection logic stays engine-specific. Both app and engine adapters reuse
 carriers. App protocol must not depend on concrete transport, engine, filesystem,
-UI, devices or Lua runtime. Explicit profile/credential handling sits outside it.
+UI, devices or Lua runtime. Native endpoint discovery and optional profile handling sit outside it.
 
 ## Roles, settings and exit migration
 
-Host-only accepts explicit listen endpoints, a credential-file reference, device and
-pool configuration. UI-only accepts an explicitly supplied connection profile.
-Tokens never appear in argv/logs. Combined launch requires explicit credential and
-profile export paths, waits for bounded readiness through pipes, then leaves
+Host-only accepts optional listen endpoints and device/pool configuration. UI-only
+accepts a live host address or an advanced connection profile. Combined launch
+exchanges bounded configuration/readiness messages over pipes and then leaves
 independent host/UI siblings. Rollback applies only to the launcher's own unready
 host. No original pipe or child handle is required by later status/shutdown.
-There is no registry, automatic discovery, PID pruning or persisted host list.
-Profiles and credentials are user-owned configuration, not remembered discoveries.
+
+The manager discovers standalone hosts through live OS process and owned-socket
+inspection. Compatibility inspection occurs before attachment admission and cannot
+consume a control lease or shared-memory attachment. It keeps no registry, fixed
+port range, discovery files or persisted host list. Advanced profiles are explicit
+endpoint imports/exports; normal operations create none. Native connections are
+keyless; compatibility and generation-fenced ownership remain mandatory.
 
 Replace the backend selector with the sole RT engine and diagnose migrated legacy
 settings. App transport settings configure UI/service IPC; engine/device settings
@@ -134,10 +138,10 @@ and browser modes, but advertise reattachment only for socket mode.
 
 External-host close/window/platform quit offers UI only, both, or Cancel. UI only
 releases the current lease and exits; destructors never stop the host. Close both
-uses current fenced authority (also over a separate authenticated management path
+uses current fenced authority (also over a separate management path
 if data delivery is lost), waits for MIDI reset/render stop/cleanup, and reports
 failure with retry/UI-only options. Local/browser exit honestly terminates its
-co-located host. No automatic force-kill or silent replacement host.
+co-located host. Explicit local Force stop requires confirmation and revalidates the OS process identity; it performs no orderly session cleanup. There is no automatic force-kill or replacement host.
 
 ## Verification and acceptance mapping
 

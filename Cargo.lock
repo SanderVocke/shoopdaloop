@@ -5019,7 +5019,6 @@ dependencies = [
  "anyhow",
  "clap",
  "getrandom 0.4.3",
- "nix",
  "serde",
  "serde_json",
  "shoop_app",
@@ -5047,6 +5046,7 @@ name = "shoop_host_processes"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "libc",
  "libproc",
  "netstat2",
  "rustix 1.1.4",
@@ -5425,6 +5425,7 @@ dependencies = [
  "shoop_common",
  "shoop_egui",
  "shoop_host",
+ "shoop_host_processes",
  "shoop_persistence_codec",
  "shoop_plugin_protocol",
  "shoop_rt_backend",

@@ -643,7 +643,7 @@ application adapter.
 ```text
 Client side                                 Session/engine side
 shoop_egui + client-local Lua
-  │ shoop_app_client: typed local delivery or authenticated app IPC
+  │ shoop_app_client: typed local delivery or compatible app IPC
 shoop_app::Service (canonical session state and admitted work)
   │ Backend trait
 shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
@@ -666,7 +666,7 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Shared transport | `shoop_transport*` | Bounded record buffers, framing and socket/shared-memory delivery reused below both app and engine lifecycles |
 | Engine transport | `shoop_rt_transport*` | Engine client lifecycle, credits, typed in-process and encoded record adapters, MessagePort bindings and compatibility carrier aliases |
 | Engine hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices, pump audio, MIDI and messages; no app semantics |
-| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; explicit profile attachment and authenticated app management |
+| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; live host inspection, keyless attachment and generation-fenced app management |
 | Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
 
 The composition root (the native binary or the browser bootstrap) chooses a host and
@@ -704,11 +704,21 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   the carrier. Carrier latency can delay immediate actions or miss a musical
   scheduling boundary. No additional lookahead or latency compensation is applied.
 
-The independent native session host authenticates loopback app data and management
-connections with protected credential references. Explicit connection profiles select endpoints, credential files and carrier
-configuration. No host registry, discovery scan or persistent host history exists.
-The launcher exchanges bounded startup/readiness messages through private pipes. The companion lives
-beside the app (inside `Contents/MacOS` on macOS), independently of cwd and `PATH`.
+The independent native session host accepts compatible clients without keys or
+certificates. A versioned greeting distinguishes inspection from attachment before
+session admission. Bounded descriptions include process/instance identity, endpoint
+roles, transport and attachment availability. The manager joins candidate executable
+processes to their owned listening sockets through the native-only
+`shoop_host_processes` adapter (Linux procfs, macOS libproc and Windows owner-PID TCP
+tables). It uses background bounded probes and keeps discovery state in memory.
+There is no registry, reserved port range, advertisement file or saved host history.
+
+Connection profiles are optional advanced endpoint inputs/exports. Normal detached
+launch and UI attachment use bounded startup/readiness pipes and live addresses.
+The companion lives beside the app (inside `Contents/MacOS` on macOS), independently
+of cwd and `PATH`. Local forced termination revalidates OS creation identity and
+executable, using stable process handles where available. Manual remote PIDs do not
+grant local termination actions.
 Driver/capacity/transport changes apply at host startup.
 
 One controlling lease can be replaced after socket client loss. Connection
@@ -716,7 +726,7 @@ generations fence stale mutations and shutdown; attachment streams a coherent ap
 snapshot and retained operation outcomes without reconstructing the RT adapter or
 reopening devices. Shared memory supports one data attachment only. The launcher
 starts host/UI siblings and relinquishes lifetime ownership after readiness.
-UI-only exit leaves the host running; close-both uses authenticated management and
+UI-only exit leaves the host running; close-both uses management and
 confirms actual MIDI/render/device cleanup. Explicit ownerless shutdown is available
 after an abandoned data connection; it cannot evict a live lease. Host-failure
 recovery and automatic restart remain excluded. `shoop_rt_host_process` is retained

@@ -39,6 +39,3 @@ shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
 shoop_host = { path = ".", default-features = false, features = ["testing"] }
 tempfile = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
-
-[target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["user", "process", "signal"] }

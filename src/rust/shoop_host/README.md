@@ -1,37 +1,34 @@
 # Independent native session host
 
-This crate composes the authoritative app service, one RT backend adapter and the
-native RT engine/device host. It contains explicit profile-based attachment, authenticated
-loopback app data/management connections, socket/shared-memory delivery and sibling
-launch adapters. No UI or Lua runtime is linked into the host.
+This crate composes the authoritative app service, RT backend and native engine/device
+host. It provides compatible keyless data/management connections, socket/shared-memory
+delivery and detached launch adapters. No UI or Lua runtime is linked into the host.
 
-See [roles and CLI examples](../shoopdaloop/README.md). Socket clients can replace a
-departed controlling lease without recreating the engine. Shared memory supports one
-attachment only. Host shutdown requires current authority and reports MIDI reset,
-render stop and resource cleanup; UI/launcher exit does not imply host shutdown. Explicit ownerless shutdown can
-acquire a new fenced generation only when no live UI owns the session.
+Run `shoop_host` for dummy audio with OS-assigned local ports, or use the manager's
+**New host…** form for audio/MIDI and capacity settings. Configuration is passed over
+bounded startup pipes. Optional `--config`, `--export-profile` and `--log-file` paths
+serve explicit advanced inputs/outputs; normal launch and attachment create none.
 
-`cargo test -p shoop_host --features testing` runs private-path and real subprocess
-recovery/launch tests. The testing feature's deterministic dummy input is confined
-to fixtures and is disabled in ordinary production builds.
+The native manager discovers `shoop_host` processes through live OS process/socket
+inspection on Linux, macOS and Windows. A bounded inspection greeting returns the
+current process identity, instance, endpoints and attachment availability before
+session admission. Probes never acquire control or consume shared memory. There is
+no registry, remembered host list, fixed port range or extra discovery service.
 
-Explicit LAN endpoints and remote profiles are described in
-[trusted-LAN setup](../../../docs/trusted-lan-networking.md). Portable connection
-progression lives in `shoop_app_connection`; native hosting retains device lifetime.
+Socket clients can replace a departed controlling lease without recreating the
+engine. Shared memory supports one data attachment. Graceful shutdown retains
+current-generation authority, live-controller protection and confirmed MIDI/device
+cleanup. Closing the UI or manager leaves the host running. Explicit local Force stop
+uses OS identity checks and reports termination separately from graceful cleanup.
 
-Reusable profiles select endpoints without host/session IDs. Every connection
-synchronizes fresh state. `connection::host_report` queries shared startup settings,
-effective runtime status and diagnostics; the existing UI displays this information.
+Profiles remain optional endpoint selections without process/session IDs. Every
+attachment synchronizes fresh state. `connection::host_report` queries startup
+settings, effective runtime state and diagnostics without acquiring control.
 
-The native `shoopdaloop --manage-hosts` window monitors only profiles explicitly
-provided in the current session, without taking a control lease. No host registry,
-discovery directory or remembered host list is read or written. Credentials must
-be supplied explicitly, or created at a selected path through the manager's
-**New host…** form. That form configures and starts a detached companion without
-requiring a JSON host configuration or CLI arguments. The launcher uses bounded
-pipe messages for startup and readiness; it writes a profile only to an explicitly
-requested export path.
+Diagnostics go to stderr unless `--log-file PATH` requests an ordinary rotating file.
+See [roles and manager controls](../shoopdaloop/README.md) and
+[LAN setup and portable connection scheduling](../../../docs/trusted-lan-networking.md).
 
-Host diagnostics go to stderr unless `--log-file PATH` requests a private rotating
-file. See the application README for profile-based roles, manager controls and
-opt-in log retention.
+`cargo test -p shoop_host --features testing` covers real subprocess recovery,
+keyless compatibility, harmless inspection, detached launch and optional output.
+Deterministic dummy input is confined to test fixtures.

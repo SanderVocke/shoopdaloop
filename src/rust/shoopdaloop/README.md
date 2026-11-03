@@ -14,47 +14,46 @@ For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapte
 
 ```sh
 cargo build -p shoopdaloop -p shoop_host
-# Local service and engine: ordinary process-exit behavior.
 cargo run -p shoopdaloop
-# Explicit credential/profile outputs for independent host/UI siblings.
-target/debug/shoop_host --generate-credential host.key
-target/debug/shoopdaloop --session-transport socket --credential-file host.key --export-profile profile.json
-# Shared memory uses the same explicit configuration, with one data attachment.
-target/debug/shoopdaloop --session-transport shared_memory --credential-file host.key --export-profile shared-profile.json
+# Detached host and UI siblings, with configuration exchanged over pipes.
+target/debug/shoopdaloop --session-transport socket
+# Shared memory permits one data attachment.
+target/debug/shoopdaloop --session-transport shared_memory
+# Configure and manage detached hosts from the GUI.
+target/debug/shoopdaloop --manage-hosts
 ```
 
 The default is `in_process`. **Settings → Audio → Session delivery** selects the
-next launch's placement. External delivery requires explicit `--credential-file`
-and `--export-profile` arguments. `--engine-transport` remains a CLI alias. These
-settings configure UI/service delivery; the host's RT engine connection stays
-internal. Detaching or killing a UI does not reset playback, recording or accepted
-operations. Only socket delivery supports reattachment. No host restarts automatically.
+next launch's placement. `--engine-transport` remains a CLI alias. A detached host
+survives its launcher and UI. Socket delivery supports reattachment; a shared-memory
+host supports its first attachment only. Hosts do not restart automatically.
 
-Start the roles independently with a JSON host configuration (an empty object
-selects the dummy driver and default pools):
+The manager discovers local `shoop_host` processes and their owned TCP listeners
+through the OS. It probes only those sockets and retains OS-assigned ports. Discovery
+and status queries do not take control or consume a shared-memory attachment.
+There is no registry, port scan, advertisement file or remembered host list.
+
+For CLI use, start the roles separately (the host defaults to dummy audio):
 
 ```sh
-printf '{}\n' > host.json
-target/debug/shoop_host --config host.json --credential-file host.key --export-profile profile.json
-target/debug/shoopdaloop --ui-only --host-profile profile.json
-# Alternative application host role:
-# shoopdaloop --host-only --host-config host.json --credential-file host.key --export-profile profile.json
+target/debug/shoop_host
+# Use the management address printed by the host, or select it in Host Manager.
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
+# Alternative host entry point, with the same optional settings:
+target/debug/shoopdaloop --host-only
 ```
 
-Hosts accept explicit `--endpoint`, `--management-endpoint`, `--credential-file`
-and `--name` options. `--export-profile` writes only the requested connection
-profile. Profiles contain endpoint and credential-file references; they never
-embed token bytes. Credentials contain exactly 32 random bytes and require
-owner-only permissions/ACLs. Authentication and protocol checks precede attachment;
-a second controller is refused while the current owner remains healthy.
+`--config PATH` / `--host-config PATH` accepts an optional host configuration.
+`--endpoint`, `--management-endpoint`, `--name` and `--log-file` remain explicit host
+options. Advanced connection profiles can be exported with `--export-profile PATH`
+and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
+select endpoints, never process or session identities, and are never saved or loaded
+automatically. The launcher exchanges bounded startup/readiness messages over pipes;
+normal creation and attachment require no configuration or profile files.
 
-There is no host registry, directory scanning, PID discovery/pruning, remembered
-host list. Credentials are created only at explicitly requested paths. The manager
-and looper only connect to explicitly supplied profiles. Loaded profiles are kept in memory for the current
-manager session. The launcher passes bounded startup/readiness messages over pipes;
-it does not write temporary host metadata. Explicit profile and credential files
-remain user-owned configuration after shutdown. The legacy `--remote-profile`
-spelling remains an alias for `--host-profile`.
+Compatible clients connect without keys, certificates or trust records. Protocol
+checks, controller generations and exclusive control still apply. A second controller
+is refused while the current owner remains healthy.
 
 Every connection obtains a fresh snapshot of the endpoint's current state. The
 **Connect to endpoint** action uses the same flow after loss or host restart.
@@ -69,14 +68,14 @@ future local launch defaults, independently of the connected host.
 For an external host, the Session menu and window/platform close offer:
 
 - **Close UI only (keep host running)** releases control and exits this UI.
-- **Close UI and host** waits for authenticated MIDI reset, render stop and cleanup.
+- **Close UI and host** waits for MIDI reset, render stop and cleanup.
 - **Cancel** keeps the UI open.
 
-After data loss, shutdown uses a separate authenticated management connection with
+After data loss, shutdown uses a separate management connection with
 the last owner's generation. A replacement UI fences that authority. Failure is
 reported with retry and UI-only options; an uncertain retry checks the same operation.
 A host with no live UI owner can be closed explicitly with
-`shoopdaloop --shutdown-host --host-profile PATH`. This authenticates and acquires a new
+`shoopdaloop --shutdown-host --host-address HOST:PORT`. This acquires a new
 shutdown generation; a live owner refuses it. It also manages a shared-memory host
 after its single data connection is lost, without enabling shared-memory reattachment.
 The UI never uses this claim as a fallback for stale-owner shutdown.
@@ -160,7 +159,7 @@ The workspace suite includes the isolated `shoop_app_reference` and independent 
 engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
 is a reference-test feature, never a production frontend dependency.
 
-A packaged, windowless canary exercises the actual companion, authenticated attach,
+A packaged, windowless canary exercises the actual companion, keyless attach,
 recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 
 ```sh
@@ -207,37 +206,37 @@ Run `shoopdaloop --manage-hosts`, or choose **Session → Host Manager…** in t
 native looper UI. This opens a separate management process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
-**New host…** configures and starts a detached `shoop_host` companion. Set the name,
-audio API/devices, rate and buffer, then choose an output profile path. A new private
-key is suggested beside the profile; select **Use existing** to reuse a key. Optional
-sections configure engine capacity, session defaults, channels/MIDI, local transport
-or LAN listeners. Disk logging is off unless enabled with an explicit file path.
-No host configuration JSON or CLI arguments are required. The configuration is
-passed over the startup pipe; only the selected profile, key and optional log are
-written. The host remains running when the manager exits. Capacity and driver
-changes require a new host; existing hosts cannot be reconfigured or restarted here.
+**New host…** configures and starts a detached companion. Set its name and audio
+settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+connection or optional logging when needed. The form uses OS-assigned local ports;
+no profile, key or configuration path is required. Driver and capacity changes
+require a new host/session.
 
-**Load profile…** loads an existing connection profile for this manager session.
-`--manage-hosts --host-profile profile.json` supplies a profile at startup. The
-manager starts empty on subsequent launches unless a profile is explicitly supplied
-again. It never scans directories, networks, process lists or saved host history.
-Status queries run in the background and refresh every two seconds after each scan
-of the supplied profiles. An unreachable endpoint does not prove its process has
-exited. Up to 64 explicitly supplied profiles are monitored per manager.
+Opening or refreshing the manager enumerates local host processes and their actual
+listening sockets. Scans run in the background with bounded concurrency. A fresh
+manager rediscovers hosts started through the GUI, CLI or host-only wrapper; closing
+the manager leaves their processes and sessions running. Exited hosts disappear
+through OS observation. Inspection failures are surfaced separately from exits;
+processes that cannot answer a compatible greeting are not presented as ready.
 
-Select a host to inspect effective audio state, DSP load, xruns, requested startup
-settings and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
-**Audio fallback** warnings. **Overview** shows audio health, with configuration and
-connection information under **Advanced details**. **Open UI** launches
-a socket UI only when no controller is connected. Shared-memory hosts cannot
-reattach. The host’s **••• → Stop host…** action confirms the loss of the
-in-memory session and requests
-authenticated ownerless cleanup. A connected controller refuses shutdown, even if
-it attaches after the manager's last refresh. Save needed work through the looper
-UI before stopping. Tray integration is not included.
+**Advanced** contains **Connect to address…**, **Import profile…** and
+**Export profile…**. Manual targets exist only for the current manager session.
+Local and manual connections to the same live instance appear once. Remote hosts
+are added explicitly; LAN-wide discovery is outside scope.
+
+Select a host to inspect effective audio state, DSP load, xruns, startup settings
+and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
+**Audio fallback**. **Open UI** is available when the host can accept an attachment
+and has no controller. Socket hosts can reattach; shared-memory hosts can attach
+once. **••• → Stop host…** requests orderly cleanup after confirmation; the server
+refuses this while a controller is live. **Force stop…** is available only for an
+OS-identified local process, requires separate confirmation and terminates without
+session cleanup. Its PID, creation identity and executable are revalidated before
+termination. Remote descriptor PIDs cannot select a local process to kill. Tray
+integration is not included.
 
 Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
-host. This writes a private, rotating file only at the requested path, including
+host. This writes a rotating file only at the requested path, including
 startup errors. Logs rotate at
 1 MiB with three backups and remain until manually removed. Without `--log-file`,
 host diagnostics go to stderr and no persistent host logs or records are created.
@@ -245,12 +244,11 @@ host diagnostics go to stderr and no persistent host logs or records are created
 includes its requested log path; a manually authored profile can set `log_file`.
 The **Logs** tab reads the latest 64 KiB from that explicit path. Remote log files
 stay on the host computer. **Open saved log…** opens only a file explicitly chosen
-by the user. **••• → Copy diagnostics** copies the current report without tokens.
+by the user. **••• → Copy diagnostics** copies the current report with current process and connection information.
 Success messages dismiss after five seconds without moving the layout; errors stay
 visible until dismissed.
 
-Screenshots from the native manager (800 × 500). Opening it without a profile
-stays empty, even when hosts are already running:
+Screenshots from the native manager (800 × 500):
 
 ![Configure and start a detached host](../../../docs/screenshots/host-manager-new-host.png)
 
@@ -262,4 +260,6 @@ stays empty, even when hosts are already running:
 
 ![Host Manager warning for an audio fallback](../../../docs/screenshots/host-manager-fallback.png)
 
-![Host Manager starts empty without an explicit profile](../../../docs/screenshots/host-manager-empty.png)
+![Host Manager with no running hosts](../../../docs/screenshots/host-manager-empty.png)
+
+![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)

@@ -94,9 +94,16 @@ pub fn spawn(
             })();
             let _ = sender.send(result);
         });
-        let target = receiver
+        let mut target = receiver
             .recv_timeout(Duration::from_secs(12))
             .context("host readiness timed out")??;
+        ensure!(
+            target.process == shoop_host_processes::identity(child.id())?
+                && target.process.is_some()
+                && target.instance != 0,
+            "Host readiness process identity mismatch"
+        );
+        target.use_local_addresses();
         ensure!(
             matches!(
                 connection::management(
@@ -123,21 +130,18 @@ pub fn pair(
     config: &HostConfig,
     options: StartOptions,
     host_executable: &Path,
-    ui: impl FnOnce(&Path) -> Command,
-) -> Result<PathBuf> {
-    let path = options.export_profile.clone().context(
-        "independent launch requires --export-profile to an explicit connection profile",
-    )?;
-    let (_child, _target) = spawn(config, options, host_executable)?;
-    let mut command = ui(&path);
+    ui: impl FnOnce(&Target) -> Command,
+) -> Result<Target> {
+    let (_child, target) = spawn(config, options, host_executable)?;
+    let mut command = ui(&target);
     independent(&mut command);
     command.spawn().with_context(|| {
         format!(
-            "UI failed to start; ready host remains available through {}",
-            path.display()
+            "UI failed to start; ready host remains available at {}",
+            target.management
         )
     })?;
-    Ok(path)
+    Ok(target)
 }
 
 #[cfg(test)]

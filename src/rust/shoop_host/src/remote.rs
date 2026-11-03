@@ -57,8 +57,6 @@ pub struct RemoteProfile {
     #[serde(default)]
     pub transport: AppTransport,
     #[serde(default)]
-    pub shared_memory: Option<Vec<u8>>,
-    #[serde(default)]
     pub log_file: Option<PathBuf>,
 }
 impl RemoteProfile {
@@ -79,17 +77,8 @@ impl RemoteProfile {
             );
         }
         ensure!(
-            self.local || (self.transport == AppTransport::Socket && self.shared_memory.is_none()),
+            self.local || self.transport == AppTransport::Socket,
             "remote shared memory is unsupported"
-        );
-        ensure!(
-            match self.transport {
-                AppTransport::Socket => self.shared_memory.is_none(),
-                AppTransport::SharedMemory => self.shared_memory.as_ref().is_some_and(|bytes| {
-                    shoop_transport_shared_memory::Descriptor::decode(bytes).is_ok()
-                }),
-            },
-            "invalid profile transport descriptor"
         );
         Ok(())
     }
@@ -158,7 +147,7 @@ impl From<RemoteProfile> for Target {
             endpoint: e.endpoint,
             management: e.management,
             transport: e.transport,
-            shared_memory: e.shared_memory,
+            shared_memory: None,
             warnings: Vec::new(),
             network: (!e.local).then_some(e.network),
             log_file: e.log_file,
@@ -179,12 +168,29 @@ impl ConnectionTarget for Target {
     }
 }
 impl Target {
+    pub fn use_local_addresses(&mut self) {
+        if let Some(endpoint) = &self.local_endpoint {
+            self.endpoint = endpoint.clone();
+        }
+        if let Some(management) = &self.local_management {
+            self.management = management.clone();
+        }
+    }
     pub fn read(path: &Path) -> Result<Self> {
         Ok(RemoteProfile::read(path)?.into())
     }
     pub fn validate(&self) -> Result<()> {
-        let profile = self.profile();
-        profile.validate()
+        self.profile().validate()?;
+        ensure!(
+            match self.transport {
+                AppTransport::Socket => self.shared_memory.is_none(),
+                AppTransport::SharedMemory => self.shared_memory.as_ref().is_some_and(|bytes| {
+                    shoop_transport_shared_memory::Descriptor::decode(bytes).is_ok()
+                }),
+            },
+            "invalid live transport descriptor"
+        );
+        Ok(())
     }
     pub fn profile(&self) -> RemoteProfile {
         RemoteProfile {
@@ -195,8 +201,11 @@ impl Target {
             network: self.network.unwrap_or_default(),
             local: self.network.is_none(),
             transport: self.transport,
-            shared_memory: self.shared_memory.clone(),
-            log_file: self.log_file.clone(),
+            log_file: self
+                .network
+                .is_none()
+                .then(|| self.log_file.clone())
+                .flatten(),
         }
     }
 }

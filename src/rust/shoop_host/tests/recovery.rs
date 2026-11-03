@@ -172,10 +172,13 @@ fn shutdown(host: &mut Host, client: &mut Client) {
 
 #[shoop_test]
 fn ui_peer() {
-    let Some(path) = std::env::var_os("SHOOP_TEST_ENTRY") else {
+    let entry = if let Ok(address) = std::env::var("SHOOP_TEST_ADDRESS") {
+        connection::describe(&address, Duration::from_secs(2)).unwrap()
+    } else if let Some(path) = std::env::var_os("SHOOP_TEST_ENTRY") {
+        HostEntry::read(Path::new(&path)).unwrap()
+    } else {
         return;
     };
-    let entry = HostEntry::read(Path::new(&path)).unwrap();
     let (mut client, mut connection) = attach(&entry, 300);
     command(
         &mut client,
@@ -329,7 +332,13 @@ fn busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_an
                     description.instance
                 );
                 let profile = serde_json::to_value(description.profile()).unwrap();
-                for field in ["process", "instance", "credential", "can_attach"] {
+                for field in [
+                    "process",
+                    "instance",
+                    "credential",
+                    "can_attach",
+                    "shared_memory",
+                ] {
                     assert!(profile.get(field).is_none());
                 }
             }
@@ -391,9 +400,7 @@ fn launcher_peer() {
         return;
     };
     let root = PathBuf::from(root);
-    let mut options = shoop_host::serve::StartOptions::new().unwrap();
-
-    options.export_profile = Some(root.join("profile.json"));
+    let options = shoop_host::serve::StartOptions::new().unwrap();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
@@ -407,22 +414,23 @@ fn launcher_peer() {
         test_signal: true,
         ..Default::default()
     };
-    let path = shoop_host::launch::pair(
+    let target = shoop_host::launch::pair(
         &config,
         options,
         Path::new(env!("CARGO_BIN_EXE_shoop_host")),
-        |path| {
+        |target| {
             let mut command = Process::new(std::env::current_exe().unwrap());
             command
                 .args(["--exact", "ui_peer", "--nocapture"])
-                .env("SHOOP_TEST_ENTRY", path)
+                .env("SHOOP_TEST_ADDRESS", &target.management)
                 .env("SHOOP_TEST_READY", root.join("ui-ready"))
                 .env("SHOOP_TEST_EXIT", root.join("ui-exit"));
             command
         },
     )
     .unwrap();
-    std::fs::write(root.join("entry-path"), path.to_str().unwrap()).unwrap();
+    std::fs::write(root.join("entry-address"), &target.management).unwrap();
+    assert!(!root.join("profile.json").exists());
 }
 
 #[shoop_test]
@@ -437,8 +445,8 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
         .spawn()
         .unwrap();
     assert!(launcher.wait().unwrap().success());
-    let path = PathBuf::from(std::fs::read_to_string(root.path().join("entry-path")).unwrap());
-    let entry = HostEntry::read(&path).unwrap();
+    let address = std::fs::read_to_string(root.path().join("entry-address")).unwrap();
+    let entry = connection::describe(&address, Duration::from_secs(2)).unwrap();
     struct Cleanup(HostEntry, PathBuf);
     impl Drop for Cleanup {
         fn drop(&mut self) {
@@ -508,7 +516,7 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
-    assert!(path.exists());
+    assert!(!root.path().join("profile.json").exists());
 }
 
 #[shoop_test]

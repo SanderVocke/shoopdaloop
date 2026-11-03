@@ -317,7 +317,6 @@ pub fn run_with_ready(
             network: options.network,
             local: !options.lan,
             transport: target.transport,
-            shared_memory: target.shared_memory.clone(),
             log_file: if options.lan {
                 None
             } else {
@@ -329,8 +328,7 @@ pub fn run_with_ready(
             ensure!(
                 existing.endpoint == profile.endpoint
                     && existing.management == profile.management
-                    && existing.transport == profile.transport
-                    && existing.shared_memory == profile.shared_memory,
+                    && existing.transport == profile.transport,
                 "existing profile selects different endpoints"
             );
         } else {

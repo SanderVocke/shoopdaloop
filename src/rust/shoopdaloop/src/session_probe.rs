@@ -13,7 +13,7 @@ use shoop_host::{
     remote::Target as HostEntry,
 };
 use std::{
-    process::{Child, Command as Process, Stdio},
+    process::Child,
     time::{Duration, Instant},
 };
 
@@ -98,7 +98,7 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
 fn launch(
     transport: EngineTransportKind,
     memory_mb: u32,
-) -> Result<(tempfile::TempDir, ProbeHost, std::path::PathBuf, HostEntry)> {
+) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
     ensure!(
         transport != EngineTransportKind::InProcess,
         "session companion probe requires socket or shared_memory"
@@ -122,50 +122,35 @@ fn launch(
         },
         ..Default::default()
     };
-    let config_file = root.path().join("config.json");
-    std::fs::write(&config_file, serde_json::to_vec(&config)?)?;
     let companion = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
     let lan = std::env::var("SHOOP_PROBE_LAN").is_ok_and(|value| value == "1");
     ensure!(
         !lan || transport == EngineTransportKind::Socket,
         "LAN probes require socket delivery"
     );
-    let profile_path = root.path().join("remote.json");
-    let mut command = Process::new(companion);
-    command
-        .arg("--config")
-        .arg(config_file)
-        .env("RUST_LOG", "shoop_rt_backend=debug")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit());
-    command.arg("--export-profile").arg(&profile_path);
-    if lan {
-        command.arg("--lan");
+    let mut options = shoop_host::serve::StartOptions::new()?;
+    options.lan = lan;
+    let (child, entry) = shoop_host::launch::spawn(&config, options, &companion)?;
+    let host = ProbeHost(child);
+    ensure!(
+        std::fs::read_dir(root.path())?.count() == 0,
+        "ordinary launch wrote host configuration or records"
+    );
+    for address in [&entry.endpoint, &entry.management] {
+        let description = connection::describe(address, Duration::from_secs(2))?;
+        ensure!(
+            description.instance == entry.instance
+                && description.process == entry.process
+                && description.can_attach,
+            "inspection changed the host or consumed its attachment"
+        );
     }
-    let mut host = ProbeHost(command.spawn()?);
-    let deadline = Instant::now() + Duration::from_secs(12);
-    let (path, entry) = loop {
-        if profile_path.exists() {
-            break (
-                profile_path.clone(),
-                shoop_host::remote::RemoteProfile::read(&profile_path)?.into(),
-            );
-        }
-        ensure!(
-            host.0.try_wait()?.is_none(),
-            "session companion failed before readiness"
-        );
-        ensure!(
-            Instant::now() < deadline,
-            "session companion startup timed out"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    };
-    Ok((root, host, path, entry))
+    crate::host_manager::verify_host_discovery(&entry, Some((false, true)))?;
+    Ok((root, host, entry))
 }
+
 pub fn run(transport: EngineTransportKind) -> Result<()> {
-    let (_root, mut host, path, entry) = launch(transport, 16)?;
+    let (root, mut host, entry) = launch(transport, 16)?;
     let (mut client, mut connection) = attach(&entry)?;
     command(
         &mut client,
@@ -223,6 +208,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
     let before = client.snapshot().unwrap().status.processed_frames;
+    crate::host_manager::verify_host_discovery(
+        &entry,
+        Some((true, transport == EngineTransportKind::Socket)),
+    )?;
     if transport == EngineTransportKind::Socket {
         drop(connection);
         std::thread::sleep(Duration::from_millis(50));
@@ -286,9 +275,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         ensure!(Instant::now() < deadline, "host did not exit after cleanup");
         std::thread::sleep(Duration::from_millis(5));
     }
+    crate::host_manager::verify_host_discovery(&entry, None)?;
     ensure!(
-        path.exists(),
-        "explicit profile was removed during shutdown"
+        std::fs::read_dir(root.path())?.count() == 0,
+        "normal host workflow wrote persistent metadata"
     );
     Ok(())
 }
@@ -384,7 +374,7 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         transport = transport.id()
     )
     .entered();
-    let (root, mut host, path, entry) = launch(transport, 192)?;
+    let (root, mut host, entry) = launch(transport, 192)?;
     let app = crate::application::ApplicationRuntime::attach(
         entry.clone(),
         crate::application::ApplicationStartOptions {
@@ -586,8 +576,8 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        path.exists(),
-        "explicit file companion profile was removed during shutdown"
+        !root.path().join("config.json").exists() && !root.path().join("remote.json").exists(),
+        "file companion workflow wrote host profiles/configuration"
     );
     println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
     Ok(())

@@ -1,3 +1,4 @@
+mod discovery;
 mod start_host;
 
 use crate::app_args::AppArgs;
@@ -16,27 +17,34 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Source {
-    path: PathBuf,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+enum Source {
+    Process(shoop_host_processes::Identity),
+    Address(String),
 }
 impl Source {
-    fn target(&self) -> Result<Target> {
-        Ok(RemoteProfile::read(&self.path)?.into())
+    fn label(&self) -> String {
+        match self {
+            Self::Process(identity) => {
+                format!("PID {} · {}", identity.pid, identity.executable.display())
+            }
+            Self::Address(address) => address.clone(),
+        }
     }
-    fn ui_command(&self) -> Result<Command> {
-        let mut command = Command::new(std::env::current_exe()?);
-        command
-            .arg("--ui-only")
-            .arg("--host-profile")
-            .arg(&self.path);
-        Ok(command)
-    }
+}
+fn ui_command(target: &Target) -> Result<Command> {
+    let mut command = Command::new(std::env::current_exe()?);
+    command
+        .arg("--ui-only")
+        .arg("--host-address")
+        .arg(&target.management);
+    Ok(command)
 }
 
 #[derive(Clone)]
 struct Host {
     source: Source,
+    target: Option<Target>,
     name: String,
     endpoint: String,
     transport: AppTransport,
@@ -46,49 +54,67 @@ struct Host {
     checked: Instant,
 }
 impl Host {
-    fn query(source: Source) -> Self {
-        let target = source.target();
-        let (name, endpoint, transport) = match &target {
-            Ok(target) => (
-                target.name.clone(),
-                target.endpoint.clone(),
-                target.transport,
-            ),
-            Err(_) => (
-                source
-                    .path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                String::new(),
-                AppTransport::Socket,
-            ),
-        };
-        let remote = target.as_ref().is_ok_and(|target| target.network.is_some());
-        let log_file = target
-            .as_ref()
-            .ok()
-            .and_then(|target| target.log_file.clone());
-        let report = target
-            .and_then(|target| connection::host_report(&target, Duration::from_secs(2)))
+    fn from_target(source: Source, target: Target) -> Self {
+        let report = connection::host_report(&target, Duration::from_secs(2))
             .map_err(|error| format!("{error:#}"));
         Self {
+            remote: matches!(source, Source::Address(_)),
             source,
-            name,
-            endpoint,
-            transport,
-            remote,
-            log_file,
+            name: target.name.clone(),
+            endpoint: target.endpoint.clone(),
+            transport: target.transport,
+            log_file: target.log_file.clone(),
+            target: Some(target),
             report,
             checked: Instant::now(),
         }
+    }
+    fn query(address: String) -> Self {
+        let source = Source::Address(address.clone());
+        match connection::describe(&address, Duration::from_secs(2)) {
+            Ok(target) => Self::from_target(source, target),
+            Err(error) => Self::unavailable(source, format!("{error:#}")),
+        }
+    }
+    fn unavailable(source: Source, error: String) -> Self {
+        Self {
+            name: source.label(),
+            remote: matches!(source, Source::Address(_)),
+            source,
+            target: None,
+            endpoint: String::new(),
+            transport: AppTransport::Socket,
+            log_file: None,
+            report: Err(error),
+            checked: Instant::now(),
+        }
+    }
+    fn current_target(&self) -> Result<Target> {
+        let previous = self
+            .target
+            .as_ref()
+            .context("Host description unavailable")?;
+        let target = connection::describe(&previous.management, Duration::from_secs(2))?;
+        if let Source::Process(expected) = &self.source {
+            anyhow::ensure!(
+                target.process.as_ref() == Some(expected)
+                    && shoop_host_processes::identity(expected.pid)?.as_ref() == Some(expected),
+                "Host process identity changed"
+            );
+        }
+        Ok(target)
     }
     fn is_remote(&self) -> bool {
         self.remote
     }
     fn state(&self) -> (&'static str, egui::Color32) {
         match &self.report {
+            Err(error) if error.contains("Protocol") || error.contains("incompatible") => {
+                ("Incompatible", AMBER)
+            }
+            Err(error) if error.to_lowercase().contains("inspection") => {
+                ("Inspection unavailable", AMBER)
+            }
             Err(_) => ("Unreachable", MUTED),
             Ok(report) if report.closed => ("Closed", MUTED),
             Ok(report) if !report.ready => ("Not ready", AMBER),
@@ -149,13 +175,15 @@ struct LogView {
 }
 
 enum Event {
-    Scanned(Vec<Host>),
+    Scanned(u64, discovery::Scan),
     Action(Result<String, String>),
     Logs(PathBuf, Result<String, String>),
-    Started(Result<PathBuf, String>),
+    Started(Result<Host, String>),
 }
 struct Manager {
-    sources: Vec<Source>,
+    sources: Vec<String>,
+    generation: u64,
+    address_dialog: Option<String>,
     hosts: Vec<Host>,
     selected: Option<Source>,
     sender: Sender<Event>,
@@ -165,6 +193,8 @@ struct Manager {
     next_scan: Instant,
     notice: Option<Notice>,
     confirm_stop: Option<Source>,
+    confirm_force: Option<Source>,
+    inspection_errors: Vec<String>,
     logs: Option<LogView>,
     tab: Tab,
     saved_log: bool,
@@ -173,8 +203,26 @@ struct Manager {
 impl Manager {
     fn new(profile: Option<PathBuf>) -> Self {
         let (sender, receiver) = mpsc::channel();
+        let (sources, notice) = match profile.map(|path| RemoteProfile::read(&path)).transpose() {
+            Ok(profile) => (
+                profile
+                    .map(|profile| vec![profile.management])
+                    .unwrap_or_default(),
+                None,
+            ),
+            Err(error) => (
+                vec![],
+                Some(Notice {
+                    message: format!("{error:#}"),
+                    error: true,
+                    created: Instant::now(),
+                }),
+            ),
+        };
         Self {
-            sources: profile.into_iter().map(|path| Source { path }).collect(),
+            sources,
+            generation: 0,
+            address_dialog: None,
             hosts: Vec::new(),
             selected: None,
             sender,
@@ -182,8 +230,10 @@ impl Manager {
             scanning: false,
             action_pending: false,
             next_scan: Instant::now(),
-            notice: None,
+            notice,
             confirm_stop: None,
+            confirm_force: None,
+            inspection_errors: vec![],
             logs: None,
             tab: Tab::Overview,
             saved_log: false,
@@ -196,14 +246,17 @@ impl Manager {
         }
         self.scanning = true;
         let sources = self.sources.clone();
+        let generation = self.generation;
+        let previous = self.hosts.clone();
         let sender = self.sender.clone();
         std::thread::spawn(move || {
-            let hosts = sources.into_iter().map(Host::query).collect();
-            let _ = sender.send(Event::Scanned(hosts));
+            let hosts = discovery::scan(sources, previous);
+            let _ = sender.send(Event::Scanned(generation, hosts));
         });
     }
     fn action(&mut self, operation: impl FnOnce() -> Result<String> + Send + 'static) {
         self.action_pending = true;
+        self.generation += 1;
         self.notice = None;
         let sender = self.sender.clone();
         std::thread::spawn(move || {
@@ -255,7 +308,21 @@ impl Manager {
     fn poll(&mut self) {
         while let Ok(event) = self.receiver.try_recv() {
             match event {
-                Event::Scanned(mut hosts) => {
+                Event::Scanned(generation, result) => {
+                    self.scanning = false;
+                    if generation != self.generation {
+                        self.next_scan = Instant::now();
+                        continue;
+                    }
+                    self.inspection_errors = result.warnings;
+                    if let Some(source) = &self.selected {
+                        if let Some((_, replacement)) =
+                            result.aliases.iter().find(|(alias, _)| alias == source)
+                        {
+                            self.selected = Some(replacement.clone());
+                        }
+                    }
+                    let mut hosts = result.hosts;
                     for host in &mut hosts {
                         if host.endpoint.is_empty() {
                             if let Some(previous) = self
@@ -268,11 +335,19 @@ impl Manager {
                                 host.transport = previous.transport;
                                 host.remote = previous.remote;
                                 host.log_file = previous.log_file.clone();
+                                host.target = previous.target.clone();
                             }
                         }
                     }
-                    if self.selected.is_none() && !self.saved_log {
-                        self.selected = hosts.first().map(|host| host.source.clone());
+                    if !self.saved_log {
+                        match &self.selected {
+                            Some(source) if !hosts.iter().any(|host| &host.source == source) => {
+                                self.selected = None;
+                                self.logs = None;
+                            }
+                            None => self.selected = hosts.first().map(|host| host.source.clone()),
+                            _ => {}
+                        }
                     }
                     self.hosts = hosts;
                     self.scanning = false;
@@ -280,6 +355,7 @@ impl Manager {
                 }
                 Event::Action(result) => {
                     self.action_pending = false;
+                    self.generation += 1;
                     match result {
                         Ok(message) => self.notify(message, false),
                         Err(error) => self.notify(format!("Action failed: {error}"), true),
@@ -289,11 +365,11 @@ impl Manager {
                 Event::Started(result) => {
                     self.action_pending = false;
                     match result {
-                        Ok(path) => {
-                            let source = Source { path };
-                            if !self.sources.contains(&source) {
-                                self.sources.push(source.clone());
-                            }
+                        Ok(host) => {
+                            self.generation += 1;
+                            let source = host.source.clone();
+                            self.hosts.retain(|host| host.source != source);
+                            self.hosts.push(host);
                             self.select(source);
                             self.start_dialog = None;
                             self.next_scan = Instant::now();
@@ -317,21 +393,84 @@ impl Manager {
             }
         }
     }
+    fn add_address(&mut self, address: String) {
+        let address = address.trim().to_owned();
+        if address.is_empty() {
+            return;
+        }
+        if !self.sources.contains(&address) {
+            self.sources.push(address.clone());
+        }
+        self.generation += 1;
+        self.select(Source::Address(address));
+        self.next_scan = Instant::now();
+    }
     fn add_host(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Host profile", &["json"])
             .pick_file()
         {
-            let source = Source { path };
-            if !self.sources.contains(&source) && self.sources.len() >= 64 {
-                self.notify("Profile limit reached (64).".into(), true);
-            } else {
-                if !self.sources.contains(&source) {
-                    self.sources.push(source.clone());
-                }
-                self.select(source);
-                self.next_scan = Instant::now();
+            match RemoteProfile::read(&path) {
+                Ok(profile) => self.add_address(profile.management),
+                Err(error) => self.notify(format!("{error:#}"), true),
             }
+        }
+    }
+    fn advanced_menu(&mut self, ui: &mut egui::Ui) {
+        if ui.button("Connect to address…").clicked() {
+            self.address_dialog = Some(String::new());
+            ui.close();
+        }
+        if ui.button("Import profile…").clicked() {
+            self.add_host();
+            ui.close();
+        }
+        let host = self
+            .hosts
+            .iter()
+            .find(|host| Some(&host.source) == self.selected.as_ref())
+            .filter(|host| host.target.is_some())
+            .cloned();
+        if ui
+            .add_enabled(host.is_some(), egui::Button::new("Export profile…"))
+            .clicked()
+        {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_file_name("host-profile.json")
+                .save_file()
+            {
+                self.action(move || {
+                    host.unwrap().current_target()?.profile().write(&path)?;
+                    Ok("Profile exported".into())
+                });
+            }
+            ui.close();
+        }
+    }
+    fn show_address_dialog(&mut self, context: &egui::Context) {
+        let Some(mut address) = self.address_dialog.take() else {
+            return;
+        };
+        let mut open = true;
+        let mut connect = false;
+        egui::Window::new("Connect to address")
+            .collapsible(false)
+            .show(context, |ui| {
+                ui.label("Host address (HOST:PORT)");
+                ui.text_edit_singleline(&mut address);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        open = false;
+                    }
+                    connect = ui
+                        .add_enabled(!address.trim().is_empty(), egui::Button::new("Connect"))
+                        .clicked();
+                });
+            });
+        if connect {
+            self.add_address(address);
+        } else if open {
+            self.address_dialog = Some(address);
         }
     }
     fn new_host(&mut self) {
@@ -339,11 +478,7 @@ impl Manager {
             dialog.open = true;
             return;
         }
-        if self.sources.len() >= 64 {
-            self.notify("Profile limit reached (64).".into(), true);
-        } else {
-            self.start_dialog = Some(start_host::Dialog::new());
-        }
+        self.start_dialog = Some(start_host::Dialog::new());
     }
     fn show_start_dialog(&mut self, context: &egui::Context) {
         let request = self
@@ -351,17 +486,22 @@ impl Manager {
             .as_mut()
             .and_then(|dialog| dialog.show(context));
         if let Some(request) = request {
-            if self.sources.len() >= 64 {
-                if let Some(dialog) = &mut self.start_dialog {
-                    dialog.failed("Profile limit reached (64).".into());
-                }
-                return;
-            }
             self.action_pending = true;
             let sender = self.sender.clone();
             std::thread::spawn(move || {
                 let _ = sender.send(Event::Started(
-                    request.start().map_err(|error| format!("{error:#}")),
+                    request
+                        .start()
+                        .and_then(|target| {
+                            let source = Source::Process(
+                                target
+                                    .process
+                                    .clone()
+                                    .context("Host process identity unavailable")?,
+                            );
+                            Ok(Host::from_target(source, target))
+                        })
+                        .map_err(|error| format!("{error:#}")),
                 ));
             });
         }
@@ -397,23 +537,16 @@ impl Manager {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add_enabled(
-                                !self.action_pending && self.confirm_stop.is_none(),
+                                !self.action_pending
+                                    && self.confirm_stop.is_none()
+                                    && self.confirm_force.is_none(),
                                 egui::Button::new("New host…").corner_radius(3),
                             )
                             .clicked()
                         {
                             self.new_host();
                         }
-                        if ui
-                            .add_enabled(
-                                !self.action_pending,
-                                egui::Button::new("Load profile…").corner_radius(3),
-                            )
-                            .on_hover_text("Choose a connection profile")
-                            .clicked()
-                        {
-                            self.add_host();
-                        }
+                        ui.menu_button("Advanced", |ui| self.advanced_menu(ui));
                     });
                 });
             });
@@ -425,11 +558,16 @@ impl Manager {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("Profiles: session only")
-                            .size(12.0)
-                            .color(MUTED),
-                    );
+                    if self.inspection_errors.is_empty() {
+                        ui.label(
+                            egui::RichText::new("Local process discovery")
+                                .size(12.0)
+                                .color(MUTED),
+                        );
+                    } else {
+                        ui.colored_label(AMBER, "OS inspection errors")
+                            .on_hover_text(self.inspection_errors.join("\n"));
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add_enabled(!self.scanning, egui::Button::new("Refresh").frame(false))
@@ -484,7 +622,7 @@ impl Manager {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         if self.hosts.is_empty() {
-                            ui.label(egui::RichText::new("No profiles").color(MUTED));
+                            ui.label(egui::RichText::new("No hosts").color(MUTED));
                         }
                         for host in &self.hosts {
                             if host_row(ui, host, self.selected.as_ref() == Some(&host.source))
@@ -512,8 +650,10 @@ impl Manager {
             .show(ui, |ui| {
                 self.show_content(ui);
             });
+        self.show_address_dialog(ui.ctx());
         self.show_start_dialog(ui.ctx());
         self.show_stop_dialog(ui.ctx());
+        self.show_force_dialog(ui.ctx());
         self.show_notice(ui.ctx());
         ui.ctx().request_repaint_after(Duration::from_millis(200));
     }
@@ -531,16 +671,16 @@ impl Manager {
             .cloned()
         else {
             ui.label(
-                egui::RichText::new(if self.sources.is_empty() {
-                    "No profiles loaded."
+                egui::RichText::new(if !self.scanning {
+                    "No running hosts found."
                 } else {
-                    "Querying host…"
+                    "Inspecting local hosts…"
                 })
                 .strong(),
             );
             return;
         };
-        let can_open = host.transport == AppTransport::Socket
+        let can_open = host.target.as_ref().is_some_and(|target| target.can_attach)
             && host
                 .report
                 .as_ref()
@@ -605,6 +745,14 @@ impl Manager {
                         self.confirm_stop = Some(host.source.clone());
                         ui.close();
                     }
+                    if matches!(host.source, Source::Process(_))
+                        && ui
+                            .add_enabled(!self.action_pending, egui::Button::new("Force stop…"))
+                            .clicked()
+                    {
+                        self.confirm_force = Some(host.source.clone());
+                        ui.close();
+                    }
                 });
                 if busy {
                     ui.label(egui::RichText::new("UI connected").color(ACCENT))
@@ -616,9 +764,13 @@ impl Manager {
                         .add_enabled(!self.action_pending, primary_button("Open UI"))
                         .clicked()
                     {
-                        let source = host.source.clone();
+                        let host = host.clone();
                         self.action(move || {
-                            let mut command = source.ui_command()?;
+                            let mut target = host.current_target()?;
+                            if matches!(host.source, Source::Process(_)) {
+                                target.use_local_addresses();
+                            }
+                            let mut command = ui_command(&target)?;
                             shoop_host::launch::independent(&mut command);
                             command.spawn().context("Start looper UI")?;
                             Ok("Looper UI launched".into())
@@ -668,7 +820,7 @@ impl Manager {
             }
         } else {
             egui::ScrollArea::vertical()
-                .id_salt(("overview", &host.source.path))
+                .id_salt(("overview", &host.source))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     match &host.report {
@@ -688,7 +840,12 @@ impl Manager {
                             }
                         }
                     }
-                    if host.transport == AppTransport::SharedMemory {
+                    if host.transport == AppTransport::SharedMemory
+                        && host
+                            .target
+                            .as_ref()
+                            .is_some_and(|target| !target.can_attach)
+                    {
                         ui.add_space(6.0);
                         ui.label(
                             egui::RichText::new("Shared-memory hosts cannot reattach a UI.")
@@ -697,7 +854,7 @@ impl Manager {
                     }
                     ui.add_space(4.0);
                     egui::CollapsingHeader::new("Advanced details")
-                        .id_salt(&host.source.path)
+                        .id_salt(&host.source)
                         .show(ui, |ui| {
                             show_advanced(ui, &host);
                         });
@@ -811,13 +968,39 @@ impl Manager {
                         .clicked()
                     {
                         self.confirm_stop = None;
+                        let host = self
+                            .hosts
+                            .iter()
+                            .find(|host| host.source == source)
+                            .cloned();
                         self.action(move || {
-                            connection::shutdown_ownerless(
-                                &source.target()?,
-                                Duration::from_secs(15),
-                            )?;
+                            let host = host.context("Host no longer selected")?;
+                            let mut target = host.current_target()?;
+                            if matches!(host.source, Source::Process(_)) {
+                                target.use_local_addresses();
+                            }
+                            connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
                             Ok("Host stopped.".into())
                         });
+                    }
+                });
+            });
+    }
+    fn show_force_dialog(&mut self, context: &egui::Context) {
+        let Some(source) = self.confirm_force.clone() else {
+            return;
+        };
+        egui::Window::new("Force stop local host?")
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false).resizable(false).default_width(400.0)
+            .show(context, |ui| {
+                ui.strong(source.label());
+                ui.label("Terminates the process without session cleanup. Playback and recording stop; unsaved state is lost.");
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() { self.confirm_force = None; }
+                    if ui.button("Force stop").clicked() {
+                        self.confirm_force = None;
+                        self.action(move || force_stop(&source));
                     }
                 });
             });
@@ -859,6 +1042,53 @@ impl Manager {
             self.notice = None;
         }
     }
+}
+
+fn force_stop(source: &Source) -> Result<String> {
+    let Source::Process(identity) = source else {
+        anyhow::bail!("Force stop requires an OS-identified local process");
+    };
+    shoop_host_processes::force_stop(identity)?;
+    Ok(format!("Forcibly terminated PID {}", identity.pid))
+}
+
+pub fn verify_host_discovery(target: &Target, expected: Option<(bool, bool)>) -> Result<()> {
+    let mut manager = Manager::new(None);
+    manager.scan();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while manager.scanning {
+        manager.poll();
+        anyhow::ensure!(Instant::now() < deadline, "Manager discovery timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let host = manager.hosts.iter().find(|host| {
+        matches!(&host.source, Source::Process(process) if Some(process) == target.process.as_ref())
+    });
+    if let Some((busy, can_attach)) = expected {
+        let host = host.context("Fresh manager did not discover the companion")?;
+        let description = host
+            .target
+            .as_ref()
+            .context("Companion description unavailable")?;
+        let report = host
+            .report
+            .as_ref()
+            .map_err(|error| anyhow::anyhow!(error.clone()))?;
+        anyhow::ensure!(
+            description.instance == target.instance
+                && report.ready
+                && !report.closed
+                && report.busy == busy
+                && description.can_attach == can_attach,
+            "Fresh manager observed incorrect host/session state"
+        );
+    } else {
+        anyhow::ensure!(
+            host.is_none() && manager.inspection_errors.is_empty(),
+            "Exited companion remains visible or OS inspection failed"
+        );
+    }
+    Ok(())
 }
 
 fn primary_button(label: &str) -> egui::Button<'_> {
@@ -1127,7 +1357,7 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
     }
     ui.add_space(4.0);
     ui.label(
-        egui::RichText::new(format!("Profile: {}", host.source.path.display()))
+        egui::RichText::new(format!("Source: {}", host.source.label()))
             .size(12.0)
             .color(MUTED),
     );
@@ -1142,7 +1372,7 @@ fn diagnostic_text(host: &Host) -> String {
         "Host: {}\nEndpoint: {}\nSource: {}\n{state}",
         host.name,
         host.endpoint,
-        host.source.path.display()
+        host.source.label()
     )
 }
 impl eframe::App for Manager {
@@ -1191,7 +1421,10 @@ fn configure_context(context: &egui::Context) {
 }
 
 pub fn run(args: &AppArgs) -> Result<()> {
-    let manager = Manager::new(args.remote_profile.clone());
+    let mut manager = Manager::new(args.remote_profile.clone());
+    if let Some(address) = &args.host_address {
+        manager.add_address(address.clone());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop Host Manager")
@@ -1306,29 +1539,57 @@ mod tests {
             self.frame(vec![], draw);
         }
     }
-    fn manager_with_host() -> Manager {
-        let source = Source {
-            path: "studio.json".into(),
-        };
-        let mut manager = Manager::new(Some(source.path.clone()));
-        manager.next_scan = Instant::now() + Duration::from_secs(3600);
-        let mut host = Host::query(source.clone());
-        host.name = "Studio".into();
-        host.endpoint = "127.0.0.1:15400".into();
-        host.report = Ok(HostReport {
-            ready: true,
-            busy: false,
-            closed: false,
-            master_auto_connect: true,
-            loop_smoothing_ms: 3,
-            requested: Some(Default::default()),
-            effective: Default::default(),
-            diagnostics: vec![],
-            pending_operations: 0,
-            restart_required_fields: vec![],
+    fn target() -> Target {
+        let mut target: Target = RemoteProfile {
+            version: shoop_app_protocol::VERSION,
+            name: "Studio".into(),
+            endpoint: "127.0.0.1:15400".into(),
+            management: "127.0.0.1:15401".into(),
+            network: Default::default(),
+            local: true,
+            transport: AppTransport::Socket,
+            log_file: None,
+        }
+        .into();
+        target.process = Some(shoop_host_processes::Identity {
+            pid: 4242,
+            started: 123,
+            executable: "shoop_host".into(),
         });
+        target.instance = 7;
+        target
+    }
+    pub(super) fn host() -> Host {
+        let target = target();
+        Host {
+            source: Source::Process(target.process.clone().unwrap()),
+            name: target.name.clone(),
+            endpoint: target.endpoint.clone(),
+            transport: target.transport,
+            remote: false,
+            log_file: None,
+            target: Some(target),
+            checked: Instant::now(),
+            report: Ok(HostReport {
+                ready: true,
+                busy: false,
+                closed: false,
+                master_auto_connect: true,
+                loop_smoothing_ms: 3,
+                requested: Some(Default::default()),
+                effective: Default::default(),
+                diagnostics: vec![],
+                pending_operations: 0,
+                restart_required_fields: vec![],
+            }),
+        }
+    }
+    fn manager_with_host() -> Manager {
+        let mut manager = Manager::new(None);
+        manager.next_scan = Instant::now() + Duration::from_secs(3600);
+        let host = host();
+        manager.select(host.source.clone());
         manager.hosts.push(host);
-        manager.select(source);
         manager
     }
     #[shoop_wasm_test_support::shoop_test]
@@ -1338,7 +1599,7 @@ mod tests {
             let mut manager = manager_with_host();
             screen.frame(vec![], |ui| manager.show(ui));
             assert!(screen.contains("SAMPLE RATE") && screen.contains("Open UI"));
-            assert!(!screen.contains("Your hosts"));
+            assert!(!screen.contains("Your hosts") && !screen.contains("Load profile"));
             screen.click("Advanced details", |ui| manager.show(ui));
             assert!(screen.contains("Endpoint"));
             screen.click("•••", |ui| manager.show(ui));
@@ -1347,7 +1608,6 @@ mod tests {
             assert!(screen.contains("discards the in-memory session"));
             screen.click("Cancel", |ui| manager.show(ui));
             assert!(manager.confirm_stop.is_none() && !manager.action_pending);
-
             manager.hosts[0].report.as_mut().unwrap().busy = true;
             screen.frame(vec![], |ui| manager.show(ui));
             assert!(screen.contains("UI connected") && !screen.contains("Open UI"));
@@ -1357,7 +1617,7 @@ mod tests {
         }
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn manager_presents_fallback_remote_shared_and_unreachable_profiles() {
+    fn manager_presents_fallback_and_truthful_shared_attachment_availability() {
         let mut screen = Screen::new(egui::vec2(800.0, 700.0));
         let mut manager = manager_with_host();
         let report = manager.hosts[0].report.as_mut().unwrap();
@@ -1378,12 +1638,15 @@ mod tests {
         screen.click("Overview", |ui| manager.show(ui));
         manager.hosts[0].transport = AppTransport::SharedMemory;
         screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Open UI"));
+        manager.hosts[0].target.as_mut().unwrap().can_attach = false;
+        screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("cannot reattach") && !screen.contains("Open UI"));
         manager.hosts[0].report = Err("Connection refused".into());
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("Host unreachable") && screen.contains("Connection refused"));
         screen.click("Advanced details", |ui| manager.show(ui));
-        assert!(screen.contains("Profile: studio.json"));
+        assert!(screen.contains("PID 4242"));
     }
     #[shoop_wasm_test_support::shoop_test]
     fn log_view_handles_loading_empty_errors_and_async_refresh_without_losing_selection() {
@@ -1397,16 +1660,8 @@ mod tests {
         }
         let wait_for_logs = |manager: &mut Manager| {
             let deadline = Instant::now() + Duration::from_secs(5);
-            loop {
+            while manager.logs.as_ref().unwrap().loading {
                 manager.poll();
-                if !manager
-                    .logs
-                    .as_ref()
-                    .expect("Logs must start a read")
-                    .loading
-                {
-                    break;
-                }
                 assert!(Instant::now() < deadline);
                 std::thread::sleep(Duration::from_millis(1));
             }
@@ -1421,6 +1676,10 @@ mod tests {
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("operator diagnostic") && manager.selected == selected);
         screen.click("Copy logs", |ui| manager.show(ui));
+        assert!(screen
+            .copied
+            .iter()
+            .any(|text| text == "operator diagnostic"));
         std::fs::write(&path, "").unwrap();
         screen.click("Refresh logs", |ui| manager.show(ui));
         wait_for_logs(&mut manager);
@@ -1428,7 +1687,7 @@ mod tests {
         assert!(screen.contains("Log is empty"));
         manager.logs.as_mut().unwrap().contents = Some(Err("Permission denied".into()));
         screen.frame(vec![], |ui| manager.show(ui));
-        assert!(screen.contains("Could not read this log") && screen.contains("Permission denied"));
+        assert!(screen.contains("Could not read this log"));
         manager.logs.as_mut().unwrap().contents = None;
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("Loading log"));
@@ -1438,7 +1697,7 @@ mod tests {
         assert!(screen.contains("Saved host log"));
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn startup_results_select_only_successful_profiles_and_leave_failures_retryable() {
+    fn startup_results_select_ready_processes_and_ignore_older_scans() {
         let mut manager = Manager::new(None);
         manager.new_host();
         manager
@@ -1446,24 +1705,32 @@ mod tests {
             .send(Event::Started(Err("Listener already in use".into())))
             .unwrap();
         manager.poll();
-        assert!(manager.sources.is_empty());
+        assert!(manager.hosts.is_empty() && manager.sources.is_empty());
         assert_eq!(
             manager.start_dialog.as_ref().unwrap().error.as_deref(),
             Some("Listener already in use")
         );
+        let host = host();
+        let selected = host.source.clone();
+        manager.sender.send(Event::Started(Ok(host))).unwrap();
+        manager.poll();
+        assert_eq!(manager.selected, Some(selected));
+        assert!(
+            manager.start_dialog.is_none() && !manager.action_pending && manager.sources.is_empty()
+        );
         manager
             .sender
-            .send(Event::Started(Ok("chosen-profile.json".into())))
+            .send(Event::Scanned(
+                0,
+                discovery::Scan {
+                    hosts: vec![],
+                    aliases: vec![],
+                    warnings: vec![],
+                },
+            ))
             .unwrap();
         manager.poll();
-        assert_eq!(
-            manager.sources,
-            [Source {
-                path: "chosen-profile.json".into()
-            }]
-        );
-        assert_eq!(manager.selected, manager.sources.first().cloned());
-        assert!(manager.start_dialog.is_none() && !manager.action_pending);
+        assert_eq!(manager.hosts.len(), 1);
         manager
             .sender
             .send(Event::Started(Err("Startup failed".into())))
@@ -1486,35 +1753,32 @@ mod tests {
         }
         assert!(manager.notice.as_ref().unwrap().error);
     }
-
     #[shoop_wasm_test_support::shoop_test]
-    fn empty_manager_opens_and_cancels_a_draft_without_adding_profiles() {
+    fn empty_manager_has_file_free_start_and_advanced_manual_connection() {
         let mut manager = Manager::new(None);
         manager.next_scan = Instant::now() + Duration::from_secs(3600);
         let mut screen = Screen::new(egui::vec2(800.0, 500.0));
         screen.frame(vec![], |ui| manager.show(ui));
-        assert!(screen.contains("No profiles loaded"));
+        assert!(screen.contains("No running hosts found"));
         screen.click("New host…", |ui| manager.show(ui));
         assert!(manager.start_dialog.is_some());
         screen.click("Cancel", |ui| manager.show(ui));
         assert!(manager.start_dialog.is_none() && manager.sources.is_empty());
-        manager.sources = (0..64)
-            .map(|n| Source {
-                path: format!("profile-{n}.json").into(),
-            })
-            .collect();
+        screen.click("Advanced", |ui| manager.show(ui));
+        assert!(screen.contains("Import profile…") && screen.contains("Export profile…"));
+        screen.click("Connect to address…", |ui| manager.show(ui));
+        assert!(manager.address_dialog.is_some());
+        manager.address_dialog = Some("127.0.0.1:15401".into());
         screen.frame(vec![], |ui| manager.show(ui));
-        assert!(screen.contains("Querying host"));
-        screen.click("New host…", |ui| manager.show(ui));
-        assert!(manager.start_dialog.is_none());
-        assert!(screen.contains("Profile limit reached"));
-        screen.click("×", |ui| manager.show(ui));
-        assert!(manager.notice.is_none());
+        screen.click("Connect", |ui| manager.show(ui));
+        assert_eq!(manager.sources, ["127.0.0.1:15401"]);
+        assert!(manager.address_dialog.is_none());
+        assert!(Manager::new(None).sources.is_empty());
     }
-
     #[shoop_wasm_test_support::shoop_test]
-    fn diagnostics_copy_and_expiring_notices_do_not_change_host_selection() {
+    fn diagnostics_copy_and_expiring_notices_preserve_selection() {
         let mut manager = manager_with_host();
+        let selected = manager.selected.clone();
         let mut screen = Screen::new(egui::vec2(800.0, 500.0));
         screen.frame(vec![], |ui| manager.show(ui));
         screen.click("•••", |ui| manager.show(ui));
@@ -1522,42 +1786,107 @@ mod tests {
         assert!(screen
             .copied
             .iter()
-            .any(|text| text.contains("Host: Studio") && text.contains("127.0.0.1:15400")));
-        assert!(screen.contains("Diagnostics copied"));
+            .any(|text| text.contains("Host: Studio") && text.contains("PID 4242")));
         manager.notice.as_mut().unwrap().created = Instant::now() - Duration::from_secs(6);
         screen.frame(vec![], |ui| manager.show(ui));
-        assert!(manager.notice.is_none());
-        assert_eq!(manager.selected, manager.sources.first().cloned());
+        assert!(manager.notice.is_none() && manager.selected == selected);
         let previous = manager.hosts[0].clone();
+        let failed = Host::unavailable(previous.source.clone(), "OS inspection failed".into());
         manager
             .sender
-            .send(Event::Scanned(vec![Host::query(previous.source.clone())]))
+            .send(Event::Scanned(
+                manager.generation,
+                discovery::Scan {
+                    hosts: vec![failed],
+                    aliases: vec![],
+                    warnings: vec![],
+                },
+            ))
             .unwrap();
         manager.poll();
         assert_eq!(manager.hosts[0].name, previous.name);
         assert_eq!(manager.hosts[0].endpoint, previous.endpoint);
     }
+    #[shoop_wasm_test_support::shoop_test]
+    fn force_stop_requires_local_identity_and_separate_confirmation() {
+        let mut manager = manager_with_host();
+        let mut screen = Screen::new(egui::vec2(800.0, 500.0));
+        manager.hosts[0].report = Err("Host not responding".into());
+        screen.frame(vec![], |ui| manager.show(ui));
+        screen.click("•••", |ui| manager.show(ui));
+        screen.click("Force stop…", |ui| manager.show(ui));
+        assert!(manager.confirm_force.is_some());
+        assert!(screen.contains("without session cleanup"));
+        screen.click("Cancel", |ui| manager.show(ui));
+        assert!(manager.confirm_force.is_none() && !manager.action_pending);
+        let address = Source::Address("remote.example:15401".into());
+        manager.hosts[0].source = address.clone();
+        manager.hosts[0].remote = true;
+        manager.select(address.clone());
+        screen.frame(vec![], |ui| manager.show(ui));
+        screen.click("•••", |ui| manager.show(ui));
+        assert!(!screen.contains("Force stop…"));
+        assert!(force_stop(&address)
+            .unwrap_err()
+            .to_string()
+            .contains("OS-identified local"));
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn scans_preserve_identity_selection_surface_errors_and_coalesce_refreshes() {
+        let mut manager = manager_with_host();
+        let local = manager.selected.clone().unwrap();
+        let alias = Source::Address("localhost:15401".into());
+        manager.select(alias.clone());
+        manager.scanning = true;
+        manager.scan();
+        manager
+            .sender
+            .send(Event::Scanned(
+                manager.generation,
+                discovery::Scan {
+                    hosts: vec![host()],
+                    aliases: vec![(alias, local.clone())],
+                    warnings: vec!["Permission denied reading OS sockets".into()],
+                },
+            ))
+            .unwrap();
+        manager.poll();
+        assert_eq!(manager.selected, Some(local.clone()));
+        assert!(!manager.scanning && manager.inspection_errors.len() == 1);
+        let mut screen = Screen::new(egui::vec2(800.0, 500.0));
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("OS inspection errors"));
+        let mut replacement = host();
+        let Source::Process(identity) = &mut replacement.source else {
+            unreachable!()
+        };
+        identity.started += 1;
+        manager
+            .sender
+            .send(Event::Scanned(
+                manager.generation,
+                discovery::Scan {
+                    hosts: vec![replacement],
+                    aliases: vec![],
+                    warnings: vec![],
+                },
+            ))
+            .unwrap();
+        manager.poll();
+        assert!(manager.selected.is_none());
+        assert!(manager.hosts.iter().all(|host| host.source != local));
+        assert!(
+            Manager::new(Some("nonexistent.json".into()))
+                .notice
+                .as_ref()
+                .unwrap()
+                .error
+        );
+    }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn unreachable_profiles_and_dummy_audio_have_explicit_states() {
-        let source = Source {
-            path: PathBuf::from("missing-profile.json"),
-        };
-        let mut host = Host::query(source.clone());
-        assert_eq!(host.state().0, "Unreachable");
-        assert!(host.log_file.is_none());
-        host.report = Ok(HostReport {
-            ready: true,
-            busy: true,
-            closed: false,
-            master_auto_connect: true,
-            loop_smoothing_ms: 3,
-            requested: None,
-            effective: Default::default(),
-            diagnostics: vec![],
-            pending_operations: 0,
-            restart_required_fields: vec![],
-        });
+    fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
+        let mut host = host();
         assert_eq!(host.state().0, "Dummy audio");
         let report = host.report.as_mut().unwrap();
         report.effective.audio_driver = shoop_app_api::AudioDriverState::Running;
@@ -1566,82 +1895,32 @@ mod tests {
             shoop_app_api::AudioDriverState::Failed;
         assert_eq!(host.state().0, "Warning");
         let report = host.report.as_mut().unwrap();
-        report.diagnostics.push("Audio fallback".into());
-        assert_eq!(host.state().0, "Warning");
-        assert!(diagnostic_text(&host).contains("Audio fallback"));
-        assert!(!diagnostic_text(&host).contains("credential"));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn manager_cli_is_exclusive_and_supports_remote_profiles() {
-        use clap::Parser;
-        assert!(
-            AppArgs::try_parse_from([
-                "shoopdaloop",
-                "--manage-hosts",
-                "--remote-profile",
-                "remote.json"
-            ])
-            .unwrap()
-            .manage_hosts
-        );
-        for option in ["--host-only", "--ui-only", "--shutdown-host", "--tracing"] {
-            assert!(AppArgs::try_parse_from(["shoopdaloop", "--manage-hosts", option]).is_err());
-        }
-    }
-    #[shoop_wasm_test_support::shoop_test]
-    fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
-        let mut host = Host::query(Source {
-            path: PathBuf::from("missing.json"),
-        });
-        let mut report = HostReport {
-            ready: true,
-            busy: false,
-            closed: false,
-            master_auto_connect: true,
-            loop_smoothing_ms: 3,
-            requested: Some(shoop_app_api::HostSettings::default()),
-            effective: Default::default(),
-            diagnostics: vec![],
-            pending_operations: 0,
-            restart_required_fields: vec![],
-        };
-        assert!(!audio_fallback(&report));
-        host.report = Ok(report.clone());
-        assert_eq!(host.state().0, "Dummy audio");
+        report.effective.audio_driver = shoop_app_api::AudioDriverState::Dummy;
         report.requested.as_mut().unwrap().driver =
             shoop_app_api::AudioDriverConfig::Cpal(Default::default());
-        assert!(audio_fallback(&report));
-        host.report = Ok(report);
         assert_eq!(host.state().0, "Audio fallback");
+        host.report = Err("Unavailable".into());
+        assert_eq!(host.state().0, "Unreachable");
     }
-
     #[shoop_wasm_test_support::shoop_test]
-    fn changing_host_clears_logs_and_ignores_departed_log_replies() {
-        let mut manager = Manager::new(None);
-        let first = Source {
-            path: PathBuf::from("sessions/1.json"),
-        };
-        let second = Source {
-            path: PathBuf::from("sessions/2.json"),
-        };
+    fn changing_host_ignores_departed_log_replies_and_preserves_saved_log() {
+        let mut manager = manager_with_host();
+        let first = manager.selected.clone().unwrap();
         let first_log = PathBuf::from("first.log");
-        manager.select(first.clone());
         manager.tab = Tab::Logs;
         manager.logs = Some(LogView {
             path: first_log.clone(),
             contents: Some(Ok("host one".into())),
             loading: false,
         });
-        manager.select(second);
+        manager.select(Source::Address("other:12345".into()));
         assert!(manager.tab == Tab::Overview && manager.logs.is_none());
         manager
             .sender
-            .send(Event::Logs(first_log, Ok("departed log reply".into())))
+            .send(Event::Logs(first_log, Ok("departed reply".into())))
             .unwrap();
         manager.poll();
         assert!(manager.logs.is_none());
-
         let archive = PathBuf::from("archive.log");
         manager.saved_log = true;
         manager.selected = None;
@@ -1652,7 +1931,14 @@ mod tests {
         });
         manager
             .sender
-            .send(Event::Scanned(vec![Host::query(first)]))
+            .send(Event::Scanned(
+                manager.generation,
+                discovery::Scan {
+                    hosts: vec![Host::unavailable(first, "Gone".into())],
+                    aliases: vec![],
+                    warnings: vec![],
+                },
+            ))
             .unwrap();
         manager
             .sender
@@ -1660,43 +1946,51 @@ mod tests {
             .unwrap();
         manager.poll();
         assert!(manager.selected.is_none());
-        let log = manager.logs.as_ref().unwrap();
-        assert!(!log.loading);
         assert_eq!(
-            log.contents.as_ref().unwrap().as_ref().unwrap(),
+            manager
+                .logs
+                .as_ref()
+                .unwrap()
+                .contents
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap(),
             "archived host"
         );
     }
     #[shoop_wasm_test_support::shoop_test]
-    fn profiles_are_loaded_only_explicitly_and_never_remembered() {
+    fn explicit_profiles_are_advanced_inputs_and_ui_launch_uses_an_address() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("provided-profile.json");
-        std::fs::write(&path, serde_json::to_vec(&serde_json::json!({
-            "version": shoop_app_protocol::VERSION, "name": "Explicit host", "endpoint": "127.0.0.1:1", "management": "127.0.0.1:2", "local": true
-        })).unwrap()).unwrap();
-        let mut manager = Manager::new(Some(path.clone()));
-        manager.scan();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while manager.scanning {
-            manager.poll();
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        assert_eq!(manager.hosts.len(), 1);
-        assert_eq!(manager.hosts[0].name, "Explicit host");
-        drop(manager);
-        let mut reopened = Manager::new(None);
-        reopened.scan();
-        while reopened.scanning {
-            reopened.poll();
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        assert!(reopened.hosts.is_empty() && reopened.sources.is_empty());
+        let path = root.path().join("advanced.json");
+        target().profile().write(&path).unwrap();
+        let manager = Manager::new(Some(path));
+        assert_eq!(manager.sources, ["127.0.0.1:15401"]);
+        assert!(Manager::new(None).sources.is_empty());
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+        let command = ui_command(&target()).unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        assert_eq!(args, ["--ui-only", "--host-address", "127.0.0.1:15401"]);
         use clap::Parser;
-        for flag in ["--list-hosts", "--host-file", "--host-registry"] {
-            assert!(AppArgs::try_parse_from(["shoopdaloop", flag]).is_err());
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--manage-hosts",
+            "--remote-profile",
+            "advanced.json"
+        ])
+        .is_ok());
+        for flag in [
+            "--list-hosts",
+            "--host-file",
+            "--host-registry",
+            "--ui-only",
+            "--host-only",
+            "--tracing",
+        ] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", "--manage-hosts", flag]).is_err());
         }
     }
 }

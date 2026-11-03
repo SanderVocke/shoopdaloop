@@ -3,7 +3,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use anyhow::{bail, ensure, Context, Result};
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 use netstat2::{AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,6 +15,8 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System,
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -111,8 +113,10 @@ fn inspect_with_system(system: &System, pids: &[u32]) -> Result<Snapshot> {
     }
     #[cfg(target_os = "linux")]
     linux::sockets(&mut snapshot);
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
     sockets(&mut snapshot)?;
+    #[cfg(target_os = "macos")]
+    macos::sockets(&mut snapshot);
     for process in &mut snapshot.processes {
         process.addresses.sort();
         process.addresses.dedup();
@@ -120,7 +124,7 @@ fn inspect_with_system(system: &System, pids: &[u32]) -> Result<Snapshot> {
     snapshot.processes.sort_by_key(|p| p.identity.pid);
     Ok(snapshot)
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 fn sockets(snapshot: &mut Snapshot) -> Result<()> {
     let indices: std::collections::HashMap<_, _> = snapshot
         .processes
