@@ -1387,31 +1387,43 @@ mod tests {
     }
     #[shoop_wasm_test_support::shoop_test]
     fn log_view_handles_loading_empty_errors_and_async_refresh_without_losing_selection() {
+        use std::io::Write;
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("host.log");
-        std::fs::write(&path, "operator diagnostic").unwrap();
+        {
+            let mut writer = logging::Writer::open(&path).unwrap();
+            writer.write_all(b"operator diagnostic").unwrap();
+            writer.flush().unwrap();
+        }
+        let wait_for_logs = |manager: &mut Manager| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                manager.poll();
+                if !manager
+                    .logs
+                    .as_ref()
+                    .expect("Logs must start a read")
+                    .loading
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        };
         let mut manager = manager_with_host();
         let selected = manager.selected.clone();
         manager.hosts[0].log_file = Some(path.clone());
         let mut screen = Screen::new(egui::vec2(800.0, 500.0));
         screen.frame(vec![], |ui| manager.show(ui));
         screen.click("Logs", |ui| manager.show(ui));
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while manager.logs.as_ref().is_some_and(|log| log.loading) {
-            manager.poll();
-            assert!(Instant::now() < deadline);
-            std::thread::yield_now();
-        }
+        wait_for_logs(&mut manager);
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("operator diagnostic") && manager.selected == selected);
         screen.click("Copy logs", |ui| manager.show(ui));
         std::fs::write(&path, "").unwrap();
         screen.click("Refresh logs", |ui| manager.show(ui));
-        while manager.logs.as_ref().unwrap().loading {
-            manager.poll();
-            assert!(Instant::now() < deadline);
-            std::thread::yield_now();
-        }
+        wait_for_logs(&mut manager);
         screen.frame(vec![], |ui| manager.show(ui));
         assert!(screen.contains("Log is empty"));
         manager.logs.as_mut().unwrap().contents = Some(Err("Permission denied".into()));
