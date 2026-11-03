@@ -1,4 +1,3 @@
-use crate::registry::AppTransport;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 pub use shoop_app_api::HostSettings;
@@ -44,4 +43,12 @@ mod tests {
             serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
         assert_eq!(decoded.settings, config.settings);
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppTransport {
+    #[default]
+    Socket,
+    SharedMemory,
 }

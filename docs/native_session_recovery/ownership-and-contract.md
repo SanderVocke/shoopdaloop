@@ -114,17 +114,18 @@ MessagePort carries only engine protocol to the AudioWorklet.
 Generic record buffers/framing/carriers belong in `shoop_transport*`; engine
 credit/connection logic stays engine-specific. Both app and engine adapters reuse
 carriers. App protocol must not depend on concrete transport, engine, filesystem,
-UI, devices or Lua runtime. Platform credentials/discovery sit outside it.
+UI, devices or Lua runtime. Explicit profile/credential handling sits outside it.
 
 ## Roles, settings and exit migration
 
-Host-only accepts explicit listen endpoint, credential-file reference, device and
-pool configuration. UI-only accepts explicit endpoint/credential reference or a
-protected per-user registry selection. Tokens never appear in argv/logs. Combined
-launch waits for bounded readiness, then leaves independent host/UI siblings.
-Rollback applies only to the launcher's own unready host. No original pipe or child
-handle is required by later status/shutdown. Discovery entries require authenticated
-host/session validation and stale entry cleanup; multiple hosts require selection.
+Host-only accepts explicit listen endpoints, a credential-file reference, device and
+pool configuration. UI-only accepts an explicitly supplied connection profile.
+Tokens never appear in argv/logs. Combined launch requires explicit credential and
+profile export paths, waits for bounded readiness through pipes, then leaves
+independent host/UI siblings. Rollback applies only to the launcher's own unready
+host. No original pipe or child handle is required by later status/shutdown.
+There is no registry, automatic discovery, PID pruning or persisted host list.
+Profiles and credentials are user-owned configuration, not remembered discoveries.
 
 Replace the backend selector with the sole RT engine and diagnose migrated legacy
 settings. App transport settings configure UI/service IPC; engine/device settings

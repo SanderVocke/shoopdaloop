@@ -4844,7 +4844,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
- "directories",
  "getrandom 0.4.3",
  "nix",
  "serde",

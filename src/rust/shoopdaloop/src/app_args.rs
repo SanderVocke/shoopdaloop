@@ -12,11 +12,10 @@ pub enum SettingsTest {
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
-#[cfg_attr(not(target_arch = "wasm32"), command(group = clap::ArgGroup::new("connection_target").args(["host_file","remote_profile"])))]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
     /// Manage independent hosts without opening an audio session.
-    #[arg(long, conflicts_with_all = ["host_only", "ui_only", "shutdown_host", "list_hosts", "engine_transport", "session", "probe_engine_transport", "probe_persistence", "probe_builtins", "tracing", "host_file"])]
+    #[arg(long, conflicts_with_all = ["host_only", "ui_only", "shutdown_host", "engine_transport", "session", "probe_engine_transport", "probe_persistence", "probe_builtins", "tracing"])]
     pub manage_hosts: bool,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
@@ -26,7 +25,7 @@ pub struct AppArgs {
     pub host_config: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
-    pub host_registry: Option<std::path::PathBuf>,
+    pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
     pub endpoint: Option<std::net::SocketAddr>,
@@ -58,20 +57,18 @@ pub struct AppArgs {
     #[arg(long)]
     pub credential_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub list_hosts: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub host_file: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, conflicts_with = "host_only")]
+    #[arg(
+        long = "host-profile",
+        visible_alias = "remote-profile",
+        conflicts_with = "host_only"
+    )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "connection_target")]
+    #[arg(long, requires = "remote_profile")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Shut down the selected ownerless host using authenticated management authority.
-    #[arg(long, requires = "connection_target", conflicts_with = "ui_only")]
+    #[arg(long, requires = "remote_profile", conflicts_with = "ui_only")]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]

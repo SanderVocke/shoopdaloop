@@ -1,5 +1,5 @@
 //! Bounded private logs for independent native hosts.
-use crate::{private, registry::Registry};
+use crate::private;
 use anyhow::Result;
 use std::{
     fs::{self, File, OpenOptions},
@@ -11,8 +11,10 @@ use std::{
 const LIMIT: u64 = 1024 * 1024;
 const BACKUPS: usize = 3;
 
-pub fn path(registry: &Path, process: u32) -> PathBuf {
-    registry.join("logs").join(format!("{process}.log"))
+fn backup(path: &Path, index: usize) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(format!(".{index}"));
+    PathBuf::from(name)
 }
 
 struct Log {
@@ -37,11 +39,11 @@ impl Log {
     fn rotate(&mut self) -> io::Result<()> {
         self.file.take();
         for index in (1..=BACKUPS).rev() {
-            let destination = self.path.with_extension(format!("log.{index}"));
+            let destination = backup(&self.path, index);
             let source = if index == 1 {
                 self.path.clone()
             } else {
-                self.path.with_extension(format!("log.{}", index - 1))
+                backup(&self.path, index - 1)
             };
             if destination.exists() {
                 private::check(&destination, false).map_err(io::Error::other)?;
@@ -60,13 +62,8 @@ impl Log {
 #[derive(Clone)]
 pub struct Writer(Arc<Mutex<Log>>);
 impl Writer {
-    pub fn open(registry: &Path, process: u32) -> Result<Self> {
-        let registry = Registry::open(registry)?;
-        private::directory(&registry.root().join("logs"))?;
-        Ok(Self(Arc::new(Mutex::new(Log::open(path(
-            registry.root(),
-            process,
-        ))?))))
+    pub fn open(path: &Path) -> Result<Self> {
+        Ok(Self(Arc::new(Mutex::new(Log::open(path.to_owned())?))))
     }
 }
 impl Write for Writer {
@@ -117,7 +114,7 @@ mod tests {
     fn rotates_private_logs_and_bounds_the_tail() {
         use super::*;
         let root = tempfile::tempdir().unwrap();
-        let mut writer = Writer::open(&root.path().join("sessions"), 42).unwrap();
+        let mut writer = Writer::open(&root.path().join("host.log")).unwrap();
         // Bypass the stderr mirror for the large rotation fixture.
         let mut log = writer.0.lock().unwrap();
         log.file
@@ -128,7 +125,7 @@ mod tests {
         log.length = LIMIT;
         drop(log);
         writer.write_all(b"new host diagnostic\n").unwrap();
-        let path = path(&root.path().join("sessions"), 42);
+        let path = root.path().join("host.log");
         assert_eq!(tail(&path).unwrap(), "new host diagnostic\n");
         let backup = path.with_extension("log.1");
         assert_eq!(fs::metadata(&backup).unwrap().len(), LIMIT);

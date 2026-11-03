@@ -10,6 +10,14 @@ targets trusted LANs; TLS, pairing, automatic discovery and Internet traversal
 are outside its scope. Audio streaming and simultaneous controlling UIs are not
 provided. Browser remote connections are not implemented.
 
+Local hosts also require an explicit profile. For loopback-only operation, omit
+`--lan` and export a local profile with the same `--credential-file` and
+`--export-profile` options. Local profiles contain `"local": true`; only these may
+carry a shared-memory descriptor. The manager never discovers hosts automatically,
+remembers loaded profiles across launches, or creates a per-user host directory.
+Profiles and credentials are explicit user-owned configuration. Disk logs are
+created only when `--log-file PATH` is requested.
+
 ## Start a host
 
 Create a UTF-8 `host.json` containing `{}` to select the dummy driver, or use the
@@ -66,14 +74,14 @@ icacls .\host.key /inheritance:r /grant:r "${me}:(F)"
 Open **Session → Open remote profile…**, or start explicitly:
 
 ```sh
-shoopdaloop --ui-only --remote-profile remote.json
+shoopdaloop --ui-only --host-profile remote.json
 ```
 
 Endpoints select the host. Profiles and greetings contain no host/session IDs.
 Every connection authenticates, checks the protocol version, acquires exclusive
 control and synchronizes a complete snapshot. A healthy controlling UI is not
-evicted by another connection. Remote profiles are separate from local PID
-registrations and never participate in PID pruning.
+evicted by another connection. Local and network hosts both use explicitly supplied profiles. There is no registry,
+PID discovery/pruning, network scan, or remembered host list.
 
 After loss, the last projection is marked stale. **Connect to endpoint** runs the
 same connection flow against whatever the endpoint currently owns, including a
@@ -90,7 +98,7 @@ MIDI reset, device stop and cleanup. An uncertain shutdown retry checks the same
 operation. To shut down a host with no live controller:
 
 ```sh
-shoopdaloop --shutdown-host --remote-profile remote.json
+shoopdaloop --shutdown-host --host-profile remote.json
 ```
 
 Saved files, WAV and MIDI imports/exports stay on the UI machine. Transfers use

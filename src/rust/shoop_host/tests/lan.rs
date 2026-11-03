@@ -38,8 +38,6 @@ fn host(ip: IpAddr) -> Host {
     let mut child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))
         .arg("--config")
         .arg(config)
-        .arg("--registry")
-        .arg(root.path().join("registry"))
         .arg("--lan")
         .arg("--endpoint")
         .arg(SocketAddr::new(ip, 0).to_string())
@@ -266,7 +264,10 @@ fn wildcard_profiles_and_remote_shared_memory_are_refused() {
     assert!(profile.validate().is_err());
     let mut value = serde_json::to_value(&host.profile).unwrap();
     value["transport"] = serde_json::json!("shared_memory");
-    assert!(serde_json::from_value::<RemoteProfile>(value).is_err());
+    assert!(serde_json::from_value::<RemoteProfile>(value)
+        .unwrap()
+        .validate()
+        .is_err());
     let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = occupied.local_addr().unwrap();
     assert!(shoop_transport_socket::setup::Listener::bind_lan(address, [1; 32]).is_err());
@@ -606,8 +607,6 @@ fn saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state()
     host.child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))
         .arg("--config")
         .arg(host._root.path().join("config.json"))
-        .arg("--registry")
-        .arg(host._root.path().join("registry"))
         .arg("--lan")
         .arg("--endpoint")
         .arg(&profile.endpoint)

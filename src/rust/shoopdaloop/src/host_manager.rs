@@ -3,8 +3,8 @@ use anyhow::{Context, Result};
 use eframe::egui;
 use shoop_app_protocol::HostReport;
 use shoop_host::{
+    config::AppTransport,
     connection, logging,
-    registry::{AppTransport, HostEntry, Registry},
     remote::{RemoteProfile, Target},
 };
 use std::{
@@ -17,34 +17,18 @@ use std::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Source {
     path: PathBuf,
-    remote: bool,
 }
 impl Source {
     fn target(&self) -> Result<Target> {
-        if self.remote {
-            Ok(RemoteProfile::read(&self.path)?.into())
-        } else {
-            Ok(HostEntry::read(&self.path)?.into())
-        }
+        Ok(RemoteProfile::read(&self.path)?.into())
     }
     fn ui_command(&self) -> Result<Command> {
         let mut command = Command::new(std::env::current_exe()?);
         command
             .arg("--ui-only")
-            .arg(if self.remote {
-                "--remote-profile"
-            } else {
-                "--host-file"
-            })
+            .arg("--host-profile")
             .arg(&self.path);
         Ok(command)
-    }
-    fn log_path(&self) -> Option<PathBuf> {
-        if self.remote {
-            return None;
-        }
-        let process = self.path.file_stem()?.to_str()?.parse().ok()?;
-        Some(logging::path(self.path.parent()?, process))
     }
 }
 
@@ -54,6 +38,8 @@ struct Host {
     name: String,
     endpoint: String,
     transport: AppTransport,
+    remote: bool,
+    log_file: Option<PathBuf>,
     report: Result<HostReport, String>,
     checked: Instant,
 }
@@ -77,6 +63,11 @@ impl Host {
                 AppTransport::Socket,
             ),
         };
+        let remote = target.as_ref().is_ok_and(|target| target.network.is_some());
+        let log_file = target
+            .as_ref()
+            .ok()
+            .and_then(|target| target.log_file.clone());
         let report = target
             .and_then(|target| connection::host_report(&target, Duration::from_secs(2)))
             .map_err(|error| format!("{error:#}"));
@@ -85,9 +76,14 @@ impl Host {
             name,
             endpoint,
             transport,
+            remote,
+            log_file,
             report,
             checked: Instant::now(),
         }
+    }
+    fn is_remote(&self) -> bool {
+        self.remote
     }
     fn state(&self) -> (&'static str, egui::Color32) {
         match &self.report {
@@ -151,12 +147,11 @@ struct LogView {
 }
 
 enum Event {
-    Scanned(Vec<Host>, Option<String>),
+    Scanned(Vec<Host>),
     Action(Result<String, String>),
     Logs(PathBuf, Result<String, String>),
 }
 struct Manager {
-    registry: PathBuf,
     sources: Vec<Source>,
     hosts: Vec<Host>,
     selected: Option<Source>,
@@ -166,21 +161,16 @@ struct Manager {
     action_pending: bool,
     next_scan: Instant,
     notice: Option<Notice>,
-    discovery_error: Option<String>,
     confirm_stop: Option<Source>,
     logs: Option<LogView>,
     tab: Tab,
     saved_log: bool,
 }
 impl Manager {
-    fn new(registry: PathBuf, remote: Option<PathBuf>) -> Self {
+    fn new(profile: Option<PathBuf>) -> Self {
         let (sender, receiver) = mpsc::channel();
         Self {
-            registry,
-            sources: remote
-                .into_iter()
-                .map(|path| Source { path, remote: true })
-                .collect(),
+            sources: profile.into_iter().map(|path| Source { path }).collect(),
             hosts: Vec::new(),
             selected: None,
             sender,
@@ -189,7 +179,6 @@ impl Manager {
             action_pending: false,
             next_scan: Instant::now(),
             notice: None,
-            discovery_error: None,
             confirm_stop: None,
             logs: None,
             tab: Tab::Overview,
@@ -201,39 +190,11 @@ impl Manager {
             return;
         }
         self.scanning = true;
-        let mut sources = self.sources.clone();
-        let registry = self.registry.clone();
+        let sources = self.sources.clone();
         let sender = self.sender.clone();
         std::thread::spawn(move || {
-            let discovered = (|| -> Result<()> {
-                if !registry.exists() {
-                    return Ok(());
-                }
-                Registry::open(&registry)?;
-                // Inspect entries separately so a damaged registration cannot hide healthy hosts.
-                for item in std::fs::read_dir(&registry)? {
-                    let path = item?.path();
-                    if path
-                        .extension()
-                        .is_some_and(|extension| extension == "json")
-                    {
-                        let source = Source {
-                            path,
-                            remote: false,
-                        };
-                        if !sources.contains(&source) && sources.len() < 64 {
-                            sources.push(source);
-                        }
-                    }
-                }
-                Ok(())
-            })();
-            sources.sort_by(|a, b| a.path.cmp(&b.path));
             let hosts = sources.into_iter().map(Host::query).collect();
-            let _ = sender.send(Event::Scanned(
-                hosts,
-                discovered.err().map(|error| format!("{error:#}")),
-            ));
+            let _ = sender.send(Event::Scanned(hosts));
         });
     }
     fn action(&mut self, operation: impl FnOnce() -> Result<String> + Send + 'static) {
@@ -289,7 +250,7 @@ impl Manager {
     fn poll(&mut self) {
         while let Ok(event) = self.receiver.try_recv() {
             match event {
-                Event::Scanned(mut hosts, error) => {
+                Event::Scanned(mut hosts) => {
                     for host in &mut hosts {
                         if host.endpoint.is_empty() {
                             if let Some(previous) = self
@@ -300,19 +261,15 @@ impl Manager {
                                 host.name = previous.name.clone();
                                 host.endpoint = previous.endpoint.clone();
                                 host.transport = previous.transport;
+                                host.remote = previous.remote;
+                                host.log_file = previous.log_file.clone();
                             }
-                        }
-                    }
-                    for host in &hosts {
-                        if !self.sources.contains(&host.source) {
-                            self.sources.push(host.source.clone());
                         }
                     }
                     if self.selected.is_none() && !self.saved_log {
                         self.selected = hosts.first().map(|host| host.source.clone());
                     }
                     self.hosts = hosts;
-                    self.discovery_error = error;
                     self.scanning = false;
                     self.next_scan = Instant::now() + Duration::from_secs(2);
                 }
@@ -338,7 +295,7 @@ impl Manager {
             .add_filter("Host profile", &["json"])
             .pick_file()
         {
-            let source = Source { path, remote: true };
+            let source = Source { path };
             if !self.sources.contains(&source) && self.sources.len() >= 64 {
                 self.notify("This manager can monitor up to 64 hosts.".into(), true);
             } else {
@@ -351,10 +308,7 @@ impl Manager {
         }
     }
     fn open_saved_log(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_directory(self.registry.join("logs"))
-            .pick_file()
-        {
+        if let Some(path) = rfd::FileDialog::new().pick_file() {
             self.saved_log = true;
             self.selected = None;
             self.read_logs(path);
@@ -377,7 +331,7 @@ impl Manager {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(egui::Button::new("+ Add host").corner_radius(8))
-                            .on_hover_text("Choose a remote connection profile")
+                            .on_hover_text("Choose a connection profile")
                             .clicked()
                         {
                             self.add_host();
@@ -473,10 +427,6 @@ impl Manager {
                     {
                         self.open_saved_log();
                     }
-                    if let Some(error) = &self.discovery_error {
-                        ui.colored_label(AMBER, "Discovery needs attention")
-                            .on_hover_text(error);
-                    }
                 });
             });
         egui::CentralPanel::default()
@@ -506,7 +456,7 @@ impl Manager {
                 ui.heading("Your hosts, in one place");
                 ui.label(
                     egui::RichText::new(
-                        "Local hosts appear automatically. Add a profile to connect remotely.",
+                        "Add a connection profile to monitor a host. Profiles are kept only for this session.",
                     )
                     .color(MUTED),
                 );
@@ -516,7 +466,7 @@ impl Manager {
                 }
                 ui.add_space(20.0);
                 ui.collapsing("Starting a local host", |ui| {
-                    ui.monospace("shoop_host --config host.json");
+                    ui.monospace("shoop_host --config host.json --credential-file host.key --export-profile profile.json");
                     ui.label("An empty host.json ({}) selects the dummy driver.");
                 });
             });
@@ -550,8 +500,8 @@ impl Manager {
                         let (label, color) = host.state();
                         status_chip(ui, label, color);
                         ui.label(
-                            egui::RichText::new(if host.source.remote {
-                                "Remote host"
+                            egui::RichText::new(if host.is_remote() {
+                                "Network host"
                             } else {
                                 "This computer"
                             })
@@ -624,12 +574,12 @@ impl Manager {
         ui.separator();
         ui.add_space(12.0);
         if self.tab == Tab::Logs {
-            if previous_tab != Tab::Logs {
-                if let Some(path) = host.source.log_path() {
+            if previous_tab != Tab::Logs && !host.is_remote() {
+                if let Some(path) = host.log_file.clone() {
                     self.read_logs(path);
                 }
             }
-            if host.source.remote {
+            if host.is_remote() {
                 ui.label(
                     egui::RichText::new("Logs are on the host computer")
                         .size(18.0)
@@ -639,6 +589,13 @@ impl Manager {
                     egui::RichText::new("Open the manager on that computer to view its logs.")
                         .color(MUTED),
                 );
+            } else if host.log_file.is_none() {
+                ui.label(
+                    egui::RichText::new("No log file in this profile")
+                        .size(18.0)
+                        .strong(),
+                );
+                ui.label(egui::RichText::new("Disk logging is opt-in. Start the host with --log-file and include log_file in its profile.").color(MUTED));
             } else {
                 self.show_logs(ui);
             }
@@ -895,11 +852,7 @@ fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
         egui::FontId::proportional(12.0),
         color,
     );
-    let location = if host.source.remote {
-        "Remote"
-    } else {
-        "Local"
-    };
+    let location = if host.is_remote() { "Remote" } else { "Local" };
     let subtitle = match &host.report {
         Ok(report) if !report.closed && report.ready => format!(
             "{location}  ·  {}",
@@ -1100,17 +1053,9 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
     }
     ui.add_space(8.0);
     ui.label(
-        egui::RichText::new(format!(
-            "{}: {}",
-            if host.source.remote {
-                "Profile"
-            } else {
-                "Registration"
-            },
-            host.source.path.display()
-        ))
-        .size(12.0)
-        .color(MUTED),
+        egui::RichText::new(format!("Profile: {}", host.source.path.display()))
+            .size(12.0)
+            .color(MUTED),
     );
 }
 
@@ -1140,12 +1085,7 @@ pub fn launch() -> Result<()> {
     Ok(())
 }
 pub fn run(args: &AppArgs) -> Result<()> {
-    let registry = args
-        .host_registry
-        .clone()
-        .map(Ok)
-        .unwrap_or_else(Registry::default_path)?;
-    let manager = Manager::new(registry, args.remote_profile.clone());
+    let manager = Manager::new(args.remote_profile.clone());
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop Host Manager")
@@ -1201,11 +1141,10 @@ mod tests {
     fn unreachable_profiles_and_dummy_audio_have_explicit_states() {
         let source = Source {
             path: PathBuf::from("missing-profile.json"),
-            remote: true,
         };
         let mut host = Host::query(source.clone());
         assert_eq!(host.state().0, "Unreachable");
-        assert!(source.log_path().is_none());
+        assert!(host.log_file.is_none());
         host.report = Ok(HostReport {
             ready: true,
             busy: true,
@@ -1245,13 +1184,7 @@ mod tests {
             .unwrap()
             .manage_hosts
         );
-        for option in [
-            "--host-only",
-            "--ui-only",
-            "--shutdown-host",
-            "--list-hosts",
-            "--tracing",
-        ] {
+        for option in ["--host-only", "--ui-only", "--shutdown-host", "--tracing"] {
             assert!(AppArgs::try_parse_from(["shoopdaloop", "--manage-hosts", option]).is_err());
         }
     }
@@ -1259,7 +1192,6 @@ mod tests {
     fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
         let mut host = Host::query(Source {
             path: PathBuf::from("missing.json"),
-            remote: true,
         });
         let mut report = HostReport {
             ready: true,
@@ -1285,16 +1217,14 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn changing_host_clears_logs_and_ignores_departed_log_replies() {
-        let mut manager = Manager::new(PathBuf::from("sessions"), None);
+        let mut manager = Manager::new(None);
         let first = Source {
             path: PathBuf::from("sessions/1.json"),
-            remote: false,
         };
         let second = Source {
             path: PathBuf::from("sessions/2.json"),
-            remote: false,
         };
-        let first_log = first.log_path().unwrap();
+        let first_log = PathBuf::from("first.log");
         manager.select(first.clone());
         manager.tab = Tab::Logs;
         manager.logs = Some(LogView {
@@ -1321,7 +1251,7 @@ mod tests {
         });
         manager
             .sender
-            .send(Event::Scanned(vec![Host::query(first)], None))
+            .send(Event::Scanned(vec![Host::query(first)]))
             .unwrap();
         manager
             .sender
@@ -1335,5 +1265,37 @@ mod tests {
             log.contents.as_ref().unwrap().as_ref().unwrap(),
             "archived host"
         );
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn profiles_are_loaded_only_explicitly_and_never_remembered() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("provided-profile.json");
+        std::fs::write(&path, serde_json::to_vec(&serde_json::json!({
+            "version": shoop_app_protocol::VERSION, "name": "Explicit host", "endpoint": "127.0.0.1:1", "management": "127.0.0.1:2", "credential": "missing.key", "local": true
+        })).unwrap()).unwrap();
+        let mut manager = Manager::new(Some(path.clone()));
+        manager.scan();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while manager.scanning {
+            manager.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(manager.hosts.len(), 1);
+        assert_eq!(manager.hosts[0].name, "Explicit host");
+        drop(manager);
+        let mut reopened = Manager::new(None);
+        reopened.scan();
+        while reopened.scanning {
+            reopened.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(reopened.hosts.is_empty() && reopened.sources.is_empty());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+        use clap::Parser;
+        for flag in ["--list-hosts", "--host-file", "--host-registry"] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", flag]).is_err());
+        }
     }
 }

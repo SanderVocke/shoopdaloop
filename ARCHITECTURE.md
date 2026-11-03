@@ -666,7 +666,7 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Shared transport | `shoop_transport*` | Bounded record buffers, framing and socket/shared-memory delivery reused below both app and engine lifecycles |
 | Engine transport | `shoop_rt_transport*` | Engine client lifecycle, credits, typed in-process and encoded record adapters, MessagePort bindings and compatibility carrier aliases |
 | Engine hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices, pump audio, MIDI and messages; no app semantics |
-| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; authenticated discovery, app attachment and management |
+| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; explicit profile attachment and authenticated app management |
 | Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
 
 The composition root (the native binary or the browser bootstrap) chooses a host and
@@ -705,8 +705,9 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   scheduling boundary. No additional lookahead or latency compensation is applied.
 
 The independent native session host authenticates loopback app data and management
-connections with protected credential references. Its registry publishes readiness,
-host/session identity, endpoints and carrier configuration. The companion lives
+connections with protected credential references. Explicit connection profiles select endpoints, credential files and carrier
+configuration. No host registry, discovery scan or persistent host history exists.
+The launcher exchanges bounded startup/readiness messages through private pipes. The companion lives
 beside the app (inside `Contents/MacOS` on macOS), independently of cwd and `PATH`.
 Driver/capacity/transport changes apply at host startup.
 
@@ -770,8 +771,8 @@ to the worklet on its own lane beside the protocol records.
 
 Driver status and host-port inventory are engine protocol data. The engine-only
 reference fixture uses its separate `host` bootstrap schema; production
-`shoop_host` consumes checked host configuration and publishes protected app
-discovery. The external UI process opens no selected IPC audio/MIDI devices.
+`shoop_host` consumes checked host configuration and accepts explicit profile-based
+app connections. The external UI process opens no selected IPC audio/MIDI devices.
 
 ### Capabilities
 

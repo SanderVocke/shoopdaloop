@@ -1,7 +1,4 @@
-use crate::{
-    private,
-    registry::{AppTransport, HostEntry},
-};
+use crate::{config::AppTransport, private};
 use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_protocol::VERSION;
@@ -56,6 +53,14 @@ pub struct RemoteProfile {
     pub credential: PathBuf,
     #[serde(default)]
     pub network: NetworkOptions,
+    #[serde(default)]
+    pub local: bool,
+    #[serde(default)]
+    pub transport: AppTransport,
+    #[serde(default)]
+    pub shared_memory: Option<Vec<u8>>,
+    #[serde(default)]
+    pub log_file: Option<PathBuf>,
 }
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
@@ -66,7 +71,31 @@ impl RemoteProfile {
         );
         endpoint(&self.endpoint)?;
         endpoint(&self.management)?;
-        self.network.validate()
+        self.network.validate()?;
+        if self.local {
+            ensure!(
+                [&self.endpoint, &self.management]
+                    .iter()
+                    .all(|endpoint| endpoint
+                        .parse::<SocketAddr>()
+                        .is_ok_and(|address| address.ip().is_loopback())),
+                "local profile endpoints must be loopback addresses"
+            );
+        }
+        ensure!(
+            self.local || (self.transport == AppTransport::Socket && self.shared_memory.is_none()),
+            "remote shared memory is unsupported"
+        );
+        ensure!(
+            match self.transport {
+                AppTransport::Socket => self.shared_memory.is_none(),
+                AppTransport::SharedMemory => self.shared_memory.as_ref().is_some_and(|bytes| {
+                    shoop_transport_shared_memory::Descriptor::decode(bytes).is_ok()
+                }),
+            },
+            "invalid profile transport descriptor"
+        );
+        Ok(())
     }
     pub fn read(path: &Path) -> Result<Self> {
         let mut bytes = Vec::new();
@@ -81,6 +110,9 @@ impl RemoteProfile {
                 .parent()
                 .unwrap_or(Path::new("."))
                 .join(&profile.credential);
+        }
+        if let Some(log) = profile.log_file.as_mut().filter(|log| log.is_relative()) {
+            *log = path.parent().unwrap_or(Path::new(".")).join(&*log);
         }
         Ok(profile)
     }
@@ -100,7 +132,7 @@ impl RemoteProfile {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Target {
     pub version: u16,
 
@@ -112,22 +144,7 @@ pub struct Target {
     pub shared_memory: Option<Vec<u8>>,
     pub warnings: Vec<String>,
     pub network: Option<NetworkOptions>,
-}
-impl From<HostEntry> for Target {
-    fn from(e: HostEntry) -> Self {
-        Self {
-            version: e.version,
-
-            name: e.name,
-            endpoint: e.endpoint.to_string(),
-            management: e.management.to_string(),
-            credential: e.credential,
-            transport: e.transport,
-            shared_memory: e.shared_memory,
-            warnings: e.warnings,
-            network: None,
-        }
-    }
+    pub log_file: Option<PathBuf>,
 }
 impl From<RemoteProfile> for Target {
     fn from(e: RemoteProfile) -> Self {
@@ -138,20 +155,16 @@ impl From<RemoteProfile> for Target {
             endpoint: e.endpoint,
             management: e.management,
             credential: e.credential,
-            transport: AppTransport::Socket,
-            shared_memory: None,
+            transport: e.transport,
+            shared_memory: e.shared_memory,
             warnings: Vec::new(),
-            network: Some(e.network),
+            network: (!e.local).then_some(e.network),
+            log_file: e.log_file,
         }
     }
 }
 pub trait ConnectionTarget {
     fn target(&self) -> Target;
-}
-impl ConnectionTarget for HostEntry {
-    fn target(&self) -> Target {
-        self.clone().into()
-    }
 }
 impl ConnectionTarget for RemoteProfile {
     fn target(&self) -> Target {
@@ -164,6 +177,9 @@ impl ConnectionTarget for Target {
     }
 }
 impl Target {
+    pub fn read(path: &Path) -> Result<Self> {
+        Ok(RemoteProfile::read(path)?.into())
+    }
     pub fn token(&self) -> Result<[u8; 32]> {
         ensure!(self.version == VERSION, "incompatible session protocol");
         if let Some(network) = self.network {
@@ -253,4 +269,12 @@ pub fn resolve(value: &str, deadline: Instant) -> Result<Vec<SocketAddr>> {
         .map_err(anyhow::Error::msg)?;
     ensure!(!answer.is_empty(), "hostname has no usable addresses");
     Ok(answer)
+}
+
+pub fn identity() -> Result<u128> {
+    let mut bytes = [0; 16];
+    getrandom::fill(&mut bytes).map_err(|_| anyhow!("session identity entropy is unavailable"))?;
+    let value = u128::from_le_bytes(bytes);
+    ensure!(value != 0, "invalid session identity entropy");
+    Ok(value)
 }

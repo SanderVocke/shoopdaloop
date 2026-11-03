@@ -1,5 +1,5 @@
 use crate::{
-    registry::AppTransport,
+    config::AppTransport,
     remote::{remaining, ConnectionTarget, Target as HostTarget},
 };
 use anyhow::{anyhow, Context, Result};
@@ -160,7 +160,7 @@ fn client_error(error: shoop_app_connection::Error) -> ClientError {
 }
 impl Connection {
     pub fn with_heartbeat(mut self, config: shoop_app_connection::HeartbeatConfig) -> Result<Self> {
-        let seed = (crate::registry::identity()? as u64).max(1);
+        let seed = (crate::remote::identity()? as u64).max(1);
         self.heartbeat = Some(
             shoop_app_connection::Heartbeat::new(config, seed)
                 .map_err(|_| anyhow!("invalid heartbeat configuration"))?,
@@ -256,7 +256,7 @@ pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> R
     let entry = entry.target();
     use shoop_app_protocol::{ClientId, OperationId, Outcome, VERSION};
     let operation = OperationId {
-        client: ClientId(crate::registry::identity()?),
+        client: ClientId(crate::remote::identity()?),
         sequence: 1,
     };
     let mut request = ManagementRequest::ClaimShutdown {

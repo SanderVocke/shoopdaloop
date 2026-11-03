@@ -89,7 +89,7 @@ impl ExitController {
             .resizable(false)
             .show(context, |ui| {
                 ui.label("Close this UI, or stop the session and close its host too.");
-                if entry.transport == shoop_host::registry::AppTransport::SharedMemory {
+                if entry.transport == shoop_host::config::AppTransport::SharedMemory {
                     ui.label("Shared-memory mode cannot reattach after this UI exits.");
                 }
                 if let Some(error) = &self.error {

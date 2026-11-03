@@ -1,8 +1,9 @@
 use crate::{
+    config::AppTransport,
     config::HostConfig,
     connection::Port,
     engine, private,
-    registry::{identity, AppTransport, HostEntry, Registry},
+    remote::{identity, RemoteProfile, Target},
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
@@ -23,8 +24,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct StartOptions {
-    pub registry: PathBuf,
     pub endpoint: SocketAddr,
     pub management_endpoint: SocketAddr,
     pub lan: bool,
@@ -33,13 +34,13 @@ pub struct StartOptions {
     pub export_profile: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
     pub credential: Option<PathBuf>,
+    pub log_file: Option<PathBuf>,
 
     pub name: String,
 }
 impl StartOptions {
-    pub fn new(registry: PathBuf) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
-            registry,
             endpoint: "127.0.0.1:0".parse()?,
             management_endpoint: "127.0.0.1:0".parse()?,
             lan: false,
@@ -48,6 +49,7 @@ impl StartOptions {
             export_profile: None,
             network: Default::default(),
             credential: None,
+            log_file: None,
 
             name: "ShoopDaLoop".into(),
         })
@@ -137,21 +139,15 @@ impl Drop for Acceptor {
     }
 }
 
-struct Registration {
-    registry: Option<Registry>,
-    entry: HostEntry,
-}
-impl Drop for Registration {
-    fn drop(&mut self) {
-        if let Some(registry) = self.registry.as_ref() {
-            if let Err(error) = registry.remove(&self.entry) {
-                tracing::warn!(%error, "host.registry.cleanup_failed");
-            }
-        }
-    }
+pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
+    run_with_ready(config, options, |_| Ok(()))
 }
 
-pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
+pub fn run_with_ready(
+    config: HostConfig,
+    options: StartOptions,
+    ready: impl FnOnce(Target) -> Result<()>,
+) -> Result<()> {
     let _span = tracing::info_span!("host.session").entered();
     config.validate()?;
     options.network.validate()?;
@@ -160,11 +156,10 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         "LAN hosts require socket delivery"
     );
     ensure!(
-        !options.lan || options.credential.is_some(),
-        "LAN hosts require --credential-file"
+        options.credential.is_some(),
+        "hosts require an explicit credential file"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
-    let registry = Registry::open(&options.registry)?;
     let (mut native, mut warnings) = engine::native_config(
         &config.driver,
         &config.pools,
@@ -222,17 +217,13 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         );
         thread::sleep(Duration::from_millis(2));
     }
-    let token = match &options.credential {
-        Some(path) => private::read(path, 32)?
-            .try_into()
-            .map_err(|_| anyhow!("invalid credential length"))?,
-        None => {
-            let mut token = [0; 32];
-            getrandom::fill(&mut token)
-                .map_err(|_| anyhow!("session credential entropy unavailable"))?;
-            token
-        }
-    };
+    let credential = options
+        .credential
+        .as_ref()
+        .context("missing host credential")?;
+    let token: [u8; 32] = private::read(credential, 32)?
+        .try_into()
+        .map_err(|_| anyhow!("invalid credential length"))?;
     let bind = if options.lan {
         Listener::bind_lan
     } else {
@@ -240,41 +231,6 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     };
     let data = bind(options.endpoint, token)?;
     let management = bind(options.management_endpoint, token)?;
-    if options.lan && options.export_profile.is_some() {
-        let profile = crate::remote::RemoteProfile {
-            version: VERSION,
-
-            name: options.name.clone(),
-            endpoint: options
-                .advertised_endpoint
-                .clone()
-                .unwrap_or(data.address()?.to_string()),
-            management: options
-                .advertised_management
-                .clone()
-                .unwrap_or(management.address()?.to_string()),
-            credential: PathBuf::from(
-                options
-                    .credential
-                    .as_ref()
-                    .and_then(|path| path.file_name())
-                    .context("credential filename unavailable")?,
-            ),
-            network: options.network,
-        };
-        let path = options.export_profile.as_ref().unwrap();
-        if path.exists() {
-            let existing = crate::remote::RemoteProfile::read(path)?;
-            ensure!(
-                existing.endpoint == profile.endpoint
-                    && existing.management == profile.management
-                    && existing.credential.file_name() == profile.credential.file_name(),
-                "existing profile selects different endpoints or credentials"
-            );
-        } else {
-            profile.write(path)?;
-        }
-    }
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
             512, 32, 32,
@@ -290,33 +246,77 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             )
         })
         .transpose()?;
-    let credential = options
-        .credential
-        .map(Ok)
-        .unwrap_or_else(|| registry.create_credential(std::process::id(), &token))?;
-    let registration = Registration {
-        entry: HostEntry {
-            version: VERSION,
-
-            name: options.name,
-            process: std::process::id(),
-            endpoint: data.address()?,
-            management: management.address()?,
-            credential,
-            transport: config.transport,
-            shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
-            warnings,
-        },
-        registry: if options.lan { None } else { Some(registry) },
+    let target = Target {
+        version: VERSION,
+        name: options.name.clone(),
+        endpoint: options
+            .advertised_endpoint
+            .clone()
+            .unwrap_or(data.address()?.to_string()),
+        management: options
+            .advertised_management
+            .clone()
+            .unwrap_or(management.address()?.to_string()),
+        credential: credential.canonicalize()?,
+        transport: config.transport,
+        shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
+        warnings,
+        network: options.lan.then_some(options.network),
+        log_file: options
+            .log_file
+            .as_ref()
+            .map(|path| path.canonicalize())
+            .transpose()?,
     };
-    if let Some(registry) = registration.registry.as_ref() {
-        registry.publish(&registration.entry)?;
+    if let Some(path) = &options.export_profile {
+        let profile = RemoteProfile {
+            version: VERSION,
+            name: target.name.clone(),
+            endpoint: target.endpoint.clone(),
+            management: target.management.clone(),
+            credential: if options.lan {
+                PathBuf::from(
+                    credential
+                        .file_name()
+                        .context("credential filename unavailable")?,
+                )
+            } else {
+                target.credential.clone()
+            },
+            network: options.network,
+            local: !options.lan,
+            transport: target.transport,
+            shared_memory: target.shared_memory.clone(),
+            log_file: if options.lan {
+                None
+            } else {
+                target.log_file.clone()
+            },
+        };
+        if path.exists() {
+            let existing = RemoteProfile::read(path)?;
+            ensure!(
+                existing.endpoint == profile.endpoint
+                    && existing.management == profile.management
+                    && (if options.lan {
+                        existing.credential.file_name() == profile.credential.file_name()
+                    } else {
+                        existing.credential == profile.credential
+                    })
+                    && existing.transport == profile.transport
+                    && existing.shared_memory == profile.shared_memory,
+                "existing profile selects different endpoints or credentials"
+            );
+        } else {
+            profile.write(path)?;
+        }
     }
     tracing::info!(
         "Host ready: data={}, management={}",
-        registration.entry.endpoint,
-        registration.entry.management
+        target.endpoint,
+        target.management
     );
+    ready(target)?;
     let data = Acceptor::new(data, options.lan)?;
     let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
@@ -407,7 +407,6 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     }
     drop(service);
     drop(host);
-    drop(registration);
     Ok(())
 }
 
@@ -455,7 +454,7 @@ impl Data {
             Some(network) => core
                 .with_network(
                     network.heartbeat(),
-                    (crate::registry::identity()? as u64).max(1),
+                    (crate::remote::identity()? as u64).max(1),
                     network.snapshot_hz,
                 )
                 .map_err(|_| anyhow!("invalid heartbeat settings"))?,

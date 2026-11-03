@@ -7,9 +7,9 @@ use shoop_egui::{
     LoopAction, LoopMode, MidiNote, PianoAction, TrackAction, TrackSpec, TrackSpecTopology,
 };
 use shoop_host::{
+    config::AppTransport,
     config::HostConfig,
     connection::{self, Connection},
-    registry::{AppTransport, Registry},
     remote::Target as HostEntry,
 };
 use std::{
@@ -49,7 +49,7 @@ fn wait(
     Ok(())
 }
 fn attach(entry: &HostEntry) -> Result<(Client, Connection)> {
-    attach_as(entry, ClientId(shoop_host::registry::identity()?))
+    attach_as(entry, ClientId(shoop_host::remote::identity()?))
 }
 fn attach_as(entry: &HostEntry, _actor: ClientId) -> Result<(Client, Connection)> {
     let mut connection = connection::connect(entry, Duration::from_secs(3))?;
@@ -104,7 +104,6 @@ fn launch(
         "session companion probe requires socket or shared_memory"
     );
     let root = tempfile::tempdir()?;
-    let registry = Registry::open(&root.path().join("registry"))?;
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
@@ -136,38 +135,28 @@ fn launch(
     command
         .arg("--config")
         .arg(config_file)
-        .arg("--registry")
-        .arg(registry.root())
         .env("RUST_LOG", "shoop_rt_backend=debug")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
+    let credential = root.path().join("host.key");
+    shoop_host::remote::create_credential(&credential)?;
+    command
+        .arg("--credential-file")
+        .arg(credential)
+        .arg("--export-profile")
+        .arg(&profile_path);
     if lan {
-        let credential = root.path().join("host.key");
-        shoop_host::remote::create_credential(&credential)?;
-        command
-            .arg("--lan")
-            .arg("--endpoint")
-            .arg("127.0.0.1:0")
-            .arg("--management-endpoint")
-            .arg("127.0.0.1:0")
-            .arg("--credential-file")
-            .arg(credential)
-            .arg("--export-profile")
-            .arg(&profile_path);
+        command.arg("--lan");
     }
     let mut host = ProbeHost(command.spawn()?);
     let deadline = Instant::now() + Duration::from_secs(12);
     let (path, entry) = loop {
-        if lan {
-            if profile_path.exists() {
-                break (
-                    profile_path.clone(),
-                    shoop_host::remote::RemoteProfile::read(&profile_path)?.into(),
-                );
-            }
-        } else if let Some((path, entry)) = registry.list()?.into_iter().next() {
-            break (path, HostEntry::from(entry));
+        if profile_path.exists() {
+            break (
+                profile_path.clone(),
+                shoop_host::remote::RemoteProfile::read(&profile_path)?.into(),
+            );
         }
         ensure!(
             host.0.try_wait()?.is_none(),
@@ -304,12 +293,8 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        if entry.network.is_some() {
-            path.exists() && entry.credential.exists()
-        } else {
-            !path.exists() && !entry.credential.exists()
-        },
-        "session registration was not cleaned up"
+        path.exists() && entry.credential.exists(),
+        "explicit profile or credential was removed during shutdown"
     );
     Ok(())
 }
@@ -607,12 +592,8 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        if entry.network.is_some() {
-            path.exists() && entry.credential.exists()
-        } else {
-            !path.exists() && !entry.credential.exists()
-        },
-        "file companion registration was not cleaned up"
+        path.exists() && entry.credential.exists(),
+        "explicit file companion profile or credential was removed during shutdown"
     );
     println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
     Ok(())
@@ -665,7 +646,7 @@ fn socket_file_loss(
     };
     let source =
         Source::new(std::sync::Arc::clone(&image)).map_err(|error| anyhow!("{error:?}"))?;
-    let actor = ClientId(shoop_host::registry::identity()?);
+    let actor = ClientId(shoop_host::remote::identity()?);
     let (mut client, mut connection) = attach_as(entry, actor)?;
     let epoch = client.snapshot().unwrap().persistence_epoch;
     let old_track = client.snapshot().unwrap().tracks[1].id;
