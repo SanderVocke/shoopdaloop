@@ -355,3 +355,6 @@ src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile reso
 src/rust/shoop_host/src/logging.rs,native_host,excluded,Private diagnostic sink; logging must not recursively emit tracing.
 src/rust/shoopdaloop/src/host_manager.rs,native_ui,excluded,Management-only presentation and background authenticated queries; no audio or application runtime.
 src/rust/shoopdaloop/src/host_manager/start_host.rs,native_ui,excluded,Explicit host configuration form and detached companion startup; no render-thread work.
+src/rust/shoop_host_processes/src/lib.rs,native_ui,excluded,OS process and socket inspection and explicit process termination; no render-thread work.
+src/rust/shoop_host_processes/src/windows.rs,native_ui,excluded,Small owned Windows process-handle and creation-time adapter.
+src/rust/shoop_host_processes/src/linux.rs,native_ui,excluded,Read-only procfs socket ownership join; no persistent discovery state.

@@ -514,6 +514,7 @@ jobs:
             -p shoop_app_protocol \
             -p shoop_app_client \
             -p shoop_host \
+            -p shoop_host_processes \
             -p shoop_app_reference \
             -p shoop_scripting \
             -p shoop_transport \

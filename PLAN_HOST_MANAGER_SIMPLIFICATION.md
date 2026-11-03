@@ -126,15 +126,15 @@ repository build/test guidance and inspect logs before classifying a failure.
 
 Depends on Stage 0.
 
-- [ ] Add a native inspection abstraction returning process identity, executable
+- [x] Add a native inspection abstraction returning process identity, executable
   information and owned listening TCP addresses. Evaluate a small safe dependency
   against the actual platform APIs before choosing it.
-- [ ] Implement Linux process/socket-inode inspection, macOS `libproc` process/FD
+- [x] Implement Linux process/socket-inode inspection, macOS `libproc` process/FD
   inspection, and Windows process information plus owner-PID TCP tables, directly
   or through verified wrappers. Include both IPv4 and IPv6.
-- [ ] Add real child-process fixtures binding arbitrary OS-assigned sockets, covering
+- [x] Add real child-process fixtures binding arbitrary OS-assigned sockets, covering
   multiple processes, path aliases, exited processes and unavailable inspection.
-- [ ] Establish the process-identity/termination abstraction, using stable OS handles
+- [x] Establish the process-identity/termination abstraction, using stable OS handles
   where available and rechecking identity before a termination request.
 
 Verification: native tests on Linux, macOS and Windows associate each fixture with
@@ -144,7 +144,9 @@ gate before integrating automatic discovery into the manager.
 
 ### Stage 2 — Remove authentication and add non-mutating host description
 
-Depends on Stage 1's platform feasibility evidence.
+Depends on Stage 1's inspection abstraction. Platform feasibility CI runs in
+parallel with this independent transport work; Stage 4 integration remains gated
+on passing inspection tests on all three platforms.
 
 - [ ] Remove token generation/comparison, credential fields, key APIs, key-related
   CLI arguments and UI controls. Update `shoop_transport`, `shoop_transport_socket`,
@@ -274,3 +276,19 @@ Depends on Stages 0–4.
   after canonicalizing the expected temporary-directory parent. Warning-denying
   workspace build, formatting and test-attribute policy pass. Native CI verification
   of the correction will accompany the OS inspection milestone.
+
+- Stage 1: added the native-only `shoop_host_processes` adapter. `sysinfo` supplies
+  executable/process information, with precise OS creation identities; Linux joins
+  candidate FD inodes to procfs TCP tables, while macOS/Windows use `netstat2`'s
+  libproc/owner-PID implementations. A generic Linux netlink experiment returned
+  empty socket tables in this environment, so direct procfs inspection is used.
+  Linux pidfds and Windows owned handles bind termination to the selected process.
+  Real child fixtures cover IPv4, IPv6, wildcard listeners, exit and changed identity.
+  All 2,560 workspace tests pass (4 skipped) with CI tracing and `umask 0022`; the
+  warning-denying build, formatting, tracing inventory and test policy pass.
+  Native inspection tests were added to every desktop CI matrix job. Windows/macOS
+  verification is pending that push.
+- Ordering refinement: develop Stage 2's transport changes while the Stage 1 native
+  matrix runs. These implementations are independent, and the long matrix build
+  latency need not block transport work. Stage 4's discovery integration still
+  requires platform feasibility evidence; goals and acceptance criteria are unchanged.
