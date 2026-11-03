@@ -136,6 +136,8 @@ fn engine_peer() {
             }
             #[cfg(feature = "cpal")]
             DriverConfig::Cpal(_) => {}
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => {}
         }
         shoop_rt_host_native::start_endpoint(&config)
     })
@@ -157,6 +159,7 @@ fn both_process_carriers_run_the_backend_contracts_and_stop_gracefully() {
             client,
             supervisor,
             warnings,
+            ..
         } = start(transport, "controlled");
         assert!(warnings.is_empty());
         let clock = Clock(supervisor.testing_clock(1000, 1));
@@ -326,6 +329,7 @@ fn both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations() {
             client,
             supervisor,
             warnings,
+            ..
         } = Pending::spawn_command(command("cpal_mock"), transport)
             .unwrap()
             .start(&config)
@@ -554,6 +558,8 @@ impl Local {
             }
             #[cfg(feature = "cpal")]
             DriverConfig::Cpal(_) => {}
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => {}
         }
         let started = shoop_rt_host_native::start(&config).unwrap();
         let clock = LocalClock {
@@ -759,5 +765,66 @@ fn device_fault_remains_terminal_and_uses_the_existing_shutdown_policy() {
         drop(backend);
         let report = supervisor.stop();
         assert!(report.success && report.cleaned, "{report:?}");
+    }
+}
+
+#[cfg(feature = "jack")]
+#[shoop_test(no_wasm = "native JACK process setup")]
+fn native_jack_process_adapter_preserves_custom_port_names_and_driver_identity() {
+    let jack = shoop_rt_host_native::JackConfig {
+        client_name: format!("jack-process-{}", std::process::id()),
+        audio_inputs: vec!["capture".into()],
+        audio_outputs: vec!["playback".into()],
+        midi_inputs: vec!["keys".into()],
+        midi_outputs: vec!["synth".into()],
+        connections: Vec::new(),
+    };
+    let config = NativeConfig {
+        driver: DriverConfig::Jack(jack),
+        ..config()
+    };
+    for transport in [Transport::Socket, Transport::SharedMemory] {
+        let result = Pending::spawn_command(command("jack"), transport)
+            .unwrap()
+            .start(&config);
+        let started = match result {
+            Ok(started) => started,
+            Err(error) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => {
+                eprintln!("JACK unavailable: {error}");
+                return;
+            }
+            Err(error) => panic!("required JACK process startup failed: {error}"),
+        };
+        let mut backend = RtBackend::connect(started.client, Sleep::default()).unwrap();
+        let state = backend.audio_driver_state().unwrap();
+        let kind = state.active.unwrap().configured.kind().id();
+        if kind != "jack" && std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() {
+            eprintln!("JACK unavailable: {:?}", started.warnings);
+            drop(backend);
+            started.supervisor.stop();
+            return;
+        }
+        assert_eq!(kind, "jack");
+        assert!(started.instance_name.starts_with("jack-process-"));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = backend.poll().unwrap();
+            if snapshot
+                .connections
+                .host_ports
+                .values()
+                .any(|port| port.name == "jack:keys")
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        drop(backend);
+        let report = started.supervisor.stop();
+        assert!(
+            report.success && report.cleaned && report.midi_reset,
+            "{report:?}"
+        );
     }
 }

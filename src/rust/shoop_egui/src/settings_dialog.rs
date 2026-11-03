@@ -875,7 +875,11 @@ impl SettingsDialog {
         #[cfg(test)]
         self.driver_choice_rects.clear();
         ui.horizontal_wrapped(|ui| {
-            for kind in [AudioDriverKind::Dummy, AudioDriverKind::Cpal] {
+            for kind in [
+                AudioDriverKind::Dummy,
+                AudioDriverKind::Jack,
+                AudioDriverKind::Cpal,
+            ] {
                 let button = egui::Button::selectable(current == Some(kind), kind.label());
                 let response = ui.add(button);
                 #[cfg(test)]
@@ -888,12 +892,7 @@ impl SettingsDialog {
         let prefix = match selected(draft) {
             Some(AudioDriverKind::Dummy) => "audio.dummy.",
             Some(AudioDriverKind::Cpal) => "audio.cpal.",
-            Some(AudioDriverKind::Jack) => {
-                ui.label(
-                    "This audio backend has no JACK driver and uses CPAL's JACK host or default devices instead. Choose Dummy or CPAL to configure its driver.",
-                );
-                "audio.jack."
-            }
+            Some(AudioDriverKind::Jack) => "audio.jack.",
             Some(AudioDriverKind::WebAudio) | None => return,
         };
         let definitions = self
@@ -2292,7 +2291,24 @@ mod tests {
             .draft_mut()
             .unwrap()
             .set(crate::SELECTED_AUDIO_DRIVER, "jack".to_owned());
-        assert_eq!(frame(&mut dialog, Vec::new()), 3);
+        assert_eq!(frame(&mut dialog, Vec::new()), 8);
+        assert!(dialog
+            .driver_choice_rects
+            .iter()
+            .any(|(kind, _)| *kind == AudioDriverKind::Jack));
+        dialog
+            .draft_mut()
+            .unwrap()
+            .set(crate::JACK_MIDI_INPUTS, "keys,controllers".to_owned());
+        let Some(SettingsAction::Save(saved)) = dialog.save_action() else {
+            panic!("expected JACK settings save")
+        };
+        let crate::AudioDriverConfig::Jack(config) =
+            crate::audio_driver_config_from_draft(&saved, AudioDriverKind::Jack).unwrap()
+        else {
+            panic!("JACK profile changed kind")
+        };
+        assert_eq!(config.midi_inputs, ["keys", "controllers"]);
     }
 
     #[shoop_wasm_test_support::shoop_test(

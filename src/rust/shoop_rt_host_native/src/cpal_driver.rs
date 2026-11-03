@@ -626,6 +626,7 @@ where
         endpoint,
         outbox,
         Running {
+            instance_name: "CPAL".to_owned(),
             reset_wait: reset_wait(period_frames, sample_rate),
             shared,
             driver: Driver::Cpal(Streams {

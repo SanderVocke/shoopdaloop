@@ -90,6 +90,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 AudioDriverConfig::Jack(Default::default()),
             ),
         };
+        let mut active = ResolvedAudioDriverConfig {
+            configured,
+            sample_rate: driver.sample_rate,
+            buffer_size: driver.buffer_frames,
+            instance_name: "New engine".to_owned(),
+        };
+        if let Some(profile) = &self.driver_profile {
+            if profile.configured.kind() == kind {
+                active.configured = profile.configured.clone();
+                active.instance_name = profile.instance_name.clone();
+            }
+        }
         AudioDriverRuntimeState {
             supported: false,
             catalog: Arc::from([AudioDriverDescriptor {
@@ -97,12 +109,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 available: true,
                 ..Default::default()
             }]),
-            active: Some(ResolvedAudioDriverConfig {
-                configured,
-                sample_rate: driver.sample_rate,
-                buffer_size: driver.buffer_frames,
-                instance_name: "New engine".to_owned(),
-            }),
+            active: Some(active),
             switch: Default::default(),
         }
     }

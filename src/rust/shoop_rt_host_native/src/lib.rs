@@ -9,12 +9,13 @@
 //! Drivers:
 //! - the dummy driver renders on its own thread, at the buffer period or only the
 //!   frames a caller requests;
+//! - with the `jack` feature, JACK audio and MIDI share one synchronous callback;
 //! - with the `cpal` feature, a CPAL output stream renders the engine in its
 //!   callback, a separate input stream feeds it through a lock-free bridge, and
 //!   midir ports exchange MIDI with the callback through bounded bridges.
 //!
-//! Changing the device, sample rate or buffer size is a lifecycle operation: stop the
-//! host, then start another.
+//! Changing the device or sample rate requires restarting the host. JACK buffer
+//! changes use the prepared callback buffers and split larger cycles.
 #![forbid(unsafe_code)]
 // Without device drivers, the MIDI bridges and parts of the callback are unused.
 #![cfg_attr(not(feature = "cpal"), allow(dead_code))]
@@ -23,6 +24,8 @@
 mod cpal_driver;
 mod cycle;
 mod dummy;
+#[cfg(feature = "jack")]
+mod jack_driver;
 mod midi;
 #[cfg(feature = "cpal")]
 mod midir_ports;
@@ -46,6 +49,8 @@ pub use cpal_driver::{
     Discovery,
 };
 pub use dummy::{DummyConfig, DummyControl, DummyMode};
+#[cfg(feature = "jack")]
+pub use jack_driver::JackConfig;
 pub use midi::{
     MidiDevices, MidiInputDevice, MidiInputSender, MidiOutputDevice, MidiSink, MidiSource,
     BRIDGE_MESSAGES, MAX_MESSAGE_BYTES,
@@ -66,6 +71,8 @@ pub enum DriverConfig {
     Dummy(DummyConfig),
     #[cfg(feature = "cpal")]
     Cpal(CpalConfig),
+    #[cfg(feature = "jack")]
+    Jack(JackConfig),
 }
 
 #[derive(Clone, Debug)]
@@ -74,7 +81,7 @@ pub struct NativeConfig {
     /// The engine to prepare. The host sets the device's part: the sample rate, the
     /// host ports, Master's initial connections to the first outputs (reported as
     /// preferred) and a control lead of at least one buffer. `max_frames` is the
-    /// prepared maximum; the driver's buffer must not exceed it.
+    /// prepared maximum; drivers that accept larger buffers render them in parts.
     pub engine: EngineDescription,
 }
 
@@ -175,6 +182,8 @@ pub(crate) enum Driver {
     Dummy(dummy::DummyThread),
     #[cfg(feature = "cpal")]
     Cpal(cpal_driver::Streams),
+    #[cfg(feature = "jack")]
+    Jack(jack_driver::Client),
 }
 
 impl Driver {
@@ -183,6 +192,8 @@ impl Driver {
             Self::Dummy(thread) => thread.stop(),
             #[cfg(feature = "cpal")]
             Self::Cpal(streams) => streams.stop(),
+            #[cfg(feature = "jack")]
+            Self::Jack(client) => client.stop(),
         }
     }
 }
@@ -196,6 +207,7 @@ pub(crate) struct Running {
     pub warnings: Vec<String>,
     pub reset_wait: Duration,
     pub dummy: Option<DummyControl>,
+    pub instance_name: String,
 }
 
 impl Running {
@@ -210,7 +222,10 @@ impl Running {
         {
             std::thread::sleep(Duration::from_millis(1));
         }
-        let midi_reset = shared.phase() != RenderPhase::Running;
+        let mut midi_reset = shared.phase() != RenderPhase::Running;
+        if shared.driver().kind == DriverKind::Jack {
+            midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
+        }
         let cycle = self.driver.stop();
         drop(self.pump);
         drop(self.connections);
@@ -267,6 +282,10 @@ impl NativeHost {
         }
     }
 
+    pub fn instance_name(&self) -> &str {
+        &self.running().instance_name
+    }
+
     pub fn layout(&self) -> &HostLayout {
         &self.running().layout
     }
@@ -304,6 +323,8 @@ pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
         DriverConfig::Dummy(dummy) => dummy::start(dummy, &config.engine),
         #[cfg(feature = "cpal")]
         DriverConfig::Cpal(cpal) => cpal_driver::start(cpal, &config.engine),
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(jack) => jack_driver::start(jack, &config.engine),
     };
     match &started {
         Ok(started) => {

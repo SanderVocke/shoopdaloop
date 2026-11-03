@@ -1,7 +1,7 @@
 //! Portable host setup vocabulary; execution and OS configuration belong to hosts.
 use crate::{DriverKind, DriverStatus};
 
-pub const HOST_VERSION: u16 = 1;
+pub const HOST_VERSION: u16 = 2;
 pub const MAX_HOST_TEXT_BYTES: usize = 256;
 pub const MAX_SETUP_ITEMS: usize = 256;
 
@@ -106,6 +106,12 @@ pub enum HostRequest {
     ConfigureDriver(DriverSettings),
     AddMidiInput(Text),
     AddMidiOutput(Text),
+    AddJackAudioInput(Text),
+    AddJackAudioOutput(Text),
+    ConnectJack {
+        source: Text,
+        destination: Text,
+    },
     Start,
     Stop,
     Status,
@@ -128,6 +134,7 @@ pub enum HostReply {
     },
     End,
     Ready(DriverStatus),
+    InstanceName(Text),
     Warning(Text),
     Error(Text),
     Stopped {

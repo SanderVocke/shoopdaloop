@@ -143,3 +143,9 @@ impl Cycle {
         (self.render, self.phase)
     }
 }
+
+#[cfg(any(feature = "jack", test))]
+#[path = "direct.rs"]
+mod direct;
+#[cfg(feature = "jack")]
+pub(crate) use direct::DirectIo;

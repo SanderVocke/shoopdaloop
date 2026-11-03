@@ -251,6 +251,7 @@ pub(crate) fn start(
         endpoint,
         outbox,
         crate::Running {
+            instance_name: "Dummy".to_owned(),
             shared,
             driver: crate::Driver::Dummy(DummyThread { exit, thread }),
             pump: None,

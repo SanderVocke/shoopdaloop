@@ -131,6 +131,7 @@ pub struct RtBackend<C, K> {
     capabilities: Capabilities,
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
+    driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
     status: Status,
     mirror: Mirror,
     requests: Requests,
@@ -161,6 +162,11 @@ pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    /// Attach host-resolved metadata; runtime telemetry remains authoritative about the active kind.
+    pub fn set_driver_profile(&mut self, profile: shoop_app_api::ResolvedAudioDriverConfig) {
+        self.driver_profile = Some(profile);
+    }
+
     /// Starts the handshake over an unconnected client. The backend refuses operations until
     /// [`RtBackend::is_ready`]; pumping it, as `poll` does, completes the handshake.
     pub fn begin(mut client: ProtocolClient<C>, clock: K) -> Result<Self> {
@@ -175,6 +181,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             capabilities: Capabilities::default(),
             limits: None,
             driver: None,
+            driver_profile: None,
             status: Status::default(),
             mirror: Mirror::new(),
             requests: Requests::default(),

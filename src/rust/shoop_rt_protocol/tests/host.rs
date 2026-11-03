@@ -54,6 +54,12 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
         },
         HostRequest::AddMidiInput(text),
         HostRequest::AddMidiOutput(text),
+        HostRequest::AddJackAudioInput(text),
+        HostRequest::AddJackAudioOutput(text),
+        HostRequest::ConnectJack {
+            source: text,
+            destination: text,
+        },
         HostRequest::Start,
         HostRequest::Status,
         HostRequest::Stop,
@@ -84,6 +90,7 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
             max_buffer: 1024,
         },
         HostReply::Warning(text),
+        HostReply::InstanceName(text),
         HostReply::Error(text),
         HostReply::Stopped { midi_reset: true },
         HostReply::Ready(DriverStatus {
