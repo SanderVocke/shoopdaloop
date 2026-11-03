@@ -365,7 +365,9 @@ impl Prepared {
         buffer: Option<u32>,
     ) -> Result<Self, StartError> {
         let max = u32::try_from(template.max_frames).unwrap_or(u32::MAX);
-        if let Some(requested) = buffer.filter(|&frames| frames > max) {
+        // JACK splits server periods into bounded render blocks. Its actual
+        // period still determines how far ahead control commands must arrive.
+        if let Some(requested) = buffer.filter(|&frames| frames > max && kind != DriverKind::Jack) {
             return Err(StartError::BufferTooLarge { requested, max });
         }
         let buffer_frames = buffer.unwrap_or(max);
@@ -443,6 +445,33 @@ mod tests {
             port_name("Speakers", ":playback_2").as_str(),
             "Speakers:playback_2"
         );
+    }
+
+    #[shoop_test(no_wasm = "native JACK preparation policy")]
+    fn jack_server_buffer_sets_control_lead_even_when_rendered_in_smaller_parts() {
+        let description = shoop_rt_engine::EngineDescription {
+            max_frames: 64,
+            ..Default::default()
+        };
+        let prepared = super::Prepared::new(
+            &description,
+            shoop_rt_engine::HostPorts::numbered(2, 2, 1),
+            shoop_rt_protocol::DriverKind::Jack,
+            48000,
+            Some(128),
+        )
+        .unwrap();
+        assert_eq!(prepared.description.max_frames, 64);
+        assert_eq!(prepared.description.control_lead_frames, 128);
+        assert_eq!(prepared.shared.driver().buffer_frames, 128);
+        assert!(super::Prepared::new(
+            &description,
+            shoop_rt_engine::HostPorts::numbered(2, 2, 1),
+            shoop_rt_protocol::DriverKind::Dummy,
+            48000,
+            Some(128)
+        )
+        .is_err());
     }
 
     #[shoop_test(no_wasm = "the native host does not build for wasm")]

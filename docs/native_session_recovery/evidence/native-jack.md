@@ -21,6 +21,8 @@ open under P14.
   silences output while that failure is active.
 - The application startup test verifies direct JACK selection, resolved client
   name, and actual sample rate/buffer metadata without CPAL substitution.
+- Preparation tests verify that control lead covers the actual JACK server
+  period even when the engine renders it in smaller blocks.
 - The service acceptance scenario runs with both an in-process engine and a real
   independent `shoop_host` subprocess. It records and plays known audio/MIDI,
   verifies peer output, reconnects the UI during playback, reads recorded media,
@@ -72,7 +74,8 @@ outside this restoration.
 ## Local validation results
 
 - Full warning-denying native workspace build passed.
-- Full retained workspace suite: 2,550 passed, four pre-existing skips.
+- Full retained workspace suite after merging target `64a4ad06` and adding the
+  JACK preparation regression: 2,553 passed, four pre-existing skips.
 - Strict JACK runner passed with hardware skips disabled, including both host
   transports and production service/session scenarios.
 - All four native feature combinations passed build checks and host library tests.

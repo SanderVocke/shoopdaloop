@@ -251,8 +251,13 @@ pub(crate) fn start(
         render,
         shared,
         layout,
-    } = Prepared::new(engine, ports, DriverKind::Jack, sample_rate, None)?;
-    shared.set_buffer_frames(buffer_frames);
+    } = Prepared::new(
+        engine,
+        ports,
+        DriverKind::Jack,
+        sample_rate,
+        Some(buffer_frames),
+    )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
     let shutdown = Arc::new(AtomicBool::new(false));

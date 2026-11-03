@@ -180,3 +180,5 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - Remaining Stage 5 platform evidence and Stage 6 PR/CI/review completion will be recorded from the implementation PR.
 
 - PR opened: https://github.com/SanderVocke/shoopdaloop/pull/925, targeting `feat/backend-replacement`. The target advanced to `64a4ad06` (click generation); it was merged without conflicts and the combined warning-denying build and full suite passed: **2,552 passed, four pre-existing skips**.
+- Final review corrected preparation for server periods larger than the engine render block: JACK retains the actual server buffer metadata and uses at least that period as control lead while rendering bounded sub-blocks. The regression test failed before the fix and passes afterward; strict JACK acceptance and the warning-denying workspace build passed again on the merged source.
+- Full retained workspace suite after that correction: **2,553 passed, four pre-existing skips**. PR CI initially passed strict JACK acceptance, all four driver feature combinations, coverage, bare-metal builds, CodeQL, and documentation; the platform/browser matrix is still being monitored.
