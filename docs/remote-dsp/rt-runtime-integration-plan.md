@@ -1,6 +1,6 @@
 # Transport-independent DSP link node in an rt_runtime graph
 
-Status: Planned; implementation has not started.
+Status: In progress. The portable contract is recorded in [link-contract.md](link-contract.md).
 
 Planning branch: `feat/rt-runtime-remote-dsp`, created from
 `feat/network-dsp-host` at `ec4b52ec2de23b60714eadb8ebf1be69834dd3e0`.
@@ -200,9 +200,9 @@ flowchart LR
 - [x] Create `feat/rt-runtime-remote-dsp` from the delivered host revision.
 - [x] Refine the design for network, local socket and shared-memory processing;
       keep the first production binding/demo on UDP with a non-network reference.
-- [ ] Specify the logical link, descriptor, buffer ownership, latency/admission formula,
+- [x] Specify the logical link, descriptor, buffer ownership, latency/admission formula,
       per-call work limits and failure table. Resolve these before node code.
-- [ ] Commit the contracts with examples covering callbacks larger than
+- [x] Commit the contracts with examples covering callbacks larger than
       handoff blocks and ranges splitting a block. Keep PR #915 and evidence intact.
 
 ### 1. Establish reusable link/service and native operations
