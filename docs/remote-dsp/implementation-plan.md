@@ -1,6 +1,6 @@
 # Network DSP host: implementation plan for stages 1–3
 
-Status: Stages 1–3 and both measurement campaigns are complete. Published as [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915); final CI and automated review are in progress.
+Status: Complete. Stages 1–3 and both measurement campaigns are complete; implementation CI and automated review checks passed. Published as [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915); validation evidence and remaining hardware/priority limits are recorded below.
 
 Base: `feat/backend-replacement`, inspected at
 `540e863f8c6b1d9ecfd6f18c6ff49bc9fdda6ef6` on 2026-11-02.
@@ -307,7 +307,7 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - [x] Commit completed milestones, push `feat/network-dsp-host`, and open a PR
       targeting `feat/backend-replacement`. Describe the DSP abstraction, native
       Carla reuse, protocol/deadline contract and measured localhost outcomes.
-- [ ] Monitor CI to green; inspect failures before targeted fixes. Check for
+- [x] Monitor CI to green; inspect failures before targeted fixes. Check for
       automated review, address justified feedback, rerun affected checks and
       continue until approval when an automated reviewer participates.
 - [x] Confirm the final diff stays within Stages 1–3 and the requested scheduling follow-up, attach reproducible evidence,
@@ -431,7 +431,7 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 | 6–7: bounded failures, memory and lifecycle | Malformed/fault/reorder/late/epoch tests, allocation guards, process lifecycle tests and recorded retirement outcomes |
 | 8: MIDI and time/latency metadata | MIDI offset/overflow/reset tests, source-time snapshot tests, explicit unknown Carla latency |
 | 9: actual reproducible localhost campaign | 288 archived records, consistency audit, regenerated report and plot |
-| 10: native smoke and final external gates | Real pinned-Carla and local repository gates passed; PR #915 is open and external CI/review is in progress |
+| 10: native smoke and final external gates | Real pinned-Carla, local repository gates, all native/browser/bare-metal CI jobs, CodeQL and Codecov passed; the sole automated review finding is resolved |
 
 ### Public delivery
 
@@ -441,8 +441,8 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
 - [PR #915](https://github.com/SanderVocke/shoopdaloop/pull/915) targets the recorded
   `feat/backend-replacement` base. It describes the abstraction, protocol and
   reviewed measurements, and links commands and reproducible artifacts.
-- Remote CI and automated review are in progress; their final outcome remains
-  unchecked until verified.
+- Implementation CI and automated review checks passed on `2080272b`; the final
+  verification links and outcomes appear below. The PR remains open for review.
 
 ### Scheduling comparison preparation
 
@@ -534,4 +534,30 @@ Depends on completed Stages 1–3; does not add the deferred graph/hardware stag
   100 constrained repetitions with the explicit barrier. The final required-Carla
   workspace suite passed all 2555 tests, along with the warning-denying workspace
   build, formatting, test policy and tracing inventory. Both experiment archives
-  remain immutable; final CI/patch coverage are still pending.
+  remain immutable. The subsequent required-runtime coverage run passed, as
+  recorded below.
+
+### Final verified delivery
+
+- Implementation revision `2080272b820982df4b63754a46d79f4852e5afb7` passed
+  [Build and Test run 41545456104](https://github.com/SanderVocke/shoopdaloop/actions/runs/41545456104)
+  on 2026-11-03 UTC. All ten applicable jobs passed: Linux, Windows and macOS
+  debug/release, both web profiles, bare-metal builds and Linux coverage. The
+  scheduled-only nightly job was skipped as configured.
+- Required native-Carla coverage executed all 2555 tests successfully, with four
+  configured skips. Codecov passed patch coverage at **87.73%** against
+  the unchanged **80%** floor and project coverage at **89.69%**.
+- All four language analyses in
+  [CodeQL run 41545456197](https://github.com/SanderVocke/shoopdaloop/actions/runs/41545456197)
+  passed, with no new alerts. The sole earlier CodeQL review thread is resolved;
+  there are no unresolved review threads. These are automated check outcomes,
+  not a claim of a human approving review. The
+  [documentation run](https://github.com/SanderVocke/shoopdaloop/actions/runs/41545456075)
+  also passed.
+- The original 288-record campaign and additional 184 scheduling comparisons are
+  published together on PR #915, with raw evidence, audits, plots and reproduction
+  commands. Both frozen measurement archives remain unchanged by later CI fixes.
+- This final status update changes documentation only. FPGA/session integration,
+  physical-LAN measurements and tests with permitted elevated priority remain the
+  documented follow-up work; the completed experiments do not establish reliable
+  low-latency audio or arbitrary-plugin timing guarantees.
