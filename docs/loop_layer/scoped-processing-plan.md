@@ -1,7 +1,8 @@
 # Scoped runtime execution and shared loop callback plans
 
-Status: Planned. Only this plan and its branch have been prepared; implementation
-has not started.
+Status: In progress. Core baseline and seven native bus/session canaries pass.
+The [execution contract](scoped-processing-contract.md) is specified before code
+changes. Browser canaries remain part of the delivery gates.
 
 Branch: `feat/scoped-loop-processing`, created from `feat/backend-replacement`
 at `e68b15ac551ff1899554311ddfe2d5e4dda1d3ea` (merged
@@ -147,10 +148,10 @@ mark those parity rows complete through this foundation alone.
 - [x] Create the independent implementation branch from the updated backend base.
 - [ ] Recheck branch/base changes and repository guidance before implementation;
       record baseline runtime/loop tests and current native/browser bus canaries.
-- [ ] Write `scoped-processing-contract.md`: scopes/cadence, frame authority,
+- [x] Write `scoped-processing-contract.md`: scopes/cadence, frame authority,
       dependency validation, plan/resource ownership, failure table and the exact
       action/activation admission matrix. Include both required signal paths.
-- [ ] Specify prepared limits and compatibility/migration rules. Commit the
+- [x] Specify prepared limits and compatibility/migration rules. Commit the
       contracts before implementing execution changes.
 
 Verification: contracts explain every acceptance criterion, including how actual
