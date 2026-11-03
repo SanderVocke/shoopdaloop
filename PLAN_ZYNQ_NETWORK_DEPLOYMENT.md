@@ -331,7 +331,7 @@ Depends on all previous stages.
   facts, loader/runtime serial logs, deployment transcripts and result records.
   Keep redacted metadata/card diagnostics and packet captures for failures;
   never archive live credentials/private keys. Provide a single full validation command.
-- [ ] Run that command from fresh and cached builds with two distinct signed
+- [x] Run that command from fresh and cached builds with two distinct signed
   firmware identities. Exercise factory SD boot → update → health confirmation →
   server-free cold boot → failed candidate → automatic rollback → network recovery.
   Run the original full host suite and required native/browser/no_std, formatting,
@@ -504,3 +504,11 @@ revisions rather than treating moving documentation as a reproducible input.
   and coverage-enabled child phases. Forward `--native-coverage` explicitly;
   the actual coverage-configured records/ASan/redaction child passes. Restart the
   complete run so its report proves the CLI used throughout was instrumented.
+- Final cached deployment run passed all 16 phases, including the instrumented
+  CLI and the public-output audit (65 redacted captures, no quarantined files).
+  CLI entry-point coverage is 83.52%; transport/orchestration is 88.08%.
+  The original complete firmware suite passed all seven phases in 748.6 seconds.
+- Fresh CI also passed all deployment phases and the public-output audit. Its
+  following Codecov upload failed because Debian slim lacked `gpg`, required by
+  the action's signature verification. Add that package; keep verification and
+  the 80% patch threshold enabled. Every other applicable CI check passed.

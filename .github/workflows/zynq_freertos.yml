@@ -89,7 +89,7 @@ jobs:
       - name: Install loader, emulator and native probe build tools
         run: |
           apt-get update
-          apt-get install --yes --no-install-recommends ca-certificates git patch python3 python3-venv python3-dev curl xz-utils \
+          apt-get install --yes --no-install-recommends ca-certificates git patch python3 python3-venv python3-dev curl xz-utils gpg \
             build-essential pkg-config protobuf-compiler libasound2-dev libjack-jackd2-dev \
             libgl1-mesa-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libxcursor-dev libxi-dev libxkbcommon-dev libxrandr-dev libwayland-dev \
