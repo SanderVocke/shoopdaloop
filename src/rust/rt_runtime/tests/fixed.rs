@@ -523,3 +523,59 @@ fn command_ingress_budget_does_not_renew_at_ticks_and_cancellation_can_wait_for_
         .iter()
         .any(|r| r.ticket == cancellation && r.result == Ok(0)));
 }
+
+#[shoop_test]
+fn quiescent_shutdown_settles_unread_admitted_and_unadmitted_requests_exactly_once() {
+    let (mut control, mut queue) =
+        fixed::command_channel_with_budget::<u32, u32>(Quantum::default(), 4, 1).unwrap();
+    let done = control.submit(Frame(0), 10).unwrap();
+    let admitted = control.submit(Frame(96), 20).unwrap();
+    let ingress = control.submit(Frame(128), 30).unwrap();
+    let target = control.submit(Frame(256), 40).unwrap();
+    let cancel = control.cancel(target).unwrap();
+    queue.begin_callback(Frame(0)).unwrap();
+    queue.dispatch(Frame(0), Ok).unwrap();
+    queue.begin_callback(Frame(32)).unwrap();
+    assert_eq!(control.outstanding(), 5);
+    let (mut other, _) = fixed::command_channel::<u32, u32>(Quantum::default(), 1).unwrap();
+    assert_eq!(queue.shutdown(&mut other, Frame(32)), Err(Error::InvalidId));
+    assert_eq!(
+        queue.shutdown(&mut control, Frame(33)),
+        Err(Error::InvalidFrame)
+    );
+    assert_no_heap(|| queue.shutdown(&mut control, Frame(32))).unwrap();
+    assert_no_heap(|| queue.shutdown(&mut control, Frame(32))).unwrap();
+    assert_eq!(queue.pending(), 0);
+    assert_eq!(control.submit(Frame(32), 50), Err(Error::Disconnected));
+    assert_eq!(control.cancel(target), Err(Error::Disconnected));
+    assert_eq!(queue.begin_callback(Frame(32)), Err(Error::Disconnected));
+    assert_eq!(queue.dispatch(Frame(32), Ok), Err(Error::Disconnected));
+    let mut receipts = Vec::new();
+    while let Some(r) = control.try_receipt() {
+        receipts.push(r);
+    }
+    assert_eq!(receipts.len(), 5);
+    assert_eq!(control.outstanding(), 0);
+    for (ticket, value, effective) in [
+        (done, Some(10), Some(Frame(0))),
+        (admitted, Some(20), Some(Frame(96))),
+        (ingress, Some(30), None),
+        (target, Some(40), None),
+        (cancel, None, None),
+    ] {
+        let matches: Vec<_> = receipts.iter().filter(|r| r.ticket == ticket).collect();
+        assert_eq!(matches.len(), 1);
+        let r = matches[0];
+        assert_eq!(r.command, value);
+        assert_eq!(r.effective, effective);
+        assert_eq!(r.actual, if ticket == done { Frame(0) } else { Frame(32) });
+        assert_eq!(
+            r.result,
+            if ticket == done {
+                Ok(10)
+            } else {
+                Err(Error::Disconnected)
+            }
+        );
+    }
+}

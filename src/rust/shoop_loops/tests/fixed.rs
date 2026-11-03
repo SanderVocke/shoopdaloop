@@ -517,3 +517,103 @@ fn monitoring_previous_content_keeps_old_sources_until_the_new_take_is_published
     }
     assert_eq!(store.usage().free_pages, 256);
 }
+
+#[shoop_test]
+fn shutdown_settles_commands_and_reclaims_recording_even_after_a_partial_tick_fault() {
+    struct MaybeFail(Node, bool);
+    impl fixed::Processor<Bank> for MaybeFail {
+        fn validate_state(&self, id: NodeId, state: &Bank) -> Result<(), Error> {
+            self.0.validate_state(id, state)
+        }
+        fn ports(&self) -> rt_runtime::graph::PortCounts {
+            self.0.ports()
+        }
+        fn process(&mut self, block: &mut fixed::Block<'_>, state: &mut Bank) -> Result<(), Error> {
+            self.0.process(block, state)?;
+            if self.1 && matches!(self.0, Node::Capture(_)) {
+                Err(Error::Budget)
+            } else {
+                Ok(())
+            }
+        }
+    }
+    for q in [16, 32, 64, 128] {
+        for fail in [false, true] {
+            let c = config(q, 64, false);
+            let store = Bank::resource_store(c, 1).unwrap();
+            let p = Bank::prepare(c, store, vec![binding(0, false)], vec![]).unwrap();
+            let nodes = p
+                .nodes
+                .into_iter()
+                .map(|(id, n)| (id, MaybeFail(n, fail)))
+                .collect();
+            let mut runtime =
+                Runtime::prepare(c, nodes, p.bank, p.resources, &graph(1, false)).unwrap();
+            let mut control = p.control;
+            let record = control
+                .submit(
+                    Frame(0),
+                    Command::Record {
+                        target: id(0),
+                        monitor_previous: false,
+                    },
+                )
+                .unwrap();
+            let stop = control
+                .submit(Frame(1024), Command::Stop { target: id(0) })
+                .unwrap();
+            let input = vec![1.; q];
+            let mut left = vec![0.; q];
+            let mut right = vec![0.; q];
+            let result = assert_no_heap(|| {
+                runtime.process(
+                    AudioBlock {
+                        frame: Frame(0),
+                        frames: q,
+                        inputs: &[&input, &input],
+                        outputs: &mut [&mut left, &mut right],
+                    },
+                    MidiBlock {
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                )
+            });
+            assert_eq!(result, if fail { Err(Error::Budget) } else { Ok(()) });
+            let cancel = control.cancel(stop).unwrap();
+            let at = runtime.next_frame();
+            assert_eq!(at, Frame(if fail { 0 } else { q as u64 }));
+            let (mut bank, mut store) = runtime.into_parts();
+            assert_no_heap(|| bank.shutdown(&mut control, &mut store, at)).unwrap();
+            assert_no_heap(|| bank.shutdown(&mut control, &mut store, at)).unwrap();
+            assert_eq!(bank.status(id(0)).unwrap().mode, Mode::Stopped);
+            let mut receipts = Vec::new();
+            while let Some(r) = control.try_receipt() {
+                receipts.push(r);
+            }
+            assert_eq!(receipts.len(), 3);
+            for ticket in [record, stop, cancel] {
+                let r: Vec<_> = receipts.iter().filter(|r| r.ticket == ticket).collect();
+                assert_eq!(r.len(), 1);
+                assert_eq!(
+                    r[0].result,
+                    if ticket == record {
+                        Ok(Reply::Done)
+                    } else {
+                        Err(Error::Disconnected)
+                    }
+                );
+            }
+            assert_eq!(control.outstanding(), 0);
+            assert_eq!(
+                control.submit(at, Command::State { target: id(0) }),
+                Err(Error::Disconnected)
+            );
+            for _ in 0..64 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            assert_eq!(store.usage().free_pages, 64);
+        }
+    }
+}

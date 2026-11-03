@@ -54,6 +54,7 @@ pub struct CommandControl<C, R> {
     capacity: usize,
     outstanding: usize,
     recovery: bool,
+    closed: bool,
 }
 pub struct CommandQueue<C, R> {
     commands: Consumer<Command<C>>,
@@ -66,6 +67,8 @@ pub struct CommandQueue<C, R> {
     deferred_cancel: Option<Cancel>,
     last_admitted: Option<u64>,
     cancel_result: R,
+    scope: u32,
+    closed: bool,
 }
 
 pub fn command_channel<C: Copy + Default + Send, R: Copy + Default + Send>(
@@ -161,6 +164,7 @@ pub fn command_channel_with_budget<C: Copy + Default + Send, R: Copy + Default +
             capacity,
             outstanding: 0,
             recovery: false,
+            closed: false,
         },
         CommandQueue {
             commands: commands_rx,
@@ -173,6 +177,8 @@ pub fn command_channel_with_budget<C: Copy + Default + Send, R: Copy + Default +
             deferred_cancel: None,
             last_admitted: None,
             cancel_result: R::default(),
+            scope,
+            closed: false,
         },
     ))
 }
@@ -188,7 +194,7 @@ impl<C: Copy, R: Copy> CommandControl<C, R> {
         Ok(ticket)
     }
     pub fn submit(&mut self, requested: Frame, value: C) -> Result<Ticket, Error> {
-        if self.commands.is_abandoned() {
+        if self.closed || self.commands.is_abandoned() {
             return Err(Error::Disconnected);
         }
         if self.outstanding == self.capacity {
@@ -207,7 +213,7 @@ impl<C: Copy, R: Copy> CommandControl<C, R> {
     }
     /// One independent cancellation credit remains available with normal work full.
     pub fn cancel(&mut self, target: Ticket) -> Result<Ticket, Error> {
-        if self.cancels.is_abandoned() {
+        if self.closed || self.cancels.is_abandoned() {
             return Err(Error::Disconnected);
         }
         if target.scope != self.scope || target.recovery {
@@ -243,8 +249,65 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
     fn emit(&mut self, value: Receipt<C, R>) -> Result<(), Error> {
         self.results.push(value).map_err(|_| Error::Full)
     }
+    /// Close after callbacks stop, holding both endpoints to exclude submissions.
+    /// Existing receipts survive; every remaining request receives Disconnected.
+    pub fn shutdown(
+        &mut self,
+        control: &mut CommandControl<C, R>,
+        actual: Frame,
+    ) -> Result<(), Error> {
+        if control.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        if !self.quantum.aligned(actual) {
+            return Err(Error::InvalidFrame);
+        }
+        if self.closed {
+            return Ok(());
+        }
+        self.closed = true;
+        control.closed = true;
+        while let Some(p) = self.pending.pop() {
+            self.emit(Receipt {
+                ticket: p.command.ticket,
+                command: Some(p.command.value),
+                requested: p.command.requested,
+                effective: Some(p.effective),
+                actual,
+                result: Err(Error::Disconnected),
+            })?;
+        }
+        while let Ok(command) = self.commands.pop() {
+            self.emit(Receipt {
+                ticket: command.ticket,
+                command: Some(command.value),
+                requested: command.requested,
+                effective: None,
+                actual,
+                result: Err(Error::Disconnected),
+            })?;
+        }
+        let cancel = self
+            .deferred_cancel
+            .take()
+            .or_else(|| self.cancels.pop().ok());
+        if let Some(cancel) = cancel {
+            self.emit(Receipt {
+                ticket: cancel.ticket,
+                command: None,
+                requested: actual,
+                effective: None,
+                actual,
+                result: Err(Error::Disconnected),
+            })?;
+        }
+        Ok(())
+    }
     /// Ingress is snapshotted once per host callback, including callbacks without a tick.
     pub fn begin_callback(&mut self, next: Frame) -> Result<(), Error> {
+        if self.closed {
+            return Err(Error::Disconnected);
+        }
         if next != self.next || !self.quantum.aligned(next) {
             return Err(Error::InvalidFrame);
         }
@@ -327,6 +390,9 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
         frame: Frame,
         mut apply: impl FnMut(C) -> Result<R, Error>,
     ) -> Result<(), Error> {
+        if self.closed {
+            return Err(Error::Disconnected);
+        }
         if frame != self.next {
             return Err(Error::InvalidFrame);
         }

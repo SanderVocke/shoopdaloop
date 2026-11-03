@@ -391,6 +391,16 @@ impl Bank {
             .map(|e| e.status(self.quantum.frames()))
             .ok_or(Error::InvalidId)
     }
+    /// Quiescent teardown: settle transport before releasing media owners.
+    pub fn shutdown(
+        &mut self,
+        control: &mut CommandControl<Command, Reply>,
+        resources: &mut ResourceStore,
+        frame: Frame,
+    ) -> Result<(), Error> {
+        self.commands.shutdown(control, frame)?;
+        self.cleanup(resources, frame)
+    }
     /// Call after stopping callbacks; release internal media and capture resources.
     pub fn cleanup(&mut self, resources: &mut ResourceStore, frame: Frame) -> Result<(), Error> {
         for &slot in &self.active {

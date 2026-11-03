@@ -44,6 +44,13 @@ receipt and a receipt for the cancellation. A request already delivered or
 cancelled is refused; tickets from another queue cannot address this queue.
 The handler owns domain-specific precedence, grouping and atomic preflight.
 
+After callbacks have stopped, `CommandQueue::shutdown` borrows both endpoints,
+excluding concurrent submissions. It preserves unread receipts and emits one
+Disconnected receipt for every remaining normal or cancellation request, including
+unadmitted work beyond the ingress budget. New submissions and dispatch are then
+refused. Supply the final aligned core boundary, including the start of a failed
+partial tick. Shutdown is idempotent and does not replay work.
+
 Verification is in `tests/fixed.rs`: all supported quanta, an independently checked
 DAG with reversed logical identifiers, exact MIDI offsets, arbitrary single-frame
 and irregular partitions, heap guards, unread-result pressure, cancellation,

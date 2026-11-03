@@ -56,11 +56,17 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
     content, explicit exhaustion and failed-start preservation.
   - [ ] Sync/program compilation and domain precedence/request-family semantics.
   - [ ] Live media/graph publication and complete shutdown/export transport.
+    - [x] Quiescent command settlement and recording cleanup after normal stop
+      or a partial-tick fault, preserving unread results under saturation.
 - [ ] Integrate engine, protocol/host configuration, settings, persistence and
   recovery. Verify native and browser production routes and capability parity.
 - [ ] Re-run whole-callback performance experiments for regular, two-transition,
   simultaneous-burst, recording, MIDI and graph/media workloads; include plugin
   block/readiness adapter coverage and target-device evidence.
+  - [x] Initial checked audio playback sweep: 983,040 whole callbacks over
+    16/32-frame quanta, four graph sizes and three transition scenarios.
+  - [ ] Final-source repeat and comparison report; recording/MIDI/edit/plugin
+    and target-device performance remain outside the initial sweep.
 - [ ] Run final native/browser end-to-end and parity gates, remove superseded
   execution code, push, open a PR, obtain green CI and address automated review
   feedback through approval.
@@ -96,19 +102,22 @@ observations. It supports audio/MIDI playback, seeks, gain, stop, state queries,
 whole-tick recording, previous-content monitoring, coherent take publication,
 explicit capacity failure and cleanup. Content and active-capture revisions are
 separate. Repeated-take tests alternate banks 32 times and recover every page.
+Quiescent shutdown retains unread results and disconnects pending/unadmitted
+requests exactly once while holding both endpoints. It also reclaims a take
+after a fault during partial-tick staging without replaying that tick.
 Sync/program arbitration and production integration remain incomplete. The
 production application still selects the existing interval path.
 
 Validation completed:
 
-- Eight fixed-core and six fixed-loop integration cases pass natively, under
+- Nine fixed-core and seven fixed-loop integration cases pass natively, under
   Node 24.19.0 / wasm-bindgen 0.2.127, and headless Chromium 154.0.8037.57 with a
   matching-build ChromeDriver 154.0.8037.92. These are library/adapter browser
   tests, not AudioWorklet or physical-device acceptance.
 - Warning-denying native workspace build passed. The full native nextest run
-  passed 2576 cases, with four host-facility skips, using the documented features,
+  passed 2578 cases, with four host-facility skips, using the documented features,
   three test workers and loopback permission. Test-attribute, boundary, book,
-  formatting and diff checks passed.
+  tracing-inventory, formatting and diff checks passed.
 - Initial validation attempts are retained under `work/`: the first full test
   build exhausted disk space, resolved by removing only generated debug output
   and rebuilding without debug info/incremental compilation. An earlier loaded
@@ -120,5 +129,10 @@ Validation completed:
 The checked `fixed_quantum_benchmark` example and `benchmark_fixed_core.py` driver
 retain every callback, verify every sample and graph visit count outside timing,
 and report full-128-frame callback means, p99/p99.9, maxima and deadline misses.
-The implementation timing sweep and remote CI/review are next. Full application
+The initial sweep observed two missed deadlines; neither is discarded. The
+final-source timing repeat and comparison report are next. Full application
 parity/cutover and device/plugin acceptance remain unchecked above.
+
+Publishing is blocked: automatic approval review rejected pushing the local
+branch to `SanderVocke/shoopdaloop`, requiring explicit user authorization for
+source publication. Approval was requested; no push, PR or remote CI run occurred.

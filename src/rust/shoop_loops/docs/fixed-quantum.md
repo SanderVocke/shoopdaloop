@@ -50,10 +50,12 @@ copy budgets. Severe renderer/MIDI-output failures fault the runtime and use its
 reserved MIDI reset output; no callback can be replayed.
 
 After callbacks stop, recover `(Bank, ResourceStore)` with `Runtime::into_parts`
-and call `bank.cleanup(&mut store, frame)`. Cleanup releases internal capture
-resources and source leases. Original imported resource identities remain the
-caller's property. Rendering may not resume after cleanup. Pending command
-shutdown/projection semantics are part of the remaining application integration.
+and call `bank.shutdown(&mut control, &mut store, frame)`. Shutdown preserves
+unread terminal results, disconnects pending/unadmitted commands, cancels any
+partial capture interval, and releases internal capture resources and source
+leases. It also works after a terminal render fault. Original imported resource
+identities remain the caller's property. Rendering may not resume after shutdown.
+Application projection/export semantics remain part of the migration work.
 
 Run the checked three-node-per-loop playback workload with:
 
