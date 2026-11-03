@@ -910,6 +910,8 @@ impl PlanValidator {
                 if self.edge == descriptor.connections.len() {
                     self.phase = if catalog.planner.is_some() {
                         Phase::Bindings(0)
+                    } else if catalog.dependencies.is_empty() {
+                        Phase::Done
                     } else {
                         Phase::Dependencies(0)
                     };
@@ -959,7 +961,11 @@ impl PlanValidator {
                     }
                     self.phase = Phase::Required(index + 1);
                 } else {
-                    self.phase = Phase::Dependencies(0);
+                    self.phase = if catalog.dependencies.is_empty() {
+                        Phase::Done
+                    } else {
+                        Phase::Dependencies(0)
+                    };
                 }
             }
             Phase::Dependencies(index) => {
