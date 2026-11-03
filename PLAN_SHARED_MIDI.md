@@ -272,18 +272,28 @@ independent wrap/repeated-pass admission oracle before integrating it further.
 
 ### M4 — Independently editable takes and wrapping replacement
 
-- [ ] Implement raw event replacement/erase on forked takes, using M3's private
+- [x] Implement raw event replacement/erase on forked takes, using M3's private
   transaction and complete publication. Retain original and intermediate exports.
-- [ ] Handle wrap crossings as one logical transaction. When logical zero is
+- [x] Handle wrap crossings as one logical transaction. When logical zero is
   overwritten, capture input state at that point, including earlier input from
   the same host callback. Keep duration and untouched original events intact.
-- [ ] Bound concurrent writers, transaction storage and fragmentation; exercise
+- [x] Bound concurrent writers, transaction storage and fragmentation; exercise
   repeated passes, empty edits, sparse/dense replacement and all admission failures.
 
 Verification: port master-derived edit cases and compare against an independent
 splice-plus-state oracle. Inserting a controller must affect later state; removing
 a note-off must not manufacture a compensating event at the edit boundary.
 Failure preserves committed root, initial state, index and revision. Commit M4.
+
+M4 evidence: 128 seeded wrapping replacement passes match an independent raw
+splice/state oracle after every commit and at every seek position. The fixture
+retains original and intermediate exports, covers erasure, full passes, zero work,
+pedals/controller resets and initial-state refresh using pre-zero callback input.
+Separate guarded admission cases saturate packet, byte, event, chunk, view and
+transaction limits; refusals preserve the entire committed revision and pool use.
+Fragmentation is bounded by the configured chunk ceiling; affected suffixes pack
+eight descriptors per checkpoint and a partial preceding chunk is rebuilt when
+needed to avoid accumulating append-only fragments.
 
 ### M5 — Ordinary resources, loaded MIDI and lifecycle integration
 

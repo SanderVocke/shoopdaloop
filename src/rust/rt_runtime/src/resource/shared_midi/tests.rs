@@ -554,3 +554,270 @@ fn cancellation_and_stale_ready_commit_preserve_the_complete_old_revision() {
         cleanup(&mut store, &mut midi);
     });
 }
+
+fn check_owned(
+    store: &mut ResourceStore,
+    midi: &mut MidiStore,
+    take: TakeId,
+    events: &[(u64, [u8; 3])],
+    initial: &MidiState,
+) {
+    let mut borrowed = [(0, &[][..]); 128];
+    for (out, (frame, packet)) in borrowed.iter_mut().zip(events) {
+        *out = (*frame, &packet[..]);
+    }
+    check(store, midi, take, 32, &borrowed[..events.len()], initial);
+}
+
+#[shoop_test]
+fn repeated_wrapping_edits_match_an_independent_raw_splice_oracle() {
+    let (mut store, mut midi, mut input) = setup(16, 128);
+    let mut oracle: Vec<(u64, [u8; 3])> = Vec::with_capacity(128);
+    for event in 0..16 {
+        let packet = if event % 2 == 0 {
+            [0x90, 60 + event as u8 / 2, 80]
+        } else {
+            [0x80, 60 + event as u8 / 2, 0]
+        };
+        oracle.push((event * 2, packet));
+        input.push(event as u32 * 2, 32, &packet).unwrap();
+    }
+    let original = oracle.clone();
+    let mut intermediate = Vec::with_capacity(128);
+    let mut initial = MidiState::default();
+    let mut observed = MidiState::default();
+    let mut seed = 0x12345678u32;
+    assert_no_heap(|| {
+        midi.append(&mut store.render_io(), Frame(0), 32, &input)
+            .unwrap();
+        let take = midi
+            .grab(&mut store.render_io(), Frame(0)..Frame(32))
+            .unwrap();
+        let sibling = midi.fork(take).unwrap();
+        let export = midi.export(take).unwrap();
+        let mut middle = None;
+        let mut middle_initial = MidiState::default();
+        let mut revision = Revision(0);
+        for pass in 0..128 {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            let position = u64::from(seed % 32);
+            let frames = if pass % 17 == 0 {
+                0
+            } else {
+                1 + seed as usize / 32 % 32
+            };
+            input.clear();
+            for offset in 0..frames {
+                if (offset + pass) % 3 == 0 {
+                    let packet = match (offset + pass) % 7 {
+                        0 => [0xb0, 64, 127],
+                        1 => [0xb0, 64, 0],
+                        2 => [0x90, 60, 91],
+                        3 => [0x80, 60, 0],
+                        4 => [0xb0, 121, 0],
+                        _ => [0xb0, 1, pass as u8],
+                    };
+                    input.push(offset as u32, frames, &packet).unwrap();
+                }
+            }
+            let end = position + frames as u64;
+            if frames > 0 {
+                oracle.retain(|(at, _)| {
+                    if end > 32 {
+                        !(*at >= position || *at < end - 32)
+                    } else {
+                        !(*at >= position && *at < end)
+                    }
+                });
+                if position == 0 || end > 32 {
+                    initial = observed;
+                    let zero = if position == 0 { 0 } else { 32 - position };
+                    for event in 0..input.len() {
+                        let (offset, packet) = input.get(event).unwrap();
+                        if u64::from(offset) < zero {
+                            initial.apply_packet(packet, 48).unwrap();
+                        }
+                    }
+                }
+                for event in 0..input.len() {
+                    let (offset, packet) = input.get(event).unwrap();
+                    let at = (position + u64::from(offset)) % 32;
+                    let index = oracle
+                        .iter()
+                        .position(|(frame, _)| *frame > at)
+                        .unwrap_or(oracle.len());
+                    oracle.insert(index, (at, packet.try_into().unwrap()));
+                }
+            }
+            store.begin_callback();
+            store.charge_external(16, 1).unwrap();
+            let edit = midi
+                .prepare_replace(
+                    &mut store.render_io(),
+                    take,
+                    revision,
+                    position,
+                    frames,
+                    &input,
+                    &observed,
+                )
+                .unwrap();
+            for event in 0..input.len() {
+                observed
+                    .apply_packet(input.get(event).unwrap().1, 48)
+                    .unwrap();
+            }
+            while midi.progress_edit(&mut store.render_io(), edit, 3) == Ok(EditStatus::Building) {}
+            if frames > 0 {
+                revision = revision.checked_next().unwrap();
+            }
+            assert_eq!(midi.commit_edit(&mut store.render_io(), edit), Ok(revision));
+            check_owned(&mut store, &mut midi, take, &oracle, &initial);
+            check_owned(
+                &mut store,
+                &mut midi,
+                sibling,
+                &original,
+                &MidiState::default(),
+            );
+            if pass == 32 {
+                middle = Some(midi.export(take).unwrap());
+                intermediate.extend_from_slice(&oracle);
+                middle_initial = initial;
+            }
+            if let Some(export) = middle {
+                check_owned(
+                    &mut store,
+                    &mut midi,
+                    TakeId(export.0),
+                    &intermediate,
+                    &middle_initial,
+                );
+            }
+            drain(&mut store, &mut midi);
+        }
+        midi.release_take(take).unwrap();
+        midi.release_take(sibling).unwrap();
+        midi.release_export(export).unwrap();
+        midi.release_export(middle.unwrap()).unwrap();
+        cleanup(&mut store, &mut midi);
+    });
+}
+
+#[shoop_test]
+fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
+    let (mut store, mut midi, mut input) = setup(1, 64);
+    let mut large = MidiBuffer::new(64, 1024).unwrap();
+    let mut packet = [1; 49];
+    packet[0] = 0xf0;
+    packet[48] = 0xf7;
+    assert_no_heap(|| {
+        midi.append(&mut store.render_io(), Frame(0), 32, &input)
+            .unwrap();
+        let take = midi
+            .grab(&mut store.render_io(), Frame(0)..Frame(32))
+            .unwrap();
+        large.push(0, 32, &packet).unwrap();
+        let before = midi.usage();
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                0,
+                32,
+                &large,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        large.clear();
+        for _ in 0..33 {
+            large.push(0, 32, &[0xf8]).unwrap();
+        }
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                0,
+                32,
+                &large,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        large.clear();
+        for _ in 0..9 {
+            large.push(0, 32, &[0x90, 60, 80]).unwrap();
+        }
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                0,
+                32,
+                &large,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        large.clear();
+        packet[47] = 0xf7;
+        for _ in 0..6 {
+            large.push(0, 32, &packet[..48]).unwrap();
+        }
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                0,
+                32,
+                &large,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(1),
+                0,
+                1,
+                &input,
+                &MidiState::default()
+            ),
+            Err(Error::StaleRevision)
+        );
+        assert_eq!(midi.usage(), before);
+        check_owned(&mut store, &mut midi, take, &[], &MidiState::default());
+        let mut owners = [None; 7];
+        for owner in &mut owners {
+            *owner = Some(midi.fork(take).unwrap());
+        }
+        assert_eq!(midi.fork(take), Err(Error::Capacity));
+        assert_eq!(
+            midi.prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                0,
+                1,
+                &input,
+                &MidiState::default()
+            ),
+            Err(Error::Capacity)
+        );
+        for owner in owners.into_iter().flatten() {
+            midi.release_take(owner).unwrap();
+        }
+        midi.release_take(take).unwrap();
+        input.clear();
+        cleanup(&mut store, &mut midi);
+    });
+}
