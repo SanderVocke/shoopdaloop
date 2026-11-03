@@ -155,7 +155,6 @@ pub(super) fn scan(manual: Vec<String>, previous: Vec<Host>) -> Scan {
                     }
                     host.report =
                         Err("OS inspection unavailable; process exit is unconfirmed".into());
-                    host.checked = Instant::now();
                     scan.hosts.push(host);
                 }
             }
@@ -168,7 +167,6 @@ pub(super) fn scan(manual: Vec<String>, previous: Vec<Host>) -> Scan {
             for mut host in previous {
                 if matches!(host.source, Source::Process(_)) {
                     host.report = Err(error.clone());
-                    host.checked = Instant::now();
                     scan.hosts.push(host);
                 }
             }

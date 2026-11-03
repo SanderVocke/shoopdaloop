@@ -48,7 +48,6 @@ struct Host {
     remote: bool,
     log_file: Option<PathBuf>,
     report: Result<HostReport, String>,
-    checked: Instant,
 }
 impl Host {
     fn from_target(source: Source, target: Target) -> Self {
@@ -63,7 +62,6 @@ impl Host {
             log_file: target.log_file.clone(),
             target: Some(target),
             report,
-            checked: Instant::now(),
         }
     }
     fn query(address: String) -> Self {
@@ -86,7 +84,6 @@ impl Host {
             transport: AppTransport::Socket,
             log_file: None,
             report: Err(error),
-            checked: Instant::now(),
         }
     }
     fn current_target(&self) -> Result<Target> {
@@ -571,31 +568,6 @@ impl Manager {
                         ui.colored_label(AMBER, "OS inspection errors")
                             .on_hover_text(self.inspection_errors.join("\n"));
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add_enabled(!self.scanning, egui::Button::new("Refresh").frame(false))
-                            .on_hover_text("Status refreshes automatically after each scan")
-                            .clicked()
-                        {
-                            self.scan();
-                        }
-                        if self.scanning {
-                            ui.spinner();
-                        } else if let Some(host) = self
-                            .hosts
-                            .iter()
-                            .find(|host| Some(&host.source) == self.selected.as_ref())
-                        {
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "Updated {}s ago",
-                                    host.checked.elapsed().as_secs()
-                                ))
-                                .size(12.0)
-                                .color(MUTED),
-                            );
-                        }
-                    });
                 });
             });
         egui::Panel::left("host_sidebar")
@@ -1564,7 +1536,6 @@ mod tests {
             remote: false,
             log_file: None,
             target: Some(target),
-            checked: Instant::now(),
             report: Ok(HostReport {
                 ready: true,
                 busy: false,

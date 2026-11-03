@@ -233,7 +233,7 @@ connection or optional logging when needed. The form uses OS-assigned local port
 no profile, key or configuration path is required. Driver and capacity changes
 require a new host/session.
 
-Opening or refreshing the manager enumerates local host processes and their actual
+The manager automatically enumerates local host processes and their actual
 listening sockets. Scans run in the background with bounded concurrency. A fresh
 manager rediscovers hosts started through the GUI or CLI; closing
 the manager leaves their processes and sessions running. Exited hosts disappear
