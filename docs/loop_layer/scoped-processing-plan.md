@@ -1,7 +1,8 @@
 # Scoped runtime execution and shared loop callback plans
 
-Status: Implementation and local validation complete. Final CI/review closure on
-[PR #929](https://github.com/SanderVocke/shoopdaloop/pull/929) is underway. See the
+Status: Complete. All implementation, acceptance, local validation and delivery
+checks passed on [PR #929](https://github.com/SanderVocke/shoopdaloop/pull/929).
+The final record update changes documentation/evidence only. See the
 [API and reproduction guide](scoped-processing.md) and
 [execution contract](scoped-processing-contract.md).
 
@@ -290,13 +291,13 @@ Depends on Stages 0-4.
 - [x] Document the resulting APIs, limits, event/activation matrix and migration
       points for the DSP PR stack and later bus/Carla integration. Preserve prior
       benchmark/evidence archives and completed parity records.
-- [ ] Push this branch and open a separate PR against `feat/backend-replacement`.
+- [x] Push this branch and open a separate PR against `feat/backend-replacement`.
       Inspect failures before targeted corrections and monitor CI to green.
-- [ ] Inspect automated review, address justified findings and repeat checks until
+- [x] Inspect automated review, address justified findings and repeat checks until
       successful. Resolve completed discussions and obtain approval from any
       participating human reviewers; record actual review status and final
       evidence here without inferring human approval from automated checks.
-- [ ] Mark this plan complete only after its acceptance criteria and delivery
+- [x] Mark this plan complete only after its acceptance criteria and delivery
       gates pass. Production FX integration remains a subsequent milestone.
 
 ## Delivery evidence and status
@@ -316,9 +317,19 @@ edges; `38d67376` restores the unchanged allowance/wire diagnostics. Initial CI
 Linux job `126109736387` showed that same failure at source `f46d6412`; both host
 replays pass with the correction. Final CI must run on the updated branch.
 
-Automated review and final CI conclusions will be recorded here after completion.
-No human review or inline review discussion has been received so far; this does
-not imply human approval. Production FX capabilities remain disabled.
+Delivery validation completed at `a63327de437b17b4c3b9bc0c4d65b01246b82d89`:
+[Build and Test run 41695080358](https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358)
+passed every applicable job, including native debug/release on Linux, Windows and
+macOS, both web profiles, bare-metal/service builds, native JACK and coverage.
+The conditional nightly job was skipped as designed. Docs, all four CodeQL
+analyses, Codecov project and Codecov patch checks passed. Coverage thresholds
+were retained.
+
+Automated review was checked again at closure: zero inline threads and zero
+submitted reviews or requested human reviewers. No participating human review
+requires approval; no human approval is claimed. The final archive includes the
+complete native run at the recorded clean source revision. Production FX
+capabilities remain disabled, and Carla/bus FX integration is the next milestone.
 
 ## Execution contract
 

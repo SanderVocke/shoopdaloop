@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "validated_revision": "a63327de437b17b4c3b9bc0c4d65b01246b82d89",
+  "source_revision": "ea769ccc51814da43ca977d1d2060230b85a7edb",
+  "build_run": 41695080358,
+  "codeql_run": 41695079965,
+  "checks": [
+    {
+      "name": "Native JACK audio and MIDI acceptance",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021406"
+    },
+    {
+      "name": "Analyze (rust)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695079965/job/126123352079"
+    },
+    {
+      "name": "docs",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080077/job/126123352322"
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695079965/job/126123352541"
+    },
+    {
+      "name": "Analyze (python)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695079965/job/126123352844"
+    },
+    {
+      "name": "Analyze (c-cpp)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695079965/job/126123352865"
+    },
+    {
+      "name": "Bare-metal runtime and session service",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124022003"
+    },
+    {
+      "name": "Rust coverage (Linux)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021726"
+    },
+    {
+      "name": "Nightly without CPAL (${{ matrix.flavor }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124023298"
+    },
+    {
+      "name": "linux x86_64 debug",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021879"
+    },
+    {
+      "name": "linux x86_64 release",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124022293"
+    },
+    {
+      "name": "windows x86_64 debug",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021687"
+    },
+    {
+      "name": "windows x86_64 release",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021736"
+    },
+    {
+      "name": "macos arm64 debug",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021685"
+    },
+    {
+      "name": "macos arm64 release",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021933"
+    },
+    {
+      "name": "web wasm32 debug",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124022084"
+    },
+    {
+      "name": "web wasm32 release",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/41695080358/job/126124021981"
+    },
+    {
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/SanderVocke/shoopdaloop/runs/126123701823"
+    },
+    {
+      "name": "codecov/patch",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://app.codecov.io/gh/SanderVocke/shoopdaloop/pull/929"
+    },
+    {
+      "name": "codecov/project",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "url": "https://app.codecov.io/gh/SanderVocke/shoopdaloop/pull/929"
+    }
+  ],
+  "review_threads": 0,
+  "submitted_reviews": 0,
+  "requested_human_reviewers": 0,
+  "human_approval_claimed": false
+}

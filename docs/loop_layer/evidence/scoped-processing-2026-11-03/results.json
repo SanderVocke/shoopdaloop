@@ -61,9 +61,14 @@
     "trunk build (src/rust/shoopdaloop)",
     "NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs (src/rust/shoopdaloop)"
   ],
-  "archive_sha256": "e6beb8a1202842751cc94521b33608a6f53b67736180fd3e4cb9948200ece7fc",
+  "archive_sha256": "3023c5f6cbc243d9997b72185c0aa96b01ebce845f7f99c71b342b2269597598",
   "notes": [
-    "The complete workspace and Wasm runs exercise the final production tree; the source commit additionally tightens MIDI-cut assertions and the example. The detached clean debug/release runs verify that complete source revision.",
+    "The complete native workspace run, detached clean example and focused debug/release runs verify source ea769ccc. The complete Wasm run verifies the same final production tree; CI additionally executes the final test assertions.",
     "No earlier benchmark archive or parity completion record was modified."
-  ]
+  ],
+  "ci_validation": {
+    "revision": "a63327de437b17b4c3b9bc0c4d65b01246b82d89",
+    "all_applicable_checks_passed": true,
+    "details": "ci.json"
+  }
 }

@@ -13,4 +13,6 @@ Browser: hosted new-engine core workflow and buses passed; reported xruns 0
 Worklet/codec artifact contract and trace transport tests: passed
 Formatting, Rust test policy, warning build, tracing and dependency boundaries: passed
 
-CI and review conclusions are recorded in the implementation plan after delivery.
+CI: all applicable platform, docs, CodeQL and Codecov checks passed at a63327de.
+Review closure: zero inline threads, submitted reviews or requested human reviewers.
+No human approval is claimed; see ci.json and the completed implementation plan.
