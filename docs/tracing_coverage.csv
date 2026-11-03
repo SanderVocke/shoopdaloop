@@ -355,3 +355,7 @@ src/rust/shoop_app_connection/src/heartbeat.rs,app_session,excluded,Injected-clo
 src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Generic connection progression calls traced service handling and tick boundaries; native composition owns transport diagnostics.
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
+src/rust/shoop_host/src/deployment.rs,native_host,instrumented_direct,Bounded updater transport and artifact entry points instrumented with skip_all; no payload or credential fields.
+src/rust/shoop_host/src/bin/shoop-deploy.rs,native_host,instrumented_indirect,CLI dispatch enters instrumented deployment operations.
+src/rust/shoop_deployment_protocol/src/lib.rs,generic_wire_protocol,excluded,Bounded no_std deployment schema and codec; callers instrument authenticated operations.
+src/rust/shoop_app/src/service/deployment.rs,application_service,instrumented_direct,Deployment capability and operation admission instrumented with skip_all.

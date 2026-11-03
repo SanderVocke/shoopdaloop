@@ -8,6 +8,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 mod commands;
+mod deployment;
 mod management;
 mod media;
 #[path = "persistence/mod.rs"]
@@ -146,6 +147,8 @@ pub struct Service {
     init_through: u64,
     init_error: Option<String>,
     shutdown: Option<OperationId>,
+    deployment: Option<shoop_deployment_protocol::Info>,
+    updater_operation: Option<OperationId>,
     shutdown_ready: bool,
     closed: bool,
     xruns: u32,
@@ -210,6 +213,8 @@ impl Service {
             init_through: 0,
             init_error: None,
             shutdown: None,
+            deployment: None,
+            updater_operation: None,
             shutdown_ready: false,
             closed: false,
             xruns: 0,

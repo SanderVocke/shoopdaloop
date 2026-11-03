@@ -76,6 +76,19 @@ int shoop_deployment_info(struct shoop_deployment_info *output) {
 #endif
 }
 uint64_t shoop_nonce(void) { static uint64_t next; configASSERT(next != UINT64_MAX); return ++next; }
+int shoop_deployment_request(const uint8_t *client, uint64_t sequence) {
+#ifdef SHOOP_DEPLOYMENT
+    return shoop_deploy_request(client, sequence);
+#else
+    (void)client; (void)sequence; return 0;
+#endif
+}
+void shoop_deployment_reset(void) {
+#ifdef SHOOP_DEPLOYMENT
+    shoop_deploy_reset();
+#endif
+    shoop_halt();
+}
 uint64_t shoop_boot_nonce(void) {
     const volatile uint32_t *words = (const volatile uint32_t *)0x8000;
     return (uint64_t)words[0] | (uint64_t)words[1] << 32;

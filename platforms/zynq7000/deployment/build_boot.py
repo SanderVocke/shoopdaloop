@@ -13,6 +13,7 @@ ROOT = DEPLOYMENT.parents[2]
 PINS = json.loads((DEPLOYMENT.parent / "pins.json").read_text())
 SOURCE = ROOT / "work/zynq/u-boot"
 BUILD = ROOT / "work/zynq/u-boot-build"
+PATCH = DEPLOYMENT.parent / "patches/uboot-network-deployment.patch"
 
 
 def run(arguments, **kwargs):
@@ -35,8 +36,12 @@ def main():
     if revision != PINS["u_boot"]:
         raise SystemExit("U-Boot source differs from the pinned revision")
     changes = subprocess.check_output(["git", "-C", SOURCE, "diff", "--name-only"], text=True).splitlines()
-    if set(changes) - {"cmd/Makefile"}:
+    if set(changes) - {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}:
         raise SystemExit("Unrecorded U-Boot source changes")
+    applied = subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", PATCH], capture_output=True)
+    if applied.returncode:
+        run(["git", "-C", SOURCE, "apply", "--check", PATCH])
+        run(["git", "-C", SOURCE, "apply", PATCH])
     copies = {"uboot.c": "cmd/shoop.c", "boot_state.c": "cmd/shoop_boot_state.c",
               "shoop_boot_state.h": "include/shoop_boot_state.h", "shoop_layout.h": "include/shoop_layout.h"}
     for source, target in copies.items():
@@ -65,6 +70,7 @@ def main():
     run([*make, "olddefconfig"], env=environment)
     run([*make, "-j" + os.environ.get("CARGO_BUILD_JOBS", "5")], env=environment)
     manifest = {"source": revision, "profile": "zynq-zc702", "first_stage": "U-Boot Zynq SPL",
+                "patch_sha256": hashlib.sha256(PATCH.read_bytes()).hexdigest(),
                 "reference_ps_init": "board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c",
                 "source_sha256": {source: hashlib.sha256((DEPLOYMENT / source).read_bytes()).hexdigest() for source in copies},
                 "config_sha256": hashlib.sha256((BUILD / ".config").read_bytes()).hexdigest(),

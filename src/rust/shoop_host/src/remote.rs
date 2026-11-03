@@ -60,6 +60,10 @@ pub struct RemoteProfile {
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
         ensure!(self.version == VERSION, "incompatible session protocol");
+        self.validate_deployment()
+    }
+    /// Deployment has an independent wire version and can replace older session firmware.
+    pub fn validate_deployment(&self) -> Result<()> {
         ensure!(
             self.name.len() <= 128 && !self.credential.as_os_str().is_empty(),
             "invalid remote profile identity or credential path"
@@ -69,13 +73,23 @@ impl RemoteProfile {
         self.network.validate()
     }
     pub fn read(path: &Path) -> Result<Self> {
+        Self::read_profile(path, true)
+    }
+    pub fn read_deployment(path: &Path) -> Result<Self> {
+        Self::read_profile(path, false)
+    }
+    fn read_profile(path: &Path, session: bool) -> Result<Self> {
         let mut bytes = Vec::new();
         std::fs::File::open(path)?
             .take(65537)
             .read_to_end(&mut bytes)?;
         ensure!(bytes.len() <= 65536, "remote profile exceeds 64 KiB");
         let mut profile: Self = serde_json::from_slice(&bytes)?;
-        profile.validate()?;
+        if session {
+            profile.validate()?;
+        } else {
+            profile.validate_deployment()?;
+        }
         if profile.credential.is_relative() {
             profile.credential = path
                 .parent()
@@ -166,6 +180,9 @@ impl ConnectionTarget for Target {
 impl Target {
     pub fn token(&self) -> Result<[u8; 32]> {
         ensure!(self.version == VERSION, "incompatible session protocol");
+        self.deployment_token()
+    }
+    pub(crate) fn deployment_token(&self) -> Result<[u8; 32]> {
         if let Some(network) = self.network {
             network.validate()?;
             ensure!(

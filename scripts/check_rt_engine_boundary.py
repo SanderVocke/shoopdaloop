@@ -18,6 +18,7 @@ RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
+    "shoop_deployment_protocol",
     "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_host_freertos", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
@@ -64,7 +65,7 @@ def violations(tree: str, package: str | None = None) -> list[str]:
                      "web-sys", "js-sys", "iceoryx2"}
         return sorted(name for name in names if name in forbidden or name.startswith(
             ("shoop_rt_", "shoop_transport_")))
-    if package in {"shoop_app_protocol", "shoop_app_client"}:
+    if package in {"shoop_deployment_protocol", "shoop_app_protocol", "shoop_app_client"}:
         forbidden = {"shoop_host", "shoop_app", "shoop_backend", "shoop_egui", "shoopdaloop",
                      "shoop_engine", "shoop_scripting", "shoop_session", "rt_runtime",
                      "cpal", "midir", "web-sys", "js-sys", "iceoryx2"}

@@ -31,6 +31,17 @@ static int write_checked(const struct shoop_io *io, uint32_t lba, const void *re
     return io->write(io->context, lba, record) || io->read(io->context, lba, check) ||
         memcmp(record, check, 512) ? SHOOP_IO : SHOOP_OK;
 }
+static int config_valid(const struct shoop_config *config) {
+    uint8_t credential = 0, mac = 0;
+    for (unsigned i = 0; i < 32; ++i) credential |= config->credential[i];
+    for (unsigned i = 0; i < 6; ++i) mac |= config->mac[i];
+    const uint8_t *mask = (const uint8_t *)&config->netmask;
+    uint32_t inverse = ~((uint32_t)mask[0] << 24 | (uint32_t)mask[1] << 16 |
+                        (uint32_t)mask[2] << 8 | mask[3]);
+    return shoop_record_valid(config, 1) && credential && mac && !(config->mac[0] & 1) &&
+        config->ip && config->netmask && !(inverse & (inverse + 1)) &&
+        !memcmp(config->profile, SHOOP_PROFILE, sizeof(SHOOP_PROFILE));
+}
 int shoop_config_load(const struct shoop_io *io, struct shoop_config *out) {
     struct shoop_config records[2];
     const uint32_t sectors[] = { SHOOP_CONFIG_0_LBA, SHOOP_CONFIG_1_LBA };
@@ -42,10 +53,7 @@ int shoop_config_load(const struct shoop_io *io, struct shoop_config *out) {
     }
     if (selected < 0) return SHOOP_INVALID;
     *out = records[selected];
-    uint8_t any = 0;
-    for (unsigned i = 0; i < 32; ++i) any |= out->credential[i];
-    if (!any || !out->ip || !out->netmask || (out->mac[0] & 1) ||
-        memcmp(out->profile, SHOOP_PROFILE, sizeof(SHOOP_PROFILE))) return SHOOP_INVALID;
+    if (!config_valid(out)) return SHOOP_INVALID;
     return SHOOP_OK;
 }
 static int state_valid(const struct shoop_state *state) {
@@ -149,9 +157,16 @@ int shoop_confirm(const struct shoop_io *io, uint32_t slot, const uint8_t *hash)
     return shoop_state_store(io, &state);
 }
 int shoop_handoff_valid(const struct shoop_handoff *h) {
+    unsigned length = 0;
+    while (length < sizeof h->build && h->build[length]) {
+        char c = h->build[length++];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-')) return 0;
+    }
     return h->nonce && h->magic == SHOOP_HANDOFF_MAGIC && h->version == SHOOP_VERSION &&
         (h->slot < 2 || h->slot == SHOOP_NO_SLOT) && h->trial <= 1 &&
-        h->crc == shoop_crc32(h, 508) && shoop_record_valid(&h->config, 1);
+        (h->slot != SHOOP_NO_SLOT || !h->trial) && length && length <= 40 &&
+        h->crc == shoop_crc32(h, 508) && config_valid(&h->config);
 }
 uint32_t shoop_slot_lba(uint32_t slot) {
     return slot == 0 ? SHOOP_SLOT_A_LBA : slot == 1 ? SHOOP_SLOT_B_LBA : 0;

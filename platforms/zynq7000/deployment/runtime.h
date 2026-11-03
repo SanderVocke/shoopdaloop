@@ -8,8 +8,9 @@ struct shoop_deployment_info {
     char build[64];
     uint8_t bundle_hash[32], operation_client[16];
     uint64_t operation_sequence;
+    char profile[32];
 };
-_Static_assert(sizeof(struct shoop_deployment_info) == 144, "deployment info ABI");
+_Static_assert(sizeof(struct shoop_deployment_info) == 176, "deployment info ABI");
 #ifdef SHOOP_DEPLOYMENT
 #include "shoop_boot_state.h"
 int shoop_deploy_init(void);

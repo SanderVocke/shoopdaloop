@@ -260,10 +260,10 @@ nonce or slot selection from the host launcher.
 
 Depends on Stage 2.
 
-- [ ] Implement bounded trial selection, durable attempt accounting, independent
+- [x] Implement bounded trial selection, durable attempt accounting, independent
   nonce progression, application health confirmation and confirmed-slot fallback.
   Share the authoritative state transitions across loader/runtime tooling.
-- [ ] Add supported watchdog/reset integration and updater-entry persistence.
+- [x] Add supported watchdog/reset integration and updater-entry persistence.
   Test pre-ready crashes and post-start task stalls, success confirmation and
   cold boot of the last confirmed image without workstation involvement.
 - [ ] Test metadata codecs, torn-record selection, single-copy damage and boundary
@@ -277,10 +277,10 @@ rollback retains fresh boot identity, and watchdog recovery uses a guest reset.
 
 Depends on Stage 3.
 
-- [ ] Add capability-aware authenticated updater entry, lost-reply reconciliation
+- [x] Add capability-aware authenticated updater entry, lost-reply reconciliation
   and explicit status reporting. Prove ownership refusal, cleanup failure refusal
   and unchanged ordinary shutdown across native and FreeRTOS hosts.
-- [ ] Configure Fastboot UDP with restricted staging/commit operations and add
+- [x] Configure Fastboot UDP with restricted staging/commit operations and add
   workstation deployment/status commands. Preserve the confirmed slot, boot files
   and device configuration; check readback and signatures before marking pending.
 - [ ] Update A → B and B → A using distinguishable firmware identities. Have the
@@ -418,3 +418,24 @@ revisions rather than treating moving documentation as a reproducible input.
   and hard-float generic firmware builds pass. U-Boot legacy networking requires
   explicitly synchronizing live IP state after programmatic environment changes;
   the test refuses an unintended SD fallback when network RAM boot is required.
+
+- Network deployment milestone: `shoop-deploy` authenticates on the existing
+  management carrier, binds updater entry to the boot nonce and operation ID,
+  waits for render/MIDI cleanup, and reconciles Fastboot state using its durable
+  operation cookie. A separate bounded deployment envelope keeps session protocol
+  version 11 unchanged and permits updates across future session versions.
+- Real one-command A → B → A completed with durable confirmation at nonces
+  14002 and 14003; a fresh QEMU process booted A from the same card without
+  an update server. Evidence: `work/zynq/deployment-rpc-roundtrip-2.log`.
+- Actual guest watchdog resets recovered from pre-ready failure (two trials) and
+  render/control/broker stalls (three boots after confirmation), always returning
+  to A with fresh nonces. Evidence: `work/zynq/deployment-watchdog-candidates.log`.
+- Pinned U-Boot required three narrow networking fixes: allow server-side ARP
+  broadcasts, cancel abandoned Fastboot downloads on a fresh INIT, and preserve
+  duplicate detection across 16-bit sequence wrap. The provisioned MAC must
+  explicitly replace U-Boot's generated address; its convenience setter refuses
+  to replace an existing address. All changes are recorded in source/provenance.
+- C/Python fixed-record golden vectors and every single-bit corruption position
+  pass. Authenticated management tests cover busy/stale/idempotent requests,
+  cleanup failure, independent deployment versioning and native unsupported status.
+  Storage fault injection and permanent qualification/CI remain in progress.

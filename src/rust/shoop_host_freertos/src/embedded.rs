@@ -34,7 +34,75 @@ extern "C" {
     fn shoop_boot_nonce() -> u64;
     fn shoop_control_progress();
     fn shoop_deployment_ready() -> i32;
+    fn shoop_deployment_info(info: *mut DeploymentInfo) -> i32;
+    fn shoop_deployment_request(client: *const u8, sequence: u64) -> i32;
+    fn shoop_deployment_reset();
     fn shoop_memory_report();
+}
+
+#[repr(C)]
+struct DeploymentInfo {
+    enabled: u32,
+    slot: u32,
+    confirmed: u32,
+    trial: u32,
+    nonce: u64,
+    build: [u8; 64],
+    hash: [u8; 32],
+    operation_client: [u8; 16],
+    operation_sequence: u64,
+    profile: [u8; 32],
+}
+const _: () = assert!(core::mem::size_of::<DeploymentInfo>() == 176);
+
+fn deployment_info() -> Option<shoop_deployment_protocol::Info> {
+    let mut info = DeploymentInfo {
+        enabled: 0,
+        slot: 0,
+        confirmed: 0,
+        trial: 0,
+        nonce: 0,
+        build: [0; 64],
+        hash: [0; 32],
+        operation_client: [0; 16],
+        operation_sequence: 0,
+        profile: [0; 32],
+    };
+    if unsafe { shoop_deployment_info(&mut info) } == 0 {
+        return None;
+    }
+    fn text(bytes: &[u8]) -> String {
+        let end = bytes
+            .iter()
+            .position(|b| *b == 0)
+            .expect("terminated platform identity");
+        String::from_utf8(bytes[..end].to_vec()).expect("ASCII platform identity")
+    }
+    let client = u128::from_le_bytes(info.operation_client);
+    Some(shoop_deployment_protocol::Info {
+        profile: text(&info.profile),
+        build: text(&info.build),
+        hash: info.hash,
+        slot: if info.slot < 2 {
+            Some(info.slot as u8)
+        } else {
+            None
+        },
+        confirmed: info.confirmed != 0,
+        trial: info.trial != 0,
+        boot_nonce: info.nonce,
+        last_operation: if client != 0 && info.operation_sequence != 0 {
+            Some(shoop_deployment_protocol::Operation {
+                client,
+                sequence: info.operation_sequence,
+            })
+        } else {
+            None
+        },
+        session_version: shoop_app_protocol::VERSION,
+        busy: false,
+        ready: false,
+    })
 }
 
 fn log(text: &str) {
@@ -394,12 +462,19 @@ pub fn run() {
     let mut managers: Vec<Management<Stream<Socket>>> = Vec::with_capacity(4);
     let mut last = unsafe { shoop_millis() };
     let mut shutdown_at = None;
+    let mut render_cleaned = false;
+    let mut updater_reset = false;
     let mut last_memory = last;
     assert_eq!(
         unsafe { shoop_deployment_ready() },
         1,
         "deployment health confirmation"
     );
+    if let Some(info) = deployment_info() {
+        service
+            .set_deployment_info(info)
+            .expect("deployment capability");
+    }
     log("SHOOP_HOST_READY\n");
     unsafe {
         shoop_memory_report();
@@ -447,21 +522,31 @@ pub fn run() {
         }
         service.tick(elapsed);
         if service.shutdown_ready() {
+            let update = service.updater_request();
             service.begin_host_cleanup().expect("shutdown authority");
             if render_owner.is_some() && unsafe { shoop_stop_render() } == 1 {
                 stopped_owner = Some(unsafe { retire_render(render_owner.take().unwrap()) });
             }
-            let cleaned = unsafe { shoop_cleanup_allowed() } != 0
-                && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup);
-            if cleaned {
+            render_cleaned = render_cleaned
+                || (unsafe { shoop_cleanup_allowed() } != 0
+                    && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
+            if render_cleaned {
                 stopped_owner.take();
             }
+            let cleaned = render_cleaned
+                && update.is_none_or(|operation| unsafe {
+                    shoop_deployment_request(
+                        operation.client.to_le_bytes().as_ptr(),
+                        operation.sequence,
+                    ) == 1
+                });
             service.complete_shutdown(if cleaned {
                 Ok(())
             } else {
                 Err(String::from("render/MIDI cleanup failed"))
             });
             if cleaned {
+                updater_reset = update.is_some();
                 shutdown_at = Some(now);
                 log("SHOOP_HOST_CLEANUP_COMPLETE\n");
             }
@@ -478,6 +563,11 @@ pub fn run() {
             alive
         });
         if shutdown_at.is_some_and(|time| now.saturating_sub(time) >= 2000) {
+            if updater_reset {
+                unsafe {
+                    shoop_deployment_reset();
+                }
+            }
             break;
         }
         unsafe {

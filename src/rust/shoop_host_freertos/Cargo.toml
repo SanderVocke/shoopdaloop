@@ -11,6 +11,7 @@ workspace = true
 fixture = []
 
 [dependencies]
+shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }

@@ -7,6 +7,7 @@
 #include <image.h>
 #include <mmc.h>
 #include <net.h>
+#include <dm.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
 #include <elf.h>
@@ -51,7 +52,8 @@ static void configure_network(void) {
         env_set("serverip", "10.0.2.2");
         puts("SHOOP_CONFIGURATION_INVALID recovery network defaults\n");
     } else {
-        eth_env_set_enetaddr("ethaddr", configuration.mac);
+        snprintf(ip, sizeof ip, "%pM", configuration.mac);
+        env_set("ethaddr", ip);
         ip_to_string((struct in_addr){ .s_addr = configuration.ip }, ip); env_set("ipaddr", ip);
         ip_to_string((struct in_addr){ .s_addr = configuration.netmask }, ip); env_set("netmask", ip);
         ip_to_string((struct in_addr){ .s_addr = configuration.gateway }, ip); env_set("gatewayip", ip);
@@ -64,6 +66,10 @@ static void configure_network(void) {
     net_netmask = string_to_ip(env_get("netmask"));
     net_gateway = string_to_ip(env_get("gatewayip"));
     net_server_ip = string_to_ip(env_get("serverip"));
+    /* Programmatic env writes bypass callbacks in this U-Boot release. */
+    eth_env_get_enetaddr("ethaddr", eth_get_ethaddr());
+    if (eth_get_ops(eth_get_dev())->write_hwaddr)
+        eth_get_ops(eth_get_dev())->write_hwaddr(eth_get_dev());
     printf("SHOOP_NETWORK ip=%s server=%s\n", env_get("ipaddr"), env_get("serverip"));
 }
 static int open_card(void) {

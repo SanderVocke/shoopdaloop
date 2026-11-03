@@ -136,9 +136,10 @@ int shoop_deploy_confirm(void) {
 }
 int shoop_deploy_info(struct shoop_deployment_info *out) {
     *out = (struct shoop_deployment_info){ .enabled = 1, .slot = handoff.slot, .confirmed = confirmed,
-        .trial = handoff.trial, .nonce = handoff.nonce, .operation_sequence = handoff.operation_sequence };
+        .trial = handoff.trial && !confirmed, .nonce = handoff.nonce, .operation_sequence = handoff.operation_sequence };
     memcpy(out->build, handoff.build, 64); memcpy(out->bundle_hash, handoff.bundle_hash, 32);
     memcpy(out->operation_client, handoff.operation_client, 16);
+    memcpy(out->profile, handoff.config.profile, 32);
     return 1;
 }
 int shoop_deploy_request(const uint8_t *client, uint64_t sequence) {

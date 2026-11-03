@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,13 +15,14 @@ from qemu import Qemu, ROOT
 
 
 class BootQemu(Qemu):
-    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False):
+    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False, block_url=None):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.serial = self.directory / "serial.log"
-        self.qmp_path = self.directory / "qmp.sock"
+        self._sockets = tempfile.TemporaryDirectory(prefix="shoop-zynq-")
+        self.qmp_path = Path(self._sockets.name) / "qmp.sock"
         self.driver_path = self.directory / "unused-driver.sock"
-        self.console_path = self.directory / "console.sock"
+        self.console_path = Path(self._sockets.name) / "console.sock"
         for path in [self.qmp_path, self.console_path]:
             path.unlink(missing_ok=True)
         binary = Path(qemu or ROOT / "work/zynq/qemu-build/qemu-system-arm").resolve()
@@ -40,7 +42,7 @@ class BootQemu(Qemu):
                         "-display", "none", "-monitor", "none", "-serial", "null",
                         "-serial", f"unix:{self.console_path},server=on,wait=on",
                         "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-watchdog-action", "reset",
-                        "-device", entry, "-drive", f"file={Path(card).resolve()},if=sd,format=raw,cache=directsync",
+                        "-device", entry, "-drive", f"file={block_url or Path(card).resolve()},if=sd,format=raw,cache=directsync",
                         "-netdev", network, "-net", "nic,netdev=lan",
                         "-object", f"filter-dump,id=trace,netdev=lan,file={self.directory / 'ethernet.pcap'}"]
         (self.directory / "command.json").write_text(json.dumps(self.command, indent=2) + "\n")
@@ -126,4 +128,5 @@ class BootQemu(Qemu):
             if self._reader is not None:
                 self._reader.join(timeout=2)
             self.console_path.unlink(missing_ok=True)
+            self._sockets.cleanup()
             (self.directory / "events.json").write_text(json.dumps(self.events, indent=2) + "\n")

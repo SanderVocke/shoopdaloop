@@ -3,6 +3,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 pub mod config;
 pub mod connection;
+pub mod deployment;
 pub mod engine;
 pub mod launch;
 mod private;

@@ -123,8 +123,28 @@ static void confirmed_boot_loop(void) {
     assert(!shoop_select(&io, &state, &slot) && slot == 0);
     assert(!memcmp(state.confirmed_hash, a, 32));
 }
+static void handoff_and_config(void) {
+    initialize();
+    struct shoop_handoff handoff = { .nonce = 42, .magic = SHOOP_HANDOFF_MAGIC,
+        .version = SHOOP_VERSION, .slot = 0, .build = "firmware-a" };
+    handoff.config.mac[0] = 2; handoff.config.mac[5] = 1;
+    handoff.config.ip = 0x0f02000a; handoff.config.netmask = 0x00ffffff;
+    handoff.config.credential[0] = 1;
+    memcpy(handoff.config.profile, SHOOP_PROFILE, sizeof(SHOOP_PROFILE));
+    shoop_record_seal(&handoff.config, 1); handoff.crc = shoop_crc32(&handoff, 508);
+    assert(shoop_handoff_valid(&handoff));
+    memcpy(disk[0], &handoff.config, 512); memcpy(disk[1], &handoff.config, 512);
+    struct shoop_config config; assert(!shoop_config_load(&io, &config));
+    memset(handoff.config.mac, 0, 6); shoop_record_seal(&handoff.config, 1);
+    assert(!shoop_handoff_valid(&handoff));
+    handoff.config = config; memset(handoff.build, 'a', 64); handoff.crc = shoop_crc32(&handoff, 508);
+    assert(!shoop_handoff_valid(&handoff));
+    config.netmask = 0x00ff00ff; shoop_record_seal(&config, 1);
+    memcpy(disk[0], &config, 512); memcpy(disk[1], &config, 512);
+    assert(shoop_config_load(&io, &config) == SHOOP_INVALID);
+}
 int main(void) {
     assert(shoop_crc32("123456789", 9) == 0xcbf43926);
-    nonce_faults(); trials_and_confirmation(); publication_faults(); confirmed_boot_loop();
+    nonce_faults(); trials_and_confirmation(); publication_faults(); confirmed_boot_loop(); handoff_and_config();
     puts("Boot state: nonce durability, trial rollback, confirmation and torn writes passed");
 }

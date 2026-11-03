@@ -1,0 +1,70 @@
+diff --git a/drivers/fastboot/fb_command.c b/drivers/fastboot/fb_command.c
+index 18d86988..445e02dd 100644
+--- a/drivers/fastboot/fb_command.c
++++ b/drivers/fastboot/fb_command.c
+@@ -317,6 +317,13 @@ void fastboot_data_download(const void *fastboot_data,
+  *
+  * Set image_size and ${filesize} to the total size of the downloaded image.
+  */
++void fastboot_data_cancel(void)
++{
++	image_size = 0;
++	fastboot_bytes_expected = 0;
++	fastboot_bytes_received = 0;
++}
++
+ void fastboot_data_complete(char *response)
+ {
+ 	/* Download complete. Respond with "OKAY" */
+diff --git a/drivers/net/zynq_gem.c b/drivers/net/zynq_gem.c
+index f570ae9e..2aa3684b 100644
+--- a/drivers/net/zynq_gem.c
++++ b/drivers/net/zynq_gem.c
+@@ -541,6 +541,9 @@ static int zynq_gem_init(struct udevice *dev)
+ 	}
+ 
+ 	nwconfig = ZYNQ_GEM_NWCFG_INIT;
++	/* A UDP listener must receive ARP before sending any traffic. */
++	if (IS_ENABLED(CONFIG_UDP_FUNCTION_FASTBOOT))
++		nwconfig &= ~ZYNQ_GEM_NWCFG_NBC;
+ 
+ 	if (device_is_compatible(dev, "amd,versal2-10gbe")) {
+ 		nwconfig &= ~ZYNQ_GEM_DBUS_WIDTH_MASK;
+diff --git a/include/fastboot.h b/include/fastboot.h
+index b106d617..29f7d058 100644
+--- a/include/fastboot.h
++++ b/include/fastboot.h
+@@ -186,6 +186,9 @@ void fastboot_data_download(const void *fastboot_data,
+  */
+ void fastboot_data_complete(char *response);
+ 
++/** fastboot_data_cancel() - Discard download state on a new UDP session. */
++void fastboot_data_cancel(void);
++
+ /**
+  * fastboot_handle_multiresponse() - Called for each response to send
+  *
+diff --git a/net/fastboot_udp.c b/net/fastboot_udp.c
+index d1479510..0451d27d 100644
+--- a/net/fastboot_udp.c
++++ b/net/fastboot_udp.c
+@@ -151,6 +151,10 @@ static void fastboot_send(struct fastboot_header header, char *fastboot_data,
+ 		packet += sizeof(tmp);
+ 		break;
+ 	case FASTBOOT_INIT:
++		/* A fresh INIT abandons any interrupted command/download. */
++		cmd = -1;
++		pending_command = false;
++		fastboot_data_cancel();
+ 		tmp = htons(udp_version);
+ 		memcpy(packet, &tmp, sizeof(tmp));
+ 		packet += sizeof(tmp);
+@@ -274,7 +278,7 @@ static void fastboot_handler(uchar *packet, unsigned int dport,
+ 			fastboot_send(header, fastboot_data,
+ 				      fastboot_data_len, 0);
+ 			sequence_number++;
+-		} else if (header.seq == sequence_number - 1) {
++		} else if (header.seq == (u16)(sequence_number - 1)) {
+ 			/* Retransmit last sent packet */
+ 			fastboot_send(header, fastboot_data,
+ 				      fastboot_data_len, 1);
