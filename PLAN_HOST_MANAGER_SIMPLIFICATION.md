@@ -302,3 +302,10 @@ Depends on Stages 0–4.
   Warning-denying workspace build and policy checks pass; full CI-shaped suite is
   running. Early coverage CI exposed an exit-observation race in Stage 1: retry
   transient inspection errors after termination, and require observed exit/change.
+
+- Stage 2 verification: CI-shaped full suite ran 2,559 tests: 2,557 passed,
+  with only two expected-byte fixtures still pinning protocol version 11. Updated
+  the canonical fixtures to version 12 and reran their complete protocol package.
+  Architecture isolation passes for all four target graphs. Added small dedicated
+  Linux/macOS/Windows inspection jobs so the feasibility gate no longer waits for
+  full application packaging and companion canaries.

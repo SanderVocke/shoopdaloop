@@ -43,6 +43,26 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  host_process_inspection:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    name: Host process inspection (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: host-process-inspection-${{ matrix.os }}
+      - name: Inspect real child processes and their listening sockets
+        run: cargo test --locked -p shoop_host_processes --tests
+
   no_std_core:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Bare-metal runtime and session service
