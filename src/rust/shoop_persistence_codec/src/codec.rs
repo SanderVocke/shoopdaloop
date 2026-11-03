@@ -163,6 +163,10 @@ impl Decoded {
     }
 }
 pub enum Work {
+    GenerateClick {
+        request: ClickTrackRequest,
+        rate: u32,
+    },
     Assemble(Vec<shoop_app_protocol::persistence::Object>),
     Decode {
         kind: IoTaskKind,
@@ -200,6 +204,36 @@ pub enum Value {
 impl Work {
     pub fn run(self) -> Result<Value> {
         match self {
+            Self::GenerateClick { request, rate } => {
+                let timing = ClickTrackTimingSpec {
+                    bpm: request.bpm,
+                    click_count: request.click_count,
+                    odd_click_delay_percent: request.odd_click_delay_percent,
+                };
+                let decoded = match request.kind {
+                    ClickTrackKind::Audio => Decoded::Audio(generate_audio_click_track(
+                        &AudioClickTrackSpec {
+                            timing,
+                            primary_sound: request.primary_sound_id,
+                            secondary_sound: request.secondary_sound_id,
+                            secondary_clicks_per_primary: request.secondary_clicks_per_primary,
+                        },
+                        rate,
+                    )?),
+                    ClickTrackKind::Midi => Decoded::Midi(generate_midi_click_track(
+                        MidiClickTrackSpec {
+                            timing,
+                            note: request.midi_note,
+                            channel: 0,
+                            velocity: 127,
+                            note_length_seconds: request.midi_note_length_seconds,
+                        },
+                        rate,
+                    )?),
+                };
+                decoded.bytes()?;
+                Ok(Value::Decoded(decoded))
+            }
             Self::Assemble(objects) => Ok(Value::Captured(
                 shoop_app_protocol::persistence_transfer::assemble(objects)
                     .map_err(|r| anyhow!("invalid captured image: {r:?}"))?,

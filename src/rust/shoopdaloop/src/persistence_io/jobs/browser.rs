@@ -518,6 +518,9 @@ impl CodecExecutor {
             return Ok(CodecJob(Mode::Synchronous(Some(work))));
         }
         let sending = match work {
+            Work::GenerateClick { request, rate } => {
+                Sending::One(Some(WorkerCommand::GenerateClick { request, rate }))
+            }
             Work::Decode { kind, bytes, rate } => Sending::File {
                 bytes,
                 kind: worker::kind(kind)?,

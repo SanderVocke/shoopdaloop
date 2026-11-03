@@ -242,52 +242,121 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
 }
 
 #[shoop_test]
-async fn public_core_file_capabilities_keep_duplication_and_click_insertion_refused() {
+async fn public_core_file_capabilities_keep_duplication_refused() {
     let mut fixture = Fixture::new();
     let state = fixture.runtime.snapshot();
     for capability in [
         BackendCapability::SessionCapture,
         BackendCapability::SessionContentLoad,
         BackendCapability::LoopContentImport,
+        BackendCapability::ClickTrackInsertion,
     ] {
         assert!(state.capabilities.supports(capability));
     }
     assert!(!state
         .capabilities
         .supports(BackendCapability::LoopDuplication));
-    assert!(!state
-        .capabilities
-        .supports(BackendCapability::ClickTrackInsertion));
     let track = &state.tracks[0];
     fixture.dispatch(AppIntent::Loop {
         track_id: track.id,
         loop_id: track.loops[0].id,
         action: LoopAction::Duplicate,
     });
-    fixture.dispatch(AppIntent::GenerateClickTrack {
-        loop_id: track.loops[0].id,
-        request: Default::default(),
-    });
     for _ in 0..8 {
         fixture.step();
         idle().await;
     }
     let state = fixture.runtime.snapshot();
-    for capability in [
-        BackendCapability::LoopDuplication,
-        BackendCapability::ClickTrackInsertion,
-    ] {
-        assert!(
-            state
-                .notifications
-                .iter()
-                .any(|notice| notice.message.contains(capability.unavailable_reason())),
-            "{:?}",
-            state.notifications
-        );
-    }
+    assert!(
+        state.notifications.iter().any(|notice| notice
+            .message
+            .contains(BackendCapability::LoopDuplication.unavailable_reason())),
+        "{:?}",
+        state.notifications
+    );
     assert!(fixture.runtime.take_file_request().is_none());
     assert!(fixture.runtime.take_file_output().is_none());
+}
+
+#[shoop_test]
+async fn generated_clicks_commit_and_export_through_the_public_route() {
+    let mut f = Fixture::new();
+    f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Clicks".into(),
+        audio_channels: 2,
+        midi: true,
+    }));
+    let state = f
+        .until(|s| s.tracks.len() == 2 && s.tracks[1].loops.len() == 8)
+        .await;
+    assert!(!state.click_track.sounds.is_empty());
+    assert!(state.click_track.max_click_count >= 4);
+    let loop_id = state.tracks[1].loops[0].id;
+    for kind in [ClickTrackKind::Audio, ClickTrackKind::Midi] {
+        f.dispatch(AppIntent::GenerateClickTrack {
+            loop_id,
+            request: ClickTrackRequest {
+                kind,
+                bpm: 120.0,
+                ..Default::default()
+            },
+        });
+        let state = f
+            .until(|s| {
+                s.io_task
+                    .as_ref()
+                    .is_some_and(|t| t.status == IoTaskStatus::Completed)
+            })
+            .await;
+        assert_eq!(
+            state.io_task.as_ref().unwrap().kind,
+            IoTaskKind::GenerateClickTrack
+        );
+        assert_eq!(state.tracks[1].loops[0].length_frames, 2000);
+        match kind {
+            ClickTrackKind::Audio => f.dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::Exact,
+            }),
+            ClickTrackKind::Midi => f.dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: false,
+            }),
+        }
+        if kind == ClickTrackKind::Audio {
+            let state = f
+                .until(|s| {
+                    s.io_task
+                        .as_ref()
+                        .is_some_and(|t| t.status == IoTaskStatus::AwaitingChannelSelection)
+                })
+                .await;
+            f.dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: state.io_task.as_ref().unwrap().id,
+                channels: vec![0, 1],
+            });
+        }
+        let output = f.output().await;
+        match kind {
+            ClickTrackKind::Audio => {
+                let audio = shoop_session::decode_loop_audio(&output.bytes).unwrap();
+                assert_eq!(audio.channels.len(), 2);
+                assert_eq!(audio.channels[0].samples, audio.channels[1].samples);
+                assert!(audio.channels[0].samples.iter().any(|s| *s != 0.0));
+            }
+            ClickTrackKind::Midi => {
+                let midi = shoop_session::decode_exact_midi(&output.bytes).unwrap();
+                assert_eq!(midi.events.len(), 8);
+                assert_eq!(midi.events[0].frame, 0);
+                assert_eq!(midi.events[2].frame, 500);
+            }
+        }
+        f.dispatch(AppIntent::CompleteIoOutput {
+            task_id: output.task_id,
+            outcome: FileOutputOutcome::Saved,
+        });
+        f.step();
+    }
 }
 
 #[shoop_test]

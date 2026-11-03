@@ -48,6 +48,10 @@ pub enum Command {
     NextImageBatch,
     Reset,
     ImageBatch(Vec<Request>),
+    GenerateClick {
+        request: shoop_app_api::ClickTrackRequest,
+        rate: u32,
+    },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
@@ -323,6 +327,10 @@ impl Worker {
                 .run()?;
                 self.decoded(value)
             }
+            Command::GenerateClick { request, rate } => {
+                let value = Work::GenerateClick { request, rate }.run()?;
+                self.decoded(value)
+            }
             Command::Resample { handle, rate } => {
                 let decoded = self.take_decoded(handle)?;
                 let value = Work::Resample { decoded, rate }.run()?;
@@ -525,6 +533,50 @@ mod exports {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn generated_clicks_cross_the_worker_protocol_and_reject_invalid_timing() {
+        for kind in [
+            shoop_app_api::ClickTrackKind::Audio,
+            shoop_app_api::ClickTrackKind::Midi,
+        ] {
+            let mut worker = Worker::default();
+            let command = Command::GenerateClick {
+                request: shoop_app_api::ClickTrackRequest {
+                    kind,
+                    ..Default::default()
+                },
+                rate: 48_000,
+            };
+            let command = decode(&encode(&command).unwrap()).unwrap();
+            let Response::Decoded(summary) = worker.receive(command) else {
+                panic!("generation failed")
+            };
+            assert_eq!(summary.rate, 48_000);
+            assert_eq!(
+                summary.audio_labels.is_some(),
+                kind == shoop_app_api::ClickTrackKind::Audio
+            );
+            assert!(matches!(
+                worker.receive(Command::Prepare {
+                    handle: summary.handle,
+                    mapping: vec![0, 0],
+                    update_length: true,
+                }),
+                Response::Image(_)
+            ));
+            assert!(matches!(
+                worker.receive(Command::GenerateClick {
+                    request: shoop_app_api::ClickTrackRequest {
+                        kind,
+                        bpm: f64::NAN,
+                        ..Default::default()
+                    },
+                    rate: 48_000,
+                }),
+                Response::Failed(_)
+            ));
+        }
+    }
     #[shoop_test]
     fn worker_refuses_quotas_order_and_stale_handles_without_retained_work() {
         let mut worker = Worker::default();
