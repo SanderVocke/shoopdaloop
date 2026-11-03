@@ -3,7 +3,9 @@
 `shoop_dsp_host` is a dedicated processing service and a software source-clock
 requester. It supports direct delay-copy DSP and, with the `carla` feature, native
 Carla Rack/Patchbay16. Neither mode opens an audio device. The FPGA/session graph
-integration is a separate milestone.
+integration is a separate milestone; see the
+[rt_runtime integration plan](rt-runtime-integration-plan.md) for the reusable
+node, native demo and platform-adapter boundaries.
 
 ## Build and run
 
