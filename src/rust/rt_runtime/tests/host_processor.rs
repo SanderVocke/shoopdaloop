@@ -110,6 +110,7 @@ fn exercise(pages: usize, midi_reset: bool) {
                 midi_outputs: &mut output,
                 resources: store.io(),
                 decision: None,
+                spans: &[],
                 observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
             })
         });

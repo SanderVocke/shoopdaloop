@@ -107,8 +107,10 @@ The shared loop plan reserves at most `max_frames` spans per prepared owner: eve
 one-frame boundaries fit without a diagnostic or subdivision quota. Preparation
 uses checked products and refuses sizes exceeding the allocator-independent
 signed byte bound. The adapter may expose a smaller explicit span allowance for
-testing/prepared-memory tradeoffs; it refuses an entire callback before advancing
-musical state if that allowance cannot cover the worst case. No partial plan is
+testing/prepared-memory tradeoffs in a future profile. This implementation requires
+the full `max_frames` allowance during preparation: insufficient plan storage is
+refused before the runtime starts. This avoids a partial timing advance or a
+render-time storage failure on dense valid boundaries. No partial plan is
 published. Input storage and capture reservations have independent capacities.
 
 | Failure point | Required result |

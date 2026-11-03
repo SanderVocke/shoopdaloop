@@ -381,6 +381,7 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
             midi_outputs: &mut midi_out,
             resources: resources.io(),
             decision: None,
+            spans: &[],
             observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
         })
     })

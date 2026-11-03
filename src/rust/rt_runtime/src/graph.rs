@@ -7,7 +7,8 @@
 pub mod activation;
 
 use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
+    ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningMode,
+    PlanningStep,
 };
 use crate::processor::Cadence;
 use crate::{Error, NodeId, PreparedConfig};
@@ -100,6 +101,8 @@ pub struct Catalog {
     planner: Option<PlannerSpec>,
     consumers: Option<Vec<Option<ConsumerAccess>>>,
     cadences: Vec<Cadence>,
+    mode: PlanningMode,
+    dependencies: Vec<(NodeId, NodeId)>,
 }
 
 impl Catalog {
@@ -139,6 +142,8 @@ impl Catalog {
             planner: None,
             consumers: None,
             cadences: vec![Cadence::Interval; limits.max_nodes],
+            mode: PlanningMode::Interleaved,
+            dependencies: Vec::new(),
         })
     }
 
@@ -202,6 +207,31 @@ impl Catalog {
         Ok(self.cadences[node.slot() as usize])
     }
 
+    pub fn with_planning_mode(mut self, mode: PlanningMode) -> Result<Self, Error> {
+        if mode == PlanningMode::Callback && self.planner.is_none() {
+            return Err(Error::InvalidGraph);
+        }
+        self.mode = mode;
+        Ok(self)
+    }
+
+    /// Fixed control/data-readiness edges, separate from signal connections.
+    pub fn with_dependencies(mut self, dependencies: &[(NodeId, NodeId)]) -> Result<Self, Error> {
+        if dependencies.len() > self.config.limits().max_edges {
+            return Err(Error::Capacity);
+        }
+        let mut unique = BTreeSet::new();
+        for &(before, after) in dependencies {
+            self.node(before)?;
+            self.node(after)?;
+            if before == after || !unique.insert((before, after)) {
+                return Err(Error::InvalidGraph);
+            }
+        }
+        self.dependencies = unique.into_iter().collect();
+        Ok(self)
+    }
+
     pub fn consumer(&self, node: NodeId) -> Result<ConsumerAccess, Error> {
         self.node(node)?;
         Ok(self
@@ -224,6 +254,13 @@ impl Catalog {
 
     pub(crate) fn remove(&mut self, id: NodeId) -> Result<(), Error> {
         self.node(id)?;
+        if self
+            .dependencies
+            .iter()
+            .any(|(before, after)| *before == id || *after == id)
+        {
+            return Err(Error::Busy);
+        }
         self.slots[id.slot() as usize] = None;
         Ok(())
     }
@@ -556,6 +593,19 @@ fn compile_signal(catalog: &Catalog, graph: &GraphDescription) -> Result<Prepare
             return Err(Error::InvalidGraph);
         }
     }
+    if graph
+        .connections
+        .len()
+        .checked_add(catalog.dependencies.len())
+        .is_none_or(|n| n > limits.max_edges)
+    {
+        return Err(Error::Capacity);
+    }
+    for &(before, after) in &catalog.dependencies {
+        if nodes.contains(&after) && !nodes.contains(&before) {
+            return Err(Error::InvalidGraph);
+        }
+    }
     let mut connections = BTreeSet::new();
     for &connection in &graph.connections {
         catalog.connection(connection)?;
@@ -579,6 +629,10 @@ fn compile_signal(catalog: &Catalog, graph: &GraphDescription) -> Result<Prepare
             .copied()
             .find(|id| {
                 !seen.contains(id)
+                    && catalog
+                        .dependencies
+                        .iter()
+                        .all(|(before, after)| after != id || seen.contains(before))
                     && connections.iter().all(|edge| {
                         edge.destination.node != Some(*id)
                             || edge.source.node.is_none_or(|source| seen.contains(&source))
@@ -605,6 +659,12 @@ fn compile_signal(catalog: &Catalog, graph: &GraphDescription) -> Result<Prepare
             .copied()
             .find(|candidate| {
                 !done.contains(candidate)
+                    && catalog.dependencies.iter().all(|(before, after)| {
+                        !nodes.contains(after)
+                            || group(*after) != *candidate
+                            || group(*before) == *candidate
+                            || done.contains(&group(*before))
+                    })
                     && connections.iter().all(|edge| {
                         match (edge.source.node, edge.destination.node) {
                             (Some(source), Some(target))
@@ -669,6 +729,7 @@ enum Phase {
     Host,
     Bindings(usize),
     Required(usize),
+    Dependencies(usize),
     Done,
     Failed(Error),
 }
@@ -687,6 +748,7 @@ pub struct PlanValidator {
     observations: usize,
     region_started: bool,
     region_closed: bool,
+    positions: Vec<usize>,
 }
 
 impl PlanValidator {
@@ -701,6 +763,7 @@ impl PlanValidator {
             observations: 0,
             region_started: false,
             region_closed: false,
+            positions: vec![usize::MAX; config.limits().max_nodes],
         }
     }
 
@@ -764,6 +827,7 @@ impl PlanValidator {
             Phase::Clear(index) => {
                 if let Some(slot) = self.seen.get_mut(index) {
                     *slot = None;
+                    self.positions[index] = usize::MAX;
                     self.phase = Phase::Clear(index + 1);
                 } else {
                     self.phase = Phase::Node(0);
@@ -773,13 +837,21 @@ impl PlanValidator {
                 self.previous = None;
                 if let Some(step) = descriptor.steps.get(index) {
                     catalog.node(step.node)?;
+                    self.positions[step.node.slot() as usize] = index;
                     let access = catalog.consumer(step.node)?;
                     match catalog.cadence(step.node)? {
                         Cadence::Interval if self.region_closed => return Err(Error::InvalidGraph),
-                        Cadence::Interval => self.region_started = true,
+                        Cadence::Interval => {
+                            if catalog.mode == PlanningMode::Callback {
+                                return Err(Error::InvalidGraph);
+                            }
+                            self.region_started = true;
+                        }
                         Cadence::Callback => {
                             self.region_closed |= self.region_started;
-                            if access.decision_required || access.observations != 0 {
+                            if catalog.mode == PlanningMode::Interleaved
+                                && (access.decision_required || access.observations != 0)
+                            {
                                 return Err(Error::InvalidGraph);
                             }
                         }
@@ -839,7 +911,7 @@ impl PlanValidator {
                     self.phase = if catalog.planner.is_some() {
                         Phase::Bindings(0)
                     } else {
-                        Phase::Done
+                        Phase::Dependencies(0)
                     };
                 } else {
                     let edge = *descriptor
@@ -856,6 +928,11 @@ impl PlanValidator {
                         return Err(Error::InvalidId);
                     }
                     catalog.node(binding.consumer)?;
+                    if catalog.mode == PlanningMode::Interleaved
+                        && catalog.cadence(binding.consumer)? == Cadence::Callback
+                    {
+                        return Err(Error::InvalidGraph);
+                    }
                     if !plan.contains(binding.consumer) {
                         return Err(Error::InvalidId);
                     }
@@ -881,6 +958,28 @@ impl PlanValidator {
                         return Err(Error::InvalidGraph);
                     }
                     self.phase = Phase::Required(index + 1);
+                } else {
+                    self.phase = Phase::Dependencies(0);
+                }
+            }
+            Phase::Dependencies(index) => {
+                if descriptor
+                    .connections
+                    .len()
+                    .checked_add(catalog.dependencies.len())
+                    .is_none_or(|n| n > catalog.config.limits().max_edges)
+                {
+                    return Err(Error::Capacity);
+                }
+                if let Some(&(before, after)) = catalog.dependencies.get(index) {
+                    catalog.node(before)?;
+                    catalog.node(after)?;
+                    let before = self.positions[before.slot() as usize];
+                    let after = self.positions[after.slot() as usize];
+                    if after != usize::MAX && (before == usize::MAX || before >= after) {
+                        return Err(Error::InvalidGraph);
+                    }
+                    self.phase = Phase::Dependencies(index + 1);
                 } else {
                     self.phase = Phase::Done;
                 }

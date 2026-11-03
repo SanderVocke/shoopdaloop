@@ -8,8 +8,9 @@ use crate::graph::{
 };
 use crate::midi::ResetState;
 use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
-    Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
+    ConsumerAccess, ConsumerContext, ConsumerFinishContext, ConsumerSpec, DecisionBinding,
+    DecisionView, Disposition, FinishContext, Interval, NoPlanner, Observations, OperationContext,
+    PlanContext, Planner, PlanningMode,
 };
 use crate::processor::{Cadence, ProcessBlock, Processor, ProcessorOperation};
 use crate::resource::{self, ResourceStore};
@@ -320,6 +321,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     recovery_remaining: Vec<usize>,
     resources: ResourceStore,
     planner: L,
+    mode: PlanningMode,
     observations: Observations<L::Observation>,
 }
 
@@ -433,6 +435,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .map(|node| (node.id, node.cadence))
                 .collect::<Vec<_>>(),
         )?;
+        let catalog = catalog.with_planning_mode(planner.mode())?;
         let observations =
             Observations::new(signature.map_or(0, |spec| spec.observation_capacity))?;
         let operation_bytes = nodes.iter().fold(
@@ -485,6 +488,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 recovery: vec![ResetState::default(); limits.midi_outputs],
                 recovery_remaining: vec![0; limits.midi_outputs],
                 resources,
+                mode: planner.mode(),
                 planner,
                 observations,
             },
@@ -505,6 +509,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     /// should retain their control-side signature description for compiling edits.
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+    /// Declare fixed readiness dependencies before initial graph publication.
+    pub fn prepare_dependencies(&mut self, dependencies: &[(NodeId, NodeId)]) -> Result<(), Error> {
+        if self.clock.next_frame() != Frame(0) || self.active.is_some() || self.epoch != Epoch(0) {
+            return Err(Error::InvalidState);
+        }
+        self.catalog = self.catalog.clone().with_dependencies(dependencies)?;
+        Ok(())
     }
     pub fn epoch(&self) -> Epoch {
         self.epoch
@@ -596,6 +608,23 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_scheduled(&mut audio, &mut midi);
+        if let Err(error) = result {
+            let cleanup = self.planner.abort(
+                FinishContext {
+                    interval: Interval {
+                        start: frame,
+                        end: frame.checked_add(frames)?,
+                    },
+                    observations: self.observations.values(),
+                    resources: self.resources.planner_io(frame, frame.checked_add(frames)?),
+                    receipts: self.scheduler.receipts(frame.checked_add(frames)?),
+                },
+                error,
+            );
+            if let Err(cleanup_error) = cleanup {
+                self.diagnostics.render_error = Some(cleanup_error);
+            }
+        }
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
@@ -926,6 +955,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
     ) -> Result<(), Error> {
+        let callback_mode = self.mode == PlanningMode::Callback;
         let mut start = 0;
         let mut remaining_events = self.scheduler.delivery_limit();
         while start < audio.frames {
@@ -937,8 +967,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 remaining_events -= 1;
                 match event.action {
                     Action::Planner { planner, operation } => {
-                        let result = if self.catalog.planner().is_none_or(|spec| spec.id != planner)
-                        {
+                        let result = if callback_mode && at != audio.frame {
+                            Err(Error::InvalidFrame)
+                        } else if self.catalog.planner().is_none_or(|spec| spec.id != planner) {
                             Err(Error::InvalidId)
                         } else {
                             self.planner.operation(
@@ -1068,7 +1099,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             if end <= start {
                 return Err(Error::InvalidState);
             }
-            let ceiling = audio.frame.checked_add(end)?;
+            if callback_mode && start != 0 {
+                start = end;
+                continue;
+            }
+            let ceiling =
+                audio
+                    .frame
+                    .checked_add(if callback_mode { audio.frames } else { end })?;
             let selected = if self.catalog.planner().is_some() {
                 self.planner.plan(PlanContext {
                     graph_epoch: self.epoch,
@@ -1099,7 +1137,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             if self.scheduler.recovery_pending() {
                 return Err(Error::InvalidState);
             }
-            if selected <= at || selected > ceiling {
+            if selected <= at || selected > ceiling || (callback_mode && selected != ceiling) {
                 return Err(Error::InvalidFrame);
             }
             if self
@@ -1113,10 +1151,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 start: at,
                 end: selected,
             };
+            self.observations.clear();
             if start == 0 {
                 self.run_graph_range(audio, midi, 0, audio.frames, RunPhase::Prefix)?;
             }
-            self.observations.clear();
             let end =
                 usize::try_from(selected.0 - audio.frame.0).map_err(|_| Error::InvalidFrame)?;
             self.run_graph_range(audio, midi, start, end - start, RunPhase::Interval)?;
@@ -1132,7 +1170,15 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 &mut self.diagnostics.subranges,
                 &mut self.diagnostics.counter_overflow,
             );
-            start = end;
+            start = if callback_mode {
+                self.scheduler.next_frame().map_or(audio.frames, |next| {
+                    next.0
+                        .saturating_sub(audio.frame.0)
+                        .min(audio.frames as u64) as usize
+                })
+            } else {
+                end
+            };
         }
         self.run_graph_range(audio, midi, 0, audio.frames, RunPhase::Suffix)?;
         Ok(())
@@ -1195,6 +1241,16 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 start: frame,
                 end: frame.checked_add(frames)?,
             };
+            if self.mode == PlanningMode::Callback {
+                self.planner.before_consumer(ConsumerContext {
+                    node: step.node,
+                    interval,
+                    midi_inputs: &buffers.midi_input,
+                    resources: self.resources.planner_io(frame, interval.end),
+                    receipts: self.scheduler.receipts(frame),
+                })?;
+            }
+            let observation_start = self.observations.values().len();
             let decision = match plan
                 .planning()
                 .bindings
@@ -1224,6 +1280,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 midi_outputs: &mut buffers.midi_output,
                 resources: self.resources.io(),
                 decision,
+                spans: decision.map_or(&[], |view| self.planner.spans(view.slot)),
                 observations: self
                     .observations
                     .writer(step.node, slot.access.observations),
@@ -1233,6 +1290,16 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 .as_mut()
                 .ok_or(Error::InvalidId)?
                 .process(&mut block);
+            if self.mode == PlanningMode::Callback {
+                self.planner.after_consumer(ConsumerFinishContext {
+                    node: step.node,
+                    interval,
+                    result,
+                    observations: &self.observations.values()[observation_start..],
+                    resources: self.resources.planner_io(frame, interval.end),
+                    receipts: self.scheduler.receipts(interval.end),
+                })?;
+            }
             if result == Err(Error::Full) {
                 for output in &mut buffers.midi_output {
                     output.force_reset(0);

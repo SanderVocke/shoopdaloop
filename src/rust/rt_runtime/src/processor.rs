@@ -2,7 +2,9 @@
 
 use crate::buffer::{AudioPorts, MidiBuffer};
 use crate::graph::PortCounts;
-use crate::planner::{ConsumerAccess, DecisionView, NoPlanner, ObservationWriter, Planner};
+use crate::planner::{
+    ConsumerAccess, DecisionSpan, DecisionView, NoPlanner, ObservationWriter, Planner,
+};
 use crate::{Error, Frame, PreparedConfig};
 use alloc::boxed::Box;
 
@@ -30,6 +32,7 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub midi_outputs: &'a mut [MidiBuffer],
     pub resources: crate::resource::ResourceIo<'a>,
     pub decision: Option<DecisionView<'a, L::Decision>>,
+    pub spans: &'a [DecisionSpan<L::Decision>],
     pub observations: ObservationWriter<'a, L::Observation>,
 }
 

@@ -167,7 +167,7 @@ Depends on Stage 0.
       Carla and the DSP-host stack.
 - [ ] Add the bus-shaped scope canary and capture the current global-subdivision
       failure before correcting execution.
-- [ ] Define the real loop-media dry/FX/wet fixture and independent expected
+- [x] Define the real loop-media dry/FX/wet fixture and independent expected
       samples/events. Exercise internal wraps and a recording transition within
       a parent block; account for any declared DSP delay explicitly.
 - [ ] Cover multiple channels, shared timing, repeated callbacks, irregular host
@@ -181,9 +181,9 @@ full-block calls, shifted media, missing MIDI or duplicate timing advancement.
 
 Depends on Stages 0-1; retains existing interleaved planner semantics.
 
-- [ ] Add prepared scope/cadence metadata and validation for node membership,
+- [x] Add prepared scope/cadence metadata and validation for node membership,
       interfaces, block requirements and signal/planning dependency order.
-- [ ] Implement local `plan -> process -> finish` execution and full-parent-block
+- [x] Implement local `plan -> process -> finish` execution and full-parent-block
       processing in one executor with one outer callback envelope.
 - [ ] Implement scoped action delivery and activation according to the contract;
       preserve MIDI offsets, receipt frames, generation checks and owner lifetimes.
@@ -206,15 +206,15 @@ this generic probe alone does not satisfy the real-media acceptance criterion.
 
 Depends on the Stage 0 ownership contract and Stage 2 execution support.
 
-- [ ] Introduce bounded callback-plan storage for coordinated loop timing and
+- [x] Introduce bounded callback-plan storage for coordinated loop timing and
       prepared media operations. Retain source snapshots and required reservations
       until their consumers complete; avoid copying mutable planner authorities.
-- [ ] Refactor playback/capture execution and observation collection so consumers
+- [x] Refactor playback/capture execution and observation collection so consumers
       can run on opposite sides of DSP using the same timing plan.
 - [ ] Preserve capture-start preflight, refusal, group atomicity, actual media
       completion and MIDI initial-state handling. Never advance the old interval
       API using synthetic consumer observations.
-- [ ] Make the real dry/FX/wet canary pass, including DSP-produced MIDI captured
+- [x] Make the real dry/FX/wet canary pass, including DSP-produced MIDI captured
       downstream and one advancement of each coordinated logical owner.
 - [ ] Update in-tree loop examples/adapters and document the separation between
       timing ownership and media execution regions.
@@ -222,6 +222,19 @@ Depends on the Stage 0 ownership contract and Stage 2 execution support.
 Verification: exact media/call-count assertions pass in both canaries; sync and
 transition behavior remain consistent across callback partitions and region order
 permitted by the dependency graph.
+
+Implementation decision: the opt-in `runtime::callback` adapter uses the real
+resolver, media ledger, renderers and atomic capture groups. The existing
+`LoopPlanner` remains interleaved, preserving its observation-dependent capture
+and publication behavior. Playback and capture phases share one primitive LoopId;
+explicit capture windows supply the low-level dry/wet fixture. The callback
+adapter requires worst-case plan storage during preparation, rather than admitting
+callbacks that might exhaust a smaller span allowance after time has advanced.
+
+The dry/wet test passes exact stereo and MIDI oracles for `[17]`, `[3,4,1,9]`
+and seventeen one-frame callbacks, including wraps, an internal capture start/end,
+and the DSP-generated held-note checkpoint. Fault, capacity, activation and
+production/browser delivery checks remain outstanding.
 
 ### 4. Prove failures, compatibility and prepared bounds
 

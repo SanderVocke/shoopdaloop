@@ -34,6 +34,17 @@ impl ResourceStore {
     }
 }
 impl PlannerResourceIo<'_> {
+    /// Lend exact boundary authority within the enclosing prepared consumer range.
+    pub fn subrange(
+        &mut self,
+        frame: Frame,
+        ceiling: Frame,
+    ) -> Result<PlannerResourceIo<'_>, Error> {
+        if frame < self.frame || ceiling < frame || ceiling > self.ceiling {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(self.resources.store.planner_io(frame, ceiling))
+    }
     pub fn capture(&mut self) -> CaptureBoundaryIo<'_> {
         CaptureBoundaryIo {
             store: self.resources.store,

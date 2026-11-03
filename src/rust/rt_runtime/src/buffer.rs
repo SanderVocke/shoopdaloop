@@ -118,6 +118,18 @@ pub struct AudioPorts<'a> {
 }
 
 impl<'a> AudioPorts<'a> {
+    pub fn subrange(&mut self, start: usize, frames: usize) -> Result<AudioPorts<'_>, Error> {
+        if start > self.frames || frames > self.frames - start {
+            return Err(Error::InvalidFrame);
+        }
+        AudioPorts::new(
+            self.inputs,
+            self.outputs,
+            self.stride,
+            self.start + start,
+            frames,
+        )
+    }
     pub fn new(
         inputs: &'a [f32],
         outputs: &'a mut [f32],
