@@ -298,30 +298,39 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
     doc.track_groups = groups.into();
     doc.selected_loop_ids = session.selected.iter().map(|id| id.raw()).collect();
     doc.targeted_loop_id = session.target.map(|id| id.raw());
-    let master = &session.master;
-    doc.buses = vec![BusDocument {
-        id: master.id.raw(),
-        name: master.name.clone(),
-        channels: master
-            .channels
-            .iter()
-            .map(|channel| BusChannelDocument {
-                id: channel.id.raw(),
-                label: channel.label.clone(),
-                output_port_id: channel.port.state.id.raw(),
+    doc.buses = session
+        .buses
+        .iter()
+        .map(|master| {
+            Ok(BusDocument {
+                id: master.id.raw(),
+                name: master.name.clone(),
+                channels: master
+                    .channels
+                    .iter()
+                    .map(|channel| BusChannelDocument {
+                        id: channel.id.raw(),
+                        label: channel.label.clone(),
+                        output_port_id: channel.port.state.id.raw(),
+                    })
+                    .collect(),
+                ports: master
+                    .channels
+                    .iter()
+                    .map(|channel| port_to_document(&channel.port))
+                    .collect::<Result<_>>()?,
+                fx_chain: None,
+                gain_db: master.gain_db,
+                balance: master.balance,
+                muted: master.muted,
             })
-            .collect(),
-        ports: master
-            .channels
-            .iter()
-            .map(|channel| port_to_document(&channel.port))
-            .collect::<Result<_>>()?,
-        fx_chain: None,
-        gain_db: master.gain_db,
-        balance: master.balance,
-        muted: master.muted,
-    }];
-    doc.bus_display_order = vec![master.id.raw()];
+        })
+        .collect::<Result<_>>()?;
+    doc.bus_display_order = session
+        .bus_display_order
+        .iter()
+        .map(|id| id.raw())
+        .collect();
     doc.global_ports = session
         .global_ports
         .iter()
@@ -353,13 +362,13 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
     if doc.global.default_recording_action != RecordingActionDocument::Record {
         unsupported.insert("default grab recording (P04)");
     }
-    if doc.buses.len() != 1
+    if doc.buses.len() > 8
         || doc
             .buses
-            .first()
-            .is_none_or(|b| b.name != MASTER_BUS_NAME || b.channels.len() != 2)
+            .iter()
+            .any(|b| b.channels.is_empty() || b.channels.len() > 8)
     {
-        unsupported.insert("additional or nonstandard buses (P13)");
+        unsupported.insert("buses exceeding replacement engine capacity");
     }
     if doc.buses.iter().any(|b| b.fx_chain.is_some()) {
         unsupported.insert("bus FX (P08)");
@@ -452,34 +461,41 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
         .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
     let mut used_media = BTreeSet::new();
     let doc = bundle.document;
-    let master = doc.buses.into_iter().next().unwrap();
-    ensure!(
-        doc.bus_display_order == [master.id],
-        "unsupported bus display order"
-    );
-    let mut master_ports = master.ports;
-    let mut channels = Vec::new();
-    for (index, channel) in master.channels.into_iter().enumerate() {
-        ensure!(
-            channel.label == MASTER_BUS_CHANNEL_LABELS[index],
-            "unsupported Master channel labels"
-        );
-        let position = master_ports
-            .iter()
-            .position(|p| p.id == channel.output_port_id)
-            .ok_or_else(|| anyhow!("missing Master port"))?;
-        channels.push(image::MasterChannel {
-            id: BusChannelId::from_raw(channel.id),
-            label: channel.label,
-            port: port_from_document(
-                master_ports.remove(position),
-                ApplicationPortOwner::Bus {
-                    bus_id: BusId::from_raw(master.id),
-                },
-            )?,
+    let bus_display_order = doc
+        .bus_display_order
+        .iter()
+        .map(|id| BusId::from_raw(*id))
+        .collect();
+    let mut buses = Vec::new();
+    for bus in doc.buses {
+        let mut ports = bus.ports;
+        let mut channels = Vec::new();
+        for channel in bus.channels {
+            let position = ports
+                .iter()
+                .position(|p| p.id == channel.output_port_id)
+                .ok_or_else(|| anyhow!("missing bus output port"))?;
+            channels.push(image::BusChannel {
+                id: BusChannelId::from_raw(channel.id),
+                label: channel.label,
+                port: port_from_document(
+                    ports.remove(position),
+                    ApplicationPortOwner::Bus {
+                        bus_id: BusId::from_raw(bus.id),
+                    },
+                )?,
+            });
+        }
+        ensure!(ports.is_empty(), "unsupported extra bus ports");
+        buses.push(image::Bus {
+            id: BusId::from_raw(bus.id),
+            name: bus.name,
+            channels,
+            gain_db: bus.gain_db,
+            balance: bus.balance,
+            muted: bus.muted,
         });
     }
-    ensure!(master_ports.is_empty(), "unsupported extra Master ports");
     let mut payloads = Vec::new();
     let mut tracks = Vec::new();
     for track in doc.track_groups.into_iter().flat_map(|group| group.tracks) {
@@ -621,7 +637,11 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
             .iter()
             .flat_map(|t| &t.ports)
             .map(|p| p.state.id.raw())
-            .chain(channels.iter().map(|c| c.port.state.id.raw()))
+            .chain(
+                buses
+                    .iter()
+                    .flat_map(|b| b.channels.iter().map(|c| c.port.state.id.raw())),
+            )
             .collect::<BTreeSet<_>>();
         let id = (1..)
             .find(|id| !used.contains(id))
@@ -653,14 +673,8 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
                 apply_n_cycles: g.apply_n_cycles,
             },
             tracks,
-            master: image::Master {
-                id: BusId::from_raw(master.id),
-                name: master.name,
-                gain_db: master.gain_db,
-                balance: master.balance,
-                muted: master.muted,
-                channels,
-            },
+            buses,
+            bus_display_order,
             global_ports,
             routes: doc
                 .mixer_routes

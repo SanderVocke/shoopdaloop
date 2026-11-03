@@ -2,12 +2,14 @@
 
 ## Status and delivery
 
-Planning only; implementation has not started. Written under
+Implementation in progress on `feat/output-bus-parity`. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for P13 in the
 [feature parity ledger](docs/native_session_recovery/feature-parity.md).
 
-- Inspected base: `feat/backend-replacement` at
+- Original inspected base: `feat/backend-replacement` at
   `3aabf43789708a5640a8f5b368f737651ef1d29d`.
+- Implementation base rechecked at `64a4ad0634de1664b1ff723b36c635cd243d819b`,
+  including the intervening click-track restoration.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, with
   executable bus behavior preserved in `shoop_app_reference`.
 - Implementation branch: create `feat/output-bus-parity` from the current
@@ -126,6 +128,37 @@ These goals and criteria require explicit user approval to change.
   `new_tracks_route_to_named_bus_with_equal_channels_and_mono_fanout`.
   Existing fixtures are behavioral evidence; add production-path verification.
 
+Native recovery verification follows the existing recovery contract: socket UI
+reattachment retains admitted work; shared-memory delivery supports one attachment
+per host lifetime. The new process test initially attempted a second shared-memory
+attachment and received the existing Unsupported refusal from `serve.rs`'s consumed
+shared port. Test bus behavior on both carriers and reconnect on sockets; retain
+the ledger's explicit shared-memory reattachment exclusion. This refines Stage 7's
+verification method and does not expand the underlying recovery scope.
+
+### Prepared capacity decision
+
+The default is eight separately prepared bus slots with eight channels per slot
+(64 prepared bus channels), configurable down to one slot and a two-channel
+maximum width. An active bus can still be mono. The default stereo bus consumes
+one slot. Route banks use the existing `u64` mask as eight groups of eight bits.
+Graph budgets include `3 * buses * bus_channels` bus ports, both strip route
+banks and both bus-to-host output banks; telemetry storage includes every bus.
+Track/loop slots, channel bounds, media pages and wire record bounds are unchanged.
+Limits travel through native host settings, worklet configuration and service
+snapshots; old saved pool settings receive the new defaults.
+
+Implementation checkpoint: warning-denying workspace build, all-target and
+no-default-feature service/adapter checks pass. The complete native suite passed
+2,543 tests (four optional/platform skips); the subsequent admitted-mutation
+recovery expansion passes its focused typed/encoded test and is being rerun in
+the complete suite. Hosted browser multi-bus/media/zero-bus workflows and built
+worklet/codec contracts pass. The guarded multi-bus audio test passes Miri on
+nightly-2026-05-04, seed 0. Dependency boundaries pass for all four targets.
+[Acceptance evidence](docs/native_session_recovery/evidence/output-buses.md)
+maps criteria to executable coverage. Single-file browser and final CI/delivery
+remain pending; P13 is still open until those gates pass.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -152,14 +185,14 @@ Verification: review scope/acceptance/stage coverage, local Markdown links and
 
 ### Stage 1 — branch, contracts and capacity
 
-- [ ] Create the implementation branch from the latest integration head, preserve
+- [x] Create the implementation branch from the latest integration head, preserve
   unrelated work, recheck the inspected assumptions, and commit/push the plan.
-- [ ] Define generational engine bus identities, create/remove/controls, route and
+- [x] Define generational engine bus identities, create/remove/controls, route and
   output references, limits, telemetry/resync and replacement bus records.
-- [ ] Define finite bus pool/count/channel/graph budgets and defaults in host
+- [x] Define finite bus pool/count/channel/graph budgets and defaults in host
   configuration without shrinking existing track/loop pools. Plumb native setup,
   worklet config, backward-compatible saved settings and client-visible limits.
-- [ ] Extend the application persistence schema for zero-or-more buses and display
+- [x] Extend the application persistence schema for zero-or-more buses and display
   order; identify all mandatory-Master call sites and version affected wire layouts.
 
 Verification: protocol/codec round trips, malformed and mismatched-version records,
@@ -168,12 +201,12 @@ round trips. Check encoded record bounds and compile affected consumers.
 
 ### Stage 2 — engine bus graph and replacement
 
-- [ ] Generalize the bus DSP/node, prepared pool, model, cells, graph builder,
+- [x] Generalize the bus DSP/node, prepared pool, model, cells, graph builder,
   control scheduling and telemetry/resync to ordinary active bus slots.
-- [ ] Implement create/remove, bus controls, strip-to-bus fan-out and bus-to-host
+- [x] Implement create/remove, bus controls, strip-to-bus fan-out and bus-to-host
   links through structural transactions and existing ramp/crossfade machinery.
   Clean references on removal and reject stale generations.
-- [ ] Extend private replacement candidates and commit/retirement to arbitrary
+- [x] Extend private replacement candidates and commit/retirement to arbitrary
   supported buses, including an empty set. Remove permanent-Master assumptions
   from startup and graph construction.
 
@@ -185,11 +218,11 @@ Miri cases after ordinary tests stabilize.
 
 ### Stage 3 — RT backend adapter
 
-- [ ] Implement `create_bus`, `remove_bus` and per-bus controls with reserved
+- [x] Implement `create_bus`, `remove_bus` and per-bus controls with reserved
   application IDs, engine slot generations, channel/port mappings and receipts.
-- [ ] Replace the single-Master mirror, ports, meters, connection targets and
+- [x] Replace the single-Master mirror, ports, meters, connection targets and
   routing map with dynamic confirmed bus state; handle resync and negotiated limits.
-- [ ] Extend backend capture/replacement mappings and outcomes for every bus and
+- [x] Extend backend capture/replacement mappings and outcomes for every bus and
   for no buses; preserve unrelated track/loop state and missing-host-port intent.
 
 Verification: adapter/contracts/persistence tests cover confirmed and refused
@@ -198,14 +231,14 @@ capture and failed replacement. Exercise typed and encoded engine delivery.
 
 ### Stage 4 — authoritative service and scripting
 
-- [ ] Add service-owned bus/channel counters, registry, display order, pending
+- [x] Add service-owned bus/channel counters, registry, display order, pending
   effects and reconciliation, following existing admitted-operation ownership.
-- [ ] Implement bus commands, reorder validation, per-bus projection, accurate
+- [x] Implement bus commands, reorder validation, per-bus projection, accurate
   control/structural pending/errors and removal cleanup. Validate all Lua bus
   targets before mutation; preserve stable script indices across visual reorder.
-- [ ] Generalize named-bus track defaults to reference-compatible mapping; remove
+- [x] Generalize named-bus track defaults to reference-compatible mapping; remove
   the non-Master-name rejection and modulo-only Master routing.
-- [ ] Create the fresh/New Session default through the ordinary lifecycle and
+- [x] Create the fresh/New Session default through the ordinary lifecycle and
   scope auto-connect to its bootstrap; do not infer a protected bus from name,
   ID, first position, reconnect or an empty loaded bus list.
 
@@ -217,12 +250,12 @@ and confirm retained outcomes without replay or an unintended default bus.
 
 ### Stage 5 — complete persistence and zero-bus workflows
 
-- [ ] Capture all buses/order from a coherent settled cut; generalize persistence
+- [x] Capture all buses/order from a coherent settled cut; generalize persistence
   image validation, codec conversion and source-to-live ID/channel/port mapping.
-- [ ] Load structure-only and media-bearing sessions with zero, one and multiple
+- [x] Load structure-only and media-bearing sessions with zero, one and multiple
   buses using the adapter/engine atomic candidate path. Preserve saved output and
   route intent; report unsupported widths/counts/FX before live mutation.
-- [ ] Make New Session independent of the old session's buses and synthesize a
+- [x] Make New Session independent of the old session's buses and synthesize a
   fresh default bus. Cover save/cancel/load fencing and UI loss during accepted
   replacement, retaining existing recording/busy and media-preservation rules.
 
@@ -233,13 +266,13 @@ New Session from zero buses and reject oversized/FX/malformed candidates intact.
 
 ### Stage 6 — UI integration, capabilities and documentation
 
-- [ ] Enable BusManagement through backend and service capability projection after
+- [x] Enable BusManagement through backend and service capability projection after
   Stages 2–5 pass; retain BusFx=false, an empty bus processor catalog and explicit
   service-side FX refusals.
-- [ ] Use actual prepared limits in add-bus UI/settings. Reuse mixer strips,
+- [x] Use actual prepared limits in add-bus UI/settings. Reuse mixer strips,
   confirmation dialogs, drag order, meters and connection tabs; show zero buses
   as a usable state with Add bus available. Retain pending/failure feedback.
-- [ ] Update affected user/crate guides, architecture and recovery ownership
+- [x] Update affected user/crate guides, architecture and recovery ownership
   documentation. Update P13 and its P01/P02 interactions with the approved capacity
   qualification and evidence; keep P08 and unrelated gaps open.
 
@@ -279,7 +312,7 @@ review approval when provided, correct PR base and a clean implementation worktr
 
 ## Planning verification
 
-Passed: plan structure and acceptance/stage coverage, the required execution
+Planning checkpoint passed: plan structure and acceptance/stage coverage, the required execution
 contract, local Markdown links, whitespace checks, `git diff --check`, and
-`python3 scripts/check_feature_parity.py`. Only this plan was added to the
-repository; no implementation, runtime validation, commit, push or PR is claimed.
+`python3 scripts/check_feature_parity.py`. The initial planning turn changed documentation only. Implementation evidence
+and delivery status are recorded above as the work progresses.

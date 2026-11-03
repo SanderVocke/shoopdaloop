@@ -25,6 +25,8 @@ pub fn description() -> EngineDescription {
         }],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: Vec::new(),
         smoothing_frames: 0,
         smoothing_limit_frames: 8,

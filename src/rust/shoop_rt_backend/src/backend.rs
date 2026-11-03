@@ -21,7 +21,7 @@ use shoop_backend::{
     BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
     BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -196,8 +196,23 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .retain(|id, _| self.canonical_imports.contains(id));
     }
 
+    fn bus_limits(&self) -> shoop_app_api::BusLimits {
+        let Some(limits) = self.limits else {
+            return shoop_app_api::BusLimits {
+                buses: 0,
+                channels: 0,
+                total_channels: 0,
+            };
+        };
+        shoop_app_api::BusLimits {
+            buses: u32::from(limits.buses),
+            channels: u32::from(limits.bus_channels),
+            total_channels: u32::from(limits.buses) * u32::from(limits.bus_channels),
+        }
+    }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(BackendCapability::BusManagement, self.is_ready())
             .with(
                 BackendCapability::MidiInjection,
                 self.capabilities.contains(Capabilities::MIDI_INJECTION),
@@ -784,21 +799,49 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
-    fn create_bus(&mut self, _request: BackendBusRequest) -> Result<BackendBusCreation> {
-        Err(unavailable(BackendCapability::BusManagement))
-    }
-
-    fn remove_bus(&mut self, _bus_id: BackendBusId) -> Result<()> {
-        Err(unavailable(BackendCapability::BusManagement))
-    }
-
-    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+    fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
-        if bus_id != MASTER_BUS_ID {
-            return Err(anyhow!("unknown bus {bus_id:?}"));
+        let request = request.normalized()?;
+        if request.fx.is_some() {
+            return Err(unavailable(BackendCapability::BusFx));
         }
-        self.queue_master_control(control)?;
+        if request.channel_count > u32::from(self.limits().bus_channels) {
+            return Err(anyhow!("bus exceeds prepared channel limit"));
+        }
+        self.require_mutation_capacity(1)?;
+        let creation = self
+            .mirror
+            .create_bus(request.name, request.channel_count as u8)
+            .ok_or_else(|| anyhow!("prepared bus capacity exhausted"))?;
+        let slot = self.mirror.buses[&creation.bus_id].slot;
+        self.requests.push(
+            Request::CreateBus {
+                bus: slot,
+                channels: request.channel_count as u8,
+            },
+            Purpose::CreateBus(creation.bus_id),
+        );
+        Ok(creation)
+    }
+    fn remove_bus(&mut self, id: BackendBusId) -> Result<()> {
+        self.ready()?;
+        self.require_mutation_capacity(1)?;
+        let bus = self
+            .mirror
+            .buses
+            .get_mut(&id)
+            .filter(|b| !b.removing)
+            .ok_or_else(|| anyhow!("unknown bus"))?;
+        bus.removing = true;
+        let slot = bus.slot;
+        self.mirror.bus_slots.release(slot.0);
+        self.requests
+            .push(Request::RemoveBus { bus: slot }, Purpose::RemoveBus(id));
         Ok(())
+    }
+    fn set_bus_control(&mut self, id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.ready()?;
+        self.queue_bus_control(id, control)
     }
 
     fn set_bus_fx_control(
@@ -855,10 +898,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             confirmed_links: mirror.links.clone(),
             failures: core::mem::take(&mut self.connection_failures),
         };
-        let master = mirror.master_state();
+        let buses = mirror.bus_states();
         let mixer = BackendMixerSnapshot {
             revision: mirror.mixer_revision,
-            buses: [(MASTER_BUS_ID, master)].into_iter().collect(),
+            buses,
             confirmed_links: mirror.routes.clone(),
             failures: core::mem::take(&mut self.mixer_failures),
         };

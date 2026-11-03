@@ -160,13 +160,13 @@ impl Service {
                 )?;
             }
             SetBusGain { buses, gain_db } => {
-                self.control_buses(buses, BusAction::GainChanged(gain_db))?
+                return self.control_buses(buses, BusAction::GainChanged(gain_db))
             }
             SetBusBalance { buses, balance } => {
-                self.control_buses(buses, BusAction::BalanceChanged(balance))?
+                return self.control_buses(buses, BusAction::BalanceChanged(balance))
             }
             SetBusMuted { buses, muted } => {
-                self.control_buses(buses, BusAction::MuteChanged(muted))?
+                return self.control_buses(buses, BusAction::MuteChanged(muted))
             }
             SetApplyNCycles(value) => {
                 self.global_action(GlobalControlAction::SetApplyNCycles(value))?
@@ -199,17 +199,22 @@ impl Service {
         }
         Ok(())
     }
-    fn control_buses(&mut self, buses: Vec<BusId>, action: BusAction) -> Result<(), CommandError> {
-        if buses.iter().any(|id| *id != BusId::from_raw(1)) {
+    fn control_buses(&mut self, buses: Vec<BusId>, action: BusAction) -> CommandResult {
+        if buses.iter().any(|id| {
+            !self
+                .buses
+                .get(id)
+                .is_some_and(|b| b.view.structural_state != StructuralState::Removing)
+        }) {
             return Err(CommandError::invalid("unknown bus"));
         }
-        for bus in buses {
+        for bus in &buses {
             self.execute(Command::Bus {
-                bus,
+                bus: *bus,
                 action: action.clone(),
             })?;
         }
-        Ok(())
+        Ok(Effect::BusControls(buses))
     }
 }
 

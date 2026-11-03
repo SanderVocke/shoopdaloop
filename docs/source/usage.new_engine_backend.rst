@@ -109,8 +109,10 @@ Supported features
        and loop meters; MIDI activity; waveform and MIDI loop details.
    * - Connections
      - Audio and MIDI connections between track ports and host ports; the
-       Master bus with its gain, balance and mute; routes from tracks to
-       Master. **Global FX Control MIDI In** can be connected but has no
+       named buses with gain, stereo balance and mute; per-channel routes from
+       tracks to buses and buses to host outputs. Master is an ordinary removable
+       default; zero buses is valid. The configured pool supports up to eight buses
+       of at most eight channels each. **Global FX Control MIDI In** can be connected but has no
        effect.
    * - Sessions
      - New session.
@@ -129,7 +131,6 @@ whole instead of being applied partially:
 * latency compensation and take alignment;
 * replacing loop content: imports, click-track generation and cloning;
 * editing loop length, start offset and pre-play;
-* buses other than Master;
 * switching the audio driver while running.
 
 Known limitations

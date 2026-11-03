@@ -37,6 +37,8 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                buses: 8,
+                bus_channels: 8,
                 tracks: 8,
                 loops: 80,
                 channels: 2,
@@ -114,6 +116,126 @@ fn command(
         }
         assert!(Instant::now() < deadline, "operation timed out");
         thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[shoop_test]
+fn bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master() {
+    for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
+        let mut host = host(transport);
+        let (mut client, mut connection) = attach(&host.entry, 801);
+        for (name, channel_count) in [("Cue", 1), ("Wide", 8)] {
+            assert!(matches!(
+                command(
+                    &mut client,
+                    &mut connection,
+                    shoop_app_protocol::Command::AddBus(BusSpec {
+                        name: name.into(),
+                        channel_count,
+                        creation_request_id: None,
+                        fx: None
+                    })
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let wide = client.snapshot().unwrap().buses[2].id;
+        let master = client.snapshot().unwrap().buses[0].id;
+        assert!(matches!(
+            command(
+                &mut client,
+                &mut connection,
+                shoop_app_protocol::Command::Bus {
+                    bus: wide,
+                    action: BusAction::MoveBefore(Some(master))
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let state = client.snapshot().unwrap();
+        let ids = state.buses.iter().map(|b| b.id).collect::<Vec<_>>();
+        let message = client
+            .command(
+                shoop_app_protocol::Command::Bus {
+                    bus: wide,
+                    action: BusAction::GainChanged(-6.),
+                },
+                None,
+            )
+            .unwrap();
+        let ClientMessage::Submit { operation, .. } = &message else {
+            unreachable!()
+        };
+        let operation = *operation;
+        connection.send(message).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !client.pending().contains_key(&operation)
+            && !client.results().contains_key(&operation)
+        {
+            connection.poll(&mut client).unwrap();
+            assert!(Instant::now() < deadline, "bus control was not admitted");
+            thread::sleep(Duration::from_millis(2));
+        }
+        if transport == AppTransport::Socket {
+            drop(connection);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while matches!(
+                connection::management(
+                    &host.entry,
+                    ManagementRequest::Status { version: VERSION },
+                    Duration::from_secs(1)
+                )
+                .unwrap(),
+                ManagementReply::Status { busy: true, .. }
+            ) {
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(10));
+            }
+            (client, connection) = attach(&host.entry, 802);
+        } else {
+            while !client.results().contains_key(&operation) {
+                connection.poll(&mut client).unwrap();
+                assert!(Instant::now() < deadline, "bus control did not finish");
+                thread::sleep(Duration::from_millis(2));
+            }
+        }
+        assert_eq!(
+            client
+                .snapshot()
+                .unwrap()
+                .buses
+                .iter()
+                .map(|b| b.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(client.snapshot().unwrap().buses[0].gain_db, -6.);
+        for bus in ids {
+            assert!(matches!(
+                command(
+                    &mut client,
+                    &mut connection,
+                    shoop_app_protocol::Command::Bus {
+                        bus,
+                        action: BusAction::Remove
+                    }
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        assert!(matches!(
+            command(
+                &mut client,
+                &mut connection,
+                shoop_app_protocol::Command::NewSession
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+        assert_eq!(client.snapshot().unwrap().buses[0].name, "Master");
+        drop(connection);
+        shutdown(&mut host, &mut client);
     }
 }
 fn shutdown(host: &mut Host, client: &mut Client) {
@@ -360,6 +482,8 @@ fn launcher_peer() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                buses: 8,
+                bus_channels: 8,
                 tracks: 8,
                 loops: 80,
                 channels: 2,
@@ -695,6 +819,8 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                buses: 8,
+                bus_channels: 8,
                 tracks: 8,
                 loops: 80,
                 channels: 2,

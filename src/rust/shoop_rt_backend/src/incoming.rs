@@ -9,11 +9,11 @@ use alloc::vec::Vec;
 use shoop_backend::{
     BackendBusControl, BackendConfirmedLink, BackendConnectionFailure, BackendMixerFailure,
     BackendMixerLink, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
-    BackendTrackControl, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
+    BackendTrackControl, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
 };
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode,
-    Outcome, Refusal, StateRecord, StripControl, Telemetry,
+    BusControl, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode, Outcome,
+    Refusal, StateRecord, StripControl, Telemetry,
 };
 use shoop_rt_transport::carrier::Carrier;
 
@@ -113,6 +113,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn set_limits(&mut self, limits: Limits) {
+        self.mirror.bus_slots.resize(limits.buses as usize);
         self.mirror.strip_slots.resize(limits.strips as usize);
         self.mirror.loop_slots.resize(limits.loops as usize);
         self.reads.set_loop_channels(limits.strip_audio_channels);
@@ -195,10 +196,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     entry.meter.record(peaks.as_slice());
                 }
             }
-            Telemetry::Bus {
-                bus: BusId::Master,
-                peaks,
-            } => self.mirror.master.meter.record(peaks.as_slice()),
+            Telemetry::Bus { bus, peaks } => {
+                if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
+                    entry.meter.record(peaks.as_slice());
+                }
+            }
         }
     }
 
@@ -228,6 +230,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut routes = BTreeSet::new();
         for record in &records {
             match *record {
+                StateRecord::BusGenerations { generation } => {
+                    self.mirror.bus_slots.raise_floor(generation)
+                }
+                StateRecord::BusShape { bus, .. } => self.mirror.bus_slots.adopt(bus.0),
                 StateRecord::HostPort(port) => host_ports.push(port),
                 StateRecord::Strip { strip, .. } => {
                     self.mirror.strip_slots.adopt(strip.0);
@@ -240,6 +246,33 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 _ => {}
             }
+        }
+        let buses = records
+            .iter()
+            .filter_map(|r| {
+                if let StateRecord::BusShape { bus, .. } = r {
+                    Some(*bus)
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeSet<_>>();
+        if buses
+            .iter()
+            .any(|id| !self.mirror.buses.values().any(|b| b.slot == *id))
+        {
+            self.lose("engine buses belong to another service".to_owned());
+            return;
+        }
+        let vanished = self
+            .mirror
+            .buses
+            .iter()
+            .filter(|(_, b)| b.confirmed && !buses.contains(&b.slot))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        for id in vanished {
+            self.mirror.drop_bus(id);
         }
         self.mirror.host_ports = host_ports;
         if strips
@@ -299,15 +332,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 StateRecord::Route {
                     port,
-                    bus:
-                        BusPort {
-                            bus: BusId::Master,
-                            index,
-                        },
+                    bus: BusPort { bus, index },
                 } => {
                     let (Some(source_port_id), Some(destination_channel_id)) = (
                         self.mirror.port_of(EnginePort::Strip(port)),
-                        MASTER_BUS_CHANNEL_IDS.get(usize::from(index)).copied(),
+                        self.mirror.channel(BusPort { bus, index }),
                     ) else {
                         continue;
                     };
@@ -316,14 +345,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         destination_channel_id,
                     });
                 }
-                StateRecord::Bus {
-                    bus: BusId::Master,
-                    control,
-                } => match control {
-                    BusControl::Gain(value) => self.mirror.master.gain_db = amplitude_db(value),
-                    BusControl::Balance(value) => self.mirror.master.balance = value,
-                    BusControl::Mute(value) => self.mirror.master.muted = value,
-                },
+                StateRecord::Bus { bus, control } => {
+                    if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
+                        entry.apply(match control {
+                            BusControl::Gain(v) => BackendBusControl::GainDb(amplitude_db(v)),
+                            BusControl::Balance(v) => BackendBusControl::Balance(v),
+                            BusControl::Mute(v) => BackendBusControl::Mute(v),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -388,6 +418,38 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {
+            (Purpose::CreateBus(id), None) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.confirmed = true;
+                    self.mirror.mixer_revision += 1;
+                    self.mirror.connection_revision += 1;
+                }
+            }
+            (Purpose::CreateBus(id), Some(refusal)) => {
+                if let Some(bus) = self.mirror.buses.get(&id) {
+                    self.mirror.bus_slots.release(bus.slot.0);
+                }
+                self.mirror.drop_bus(id);
+                self.failure(
+                    BackendMutationKind::BusStructure,
+                    Some(id.raw()),
+                    Some(BackendMutationDetail::BusCreation),
+                    format!("bus creation refused: {}", refusal_text(refusal)),
+                );
+            }
+            (Purpose::RemoveBus(id), None) => self.mirror.drop_bus(id),
+            (Purpose::RemoveBus(id), Some(refusal)) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.removing = false;
+                    self.mirror.bus_slots.restore(bus.slot.0);
+                }
+                self.failure(
+                    BackendMutationKind::BusStructure,
+                    Some(id.raw()),
+                    Some(BackendMutationDetail::BusRemoval),
+                    format!("bus removal refused: {}", refusal_text(refusal)),
+                );
+            }
             (Purpose::CreateStrip(id), None) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
                     track.confirmed = true;
@@ -589,8 +651,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         }
                     }
                     Some(refusal) => {
-                        let message =
-                            format!("a route to Master was refused: {}", refusal_text(refusal));
+                        let message = format!("a bus route was refused: {}", refusal_text(refusal));
                         tracing::warn!(message = %message, "backend.rt.route_refused");
                         self.mixer_failures.push(BackendMixerFailure {
                             link,
@@ -601,19 +662,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 self.mirror.mixer_revision += 1;
             }
-            (Purpose::BusControl(control), None) => {
-                match control {
-                    BackendBusControl::GainDb(value) => self.mirror.master.gain_db = value,
-                    BackendBusControl::Balance(value) => self.mirror.master.balance = value,
-                    BackendBusControl::Mute(value) => self.mirror.master.muted = value,
+            (Purpose::BusControl(id, control), None) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.apply(control);
                 }
                 self.mirror.mixer_revision += 1;
             }
-            (Purpose::BusControl(control), Some(refusal)) => self.failure(
+            (Purpose::BusControl(id, control), Some(refusal)) => self.failure(
                 BackendMutationKind::BusControl,
-                Some(MASTER_BUS_ID.raw()),
+                Some(id.raw()),
                 Some(BackendMutationDetail::BusControl(control)),
-                format!("a Master control was refused: {}", refusal_text(refusal)),
+                format!("bus control refused: {}", refusal_text(refusal)),
             ),
             (Purpose::InjectMidi(id), Some(refusal)) => {
                 if self.mirror.tracks.contains_key(&id) {

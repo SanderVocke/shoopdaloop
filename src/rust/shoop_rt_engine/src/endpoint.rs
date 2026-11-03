@@ -169,15 +169,14 @@ pub struct ControlEndpoint {
     /// The staged transaction's requests and changes, in order.
     pub(crate) batch: Box<[(Option<u64>, Change)]>,
     pub(crate) batch_len: usize,
-    /// How far the pending transaction affects each strip, loop and the
-    /// Master (see `queue`).
+    /// How far the pending transaction affects each strip, loop and bus.
     pub(crate) touched_strips: Box<[u8]>,
     pub(crate) touched_loops: Box<[u8]>,
-    pub(crate) touched_master: u8,
+    pub(crate) touched_buses: Box<[u8]>,
     /// Targets of requests that wait in the current pass over the queue.
     pub(crate) blocked_strips: Box<[bool]>,
     pub(crate) blocked_loops: Box<[bool]>,
-    pub(crate) blocked_master: bool,
+    pub(crate) blocked_buses: Box<[bool]>,
     pub(crate) blocked_all: bool,
     /// Initial media of new loops, to release.
     pub(crate) retired: Ring<shoop_loops::media::MediaId>,
@@ -813,10 +812,7 @@ impl ControlEndpoint {
                     )
                 }
             }
-            Request::BusControl {
-                bus: BusId::Master,
-                control,
-            } => self.bus_control(correlation, control),
+            Request::BusControl { bus, control } => self.bus_control(correlation, bus, control),
             Request::InjectMidi { strip, message } => match self.model.strip(strip) {
                 None => Err(Refusal::InvalidId),
                 Some(entry) if !entry.shape.midi_input => Err(Refusal::Unsupported),
@@ -832,7 +828,9 @@ impl ControlEndpoint {
                     .map(|()| None)
                 }
             },
-            Request::CreateStrip { .. }
+            Request::CreateBus { .. }
+            | Request::RemoveBus { .. }
+            | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -935,21 +933,33 @@ impl ControlEndpoint {
     fn bus_control(
         &mut self,
         correlation: u64,
+        bus: BusId,
         control: BusControl,
     ) -> Result<Option<Outcome>, Refusal> {
+        let entry = self.model.bus(bus).ok_or(Refusal::InvalidId)?;
         let operation = match control {
-            BusControl::Gain(value) if value.is_finite() => EngineOp::Gain(value),
-            BusControl::Balance(value) if finite_balance(value) => EngineOp::Balance(value),
+            BusControl::Gain(value) if value.is_finite() && value >= 0. => EngineOp::Gain(value),
+            BusControl::Balance(value) if finite_balance(value) && entry.channels == 2 => {
+                EngineOp::Balance(value)
+            }
             BusControl::Mute(muted) => EngineOp::Mute(muted),
             _ => return Err(Refusal::InvalidValue),
         };
-        let at = self.at();
-        let master = self.pool.master();
-        self.submit_op(at, master, operation, Purpose::Reply(Some(correlation)))?;
-        self.model.master.apply(control);
+        self.submit_op(
+            self.at(),
+            self.pool.bus(bus.0.index as usize),
+            operation,
+            Purpose::Reply(Some(correlation)),
+        )?;
+        self.model
+            .bus_mut(bus)
+            .expect("validated bus")
+            .apply(control);
         self.model.revision += 1;
         if self.job.is_some() {
-            self.next.master.apply(control);
+            if let Some(entry) = self.next.bus_mut(bus) {
+                entry.apply(control);
+            }
         }
         Ok(None)
     }
@@ -1016,10 +1026,14 @@ impl ControlEndpoint {
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
                 }));
             }
-            let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
-                bus: BusId::Master,
-                peaks: self.cells.master.take(self.settings.master_channels),
-            }));
+            for (slot, bus) in self.model.buses.iter().enumerate() {
+                if let Some(bus) = bus {
+                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
+                        bus: bus.id,
+                        peaks: self.cells.buses[slot].take(bus.channels as usize),
+                    }));
+                }
+            }
         }
         for slot in 0..self.model.loops.len() {
             if !(periodic || self.dirty[slot]) {

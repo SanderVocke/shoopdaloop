@@ -27,6 +27,13 @@ enum Step {
     Disabled,
     Startup,
     NewSession,
+    Buses,
+    BusZero,
+    BusZeroSaving,
+    BusZeroCleared,
+    BusZeroLoaded,
+    BusAddedAgain,
+    BusNewSession,
     Tracks,
     Connections,
     SyncRecording,
@@ -111,12 +118,21 @@ impl NewEngineSelfTest {
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
         if !matches!(
             self.step,
-            Step::Saving | Step::Resaving | Step::LargeSaving | Step::LargeResaving
+            Step::Saving
+                | Step::Resaving
+                | Step::LargeSaving
+                | Step::LargeResaving
+                | Step::BusZeroSaving
         ) {
             return;
         }
         match shoop_session::decode_session(&output.bytes) {
-            Ok(bundle) if matches!(self.step, Step::Saving | Step::LargeSaving) => {
+            Ok(bundle)
+                if matches!(
+                    self.step,
+                    Step::Saving | Step::LargeSaving | Step::BusZeroSaving
+                ) =>
+            {
                 self.saved_file = Some(Arc::clone(&output.bytes));
                 self.saved_bundle = Some(bundle);
             }
@@ -220,6 +236,29 @@ impl NewEngineSelfTest {
                 if snapshot.tracks.len() != 1 || !snapshot.tracks[0].is_sync {
                     return Err("a new session has only the sync track".to_owned());
                 }
+                for (name, channel_count) in [("Cue", 1), ("Wide", 8)] {
+                    send(AppIntent::AddBus(shoop_egui::BusSpec {
+                        name: name.into(),
+                        channel_count,
+                        fx: None,
+                        creation_request_id: None,
+                    }))?;
+                }
+                Step::Buses
+            }
+            Step::Buses => {
+                if snapshot.buses.len() != 3
+                    || snapshot
+                        .buses
+                        .iter()
+                        .any(|bus| bus.structural_state != StructuralState::Confirmed)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::Bus {
+                    bus_id: snapshot.buses[2].id,
+                    action: BusAction::MoveBefore(Some(snapshot.buses[1].id)),
+                })?;
                 let sync = &snapshot.tracks[0];
                 self.ids.sync = Some((sync.id, sync.loops[0].id));
                 self.ids.master = snapshot.buses.first().map(|bus| bus.id);
@@ -278,6 +317,11 @@ impl NewEngineSelfTest {
                     .zip(master.channels.iter())
                     .map(|(port, channel)| (*port, channel.id))
                     .collect();
+                for bus in snapshot.buses.iter().skip(1) {
+                    for channel in bus.channels.iter() {
+                        self.routes.push((audio_outputs[0], channel.id));
+                    }
+                }
                 for (port_id, host_port_id) in &self.links {
                     send(AppIntent::SetPortConnected {
                         port_id: *port_id,
@@ -596,6 +640,16 @@ impl NewEngineSelfTest {
                         .any(|entry| entry.mode != LoopMode::Stopped)
                     || snapshot.tracks[1].controls.output_gain_db != -6.0
                     || snapshot.buses[0].gain_db != -3.0
+                    || snapshot
+                        .buses
+                        .iter()
+                        .map(|b| b.name.as_str())
+                        .collect::<Vec<_>>()
+                        != ["Master", "Wide", "Cue"]
+                    || snapshot.buses[1].channels.len() != 8
+                    || snapshot
+                        .capabilities
+                        .supports(shoop_egui::BackendCapability::BusFx)
                     || snapshot.tracks[0].loops[0].length_frames != self.sync_length
                 {
                     return Err(
@@ -641,7 +695,13 @@ impl NewEngineSelfTest {
                     _ => {}
                 }
                 if !self.large {
-                    return Ok(Some(Step::Passed));
+                    for bus in snapshot.buses.iter() {
+                        send(AppIntent::Bus {
+                            bus_id: bus.id,
+                            action: BusAction::Remove,
+                        })?;
+                    }
+                    return Ok(Some(Step::BusZero));
                 }
                 self.saved_file = None;
                 self.saved_bundle = None;
@@ -787,6 +847,94 @@ impl NewEngineSelfTest {
                     }
                     Some(position) if position == entry.position => return Ok(None),
                     _ => {}
+                }
+                for bus in snapshot.buses.iter() {
+                    send(AppIntent::Bus {
+                        bus_id: bus.id,
+                        action: BusAction::Remove,
+                    })?;
+                }
+                Step::BusZero
+            }
+            Step::BusZero => {
+                if !snapshot.buses.is_empty() {
+                    return Ok(None);
+                }
+                self.saved_file = None;
+                self.saved_bundle = None;
+                send(AppIntent::RequestSaveSession)?;
+                Step::BusZeroSaving
+            }
+            Step::BusZeroSaving => {
+                if !snapshot.io_task.as_ref().is_some_and(|t| {
+                    t.kind == shoop_egui::IoTaskKind::SaveSession
+                        && t.status == IoTaskStatus::Completed
+                }) {
+                    return Ok(None);
+                }
+                let Some(bundle) = &self.saved_bundle else {
+                    return Ok(None);
+                };
+                if !bundle.document.buses.is_empty()
+                    || !bundle.document.bus_display_order.is_empty()
+                    || !bundle.document.mixer_routes.is_empty()
+                {
+                    return Err("zero-bus save retained bus state".into());
+                }
+                send(AppIntent::RequestNewSession)?;
+                Step::BusZeroCleared
+            }
+            Step::BusZeroCleared => {
+                if snapshot.buses.len() != 1
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::LoadSessionBytes {
+                    name: "zero-buses.shoop".into(),
+                    bytes: Arc::clone(self.saved_file.as_ref().unwrap()),
+                })?;
+                Step::BusZeroLoaded
+            }
+            Step::BusZeroLoaded => {
+                if !snapshot.buses.is_empty()
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::AddBus(shoop_egui::BusSpec {
+                    name: "After zero".into(),
+                    channel_count: 1,
+                    fx: None,
+                    creation_request_id: None,
+                }))?;
+                Step::BusAddedAgain
+            }
+            Step::BusAddedAgain => {
+                if snapshot.buses.len() != 1
+                    || snapshot.buses[0].name != "After zero"
+                    || snapshot.buses[0].structural_state != StructuralState::Confirmed
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::RequestNewSession)?;
+                Step::BusNewSession
+            }
+            Step::BusNewSession => {
+                if snapshot.buses.len() != 1
+                    || snapshot.buses[0].name != "Master"
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
                 }
                 Step::Passed
             }

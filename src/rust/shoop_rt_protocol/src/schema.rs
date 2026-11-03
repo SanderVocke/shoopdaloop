@@ -154,6 +154,13 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    CreateBus {
+        bus: BusId,
+        channels: u8,
+    },
+    RemoveBus {
+        bus: BusId,
+    },
     CancelBulk,
     ReplacementBegin {
         id: u64,
@@ -353,6 +360,8 @@ pub struct Limits {
     pub loops: u32,
     pub strip_audio_channels: u8,
     pub master_channels: u8,
+    pub buses: u8,
+    pub bus_channels: u8,
     pub host_audio_inputs: u16,
     pub host_audio_outputs: u16,
     pub host_midi_inputs: u16,
@@ -406,6 +415,13 @@ pub enum Telemetry {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    BusShape {
+        bus: BusId,
+        channels: u8,
+    },
+    BusGenerations {
+        generation: u32,
+    },
     Begin {
         epoch: u64,
     },

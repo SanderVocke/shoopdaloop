@@ -74,6 +74,24 @@ impl Progress {
                 {
                     return Err(Refusal::Invalid);
                 }
+                if session.buses.len() > 8
+                    || session
+                        .buses
+                        .iter()
+                        .any(|bus| bus.channels.is_empty() || bus.channels.len() > 8)
+                    || session.bus_display_order.len() != session.buses.len()
+                {
+                    return Err(Refusal::Invalid);
+                }
+                let ids = session.buses.iter().map(|b| b.id).collect::<BTreeSet<_>>();
+                let order = session
+                    .bus_display_order
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
+                if ids.len() != session.buses.len() || ids != order {
+                    return Err(Refusal::Identity);
+                }
                 session.tracks.iter().flat_map(|t| &t.loops).collect()
             }
             Manifest::Loop {

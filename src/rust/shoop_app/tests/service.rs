@@ -43,18 +43,24 @@ struct Fixture {
     waits: Rc<Cell<usize>>,
     initial_waits: usize,
     refuse_next_loop: Rc<Cell<bool>>,
+    refuse_next_bus: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
+    fixture_with_outputs(2)
+}
+fn fixture_with_outputs(outputs: usize) -> Fixture {
     let description = EngineDescription {
         sample_rate: 1000,
         max_frames: 16,
-        host: HostPorts::numbered(2, 2, 1),
+        host: HostPorts::numbered(2, outputs, 1),
         segments: vec![Segment {
             strips: 8,
             loops: 80,
         }],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: Vec::new(),
         ramp_frames: 4,
         resource_pages: 4096,
@@ -77,9 +83,11 @@ fn fixture() -> Fixture {
         waits: Rc::clone(&waits),
     };
     let refuse_next_loop = Rc::new(Cell::new(false));
+    let refuse_next_bus = Rc::new(Cell::new(false));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
+        refuse_bus: Rc::clone(&refuse_next_bus),
         reply: None,
     });
     let backend = RtBackend::connect(client, clock).unwrap();
@@ -111,6 +119,7 @@ fn fixture() -> Fixture {
         waits,
         initial_waits,
         refuse_next_loop,
+        refuse_next_bus,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -198,6 +207,347 @@ fn new_track(name: &str, midi: bool) -> Command {
         initial_output_bus_names: vec!["Master".to_owned()],
         creation_request_id: None,
     })
+}
+
+#[shoop_test]
+fn buses_round_trip_order_routes_zero_and_reconcile_admitted_mutations_after_ui_loss() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut client = attach(&mut f.service, 6001, ConnectionId(1), encoded);
+        let run = |f: &mut Fixture, client: &mut Client, value| {
+            let id = submit(&mut f.service, client, ConnectionId(1), value);
+            complete(&mut f.service, client, ConnectionId(1), id, encoded)
+        };
+        for (name, channel_count) in [("Cue", 2), ("Wide", 8)] {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::AddBus(BusSpec {
+                        name: name.into(),
+                        channel_count,
+                        creation_request_id: None,
+                        fx: None
+                    })
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let buses = client.snapshot().unwrap().buses.clone();
+        let master = buses[0].id;
+        let cue = buses[1].id;
+        let wide = buses[2].id;
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Bus {
+                    bus: wide,
+                    action: BusAction::MoveBefore(Some(master))
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        for action in [
+            BusAction::GainChanged(-6.),
+            BusAction::BalanceChanged(0.25),
+            BusAction::MuteChanged(true),
+        ] {
+            assert!(matches!(
+                run(&mut f, &mut client, Command::Bus { bus: cue, action }),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let Command::AddTrack(mut spec) = new_track("Fanout", false) else {
+            unreachable!()
+        };
+        spec.initial_output_bus_names = vec![
+            "Master".into(),
+            "Cue".into(),
+            "Wide".into(),
+            "Missing".into(),
+        ];
+        created(run(&mut f, &mut client, Command::AddTrack(spec)));
+        assert_eq!(client.snapshot().unwrap().connections.mixer_links.len(), 12);
+        let old_ids = client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .map(|b| b.id)
+            .collect::<Vec<_>>();
+        let image = capture_image(&mut f.service, &mut client, 1, encoded);
+        release_image(&mut f.service, &mut client, 1, 1, encoded);
+        let key = stage_image(&mut f.service, &mut client, 2, image, encoded);
+        assert!(matches!(
+            run(&mut f, &mut client, Command::CommitPersistence(key)),
+            Outcome::Confirmed { .. }
+        ));
+        let loaded = client.snapshot().unwrap();
+        let mut logical_order = loaded.buses.iter().collect::<Vec<_>>();
+        logical_order.sort_by_key(|bus| bus.id);
+        assert_eq!(
+            logical_order
+                .iter()
+                .map(|bus| bus.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Master", "Cue", "Wide"]
+        );
+        assert_eq!(
+            loaded
+                .buses
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Wide", "Master", "Cue"]
+        );
+        assert!(loaded.buses.iter().all(|b| !old_ids.contains(&b.id)));
+        assert_eq!(loaded.connections.mixer_links.len(), 12);
+        assert_eq!(loaded.buses[2].gain_db, -6.);
+        assert_eq!(loaded.buses[2].balance, 0.25);
+        assert!(loaded.buses[2].muted);
+        let ids = loaded.buses.iter().map(|b| b.id).collect::<Vec<_>>();
+        for bus in ids {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Bus {
+                        bus,
+                        action: BusAction::Remove
+                    }
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .connections
+            .mixer_links
+            .is_empty());
+        let image = capture_image(&mut f.service, &mut client, 3, encoded);
+        release_image(&mut f.service, &mut client, 3, 2, encoded);
+        let persistence_image::Manifest::Session(session) = &image.manifest else {
+            panic!()
+        };
+        assert!(session.buses.is_empty() && session.bus_display_order.is_empty());
+        let key = stage_image(&mut f.service, &mut client, 4, image, encoded);
+        assert!(matches!(
+            run(&mut f, &mut client, Command::CommitPersistence(key)),
+            Outcome::Confirmed { .. }
+        ));
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        let accepted = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddBus(BusSpec {
+                name: "After loss".into(),
+                channel_count: 1,
+                creation_request_id: None,
+                fx: None,
+            }),
+        );
+        f.service.detach(ConnectionId(1));
+        for _ in 0..20 {
+            f.service.tick(STEP);
+        }
+        assert!(f
+            .service
+            .snapshot()
+            .results
+            .iter()
+            .any(|r| r.id == accepted && matches!(r.outcome, Outcome::Confirmed { .. })));
+        client = attach(&mut f.service, 6002, ConnectionId(1), encoded);
+        assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+        assert_eq!(client.snapshot().unwrap().buses[0].name, "After loss");
+        let bus = client.snapshot().unwrap().buses[0].id;
+        for (index, action) in [
+            BusAction::GainChanged(-9.),
+            BusAction::MuteChanged(true),
+            BusAction::Remove,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            f.advance.set(false);
+            let accepted = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Bus { bus, action },
+            );
+            f.service.detach(ConnectionId(1));
+            client = attach(
+                &mut f.service,
+                6003 + index as u128,
+                ConnectionId(1),
+                encoded,
+            );
+            assert!(client
+                .snapshot()
+                .unwrap()
+                .pending
+                .iter()
+                .any(|op| op.id == accepted));
+            f.advance.set(true);
+            for _ in 0..100 {
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+                if client.snapshot().unwrap().results.iter().any(|result| {
+                    result.id == accepted && matches!(result.outcome, Outcome::Confirmed { .. })
+                }) {
+                    break;
+                }
+            }
+            assert!(client.snapshot().unwrap().results.iter().any(|result| {
+                result.id == accepted && matches!(result.outcome, Outcome::Confirmed { .. })
+            }));
+            if index < 2 {
+                assert_eq!(client.snapshot().unwrap().buses[0].gain_db, -9.);
+                assert_eq!(client.snapshot().unwrap().buses[0].muted, index == 1);
+            }
+        }
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        assert!(matches!(
+            run(&mut f, &mut client, Command::NewSession),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+        assert_eq!(client.snapshot().unwrap().buses[0].name, "Master");
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}
+
+#[shoop_test]
+fn refused_bus_structure_reconciles_ports_and_retains_a_removable_survivor() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 6100, ConnectionId(1), false);
+    let before = client
+        .snapshot()
+        .unwrap()
+        .connections
+        .application_ports
+        .len();
+    let add = || {
+        Command::AddBus(BusSpec {
+            name: "Cue".into(),
+            channel_count: 2,
+            creation_request_id: None,
+            fx: None,
+        })
+    };
+    f.refuse_next_bus.set(true);
+    let operation = submit(&mut f.service, &mut client, ConnectionId(1), add());
+    let reserved = f.service.snapshot().buses[1].id;
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            false
+        ),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .len(),
+        before
+    );
+    assert!(matches!(
+        command(&mut f.service, &mut client, ConnectionId(1), add()),
+        Outcome::Confirmed { .. }
+    ));
+    let bus = client.snapshot().unwrap().buses[1].id;
+    assert_ne!(bus, reserved);
+    f.refuse_next_bus.set(true);
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus,
+                action: BusAction::Remove
+            }
+        ),
+        Outcome::Refused { .. }
+    ));
+    let state = client.snapshot().unwrap();
+    assert_eq!(state.buses[1].id, bus);
+    assert_eq!(state.buses[1].structural_state, StructuralState::Confirmed);
+    assert!(state.buses[1].structural_error.is_some());
+    assert_eq!(state.connections.application_ports.len(), before + 2);
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus,
+                action: BusAction::Remove
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .len(),
+        before
+    );
+}
+
+#[shoop_test]
+fn default_bus_bootstrap_and_reset_from_zero_fan_out_to_a_mono_host() {
+    let mut f = fixture_with_outputs(1);
+    let mut client = attach(&mut f.service, 6200, ConnectionId(1), false);
+    let initial = client.snapshot().unwrap();
+    assert_eq!(initial.connections.confirmed_links.len(), 2);
+    assert_eq!(
+        initial.connections.confirmed_links[0].host_port_id,
+        initial.connections.confirmed_links[1].host_port_id
+    );
+    let bus = initial.buses[0].id;
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus,
+                action: BusAction::Remove
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::NewSession
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let reset = client.snapshot().unwrap();
+    assert_eq!(reset.buses.len(), 1);
+    assert_eq!(reset.connections.confirmed_links.len(), 2);
+    assert_eq!(
+        reset.connections.confirmed_links[0].host_port_id,
+        reset.connections.confirmed_links[1].host_port_id
+    );
 }
 fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
     let Outcome::TrackCreated { track, loops, .. } = outcome else {
@@ -799,6 +1149,7 @@ fn shutdown_waits_for_engine_outcomes_and_host_cleanup_and_allows_failure_retry(
 struct RefuseLoop<C> {
     inner: C,
     refuse: Rc<Cell<bool>>,
+    refuse_bus: Rc<Cell<bool>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -808,6 +1159,24 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::CreateBus { .. }
+                | shoop_rt_protocol::Request::RemoveBus { .. },
+        } = message
+        {
+            if self.refuse_bus.replace(false) {
+                assert!(self.reply.is_none());
+                self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                    correlation,
+                    outcome: shoop_rt_protocol::Outcome::Refused(
+                        shoop_rt_protocol::Refusal::Capacity,
+                    ),
+                });
+                return Ok(());
+            }
+        }
         if let shoop_rt_protocol::ClientMessage::Request {
             correlation,
             request: shoop_rt_protocol::Request::CreateLoop { .. },
@@ -1178,7 +1547,10 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
     for capability in BackendCapability::ALL {
         assert_eq!(
             state.capabilities.supports(capability),
-            capability == BackendCapability::MidiInjection
+            matches!(
+                capability,
+                BackendCapability::MidiInjection | BackendCapability::BusManagement
+            )
         );
     }
     assert!(runtime.take_file_output().is_none());

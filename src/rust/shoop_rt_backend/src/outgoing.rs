@@ -11,10 +11,9 @@ use shoop_backend::{
     BackendBusChannelId, BackendBusControl, BackendConfirmedLink, BackendLoopId, BackendMixerLink,
     BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
     BackendPortOwner, BackendPortRole, BackendTrackControl, BackendTrackCreation, BackendTrackId,
-    MASTER_BUS_CHANNEL_IDS,
 };
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, EnginePort, LoopSlotId, PortKind, Request, StripControl, StripId,
+    BusControl, BusPort, EnginePort, LoopSlotId, PortKind, Request, StripControl, StripId,
     StripPort, StripShape,
 };
 use shoop_rt_transport::carrier::Carrier;
@@ -26,13 +25,10 @@ use crate::requests::Purpose;
 use crate::{EngineClock, RtBackend};
 
 /// The engine request for an application mixer link.
-fn route_request(port: StripPort, channel: u8, connected: bool) -> Request {
+fn route_request(port: StripPort, bus: BusPort, connected: bool) -> Request {
     Request::Route {
         port,
-        bus: BusPort {
-            bus: BusId::Master,
-            index: channel,
-        },
+        bus,
         connected,
     }
 }
@@ -383,15 +379,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     && port.descriptor.role == BackendPortRole::AudioOutput
             })
             .ok_or_else(|| anyhow!("mixer source is not a track audio output"))?;
-        let channel = MASTER_BUS_CHANNEL_IDS
-            .iter()
-            .position(|id| *id == destination_channel_id)
-            .ok_or_else(|| anyhow!("unknown bus channel {destination_channel_id:?}"))?;
+        let bus = self
+            .mirror
+            .bus_for_channel(destination_channel_id)
+            .ok_or_else(|| anyhow!("unknown bus channel"))?;
         let Some(EnginePort::Strip(strip_port)) = self.mirror.engine_port(port.target) else {
             return Err(anyhow!("mixer source is not a track audio output"));
         };
         self.requests.push(
-            route_request(strip_port, channel as u8, connected),
+            route_request(strip_port, bus, connected),
             Purpose::Route {
                 link: BackendMixerLink {
                     source_port_id,
@@ -403,8 +399,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         Ok(())
     }
 
-    pub(crate) fn queue_master_control(&mut self, control: BackendBusControl) -> Result<()> {
-        let control = control.normalized(MASTER_BUS_CHANNEL_IDS.len())?;
+    pub(crate) fn queue_bus_control(
+        &mut self,
+        id: shoop_backend::BackendBusId,
+        control: BackendBusControl,
+    ) -> Result<()> {
+        let bus = self
+            .mirror
+            .buses
+            .get(&id)
+            .filter(|b| !b.removing)
+            .ok_or_else(|| anyhow!("unknown bus"))?;
+        let control = control.normalized(bus.channels.len())?;
+        let slot = bus.slot;
         let engine = match control {
             BackendBusControl::GainDb(value) => BusControl::Gain(db_amplitude(value)),
             BackendBusControl::Balance(value) => BusControl::Balance(value),
@@ -412,10 +419,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         self.requests.push(
             Request::BusControl {
-                bus: BusId::Master,
+                bus: slot,
                 control: engine,
             },
-            Purpose::BusControl(control),
+            Purpose::BusControl(id, control),
         );
         Ok(())
     }

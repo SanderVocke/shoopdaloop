@@ -1141,6 +1141,9 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn bus_limits(&self) -> shoop_app_api::BusLimits {
+        shoop_app_api::BusLimits::default()
+    }
     /// Synchronous backends use cursor zero and complete before returning.
     fn mutation_cursor(&self) -> u64 {
         0
