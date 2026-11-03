@@ -5042,6 +5042,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_host_manager"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "eframe",
+ "rfd",
+ "serde_json",
+ "shoop_app_api",
+ "shoop_app_client",
+ "shoop_app_protocol",
+ "shoop_host",
+ "shoop_host_processes",
+ "shoop_rt_host_native",
+ "shoop_wasm_test_support",
+ "tempfile",
+]
+
+[[package]]
 name = "shoop_host_processes"
 version = "0.3.0"
 dependencies = [
@@ -5425,7 +5444,7 @@ dependencies = [
  "shoop_common",
  "shoop_egui",
  "shoop_host",
- "shoop_host_processes",
+ "shoop_host_manager",
  "shoop_persistence_codec",
  "shoop_plugin_protocol",
  "shoop_rt_backend",

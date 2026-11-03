@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -84,6 +85,21 @@ def engine_executable_name(platform: str) -> str:
     return "shoop_host.exe" if platform == "windows" else "shoop_host"
 
 
+def manager_executable_name(platform: str) -> str:
+    return "shoop_host_manager.exe" if platform == "windows" else "shoop_host_manager"
+
+
+def windows_manager_shortcut() -> bytes:
+    # MS-SHLLINK: Unicode RelativePath resolves against the shortcut's own directory.
+    header = struct.pack(
+        "<I16sIIQQQIiIHHII", 76,
+        bytes.fromhex("0114020000000000c000000000000046"),
+        0x88, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    )
+    target = manager_executable_name("windows").encode("utf-16-le")
+    return header + struct.pack("<H", len(target) // 2) + target + bytes(4)
+
+
 def create_native_stage(platform: str, binary: Path, stage: Path, macos_minimum_version: str = "11.0") -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
@@ -120,13 +136,37 @@ def create_native_stage(platform: str, binary: Path, stage: Path, macos_minimum_
         if platform == "linux":
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         shutil.copytree(BUILTINS, root / "builtins")
-    companion = binary.with_name(engine_executable_name(platform))
-    if not companion.is_file():
-        raise RuntimeError(f"companion engine executable does not exist: {companion}")
-    engine = target.with_name(engine_executable_name(platform))
-    shutil.copy2(companion, engine)
-    if platform != "windows":
-        engine.chmod(engine.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    for name in (engine_executable_name(platform), manager_executable_name(platform)):
+        companion = binary.with_name(name)
+        if not companion.is_file():
+            raise RuntimeError(f"companion executable does not exist: {companion}")
+        destination = target.with_name(name)
+        shutil.copy2(companion, destination)
+        if platform != "windows":
+            destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if platform == "macos":
+        manager_contents = root / "ShoopDaLoop Host Manager.app" / "Contents"
+        manager_bin = manager_contents / "MacOS"
+        manager_resources = manager_contents / "Resources"
+        manager_bin.mkdir(parents=True)
+        manager_resources.mkdir()
+        (manager_bin / manager_executable_name(platform)).symlink_to(
+            "../../../ShoopDaLoop.app/Contents/MacOS/shoop_host_manager"
+        )
+        shutil.copy2(ROOT / "resources/iconset/icon.icns", manager_resources / "icon.icns")
+        plist.update(
+            CFBundleDisplayName="ShoopDaLoop Host Manager",
+            CFBundleExecutable=manager_executable_name(platform),
+            CFBundleIdentifier="org.shoopdaloop.host-manager",
+            CFBundleName="ShoopDaLoop Host Manager",
+        )
+        with (manager_contents / "Info.plist").open("wb") as handle:
+            plistlib.dump(plist, handle, sort_keys=True)
+    elif platform == "windows":
+        (root / "ShoopDaLoop Host Manager.lnk").write_bytes(windows_manager_shortcut())
+    else:
+        shutil.copy2(APPLICATION_ICON, root / "icon.png")
+        shutil.copy2(PACKAGE / "shoop_host_manager.desktop", root / "shoop_host_manager.desktop")
 
 
 def write_tar(source: Path, output: Path) -> None:
@@ -171,6 +211,10 @@ def package_native(args: argparse.Namespace) -> list[Path]:
             [str(staged_executable), "--probe-builtins"],
             cwd=stage,
             check=True,
+        )
+        subprocess.run(
+            [str(staged_executable.with_name(manager_executable_name(args.platform))), "--help"],
+            cwd=stage, check=True, timeout=30,
         )
         for transport in ("socket", "shared_memory"):
             subprocess.run(
@@ -250,7 +294,7 @@ def archive_names(path: Path) -> tuple[set[str], dict[str, int]]:
             }
             return files, modes
     with tarfile.open(path, "r:gz") as archive:
-        files = {member.name for member in archive.getmembers() if member.isfile()}
+        files = {member.name for member in archive.getmembers() if member.isfile() or member.issym()}
         modes = {
             member.name: member.mode & 0o777
             for member in archive.getmembers()
@@ -398,6 +442,30 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         builtins_prefix = f"{root}builtins/"
     companion = str(PurePosixPath(executable).with_name(engine_executable_name(platform)))
     required.add(companion)
+    manager = str(PurePosixPath(executable).with_name(manager_executable_name(platform)))
+    required.add(manager)
+    if platform == "macos":
+        manager_app = f"{root}ShoopDaLoop Host Manager.app/Contents/"
+        required.update({
+            f"{manager_app}Info.plist", f"{manager_app}Resources/icon.icns",
+            f"{manager_app}MacOS/shoop_host_manager",
+        })
+        manager_plist = plistlib.loads(payloads[f"{manager_app}Info.plist"])
+        if manager_plist.get("CFBundleExecutable") != "shoop_host_manager":
+            raise RuntimeError("macOS manager bundle has the wrong entry point")
+        with tarfile.open(path, "r:gz") as archive:
+            entry = archive.getmember(f"{manager_app}MacOS/shoop_host_manager")
+            if not entry.issym() or entry.linkname != "../../../ShoopDaLoop.app/Contents/MacOS/shoop_host_manager":
+                raise RuntimeError("macOS manager bundle has an invalid executable link")
+    elif platform == "windows":
+        shortcut = f"{root}ShoopDaLoop Host Manager.lnk"
+        required.add(shortcut)
+        if payloads[shortcut] != windows_manager_shortcut():
+            raise RuntimeError("Windows manager shortcut has the wrong relative target")
+    else:
+        required.update({f"{root}icon.png", f"{root}shoop_host_manager.desktop"})
+        if payloads[f"{root}shoop_host_manager.desktop"] != (PACKAGE / "shoop_host_manager.desktop").read_bytes():
+            raise RuntimeError("Linux manager desktop entry differs from its source")
     if source_tree_marker in names:
         raise RuntimeError("native archive contains a source-tree marker")
     required.update(verify_builtins(payloads, builtins_prefix))
@@ -411,6 +479,11 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
     if platform != "windows" and modes.get(companion, 0) & 0o111 == 0:
         raise RuntimeError(f"companion has no execute bit: {companion}")
     require_native_architecture(payloads[companion], platform, "engine companion", arch)
+    require_native_architecture(payloads[manager], platform, "host manager", arch)
+    if platform != "windows" and modes.get(manager, 0) & 0o111 == 0:
+        raise RuntimeError(f"manager has no execute bit: {manager}")
+    require_application_icon(payloads[manager], "host manager")
+    reject_carla_native_payload(payloads[manager], "host manager")
     binary = payloads[executable]
     require_native_architecture(binary, platform, "native executable", arch)
     if platform == "macos" and macos_minimum_version:

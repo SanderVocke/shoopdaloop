@@ -14,16 +14,6 @@ pub enum SettingsTest {
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
-    /// Manage independent hosts without opening an audio session.
-    #[arg(long, conflicts_with_all = ["host_only", "ui_only", "shutdown_host", "engine_transport", "session", "probe_engine_transport", "probe_persistence", "probe_builtins", "tracing"])]
-    pub manage_hosts: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, conflicts_with = "ui_only")]
-    pub host_only: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub host_config: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
     pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -31,48 +21,20 @@ pub struct AppArgs {
     pub endpoint: Option<std::net::SocketAddr>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
-    pub management_endpoint: Option<std::net::SocketAddr>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_only")]
-    pub lan: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub advertise_data: Option<String>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub advertise_management: Option<String>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
     pub export_profile: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub heartbeat_interval_ms: Option<u64>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub heartbeat_timeout_ms: Option<u64>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub snapshot_hz: Option<u32>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(
         long = "host-profile",
         visible_alias = "remote-profile",
-        group = "host_target",
-        conflicts_with = "host_only"
+        group = "host_target"
     )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Connect to a host's data or management address (HOST:PORT).
-    #[arg(long, group = "host_target", conflicts_with = "host_only")]
+    #[arg(long, group = "host_target")]
     pub host_address: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(
-        long,
-        hide = true,
-        group = "host_target",
-        requires = "ui_only",
-        conflicts_with = "host_only"
-    )]
+    #[arg(long, hide = true, group = "host_target", requires = "ui_only")]
     pub host_stdin: bool,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, requires = "host_target")]
@@ -269,11 +231,9 @@ mod native_tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn native_host_roles_do_not_require_profile_or_config_files() {
-        assert!(
-            AppArgs::try_parse_from(["shoopdaloop", "--host-only"])
-                .unwrap()
-                .host_only
-        );
+        for flag in ["--host-only", "--manage-hosts", "--host-config", "--lan"] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", flag]).is_err());
+        }
         for role in ["--ui-only", "--shutdown-host"] {
             assert!(AppArgs::try_parse_from(["shoopdaloop", role]).is_err());
             assert!(AppArgs::try_parse_from([

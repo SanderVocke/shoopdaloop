@@ -352,10 +352,13 @@ src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Ge
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
 src/rust/shoop_host/src/logging.rs,native_host,excluded,Private diagnostic sink; logging must not recursively emit tracing.
-src/rust/shoopdaloop/src/host_manager.rs,native_ui,excluded,Management-only presentation and background authenticated queries; no audio or application runtime.
-src/rust/shoopdaloop/src/host_manager/start_host.rs,native_ui,excluded,Explicit host configuration form and detached companion startup; no render-thread work.
+src/rust/shoop_host_manager/src/host_manager.rs,native_ui,excluded,Management-only presentation and background compatibility/status queries; no audio or application runtime.
+src/rust/shoop_host_manager/src/host_manager/start_host.rs,native_ui,excluded,Explicit host configuration form and detached companion startup; no render-thread work.
 src/rust/shoop_host_processes/src/lib.rs,native_ui,excluded,OS process and socket inspection and explicit process termination; no render-thread work.
 src/rust/shoop_host_processes/src/windows.rs,native_ui,excluded,Small owned Windows process-handle and creation-time adapter.
 src/rust/shoop_host_processes/src/linux.rs,native_ui,excluded,Read-only procfs socket ownership join; no persistent discovery state.
-src/rust/shoopdaloop/src/host_manager/discovery.rs,native_ui,excluded,Live OS process discovery and bounded background probes; no render-thread work.
+src/rust/shoop_host_manager/src/host_manager/discovery.rs,native_ui,excluded,Live OS process discovery and bounded background probes; no render-thread work.
 src/rust/shoop_host_processes/src/macos.rs,native_ui,excluded,Candidate-only libproc FD inspection; checked socket-kind unions isolated in the native helper.
+src/rust/shoop_host_manager/src/lib.rs,native_ui,excluded,Native management entry point and embedded icon; no render-thread work.
+src/rust/shoop_host_manager/src/main.rs,native_ui,excluded,Standalone native management executable and CLI startup.
+src/rust/shoop_host_manager/src/args.rs,native_ui,excluded,Explicit advanced management CLI inputs; no automatic profile loading.

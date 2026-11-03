@@ -44,7 +44,7 @@ These goals and criteria require explicit user approval to change.
    Compatibility/version checks and operational session ownership still apply.
 2. **Discovery from live OS state:** on all three desktop platforms, list compatible
    standalone hosts visible under normal OS inspection permissions, including hosts
-   started by the manager, CLI and host-only launcher. Find their actual listening
+   started by the manager, CLI and detached looper launcher. Find their actual listening
    sockets by PID; retain OS-assigned ports. Discovery uses no registry, advertisement
    files, remembered host list, fixed port/range or additional discovery service.
 3. **Harmless inspection:** discovery and status probes never acquire a controller,
@@ -77,7 +77,7 @@ These goals and criteria require explicit user approval to change.
   correlate protocol replies with that identity. Runtime instance identifiers are
   public bookkeeping, not credentials, and exported profiles must not pin them.
 - Recognize standalone host executable names and installed/build companion paths.
-  The host-only wrapper's actual `shoop_host` child participates. Ordinary in-process
+  The looper launcher's actual `shoop_host` child participates. Ordinary in-process
   looper sessions without external endpoints are outside the discovery target.
 - Inspect only listening sockets belonging to candidate host processes. Handle IPv4,
   IPv6 and wildcard/local-interface bindings. Do not scan unrelated sockets or guess
@@ -474,3 +474,24 @@ Depends on Stages 0–4.
   [final-head checks](https://github.com/SanderVocke/shoopdaloop/pull/916/checks)
   are rechecked before delivery. There are no remaining implementation blockers;
   merging the PR requires a separate instruction.
+
+## Follow-up — explicit native executables
+
+The user approved three public entry points: `shoopdaloop`, `shoop_host`, and
+`shoop_host_manager`. The manager now owns a native crate/entry point and optional
+advanced CLI inputs. The two redundant looper role flags and wrapper-only host
+arguments are removed. Shared companion lookup handles ordinary sibling paths and
+macOS app-entry aliases; both GUI launch directions retain independent lifetimes.
+
+Packages carry all three binaries plus a macOS manager app entry, a relative Windows
+shortcut and a Linux desktop entry. Native CI builds/tests the manager and smoke-tests
+its entry point after archive extraction. Existing discovery and presentation tests
+move with the implementation; the manager's normal dependency graph contains no Lua
+runtime. Local verification includes focused manager/launch tests, package relocation
+checks and real GUI launches in both directions with a separately started CLI host.
+The complete local suite passes 2,580 Rust tests (4 intentional skips) and 145
+Python tests. Formatting, warning-denying workspace build, no-default-features,
+closed tracing inventory and dependency-boundary checks pass. An actual Linux
+archive passes strict manifest/binary/icon validation. The GUI check confirms
+discovery, both cross-application launch paths and orderly cleanup with empty
+isolated state directories. CI results for this follow-up are attached to PR #916.

@@ -218,10 +218,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests
       - name: Build without CPAL or Rodio
         if: matrix.flavor != 'macos-intel-10.15'
-        run: cargo build --locked -p shoopdaloop -p shoop_host --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
       - name: Build Intel release targeting Catalina
         if: matrix.flavor == 'macos-intel-10.15'
-        run: cargo build --locked --release -p shoopdaloop -p shoop_host --no-default-features --target x86_64-apple-darwin
+        run: cargo build --locked --release -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target x86_64-apple-darwin
       - name: Package portable Catalina distribution
         if: matrix.flavor == 'macos-intel-10.15'
         run: |
@@ -432,7 +432,7 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked -p shoopdaloop -p shoop_host ${{ matrix.cargo_args }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager ${{ matrix.cargo_args }}
 
       - name: Build web application
         if: matrix.target == 'web'
@@ -547,6 +547,7 @@ jobs:
             -p shoop_app_client \
             -p shoop_host \
             -p shoop_host_processes \
+            -p shoop_host_manager \
             -p shoop_app_reference \
             -p shoop_scripting \
             -p shoop_transport \
@@ -647,7 +648,7 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: |
-          cargo check --locked -p shoopdaloop -p shoop_host --no-default-features
+          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest discover -s scripts/tests
 

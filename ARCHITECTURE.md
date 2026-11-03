@@ -889,3 +889,7 @@ satisfied/unsatisfied/unverifiable criteria and reopen invalidated evidence rath
 than weakening goals. User-owned focus/pause/resume and exceptional approvals stay
 explicit. A new extension is only a reviewed proposal, not implemented by this
 migration; `.pi/` storage and native lifecycle remain untouched.
+
+The native entry points are `shoopdaloop`, `shoop_host`, and
+`shoop_host_manager`. The manager has an independent native crate and shares
+configuration, protocol and companion-launch libraries with the looper.

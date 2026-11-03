@@ -59,8 +59,6 @@ mod browser_rt_self_test;
 #[cfg(not(target_arch = "wasm32"))]
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
-mod host_manager;
-#[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_recovery_tests;
@@ -1413,7 +1411,7 @@ impl UnifiedApp {
             if self.runtime.remote_entry.is_none() {
                 ui.menu_button("Session", |ui| {
                     if ui.button("Host Manager…").clicked() {
-                        if let Err(error) = host_manager::launch() {
+                        if let Err(error) = shoop_host::launch::launch_manager() {
                             self.settings.report_action_error(error.to_string());
                         }
                         ui.close();
@@ -1431,7 +1429,7 @@ impl UnifiedApp {
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
                         if ui.button("Host Manager…").clicked() {
-                            if let Err(error) = host_manager::launch() {
+                            if let Err(error) = shoop_host::launch::launch_manager() {
                                 self.settings.report_action_error(error.to_string());
                             }
                             ui.close();
@@ -3594,51 +3592,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
-    if args.host_only {
-        let mut command = std::process::Command::new(companion);
-        if let Some(config) = &args.host_config {
-            command.arg("--config").arg(config);
-        }
-        if let Some(endpoint) = args.endpoint {
-            command.arg("--endpoint").arg(endpoint.to_string());
-        }
-        if args.lan {
-            command.arg("--lan");
-        }
-        if let Some(endpoint) = args.management_endpoint {
-            command
-                .arg("--management-endpoint")
-                .arg(endpoint.to_string());
-        }
-        for (flag, value) in [
-            ("--advertise-data", &args.advertise_data),
-            ("--advertise-management", &args.advertise_management),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value);
-            }
-        }
-        if let Some(path) = &args.export_profile {
-            command.arg("--export-profile").arg(path);
-        }
-        if let Some(path) = &args.log_file {
-            command.arg("--log-file").arg(path);
-        }
-        for (flag, value) in [
-            ("--heartbeat-interval-ms", args.heartbeat_interval_ms),
-            ("--heartbeat-timeout-ms", args.heartbeat_timeout_ms),
-            ("--snapshot-hz", args.snapshot_hz.map(u64::from)),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value.to_string());
-            }
-        }
-        anyhow::ensure!(
-            command.status()?.success(),
-            "session host exited with an error"
-        );
-        return Ok(true);
-    }
     let mut builder = SettingsRegistryBuilder::default();
     register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
     register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
@@ -3687,13 +3640,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let cli = AppArgs::parse();
-    if cli.manage_hosts {
-        if let Err(error) = host_manager::run(&cli) {
-            eprintln!("Host Manager failed: {error:#}");
-            std::process::exit(1);
-        }
-        return;
-    }
     if !cli.probe_engine_transport
         && !cli.probe_persistence
         && !cli.probe_builtins

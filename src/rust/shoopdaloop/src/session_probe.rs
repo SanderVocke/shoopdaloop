@@ -147,7 +147,7 @@ fn launch(
             "inspection changed the host or consumed its attachment"
         );
     }
-    crate::host_manager::verify_host_discovery(&entry, Some((false, true)))?;
+    shoop_host_manager::verify_host_discovery(&entry, Some((false, true)))?;
     Ok((root, host, entry))
 }
 
@@ -210,7 +210,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
     let before = client.snapshot().unwrap().status.processed_frames;
-    crate::host_manager::verify_host_discovery(
+    shoop_host_manager::verify_host_discovery(
         &entry,
         Some((true, transport == EngineTransportKind::Socket)),
     )?;
@@ -277,7 +277,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         ensure!(Instant::now() < deadline, "host did not exit after cleanup");
         std::thread::sleep(Duration::from_millis(5));
     }
-    crate::host_manager::verify_host_discovery(&entry, None)?;
+    shoop_host_manager::verify_host_discovery(&entry, None)?;
     ensure!(
         std::fs::read_dir(root.path())?.count() == 0,
         "normal host workflow wrote persistent metadata"

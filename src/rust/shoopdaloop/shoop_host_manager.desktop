@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShoopDaLoop Host Manager
+Comment=Manage ShoopDaLoop session hosts
+Exec=shoop_host_manager
+Icon=shoopdaloop
+Terminal=false
+Categories=AudioVideo;Audio;

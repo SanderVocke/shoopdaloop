@@ -4,7 +4,7 @@ This crate composes the authoritative app service, RT backend and native engine/
 host. It provides compatible keyless data/management connections, socket/shared-memory
 delivery and detached launch adapters. No UI or Lua runtime is linked into the host.
 
-Run `shoop_host` for dummy audio with OS-assigned local ports, or use the manager's
+Run `shoop_host` for dummy audio with OS-assigned local ports, or run `shoop_host_manager` and use its
 **New host…** form for audio/MIDI and capacity settings. Configuration is passed over
 bounded startup pipes. Optional `--config`, `--export-profile` and `--log-file` paths
 serve explicit advanced inputs/outputs; normal launch and attachment create none.

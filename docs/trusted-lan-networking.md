@@ -18,7 +18,7 @@ The manager rediscovers local hosts by process and owned-socket inspection. It d
 not scan ports, remember hosts on disk or use a registry/discovery listener.
 
 For CLI operation, `shoop_host` starts with dummy audio and local assigned ports;
-`--config PATH` is optional. `shoopdaloop --host-only` forwards host options.
+`shoop_host --config PATH` is optional. Use `shoop_host_manager` for GUI configuration.
 For a LAN server at `192.168.1.50`, explicit ports are useful for firewall rules:
 
 ```sh
@@ -89,7 +89,7 @@ portable management request is `ManagementRequest::Settings`. Reports use bounde
 `HostSettings` is shared by native `host.json` and local UI launch defaults and
 validation. The native UI already stores user preferences as JSON. While
 connected to an external host, preference saves apply to future local launches;
-they do not reconfigure that host. The panel is read-only. Create a new host for driver/pool changes; the manager form also configures startup settings. The native `shoopdaloop --manage-hosts` window can inspect local hosts and explicitly
+they do not reconfigure that host. The panel is read-only. Create a new host for driver/pool changes; the manager form also configures startup settings. The native `shoop_host_manager` window can inspect local hosts and explicitly
 added remote profiles without taking control. Remote configuration editing/hot
 swapping remain future work.
 

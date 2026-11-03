@@ -37,14 +37,32 @@ pub fn write_message(mut writer: impl Write, value: &impl Serialize) -> Result<(
     Ok(())
 }
 pub fn companion_path(application: &Path) -> Result<PathBuf> {
+    named_companion_path(application, "shoop_host")
+}
+pub fn looper_path(application: &Path) -> Result<PathBuf> {
+    named_companion_path(application, "shoopdaloop")
+}
+pub fn manager_path(application: &Path) -> Result<PathBuf> {
+    named_companion_path(application, "shoop_host_manager")
+}
+fn named_companion_path(application: &Path, name: &str) -> Result<PathBuf> {
+    let application = application
+        .canonicalize()
+        .unwrap_or_else(|_| application.to_owned());
     Ok(application
         .parent()
         .context("application has no parent directory")?
         .join(if cfg!(windows) {
-            "shoop_host.exe"
+            format!("{name}.exe")
         } else {
-            "shoop_host"
+            name.to_owned()
         }))
+}
+pub fn launch_manager() -> Result<()> {
+    let mut command = Command::new(manager_path(&std::env::current_exe()?)?);
+    independent(&mut command);
+    reap(command.spawn().context("Open Host Manager")?);
+    Ok(())
 }
 pub fn independent(command: &mut Command) {
     command
@@ -169,6 +187,34 @@ pub fn pair(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[shoop_wasm_test_support::shoop_test]
+    fn application_bundle_aliases_find_the_real_companions() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().canonicalize().unwrap();
+        let shared = directory.join("ShoopDaLoop.app/Contents/MacOS");
+        let entry = directory.join("ShoopDaLoop Host Manager.app/Contents/MacOS");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::create_dir_all(&entry).unwrap();
+        let manager = shared.join("shoop_host_manager");
+        std::fs::write(&manager, b"fixture executable").unwrap();
+        let alias = entry.join("shoop_host_manager");
+        std::os::unix::fs::symlink(
+            "../../../ShoopDaLoop.app/Contents/MacOS/shoop_host_manager",
+            &alias,
+        )
+        .unwrap();
+        assert_eq!(
+            super::companion_path(&alias).unwrap(),
+            shared.join("shoop_host")
+        );
+        assert_eq!(
+            super::looper_path(&alias).unwrap(),
+            shared.join("shoopdaloop")
+        );
+        assert_eq!(super::manager_path(&alias).unwrap(), manager);
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn launch_frames_are_bounded_and_reject_partial_messages() {
         let mut bytes = Vec::new();

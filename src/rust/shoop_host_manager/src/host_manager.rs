@@ -1,7 +1,7 @@
 mod discovery;
 mod start_host;
 
-use crate::app_args::AppArgs;
+use crate::ManagerArgs;
 use anyhow::{Context, Result};
 use eframe::egui;
 use shoop_app_protocol::HostReport;
@@ -33,7 +33,7 @@ impl Source {
     }
 }
 fn ui_command() -> Result<Command> {
-    let mut command = Command::new(std::env::current_exe()?);
+    let mut command = Command::new(shoop_host::launch::looper_path(&std::env::current_exe()?)?);
     command.arg("--ui-only").arg("--host-stdin");
     Ok(command)
 }
@@ -1383,13 +1383,6 @@ impl eframe::App for Manager {
     }
 }
 
-pub fn launch() -> Result<()> {
-    let mut command = Command::new(std::env::current_exe()?);
-    command.arg("--manage-hosts");
-    shoop_host::launch::independent(&mut command);
-    shoop_host::launch::reap(command.spawn().context("Open Host Manager")?);
-    Ok(())
-}
 fn configure_context(context: &egui::Context) {
     context.set_visuals(egui::Visuals::dark());
     context.style_mut_of(egui::Theme::Dark, |style| {
@@ -1422,7 +1415,7 @@ fn configure_context(context: &egui::Context) {
     });
 }
 
-pub fn run(args: &AppArgs) -> Result<()> {
+pub fn run(args: &ManagerArgs) -> Result<()> {
     let mut manager = Manager::new(args.remote_profile.clone());
     if let Some(address) = &args.host_address {
         manager.add_address(address.clone());
@@ -1975,28 +1968,10 @@ mod tests {
             .get_args()
             .map(|arg| arg.to_string_lossy())
             .collect();
-        let parsed = <AppArgs as clap::Parser>::try_parse_from(
-            std::iter::once("shoopdaloop".to_owned()).chain(args.iter().map(|arg| arg.to_string())),
-        )
-        .unwrap();
-        assert!(parsed.ui_only && parsed.host_stdin && parsed.host_address.is_none());
-        use clap::Parser;
-        assert!(AppArgs::try_parse_from([
-            "shoopdaloop",
-            "--manage-hosts",
-            "--remote-profile",
-            "advanced.json"
-        ])
-        .is_ok());
-        for flag in [
-            "--list-hosts",
-            "--host-file",
-            "--host-registry",
-            "--ui-only",
-            "--host-only",
-            "--tracing",
-        ] {
-            assert!(AppArgs::try_parse_from(["shoopdaloop", "--manage-hosts", flag]).is_err());
-        }
+        assert_eq!(
+            command.get_program(),
+            shoop_host::launch::looper_path(&std::env::current_exe().unwrap()).unwrap()
+        );
+        assert_eq!(args, ["--ui-only", "--host-stdin"]);
     }
 }

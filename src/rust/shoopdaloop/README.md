@@ -13,14 +13,14 @@ For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapte
 ## Native roles and delivery
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager
 cargo run -p shoopdaloop
 # Detached host and UI siblings, with configuration exchanged over pipes.
 target/debug/shoopdaloop --session-transport socket
 # Shared memory permits one data attachment.
 target/debug/shoopdaloop --session-transport shared_memory
 # Configure and manage detached hosts from the GUI.
-target/debug/shoopdaloop --manage-hosts
+target/debug/shoop_host_manager
 ```
 
 The default is `in_process`. **Settings → Audio → Session delivery** selects the
@@ -39,11 +39,9 @@ For CLI use, start the roles separately (the host defaults to dummy audio):
 target/debug/shoop_host
 # Use the management address printed by the host, or select it in Host Manager.
 target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
-# Alternative host entry point, with the same optional settings:
-target/debug/shoopdaloop --host-only
 ```
 
-`--config PATH` / `--host-config PATH` accepts an optional host configuration.
+`shoop_host --config PATH` accepts an optional host configuration.
 `--endpoint`, `--management-endpoint`, `--name` and `--log-file` remain explicit host
 options. Advanced connection profiles can be exported with `--export-profile PATH`
 and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
@@ -119,7 +117,14 @@ Session script ownership conversion/resource persistence remains in the parity l
 Source builds use a sibling `SHOOP_SRC_TREE` marker to locate built-ins. Native
 packages omit it and carry built-ins beside the executable on Linux/Windows or in
 `Contents/Resources` on macOS. `shoop_host` ships beside the UI executable, including
-inside `Contents/MacOS`. Carla runtime payloads and old worker/worklet payloads are
+inside `Contents/MacOS`. `shoop_host_manager` ships beside both executables. The macOS
+archive also provides **ShoopDaLoop Host Manager.app**; Windows includes a manager
+shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` and
+`icon.png` for installation into the desktop applications/icon directories, with
+the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
+three executables together when installing. On macOS, keep both app bundles
+together, for example by copying both to Applications.
+Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
 ## Output buses
@@ -216,8 +221,10 @@ Forced process termination cannot finalize an in-process trace.
 
 ## Host Manager
 
-Run `shoopdaloop --manage-hosts`, or choose **Session → Host Manager…** in the
-native looper UI. This opens a separate management process without starting audio
+Run `shoop_host_manager`, or choose **Session → Host Manager…** in the
+native looper UI. The three native entry points are `shoopdaloop` (looper),
+`shoop_host` (headless host), and `shoop_host_manager` (management GUI).
+The manager runs in its own process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
 **New host…** configures and starts a detached companion. Set its name and audio
@@ -228,7 +235,7 @@ require a new host/session.
 
 Opening or refreshing the manager enumerates local host processes and their actual
 listening sockets. Scans run in the background with bounded concurrency. A fresh
-manager rediscovers hosts started through the GUI, CLI or host-only wrapper; closing
+manager rediscovers hosts started through the GUI or CLI; closing
 the manager leaves their processes and sessions running. Exited hosts disappear
 through OS observation. Inspection failures are surfaced separately from exits;
 processes that cannot answer a compatible greeting are not presented as ready.
