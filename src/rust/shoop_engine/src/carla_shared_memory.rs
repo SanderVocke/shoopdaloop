@@ -1,3 +1,4 @@
+use crate::carla_completion::Completion;
 use anyhow::{anyhow, Context, Result};
 use memmap2::{MmapMut, MmapOptions};
 use shoop_plugin_protocol::{
@@ -23,6 +24,7 @@ const SLOT_CONTENT_BYTES: usize = MIDI_OUTPUT_OFFSET + MAX_MIDI_BYTES_PER_BLOCK;
 const SLOT_SIZE: usize = SLOT_CONTENT_BYTES.div_ceil(4096) * 4096;
 const FILE_SIZE: usize = FILE_HEADER_SIZE + SHARED_SLOT_COUNT * SLOT_SIZE;
 const MAGIC: &[u8; 8] = b"SHOOPFX\0";
+const COMPLETION_PORT_OFFSET: usize = 64;
 
 const STATE_FREE: u32 = 0;
 const STATE_READY: u32 = 1;
@@ -55,6 +57,7 @@ pub enum SharedBlockError {
     InvalidCapacity,
     MidiOverflow,
     StaleCompletion,
+    NotificationFailure,
 }
 
 impl std::fmt::Display for SharedBlockError {
@@ -72,6 +75,7 @@ pub struct SharedBlockTransport {
     path: PathBuf,
     generation: ProcessGeneration,
     next_slot: usize,
+    completion: Completion,
 }
 
 unsafe impl Send for SharedBlockTransport {}
@@ -109,6 +113,9 @@ impl SharedBlockTransport {
         write_u32(&mut mapping, 12, SHARED_SLOT_COUNT as u32);
         write_u64(&mut mapping, 16, generation.0);
         mapping[24..56].copy_from_slice(nonce);
+        let completion =
+            Completion::create().context("could not create Carla completion notification")?;
+        write_u32(&mut mapping, COMPLETION_PORT_OFFSET, completion.port());
         for slot in 0..SHARED_SLOT_COUNT {
             unsafe {
                 std::ptr::write(
@@ -139,6 +146,7 @@ impl SharedBlockTransport {
             _temporary_file: Some(file),
             generation,
             next_slot: 0,
+            completion,
         })
     }
 
@@ -170,6 +178,8 @@ impl SharedBlockTransport {
         if &mapping[24..56] != expected_nonce {
             return Err(anyhow!("Carla shared-memory nonce does not match"));
         }
+        let completion = Completion::open(read_u32(&mapping, COMPLETION_PORT_OFFSET))
+            .context("could not open Carla completion notification")?;
         Ok(Self {
             mapping,
             _file: Some(file),
@@ -177,6 +187,7 @@ impl SharedBlockTransport {
             path: path.to_path_buf(),
             generation: expected_generation,
             next_slot: 0,
+            completion,
         })
     }
 
@@ -344,7 +355,17 @@ impl SharedBlockTransport {
                 }
                 continue;
             }
-            std::hint::spin_loop();
+            if self
+                .completion
+                .wait(self.state(token.slot), state, deadline)
+                .is_err()
+                && self
+                    .state(token.slot)
+                    .compare_exchange(state, STATE_ABANDONED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                return Err(SharedBlockError::NotificationFailure);
+            }
         }
     }
 
@@ -414,7 +435,17 @@ impl SharedBlockTransport {
                 }
                 continue;
             }
-            std::hint::spin_loop();
+            if self
+                .completion
+                .wait(self.state(token.slot), state, deadline)
+                .is_err()
+                && self
+                    .state(token.slot)
+                    .compare_exchange(state, STATE_ABANDONED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                return Err(SharedBlockError::NotificationFailure);
+            }
         }
     }
 
@@ -569,7 +600,10 @@ impl SharedBlockTransport {
             Ordering::Release,
             Ordering::Acquire,
         ) {
-            Ok(_) => Ok(()),
+            Ok(_) => self
+                .completion
+                .notify(self.state(token.slot))
+                .map_err(|_| SharedBlockError::NotificationFailure),
             Err(STATE_ABANDONED) => {
                 self.state(token.slot).store(STATE_FREE, Ordering::Release);
                 Err(SharedBlockError::DeadlineMiss)
@@ -724,6 +758,76 @@ fn read_midi(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn completion_wakes_both_copy_paths_with_audio_and_midi() {
+        let nonce: [u8; 32] = [
+            uuid::Uuid::new_v4().into_bytes(),
+            uuid::Uuid::new_v4().into_bytes(),
+        ]
+        .concat()
+        .try_into()
+        .unwrap();
+        let generation = ProcessGeneration(1);
+        let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        for reuse in [false, true] {
+            let token = parent
+                .submit(
+                    BlockSequence(1 + u64::from(reuse)),
+                    8,
+                    &[vec![1.0; 8]],
+                    1,
+                    &[],
+                    &[],
+                )
+                .unwrap();
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    let taken = worker.worker_take().unwrap();
+                    std::thread::sleep(Duration::from_millis(20));
+                    worker
+                        .worker_complete(
+                            taken,
+                            &[&[0.5; 8]],
+                            &[MidiEvent {
+                                frame_offset: 3,
+                                data: vec![0x90, 64, 100],
+                            }],
+                        )
+                        .unwrap();
+                });
+                let mut outputs = [vec![0.0; 8]];
+                let mut midi = vec![MidiEvent {
+                    frame_offset: 0,
+                    data: Vec::with_capacity(16),
+                }];
+                let deadline = Instant::now() + Duration::from_secs(2);
+                if reuse {
+                    let mut count = 0;
+                    assert_no_alloc::assert_no_alloc(|| {
+                        parent.wait_and_copy_reusing_midi(
+                            token,
+                            deadline,
+                            &mut outputs,
+                            &mut midi,
+                            &mut count,
+                        )
+                    })
+                    .unwrap();
+                    assert_eq!(count, 1);
+                } else {
+                    parent
+                        .wait_and_copy(token, deadline, &mut outputs, &mut midi)
+                        .unwrap();
+                    assert_eq!(midi.len(), 1);
+                }
+                assert_eq!(outputs[0], [0.5; 8]);
+                assert_eq!(midi[0].frame_offset, 3);
+                assert_eq!(midi[0].data, [0x90, 64, 100]);
+            });
+        }
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn shared_slots_round_trip_audio_midi_and_identity() {

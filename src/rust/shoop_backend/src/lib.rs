@@ -895,6 +895,14 @@ pub struct BackendLoopContent {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendChannelTimingUpdate {
+    pub channel: usize,
+    pub is_midi: bool,
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendAudioChannelUpdate {
     pub channel: usize,
     pub samples: Arc<Vec<f32>>,
@@ -1416,6 +1424,13 @@ pub trait Backend {
         _length: Option<u32>,
     ) -> Result<()> {
         Err(anyhow!("targeted loop timing updates are unavailable"))
+    }
+    fn set_loop_channel_timings(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _updates: &[BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        Err(anyhow!("channel timing updates are unavailable"))
     }
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))

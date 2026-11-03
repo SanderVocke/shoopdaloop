@@ -7,7 +7,7 @@ mod support;
 
 use std::sync::Arc;
 
-use cpal::StreamError;
+use cpal::{Error, ErrorKind};
 use shoop_rt_engine::EngineDescription;
 use shoop_rt_host_native::{
     start_cpal, CpalConfig, DeviceSelection, MidiDevices, MidiInputDevice, MidiOutputDevice,
@@ -293,7 +293,10 @@ fn bridge_underruns_and_overruns_and_backend_underruns_are_counted_as_xruns() {
     for _ in 0..8 {
         rig.render(16);
     }
-    rig.output.fail(StreamError::BufferUnderrun);
+    rig.output.fail(Error::new(ErrorKind::DeviceChanged));
+    rig.output.fail(Error::new(ErrorKind::RealtimeDenied));
+    assert_eq!(rig.host().status().driver.state, DriverRunState::Running);
+    rig.output.fail(Error::new(ErrorKind::Xrun));
     rig.tick(16);
     rig.tick(16);
     let status = rig.host().status();
@@ -311,7 +314,7 @@ fn a_stream_error_marks_the_driver_failed() {
     rig.input
         .as_ref()
         .unwrap()
-        .fail(StreamError::DeviceNotAvailable);
+        .fail(Error::new(ErrorKind::DeviceNotAvailable));
     let status = rig.host().status();
     assert_eq!(status.driver.state, DriverRunState::Failed);
     assert_eq!(status.failure, Some(StreamFailure::DeviceNotAvailable));

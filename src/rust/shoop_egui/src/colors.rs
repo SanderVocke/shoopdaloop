@@ -42,10 +42,12 @@ pub const LOOP_CONTROL_HOVER: Color32 = Color32::from_rgb(105, 105, 110);
 
 pub const METER_LEVEL: Color32 = Color32::from_rgb(82, 132, 158);
 pub const DIAL_LABEL: Color32 = Color32::from_gray(180);
-pub const WAVEFORM_BACKGROUND: Color32 = Color32::from_rgb(25, 25, 27);
+pub const WAVEFORM_BACKGROUND: Color32 = Color32::BLACK;
 pub const WAVEFORM_ZERO_LINE: Color32 = Color32::from_rgb(92, 48, 54);
 pub const WAVEFORM_LOOP_REGION: Color32 = Color32::from_rgba_unmultiplied_const(28, 28, 128, 110);
 pub const WAVEFORM_PREPLAY_REGION: Color32 = Color32::from_rgba_unmultiplied_const(96, 72, 24, 90);
 pub const WAVEFORM_SYNC_MARKER: Color32 = Color32::from_rgba_unmultiplied_const(180, 180, 210, 90);
+pub const WAVEFORM_MINOR_GRID: Color32 = Color32::from_gray(75);
+pub const WAVEFORM_UNPLAYED_REGION: Color32 = Color32::from_gray(48);
 pub const WAVEFORM_LINE: Color32 = Color32::from_rgb(235, 35, 55);
 pub const WAVEFORM_PLAYHEAD: Color32 = Color32::from_rgb(80, 210, 100);

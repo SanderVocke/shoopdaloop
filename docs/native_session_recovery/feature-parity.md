@@ -23,6 +23,11 @@ refuse as a whole. Content duplication, generated click insertion and the remain
 MIDI initial/preroll state cases stay open in P11; click generation/preview stays
 open in P15. **All 16 rows remain OPEN.**
 
+The [master reconciliation](master-reconciliation.md) preserves the newer range
+editor and per-channel timing behavior in the reference stack. P12 still requires
+authoritative service admission, atomic single/all-channel updates, RT execution,
+persistence and recovery coverage before production timing edits can be enabled.
+
 ## What is already available
 
 The service supports direct audio/MIDI/trigger tracks, primitive loop creation and

@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 
 PACKAGE = pathlib.Path(__file__).resolve().parent
 ROOT = PACKAGE.parents[2]
@@ -33,23 +34,30 @@ if linker_key not in environment and shutil.which("lld") is None:
 output_dir = args.output_dir.resolve()
 output_dir.mkdir(parents=True, exist_ok=True)
 (output_dir / "shoop_audio_worklet.wasm").unlink(missing_ok=True)
-# One Cargo invocation per module, so their dependency features resolve separately.
-for package in ("shoop_rt_host_worklet", "shoop_persistence_codec"):
-    command = [
-        "cargo",
-        "build",
-        "--locked",
-        "--target",
-        "wasm32-unknown-unknown",
-        "-p",
-        package,
-    ]
-    if package == "shoop_persistence_codec":
-        command.extend(["--features", "worker-exports"])
-    if profile == "release":
-        command.append("--release")
-    subprocess.run(command, cwd=ROOT, env=environment, check=True)
-    target = ROOT / "target" / "wasm32-unknown-unknown" / profile / f"{package}.wasm"
-    destination = output_dir / target.name
-    shutil.copy2(target, destination)
-    print(f"copied {profile} worklet: {target} -> {destination}")
+command = [
+    "cargo", "build", "--locked", "--target", "wasm32-unknown-unknown",
+    "-p", "shoop_rt_host_worklet",
+]
+if profile == "release":
+    command.append("--release")
+subprocess.run(command, cwd=ROOT, env=environment, check=True)
+target_root = pathlib.Path(environment.get("CARGO_TARGET_DIR", ROOT / "target"))
+if not target_root.is_absolute():
+    target_root = ROOT / target_root
+target = target_root / "wasm32-unknown-unknown" / profile / "shoop_rt_host_worklet.wasm"
+shutil.copy2(target, output_dir / target.name)
+
+(output_dir / "shoop_persistence_codec.wasm").unlink(missing_ok=True)
+with tempfile.TemporaryDirectory(prefix="shoop-codec-") as temporary:
+    subprocess.run(
+        [
+            "wasm-pack", "build", str(ROOT / "src/rust/shoop_persistence_codec"),
+            "--target", "web", "--no-opt", "--no-typescript", "--no-pack",
+            "--out-dir", temporary, "--out-name", "shoop_persistence_codec",
+            "--dev" if profile == "debug" else "--release",
+            "--", "--locked", "--features", "worker-exports",
+        ],
+        cwd=ROOT, env=environment, check=True,
+    )
+    for name in ("shoop_persistence_codec.js", "shoop_persistence_codec_bg.wasm"):
+        shutil.copy2(pathlib.Path(temporary) / name, output_dir / name)

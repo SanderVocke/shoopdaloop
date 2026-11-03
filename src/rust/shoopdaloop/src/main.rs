@@ -634,7 +634,7 @@ impl UnifiedApp {
         if self.session_url_prompt_open {
             let mut submit = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("load_session_url_prompt")).show(context, |ui| {
+            egui::Modal::new(egui::Id::unique("load_session_url_prompt")).show(context, |ui| {
                 ui.heading("Load session from URL");
                 ui.add_space(8.0);
                 ui.label("Session URL:");
@@ -669,7 +669,7 @@ impl UnifiedApp {
         if let Some(url) = self.session_url_confirmation.clone() {
             let mut fetch = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("confirm_session_url_fetch")).show(context, |ui| {
+            egui::Modal::new(egui::Id::unique("confirm_session_url_fetch")).show(context, |ui| {
                 ui.heading("Fetch session from URL?");
                 ui.add_space(8.0);
                 ui.label("ShoopDaLoop will download and open this session:");
@@ -908,13 +908,31 @@ impl UnifiedApp {
                 status = self.tracing.status();
             }
         }
-        if self.args.tracing_smoke_test && status.active && self.runtime.tracing_realm_ready() {
-            let started = self.tracing_smoke_started.get_or_insert_with(|| {
-                tracing::info!("frontend.egui.tracing_smoke_realm_ready");
-                Instant::now()
-            });
-            if started.elapsed() >= Duration::from_secs(3) && self.pending_tracing_action.is_none()
+        if self.args.tracing_smoke_test && status.active {
+            let started = self.tracing_smoke_started.get_or_insert_with(Instant::now);
+            let received_records = self
+                .tracing
+                .capture
+                .as_ref()
+                .map_or(0, |capture| capture.emitted_records());
+            let ready = self.runtime.tracing_realm_ready() && received_records > 8192;
+            let timed_out = started.elapsed() >= Duration::from_secs(60);
+            if let Some(body) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.body())
             {
+                let _ = body
+                    .set_attribute("data-perfetto-trace-records", &received_records.to_string());
+                if timed_out && !ready {
+                    let _ = body.set_attribute(
+                        "data-perfetto-trace-error",
+                        &format!(
+                            "Timed out waiting for the local UI trace to emit more than 8192 records; received {received_records}"
+                        ),
+                    );
+                }
+            }
+            if (ready || timed_out) && self.pending_tracing_action.is_none() {
                 tracing::info!("frontend.egui.tracing_smoke_stop_requested");
                 self.pending_tracing_action = Some(PendingTracingAction::Stop { save: true });
                 self.args.tracing_smoke_test = false;
@@ -1334,7 +1352,7 @@ impl UnifiedApp {
             }
         });
         if hovering {
-            egui::Area::new(egui::Id::new("lua_file_drop_overlay"))
+            egui::Area::new(egui::Id::unique("lua_file_drop_overlay"))
                 .order(egui::Order::Foreground)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(context, |ui| {

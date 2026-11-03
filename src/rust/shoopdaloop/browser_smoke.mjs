@@ -47,6 +47,7 @@ if (settingsUnavailable && !settingsOnly) {
 }
 const selfContainedPath = process.env.SELF_CONTAINED_PATH
   || join(process.cwd(), 'dist', 'shoopdaloop.html');
+const selfContainedUrl = process.env.SELF_CONTAINED_URL || pathToFileURL(selfContainedPath).href;
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
@@ -404,7 +405,7 @@ try {
   const newEngineQuery = `?new-engine-self-test=1${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
-      ? `${pathToFileURL(selfContainedPath).href}${newEngineQuery}`
+      ? `${selfContainedUrl}${newEngineQuery}`
       : `${origin}/${newEngineQuery}`;
   } else if (selfContained) {
     const query = workerEngine
@@ -420,7 +421,7 @@ try {
           : outputOnly
             ? ''
             : '?offline=1&self-test=1';
-    entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
+    entryUrl = `${selfContainedUrl}${query}`;
   } else {
     entryUrl = settingsOnly
       ? settingsUnavailable
@@ -550,7 +551,7 @@ try {
     }
     if (state.renderMemoryGrowths !== 0 || state.overflows !== 0) throw new Error(`render boundary invariant failed: ${JSON.stringify(state)}`);
     if (webMidi && (state.webMidiTrackDrops !== 0 || state.webMidiTrackRefusals !== 0 || !state.webMidiInputHandler)) throw new Error(`Web MIDI bridge evidence failed: ${JSON.stringify(state)}`);
-    console.log(`${selfContained ? 'direct-file' : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
+    console.log(`${selfContained ? (process.env.SELF_CONTAINED_URL ? 'single-file URL' : 'direct-file') : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
   } else if (settingsOnly && settingsUnavailable) {
     const state = await waitFor(
       candidate => candidate.settingsTest === 'unavailable'

@@ -71,11 +71,12 @@ Carla runtime sources and build recipes remain available for subsequent parity w
 
 ## Browser build
 
-Install the WebAssembly target and the Trunk version used by CI:
+Install the WebAssembly target and the web build tool versions used by CI:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install --locked trunk --version 0.21.14
+cargo install --locked wasm-pack --version 0.15.0
 cd src/rust/shoopdaloop
 trunk serve --open
 ```

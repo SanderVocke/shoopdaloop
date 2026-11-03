@@ -187,6 +187,17 @@ impl BrowserCapture {
         })
     }
 
+    pub fn emitted_records(&self) -> u64 {
+        STATE.with(|state| {
+            state.borrow().as_ref().map_or(0, |state| {
+                state
+                    .backend
+                    .with(|backend| backend.health().emitted_records)
+                    .unwrap_or(0)
+            })
+        })
+    }
+
     pub fn finish(
         mut self,
         window_calibrations: Vec<BrowserCalibration>,
