@@ -1,6 +1,7 @@
 # Transport-independent DSP link node in an rt_runtime graph
 
-Status: In progress. The portable contract is recorded in [link-contract.md](link-contract.md).
+Status: Complete (2026-11-03). The portable contract is recorded in
+[link-contract.md](link-contract.md).
 
 Planning branch: `feat/rt-runtime-remote-dsp`, created from
 `feat/network-dsp-host` at `ec4b52ec2de23b60714eadb8ebf1be69834dd3e0`.
@@ -292,7 +293,7 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 - [x] Push the branch and create a separate PR. While PR #915 is open, stack it
       on `feat/network-dsp-host`; after that dependency merges, retarget to
       `feat/backend-replacement` and verify the integrated base.
-- [ ] Monitor CI to green, inspecting logs before targeted corrections. Check
+- [x] Monitor CI to green, inspecting logs before targeted corrections. Check
       automated review and address justified feedback until its checks pass and
       participating reviewers approve. Record evidence and final status here.
 
@@ -306,53 +307,54 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 
 ## Execution evidence
 
-- Stage 0 contract: `link-contract.md` defines the conservative frame bound,
-  lease ownership and fault table before implementation.
-- Added portable DSP-link/service and runtime-node crates, and a separate native
-  session/UDP adapter library. The original requester uses extracted session
-  operations; the UDP server and non-network service share prepared DSP execution.
-- Nine focused tests passed, including Q=3/B=5 audio and MIDI, exact L+A graph
-  output across variable callbacks, bounded credit exhaustion and irrevocable
-  fallback across a partial output block. Render/service heap guards passed.
-- Two additional recovery regressions failed before correction and passed after:
-  preserving transport context across an initial gap, and propagating MIDI reset
-  even when a DSP filters MIDI output.
-- Complete required-Carla native suite: **2564 passed, four skipped**. Formatting,
-  test attributes, warning-denying workspace build and closed tracing inventory
-  (378 modules) passed. Portable link/node builds passed on Cortex-A32, Cortex-A64,
-  Cortex-M and WebAssembly at that milestone.
-
-- The graph demo now runs a non-network reference or real UDP through the same
-  node. Focused validation passed all 20 core/node/demo tests, including real
-  Carla gain/state restoration and a two-second native no-progress watchdog.
-- Added graph activation/retirement/replacement, impulses, oversized SysEx with
-  budgeted host recovery, an unrelated dry path during service failure, and a
-  continuously-ready peer that cannot extend the render drain budget.
-- A repeated-reply watchdog regression failed before correction: duplicate data
-  kept a stalled link alive. Only advancing source results now renew progress.
-- The six-case native demo script passed with configured Carla, including a
-  software-paced UDP example. Carla's smoothing fixture uses an explicitly
-  reported warm-up; delay-copy remains bit-exact.
-
-- Final local gates: **2575 native tests passed, four skipped**, with required
-  Carla. All 20 focused core/node/demo tests passed in release too. Warning-denying
-  workspace build, formatting, test policy, closed tracing (379 modules), 143
-  Python repository tests, all four portable targets and affected app/worklet
-  WebAssembly checks passed. The node's normal dependency tree contains only
-  rt_runtime, the portable link/DSP crates and no-default-feature rtrb.
-- CI now includes the link/node in Cortex-A/M builds and the native graph/UDP
-  correctness subset. Coverage requires the real Carla graph workflow; the 80%
-  patch floor is unchanged. Workflow filters include the stacked PR target.
-- Clean detached checkout `13ff3c0d` reproduced all six cases with 55,002 verified
-  samples, zero mismatches/unverified samples, and 96 paced fallback samples.
-  [Results and reproduction](integration-results.md) link the audited JSON records;
-  original benchmark campaigns remain unchanged. Delivery is in
-  [PR #922](https://github.com/SanderVocke/shoopdaloop/pull/922), stacked on #915.
-- CodeQL review prompted explicit allocation bounds and a heap-guarded rejection
-  regression. The UDP correctness test's zero-fallback timing assertion failed
-  under local and CI contention; it now permits counted misses while retaining
-  positive processed output and complete sample checks. The non-network reference
-  still requires zero fallback. After these corrections, **2576 native tests passed,
-  four skipped**, all **23 focused DSP/link/node/demo release tests** passed,
-  and warning-denying workspace/portable builds, formatting and test policy passed.
-  Updated remote checks and automated-review resolution remain pending.
+- Delivered in [PR #922](https://github.com/SanderVocke/shoopdaloop/pull/922).
+  PR #915 remains open at `ec4b52ec`, so the integration PR is stacked on
+  `feat/network-dsp-host` as planned. No merge was performed.
+- The frame/ownership contract was committed before implementation. Portable
+  `shoop_dsp_link` and `shoop_dsp_link_node` libraries implement logical leases,
+  Q/B adaptation, bounded rendering, fixed frame latency and MIDI recovery.
+  A separate native library owns session/UDP operations. Reference and UDP
+  services share prepared DSP execution without imposing a network format on
+  the generic node or service.
+- Graph tests cover exact L+A audio/MIDI across variable callbacks and split
+  ranges, non-dividing Q=3/B=5, impulses, origins beyond 32 bits, late/stale/
+  reordered results, credit exhaustion, bounded draining under a continuously
+  ready peer, graph activation/removal/replacement and an unrelated dry path
+  during service failure. Heap guards cover successful and failing render paths.
+  Oversized SysEx requests bounded recovery rather than truncation; host recovery
+  draining and ordinary MIDI resumption are tested.
+- Regressions failed before correction and passed afterwards for initial-gap
+  transport context, MIDI reset through a filtering DSP, and repeated replies
+  incorrectly renewing a stalled worker's progress deadline. Native tests also
+  cover preparation failure, peer death, non-progress and a fresh session.
+- Final local validation on source `5d2b891c`: **2576 native tests passed, four
+  configured skips**, with real Carla required. All **23 focused DSP/link/node/
+  demo tests passed in release**. Warning-denying workspace build, formatting,
+  Rust test policy, closed tracing inventory (379 modules) and 143 Python
+  repository tests passed. Cortex-A32/A64, Cortex-M and WebAssembly library builds
+  and affected application/worklet WebAssembly checks passed. The portable node's
+  normal dependency tree contains only rt_runtime, portable link/DSP crates and
+  no-default-feature rtrb.
+- A clean detached checkout of `13ff3c0d` reproduced six reference/UDP/Carla/
+  restored-state/paced cases: **55,002 verified samples, zero mismatches and zero
+  unverified samples**. The paced case retained **96 fallback samples** and one
+  consumed concealed block. Carla's gain fixture uses an explicitly reported
+  warm-up; unknown plugin latency stays unknown. [Results and reproduction](integration-results.md) link audited commands, identities and JSON records.
+  Both original measurement campaigns remain unchanged.
+- CodeQL review prompted explicit allocation bounds and a heap-guarded excessive
+  MIDI-capacity rejection test. The UDP zero-fallback assertion failed under local
+  and CI contention: stepped graph time does not pause the server's wall-clock
+  gap handling. Network tests now permit counted misses while requiring positive
+  processed output, zero incorrect/unverified samples and no lost observations.
+  The non-network reference still requires zero fallback.
+- Delivery source `5d2b891c` passed the complete [build/test workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/41608700624): Linux,
+  Windows and macOS debug/release, browser debug/release, bare-metal builds and
+  required-Carla coverage. [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41608700975) and
+  [documentation](https://github.com/SanderVocke/shoopdaloop/actions/runs/41608700637) passed.
+  Patch coverage was **90.26%**, above the unchanged **80%** floor. Automated
+  review's four allocation discussion threads are resolved; no human reviewer
+  participated.
+- Native demo and platform-binding documentation distinguish implemented code
+  from future production IPC and Zynq adapters. Application inserts/UI, automatic
+  graph compensation, board drivers and physical-LAN guarantees remain outside
+  this completed milestone's agreed scope.

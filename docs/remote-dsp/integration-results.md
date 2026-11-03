@@ -59,8 +59,8 @@ connections and platform binding sketches.
 
 After review corrections, the complete local native suite passed 2,576 tests
 with four configured skips; all 23 focused DSP/link/node/demo tests passed in
-release. Render heap guards, peer
-death/stall/repeated-reply cases, graph activation/retirement/replacement and
+release. Render heap guards, peer death/stall/repeated-reply cases,
+graph activation/retirement/replacement and
 bounded MIDI recovery are covered by tests. Cortex-A32/A64, Cortex-M, WebAssembly
 library and affected application/worklet builds passed.
 
@@ -72,6 +72,14 @@ assertion failed under both CI and local scheduling contention. Stepped graph
 time does not pause the UDP server's wall-clock gap handling; zero misses are
 therefore not a portable CI requirement. The synchronous reference still requires
 zero fallback. These corrections do not change the captured six-case results.
+
+Delivery source `5d2b891c` passed the complete
+[build/test matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41608700624),
+including native Linux/Windows/macOS debug and release, both browser profiles,
+bare-metal builds and required-Carla coverage. Patch coverage was 90.26% against
+the unchanged 80% requirement. CodeQL and documentation passed, and all four
+allocation review threads are resolved. Delivery is in
+[PR #922](https://github.com/SanderVocke/shoopdaloop/pull/922).
 
 The original network and scheduling campaigns are preserved unchanged. This
 milestone supplies no production IPC adapter, FPGA driver or physical-LAN timing
