@@ -65,8 +65,9 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
   block/readiness adapter coverage and target-device evidence.
   - [x] Initial checked audio playback sweep: 983,040 whole callbacks over
     16/32-frame quanta, four graph sizes and three transition scenarios.
-  - [ ] Final-source repeat and comparison report; recording/MIDI/edit/plugin
-    and target-device performance remain outside the initial sweep.
+  - [x] Final-source audio repeat and comparison report, including every raw
+    callback, pooled tails, all misses and historical comparison tables.
+  - [ ] Recording/MIDI/edit/plugin and target-device performance.
 - [ ] Run final native/browser end-to-end and parity gates, remove superseded
   execution code, push, open a PR, obtain green CI and address automated review
   feedback through approval.
@@ -114,6 +115,10 @@ Validation completed:
   Node 24.19.0 / wasm-bindgen 0.2.127, and headless Chromium 154.0.8037.57 with a
   matching-build ChromeDriver 154.0.8037.92. These are library/adapter browser
   tests, not AudioWorklet or physical-device acceptance.
+- The production application and worklet compile separately for Wasm, and the
+  client-codec/worklet artifact contract passes. Runtime/engine dependency
+  boundaries pass for all four supported targets. These checks exercise the
+  existing production path; the fixed core has not been wired into it yet.
 - Warning-denying native workspace build passed. The full native nextest run
   passed 2578 cases, with four host-facility skips, using the documented features,
   three test workers and loopback permission. Test-attribute, boundary, book,
@@ -129,8 +134,14 @@ Validation completed:
 The checked `fixed_quantum_benchmark` example and `benchmark_fixed_core.py` driver
 retain every callback, verify every sample and graph visit count outside timing,
 and report full-128-frame callback means, p99/p99.9, maxima and deadline misses.
-The initial sweep observed two missed deadlines; neither is discarded. The
-final-source timing repeat and comparison report are next. Full application
+The initial sweep observed two missed deadlines and the final-source repeat
+observed three, all retained. Across both runs that is five in 1,966,080 measured
+callbacks. The final 64-loop means were 143.8/143.7/148.5 us for Q=32 and
+170.8/171.5/176.6 us for Q=16 (steady/two-seeks/two-bursts). These use
+5.39/5.39/5.57% and 6.40/6.43/6.62% of the full 128-frame/48-kHz callback budget.
+The maximum was 4060.3 us (152.26%); the VM run does not establish xrun safety.
+See `docs/fixed_quantum/README.md` and its checked evidence for per-configuration
+tails, all misses and the original/prototype comparisons. Full application
 parity/cutover and device/plugin acceptance remain unchecked above.
 
 Publishing is blocked: automatic approval review rejected pushing the local

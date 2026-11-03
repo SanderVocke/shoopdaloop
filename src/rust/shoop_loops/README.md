@@ -188,3 +188,8 @@ The implementation contract and remaining work are tracked in
 [Earlier plans and evidence narratives](../../../docs/history/README.md) are
 historical. No full legacy backend compatibility, unlimited recording, or
 hard-real-time deadline guarantee is promised.
+
+## Fixed-quantum redesign evidence
+
+The [implementation and timing report](../../../docs/fixed_quantum/README.md)
+records the current migration status, callback tails and historical comparisons.
