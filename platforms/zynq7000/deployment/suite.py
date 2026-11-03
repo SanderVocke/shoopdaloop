@@ -183,7 +183,9 @@ def main():
             with path.open("w") as log:
                 status = run_phase([sys.executable, Path(__file__).resolve(), "--directory", directory, "--phase", name,
                                     "--port-base", str(args.port_base), "--updater-port", str(args.updater_port),
-                                    *(["--fetch"] if args.fetch else [])], log, 2400 if name in {"build", "original"} else 1800)
+                                    *(["--fetch"] if args.fetch else []),
+                                    *(["--native-coverage"] if args.native_coverage else [])],
+                                   log, 2400 if name in {"build", "original"} else 1800)
             phase.update(passed=status == 0, seconds=round(time.monotonic() - started, 2))
             if status:
                 raise RuntimeError(name + " failed:\n" + path.read_text()[-12000:])

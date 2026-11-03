@@ -500,3 +500,7 @@ revisions rather than treating moving documentation as a reproducible input.
 - Restarting consolidated validation with the final artifact/privacy and sampling
   implementation; PR #924 remains ready for review and unmerged. Both initial
   CodeQL review threads are addressed and resolved.
+- Final harness review caught a missing forwarding flag between the parent suite
+  and coverage-enabled child phases. Forward `--native-coverage` explicitly;
+  the actual coverage-configured records/ASan/redaction child passes. Restart the
+  complete run so its report proves the CLI used throughout was instrumented.
