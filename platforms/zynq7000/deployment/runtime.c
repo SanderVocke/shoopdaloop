@@ -50,6 +50,9 @@ static int write_sector(void *context, uint32_t lba, const void *in) {
 static const struct shoop_io io = { NULL, read_sector, write_sector };
 int shoop_deploy_init(void) {
     memcpy(&handoff, (const void *)SHOOP_HANDOFF_ADDRESS, sizeof handoff);
+#if SHOOP_DEPLOY_FAULT == 5
+    xil_printf("SHOOP_DEPLOY_TEST_HANDOFF_VERSION\r\n"); ++handoff.version;
+#endif
     if (!shoop_handoff_valid(&handoff) || strcmp(handoff.build, shoop_build_identity)) return 0;
     if (XSdPs_CfgInitialize(&sd, &XSdPs_ConfigTable[0], 0xe0100000) != XST_SUCCESS ||
         XSdPs_CardInitialize(&sd) != XST_SUCCESS) {

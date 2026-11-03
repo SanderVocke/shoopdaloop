@@ -402,6 +402,8 @@ pub fn deploy(
             }
             if current.boot_nonce != journal.boot_nonce {
                 if current.last_operation == Some(operation) && current.confirmed {
+                    journal.done = true;
+                    journal.save(journal_path)?;
                     bail!("candidate rolled back to {}", current.build);
                 }
                 bail!("host boot changed before this deployment could be reconciled");
@@ -488,6 +490,8 @@ pub fn deploy(
                     return finish(&mut journal, journal_path, current);
                 }
                 if current.confirmed && current.hash != bundle.hash {
+                    journal.done = true;
+                    journal.save(journal_path)?;
                     bail!("candidate rolled back to {}", current.build);
                 }
             }

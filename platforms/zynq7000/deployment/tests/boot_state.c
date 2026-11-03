@@ -133,6 +133,9 @@ static void handoff_and_config(void) {
     memcpy(handoff.config.profile, SHOOP_PROFILE, sizeof(SHOOP_PROFILE));
     shoop_record_seal(&handoff.config, 1); handoff.crc = shoop_crc32(&handoff, 508);
     assert(shoop_handoff_valid(&handoff));
+    ++handoff.version; handoff.crc = shoop_crc32(&handoff, 508);
+    assert(!shoop_handoff_valid(&handoff));
+    --handoff.version; handoff.crc = shoop_crc32(&handoff, 508);
     memcpy(disk[0], &handoff.config, 512); memcpy(disk[1], &handoff.config, 512);
     struct shoop_config config; assert(!shoop_config_load(&io, &config));
     memset(handoff.config.mac, 0, 6); shoop_record_seal(&handoff.config, 1);

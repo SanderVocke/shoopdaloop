@@ -61,7 +61,7 @@ fn run() -> anyhow::Result<()> {
                 timeout,
             )? {
                 shoop_deployment_protocol::Reply::Info(info) => println!(
-                    "{} build={} slot={:?} confirmed={} trial={} nonce={} busy={} ready={}",
+                    "{} build={} slot={:?} confirmed={} trial={} nonce={} busy={} ready={} hash={} operation={:?}",
                     info.profile,
                     info.build,
                     info.slot,
@@ -69,7 +69,9 @@ fn run() -> anyhow::Result<()> {
                     info.trial,
                     info.boot_nonce,
                     info.busy,
-                    info.ready
+                    info.ready,
+                    info.hash.iter().map(|byte|format!("{byte:02x}")).collect::<String>(),
+                    info.last_operation
                 ),
                 reply => anyhow::bail!("deployment status: {reply:?}"),
             }

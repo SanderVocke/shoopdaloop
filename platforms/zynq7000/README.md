@@ -3,8 +3,11 @@
 Target: one Cortex-A9, 1 GiB PS DDR, FreeRTOS 10.6.1 and AMD lwIP 2.2.0.
 The firmware runs the portable Shoop session service, backend and RT engine with
 stereo 48 kHz dummy audio, 256-frame quanta and one dummy MIDI input/output.
-Clients use the existing authenticated TCP data/management protocol. Files,
-codecs, scripts and credentials on disk remain on the client machine.
+Clients use the existing authenticated TCP data/management protocol. Session files,
+codecs and scripts remain on the client machine. The
+[SD boot and network deployment guide](deployment/README.md) covers generic
+signed firmware, device credentials provisioned on SD, A/B updates and recovery.
+The direct-load development mode below compiles its explicit test credential.
 
 ## Reproducible inputs
 
@@ -84,7 +87,8 @@ status in the pinned AMD driver: queue zero shares the clear-on-read global ISR.
 QEMU delivered packets into RX descriptors, but the second read discarded their
 completion bits. Reusing the first read passes actual TCP exchange. The patch
 applies only to a build-local copy; the source checkout stays pristine and the
-build manifest records the patch hash. No QEMU changes or network bypass is used.
+build manifest records the patch hash. This driver fix requires no GEM model
+changes or network bypass. Deployment additionally supplies a watchdog model.
 
 `patches/freertos-fpu-irq.patch` routes the C IRQ dispatcher through FreeRTOS's
 assembly wrapper that preserves D0–D31 and FPSCR. Task FPU support alone does not
@@ -99,7 +103,8 @@ initialization with AMD's default `LWIP_XINIT` setting. Startup also explicitly
 enables the UART instead of assuming a prior physical bootloader did so.
 
 The bootloader must place a **fresh, nonzero 64-bit boot nonce at CPU address 0x8000**
-before entering the ELF. QEMU supplies a fresh random value on each launch.
+before entering the ELF. The direct-load runner supplies a fresh random value on each launch;
+the deployment loader durably advances redundant SD counters before every entry.
 Physical deployment must supply a hardware random value or a persistent boot
 counter; recompiling once with a fixed seed does not satisfy restart identity.
 The nonce is not secret. The firmware refuses a missing nonce and combines it
@@ -136,8 +141,9 @@ the build audits exported symbols and image markers to enforce that separation.
 
 ## Memory and diagnostics
 
-The launcher always uses `-M xilinx-zynq-a9 -accel tcg -smp 1 -m 1G` and loads
-the ELF directly. QMP verifies actual CPU/RAM configuration. The linker reserves
+The direct-load launcher uses `-M xilinx-zynq-a9 -accel tcg -smp 1 -m 1G` and loads
+the ELF directly. The deployment launcher enters U-Boot with the same CPU/RAM
+contract and a persistent emulated SD card. QMP verifies actual CPU/RAM configuration. The linker reserves
 the low 1 MiB, keeps platform code/C heaps/RTOS/network/DMA/stacks below 128 MiB,
 reserves a separate 768 MiB Rust arena, and leaves the remaining 128 MiB
 unassigned. The linker rejects overflow. Neither allocator may consume the spare

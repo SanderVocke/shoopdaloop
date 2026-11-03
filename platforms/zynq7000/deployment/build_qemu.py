@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 PLATFORM = Path(__file__).resolve().parent.parent
@@ -13,6 +14,7 @@ PINS = json.loads((PLATFORM / "pins.json").read_text())
 SOURCE = ROOT / "work/zynq/qemu-upstream"
 BUILD = ROOT / "work/zynq/qemu-build"
 PATCH = PLATFORM / "patches/qemu-cadence-watchdog.patch"
+PYTHON = ROOT / "work/zynq/qemu-venv/bin/python"
 
 
 def run(arguments, **kwargs):
@@ -24,6 +26,9 @@ def main():
     parser.add_argument("--fetch", action="store_true")
     args = parser.parse_args()
     if args.fetch:
+        if not PYTHON.exists():
+            run([sys.executable, "-m", "venv", PYTHON.parent.parent])
+        run([PYTHON, "-m", "pip", "install", "meson==" + PINS["qemu_meson"], "pycotap==" + PINS["qemu_pycotap"]])
         if not (SOURCE / ".git").exists():
             SOURCE.parent.mkdir(parents=True, exist_ok=True)
             run(["git", "init", SOURCE])
@@ -45,7 +50,10 @@ def main():
     if set(changed) - allowed:
         raise SystemExit("Unrecorded QEMU source modifications")
     BUILD.mkdir(parents=True, exist_ok=True)
-    flags = ["--target-list=arm-softmmu", "--with-devices-arm=shoop", "--without-default-features",
+    versions = json.loads(subprocess.check_output([PYTHON, "-c", "import importlib.metadata,json; print(json.dumps({p:importlib.metadata.version(p) for p in ['meson','pycotap']}))"], text=True))
+    if versions != {"meson": PINS["qemu_meson"], "pycotap": PINS["qemu_pycotap"]}:
+        raise SystemExit("Unexpected QEMU Python build tools; use --fetch to install the pins")
+    flags = ["--python=" + str(PYTHON), "--target-list=arm-softmmu", "--with-devices-arm=shoop", "--without-default-features",
              "--enable-tcg", "--enable-slirp", "--disable-docs", "--disable-guest-agent",
              "--disable-tools", "--disable-user", "--disable-werror"]
     epoch = subprocess.check_output(["git", "-C", SOURCE, "show", "-s", "--format=%ct", "HEAD"], text=True).strip()
@@ -54,6 +62,7 @@ def main():
     run(["ninja", "-j" + os.environ.get("CARGO_BUILD_JOBS", "5"), "qemu-system-arm"], cwd=BUILD, env=environment)
     binary = BUILD / "qemu-system-arm"
     manifest = {"source": revision, "patch_sha256": hashlib.sha256(PATCH.read_bytes()).hexdigest(),
+                "python_packages": versions,
                 "configure": flags, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "version": subprocess.check_output([binary, "--version"], text=True).splitlines()[0],
                 "glib": subprocess.check_output(["pkg-config", "--modversion", "glib-2.0"], text=True).strip(),

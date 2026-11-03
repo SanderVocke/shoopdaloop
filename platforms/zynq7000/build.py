@@ -34,7 +34,7 @@ def build():
     parser.add_argument("--fixture", action="store_true")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
-    parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker"])
+    parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", args.build_id):
         parser.error("--build-id requires 1–40 ASCII letters, digits, dots, dashes or underscores")
@@ -135,7 +135,7 @@ def build():
     if args.fixture:
         flags += ["-DSHOOP_FIXTURE"]
     if args.deployment:
-        fault = [None, "before-ready", "render", "control", "broker"].index(args.deployment_test_fault)
+        fault = [None, "before-ready", "render", "control", "broker", "handoff-version", "cleanup"].index(args.deployment_test_fault)
         flags += ["-DSHOOP_DEPLOYMENT", "-DSHOOP_DEPLOY_FAULT=" + str(fault)]
     flags += ["-I" + str(p) for p in includes]
     BUILD.mkdir(parents=True, exist_ok=True)

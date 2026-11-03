@@ -130,3 +130,10 @@ class BootQemu(Qemu):
             self.console_path.unlink(missing_ok=True)
             self._sockets.cleanup()
             (self.directory / "events.json").write_text(json.dumps(self.events, indent=2) + "\n")
+
+    def power_cut(self):
+        """A blocked storage fault may hold QEMU's lock, so QMP is unavailable."""
+        (self.directory / "power-cut.json").write_text(json.dumps({"injected": True, "process_restart": "cold", "qmp_diagnostics": "unavailable at blocked SD write"}) + "\n")
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait(timeout=5)

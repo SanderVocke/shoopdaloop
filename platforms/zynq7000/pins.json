@@ -12,6 +12,12 @@
     "gcc-arm-none-eabi": "15:14.2.rel1-1",
     "binutils-arm-none-eabi": "2.44-3+23+b1",
     "libnewlib-arm-none-eabi": "4.5.0.20241231-1",
-    "qemu-system-arm": "1:10.0.13+ds-0+deb13u1"
+    "qemu-system-arm": "1:10.0.13+ds-0+deb13u1",
+    "bison": "2:3.8.2+dfsg-1+b2",
+    "flex": "2.6.4-8.2+b4",
+    "device-tree-compiler": "1.7.2-2+b1",
+    "ninja-build": "1.12.1-1",
+    "libglib2.0-dev": "2.84.4-3~deb13u5",
+    "libslirp-dev": "4.8.0-1+deb13u1"
   }
 }

@@ -152,6 +152,10 @@ int shoop_stop_render(void) {
     return 1;
 }
 int shoop_cleanup_allowed(void) {
+#if defined(SHOOP_DEPLOYMENT) && SHOOP_DEPLOY_FAULT == 6
+    static unsigned failed;
+    if (!failed++) { xil_printf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }
+#endif
 #ifdef SHOOP_FIXTURE
     extern int shoop_fixture_fail_cleanup(void);
     return !shoop_fixture_fail_cleanup();
