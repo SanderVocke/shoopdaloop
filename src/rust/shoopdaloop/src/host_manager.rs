@@ -1,3 +1,5 @@
+mod start_host;
+
 use crate::app_args::AppArgs;
 use anyhow::{Context, Result};
 use eframe::egui;
@@ -99,7 +101,7 @@ impl Host {
                             | shoop_app_api::AudioDriverState::Dummy
                     ) =>
             {
-                ("Needs attention", AMBER)
+                ("Warning", AMBER)
             }
             Ok(report)
                 if report.effective.audio_driver == shoop_app_api::AudioDriverState::Dummy =>
@@ -150,6 +152,7 @@ enum Event {
     Scanned(Vec<Host>),
     Action(Result<String, String>),
     Logs(PathBuf, Result<String, String>),
+    Started(Result<PathBuf, String>),
 }
 struct Manager {
     sources: Vec<Source>,
@@ -165,6 +168,7 @@ struct Manager {
     logs: Option<LogView>,
     tab: Tab,
     saved_log: bool,
+    start_dialog: Option<start_host::Dialog>,
 }
 impl Manager {
     fn new(profile: Option<PathBuf>) -> Self {
@@ -183,6 +187,7 @@ impl Manager {
             logs: None,
             tab: Tab::Overview,
             saved_log: false,
+            start_dialog: None,
         }
     }
     fn scan(&mut self) {
@@ -281,6 +286,28 @@ impl Manager {
                     }
                     self.next_scan = Instant::now();
                 }
+                Event::Started(result) => {
+                    self.action_pending = false;
+                    match result {
+                        Ok(path) => {
+                            let source = Source { path };
+                            if !self.sources.contains(&source) {
+                                self.sources.push(source.clone());
+                            }
+                            self.select(source);
+                            self.start_dialog = None;
+                            self.next_scan = Instant::now();
+                            self.notify("Host started".into(), false);
+                        }
+                        Err(error) => {
+                            if let Some(dialog) = &mut self.start_dialog {
+                                dialog.failed(error);
+                            } else {
+                                self.notify(error, true);
+                            }
+                        }
+                    }
+                }
                 Event::Logs(path, result) => {
                     if let Some(log) = self.logs.as_mut().filter(|log| log.path == path) {
                         log.contents = Some(result);
@@ -297,7 +324,7 @@ impl Manager {
         {
             let source = Source { path };
             if !self.sources.contains(&source) && self.sources.len() >= 64 {
-                self.notify("This manager can monitor up to 64 hosts.".into(), true);
+                self.notify("Profile limit reached (64).".into(), true);
             } else {
                 if !self.sources.contains(&source) {
                     self.sources.push(source.clone());
@@ -305,6 +332,45 @@ impl Manager {
                 self.select(source);
                 self.next_scan = Instant::now();
             }
+        }
+    }
+    fn new_host(&mut self) {
+        if let Some(dialog) = &mut self.start_dialog {
+            dialog.open = true;
+            return;
+        }
+        if self.sources.len() >= 64 {
+            self.notify("Profile limit reached (64).".into(), true);
+        } else {
+            self.start_dialog = Some(start_host::Dialog::new());
+        }
+    }
+    fn show_start_dialog(&mut self, context: &egui::Context) {
+        let request = self
+            .start_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(context));
+        if let Some(request) = request {
+            if self.sources.len() >= 64 {
+                if let Some(dialog) = &mut self.start_dialog {
+                    dialog.failed("Profile limit reached (64).".into());
+                }
+                return;
+            }
+            self.action_pending = true;
+            let sender = self.sender.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send(Event::Started(
+                    request.start().map_err(|error| format!("{error:#}")),
+                ));
+            });
+        }
+        if self
+            .start_dialog
+            .as_ref()
+            .is_some_and(|dialog| !dialog.open && !dialog.pending)
+        {
+            self.start_dialog = None;
         }
     }
     fn open_saved_log(&mut self) {
@@ -323,14 +389,26 @@ impl Manager {
             .frame(
                 egui::Frame::new()
                     .fill(SIDEBAR)
-                    .inner_margin(egui::Margin::symmetric(24, 16)),
+                    .inner_margin(egui::Margin::symmetric(12, 8)),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Host Manager").size(20.0).strong());
+                    ui.label(egui::RichText::new("Host Manager").size(17.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .add(egui::Button::new("+ Add host").corner_radius(8))
+                            .add_enabled(
+                                !self.action_pending && self.confirm_stop.is_none(),
+                                egui::Button::new("New host…").corner_radius(3),
+                            )
+                            .clicked()
+                        {
+                            self.new_host();
+                        }
+                        if ui
+                            .add_enabled(
+                                !self.action_pending,
+                                egui::Button::new("Load profile…").corner_radius(3),
+                            )
                             .on_hover_text("Choose a connection profile")
                             .clicked()
                         {
@@ -343,12 +421,12 @@ impl Manager {
             .frame(
                 egui::Frame::new()
                     .fill(SIDEBAR)
-                    .inner_margin(egui::Margin::symmetric(24, 8)),
+                    .inner_margin(egui::Margin::symmetric(12, 4)),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("Hosts keep running when this window closes.")
+                        egui::RichText::new("Profiles: session only")
                             .size(12.0)
                             .color(MUTED),
                     );
@@ -381,10 +459,10 @@ impl Manager {
             });
         egui::Panel::left("host_sidebar")
             .resizable(false)
-            .exact_size(232.0)
-            .frame(egui::Frame::new().fill(SIDEBAR).inner_margin(14))
+            .exact_size(190.0)
+            .frame(egui::Frame::new().fill(SIDEBAR).inner_margin(8))
             .show(ui, |ui| {
-                ui.add_space(8.0);
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("HOSTS")
@@ -398,7 +476,7 @@ impl Manager {
                             .color(MUTED),
                     );
                 });
-                ui.add_space(8.0);
+                ui.add_space(4.0);
                 let mut selected = None;
                 egui::ScrollArea::vertical()
                     .id_salt("host_list")
@@ -406,7 +484,7 @@ impl Manager {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         if self.hosts.is_empty() {
-                            ui.label(egui::RichText::new("No hosts yet").color(MUTED));
+                            ui.label(egui::RichText::new("No profiles").color(MUTED));
                         }
                         for host in &self.hosts {
                             if host_row(ui, host, self.selected.as_ref() == Some(&host.source))
@@ -430,10 +508,11 @@ impl Manager {
                 });
             });
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(BACKGROUND).inner_margin(28))
+            .frame(egui::Frame::new().fill(BACKGROUND).inner_margin(12))
             .show(ui, |ui| {
                 self.show_content(ui);
             });
+        self.show_start_dialog(ui.ctx());
         self.show_stop_dialog(ui.ctx());
         self.show_notice(ui.ctx());
         ui.ctx().request_repaint_after(Duration::from_millis(200));
@@ -441,7 +520,7 @@ impl Manager {
     fn show_content(&mut self, ui: &mut egui::Ui) {
         if self.saved_log {
             ui.heading("Saved host log");
-            ui.add_space(12.0);
+            ui.add_space(6.0);
             self.show_logs(ui);
             return;
         }
@@ -451,25 +530,14 @@ impl Manager {
             .find(|host| Some(&host.source) == self.selected.as_ref())
             .cloned()
         else {
-            ui.add_space((ui.available_height() * 0.25).max(20.0));
-            ui.vertical_centered(|ui| {
-                ui.heading("Your hosts, in one place");
-                ui.label(
-                    egui::RichText::new(
-                        "Add a connection profile to monitor a host. Profiles are kept only for this session.",
-                    )
-                    .color(MUTED),
-                );
-                ui.add_space(12.0);
-                if ui.add(primary_button("+ Add host")).clicked() {
-                    self.add_host();
-                }
-                ui.add_space(20.0);
-                ui.collapsing("Starting a local host", |ui| {
-                    ui.monospace("shoop_host --config host.json --credential-file host.key --export-profile profile.json");
-                    ui.label("An empty host.json ({}) selects the dummy driver.");
-                });
-            });
+            ui.label(
+                egui::RichText::new(if self.sources.is_empty() {
+                    "No profiles loaded."
+                } else {
+                    "Querying host…"
+                })
+                .strong(),
+            );
             return;
         };
         let can_open = host.transport == AppTransport::Socket
@@ -488,11 +556,11 @@ impl Manager {
         ui.horizontal(|ui| {
             let title_width = (ui.available_width() - 196.0).max(100.0);
             ui.allocate_ui_with_layout(
-                egui::vec2(title_width, 64.0),
+                egui::vec2(title_width, 48.0),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.add(
-                        egui::Label::new(egui::RichText::new(&host.name).size(26.0).strong())
+                        egui::Label::new(egui::RichText::new(&host.name).size(20.0).strong())
                             .truncate(),
                     )
                     .on_hover_text(&host.name);
@@ -521,7 +589,7 @@ impl Manager {
                     ui.separator();
                     if ui
                         .add_enabled(
-                            can_stop && !self.action_pending,
+                            can_stop && !self.action_pending && self.start_dialog.is_none(),
                             egui::Button::new(
                                 egui::RichText::new("Stop host…")
                                     .color(egui::Color32::from_rgb(245, 137, 137)),
@@ -572,7 +640,7 @@ impl Manager {
             }
         });
         ui.separator();
-        ui.add_space(12.0);
+        ui.add_space(6.0);
         if self.tab == Tab::Logs {
             if previous_tab != Tab::Logs && !host.is_remote() {
                 if let Some(path) = host.log_file.clone() {
@@ -581,42 +649,62 @@ impl Manager {
             }
             if host.is_remote() {
                 ui.label(
-                    egui::RichText::new("Logs are on the host computer")
+                    egui::RichText::new("Remote logs unavailable")
                         .size(18.0)
                         .strong(),
                 );
-                ui.label(
-                    egui::RichText::new("Open the manager on that computer to view its logs.")
-                        .color(MUTED),
-                );
+                ui.label(egui::RichText::new("Log file access is local to the host.").color(MUTED));
             } else if host.log_file.is_none() {
                 ui.label(
-                    egui::RichText::new("No log file in this profile")
+                    egui::RichText::new("No log_file configured")
                         .size(18.0)
                         .strong(),
                 );
-                ui.label(egui::RichText::new("Disk logging is opt-in. Start the host with --log-file and include log_file in its profile.").color(MUTED));
+                ui.label(
+                    egui::RichText::new(
+                        "Configure --log-file on the host and log_file in the profile.",
+                    )
+                    .color(MUTED),
+                );
             } else {
                 self.show_logs(ui);
             }
         } else {
-            egui::ScrollArea::vertical().id_salt(("overview", &host.source.path)).auto_shrink([false, false]).show(ui, |ui| {
-                match &host.report {
-                    Ok(report) => show_overview(ui, report),
-                    Err(_) => {
-                        ui.label(egui::RichText::new("We couldn’t reach this host").size(18.0).strong());
-                        ui.label(egui::RichText::new("It may be stopped or disconnected. Check the host and try again.").color(MUTED));
-                        ui.add_space(8.0);
-                        if ui.add_enabled(!self.scanning, egui::Button::new("Try again").corner_radius(8)).clicked() { self.scan(); }
+            egui::ScrollArea::vertical()
+                .id_salt(("overview", &host.source.path))
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    match &host.report {
+                        Ok(report) => show_overview(ui, report),
+                        Err(error) => {
+                            ui.label(egui::RichText::new("Host unreachable").size(15.0).strong());
+                            ui.label(egui::RichText::new(error).color(MUTED));
+                            ui.add_space(4.0);
+                            if ui
+                                .add_enabled(
+                                    !self.scanning,
+                                    egui::Button::new("Retry").corner_radius(3),
+                                )
+                                .clicked()
+                            {
+                                self.scan();
+                            }
+                        }
                     }
-                }
-                if host.transport == AppTransport::SharedMemory {
-                    ui.add_space(12.0);
-                    ui.label(egui::RichText::new("Shared-memory hosts cannot reattach a UI.").color(MUTED));
-                }
-                ui.add_space(16.0);
-                egui::CollapsingHeader::new("Advanced details").id_salt(&host.source.path).show(ui, |ui| { show_advanced(ui, &host); });
-            });
+                    if host.transport == AppTransport::SharedMemory {
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new("Shared-memory hosts cannot reattach a UI.")
+                                .color(MUTED),
+                        );
+                    }
+                    ui.add_space(4.0);
+                    egui::CollapsingHeader::new("Advanced details")
+                        .id_salt(&host.source.path)
+                        .show(ui, |ui| {
+                            show_advanced(ui, &host);
+                        });
+                });
         }
     }
     fn show_logs(&mut self, ui: &mut egui::Ui) {
@@ -658,8 +746,8 @@ impl Manager {
         egui::Frame::new()
             .fill(SIDEBAR)
             .stroke(egui::Stroke::new(1.0, BORDER))
-            .corner_radius(10)
-            .inner_margin(16)
+            .corner_radius(4)
+            .inner_margin(8)
             .show(ui, |ui| {
                 let height = (ui.available_height() - 34.0).max(100.0);
                 egui::ScrollArea::both()
@@ -670,7 +758,7 @@ impl Manager {
                         ui.set_min_height(height);
                         match &log.contents {
                             Some(Ok(contents)) if contents.is_empty() => {
-                                ui.label(egui::RichText::new("No log entries yet.").color(MUTED));
+                                ui.label(egui::RichText::new("Log is empty.").color(MUTED));
                             }
                             Some(Ok(contents)) => {
                                 ui.add(
@@ -713,13 +801,7 @@ impl Manager {
                 ui.label(
                     "Stopping ends playback and recording and discards the in-memory session.",
                 );
-                ui.label(
-                    egui::RichText::new(
-                        "Save the session in the looper UI first if you need to keep it.",
-                    )
-                    .color(MUTED),
-                );
-                ui.add_space(8.0);
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
                         self.confirm_stop = None;
@@ -737,7 +819,7 @@ impl Manager {
                                 &source.target()?,
                                 Duration::from_secs(15),
                             )?;
-                            Ok("Host stopped. Cleanup confirmed.".into())
+                            Ok("Host stopped.".into())
                         });
                     }
                 });
@@ -753,15 +835,15 @@ impl Manager {
             return;
         };
         let mut dismiss = false;
-        egui::Area::new("manager_notice".into())
+        egui::Area::new(egui::Id::unique("manager_notice"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_BOTTOM, [-24.0, -56.0])
+            .anchor(egui::Align2::RIGHT_BOTTOM, [-12.0, -40.0])
             .show(context, |ui| {
                 egui::Frame::new()
                     .fill(SURFACE)
                     .stroke(egui::Stroke::new(1.0, BORDER))
-                    .corner_radius(10)
-                    .inner_margin(14)
+                    .corner_radius(4)
+                    .inner_margin(8)
                     .show(ui, |ui| {
                         ui.set_max_width(340.0);
                         ui.horizontal(|ui| {
@@ -790,12 +872,12 @@ fn primary_button(label: &str) -> egui::Button<'_> {
     )
     .fill(ACCENT)
     .stroke(egui::Stroke::NONE)
-    .corner_radius(8)
+    .corner_radius(3)
 }
 fn status_chip(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.12))
-        .corner_radius(5)
+        .corner_radius(3)
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.label(egui::RichText::new(label).size(11.0).color(color));
@@ -803,10 +885,10 @@ fn status_chip(ui: &mut egui::Ui, label: &str, color: egui::Color32) {
 }
 fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 82.0), egui::Sense::click());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::click());
     response.widget_info(|| {
         egui::WidgetInfo::selected(
-            egui::WidgetType::SelectableLabel,
+            egui::Role::ListBoxOption,
             ui.is_enabled(),
             selected,
             &host.name,
@@ -819,34 +901,34 @@ fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
     } else {
         SIDEBAR
     };
-    ui.painter().rect_filled(rect, 8, fill);
+    ui.painter().rect_filled(rect, 3, fill);
     if response.has_focus() {
         ui.painter().rect_stroke(
             rect.shrink(1.0),
-            8,
+            3,
             egui::Stroke::new(1.0, ACCENT),
             egui::StrokeKind::Inside,
         );
     }
     if selected {
         ui.painter().rect_filled(
-            egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 14.0), egui::vec2(3.0, 54.0)),
+            egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 8.0), egui::vec2(2.0, 48.0)),
             2,
             ACCENT,
         );
     }
-    let painter = ui.painter().with_clip_rect(rect.shrink(12.0));
+    let painter = ui.painter().with_clip_rect(rect.shrink(6.0));
     let name = egui::WidgetText::from(host.name.as_str()).into_galley(
         ui,
         Some(egui::TextWrapMode::Truncate),
-        rect.width() - 28.0,
-        egui::FontId::proportional(14.0),
+        rect.width() - 16.0,
+        egui::FontId::proportional(13.0),
     );
-    painter.galley(rect.min + egui::vec2(14.0, 11.0), name, TEXT);
+    painter.galley(rect.min + egui::vec2(8.0, 7.0), name, TEXT);
     let (label, color) = host.state();
-    painter.circle_filled(rect.min + egui::vec2(18.0, 40.0), 3.0, color);
+    painter.circle_filled(rect.min + egui::vec2(11.0, 31.0), 3.0, color);
     painter.text(
-        rect.min + egui::vec2(28.0, 32.0),
+        rect.min + egui::vec2(20.0, 24.0),
         egui::Align2::LEFT_TOP,
         label,
         egui::FontId::proportional(12.0),
@@ -861,7 +943,7 @@ fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
         _ => location.to_owned(),
     };
     painter.text(
-        rect.min + egui::vec2(14.0, 56.0),
+        rect.min + egui::vec2(8.0, 44.0),
         egui::Align2::LEFT_TOP,
         subtitle,
         egui::FontId::proportional(11.0),
@@ -872,20 +954,15 @@ fn host_row(ui: &mut egui::Ui, host: &Host, selected: bool) -> egui::Response {
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 fn tab_button(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(86.0, 36.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(74.0, 28.0), egui::Sense::click());
     response.widget_info(|| {
-        egui::WidgetInfo::selected(
-            egui::WidgetType::SelectableLabel,
-            ui.is_enabled(),
-            selected,
-            label,
-        )
+        egui::WidgetInfo::selected(egui::Role::Tab, ui.is_enabled(), selected, label)
     });
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
-        egui::FontId::proportional(14.0),
+        egui::FontId::proportional(13.0),
         if selected || response.hovered() {
             TEXT
         } else {
@@ -916,27 +993,27 @@ fn metric(ui: &mut egui::Ui, label: &str, value: String) {
     egui::Frame::new()
         .fill(SURFACE)
         .stroke(egui::Stroke::new(1.0, BORDER))
-        .corner_radius(10)
-        .inner_margin(14)
+        .corner_radius(4)
+        .inner_margin(8)
         .show(ui, |ui| {
             ui.set_min_width((ui.available_width() - 1.0).max(0.0));
             ui.label(egui::RichText::new(label).size(11.0).color(MUTED));
             ui.add_space(4.0);
-            ui.label(egui::RichText::new(value).size(22.0).strong());
+            ui.label(egui::RichText::new(value).size(18.0));
         });
 }
 fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
     if audio_fallback(report) || !report.diagnostics.is_empty() {
         egui::Frame::new()
             .fill(egui::Color32::from_rgb(48, 39, 27))
-            .corner_radius(8)
-            .inner_margin(14)
+            .corner_radius(3)
+            .inner_margin(8)
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new(if audio_fallback(report) {
                         "Audio device unavailable — using dummy audio"
                     } else {
-                        "This host needs attention"
+                        "Host diagnostics"
                     })
                     .color(AMBER)
                     .strong(),
@@ -945,9 +1022,9 @@ fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
                     ui.label(egui::RichText::new(diagnostic).size(13.0));
                 }
             });
-        ui.add_space(16.0);
+        ui.add_space(4.0);
     }
-    ui.label(egui::RichText::new("Audio").size(18.0).strong());
+    ui.label(egui::RichText::new("Audio").size(15.0).strong());
     ui.add_space(2.0);
     ui.horizontal_wrapped(|ui| {
         let driver = if report.effective.audio_driver == shoop_app_api::AudioDriverState::Dummy {
@@ -971,7 +1048,7 @@ fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
             .color(MUTED),
         );
     });
-    ui.add_space(8.0);
+    ui.add_space(4.0);
     ui.columns(4, |columns| {
         metric(
             &mut columns[0],
@@ -992,10 +1069,10 @@ fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
     });
 }
 fn show_advanced(ui: &mut egui::Ui, host: &Host) {
-    ui.add_space(8.0);
+    ui.add_space(4.0);
     egui::Grid::new("host_details")
         .num_columns(2)
-        .spacing([20.0, 10.0])
+        .spacing([12.0, 6.0])
         .show(ui, |ui| {
             let mut row = |label: &str, value: String| {
                 ui.label(egui::RichText::new(label).color(MUTED));
@@ -1035,14 +1112,14 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
             }
         });
     if let Err(error) = &host.report {
-        ui.add_space(8.0);
+        ui.add_space(4.0);
         ui.colored_label(AMBER, error);
     }
     if let Ok(report) = &host.report {
         for diagnostic in &report.diagnostics {
             ui.colored_label(AMBER, diagnostic);
         }
-        ui.add_space(8.0);
+        ui.add_space(4.0);
         ui.label(
             egui::RichText::new(
                 "Driver and capacity changes require a restart, which creates a fresh session.",
@@ -1051,7 +1128,7 @@ fn show_advanced(ui: &mut egui::Ui, host: &Host) {
             .color(MUTED),
         );
     }
-    ui.add_space(8.0);
+    ui.add_space(4.0);
     ui.label(
         egui::RichText::new(format!("Profile: {}", host.source.path.display()))
             .size(12.0)
@@ -1090,8 +1167,8 @@ pub fn run(args: &AppArgs) -> Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop Host Manager")
             .with_icon(crate::application_icon())
-            .with_inner_size([1000.0, 680.0])
-            .with_min_inner_size([820.0, 520.0]),
+            .with_inner_size([800.0, 500.0])
+            .with_min_inner_size([700.0, 400.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -1100,8 +1177,8 @@ pub fn run(args: &AppArgs) -> Result<()> {
         Box::new(move |context| {
             context.egui_ctx.set_visuals(egui::Visuals::dark());
             context.egui_ctx.style_mut_of(egui::Theme::Dark, |style| {
-                style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-                style.spacing.button_padding = egui::vec2(14.0, 8.0);
+                style.spacing.item_spacing = egui::vec2(6.0, 6.0);
+                style.spacing.button_padding = egui::vec2(8.0, 4.0);
                 style.visuals.override_text_color = Some(TEXT);
                 style.visuals.panel_fill = BACKGROUND;
                 style.visuals.window_fill = SURFACE;
@@ -1116,16 +1193,16 @@ pub fn run(args: &AppArgs) -> Result<()> {
                 style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(40, 48, 58);
                 style
                     .text_styles
-                    .insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
+                    .insert(egui::TextStyle::Body, egui::FontId::proportional(13.0));
                 style
                     .text_styles
-                    .insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+                    .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
                 style
                     .text_styles
                     .insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
                 style
                     .text_styles
-                    .insert(egui::TextStyle::Heading, egui::FontId::proportional(26.0));
+                    .insert(egui::TextStyle::Heading, egui::FontId::proportional(20.0));
             });
             Ok(Box::new(manager))
         }),
@@ -1163,10 +1240,10 @@ mod tests {
         assert_eq!(host.state().0, "Running");
         host.report.as_mut().unwrap().effective.audio_driver =
             shoop_app_api::AudioDriverState::Failed;
-        assert_eq!(host.state().0, "Needs attention");
+        assert_eq!(host.state().0, "Warning");
         let report = host.report.as_mut().unwrap();
         report.diagnostics.push("Audio fallback".into());
-        assert_eq!(host.state().0, "Needs attention");
+        assert_eq!(host.state().0, "Warning");
         assert!(diagnostic_text(&host).contains("Audio fallback"));
         assert!(!diagnostic_text(&host).contains("credential"));
     }

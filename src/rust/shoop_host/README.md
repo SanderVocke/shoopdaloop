@@ -26,8 +26,11 @@ effective runtime status and diagnostics; the existing UI displays this informat
 The native `shoopdaloop --manage-hosts` window monitors only profiles explicitly
 provided in the current session, without taking a control lease. No host registry,
 discovery directory or remembered host list is read or written. Credentials must
-be supplied explicitly. The launcher uses bounded pipe messages for startup and
-readiness; it writes a profile only to an explicitly requested export path.
+be supplied explicitly, or created at a selected path through the manager's
+**New host…** form. That form configures and starts a detached companion without
+requiring a JSON host configuration or CLI arguments. The launcher uses bounded
+pipe messages for startup and readiness; it writes a profile only to an explicitly
+requested export path.
 
 Host diagnostics go to stderr unless `--log-file PATH` requests a private rotating
 file. See the application README for profile-based roles, manager controls and

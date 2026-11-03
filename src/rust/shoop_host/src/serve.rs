@@ -32,6 +32,8 @@ pub struct StartOptions {
     pub advertised_endpoint: Option<String>,
     pub advertised_management: Option<String>,
     pub export_profile: Option<PathBuf>,
+    #[serde(default)]
+    pub export_credential: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
     pub credential: Option<PathBuf>,
     pub log_file: Option<PathBuf>,
@@ -47,6 +49,7 @@ impl StartOptions {
             advertised_endpoint: None,
             advertised_management: None,
             export_profile: None,
+            export_credential: None,
             network: Default::default(),
             credential: None,
             log_file: None,
@@ -274,7 +277,9 @@ pub fn run_with_ready(
             name: target.name.clone(),
             endpoint: target.endpoint.clone(),
             management: target.management.clone(),
-            credential: if options.lan {
+            credential: if let Some(reference) = &options.export_credential {
+                reference.clone()
+            } else if options.lan {
                 PathBuf::from(
                     credential
                         .file_name()

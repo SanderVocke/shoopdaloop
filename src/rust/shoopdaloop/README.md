@@ -49,8 +49,8 @@ owner-only permissions/ACLs. Authentication and protocol checks precede attachme
 a second controller is refused while the current owner remains healthy.
 
 There is no host registry, directory scanning, PID discovery/pruning, remembered
-host list or automatic credential generation. The manager and looper only connect
-to explicitly supplied profiles. Loaded profiles are kept in memory for the current
+host list. Credentials are created only at explicitly requested paths. The manager
+and looper only connect to explicitly supplied profiles. Loaded profiles are kept in memory for the current
 manager session. The launcher passes bounded startup/readiness messages over pipes;
 it does not write temporary host metadata. Explicit profile and credential files
 remain user-owned configuration after shutdown. The legacy `--remote-profile`
@@ -207,7 +207,17 @@ Run `shoopdaloop --manage-hosts`, or choose **Session → Host Manager…** in t
 native looper UI. This opens a separate management process without starting audio
 or taking control of a session. Closing the manager leaves hosts and UIs running.
 
-**Add host** loads a connection profile for this manager session.
+**New host…** configures and starts a detached `shoop_host` companion. Set the name,
+audio API/devices, rate and buffer, then choose an output profile path. A new private
+key is suggested beside the profile; select **Use existing** to reuse a key. Optional
+sections configure engine capacity, session defaults, channels/MIDI, local transport
+or LAN listeners. Disk logging is off unless enabled with an explicit file path.
+No host configuration JSON or CLI arguments are required. The configuration is
+passed over the startup pipe; only the selected profile, key and optional log are
+written. The host remains running when the manager exits. Capacity and driver
+changes require a new host; existing hosts cannot be reconfigured or restarted here.
+
+**Load profile…** loads an existing connection profile for this manager session.
 `--manage-hosts --host-profile profile.json` supplies a profile at startup. The
 manager starts empty on subsequent launches unless a profile is explicitly supplied
 again. It never scans directories, networks, process lists or saved host history.
@@ -224,11 +234,11 @@ reattach. The host’s **••• → Stop host…** action confirms the loss o
 in-memory session and requests
 authenticated ownerless cleanup. A connected controller refuses shutdown, even if
 it attaches after the manager's last refresh. Save needed work through the looper
-UI before stopping. Driver and capacity editing/restart and tray integration are
-not part of this initial manager.
+UI before stopping. Tray integration is not included.
 
-Disk logging is opt-in: pass `--log-file PATH` to the host. This writes a private,
-rotating file only at the requested path, including startup errors. Logs rotate at
+Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
+host. This writes a private, rotating file only at the requested path, including
+startup errors. Logs rotate at
 1 MiB with three backups and remain until manually removed. Without `--log-file`,
 host diagnostics go to stderr and no persistent host logs or records are created.
 `RUST_LOG` controls verbosity (default `info`). An explicitly exported local profile
@@ -239,8 +249,10 @@ by the user. **••• → Copy diagnostics** copies the current report withou
 Success messages dismiss after five seconds without moving the layout; errors stay
 visible until dismissed.
 
-Screenshots captured from the native manager with explicitly supplied profiles.
-Opening it without a profile stays empty, even when hosts are already running:
+Screenshots from the native manager (800 × 500). Opening it without a profile
+stays empty, even when hosts are already running:
+
+![Configure and start a detached host](../../../docs/screenshots/host-manager-new-host.png)
 
 ![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
 

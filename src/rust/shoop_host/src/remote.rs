@@ -190,10 +190,13 @@ impl Target {
             );
         }
 
-        private::read(&self.credential, 32)?
-            .try_into()
-            .map_err(|_| anyhow!("invalid credential length"))
+        credential(&self.credential)
     }
+}
+pub fn credential(path: &Path) -> Result<[u8; 32]> {
+    private::read(path, 32)?
+        .try_into()
+        .map_err(|_| anyhow!("invalid credential length"))
 }
 pub fn create_credential(path: &Path) -> Result<()> {
     let mut token = [0; 32];
