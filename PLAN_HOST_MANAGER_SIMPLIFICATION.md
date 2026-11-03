@@ -231,7 +231,7 @@ Depends on Stages 0–4.
   reopening, the simpler New host form and Advanced actions. Update the application
   and host READMEs, architecture/networking/CLI documentation and affected tracing
   inventory entries; remove obsolete profile-only/authentication claims.
-- [ ] Run formatting, a warning-denying workspace build and the no-default-features
+- [x] Run formatting, a warning-denying workspace build and the no-default-features
   application build. Run the full suite and appropriate architecture/tracing checks:
 
   ```sh
@@ -362,3 +362,9 @@ Depends on Stages 0–4.
 - Target branch recheck found `64a4ad06` (click-track generation) on top of `3aabf437`.
   Merge and revalidate it before the final push. Remaining delivery work is the
   final native/web/coverage matrix, automated review and final evidence mapping.
+
+- Final source merge: integrated `64a4ad06` without conflicts. The merged head
+  `a290de8b` passes the warning-denying workspace and no-default builds and all
+  2,569 workspace tests (4 skipped), with CI tracing and `umask 0022`.
+  Screenshots and documentation are committed; PR metadata and final remote checks
+  remain to be recorded.
