@@ -5,7 +5,8 @@ requester. It supports direct delay-copy DSP and, with the `carla` feature, nati
 Carla Rack/Patchbay16. Neither mode opens an audio device. The FPGA/session graph
 integration is a separate milestone; see the
 [rt_runtime integration plan](rt-runtime-integration-plan.md) for the reusable
-node, native demo and platform-adapter boundaries.
+processing-link node, native network demo, and boundaries for future IPC/Zynq
+adapters.
 
 ## Build and run
 
