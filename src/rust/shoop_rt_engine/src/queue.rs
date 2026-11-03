@@ -5,7 +5,7 @@
 //! transaction.
 //!
 //! Requests keep their order per target: a request waits while an earlier
-//! request for the same strip, loop or the Master waits. Structural requests
+//! request for the same strip, loop or bus waits. Structural requests
 //! keep their order among each other: once one has to wait, the later ones wait
 //! too. A loop transition waits while its strip's structure or connections
 //! change, as they decide what it records; an immediate one does not depend on
@@ -32,7 +32,9 @@ pub(crate) enum Staged {
 fn structural(request: &Request) -> bool {
     matches!(
         request,
-        Request::CreateStrip { .. }
+        Request::CreateBus { .. }
+            | Request::RemoveBus { .. }
+            | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -57,7 +59,7 @@ impl ControlEndpoint {
         }
         self.blocked_strips.fill(false);
         self.blocked_loops.fill(false);
-        self.blocked_master = false;
+        self.blocked_buses.fill(false);
         self.blocked_all = false;
         self.uploads.clear_blocked();
         let mut open = staging;
@@ -172,7 +174,13 @@ impl ControlEndpoint {
             self.blocked_loops.get(index).copied().unwrap_or(false)
                 || self.touched_loops.get(index).is_some_and(|t| *t >= level)
         };
+        let bus = |id: BusId, level: u8| {
+            let slot = id.0.index as usize;
+            self.blocked_buses.get(slot).copied().unwrap_or(false)
+                || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
+        };
         match request {
+            Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
             Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
@@ -204,7 +212,7 @@ impl ControlEndpoint {
             Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
                 loop_(loop_id.0.index, SOFT)
             }
-            Request::BusControl { .. } => self.blocked_master,
+            Request::BusControl { bus: id, .. } => bus(id, HARD),
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. } => strip(id.0.index, WAITING),
             Request::RemoveStrip { strip: id } => {
@@ -223,10 +231,13 @@ impl ControlEndpoint {
                 port: EnginePort::Strip(port),
                 ..
             } => strip(port.strip.0.index, WAITING),
-            Request::Connect { .. } => self.blocked_master,
-            Request::Route { port, .. } => {
-                self.blocked_master || strip(port.strip.0.index, WAITING)
-            }
+            Request::Connect {
+                port: EnginePort::Bus(port),
+                ..
+            } => bus(port.bus, WAITING),
+            Request::Route {
+                port, bus: target, ..
+            } => bus(target.bus, WAITING) || strip(port.strip.0.index, WAITING),
         }
     }
 
@@ -264,11 +275,23 @@ impl ControlEndpoint {
                     }
                 }
             }
-            Request::Route { port, .. } => {
+            Request::Route { port, bus, .. } => {
                 strip(port.strip.0.index);
-                self.blocked_master = true;
+                if let Some(blocked) = self.blocked_buses.get_mut(bus.bus.0.index as usize) {
+                    *blocked = true;
+                }
             }
-            Request::Connect { .. } | Request::BusControl { .. } => self.blocked_master = true,
+            Request::CreateBus { bus, .. }
+            | Request::RemoveBus { bus }
+            | Request::BusControl { bus, .. }
+            | Request::Connect {
+                port: EnginePort::Bus(BusPort { bus, .. }),
+                ..
+            } => {
+                if let Some(blocked) = self.blocked_buses.get_mut(bus.0.index as usize) {
+                    *blocked = true;
+                }
+            }
             Request::CreateLoop { loop_id, .. }
             | Request::RemoveLoop { loop_id }
             | Request::LoopSync { loop_id, .. }
@@ -288,6 +311,9 @@ impl ControlEndpoint {
     /// Record what a staged change affects, before it is applied.
     fn touch(&mut self, change: Change) {
         match change {
+            Change::CreateBus { bus, .. } | Change::RemoveBus { bus } => {
+                self.touched_buses[bus.0.index as usize] = HARD
+            }
             Change::CreateStrip { strip, .. } => self.touched_strips[strip.0.index as usize] = HARD,
             Change::RemoveStrip { strip } => {
                 self.touched_strips[strip.0.index as usize] = HARD;
@@ -314,9 +340,10 @@ impl ControlEndpoint {
             }
             Change::Route { strip, .. } => {
                 raise(&mut self.touched_strips[strip.0.index as usize], SOFT);
-                self.touched_master = SOFT;
             }
-            Change::ConnectMaster { .. } => self.touched_master = SOFT,
+            Change::ConnectMaster { bus, .. } => {
+                raise(&mut self.touched_buses[bus.0.index as usize], SOFT)
+            }
         }
     }
 
@@ -331,13 +358,36 @@ impl ControlEndpoint {
     pub(crate) fn clear_touched(&mut self) {
         self.touched_strips.fill(0);
         self.touched_loops.fill(0);
-        self.touched_master = 0;
+        self.touched_buses.fill(0);
     }
 
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
         let next = &self.next;
         match request {
+            Request::CreateBus { bus, channels } => {
+                let slot = bus.0.index as usize;
+                if slot >= next.buses.len()
+                    || channels == 0
+                    || channels as usize > self.settings.master_channels
+                {
+                    Staged::Refused(Refusal::Capacity)
+                } else if bus.0.generation == 0
+                    || bus.0.generation <= next.bus_generations[slot]
+                    || next.buses[slot].is_some()
+                {
+                    Staged::Refused(Refusal::InvalidId)
+                } else if !replacing && self.model.buses[slot].is_some() {
+                    Staged::Wait
+                } else {
+                    Staged::Change(Change::CreateBus { bus, channels })
+                }
+            }
+            Request::RemoveBus { bus } => match next.bus(bus) {
+                None => Staged::Refused(Refusal::InvalidId),
+                Some(_) if self.model.bus(bus).is_none() => Staged::Wait,
+                Some(_) => Staged::Change(Change::RemoveBus { bus }),
+            },
             Request::CreateStrip { strip, shape } => {
                 let slot = strip.0.index as usize;
                 if slot >= next.strips.len() {
@@ -397,26 +447,26 @@ impl ControlEndpoint {
                 },
             },
             Request::Connect {
-                port:
-                    EnginePort::Bus(BusPort {
-                        bus: BusId::Master,
-                        index,
-                    }),
+                port: EnginePort::Bus(BusPort { bus, index }),
                 host,
                 connected,
             } => {
                 let channel = index as usize;
-                if channel >= self.settings.master_channels {
+                let Some(entry) = next.bus(bus) else {
+                    return Staged::Refused(Refusal::InvalidId);
+                };
+                if channel >= entry.channels as usize {
                     return Staged::Refused(Refusal::InvalidValue);
                 }
                 let Some(host) = self.host_index(host, PortKind::AudioOut) else {
                     return Staged::Refused(Refusal::InvalidId);
                 };
-                let mask = next.master_outputs.current()[channel];
+                let mask = entry.outputs.current()[channel];
                 if (mask & (1 << host) != 0) == connected {
                     Staged::Done
                 } else {
                     Staged::Change(Change::ConnectMaster {
+                        bus,
                         channel,
                         host,
                         connected,
@@ -462,24 +512,24 @@ impl ControlEndpoint {
             }
             Request::Route {
                 port,
-                bus:
-                    BusPort {
-                        bus: BusId::Master,
-                        index,
-                    },
+                bus: BusPort { bus, index },
                 connected,
             } => match next.strip(port.strip) {
                 None => Staged::Refused(Refusal::InvalidId),
                 Some(entry)
                     if port.kind != PortKind::AudioOut
                         || port.index >= entry.shape.audio_outputs
-                        || index as usize >= self.settings.master_channels =>
+                        || next.bus(bus).is_none_or(|b| index >= b.channels) =>
                 {
                     Staged::Refused(Refusal::InvalidValue)
                 }
                 Some(entry) => {
-                    let (channel, target) = (port.index as usize, index as usize);
-                    let mask = entry.outputs.master[entry.outputs.active][channel];
+                    let (channel, target) = (
+                        port.index as usize,
+                        bus.0.index as usize * shoop_rt_protocol::MAX_STRIP_CHANNELS
+                            + index as usize,
+                    );
+                    let mask = entry.outputs.buses[entry.outputs.active][channel];
                     if (mask & (1 << target) != 0) == connected {
                         Staged::Done
                     } else {

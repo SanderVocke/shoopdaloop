@@ -1,4 +1,5 @@
 use alloc::borrow::ToOwned;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -780,11 +781,6 @@ impl Service {
                 "finish or cancel existing operations before creating a new session",
             ));
         }
-        let state = self.snapshot();
-        let master = state
-            .buses
-            .first()
-            .ok_or_else(|| CommandError::invalid("Master is unavailable"))?;
         let make_port = |id: u64,
                          name: String,
                          owner: ApplicationPortOwner,
@@ -804,42 +800,45 @@ impl Service {
             external_connections,
         };
         let mut channels = Vec::new();
-        for (index, channel) in master.channels.iter().enumerate() {
-            let port = state
-                .connections
-                .application_ports
-                .iter()
-                .find(|port| port.id == channel.output_port_id)
-                .ok_or_else(|| CommandError::invalid("Master port is unavailable"))?;
-            let mut external = state
-                .connections
-                .confirmed_links
-                .iter()
-                .filter(|link| link.application_port_id == port.id)
-                .map(|link| link.host_port_id.as_str().to_owned())
-                .collect::<BTreeSet<_>>();
-            for ((id, host), intent) in &self.connection_intent {
-                if *id == port.id {
-                    if intent.connected {
-                        external.insert(host.clone());
-                    } else {
-                        external.remove(host);
-                    }
-                }
-            }
-            channels.push(image::MasterChannel {
+        let mut sinks = self
+            .observed
+            .connections
+            .host_ports
+            .values()
+            .filter(|p| {
+                p.data_type == BackendPortDataType::Audio
+                    && p.direction == BackendPortDirection::Input
+            })
+            .collect::<Vec<_>>();
+        sinks.sort_by_key(|p| {
+            (
+                !p.preferred_playback,
+                super::commands::host_port_order(&p.id),
+            )
+        });
+        for (index, label) in MASTER_BUS_CHANNEL_LABELS.into_iter().enumerate() {
+            let external = if self.options.master_auto_connect {
+                sinks
+                    .get(index)
+                    .or_else(|| sinks.last())
+                    .map(|p| vec![p.id.clone()])
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            channels.push(image::BusChannel {
                 id: BusChannelId::from_raw(index as u64 + 1),
-                label: channel.label.clone(),
+                label: label.to_owned(),
                 port: make_port(
                     index as u64 + 3,
-                    port.name.clone(),
+                    format!("master_out_{}", index + 1),
                     ApplicationPortOwner::Bus {
                         bus_id: BusId::from_raw(1),
                     },
                     PortDataType::Audio,
                     PortDirection::Output,
                     PortRole::AudioOutput,
-                    external.into_iter().collect(),
+                    external,
                 ),
             });
         }
@@ -910,14 +909,15 @@ impl Service {
                         midi: Vec::new(),
                     }],
                 }],
-                master: image::Master {
+                bus_display_order: vec![BusId::from_raw(1)],
+                buses: vec![image::Bus {
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
                     gain_db: 0.,
                     balance: 0.,
                     muted: false,
                     channels,
-                },
+                }],
                 global_ports: vec![make_port(
                     5,
                     "Global FX Control MIDI In".to_owned(),

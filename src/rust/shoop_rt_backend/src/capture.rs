@@ -1,5 +1,4 @@
 //! Capture settled core state while its media cannot be changed by admitted work.
-use alloc::borrow::ToOwned;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -43,7 +42,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter()
             .chain(self.requests.in_flight.values())
             .any(|pending| match pending.request {
-                shoop_rt_protocol::Request::CreateStrip { .. }
+                shoop_rt_protocol::Request::CreateBus { .. }
+                | shoop_rt_protocol::Request::RemoveBus { .. }
+                | shoop_rt_protocol::Request::CreateStrip { .. }
                 | shoop_rt_protocol::Request::RemoveStrip { .. }
                 | shoop_rt_protocol::Request::CreateLoop { .. }
                 | shoop_rt_protocol::Request::RemoveLoop { .. }
@@ -261,26 +262,30 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         Ok(BackendAsyncResult::Ready(BackendSessionData {
             sample_rate: self.driver.map_or(0, |driver| driver.sample_rate),
             tracks,
-            buses: vec![BackendSessionBus {
-                source_id: MASTER_BUS_ID.raw(),
-                name: MASTER_BUS_NAME.to_owned(),
-                channels: MASTER_BUS_CHANNEL_IDS
-                    .into_iter()
-                    .zip(MASTER_BUS_CHANNEL_LABELS)
-                    .zip(MASTER_BUS_OUTPUT_PORT_IDS)
-                    .map(|((id, label), output)| BackendSessionBusChannel {
-                        source_id: id.raw(),
-                        label: label.to_owned(),
-                        output_port: ports[&output].clone(),
-                    })
-                    .collect(),
-                gain_db: self.mirror.master.gain_db,
-                balance: self.mirror.master.balance,
-                muted: self.mirror.master.muted,
-                processor_type: None,
-                processor_state: None,
-                builtin_fx_midi_cc_assignments: Vec::new(),
-            }],
+            buses: self
+                .mirror
+                .buses
+                .iter()
+                .map(|(id, bus)| BackendSessionBus {
+                    source_id: id.raw(),
+                    name: bus.name.clone(),
+                    channels: bus
+                        .channels
+                        .iter()
+                        .map(|c| BackendSessionBusChannel {
+                            source_id: c.id.raw(),
+                            label: c.label.clone(),
+                            output_port: ports[&c.output_port_id].clone(),
+                        })
+                        .collect(),
+                    gain_db: bus.gain_db,
+                    balance: bus.balance,
+                    muted: bus.muted,
+                    processor_type: None,
+                    processor_state: None,
+                    builtin_fx_midi_cc_assignments: Vec::new(),
+                })
+                .collect(),
             mixer_routes: self
                 .mirror
                 .routes

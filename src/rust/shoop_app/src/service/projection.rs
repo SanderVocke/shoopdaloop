@@ -30,41 +30,22 @@ impl Service {
             })
             .collect();
         let buses = self
-            .observed
-            .mixer
-            .buses
-            .get(&MASTER_BUS_ID)
-            .map(|master| BusState {
-                id: BusId::from_raw(1),
-                name: master.name.clone(),
-                structural_state: StructuralState::Confirmed,
-                structural_error: None,
-                channels: master
-                    .channels
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, channel)| {
-                        Some(BusChannelState {
-                            id: BusChannelId::from_raw(index as u64 + 1),
-                            label: channel.label.clone(),
-                            output_port_id: self.app_port(channel.output_port_id)?,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-                gain_db: master.gain_db,
-                balance: master.balance,
-                muted: master.muted,
-                output_peaks_db: master.output_peaks_db.clone().into(),
-                control_pending: false,
-                control_error: None,
-                fx: None,
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .map(|bus| {
+                let mut view = bus.view.clone();
+                view.control_pending = self.pending.values().any(|p| {
+                    matches!(p.effect, Effect::BusControl(id) if id == view.id)
+                        || matches!(&p.effect, Effect::BusControls(ids) if ids.contains(&view.id))
+                });
+                view
             })
-            .into_iter()
             .collect::<Vec<_>>()
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
             revision: self.revision,
             tracks,
@@ -75,6 +56,7 @@ impl Service {
             status: status(&self.observed.status),
             audio_drivers: self.observed.audio_drivers.clone(),
             capabilities: [
+                BackendCapability::BusManagement,
                 BackendCapability::MidiInjection,
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
@@ -213,31 +195,100 @@ impl Service {
             .find_map(|(id, channel)| (*channel == backend).then_some(*id))
     }
 
-    pub(super) fn register_master(&mut self) -> Result<()> {
-        let descriptors: Vec<_> = self
+    pub(super) fn register_buses(&mut self) -> Result<()> {
+        let buses = self
+            .observed
+            .mixer
+            .buses
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for bus in buses {
+            self.insert_bus(
+                BackendBusCreation {
+                    bus_id: bus.id,
+                    channels: bus.channels,
+                },
+                bus.name,
+                StructuralState::Confirmed,
+            )?;
+        }
+        let descriptors = self
             .observed
             .connections
             .application_ports
             .values()
+            .filter(|p| p.owner == BackendPortOwner::GlobalFxControl)
             .cloned()
-            .collect();
+            .collect::<Vec<_>>();
         for descriptor in descriptors {
-            let owner = match descriptor.owner {
-                BackendPortOwner::Bus(_) => ApplicationPortOwner::Bus {
-                    bus_id: BusId::from_raw(1),
-                },
-                BackendPortOwner::GlobalFxControl => ApplicationPortOwner::GlobalFxControl,
-                BackendPortOwner::Track => continue,
-            };
-            self.register_port(descriptor, owner)?;
-        }
-        if let Some(master) = self.observed.mixer.buses.get(&MASTER_BUS_ID) {
-            for (index, channel) in master.channels.iter().enumerate() {
-                self.channels
-                    .insert(BusChannelId::from_raw(index as u64 + 1), channel.id);
-            }
+            self.register_port(descriptor, ApplicationPortOwner::GlobalFxControl)?;
         }
         Ok(())
+    }
+    pub(super) fn insert_bus(
+        &mut self,
+        created: BackendBusCreation,
+        name: String,
+        structural_state: StructuralState,
+    ) -> Result<BusId> {
+        let id = BusId::from_raw(allocate(&mut self.next_bus)?);
+        let mut channels = Vec::new();
+        for (index, channel) in created.channels.into_iter().enumerate() {
+            let channel_id = BusChannelId::from_raw(allocate(&mut self.next_channel)?);
+            self.channels.insert(channel_id, channel.id);
+            let output = self.register_port(
+                BackendPortDescriptor {
+                    id: channel.output_port_id,
+                    owner: BackendPortOwner::Bus(created.bus_id),
+                    name: format!("bus_{}_out_{}", created.bus_id.raw(), index + 1),
+                    data_type: BackendPortDataType::Audio,
+                    direction: BackendPortDirection::Output,
+                    role: BackendPortRole::AudioOutput,
+                },
+                ApplicationPortOwner::Bus { bus_id: id },
+            )?;
+            channels.push(BusChannelState {
+                id: channel_id,
+                label: channel.label,
+                output_port_id: output,
+            });
+        }
+        self.buses.insert(
+            id,
+            Bus {
+                backend: created.bus_id,
+                view: BusState {
+                    id,
+                    name,
+                    structural_state,
+                    structural_error: None,
+                    output_peaks_db: vec![-200.; channels.len()].into(),
+                    channels: channels.into(),
+                    gain_db: 0.,
+                    balance: 0.,
+                    muted: false,
+                    control_pending: false,
+                    control_error: None,
+                    fx: None,
+                },
+            },
+        );
+        self.bus_order.push(id);
+        Ok(id)
+    }
+    fn forget_bus(&mut self, id: BusId) {
+        if let Some(bus) = self.buses.remove(&id) {
+            self.bus_order.retain(|v| *v != id);
+            for channel in bus.view.channels.iter() {
+                self.channels.remove(&channel.id);
+                self.ports.remove(&channel.output_port_id);
+                self.connection_intent
+                    .retain(|(port, _), _| *port != channel.output_port_id);
+                self.route_intent
+                    .retain(|r, _| r.destination_channel_id != channel.id);
+            }
+        }
     }
 
     fn register_port(
@@ -411,6 +462,22 @@ impl Service {
                 view.processor_alignment_frames = state.processor_alignment_frames;
             }
         }
+        for bus in self.buses.values_mut() {
+            if let Some(state) = observed.mixer.buses.get(&bus.backend) {
+                if bus.view.structural_state == StructuralState::Creating {
+                    bus.view.structural_state = StructuralState::Confirmed;
+                }
+                bus.view.gain_db = state.gain_db;
+                bus.view.balance = state.balance;
+                bus.view.muted = state.muted;
+                bus.view.output_peaks_db = state.output_peaks_db.clone().into();
+            }
+        }
+        for port in self.ports.values_mut() {
+            if let Some(descriptor) = observed.connections.application_ports.get(&port.backend) {
+                port.view.name = descriptor.name.clone();
+            }
+        }
         self.xruns = self.xruns.saturating_add(observed.status.xruns);
         self.observed = observed;
         self.observed.status.xruns = self.xruns;
@@ -418,6 +485,34 @@ impl Service {
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
         match effect {
+            Effect::BusCreated(id) => {
+                if !success
+                    && self
+                        .buses
+                        .get(id)
+                        .is_some_and(|b| !self.observed.mixer.buses.contains_key(&b.backend))
+                {
+                    self.forget_bus(*id);
+                }
+            }
+            Effect::BusRemoved(id) => {
+                if success {
+                    self.forget_bus(*id);
+                } else if let Some(bus) = self.buses.get_mut(id) {
+                    bus.view.structural_state = StructuralState::Confirmed;
+                    bus.view.structural_error = Some("Bus removal failed".to_owned());
+                }
+            }
+            Effect::BusControls(ids) => {
+                for id in ids {
+                    self.settle_effect(&Effect::BusControl(*id), success);
+                }
+            }
+            Effect::BusControl(id) => {
+                if let Some(bus) = self.buses.get_mut(id) {
+                    bus.view.control_error = (!success).then(|| "Bus control failed".to_owned());
+                }
+            }
             Effect::TrackRemoved(id) => {
                 if success {
                     self.forget_track(*id);

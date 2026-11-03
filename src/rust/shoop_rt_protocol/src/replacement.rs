@@ -16,6 +16,14 @@ pub struct StripPreset {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    Bus {
+        bus: crate::BusId,
+        channels: u8,
+    },
+    BusControl {
+        bus: crate::BusId,
+        control: BusControl,
+    },
     Strip {
         strip: StripId,
         shape: StripShape,
@@ -39,5 +47,4 @@ pub enum ReplacementEdit {
         port: StripPort,
         bus: BusPort,
     },
-    Master(BusControl),
 }

@@ -75,7 +75,7 @@ fn configured() -> (Harness, StripId, LoopSlotId) {
     harness.done(route(track, 0, 0, true));
     harness.done(route(track, 1, 1, true));
     harness.done(Request::BusControl {
-        bus: BusId::Master,
+        bus: BusId::MASTER,
         control: BusControl::Gain(0.5),
     });
     harness.done(Request::CreateLoop {
@@ -325,7 +325,7 @@ fn resync_streams_the_confirmed_state() {
                 index: 0,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             },
         },
@@ -336,7 +336,7 @@ fn resync_streams_the_confirmed_state() {
                 index: 1,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             },
         },
@@ -371,11 +371,11 @@ fn resync_streams_the_confirmed_state() {
             balance: 0.,
         },
         StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Gain(0.5),
         },
         StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Mute(false),
         },
     ];

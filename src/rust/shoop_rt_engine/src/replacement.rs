@@ -6,7 +6,7 @@ use alloc::vec;
 use crate::{
     endpoint::ControlEndpoint,
     jobs::Job,
-    model::{Banks, Bus, Controls, Model},
+    model::{Controls, Model},
     queue::{Staged, HARD},
 };
 use shoop_rt_protocol::{BusControl, Outcome, Refusal, ReplacementEdit, Request};
@@ -35,13 +35,13 @@ pub(crate) struct Replacement {
     pub initial: Box<[Option<Initial>]>,
 }
 impl Replacement {
-    pub(crate) fn new(strips: usize, loops: usize) -> Self {
+    pub(crate) fn new(strips: usize, loops: usize, buses: usize) -> Self {
         Self {
             id: None,
             state: State::Empty,
             last_id: 0,
             base_revision: 0,
-            candidate: Model::new(strips, loops, Default::default()),
+            candidate: Model::new(strips, loops, buses, 0, Default::default()),
             initial: vec![None; loops].into_boxed_slice(),
         }
     }
@@ -74,8 +74,7 @@ impl ControlEndpoint {
                 stage.candidate.copy_from(&self.model);
                 stage.candidate.strips.fill(None);
                 stage.candidate.loops.fill(None);
-                stage.candidate.master = Bus::default();
-                stage.candidate.master_outputs = Banks::default();
+                stage.candidate.buses.fill(None);
                 stage.initial.fill(None);
                 return Ok(Some(Outcome::Done));
             }
@@ -117,7 +116,7 @@ impl ControlEndpoint {
                         self.touched_loops[slot] = HARD;
                     }
                 }
-                self.touched_master = HARD;
+                self.touched_buses.fill(HARD);
                 self.replacement.state = State::Preparing;
                 self.job = Some(Job::replacement(correlation));
                 Ok(None)
@@ -162,6 +161,11 @@ impl ControlEndpoint {
 
     fn replacement_edit(&mut self, edit: ReplacementEdit) -> Result<(), Refusal> {
         let request = match edit {
+            ReplacementEdit::Bus { bus, channels } => Request::CreateBus { bus, channels },
+            ReplacementEdit::BusControl { bus, control } => {
+                self.set_replacement_bus(bus, control)?;
+                return Ok(());
+            }
             ReplacementEdit::Strip {
                 strip,
                 shape,
@@ -237,19 +241,6 @@ impl ControlEndpoint {
                 bus,
                 connected: true,
             },
-            ReplacementEdit::Master(control) => {
-                match control {
-                    BusControl::Gain(value) if !value.is_finite() || value < 0. => {
-                        return Err(Refusal::InvalidValue)
-                    }
-                    BusControl::Balance(value) if !(-1.0..=1.0).contains(&value) => {
-                        return Err(Refusal::InvalidValue)
-                    }
-                    _ => {}
-                }
-                self.next.master.apply(control);
-                return Ok(());
-            }
         };
         match self.stage(request, true) {
             Staged::Change(change) => {
@@ -260,6 +251,27 @@ impl ControlEndpoint {
             Staged::Refused(reason) => Err(reason),
             Staged::Wait => Err(Refusal::Busy),
         }
+    }
+
+    fn set_replacement_bus(
+        &mut self,
+        bus: shoop_rt_protocol::BusId,
+        control: BusControl,
+    ) -> Result<(), Refusal> {
+        let entry = self.next.bus_mut(bus).ok_or(Refusal::InvalidId)?;
+        match control {
+            BusControl::Gain(value) if !value.is_finite() || value < 0. => {
+                return Err(Refusal::InvalidValue)
+            }
+            BusControl::Balance(value)
+                if !(-1.0..=1.0).contains(&value) || (entry.channels != 2 && value != 0.) =>
+            {
+                return Err(Refusal::InvalidValue)
+            }
+            _ => {}
+        }
+        entry.apply(control);
+        Ok(())
     }
 
     fn validate_replacement(&self) -> Result<(), Refusal> {

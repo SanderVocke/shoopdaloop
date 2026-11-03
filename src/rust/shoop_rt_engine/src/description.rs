@@ -54,6 +54,8 @@ pub struct EngineDescription {
     /// Audio channels per strip direction; also the channels of every loop.
     pub strip_channels: u8,
     pub master_channels: u8,
+    pub buses: u8,
+    pub bus_channels: u8,
     /// Initial Master connections as (Master channel, host audio output index).
     /// They are part of the engine state and can be changed like any connection.
     pub master_connections: Vec<(u8, u16)>,
@@ -93,6 +95,8 @@ impl Default for EngineDescription {
             }],
             strip_channels: 2,
             master_channels: 2,
+            buses: 8,
+            bus_channels: 8,
             master_connections: vec![(0, 0), (1, 1)],
             smoothing_frames: 0,
             smoothing_limit_frames: 4800,
@@ -125,6 +129,11 @@ impl EngineDescription {
             || self.max_frames == 0
             || self.strip_channels == 0
             || self.master_channels == 0
+            || self.buses == 0
+            || self.buses as usize > shoop_rt_protocol::MAX_BUSES
+            || self.bus_channels == 0
+            || self.bus_channels as usize > MAX_STRIP_CHANNELS
+            || self.master_channels > self.bus_channels
             || self.segments.is_empty()
             || self.page_bytes == 0
             || self.page_bytes % 4 != 0

@@ -113,6 +113,8 @@ pub fn engine_description(pools: &NewEnginePools, max_frames: u32) -> EngineDesc
     let defaults = EngineDescription::default();
     let loop_memory = pools.loop_memory_mb as usize * (1 << 20);
     EngineDescription {
+        buses: pools.buses as u8,
+        bus_channels: pools.bus_channels as u8,
         max_frames: max_frames.max(1) as usize,
         segments: vec![Segment {
             strips: pools.tracks,
