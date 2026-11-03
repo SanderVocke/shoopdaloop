@@ -30,13 +30,12 @@ impl ResourceStore {
         config: shared_audio::Config,
         origin: Frame,
     ) -> Result<AudioStoreId, Error> {
-        let slot = self
-            .audio_stores
-            .iter()
-            .position(Option::is_none)
-            .ok_or(Error::Capacity)?;
+        let slot = self.audio_stores.len();
+        if slot == self.config.limits().resource_slots {
+            return Err(Error::Capacity);
+        }
         let audio = shared_audio::AudioStore::prepare(self, config, origin)?;
-        self.audio_stores[slot] = Some(Box::new(audio));
+        self.audio_stores.push(Some(Box::new(audio)));
         Ok(AudioStoreId {
             scope: self.scope,
             slot,

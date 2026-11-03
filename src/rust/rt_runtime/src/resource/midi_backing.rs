@@ -77,13 +77,12 @@ impl ResourceStore {
         origin: Frame,
         initial: &MidiState,
     ) -> Result<MidiStoreId, Error> {
-        let slot = self
-            .midi_stores
-            .iter()
-            .position(Option::is_none)
-            .ok_or(Error::Capacity)?;
+        let slot = self.midi_stores.len();
+        if slot == self.config.limits().resource_slots {
+            return Err(Error::Capacity);
+        }
         let midi = shared_midi::MidiStore::prepare(self, config, origin, initial)?;
-        self.midi_stores[slot] = Some(Box::new(midi));
+        self.midi_stores.push(Some(Box::new(midi)));
         Ok(MidiStoreId {
             scope: self.scope,
             slot,

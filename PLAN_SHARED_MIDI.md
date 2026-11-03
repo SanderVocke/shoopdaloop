@@ -375,6 +375,14 @@ management/shutdown fixtures timed out in this environment (four tests skipped).
 The attempted Node runner stopped at sandbox read-only tool setup before executing
 its suites. Neither result is represented as a passing final gate; CI is authoritative.
 
+CI follow-up: coverage reproduced the LAN management/shutdown timeouts and a
+shutdown timeout after recovery stress. Reclamation was scanning all configured
+shared-store slots on every turn, including unused slots, across the stopped
+engine's page-bound cleanup loop. Registries now reserve their slot capacity at
+preparation and expose only prepared entries to maintenance, preserving fair
+rotation while avoiding the unused-slot multiplier. Validation follows CI per
+the user's instruction.
+
 Integration refresh: upstream advanced to `64a4ad0634de1664b1ff723b36c635cd243d819b`
 (click-track generation, PR #923). This branch merges that head, preserving the
 new codec-provider click metadata alongside shared-MIDI tests. Audio PR #909
