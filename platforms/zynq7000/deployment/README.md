@@ -43,7 +43,10 @@ maps and manifests. `evidence/` contains public state summaries, guest serial,
 QMP facts/events, CLI transcripts and results. `private/` contains signing keys,
 the credential, profiles and raw card images; **do not archive or publish it**.
 The artifact builder scans public output for the test credential and private-key
-markers. Failure packet captures are retained separately with shorter expiry.
+markers. Published packet captures retain timing and network/TCP headers, with
+TCP application payloads redacted and checksums updated. Raw captures contain the
+trusted-LAN authentication token and stay under `private/packet-captures/`.
+Redacted failure captures are retained separately with shorter expiry.
 
 CI adds `--native-coverage` with cargo-llvm-cov 0.8.7 and matching LLVM tools.
 The workstation CLI is instrumented during real QEMU deployment/failure cases;

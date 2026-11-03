@@ -27,6 +27,19 @@ def audit_public_output(directory):
     if len(secret) == 32:
         patterns.append(secret)
     rejected = []
+    captures = []
+    from packet_capture import publish
+    for path in list((directory / "evidence").rglob("*.pcap")):
+        if path.name.endswith(".redacted.pcap"):
+            continue
+        relative = path.relative_to(directory)
+        try:
+            result = publish(path, directory / "private/packet-captures" / relative)
+            captures.append({"path": str(relative.with_suffix(".redacted.pcap")), **result})
+        except (OSError, ValueError) as error:
+            rejected.append(str(relative))
+            captures.append({"path": str(relative), "error": str(error)})
+    (directory / "evidence/packet-redaction.json").write_text(json.dumps(captures, indent=2) + "\n")
     for root in [directory / "artifacts", directory / "evidence"]:
         for path in root.rglob("*"):
             if not path.is_file():
@@ -73,6 +86,7 @@ def worker(args):
             assert (test / "artifacts/clean").exists() and not (test / "artifacts/leak").exists()
             assert (test / "private/quarantine/artifacts/leak").exists()
         subprocess.run([sys.executable, PLATFORM / "deployment/tests/records.py"], check=True)
+        subprocess.run([sys.executable, PLATFORM / "deployment/tests/capture_redaction.py"], check=True)
         executable = directory / "private/boot-state-tests"
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
                         "-I", PLATFORM / "deployment", PLATFORM / "deployment/tests/boot_state.c",

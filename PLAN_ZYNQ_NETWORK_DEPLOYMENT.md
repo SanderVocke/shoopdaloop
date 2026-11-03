@@ -485,3 +485,18 @@ revisions rather than treating moving documentation as a reproducible input.
   is 82.42% and deployment transport/orchestration 88.08%; CI merges this LCOV
   report with native coverage. New successful-result/wire-tag contract tests pass
   on native/Node/Chrome. Full native suite: 2,546 passed, five intentional skips.
+
+- The artifact audit found real authentication tokens in TCP packet captures.
+  Public captures now redact all TCP application data, update checksums and use
+  `.redacted.pcap`; raw originals stay private. Failure uploads accept only the
+  redacted filename pattern, including if a job dies before finalization.
+  Split-payload/endian/truncation tests and 64 real-capture audits pass.
+- The original long fixture exposed a sampling race: its independent query task
+  could observe temporary snapshot buffers. Bounded lower-watermark windows keep
+  exact retained-heap equality and all C/socket/768-MiB peak checks. The complete
+  fixture passed with 386,468,024 live bytes before/after 100 measured cycles,
+  then passed recording-pool exhaustion, export refusal and cleanup retry.
+  Production runtime behavior and resource bounds are unchanged.
+- Restarting consolidated validation with the final artifact/privacy and sampling
+  implementation; PR #924 remains ready for review and unmerged. Both initial
+  CodeQL review threads are addressed and resolved.

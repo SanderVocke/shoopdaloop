@@ -1146,10 +1146,10 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
             pump(client, connection);
         }
         if cycle == 9 {
-            baseline = drive("Q");
+            baseline = retained_stats(client, connection);
         }
     }
-    let final_stats = drive("Q");
+    let final_stats = retained_stats(client, connection);
     assert!(
         final_stats[3] == baseline[3],
         "retained Rust heap growth: {baseline:?} -> {final_stats:?}"
@@ -1166,4 +1166,30 @@ fn soak(client: &mut Client, connection: &mut Connection, image: Arc<Image>) {
     println!(
         "{cycles} warmed attach/stage/cancel/detach cycles passed: {baseline:?} -> {final_stats:?}"
     );
+}
+
+fn retained_stats(client: &mut Client, connection: &mut Connection) -> [u32; 11] {
+    // The fixture task can preempt temporary snapshot serialization. Compare
+    // bounded lower watermarks after pumping, keeping exact retained equality.
+    for _ in 0..20 {
+        pump(client, connection);
+    }
+    let mut minimum = drive("Q");
+    let mut maximum = minimum[3];
+    let mut peak = minimum[4];
+    for _ in 0..32 {
+        pump(client, connection);
+        let stats = drive("Q");
+        maximum = maximum.max(stats[3]);
+        peak = peak.max(stats[4]);
+        if stats[3] < minimum[3] {
+            minimum = stats;
+        }
+    }
+    minimum[4] = peak;
+    println!(
+        "Retained Rust heap window: minimum={} maximum={maximum}",
+        minimum[3]
+    );
+    minimum
 }
