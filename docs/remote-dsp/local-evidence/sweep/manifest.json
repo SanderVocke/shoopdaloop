@@ -1,0 +1,45 @@
+{
+  "started_utc": "2026-11-03T12:19:53.401410+00:00",
+  "source_revision": "ec4b52ec2de23b60714eadb8ebf1be69834dd3e0",
+  "source_changes": "M .pi/.goals-pool-snapshot.json\n M .pi/goals/.goal-ledger-checkpoint.json\n D .pi/goals/active_goal_2026102519485870_mvo6lnim-1xzkd7.md\n D .pi/goals/active_goal_2026102622420655_mvps85i2-uuvn9n.md\n D .pi/goals/active_goal_2026102711354435_mvqjv1pa-kwtmu3.md\n D .pi/goals/active_goal_2026102806553802_mvrpaoj0-u4f0gj.md\n M .pi/goals/goal_events.jsonl\n?? .pi/goals/archived/goal_2026102706243376_mvps85i2-uuvn9n.md\n?? .pi/goals/archived/goal_2026102711353184_mvo6lnim-1xzkd7.md\n?? .pi/goals/archived/goal_2026102816334216_mvrpaoj0-u4f0gj.md\n?? .pi/goals/archived/goal_2026102900362115_mvqjv1pa-kwtmu3.md\n?? scripts/reproduce_remote_dsp_local.py",
+  "binary": "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+  "binary_sha256": "d799a5b273203068f06b5eb6f9c9fd340d3e7fc9a2dd2e8779b893e4b659a186",
+  "runner_sha256": "7736b583e41c199e24aa036a98a3214198a29372287a7f8a7968adb999da871b",
+  "runner_arguments": {
+    "binary": "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+    "output": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/sweep",
+    "profile": "all",
+    "report_only": false
+  },
+  "os": "Linux-7.0.3-x86_64-with-glibc2.42",
+  "machine": "x86_64",
+  "python": "3.14.7",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "cpus_reported": 16,
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "scheduling": "inherited ordinary scheduling; no affinity, RT priority or system tuning applied",
+  "build_profile": "release",
+  "rustflags": "",
+  "network": "localhost UDP audio; authenticated TCP control; separate native processes",
+  "environment": {
+    "cpu_model": "AMD Ryzen AI 7 350 w/ Radeon 860M"
+  }
+}

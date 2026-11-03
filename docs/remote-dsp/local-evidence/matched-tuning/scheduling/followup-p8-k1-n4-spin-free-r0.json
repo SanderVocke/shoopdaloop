@@ -1,0 +1,129 @@
+{
+  "observed_utc": "2026-11-03T13:09:57.607372+00:00",
+  "processes": [
+    {
+      "pid": 23946,
+      "command": [
+        "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+        "serve",
+        "--polling",
+        "spin",
+        "--once",
+        "--processor",
+        "delay-copy",
+        "--credential-file",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/credential.key"
+      ],
+      "threads": [
+        {
+          "tid": 23946,
+          "name": "shoop_dsp_host",
+          "policy": 0,
+          "priority": 0,
+          "nice": 0,
+          "affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        },
+        {
+          "tid": 23949,
+          "name": "network-dsp",
+          "policy": 0,
+          "priority": 0,
+          "nice": 0,
+          "affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "pid": 23948,
+      "command": [
+        "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+        "client",
+        "--polling",
+        "spin",
+        "--endpoint",
+        "127.0.0.1:35495",
+        "--credential-file",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/credential.key",
+        "--packet-frames",
+        "8",
+        "--multiplier",
+        "1",
+        "--allowance",
+        "4",
+        "--gap-timeout-us",
+        "200",
+        "--reorder-packets",
+        "64",
+        "--seed",
+        "20261102",
+        "--seconds",
+        "60",
+        "--warmup",
+        "0.5",
+        "--output",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/followup-p8-k1-n4-spin-free-r0.requester.json.tmp"
+      ],
+      "threads": [
+        {
+          "tid": 23948,
+          "name": "shoop_dsp_host",
+          "policy": 0,
+          "priority": 0,
+          "nice": 0,
+          "affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      ]
+    }
+  ]
+}

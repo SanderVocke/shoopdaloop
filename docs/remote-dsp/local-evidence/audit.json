@@ -1,0 +1,181 @@
+{
+  "campaigns": {
+    "sweep": {
+      "records": 288,
+      "by_suite": {
+        "baseline": 240,
+        "delay": 40,
+        "followup": 6,
+        "mtu": 2
+      },
+      "by_status": {
+        "measured": 257,
+        "rejected": 31
+      },
+      "fully_healthy": 222,
+      "measured_packets": 2149596,
+      "verified_samples": 77201408,
+      "unverified_samples": 0,
+      "correctness_errors": 0,
+      "late": 87,
+      "missing": 0,
+      "send_errors_or_skipped": 0,
+      "concealed_packets": 71,
+      "retired_runs": 0,
+      "decompressed_sha256": "471797c0adfaeeca1ba847b702b058a8643c5b126cb7b517caa603a9d3796ff3",
+      "checks": [
+        "unique cases",
+        "status and process exits",
+        "packet outcome sums and fractions",
+        "independent sample counts",
+        "histogram counts, means, quantile bins and maxima",
+        "bounded concealment masks",
+        "nonnegative resource deltas"
+      ]
+    },
+    "tuning": {
+      "records": 232,
+      "by_suite": {
+        "screen": 216,
+        "followup": 16
+      },
+      "by_status": {
+        "measured": 232
+      },
+      "fully_healthy": 218,
+      "measured_packets": 4828624,
+      "verified_samples": 133575168,
+      "unverified_samples": 0,
+      "correctness_errors": 0,
+      "late": 215,
+      "missing": 5536,
+      "send_errors_or_skipped": 252,
+      "concealed_packets": 78,
+      "retired_runs": 1,
+      "decompressed_sha256": "24fa4a855f417bb27fc1af4699fee6c79612bdaa6b491ca14889a7fcb232bf5c",
+      "checks": [
+        "unique cases",
+        "status and process exits",
+        "packet outcome sums and fractions",
+        "independent sample counts",
+        "histogram counts, means, quantile bins and maxima",
+        "bounded concealment masks",
+        "nonnegative resource deltas"
+      ]
+    },
+    "matched-tuning": {
+      "records": 26,
+      "by_suite": {
+        "followup": 26
+      },
+      "by_status": {
+        "measured": 26
+      },
+      "fully_healthy": 23,
+      "measured_packets": 5377528,
+      "verified_samples": 149767168,
+      "unverified_samples": 0,
+      "correctness_errors": 0,
+      "late": 13,
+      "missing": 0,
+      "send_errors_or_skipped": 0,
+      "concealed_packets": 115,
+      "retired_runs": 0,
+      "decompressed_sha256": "f3a86e3f3d4234851ddfab7d7a3d385384ec41ab0dd8cc0525e31f92f8ad2d08",
+      "checks": [
+        "unique cases",
+        "status and process exits",
+        "packet outcome sums and fractions",
+        "independent sample counts",
+        "histogram counts, means, quantile bins and maxima",
+        "bounded concealment masks",
+        "nonnegative resource deltas"
+      ]
+    },
+    "matched-sweep": {
+      "records": 1,
+      "by_suite": {
+        "followup": 1
+      },
+      "by_status": {
+        "measured": 1
+      },
+      "fully_healthy": 0,
+      "measured_packets": 360000,
+      "verified_samples": 5760000,
+      "unverified_samples": 0,
+      "correctness_errors": 0,
+      "late": 2,
+      "missing": 0,
+      "send_errors_or_skipped": 0,
+      "concealed_packets": 0,
+      "retired_runs": 0,
+      "decompressed_sha256": "9a6d5b64609a13a0e0d198622ab4e05376fda727b5bfb8780f7a0c4b7e4b1e09",
+      "checks": [
+        "unique cases",
+        "status and process exits",
+        "packet outcome sums and fractions",
+        "independent sample counts",
+        "histogram counts, means, quantile bins and maxima",
+        "bounded concealment masks",
+        "nonnegative resource deltas"
+      ]
+    }
+  },
+  "totals": {
+    "records": 547,
+    "measured_packets": 12715748,
+    "verified_samples": 366303744,
+    "unverified_samples": 0,
+    "correctness_errors": 0,
+    "late": 317,
+    "missing": 5536,
+    "concealed_packets": 264,
+    "retired_runs": 1
+  },
+  "coverage": {
+    "complete_baseline_matrix": true,
+    "complete_delay_mtu_followup_coverage": true,
+    "complete_tuning_screen": true,
+    "selection_recomputed_identically": true,
+    "complete_fixed_priority_followups": true,
+    "affinity_polling_gap_verified": true,
+    "live_process_thread_scheduling_verified": [
+      "followup-p128-k8-n16-spin-pinned-r0.json",
+      "followup-p128-k8-n16-yield-pinned-fifo1-r0.json",
+      "followup-p128-k8-n16-yield-pinned-r0.json",
+      "followup-p128-k8-n16-yield-pinned-rr1-r0.json",
+      "followup-p128-k8-n8-client-spin-pinned-r0.json",
+      "followup-p128-k8-n8-yield-pinned-fifo1-r0.json",
+      "followup-p128-k8-n8-yield-pinned-rr1-r0.json",
+      "followup-p16-k4-n16-spin-pinned-gap1000-r0.json",
+      "followup-p16-k4-n16-yield-pinned-fifo1-r0.json",
+      "followup-p16-k4-n16-yield-pinned-rr1-r0.json",
+      "followup-p16-k4-n4-yield-pinned-fifo1-r0.json",
+      "followup-p16-k4-n4-yield-pinned-r0.json",
+      "followup-p16-k4-n4-yield-pinned-rr1-r0.json",
+      "followup-p16-k4-n8-yield-pinned-fifo1-r0.json",
+      "followup-p16-k4-n8-yield-pinned-r0.json",
+      "followup-p16-k4-n8-yield-pinned-rr1-r0.json",
+      "followup-p8-k1-n16-yield-pinned-fifo1-r0.json",
+      "followup-p8-k1-n16-yield-pinned-r0.json",
+      "followup-p8-k1-n16-yield-pinned-rr1-r0.json",
+      "followup-p8-k1-n4-spin-free-r0.json",
+      "followup-p8-k1-n4-yield-pinned-fifo1-r0.json",
+      "followup-p8-k1-n4-yield-pinned-r0.json",
+      "followup-p8-k1-n4-yield-pinned-rr1-r0.json",
+      "followup-p8-k1-n8-yield-pinned-fifo1-r0.json",
+      "followup-p8-k1-n8-yield-pinned-r0.json",
+      "followup-p8-k1-n8-yield-pinned-rr1-r0.json"
+    ]
+  },
+  "report_regeneration_payload_identical": {
+    "sweep": true,
+    "tuning": true,
+    "matched-tuning": true,
+    "matched-sweep": true
+  },
+  "comparison_script_sha256": "e2d280c1580039574b1b4ebd1c0c83c0b75d3f02b28807f4abc3af02fdab4af9",
+  "credentials_excluded": true,
+  "original_cloud_evidence_modified": false
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "config": [
+      128,
+      8,
+      16
+    ],
+    "reused": "sweep/followup-p128-k8-n16-a0-c2-r0.json"
+  },
+  {
+    "config": [
+      128,
+      8,
+      8
+    ],
+    "reused": "sweep/followup-p128-k8-n8-a0-c2-r0.json"
+  },
+  {
+    "config": [
+      16,
+      4,
+      16
+    ],
+    "reused": "sweep/followup-p16-k4-n16-a0-c2-r0.json"
+  },
+  {
+    "config": [
+      16,
+      4,
+      8
+    ],
+    "reused": "sweep/followup-p16-k4-n8-a0-c2-r0.json"
+  },
+  {
+    "config": [
+      8,
+      1,
+      8
+    ],
+    "reused": "sweep/followup-p8-k1-n8-a0-c2-r0.json"
+  }
+]

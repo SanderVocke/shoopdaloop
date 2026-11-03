@@ -1,0 +1,505 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="660" viewBox="0 0 1400 660">
+<rect width="100%" height="100%" fill="white"/>
+<style>text{font-family: sans-serif;font-size:12px;fill:#222}.title{font-size:20px}.host{font-size:16px}</style>
+<text x="700.0" y="28" class="title" text-anchor="middle">Cloud VM vs local PREEMPT_RT laptop: baseline output deadline misses</text>
+<text x="700.0" y="50" class="" text-anchor="middle">Three repetitions per admitted P/k/N; green means zero output misses, not necessarily zero input concealment</text>
+<text x="20" y="90" class="host" text-anchor="start">Cloud VM</text>
+<text x="205" y="90" class="" text-anchor="middle">k=1</text>
+<text x="68" y="128" class="" text-anchor="end">8</text>
+<rect x="80" y="105" width="50" height="35" fill="rgb(255,146,110)" stroke="white"/>
+<text x="105" y="128" class="" text-anchor="middle">0.58%</text>
+<rect x="130" y="105" width="50" height="35" fill="rgb(255,146,110)" stroke="white"/>
+<text x="155" y="128" class="" text-anchor="middle">0.56%</text>
+<rect x="180" y="105" width="50" height="35" fill="rgb(255,160,117)" stroke="white"/>
+<text x="205" y="128" class="" text-anchor="middle">0.22%</text>
+<rect x="230" y="105" width="50" height="35" fill="rgb(255,86,78)" stroke="white"/>
+<text x="255" y="128" class="" text-anchor="middle">33%</text>
+<rect x="280" y="105" width="50" height="35" fill="rgb(255,190,134)" stroke="white"/>
+<text x="305" y="128" class="" text-anchor="middle">0.028%</text>
+<text x="68" y="163" class="" text-anchor="end">16</text>
+<rect x="80" y="140" width="50" height="35" fill="rgb(255,155,115)" stroke="white"/>
+<text x="105" y="163" class="" text-anchor="middle">0.3%</text>
+<rect x="130" y="140" width="50" height="35" fill="rgb(255,150,112)" stroke="white"/>
+<text x="155" y="163" class="" text-anchor="middle">0.42%</text>
+<rect x="180" y="140" width="50" height="35" fill="rgb(255,173,124)" stroke="white"/>
+<text x="205" y="163" class="" text-anchor="middle">0.089%</text>
+<rect x="230" y="140" width="50" height="35" fill="rgb(255,169,122)" stroke="white"/>
+<text x="255" y="163" class="" text-anchor="middle">0.12%</text>
+<rect x="280" y="140" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="163" class="" text-anchor="middle">0</text>
+<text x="68" y="198" class="" text-anchor="end">32</text>
+<rect x="80" y="175" width="50" height="35" fill="rgb(255,156,116)" stroke="white"/>
+<text x="105" y="198" class="" text-anchor="middle">0.28%</text>
+<rect x="130" y="175" width="50" height="35" fill="rgb(255,173,124)" stroke="white"/>
+<text x="155" y="198" class="" text-anchor="middle">0.089%</text>
+<rect x="180" y="175" width="50" height="35" fill="rgb(255,159,117)" stroke="white"/>
+<text x="205" y="198" class="" text-anchor="middle">0.23%</text>
+<rect x="230" y="175" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="198" class="" text-anchor="middle">0</text>
+<rect x="280" y="175" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="198" class="" text-anchor="middle">0</text>
+<text x="68" y="233" class="" text-anchor="end">64</text>
+<rect x="80" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="105" y="233" class="" text-anchor="middle">0</text>
+<rect x="130" y="210" width="50" height="35" fill="rgb(255,194,135)" stroke="white"/>
+<text x="155" y="233" class="" text-anchor="middle">0.022%</text>
+<rect x="180" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="233" class="" text-anchor="middle">0</text>
+<rect x="230" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="233" class="" text-anchor="middle">0</text>
+<rect x="280" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="233" class="" text-anchor="middle">0</text>
+<text x="68" y="268" class="" text-anchor="end">128</text>
+<rect x="80" y="245" width="50" height="35" fill="rgb(255,183,130)" stroke="white"/>
+<text x="105" y="268" class="" text-anchor="middle">0.044%</text>
+<rect x="130" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="155" y="268" class="" text-anchor="middle">0</text>
+<rect x="180" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="268" class="" text-anchor="middle">0</text>
+<rect x="230" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="268" class="" text-anchor="middle">0</text>
+<rect x="280" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="268" class="" text-anchor="middle">0</text>
+<text x="105" y="300" class="" text-anchor="middle">1</text>
+<text x="155" y="300" class="" text-anchor="middle">2</text>
+<text x="205" y="300" class="" text-anchor="middle">4</text>
+<text x="255" y="300" class="" text-anchor="middle">8</text>
+<text x="305" y="300" class="" text-anchor="middle">16</text>
+<text x="205" y="324" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="540" y="90" class="" text-anchor="middle">k=2</text>
+<text x="403" y="128" class="" text-anchor="end">8</text>
+<rect x="415" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="128" class="" text-anchor="middle">ref</text>
+<rect x="465" y="105" width="50" height="35" fill="rgb(255,142,108)" stroke="white"/>
+<text x="490" y="128" class="" text-anchor="middle">0.74%</text>
+<rect x="515" y="105" width="50" height="35" fill="rgb(255,162,119)" stroke="white"/>
+<text x="540" y="128" class="" text-anchor="middle">0.19%</text>
+<rect x="565" y="105" width="50" height="35" fill="rgb(255,174,125)" stroke="white"/>
+<text x="590" y="128" class="" text-anchor="middle">0.086%</text>
+<rect x="615" y="105" width="50" height="35" fill="rgb(255,181,128)" stroke="white"/>
+<text x="640" y="128" class="" text-anchor="middle">0.053%</text>
+<text x="403" y="163" class="" text-anchor="end">16</text>
+<rect x="415" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="163" class="" text-anchor="middle">ref</text>
+<rect x="465" y="140" width="50" height="35" fill="rgb(255,156,115)" stroke="white"/>
+<text x="490" y="163" class="" text-anchor="middle">0.28%</text>
+<rect x="515" y="140" width="50" height="35" fill="rgb(255,164,120)" stroke="white"/>
+<text x="540" y="163" class="" text-anchor="middle">0.17%</text>
+<rect x="565" y="140" width="50" height="35" fill="rgb(255,166,120)" stroke="white"/>
+<text x="590" y="163" class="" text-anchor="middle">0.15%</text>
+<rect x="615" y="140" width="50" height="35" fill="rgb(255,198,138)" stroke="white"/>
+<text x="640" y="163" class="" text-anchor="middle">0.017%</text>
+<text x="403" y="198" class="" text-anchor="end">32</text>
+<rect x="415" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="198" class="" text-anchor="middle">ref</text>
+<rect x="465" y="175" width="50" height="35" fill="rgb(255,151,113)" stroke="white"/>
+<text x="490" y="198" class="" text-anchor="middle">0.39%</text>
+<rect x="515" y="175" width="50" height="35" fill="rgb(255,204,141)" stroke="white"/>
+<text x="540" y="198" class="" text-anchor="middle">0.011%</text>
+<rect x="565" y="175" width="50" height="35" fill="rgb(255,141,108)" stroke="white"/>
+<text x="590" y="198" class="" text-anchor="middle">0.77%</text>
+<rect x="615" y="175" width="50" height="35" fill="rgb(255,180,128)" stroke="white"/>
+<text x="640" y="198" class="" text-anchor="middle">0.056%</text>
+<text x="403" y="233" class="" text-anchor="end">64</text>
+<rect x="415" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="233" class="" text-anchor="middle">ref</text>
+<rect x="465" y="210" width="50" height="35" fill="rgb(255,157,116)" stroke="white"/>
+<text x="490" y="233" class="" text-anchor="middle">0.27%</text>
+<rect x="515" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="233" class="" text-anchor="middle">0</text>
+<rect x="565" y="210" width="50" height="35" fill="rgb(255,194,135)" stroke="white"/>
+<text x="590" y="233" class="" text-anchor="middle">0.022%</text>
+<rect x="615" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="233" class="" text-anchor="middle">0</text>
+<text x="403" y="268" class="" text-anchor="end">128</text>
+<rect x="415" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="268" class="" text-anchor="middle">ref</text>
+<rect x="465" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="490" y="268" class="" text-anchor="middle">0</text>
+<rect x="515" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="268" class="" text-anchor="middle">0</text>
+<rect x="565" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="268" class="" text-anchor="middle">0</text>
+<rect x="615" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="268" class="" text-anchor="middle">0</text>
+<text x="440" y="300" class="" text-anchor="middle">1</text>
+<text x="490" y="300" class="" text-anchor="middle">2</text>
+<text x="540" y="300" class="" text-anchor="middle">4</text>
+<text x="590" y="300" class="" text-anchor="middle">8</text>
+<text x="640" y="300" class="" text-anchor="middle">16</text>
+<text x="540" y="324" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="875" y="90" class="" text-anchor="middle">k=4</text>
+<text x="738" y="128" class="" text-anchor="end">8</text>
+<rect x="750" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="128" class="" text-anchor="middle">ref</text>
+<rect x="800" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="128" class="" text-anchor="middle">ref</text>
+<rect x="850" y="105" width="50" height="35" fill="rgb(255,154,114)" stroke="white"/>
+<text x="875" y="128" class="" text-anchor="middle">0.32%</text>
+<rect x="900" y="105" width="50" height="35" fill="rgb(255,167,121)" stroke="white"/>
+<text x="925" y="128" class="" text-anchor="middle">0.14%</text>
+<rect x="950" y="105" width="50" height="35" fill="rgb(255,201,139)" stroke="white"/>
+<text x="975" y="128" class="" text-anchor="middle">0.014%</text>
+<text x="738" y="163" class="" text-anchor="end">16</text>
+<rect x="750" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="163" class="" text-anchor="middle">ref</text>
+<rect x="800" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="163" class="" text-anchor="middle">ref</text>
+<rect x="850" y="140" width="50" height="35" fill="rgb(255,152,113)" stroke="white"/>
+<text x="875" y="163" class="" text-anchor="middle">0.37%</text>
+<rect x="900" y="140" width="50" height="35" fill="rgb(255,185,131)" stroke="white"/>
+<text x="925" y="163" class="" text-anchor="middle">0.039%</text>
+<rect x="950" y="140" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="163" class="" text-anchor="middle">0</text>
+<text x="738" y="198" class="" text-anchor="end">32</text>
+<rect x="750" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="198" class="" text-anchor="middle">ref</text>
+<rect x="800" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="198" class="" text-anchor="middle">ref</text>
+<rect x="850" y="175" width="50" height="35" fill="rgb(255,162,119)" stroke="white"/>
+<text x="875" y="198" class="" text-anchor="middle">0.19%</text>
+<rect x="900" y="175" width="50" height="35" fill="rgb(255,175,125)" stroke="white"/>
+<text x="925" y="198" class="" text-anchor="middle">0.078%</text>
+<rect x="950" y="175" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="198" class="" text-anchor="middle">0</text>
+<text x="738" y="233" class="" text-anchor="end">64</text>
+<rect x="750" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="233" class="" text-anchor="middle">ref</text>
+<rect x="800" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="233" class="" text-anchor="middle">ref</text>
+<rect x="850" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="875" y="233" class="" text-anchor="middle">0</text>
+<rect x="900" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="233" class="" text-anchor="middle">0</text>
+<rect x="950" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="233" class="" text-anchor="middle">0</text>
+<text x="738" y="268" class="" text-anchor="end">128</text>
+<rect x="750" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="268" class="" text-anchor="middle">ref</text>
+<rect x="800" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="268" class="" text-anchor="middle">ref</text>
+<rect x="850" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="875" y="268" class="" text-anchor="middle">0</text>
+<rect x="900" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="268" class="" text-anchor="middle">0</text>
+<rect x="950" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="268" class="" text-anchor="middle">0</text>
+<text x="775" y="300" class="" text-anchor="middle">1</text>
+<text x="825" y="300" class="" text-anchor="middle">2</text>
+<text x="875" y="300" class="" text-anchor="middle">4</text>
+<text x="925" y="300" class="" text-anchor="middle">8</text>
+<text x="975" y="300" class="" text-anchor="middle">16</text>
+<text x="875" y="324" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="1210" y="90" class="" text-anchor="middle">k=8</text>
+<text x="1073" y="128" class="" text-anchor="end">8</text>
+<rect x="1085" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="128" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="128" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="105" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="128" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="105" width="50" height="35" fill="rgb(255,158,117)" stroke="white"/>
+<text x="1260" y="128" class="" text-anchor="middle">0.24%</text>
+<rect x="1285" y="105" width="50" height="35" fill="rgb(255,198,138)" stroke="white"/>
+<text x="1310" y="128" class="" text-anchor="middle">0.017%</text>
+<text x="1073" y="163" class="" text-anchor="end">16</text>
+<rect x="1085" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="163" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="163" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="140" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="163" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="140" width="50" height="35" fill="rgb(255,166,120)" stroke="white"/>
+<text x="1260" y="163" class="" text-anchor="middle">0.15%</text>
+<rect x="1285" y="140" width="50" height="35" fill="rgb(255,145,109)" stroke="white"/>
+<text x="1310" y="163" class="" text-anchor="middle">0.61%</text>
+<text x="1073" y="198" class="" text-anchor="end">32</text>
+<rect x="1085" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="198" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="198" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="175" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="198" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="175" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1260" y="198" class="" text-anchor="middle">0</text>
+<rect x="1285" y="175" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="198" class="" text-anchor="middle">0</text>
+<text x="1073" y="233" class="" text-anchor="end">64</text>
+<rect x="1085" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="233" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="233" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="210" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="233" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="210" width="50" height="35" fill="rgb(255,184,130)" stroke="white"/>
+<text x="1260" y="233" class="" text-anchor="middle">0.044%</text>
+<rect x="1285" y="210" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="233" class="" text-anchor="middle">0</text>
+<text x="1073" y="268" class="" text-anchor="end">128</text>
+<rect x="1085" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="268" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="268" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="245" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="268" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1260" y="268" class="" text-anchor="middle">0</text>
+<rect x="1285" y="245" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="268" class="" text-anchor="middle">0</text>
+<text x="1110" y="300" class="" text-anchor="middle">1</text>
+<text x="1160" y="300" class="" text-anchor="middle">2</text>
+<text x="1210" y="300" class="" text-anchor="middle">4</text>
+<text x="1260" y="300" class="" text-anchor="middle">8</text>
+<text x="1310" y="300" class="" text-anchor="middle">16</text>
+<text x="1210" y="324" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="20" y="355" class="host" text-anchor="start">Local laptop</text>
+<text x="205" y="355" class="" text-anchor="middle">k=1</text>
+<text x="68" y="393" class="" text-anchor="end">8</text>
+<rect x="80" y="370" width="50" height="35" fill="rgb(255,172,124)" stroke="white"/>
+<text x="105" y="393" class="" text-anchor="middle">0.094%</text>
+<rect x="130" y="370" width="50" height="35" fill="rgb(255,224,152)" stroke="white"/>
+<text x="155" y="393" class="" text-anchor="middle">0.0028%</text>
+<rect x="180" y="370" width="50" height="35" fill="rgb(255,214,146)" stroke="white"/>
+<text x="205" y="393" class="" text-anchor="middle">0.0056%</text>
+<rect x="230" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="393" class="" text-anchor="middle">0</text>
+<rect x="280" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="393" class="" text-anchor="middle">0</text>
+<text x="68" y="428" class="" text-anchor="end">16</text>
+<rect x="80" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="105" y="428" class="" text-anchor="middle">0</text>
+<rect x="130" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="155" y="428" class="" text-anchor="middle">0</text>
+<rect x="180" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="428" class="" text-anchor="middle">0</text>
+<rect x="230" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="428" class="" text-anchor="middle">0</text>
+<rect x="280" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="428" class="" text-anchor="middle">0</text>
+<text x="68" y="463" class="" text-anchor="end">32</text>
+<rect x="80" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="105" y="463" class="" text-anchor="middle">0</text>
+<rect x="130" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="155" y="463" class="" text-anchor="middle">0</text>
+<rect x="180" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="463" class="" text-anchor="middle">0</text>
+<rect x="230" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="463" class="" text-anchor="middle">0</text>
+<rect x="280" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="463" class="" text-anchor="middle">0</text>
+<text x="68" y="498" class="" text-anchor="end">64</text>
+<rect x="80" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="105" y="498" class="" text-anchor="middle">0</text>
+<rect x="130" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="155" y="498" class="" text-anchor="middle">0</text>
+<rect x="180" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="498" class="" text-anchor="middle">0</text>
+<rect x="230" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="498" class="" text-anchor="middle">0</text>
+<rect x="280" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="498" class="" text-anchor="middle">0</text>
+<text x="68" y="533" class="" text-anchor="end">128</text>
+<rect x="80" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="105" y="533" class="" text-anchor="middle">0</text>
+<rect x="130" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="155" y="533" class="" text-anchor="middle">0</text>
+<rect x="180" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="205" y="533" class="" text-anchor="middle">0</text>
+<rect x="230" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="255" y="533" class="" text-anchor="middle">0</text>
+<rect x="280" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="305" y="533" class="" text-anchor="middle">0</text>
+<text x="105" y="565" class="" text-anchor="middle">1</text>
+<text x="155" y="565" class="" text-anchor="middle">2</text>
+<text x="205" y="565" class="" text-anchor="middle">4</text>
+<text x="255" y="565" class="" text-anchor="middle">8</text>
+<text x="305" y="565" class="" text-anchor="middle">16</text>
+<text x="205" y="589" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="540" y="355" class="" text-anchor="middle">k=2</text>
+<text x="403" y="393" class="" text-anchor="end">8</text>
+<rect x="415" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="393" class="" text-anchor="middle">ref</text>
+<rect x="465" y="370" width="50" height="35" fill="rgb(255,184,130)" stroke="white"/>
+<text x="490" y="393" class="" text-anchor="middle">0.042%</text>
+<rect x="515" y="370" width="50" height="35" fill="rgb(255,208,143)" stroke="white"/>
+<text x="540" y="393" class="" text-anchor="middle">0.0083%</text>
+<rect x="565" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="393" class="" text-anchor="middle">0</text>
+<rect x="615" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="393" class="" text-anchor="middle">0</text>
+<text x="403" y="428" class="" text-anchor="end">16</text>
+<rect x="415" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="428" class="" text-anchor="middle">ref</text>
+<rect x="465" y="405" width="50" height="35" fill="rgb(255,188,132)" stroke="white"/>
+<text x="490" y="428" class="" text-anchor="middle">0.033%</text>
+<rect x="515" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="428" class="" text-anchor="middle">0</text>
+<rect x="565" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="428" class="" text-anchor="middle">0</text>
+<rect x="615" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="428" class="" text-anchor="middle">0</text>
+<text x="403" y="463" class="" text-anchor="end">32</text>
+<rect x="415" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="463" class="" text-anchor="middle">ref</text>
+<rect x="465" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="490" y="463" class="" text-anchor="middle">0</text>
+<rect x="515" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="463" class="" text-anchor="middle">0</text>
+<rect x="565" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="463" class="" text-anchor="middle">0</text>
+<rect x="615" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="463" class="" text-anchor="middle">0</text>
+<text x="403" y="498" class="" text-anchor="end">64</text>
+<rect x="415" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="498" class="" text-anchor="middle">ref</text>
+<rect x="465" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="490" y="498" class="" text-anchor="middle">0</text>
+<rect x="515" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="498" class="" text-anchor="middle">0</text>
+<rect x="565" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="498" class="" text-anchor="middle">0</text>
+<rect x="615" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="498" class="" text-anchor="middle">0</text>
+<text x="403" y="533" class="" text-anchor="end">128</text>
+<rect x="415" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="440" y="533" class="" text-anchor="middle">ref</text>
+<rect x="465" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="490" y="533" class="" text-anchor="middle">0</text>
+<rect x="515" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="540" y="533" class="" text-anchor="middle">0</text>
+<rect x="565" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="590" y="533" class="" text-anchor="middle">0</text>
+<rect x="615" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="640" y="533" class="" text-anchor="middle">0</text>
+<text x="440" y="565" class="" text-anchor="middle">1</text>
+<text x="490" y="565" class="" text-anchor="middle">2</text>
+<text x="540" y="565" class="" text-anchor="middle">4</text>
+<text x="590" y="565" class="" text-anchor="middle">8</text>
+<text x="640" y="565" class="" text-anchor="middle">16</text>
+<text x="540" y="589" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="875" y="355" class="" text-anchor="middle">k=4</text>
+<text x="738" y="393" class="" text-anchor="end">8</text>
+<rect x="750" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="393" class="" text-anchor="middle">ref</text>
+<rect x="800" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="393" class="" text-anchor="middle">ref</text>
+<rect x="850" y="370" width="50" height="35" fill="rgb(255,224,152)" stroke="white"/>
+<text x="875" y="393" class="" text-anchor="middle">0.0028%</text>
+<rect x="900" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="393" class="" text-anchor="middle">0</text>
+<rect x="950" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="393" class="" text-anchor="middle">0</text>
+<text x="738" y="428" class="" text-anchor="end">16</text>
+<rect x="750" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="428" class="" text-anchor="middle">ref</text>
+<rect x="800" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="428" class="" text-anchor="middle">ref</text>
+<rect x="850" y="405" width="50" height="35" fill="rgb(255,190,134)" stroke="white"/>
+<text x="875" y="428" class="" text-anchor="middle">0.028%</text>
+<rect x="900" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="428" class="" text-anchor="middle">0</text>
+<rect x="950" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="428" class="" text-anchor="middle">0</text>
+<text x="738" y="463" class="" text-anchor="end">32</text>
+<rect x="750" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="463" class="" text-anchor="middle">ref</text>
+<rect x="800" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="463" class="" text-anchor="middle">ref</text>
+<rect x="850" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="875" y="463" class="" text-anchor="middle">0</text>
+<rect x="900" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="463" class="" text-anchor="middle">0</text>
+<rect x="950" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="463" class="" text-anchor="middle">0</text>
+<text x="738" y="498" class="" text-anchor="end">64</text>
+<rect x="750" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="498" class="" text-anchor="middle">ref</text>
+<rect x="800" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="498" class="" text-anchor="middle">ref</text>
+<rect x="850" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="875" y="498" class="" text-anchor="middle">0</text>
+<rect x="900" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="498" class="" text-anchor="middle">0</text>
+<rect x="950" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="498" class="" text-anchor="middle">0</text>
+<text x="738" y="533" class="" text-anchor="end">128</text>
+<rect x="750" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="775" y="533" class="" text-anchor="middle">ref</text>
+<rect x="800" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="825" y="533" class="" text-anchor="middle">ref</text>
+<rect x="850" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="875" y="533" class="" text-anchor="middle">0</text>
+<rect x="900" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="925" y="533" class="" text-anchor="middle">0</text>
+<rect x="950" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="975" y="533" class="" text-anchor="middle">0</text>
+<text x="775" y="565" class="" text-anchor="middle">1</text>
+<text x="825" y="565" class="" text-anchor="middle">2</text>
+<text x="875" y="565" class="" text-anchor="middle">4</text>
+<text x="925" y="565" class="" text-anchor="middle">8</text>
+<text x="975" y="565" class="" text-anchor="middle">16</text>
+<text x="875" y="589" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="1210" y="355" class="" text-anchor="middle">k=8</text>
+<text x="1073" y="393" class="" text-anchor="end">8</text>
+<rect x="1085" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="393" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="393" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="370" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="393" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="370" width="50" height="35" fill="rgb(255,198,138)" stroke="white"/>
+<text x="1260" y="393" class="" text-anchor="middle">0.017%</text>
+<rect x="1285" y="370" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="393" class="" text-anchor="middle">0</text>
+<text x="1073" y="428" class="" text-anchor="end">16</text>
+<rect x="1085" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="428" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="428" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="405" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="428" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="405" width="50" height="35" fill="rgb(255,214,146)" stroke="white"/>
+<text x="1260" y="428" class="" text-anchor="middle">0.0056%</text>
+<rect x="1285" y="405" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="428" class="" text-anchor="middle">0</text>
+<text x="1073" y="463" class="" text-anchor="end">32</text>
+<rect x="1085" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="463" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="463" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="440" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="463" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1260" y="463" class="" text-anchor="middle">0</text>
+<rect x="1285" y="440" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="463" class="" text-anchor="middle">0</text>
+<text x="1073" y="498" class="" text-anchor="end">64</text>
+<rect x="1085" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="498" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="498" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="475" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="498" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1260" y="498" class="" text-anchor="middle">0</text>
+<rect x="1285" y="475" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="498" class="" text-anchor="middle">0</text>
+<text x="1073" y="533" class="" text-anchor="end">128</text>
+<rect x="1085" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1110" y="533" class="" text-anchor="middle">ref</text>
+<rect x="1135" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1160" y="533" class="" text-anchor="middle">ref</text>
+<rect x="1185" y="510" width="50" height="35" fill="#dddddd" stroke="white"/>
+<text x="1210" y="533" class="" text-anchor="middle">ref</text>
+<rect x="1235" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1260" y="533" class="" text-anchor="middle">0</text>
+<rect x="1285" y="510" width="50" height="35" fill="#d9f0d3" stroke="white"/>
+<text x="1310" y="533" class="" text-anchor="middle">0</text>
+<text x="1110" y="565" class="" text-anchor="middle">1</text>
+<text x="1160" y="565" class="" text-anchor="middle">2</text>
+<text x="1210" y="565" class="" text-anchor="middle">4</text>
+<text x="1260" y="565" class="" text-anchor="middle">8</text>
+<text x="1310" y="565" class="" text-anchor="middle">16</text>
+<text x="1210" y="589" class="" text-anchor="middle">Allowance N (packet periods)</text>
+<text x="25" y="632" class="" text-anchor="start">P = packet frames; k = block multiplier; ref = N &lt; k (structural refusal). Color scale: 0.001% (pale) to 100% (red).</text>
+</svg>

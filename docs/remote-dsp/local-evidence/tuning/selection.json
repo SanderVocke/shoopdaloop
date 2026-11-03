@@ -1,0 +1,114 @@
+[
+  {
+    "config": [
+      8,
+      1,
+      4
+    ],
+    "mode": "client-spin-pinned",
+    "score": [
+      0,
+      0.0,
+      1.9778510821347588
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      8,
+      1,
+      8
+    ],
+    "mode": "server-spin-pinned",
+    "score": [
+      0,
+      0.0,
+      1.975859383888287
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      8,
+      1,
+      16
+    ],
+    "mode": "server-spin-pinned",
+    "score": [
+      0,
+      0.0,
+      1.9791564217742692
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      16,
+      4,
+      4
+    ],
+    "mode": "spin-pinned",
+    "score": [
+      0,
+      0.0,
+      1.9824070891383287
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      16,
+      4,
+      8
+    ],
+    "mode": "spin-pinned-gap1000",
+    "score": [
+      0,
+      0.0,
+      1.9801653449649
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      16,
+      4,
+      16
+    ],
+    "mode": "yield-pinned",
+    "score": [
+      0,
+      0.0,
+      1.981347725423922
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      128,
+      8,
+      8
+    ],
+    "mode": "yield-pinned",
+    "score": [
+      0,
+      0.0,
+      1.9839948340129034
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  },
+  {
+    "config": [
+      128,
+      8,
+      16
+    ],
+    "mode": "spin-pinned-gap1000",
+    "score": [
+      0,
+      0.0,
+      1.9816433243796
+    ],
+    "rule": "fewest retired repetitions, then (output misses + input concealments + source errors)/measured slots, then pair CPU cost; selection is exploratory"
+  }
+]
