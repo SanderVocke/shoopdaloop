@@ -882,7 +882,10 @@ mod tests {
         assert_eq!((driver.sample_rate, driver.buffer_size), (44100, 128));
         assert_eq!(driver.output_device, "Headphones");
         assert_eq!(driver.midi_inputs, ["none"]);
-        assert_eq!(request.options.log_file, Some(dialog.log_file.clone()));
+        assert_eq!(
+            request.options.log_file,
+            Some(root.path().canonicalize().unwrap().join("studio.log"))
+        );
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
         screen.click("LAN access", |ui| dialog.fields(ui));
         assert!(!dialog.lan && dialog.endpoint == "127.0.0.1:0");

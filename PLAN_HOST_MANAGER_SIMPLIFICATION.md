@@ -1,0 +1,276 @@
+# Host manager simplification and process discovery
+
+## Status and delivery
+
+Implementation in progress on the existing PR. Written using
+[write_plan.md](.agents/prompts/write_plan.md).
+
+- Continue on `feat/host-manager` and update the existing
+  [PR #916](https://github.com/SanderVocke/shoopdaloop/pull/916), targeting
+  `feat/backend-replacement`. No new implementation branch or PR is needed.
+- Inspected head: `c415774190f3a41ebfba15284405157724c38860`; inspected base:
+  `3aabf43789708a5640a8f5b368f737651ef1d29d`. Recheck both when execution starts.
+- Current CI passes Linux debug/release, Rust coverage, web debug/release,
+  bare-metal, Docs and CodeQL. Windows and macOS native tests fail on the log-path
+  assertion in `audio_capacity_midi_and_lan_controls_feed_the_shared_configuration`:
+  Windows expands short/verbatim paths; macOS resolves `/var` to `/private/var`.
+  Subsequent missing replay-artifact failures follow the aborted test stage.
+- No submitted reviews or review threads were present when inspected.
+
+## Goals and scope
+
+Make local host management automatic: open the manager, select a running host or
+configure a new detached host, then open its UI. Remove key authentication
+throughout the native connection paths. Discover hosts through OS process and
+socket inspection, keeping discovery state in memory. Connection profiles become
+an explicit advanced feature.
+
+This supersedes earlier credential and profile-only discovery requirements for
+these native host workflows.
+Include Linux, macOS and Windows, normal and packaged launches, socket and
+shared-memory sessions, graceful Stop and explicit local Force stop. Preserve the
+compact administrative UI and optional rotating logs. Security design, tray
+integration, LAN-wide discovery, automatic host restart, multiple controlling UIs
+and live audio-driver reconfiguration are outside scope.
+
+## Immutable acceptance criteria
+
+These goals and criteria require explicit user approval to change.
+
+1. **Keyless connections:** hosts accept compatible clients and clients connect to
+   compatible hosts without credentials, certificates, key files or trust records.
+   Remove authentication from app data, management and the shared engine-process
+   bootstrap paths. No dummy token or optional authentication bypass remains.
+   Compatibility/version checks and operational session ownership still apply.
+2. **Discovery from live OS state:** on all three desktop platforms, list compatible
+   standalone hosts visible under normal OS inspection permissions, including hosts
+   started by the manager, CLI and host-only launcher. Find their actual listening
+   sockets by PID; retain OS-assigned ports. Discovery uses no registry, advertisement
+   files, remembered host list, fixed port/range or additional discovery service.
+3. **Harmless inspection:** discovery and status probes never acquire a controller,
+   consume a shared-memory attachment, reset a session or interrupt playback,
+   recording or an existing UI. Incompatible and unresponsive processes are never
+   presented as ready compatible hosts.
+4. **File-free normal workflow:** New host, detached sibling launch, manager Open UI
+   and local shutdown work without creating or selecting a connection profile or
+   host configuration file. The form configures audio, MIDI, capacity and connection
+   settings. Only explicitly requested logs, profile exports, session saves and
+   other existing user-requested outputs create their respective files.
+5. **Host lifetime:** closing or terminating the manager leaves ready hosts running.
+   A fresh manager rediscovers the same processes and sessions without saved state.
+   Reopening the manager does not launch replacement hosts. Exited hosts disappear
+   through fresh OS observation, without stale-file cleanup.
+6. **Advanced profiles:** import/export and manual address connection remain available
+   under Advanced. Profiles are keyless, optional and never automatically saved or
+   restored. Local discoveries and manual connections to the same host appear once.
+7. **Correct termination:** normal Stop retains orderly cleanup and live-controller
+   protection. Explicit Force stop can terminate an identified local host when the
+   OS permits it, including an unresponsive host. Changed process identity refuses
+   the action; remote descriptor PIDs cannot select local processes for termination.
+8. **Complete delivery:** the existing PR contains the final implementation, current
+   documentation, refreshed native screenshots and verification evidence. Required
+   and relevant CI checks, including patch coverage, pass on the final head.
+
+## Design rules and constraints
+
+- Identify a local process by PID, creation/start identity and executable path;
+  correlate protocol replies with that identity. Runtime instance identifiers are
+  public bookkeeping, not credentials, and exported profiles must not pin them.
+- Recognize standalone host executable names and installed/build companion paths.
+  The host-only wrapper's actual `shoop_host` child participates. Ordinary in-process
+  looper sessions without external endpoints are outside the discovery target.
+- Inspect only listening sockets belonging to candidate host processes. Handle IPv4,
+  IPv6 and wildcard/local-interface bindings. Do not scan unrelated sockets or guess
+  ports. Reads of virtual OS interfaces such as Linux `/proc` are permissible.
+- Distinguish inspection failure from process exit. Surface OS permission and API
+  errors; keep advanced manual connection usable. Do not substitute registry files
+  or a reserved port range if a platform implementation proves difficult.
+- Run enumeration and bounded, concurrent probes off the UI and audio/render threads.
+  Coalesce refreshes, ignore obsolete scan results and preserve selection by process
+  identity. Batch work so additional running hosts are not silently omitted.
+- Keep native inspection dependencies out of browser/no-std graphs. Respect existing
+  `forbid(unsafe_code)` boundaries: use safe OS wrappers, or isolate unavoidable FFI
+  behind a small reviewed native-only helper. Shared transports remain independent
+  of app semantics and native process APIs.
+- Classify compatibility, endpoint role and probe/attach intent before session
+  admission. Today `serve.rs` calls `shared.take()` on data admission; a discovery
+  connection must never reach that operation.
+- Retain protocol bounds, deadlines, heartbeats, exclusive controller ownership,
+  operation IDs and generation-based stale-owner handling. Removing authentication
+  must not remove these session/lifetime correctness mechanisms.
+- Keep advanced remote connection working without local process-inspection rights.
+  Use actual local socket addresses for local inspection and advertised addresses
+  where appropriate for remote clients.
+- Keep default form settings in memory. Do not introduce automatic saved launch
+  presets or host history. Simplify log I/O to ordinary rotating files and remove
+  authentication-specific permission/ACL machinery. Existing user-created files
+  are not migration cleanup targets.
+
+## Staged implementation
+
+### Stage 0 — Establish the existing PR baseline
+
+- [x] Confirm the worktree, branch and PR head; fetch and merge the latest
+  `feat/backend-replacement` into this branch as needed, preserving existing work.
+- [x] Recheck checks and review threads. Correct the known canonical-path assertion
+  using a canonical temporary-directory parent for the expected log destination,
+  and inspect any additional failures
+  from the exact current head before changing product behavior.
+- [x] Record baseline evidence and commit the baseline correction separately.
+
+Verification: the affected form test passes with canonical/non-canonical temporary
+directories on macOS and Windows; capture the relevant CI results. Follow the
+repository build/test guidance and inspect logs before classifying a failure.
+
+### Stage 1 — Prove OS process/socket inspection on each platform
+
+Depends on Stage 0.
+
+- [ ] Add a native inspection abstraction returning process identity, executable
+  information and owned listening TCP addresses. Evaluate a small safe dependency
+  against the actual platform APIs before choosing it.
+- [ ] Implement Linux process/socket-inode inspection, macOS `libproc` process/FD
+  inspection, and Windows process information plus owner-PID TCP tables, directly
+  or through verified wrappers. Include both IPv4 and IPv6.
+- [ ] Add real child-process fixtures binding arbitrary OS-assigned sockets, covering
+  multiple processes, path aliases, exited processes and unavailable inspection.
+- [ ] Establish the process-identity/termination abstraction, using stable OS handles
+  where available and rechecking identity before a termination request.
+
+Verification: native tests on Linux, macOS and Windows associate each fixture with
+its actual listening sockets and start identity, exclude unrelated processes, and
+report unsupported/denied inspection explicitly. Treat this as an early feasibility
+gate before integrating automatic discovery into the manager.
+
+### Stage 2 — Remove authentication and add non-mutating host description
+
+Depends on Stage 1's platform feasibility evidence.
+
+- [ ] Remove token generation/comparison, credential fields, key APIs, key-related
+  CLI arguments and UI controls. Update `shoop_transport`, `shoop_transport_socket`,
+  `shoop_host`, engine-process bootstrap callers and socket/shared-memory fixtures.
+  Delete auth-only helpers/dependencies; retain randomness used for operational IDs.
+- [ ] Define a bounded keyless host description containing name, compatibility,
+  endpoint roles/addresses, transport information, process/instance identity and
+  optional log location. Keep OS-specific implementation outside portable protocols.
+- [ ] Add compatibility and probe/attach negotiation before handing sockets to data
+  or management sessions. A probe must obtain a description or identify the
+  management endpoint without allocating controller/shared-memory attachments.
+- [ ] Version the changed connection/bootstrap exchanges explicitly, updating affected
+  codecs and fixtures. Old incompatible wire formats fail with a compatibility error.
+- [ ] Remove private-log ACL/ownership gates and authentication-only filesystem code;
+  retain log rotation, optional logging and useful I/O errors.
+
+Verification: compatible app, management and engine-process connections work with
+no key material; removed flags are rejected. Repeated probes before and during a
+controller connection leave session ownership and musical state unchanged. Probing
+a fresh shared-memory host leaves its first attachment available. Exercise partial,
+malformed and incompatible greetings and timeouts.
+
+### Stage 3 — Make launching and attachment independent of profile files
+
+Depends on Stage 2.
+
+- [ ] Return and consume the live target/description from `launch::spawn` directly.
+  Adapt sibling launch and manager Open UI to pass an endpoint or bounded in-memory
+  descriptor to the UI without temporary/exported JSON.
+- [ ] Remove mandatory credential/profile/config-file requirements from normal native
+  entry points. Preserve CLI defaults and GUI audio defaults; keep explicit config
+  input and profile import/export available to advanced callers.
+- [ ] Simplify New host to name/audio settings and Start; retain expandable capacity,
+  MIDI, network and optional logging controls. Show ready/failure state and prevent
+  duplicate submissions without requiring file paths for a normal start.
+- [ ] Move Import profile, Export profile and Connect to address under Advanced.
+  Update the keyless profile schema and argument validation; opening a manual target
+  obtains the endpoint's current description without a saved instance identity.
+
+Verification: real detached launch, sibling launch, UI-only attach and shutdown work
+without profile/config/key files. Exercise failed startup and failed UI spawn;
+preserve a ready host when its UI fails. Headless form tests verify configuration,
+validation, cancellation and submission behavior. Explicit profile import/export
+and direct remote address connection still work.
+
+### Stage 4 — Integrate discovery, status and process termination
+
+Depends on Stages 1–3.
+
+- [ ] Replace the manager's profile-source list with live OS discoveries plus
+  explicitly added advanced targets. Probe only candidate-owned endpoints, correlate
+  identities and deduplicate aliases. Select newly started hosts immediately.
+- [ ] Populate on startup and refresh in the background. Represent starting,
+  unresponsive, incompatible and inspection-error states accurately; remove confirmed
+  exited processes and handle process restart/PID reuse without selecting a new
+  process as the old one.
+- [ ] Preserve Open UI, audio/fallback status, diagnostics and log viewing. Keep
+  socket reattachment and the shared-memory single-attachment limit truthful.
+- [ ] Keep graceful Stop through the host protocol. Add Force stop to local process
+  actions with explicit confirmation, identity revalidation, OS error reporting and
+  observed-exit confirmation. Never report forced termination as graceful cleanup.
+
+Verification: launch several GUI/CLI hosts with different ports and transports,
+close/terminate the manager, then rediscover the same instances and sessions from a
+new manager. Test duplicate names, aliases, busy controllers, interrupted scans,
+process exit/restart and PID-reuse simulations. Force-stop only disposable test
+children; prove changed identities and manual remote PIDs cannot terminate a local
+replacement. Show an unresponsive recognized host even when description fails.
+
+### Stage 5 — Final end-to-end validation and delivery to PR #916
+
+Depends on Stages 0–4.
+
+- [ ] Run the full native workflow on Linux, macOS and Windows using built and
+  packaged companions: discover CLI hosts; configure/start from the manager; Open UI;
+  record/play; exit and reopen the manager; verify uninterrupted state; close the UI
+  and reattach where supported; graceful Stop; unresponsive-process Force stop.
+- [ ] Compare isolated application-state directories before/after default operations
+  with logging disabled. Confirm there are no new credentials, profiles, registry,
+  advertisement or remembered-host files. Verify explicit log/profile output works.
+- [ ] Refresh all relevant native screenshots, including automatic discovery after
+  reopening, the simpler New host form and Advanced actions. Update the application
+  and host READMEs, architecture/networking/CLI documentation and affected tracing
+  inventory entries; remove obsolete profile-only/authentication claims.
+- [ ] Run formatting, a warning-denying workspace build and the no-default-features
+  application build. Run the full suite and appropriate architecture/tracing checks:
+
+  ```sh
+  cargo fmt --all -- --check
+  RUSTFLAGS='-D warnings' cargo build --locked --workspace
+  RUSTFLAGS='-D warnings' cargo build --locked -p shoopdaloop --no-default-features
+  SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+  python3 scripts/check_shoop_test_usage.py
+  python3 scripts/check_tracing_coverage.py --require-closed
+  python3 scripts/check_rt_engine_boundary.py
+  ```
+
+- [ ] Reproduce CI's ordinary `umask 0022` and tracing settings, also checking restrictive
+  defaults. Run socket/shared-memory and LAN transport canaries, engine-process
+  bootstrap tests, and browser/no-std checks affected by shared transport changes.
+  Measure patch coverage without weakening the existing gate.
+- [ ] Commit each completed milestone, push to `feat/host-manager`, and update this
+  existing PR's title/body around the final behavior, screenshots and evidence.
+  Recheck the target branch for updates and validate any resulting merge.
+- [ ] Work through failures until required/relevant checks, including Codecov, pass
+  on the final head. Inspect logs/artifacts, make targeted fixes and rerun the checks
+  they affect; queued/running jobs are not evidence of a green final result.
+- [ ] Check incoming automated reviews after pushes. Repeatedly address justified
+  findings and recheck until participating automated reviewers approve. If no review
+  is provided, record that fact. Do not merge the PR without a separate instruction.
+- [ ] Map each immutable acceptance criterion to final evidence and update this plan's
+  checkboxes and status. Record any remaining blocker explicitly.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution evidence
+
+- Stage 0: fetched the integration branch; `3aabf437` remains an ancestor of the
+  work branch. PR #916 is open with no review threads/submissions. Reproduced the
+  canonical-path failure on Linux using a symlinked `TMPDIR`; the same test passes
+  after canonicalizing the expected temporary-directory parent. Warning-denying
+  workspace build, formatting and test-attribute policy pass. Native CI verification
+  of the correction will accompany the OS inspection milestone.
