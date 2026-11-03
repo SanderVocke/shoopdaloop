@@ -8,7 +8,8 @@ description = "Native GUI for managing independent ShoopDaLoop hosts"
 workspace = true
 
 [features]
-default = ["cpal"]
+default = ["cpal", "jack"]
+jack = ["shoop_host/jack", "shoop_rt_host_native/jack"]
 cpal = ["shoop_host/cpal", "shoop_rt_host_native/cpal"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

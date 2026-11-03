@@ -93,7 +93,7 @@ fn start_with(
         Ok(started) => started,
         Err(error) if !matches!(config.driver, DriverConfig::Dummy(_)) => {
             warnings.push(format!(
-                "Could not start the CPAL driver of the new engine backend: {error}; using the dummy driver"
+                "Could not start the configured driver of the new engine backend: {error}; using the dummy driver"
             ));
             let dummy = DummyAudioDriverConfig::default();
             let fallback = NativeConfig {
@@ -111,9 +111,17 @@ fn start_with(
             .iter()
             .map(|warning| format!("Audio driver: {warning}")),
     );
+    let status = started.host.status().driver;
+    let profile = shoop_egui::ResolvedAudioDriverConfig {
+        configured: driver.clone(),
+        sample_rate: status.sample_rate,
+        buffer_size: status.buffer_frames,
+        instance_name: started.host.instance_name().to_owned(),
+    };
     let host = EngineHost(Some(started.host));
-    let backend = RtBackend::connect(started.client, Sleep::default())
+    let mut backend = RtBackend::connect(started.client, Sleep::default())
         .map_err(|error| anyhow!("the new engine backend did not connect: {error:#}"))?;
+    backend.set_driver_profile(profile);
     Ok(NewEngine {
         backend: Box::new(backend),
         host,
@@ -138,6 +146,8 @@ fn native_config(
         DriverConfig::Dummy(dummy) => dummy.input = DUMMY_INPUT,
         #[cfg(feature = "cpal")]
         DriverConfig::Cpal(_) => {}
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(_) => {}
     }
     (config, warnings)
 }
@@ -200,6 +210,8 @@ pub(crate) mod tests {
         match native.driver {
             DriverConfig::Cpal(cpal) => (cpal, native.engine.max_frames as u32, warnings),
             DriverConfig::Dummy(_) => panic!("expected the CPAL driver"),
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => panic!("expected the CPAL driver"),
         }
     }
 
@@ -238,6 +250,8 @@ pub(crate) mod tests {
             DriverConfig::Dummy(dummy) => dummy,
             #[cfg(feature = "cpal")]
             DriverConfig::Cpal(_) => panic!("expected the dummy driver"),
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => panic!("expected the dummy driver"),
         };
         assert_eq!((dummy.sample_rate, dummy.buffer_frames), (32_000, 64));
         assert_eq!(native.engine.max_frames, 64);
@@ -325,36 +339,20 @@ pub(crate) mod tests {
         }
     }
 
-    #[cfg(feature = "cpal")]
+    #[cfg(feature = "jack")]
     #[shoop_wasm_test_support::shoop_test]
-    fn jack_uses_the_nearest_cpal_host_with_a_warning() {
+    fn jack_maps_directly_without_cpal_inventory_or_substitution() {
         let jack = AudioDriverConfig::Jack(shoop_egui::JackAudioDriverConfig {
-            client_name: "Looper".to_owned(),
+            client_name: "Looper".into(),
+            ..Default::default()
         });
-        for (hosts, expected, wording) in [
-            (
-                vec!["alsa".to_owned(), "jack".to_owned()],
-                Some("jack"),
-                "CPAL's JACK host",
-            ),
-            (vec!["alsa".to_owned()], None, "CPAL's default devices"),
-        ] {
-            let inventory = Discovery {
-                hosts,
-                ..inventory()
-            };
-            let (native, warnings) = native_config(&jack, &pools(), &inventory);
-            let DriverConfig::Cpal(config) = native.driver else {
-                panic!("expected the CPAL driver");
-            };
-            assert_eq!(config.host.as_deref(), expected);
-            assert_eq!(config.client_name, "Looper");
-            assert_eq!(config.output_device, DeviceSelection::Default);
-            assert_eq!(config.midi_inputs, inventory.midi_inputs);
-            assert_eq!(warnings.len(), 1);
-            assert!(warnings[0].contains("no JACK driver"), "{warnings:?}");
-            assert!(warnings[0].contains(wording), "{warnings:?}");
-        }
+        let (native, warnings) = native_config(&jack, &pools(), &super::inventory(&jack));
+        let DriverConfig::Jack(config) = native.driver else {
+            panic!("native JACK required")
+        };
+        assert_eq!(config.client_name, "Looper");
+        assert_eq!(config.midi_inputs, ["midi_in_1"]);
+        assert!(warnings.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -408,7 +406,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[cfg(not(feature = "cpal"))]
+    #[cfg(not(any(feature = "cpal", feature = "jack")))]
     #[shoop_wasm_test_support::shoop_test]
     fn device_drivers_use_the_dummy_driver_without_cpal() {
         for driver in [
@@ -454,5 +452,43 @@ pub(crate) mod tests {
             .unwrap()
             .to_string();
         assert!(error.contains("engine capacities"), "{error}");
+    }
+}
+
+#[cfg(all(test, feature = "jack"))]
+mod jack_acceptance {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test(no_wasm = "native JACK application startup")]
+    fn native_jack_application_start_reports_the_direct_driver_and_actual_client_name() {
+        let config = AudioDriverConfig::Jack(shoop_egui::JackAudioDriverConfig {
+            client_name: format!("jack-application-{}", std::process::id()),
+            ..Default::default()
+        });
+        let mut engine = start(
+            &config,
+            &NewEnginePools {
+                tracks: 4,
+                loops: 16,
+                loop_memory_mb: 16,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let state = engine.backend.audio_driver_state().unwrap();
+        let active = state.active.unwrap();
+        if active.configured.kind() != shoop_egui::AudioDriverKind::Jack
+            && std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some()
+        {
+            eprintln!("JACK unavailable: {:?}", engine.warnings);
+            return;
+        }
+        assert_eq!(active.configured, config);
+        assert!(active.instance_name.starts_with("jack-application-"));
+        assert!(engine.warnings.is_empty());
+        let host = engine.host.0.as_ref().unwrap();
+        assert_eq!(active.sample_rate, host.status().driver.sample_rate);
+        assert_eq!(active.buffer_size, host.status().driver.buffer_frames);
     }
 }

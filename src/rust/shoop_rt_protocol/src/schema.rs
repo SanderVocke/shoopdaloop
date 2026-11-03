@@ -288,6 +288,7 @@ pub enum DriverKind {
     Dummy,
     Cpal,
     WebAudio,
+    Jack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

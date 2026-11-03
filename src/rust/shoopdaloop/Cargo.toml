@@ -9,7 +9,8 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
-default = ["cpal"]
+default = ["cpal", "jack"]
+jack = ["shoop_rt_host_native/jack", "shoop_host/jack", "shoop_host_manager/jack"]
 cpal = ["dep:rodio", "shoop_rt_host_native/cpal", "shoop_host/cpal", "shoop_host_manager/cpal"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 

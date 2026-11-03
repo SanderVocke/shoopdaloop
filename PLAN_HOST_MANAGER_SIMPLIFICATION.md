@@ -495,3 +495,15 @@ closed tracing inventory and dependency-boundary checks pass. An actual Linux
 archive passes strict manifest/binary/icon validation. The GUI check confirms
 discovery, both cross-application launch paths and orderly cleanup with empty
 isolated state directories. CI results for this follow-up are attached to PR #916.
+
+## Integration follow-up — native JACK target update
+
+Merged target revision `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2` (native JACK,
+PR #925). Conflict resolution retains both native JACK and process-inspection CI,
+propagates JACK features through the standalone manager, and converts the new JACK
+subprocess fixture to the keyless, file-free startup pipe. The combined app and
+engine-host protocol versions are 14 and 4 to distinguish both earlier schemas.
+The warning-denying workspace build, all 2,599 Rust tests (4 intentional skips),
+145 Python tests, tracing/test policies and dependency boundaries pass. Strict
+isolated-server JACK acceptance passes for audio/MIDI, recording/replay, routing,
+reconnection, independent hosts and native engine/application startup.

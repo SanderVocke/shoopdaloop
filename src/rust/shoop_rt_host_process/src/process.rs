@@ -99,6 +99,7 @@ impl Drop for Pending {
     }
 }
 pub struct Started {
+    pub instance_name: String,
     pub client: Client,
     pub supervisor: Supervisor,
     pub warnings: Vec<String>,
@@ -438,6 +439,31 @@ impl Pending {
                 }
             }
         }
+        #[cfg(feature = "jack")]
+        if let shoop_rt_host_native::DriverConfig::Jack(driver) = &config.driver {
+            for (names, kind) in [
+                (&driver.audio_inputs, 0),
+                (&driver.audio_outputs, 1),
+                (&driver.midi_inputs, 2),
+                (&driver.midi_outputs, 3),
+            ] {
+                for name in names {
+                    let name = convert::text(name)?;
+                    self.ok(match kind {
+                        0 => HostRequest::AddJackAudioInput(name),
+                        1 => HostRequest::AddJackAudioOutput(name),
+                        2 => HostRequest::AddMidiInput(name),
+                        _ => HostRequest::AddMidiOutput(name),
+                    })?;
+                }
+            }
+            for (source, destination) in &driver.connections {
+                self.ok(HostRequest::ConnectJack {
+                    source: convert::text(source)?,
+                    destination: convert::text(destination)?,
+                })?;
+            }
+        }
         let shared = if self.transport == Transport::SharedMemory {
             let descriptor = Descriptor::new([512, 256, 32])?;
             let port = SharedPort::create(descriptor, Side::Client)?;
@@ -452,11 +478,16 @@ impl Pending {
             None
         };
         let mut warnings = Vec::new();
+        let mut instance_name = None;
         let mut reply = self.exchange(HostRequest::Start)?;
         loop {
             match reply {
                 HostReply::Warning(text) => {
                     warnings.push(text.as_str().to_string());
+                    reply = self.receive_reply()?;
+                }
+                HostReply::InstanceName(name) => {
+                    instance_name = Some(name.as_str().to_owned());
                     reply = self.receive_reply()?;
                 }
                 HostReply::Ready(_) => break,
@@ -484,6 +515,8 @@ impl Pending {
             received: port.received.clone(),
         };
         Ok(Started {
+            instance_name: instance_name
+                .ok_or_else(|| anyhow::anyhow!("host instance name missing"))?,
             client: ProtocolClient::new(RecordClient::new(port)),
             supervisor,
             warnings,
