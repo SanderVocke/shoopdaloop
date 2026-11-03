@@ -2163,6 +2163,7 @@ pub enum LoopAudioExportFormat {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackKind {
     #[default]
     Audio,
@@ -2170,6 +2171,7 @@ pub enum ClickTrackKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackRequest {
     pub kind: ClickTrackKind,
     pub primary_sound_id: String,
