@@ -238,6 +238,7 @@ mod tests {
                 loops: 24,
                 channels: 2,
                 loop_memory_mb: 8,
+                ..Default::default()
             };
             config.transport = transport;
             let mut options = StartOptions::new().unwrap();

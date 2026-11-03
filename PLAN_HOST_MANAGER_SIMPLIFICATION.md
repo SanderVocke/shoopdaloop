@@ -409,6 +409,15 @@ Depends on Stages 0–4.
   iteration bound while competing with compilation/coverage work; 20 isolated
   repetitions pass. Recheck the ordinary suite after integrating the new base,
   without simultaneous workspace compilation. No runtime assertions were weakened.
+- Rechecked the target and merged `e68b15ac` (output buses, PR #926) cleanly.
+  Both branches had independently selected the same app/engine-host versions for
+  incompatible changes. The combined protocols use app version 13 and engine-host
+  version 3, keeping earlier keyless binaries from attaching with the wrong schema.
+  Canonical byte fixtures follow the new app version. Final checks cover this merge.
+- The merged form exposes output-bus count/channel capacity alongside the existing
+  optional capacity settings. Discovery and no-output fixtures use the new default
+  bus capacities. The merged warning-denying workspace build and all 2,578 workspace
+  tests pass (4 intentional skips), including the unchanged runtime stress fixture.
 
 ## Acceptance evidence map
 

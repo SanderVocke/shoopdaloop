@@ -1072,6 +1072,7 @@ fn a_host_without_requested_outputs_writes_no_host_records_or_logs() {
                 loops: 8,
                 channels: 2,
                 loop_memory_mb: 8,
+                ..Default::default()
             },
             ..Default::default()
         },

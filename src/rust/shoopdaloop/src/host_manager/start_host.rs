@@ -446,6 +446,12 @@ impl Dialog {
                 .num_columns(2)
                 .spacing([10.0, 6.0])
                 .show(ui, |ui| {
+                    ui.label("Buses");
+                    ui.add(egui::DragValue::new(&mut self.pools.buses).range(1..=8));
+                    ui.end_row();
+                    ui.label("Bus channels");
+                    ui.add(egui::DragValue::new(&mut self.pools.bus_channels).range(2..=8));
+                    ui.end_row();
                     ui.label("Tracks");
                     ui.add(egui::DragValue::new(&mut self.pools.tracks).range(1..=64));
                     ui.end_row();
@@ -652,6 +658,8 @@ mod tests {
         dialog.sample_rate = 44100;
         dialog.buffer_size = 128;
         dialog.pools.loop_memory_mb = 16;
+        dialog.pools.buses = 4;
+        dialog.pools.bus_channels = 6;
         dialog.midi_inputs.clear();
         let request = dialog.request().unwrap();
         assert_eq!(
@@ -662,6 +670,8 @@ mod tests {
             })
         );
         assert_eq!(request.config.pools.loop_memory_mb, 16);
+        assert_eq!(request.config.pools.buses, 4);
+        assert_eq!(request.config.pools.bus_channels, 6);
         assert!(request.options.log_file.is_none());
         assert!(request.options.export_profile.is_none());
         assert_eq!(midi_ports(&dialog.midi_inputs), ["none"]);
@@ -772,6 +782,7 @@ mod tests {
             screen.click(label, |ui| dialog.fields(ui));
         }
         assert!(screen.contains("Loop memory") && screen.contains("Output channels"));
+        assert!(screen.contains("Buses") && screen.contains("Bus channels"));
         screen.click("All ports", |ui| dialog.fields(ui));
         assert!(dialog.midi_inputs.is_empty());
         screen.click("Controller keyboard", |ui| dialog.fields(ui));
