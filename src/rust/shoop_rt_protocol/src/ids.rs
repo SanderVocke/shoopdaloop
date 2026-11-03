@@ -29,6 +29,8 @@ pub struct LoopSlotId(pub SlotId);
 pub struct HostPortId(pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum BusId {
-    Master,
+pub struct BusId(pub SlotId);
+
+impl BusId {
+    pub const MASTER: Self = Self(SlotId::new(0, 1));
 }

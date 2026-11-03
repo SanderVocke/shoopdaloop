@@ -35,6 +35,8 @@ mod tests {
         let config: super::HostConfig = serde_json::from_str(r#"{"driver":{"Dummy":{"sample_rate":44100,"buffer_size":128}},"pools":{"tracks":4,"loops":16,"channels":2,"loop_memory_mb":32},"transport":"socket"}"#).unwrap();
         config.validate().unwrap();
         assert_eq!(config.pools.loop_memory_mb, 32);
+        assert_eq!(config.pools.buses, 8);
+        assert_eq!(config.pools.bus_channels, 8);
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());
         let mut invalid = config.settings.clone();
         invalid.pools.loops = 0;

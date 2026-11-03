@@ -80,7 +80,7 @@ pub(crate) struct Cells {
     pub faulted: AtomicBool,
     pub strips: Box<[StripCells]>,
     pub loops: Box<[LoopCells]>,
-    pub master: Peak,
+    pub buses: Box<[Peak]>,
     /// Callbacks rendered, and the peak of every host input (0) and output (1).
     pub callbacks: AtomicU64,
     pub host_peaks: Peak,
@@ -94,6 +94,7 @@ impl Cells {
     pub(crate) fn new(
         strips: usize,
         loops: usize,
+        buses: usize,
         bulk_bytes: usize,
         driver: DriverStatus,
     ) -> Arc<Self> {
@@ -103,7 +104,7 @@ impl Cells {
             faulted: AtomicBool::new(false),
             strips: (0..strips).map(|_| StripCells::default()).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
-            master: Peak::default(),
+            buses: (0..buses).map(|_| Peak::default()).collect(),
             callbacks: AtomicU64::new(0),
             host_peaks: Peak::default(),
             bulk: ByteRing::new(bulk_bytes),

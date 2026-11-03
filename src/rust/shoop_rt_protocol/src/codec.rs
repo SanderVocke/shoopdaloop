@@ -127,7 +127,14 @@ tags!(DriverRunState {
 });
 tags!(HostPortKind { 0 => HostPortKind::Audio, 1 => HostPortKind::Midi });
 tags!(Direction { 0 => Direction::Input, 1 => Direction::Output });
-tags!(BusId { 0 => BusId::Master });
+impl Wire for BusId {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        self.0.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self(SlotId::get(r)?))
+    }
+}
 tags!(DisconnectReason { 0 => DisconnectReason::Shutdown, 1 => DisconnectReason::Fault, 2 => DisconnectReason::ProtocolError });
 
 impl Wire for SlotId {
@@ -391,6 +398,15 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::CreateBus { bus, channels } => {
+                w.u8(27)?;
+                bus.put(w)?;
+                w.u8(channels)
+            }
+            Self::RemoveBus { bus } => {
+                w.u8(28)?;
+                bus.put(w)
+            }
             Self::CancelBulk => w.u8(26),
             Self::ReplacementBegin { id } => {
                 w.u8(19)?;
@@ -542,6 +558,13 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            27 => Self::CreateBus {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            28 => Self::RemoveBus {
+                bus: BusId::get(r)?,
+            },
             0 => Self::CreateStrip {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
@@ -644,6 +667,16 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Bus { bus, channels } => {
+                w.u8(5)?;
+                bus.put(w)?;
+                w.u8(channels)
+            }
+            Self::BusControl { bus, control } => {
+                w.u8(6)?;
+                bus.put(w)?;
+                control.put(w)
+            }
             Self::Strip {
                 strip,
                 shape,
@@ -689,14 +722,18 @@ impl Wire for crate::ReplacementEdit {
                 port.put(w)?;
                 bus.put(w)
             }
-            Self::Master(control) => {
-                w.u8(4)?;
-                control.put(w)
-            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            5 => Self::Bus {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            6 => Self::BusControl {
+                bus: BusId::get(r)?,
+                control: BusControl::get(r)?,
+            },
             0 => Self::Strip {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
@@ -727,7 +764,6 @@ impl Wire for crate::ReplacementEdit {
                 port: StripPort::get(r)?,
                 bus: BusPort::get(r)?,
             },
-            4 => Self::Master(BusControl::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -795,6 +831,8 @@ impl Wire for Limits {
         w.u32(self.loops)?;
         w.u8(self.strip_audio_channels)?;
         w.u8(self.master_channels)?;
+        w.u8(self.buses)?;
+        w.u8(self.bus_channels)?;
         w.u16(self.host_audio_inputs)?;
         w.u16(self.host_audio_outputs)?;
         w.u16(self.host_midi_inputs)?;
@@ -811,6 +849,8 @@ impl Wire for Limits {
             loops: r.u32()?,
             strip_audio_channels: r.u8()?,
             master_channels: r.u8()?,
+            buses: r.u8()?,
+            bus_channels: r.u8()?,
             host_audio_inputs: r.u16()?,
             host_audio_outputs: r.u16()?,
             host_midi_inputs: r.u16()?,
@@ -922,6 +962,15 @@ impl Wire for Telemetry {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::BusShape { bus, channels } => {
+                w.u8(10)?;
+                bus.put(w)?;
+                w.u8(*channels)
+            }
+            Self::BusGenerations { generation } => {
+                w.u8(11)?;
+                w.u32(*generation)
+            }
             Self::Begin { epoch } => {
                 w.u8(0)?;
                 w.u64(*epoch)
@@ -982,6 +1031,13 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            10 => Self::BusShape {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            11 => Self::BusGenerations {
+                generation: r.u32()?,
+            },
             0 => Self::Begin { epoch: r.u64()? },
             1 => Self::HostPort(HostPort::get(r)?),
             2 => Self::Strip {

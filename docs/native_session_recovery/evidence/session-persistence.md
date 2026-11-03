@@ -3,7 +3,8 @@
 This covers the core slice of P01/P02/P11 in the
 [plan](../../../PLAN_SESSION_PERSISTENCE_MEDIA_IO.md), delivered by
 [PR #906](https://github.com/SanderVocke/shoopdaloop/pull/906) into
-`feat/backend-replacement`. All 16 [parity rows](../feature-parity.md) remain open.
+`feat/backend-replacement`. At that milestone all 16 [parity rows](../feature-parity.md)
+remained open; subsequent output bus work closes P13 under its approved limits.
 The [contract](../persistence-contract.md) records supported fields, finite limits
 and explicit refusals. Final validation is recorded in the plan and
 [green platform CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41394668116);

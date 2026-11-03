@@ -52,6 +52,8 @@ impl Wire for EngineSettings {
         w.u32(self.max_frames)?;
         w.u32(self.strip_channels)?;
         w.u32(self.master_channels)?;
+        w.u32(self.buses)?;
+        w.u32(self.bus_channels)?;
         w.u32(self.smoothing_frames)?;
         w.u32(self.smoothing_limit_frames)?;
         w.u32(self.ramp_frames)?;
@@ -71,6 +73,8 @@ impl Wire for EngineSettings {
             max_frames: r.u32()?,
             strip_channels: r.u32()?,
             master_channels: r.u32()?,
+            buses: r.u32()?,
+            bus_channels: r.u32()?,
             smoothing_frames: r.u32()?,
             smoothing_limit_frames: r.u32()?,
             ramp_frames: r.u32()?,

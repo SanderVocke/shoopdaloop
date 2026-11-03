@@ -7,6 +7,13 @@ on this branch; no rebase or merge of unrelated `origin/master` changes is inten
 This inventory describes the extraction target, not implemented recovery behavior.
 Acceptance criteria remain those in `PLAN_NATIVE_SESSION_RECOVERY.md`.
 
+The output-bus restoration follows this ownership split: the service retains bus,
+channel and port identities, logical order, display order and admitted results
+across UI loss. The adapter owns generation-safe engine mappings and confirmed
+controls/routes; the RT engine owns prepared bus slots. Session capture stores
+logical bus order separately from presentation; replacement gives all buses fresh
+live IDs. Zero active buses does not trigger default-bus bootstrap on attachment.
+
 ## ApplicationModel field ownership
 
 Every field at the implementation baseline is covered below. An allocated view is

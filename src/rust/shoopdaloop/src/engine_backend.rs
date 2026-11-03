@@ -161,6 +161,8 @@ pub(crate) mod tests {
 
     fn pools() -> NewEnginePools {
         NewEnginePools {
+            buses: 8,
+            bus_channels: 8,
             tracks: 3,
             loops: 17,
             channels: 2,
@@ -442,6 +444,8 @@ pub(crate) mod tests {
     fn an_engine_that_cannot_be_prepared_reports_capacity_guidance() {
         let driver = AudioDriverConfig::Dummy(DummyAudioDriverConfig::default());
         let invalid = NewEnginePools {
+            buses: 8,
+            bus_channels: 8,
             channels: 9,
             ..pools()
         };

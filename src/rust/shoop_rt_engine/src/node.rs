@@ -1,5 +1,5 @@
 //! The engine's node type: the loop library's playback and capture nodes next
-//! to the engine's own strip stages, loop faders and the Master bus.
+//! to the engine's own strip stages, loop faders and output buses.
 
 use alloc::boxed::Box;
 use alloc::vec;
@@ -209,7 +209,11 @@ pub struct LoopFader {
 
 /// The Master bus: the sum of routed strips; gain, balance, mute and meters,
 /// written to two connection banks.
-pub struct MasterBus {
+pub struct BusMixer {
+    slot: usize,
+    active_channels: u8,
+    presence: Ramp,
+    presence_weights: Box<[f32]>,
     configuration: Option<NodeConfiguration>,
     cells: Arc<Cells>,
     channels: usize,
@@ -226,7 +230,7 @@ pub enum EngineNode {
     StripInput(StripInput),
     StripOutput(StripOutput),
     Fader(LoopFader),
-    Master(MasterBus),
+    Bus(BusMixer),
     Reader(BulkReader),
 }
 
@@ -319,9 +323,13 @@ impl LoopFader {
         }
     }
 }
-impl MasterBus {
-    pub(crate) fn new(settings: &NodeSettings) -> Self {
+impl BusMixer {
+    pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            slot,
+            active_channels: if slot == 0 { 2 } else { 0 },
+            presence: Ramp::at(1.),
+            presence_weights: vec![0.; settings.frames].into_boxed_slice(),
             configuration: None,
             cells: settings.cells.clone(),
             channels: settings.master_channels,
@@ -594,7 +602,7 @@ impl Processor<LoopPlanner, EngineOp> for LoopFader {
     }
 }
 
-impl Processor<LoopPlanner, EngineOp> for MasterBus {
+impl Processor<LoopPlanner, EngineOp> for BusMixer {
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: self.channels,
@@ -604,6 +612,17 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
         match operation {
+            EngineOp::Reset { outputs, .. } => {
+                self.active_channels = outputs;
+                self.bank = Ramp::at(0.);
+                self.mute = Ramp::at(1.);
+                self.presence = Ramp::at(1.);
+                self.gains.reset();
+                self.cells.buses[self.slot].clear();
+            }
+            EngineOp::Presence(present) => {
+                self.presence.set(f32::from(u8::from(present)), self.ramp)
+            }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
             EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
@@ -618,10 +637,11 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
-        let stereo = channels == 2;
+        let stereo = self.active_channels == 2;
         self.gains.fill(frames, &mut self.mute);
         for i in 0..frames {
             self.weights[i] = self.bank.next();
+            self.presence_weights[i] = self.presence.next();
         }
         for channel in 0..channels {
             {
@@ -629,11 +649,11 @@ impl Processor<LoopPlanner, EngineOp> for MasterBus {
                 let gains = self.gains.channel(channel, stereo);
                 let mut peak = 0f32;
                 for i in 0..frames {
-                    let value = input[i] * gains[i];
+                    let value = input[i] * gains[i] * self.presence_weights[i];
                     self.scratch[i] = value;
                     peak = peak.max(value.abs());
                 }
-                self.cells.master.raise(channel, peak);
+                self.cells.buses[self.slot].raise(channel, peak);
             }
             let first = block.audio.output(channel).ok_or(Error::InvalidShape)?;
             for i in 0..frames {
@@ -657,7 +677,7 @@ impl EngineNode {
             Self::StripInput(node) => Some(&mut node.configuration),
             Self::StripOutput(node) => Some(&mut node.configuration),
             Self::Fader(node) => Some(&mut node.configuration),
-            Self::Master(node) => Some(&mut node.configuration),
+            Self::Bus(node) => Some(&mut node.configuration),
             _ => None,
         }
     }
@@ -681,7 +701,10 @@ impl EngineNode {
                 node.presence = Ramp::at(1.);
                 node.cells.loops[node.slot].peaks.clear();
             }
-            Self::Master(node) => {
+            Self::Bus(node) => {
+                node.active_channels = configuration.outputs;
+                node.presence = Ramp::at(1.);
+                node.cells.buses[node.slot].clear();
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
@@ -699,7 +722,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripInput(node) => node.ports(),
             Self::StripOutput(node) => node.ports(),
             Self::Fader(node) => node.ports(),
-            Self::Master(node) => node.ports(),
+            Self::Bus(node) => node.ports(),
             Self::Reader(node) => node.ports(),
         }
     }
@@ -736,6 +759,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             }
             if matches!(self, Self::StripInput(node) if configuration.inputs as usize > node.channels)
                 || matches!(self, Self::StripOutput(node) if configuration.outputs as usize > node.channels)
+                || matches!(self, Self::Bus(node) if configuration.outputs as usize > node.channels)
             {
                 return Err(Error::InvalidShape);
             }
@@ -751,7 +775,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripInput(node) => node.operation(operation, context),
             Self::StripOutput(node) => node.operation(operation, context),
             Self::Fader(node) => node.operation(operation, context),
-            Self::Master(node) => node.operation(operation, context),
+            Self::Bus(node) => node.operation(operation, context),
             Self::Reader(node) => node.operation(operation, context),
         }
     }
@@ -766,7 +790,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::StripInput(node) => node.process(block),
             Self::StripOutput(node) => node.process(block),
             Self::Fader(node) => node.process(block),
-            Self::Master(node) => node.process(block),
+            Self::Bus(node) => node.process(block),
             Self::Reader(node) => node.process(block),
         }
     }

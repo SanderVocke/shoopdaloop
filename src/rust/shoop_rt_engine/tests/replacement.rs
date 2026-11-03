@@ -87,6 +87,8 @@ fn complete_content_and_controls_publish_together_while_old_playback_survives_pr
     upload(&mut h, 2, true, 4, &midi);
     let from = h.outputs[0].len();
     h.done(Request::ReplacementBegin { id: 1 });
+    let bus = BusId(SlotId::new(0, 2));
+    edit(&mut h, 1, ReplacementEdit::Bus { bus, channels: 2 });
     let strip = strip(0, 2);
     let loaded = loop_id(0, 2);
     edit(
@@ -123,7 +125,7 @@ fn complete_content_and_controls_publish_together_while_old_playback_survives_pr
                     index: channel,
                 },
                 bus: BusPort {
-                    bus: BusId::Master,
+                    bus,
                     index: channel,
                 },
             },
@@ -132,7 +134,10 @@ fn complete_content_and_controls_publish_together_while_old_playback_survives_pr
             &mut h,
             1,
             ReplacementEdit::Connect {
-                port: master(channel),
+                port: EnginePort::Bus(BusPort {
+                    bus,
+                    index: channel,
+                }),
                 host: audio_out(u32::from(channel)),
             },
         );
@@ -145,7 +150,14 @@ fn complete_content_and_controls_publish_together_while_old_playback_survives_pr
             host: midi_out(),
         },
     );
-    edit(&mut h, 1, ReplacementEdit::Master(BusControl::Gain(0.5)));
+    edit(
+        &mut h,
+        1,
+        ReplacementEdit::BusControl {
+            bus,
+            control: BusControl::Gain(0.5),
+        },
+    );
     h.done(Request::ReplacementPrepare { id: 1 });
     h.run(12, 4);
     assert!(h.outputs[0][from..].iter().all(|&sample| sample == 1.));

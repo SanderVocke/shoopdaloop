@@ -58,6 +58,8 @@ pub struct EngineSettings {
     pub max_frames: u32,
     pub strip_channels: u32,
     pub master_channels: u32,
+    pub buses: u32,
+    pub bus_channels: u32,
     pub smoothing_frames: u32,
     pub smoothing_limit_frames: u32,
     pub ramp_frames: u32,

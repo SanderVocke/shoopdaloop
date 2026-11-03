@@ -223,6 +223,7 @@ pub struct OperationResult {
 /// Ordinary shared state, without Lua, file workflows, editor drafts or media reads.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
+    pub bus_limits: BusLimits,
     pub persistence_epoch: u64,
     pub revision: Revision,
     pub tracks: Vec<TrackState>,

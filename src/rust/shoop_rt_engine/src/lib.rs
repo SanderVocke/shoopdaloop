@@ -4,7 +4,7 @@
 //! capture nodes next to the engine's own processors: a per-strip input stage
 //! (gain, balance, monitoring feed, meters), a per-strip output stage (the sum
 //! of its loops and monitored input; gain, balance, mute, meters), a fader per
-//! loop and the Master bus. Strip and loop slots are prepared in pool segments;
+//! loop and output buses. Strip and loop slots are prepared in pool segments;
 //! only occupied slots are in the active graph and loop topology.
 //!
 //! [`prepare`] returns three owners: the [`ControlEndpoint`], which implements
@@ -59,7 +59,7 @@ use crate::cells::{Cells, Observer};
 use crate::endpoint::{Settings, Work, PLANNED};
 use crate::graph::{Builder, Shape};
 use crate::model::Model;
-use crate::node::{LoopFader, MasterBus, NodeSettings, StripInput, StripOutput};
+use crate::node::{BusMixer, LoopFader, NodeSettings, StripInput, StripOutput};
 use crate::pool::Pool;
 use crate::ring::Ring;
 use crate::topology::{Encoder, RECORD_BYTES};
@@ -117,7 +117,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + 2,
+            limits.strips as usize + limits.loops as usize + limits.buses as usize + 1,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -156,10 +156,11 @@ pub fn prepare(
     driver: DriverStatus,
 ) -> Result<Engine, PrepareError> {
     description.validate()?;
-    let pool = Pool::new(&description.segments);
+    let pool = Pool::new(&description.segments, description.buses as usize);
     let (strips, loops) = (pool.strips(), pool.loops());
     let channels = description.strip_channels as usize;
-    let master_channels = description.master_channels as usize;
+    let master_channels = description.bus_channels as usize;
+    let buses = description.buses as usize;
     let host = &description.host;
     let counts = [
         host.audio_inputs.len(),
@@ -171,16 +172,16 @@ pub fn prepare(
     let credits = usize::from(description.reliable_credits);
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let slots = pending + 2 * credits + loops * (PLANNED + 3) + 64;
+    let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
     let ports = strips * (7 * channels + 5)
         + loops * (4 * channels + 2)
-        + 3 * master_channels
+        + 3 * buses * master_channels
         + counts.iter().sum::<usize>();
     let edges = strips
-        * (2 * channels * (audio_in + audio_out + master_channels) + midi_in + midi_out)
+        * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
         + loops * (3 * channels + 2)
         + (channels + 1) * (strips + loops)
-        + 2 * master_channels * audio_out;
+        + 2 * buses * master_channels * audio_out;
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND * RECORD_BYTES;
     let config = Config {
@@ -245,6 +246,7 @@ pub fn prepare(
     let cells = Cells::new(
         strips,
         loops,
+        buses,
         stream::RING_PAGES * description.page_bytes,
         driver,
     );
@@ -310,10 +312,12 @@ pub fn prepare(
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, EngineNode::Loop(node)))
         .collect();
-    nodes.push(PreparedNode::new(
-        pool.master(),
-        EngineNode::Master(MasterBus::new(&settings)),
-    ));
+    for slot in 0..buses {
+        nodes.push(PreparedNode::new(
+            pool.bus(slot),
+            EngineNode::Bus(BusMixer::new(slot, &settings)),
+        ));
+    }
     nodes.push(PreparedNode::new(
         pool.reader(),
         EngineNode::Reader(stream::BulkReader::new(cells.clone(), page_bytes)),
@@ -382,6 +386,8 @@ pub fn prepare(
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
         master_channels: description.master_channels,
+        buses: description.buses,
+        bus_channels: description.bus_channels,
         host_audio_inputs: audio_in as u16,
         host_audio_outputs: audio_out as u16,
         host_midi_inputs: midi_in as u16,
@@ -416,8 +422,20 @@ pub fn prepare(
             max_bulk: description.bulk_credits,
         },
         host_ports: host_ports(description),
-        model: Model::new(strips, loops, master_outputs),
-        next: Model::new(strips, loops, master_outputs),
+        model: Model::new(
+            strips,
+            loops,
+            buses,
+            description.master_channels,
+            master_outputs,
+        ),
+        next: Model::new(
+            strips,
+            loops,
+            buses,
+            description.master_channels,
+            master_outputs,
+        ),
         limits,
         connected: false,
         queue: Ring::new(credits),
@@ -439,13 +457,13 @@ pub fn prepare(
         batch_len: 0,
         touched_strips: vec![0; strips].into_boxed_slice(),
         touched_loops: vec![0; loops].into_boxed_slice(),
-        touched_master: 0,
+        touched_buses: vec![0; buses].into_boxed_slice(),
         blocked_strips: vec![false; strips].into_boxed_slice(),
         blocked_loops: vec![false; loops].into_boxed_slice(),
-        blocked_master: false,
+        blocked_buses: vec![false; buses].into_boxed_slice(),
         blocked_all: false,
         retired: Ring::new(loops.max(1)),
-        fades: vec![pool.master(); strips + loops].into_boxed_slice(),
+        fades: vec![pool.bus(0); strips + loops + buses].into_boxed_slice(),
         work,
         graph_epoch: runtime.epoch(),
         topology_epoch: Epoch(0),
@@ -453,7 +471,7 @@ pub fn prepare(
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
-        replacement: replacement::Replacement::new(strips, loops),
+        replacement: replacement::Replacement::new(strips, loops, buses),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
