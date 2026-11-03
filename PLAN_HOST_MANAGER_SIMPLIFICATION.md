@@ -244,17 +244,17 @@ Depends on Stages 0–4.
   python3 scripts/check_rt_engine_boundary.py
   ```
 
-- [ ] Reproduce CI's ordinary `umask 0022` and tracing settings, also checking restrictive
+- [x] Reproduce CI's ordinary `umask 0022` and tracing settings, also checking restrictive
   defaults. Run socket/shared-memory and LAN transport canaries, engine-process
   bootstrap tests, and browser/no-std checks affected by shared transport changes.
   Measure patch coverage without weakening the existing gate.
-- [ ] Commit each completed milestone, push to `feat/host-manager`, and update this
+- [x] Commit each completed milestone, push to `feat/host-manager`, and update this
   existing PR's title/body around the final behavior, screenshots and evidence.
   Recheck the target branch for updates and validate any resulting merge.
 - [ ] Work through failures until required/relevant checks, including Codecov, pass
   on the final head. Inspect logs/artifacts, make targeted fixes and rerun the checks
   they affect; queued/running jobs are not evidence of a green final result.
-- [ ] Check incoming automated reviews after pushes. Repeatedly address justified
+- [x] Check incoming automated reviews after pushes. Repeatedly address justified
   findings and recheck until participating automated reviewers approve. If no review
   is provided, record that fact. Do not merge the PR without a separate instruction.
 - [ ] Map each immutable acceptance criterion to final evidence and update this plan's
@@ -383,6 +383,32 @@ Depends on Stages 0–4.
   canary skips), the warning-denying workspace/no-default builds, formatting and
   tracing/test-attribute policies. A separate `umask 0077` run passes all 38
   launch/discovery/logging/role tests; the ordinary full run uses `umask 0022`.
+- Source candidate `66d29342` passes all 2,569 tests under LLVM instrumentation;
+  changed executable lines measure 3,396/3,776 (89.94%) against `64a4ad06`. Remote
+  [coverage and native workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/41652717130)
+  confirms the coverage job and both Codecov checks are green, with the existing
+  80% patch floor unchanged. All six latest socket/shared-memory/LAN engine and
+  large-file persistence canaries pass locally, including interrupted transfers.
+- [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41652716928)
+  passes on `66d29342`. GitHub Advanced Security automatically resolved both
+  command-line findings (threads `PRRT_kwDOJz8wF86zIn8z` and
+  `PRRT_kwDOJz8wF86zJx4I`); no unresolved threads remain. No separate general
+  automated review or approval was provided; absence of review is not approval.
+  The final documentation-only push will be checked again before delivery.
+- The full Windows release application suite on `66d29342` exposed a retained
+  process-object race in the native inspector after termination (job `125978500768`).
+  Windows identity now checks the retained handle's signaled exit state instead of
+  trusting an enumerated object to be alive. An exited object is omitted from both
+  direct identity and socket inspection. Regression fixtures keep parent handles
+  open after normal exit, including exit code 259, and retain the original Force
+  stop assertions. The early Windows gate now exercises optimized fixtures too.
+  Local process tests and a warning-denying Windows MSVC-target library check pass;
+  the full-suite/native CI recheck covers the corrected candidate.
+- The Windows-exit fix passes all 2,570 instrumented workspace tests (4 skips).
+  A simultaneous ordinary run hit the unchanged runtime stress fixture's render
+  iteration bound while competing with compilation/coverage work; 20 isolated
+  repetitions pass. Recheck the ordinary suite after integrating the new base,
+  without simultaneous workspace compilation. No runtime assertions were weakened.
 
 ## Acceptance evidence map
 

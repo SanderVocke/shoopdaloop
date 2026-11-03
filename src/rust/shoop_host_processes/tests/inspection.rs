@@ -12,7 +12,14 @@ struct Fixture {
 }
 impl Fixture {
     fn start() -> Self {
-        let mut child = Command::new(std::env::current_exe().unwrap())
+        Self::start_with_exit_code(None)
+    }
+    fn start_with_exit_code(exit_code: Option<i32>) -> Self {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        if let Some(code) = exit_code {
+            command.env("SHOOP_PROCESS_EXIT_CODE", code.to_string());
+        }
+        let mut child = command
             .args(["--exact", "listening_child", "--nocapture"])
             .env("SHOOP_PROCESS_FIXTURE", "1")
             .stdin(Stdio::piped())
@@ -69,6 +76,19 @@ fn listening_child() {
     );
     std::io::stdout().flush().unwrap();
     let _ = std::io::stdin().read(&mut [0]);
+    if let Ok(code) = std::env::var("SHOOP_PROCESS_EXIT_CODE") {
+        std::process::exit(code.parse().unwrap());
+    }
+}
+#[shoop_wasm_test_support::shoop_test]
+fn exited_processes_are_absent_while_parent_handles_remain_open() {
+    for exit_code in [0, 259] {
+        let mut fixture = Fixture::start_with_exit_code(Some(exit_code));
+        drop(fixture.child.stdin.take());
+        fixture.child.wait().unwrap();
+        assert!(identity(fixture.child.id()).unwrap().is_none());
+        assert!(inspect(&[fixture.child.id()]).unwrap().processes.is_empty());
+    }
 }
 #[shoop_wasm_test_support::shoop_test]
 fn associates_real_child_listeners_and_exact_process_identity() {

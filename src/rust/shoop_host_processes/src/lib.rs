@@ -48,15 +48,18 @@ fn system(pids: ProcessesToUpdate<'_>) -> Result<System> {
     );
     Ok(system)
 }
-fn identity_of(process: &sysinfo::Process) -> Result<Identity> {
-    Ok(Identity {
+fn identity_of(process: &sysinfo::Process) -> Result<Option<Identity>> {
+    let Some(started) = started(process.pid().as_u32())? else {
+        return Ok(None);
+    };
+    Ok(Some(Identity {
         pid: process.pid().as_u32(),
-        started: started(process.pid().as_u32())?,
+        started,
         executable: process
             .exe()
             .context("Executable path unavailable")?
             .to_owned(),
-    })
+    }))
 }
 pub fn identity(pid: u32) -> Result<Option<Identity>> {
     let system = system(ProcessesToUpdate::Some(&[Pid::from_u32(pid)]))?;
@@ -65,6 +68,7 @@ pub fn identity(pid: u32) -> Result<Option<Identity>> {
         .filter(|process| process.status() != ProcessStatus::Zombie)
         .map(identity_of)
         .transpose()
+        .map(Option::flatten)
 }
 pub fn host_executable(path: &std::path::Path) -> bool {
     path.file_name().is_some_and(|name| {
@@ -100,13 +104,14 @@ fn inspect_with_system(system: &System, pids: &[u32]) -> Result<Snapshot> {
             continue;
         };
         match identity_of(process) {
-            Ok(identity) => {
+            Ok(Some(identity)) => {
                 snapshot.processes.push(Process {
                     identity,
                     name: process.name().to_string_lossy().into_owned(),
                     addresses: vec![],
                 });
             }
+            Ok(None) => {}
             Err(error) => snapshot.errors.push(format!("PID {pid}: {error:#}")),
         }
     }
@@ -189,7 +194,7 @@ pub fn force_stop(expected: &Identity) -> Result<()> {
             .process(Pid::from_u32(expected.pid))
             .context("Process has exited")?;
         ensure!(
-            identity_of(process)? == *expected,
+            identity_of(process)?.as_ref() == Some(expected),
             "Process identity changed"
         );
         ensure!(process.kill(), "OS refused process termination");
@@ -211,27 +216,31 @@ pub fn force_stop(expected: &Identity) -> Result<()> {
     }
 }
 #[cfg(target_os = "linux")]
-fn started(pid: u32) -> Result<u64> {
+fn started(pid: u32) -> Result<Option<u64>> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))?;
     let fields = stat.rsplit_once(')').context("Invalid process stat")?.1;
-    Ok(fields
-        .split_whitespace()
-        .nth(19)
-        .context("Missing process start time")?
-        .parse()?)
+    Ok(Some(
+        fields
+            .split_whitespace()
+            .nth(19)
+            .context("Missing process start time")?
+            .parse()?,
+    ))
 }
 #[cfg(target_os = "macos")]
-fn started(pid: u32) -> Result<u64> {
+fn started(pid: u32) -> Result<Option<u64>> {
     let info =
         libproc::libproc::proc_pid::pidinfo::<libproc::libproc::bsd_info::BSDInfo>(pid as i32, 0)
             .map_err(anyhow::Error::msg)?;
-    Ok(info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec)
+    Ok(Some(
+        info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec,
+    ))
 }
 #[cfg(windows)]
-fn started(pid: u32) -> Result<u64> {
+fn started(pid: u32) -> Result<Option<u64>> {
     windows::creation(pid)
 }
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn started(_pid: u32) -> Result<u64> {
+fn started(_pid: u32) -> Result<Option<u64>> {
     bail!("Process inspection is unsupported on this platform")
 }

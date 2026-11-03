@@ -1,10 +1,10 @@
 use super::*;
 use std::{io, mem::MaybeUninit};
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, FILETIME, HANDLE},
+    Foundation::{CloseHandle, FILETIME, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
     System::Threading::{
-        GetProcessTimes, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        PROCESS_TERMINATE,
+        GetProcessTimes, OpenProcess, TerminateProcess, WaitForSingleObject,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     },
 };
 
@@ -14,7 +14,9 @@ impl Handle {
         // OpenProcess returns an owned handle, released by Drop.
         let handle = unsafe {
             OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | if terminate { PROCESS_TERMINATE } else { 0 },
+                PROCESS_QUERY_LIMITED_INFORMATION
+                    | PROCESS_SYNCHRONIZE
+                    | if terminate { PROCESS_TERMINATE } else { 0 },
                 0,
                 pid,
             )
@@ -26,7 +28,7 @@ impl Handle {
         );
         Ok(Self(handle))
     }
-    fn creation(&self) -> Result<u64> {
+    fn creation(&self) -> Result<Option<u64>> {
         let mut times = [MaybeUninit::<FILETIME>::uninit(); 4];
         // Four distinct, correctly-sized output buffers remain alive through the call.
         let ok = unsafe {
@@ -45,7 +47,14 @@ impl Handle {
         );
         // A successful GetProcessTimes initializes all four buffers.
         let created = unsafe { times[0].assume_init() };
-        Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+        // A retained process object can outlive its process; its signaled state is authoritative.
+        match unsafe { WaitForSingleObject(self.0, 0) } {
+            WAIT_OBJECT_0 => Ok(None),
+            WAIT_TIMEOUT => Ok(Some(
+                (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime),
+            )),
+            _ => bail!("Read process exit state: {}", io::Error::last_os_error()),
+        }
     }
 }
 impl Drop for Handle {
@@ -56,13 +65,13 @@ impl Drop for Handle {
         }
     }
 }
-pub(super) fn creation(pid: u32) -> Result<u64> {
+pub(super) fn creation(pid: u32) -> Result<Option<u64>> {
     Handle::open(pid, false)?.creation()
 }
 pub(super) fn terminate(expected: &Identity) -> Result<()> {
     let handle = Handle::open(expected.pid, true)?;
     ensure!(
-        handle.creation()? == expected.started
+        handle.creation()? == Some(expected.started)
             && identity(expected.pid)?.as_ref() == Some(expected),
         "Process identity changed"
     );

@@ -70,6 +70,9 @@ jobs:
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Inspect real child processes and their listening sockets
         run: cargo test --locked -p shoop_host_processes --tests
+      - name: Inspect optimized Windows process lifetimes
+        if: runner.os == 'Windows'
+        run: cargo test --locked --release -p shoop_host_processes --tests
 
   no_std_core:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
