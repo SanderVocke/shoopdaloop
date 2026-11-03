@@ -14,6 +14,15 @@ pub enum Request {
         store: AudioStoreId,
         snapshot: SnapshotId,
     },
+    MidiGrab {
+        store: MidiStoreId,
+        start: Frame,
+        end: Frame,
+    },
+    MidiFork {
+        store: MidiStoreId,
+        snapshot: SnapshotId,
+    },
     Remove {
         resource: ResourceId,
     },
@@ -156,6 +165,15 @@ impl ResourceCommand {
                 store: audio,
                 snapshot,
             } => Reply::Created(store.fork_audio(*audio, *snapshot)?),
+            Request::MidiGrab {
+                store: midi,
+                start,
+                end,
+            } => Reply::Created(store.grab_midi(*midi, *start..*end)?),
+            Request::MidiFork {
+                store: midi,
+                snapshot,
+            } => Reply::Created(store.fork_midi(*midi, *snapshot)?),
             Request::Remove { resource } => {
                 store.remove(*resource)?;
                 Reply::Done

@@ -180,7 +180,7 @@ impl ResourceStore {
         if offset == lease.snapshot.description.bytes {
             return Ok(cursor);
         }
-        if lease.audio.is_some() {
+        if lease.audio.is_some() || lease.shared_midi.is_some() {
             return Ok(cursor);
         }
         let ordinal = (offset / self.config.limits().page_bytes) as u32;

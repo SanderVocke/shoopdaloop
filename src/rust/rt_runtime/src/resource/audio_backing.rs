@@ -108,6 +108,7 @@ impl ResourceStore {
             index: VersionIndex::default(),
             midi: None,
             audio: Some(audio),
+            shared_midi: None,
         });
         self.resources[resource.slot() as usize].value = Some(Resource {
             active: Some(active),
@@ -163,30 +164,25 @@ impl ResourceStore {
     }
 
     pub(super) fn maintain_audio(&mut self) -> bool {
-        // One sweep per call, with a turn reserved for ordinary retirements.
         let count = self.audio_stores.len();
-        if self.audio_maintenance == count {
-            self.audio_maintenance = 0;
-            return false;
-        }
-        while self.audio_maintenance < count {
+        for _ in 0..count {
             let slot = self.audio_maintenance;
-            self.audio_maintenance += 1;
-            if self.audio_stores[slot].is_some() {
-                let id = AudioStoreId {
-                    scope: self.scope,
-                    slot,
-                };
-                if self
-                    .with_audio(id, |store, audio| audio.maintain_limit(store, 1))
+            self.audio_maintenance = (slot + 1) % count;
+            if self.audio_stores[slot].is_some()
+                && self
+                    .with_audio(
+                        AudioStoreId {
+                            scope: self.scope,
+                            slot,
+                        },
+                        |store, audio| audio.maintain_limit(store, 1),
+                    )
                     .expect("prepared audio store")
                     > 0
-                {
-                    return true;
-                }
+            {
+                return true;
             }
         }
-        self.audio_maintenance = 0;
         false
     }
 
@@ -201,6 +197,15 @@ impl ResourceStore {
                 let export = store.retain_export(audio.export)?;
                 Ok(Export {
                     store: audio.store,
+                    export,
+                    index: store.export_index(export)?,
+                })
+            })?);
+        } else if let Some(midi) = lease.shared_midi {
+            lease.shared_midi = Some(self.with_midi(midi.store, |_, store| {
+                let export = store.retain_export(midi.export)?;
+                Ok(midi_backing::Export {
+                    store: midi.store,
                     export,
                     index: store.export_index(export)?,
                 })
@@ -242,7 +247,7 @@ impl ResourceStore {
         class: WorkClass,
     ) -> Result<(), Error> {
         let lease = self.index_lease(index)?;
-        if lease.audio.is_some() {
+        if lease.audio.is_some() || lease.shared_midi.is_some() {
             return Err(Error::InvalidShape);
         }
         if offset

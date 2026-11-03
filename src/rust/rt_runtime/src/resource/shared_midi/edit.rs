@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct EditId(Handle);
+pub struct EditId(pub(super) Handle);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EditStatus {
     Building,
@@ -10,24 +10,26 @@ pub enum EditStatus {
 
 #[derive(Clone, Copy)]
 pub(super) struct Edit {
-    target: Handle,
-    source: Handle,
-    expected: Revision,
-    view: View,
-    original: Point,
-    serial: u64,
-    records: [Record; EVENTS_PER_CHUNK],
-    count: usize,
+    pub(super) target: Option<Handle>,
+    pub(super) source: Option<Handle>,
+    pub(super) expected: Revision,
+    pub(super) view: View,
+    pub(super) original: Point,
+    pub(super) serial: u64,
+    pub(super) records: [Record; EVENTS_PER_CHUNK],
+    pub(super) count: usize,
     pub(super) input_count: usize,
-    input: usize,
-    position: u64,
-    frames: u64,
-    ready: bool,
-    retiring: bool,
+    pub(super) input: usize,
+    pub(super) position: u64,
+    pub(super) frames: u64,
+    pub(super) ready: bool,
+    pub(super) retiring: bool,
+    pub(super) base: Option<usize>,
+    pub(super) import_cursor: Option<crate::resource::MidiCursor>,
 }
 
 impl MidiStore {
-    fn edit(&self, id: EditId) -> Result<Edit, Error> {
+    pub(super) fn edit(&self, id: EditId) -> Result<Edit, Error> {
         if id.0.scope != self.scope {
             return Err(Error::InvalidId);
         }
@@ -166,6 +168,7 @@ impl MidiStore {
         if self.free_edits.is_empty()
             || self.free_views.is_empty()
             || self.debt.checked_add(2).is_none_or(|n| n > self.debt_limit)
+            || self.pages.available_leases() < needed
             || self.reserved < needed
         {
             return Err(Error::Capacity);
@@ -214,8 +217,8 @@ impl MidiStore {
             }
         }
         self.edits[slot].value = Some(Edit {
-            target: take.0,
-            source,
+            target: Some(take.0),
+            source: Some(source),
             expected,
             view: staged,
             original: start,
@@ -228,6 +231,8 @@ impl MidiStore {
             frames,
             ready: frames == 0,
             retiring: false,
+            base: None,
+            import_cursor: None,
         });
         io.store
             .charge_work(WorkClass::Render, 4 * size_of::<MidiState>(), input.len())?;
@@ -259,7 +264,7 @@ impl MidiStore {
             }
         })
     }
-    fn flush_edit(&mut self, store: &mut ResourceStore, slot: usize, edit: &mut Edit) {
+    pub(super) fn flush_edit(&mut self, store: &mut ResourceStore, slot: usize, edit: &mut Edit) {
         self.records = edit.records;
         let checkpoint = self.edit_states[slot * 3 + 2];
         self.publish_chunk(
@@ -292,7 +297,10 @@ impl MidiStore {
         if edit.ready || quantum == 0 {
             return self.edit_status(id);
         }
-        let source = self.view(edit.source)?;
+        if edit.base.is_some() {
+            return self.progress_import(io, id, quantum);
+        }
+        let source = self.view(edit.source.ok_or(Error::InvalidState)?)?;
         for _ in 0..quantum {
             let original = if edit.original == source.last {
                 None
@@ -352,15 +360,28 @@ impl MidiStore {
         self.edits[slot].value = Some(edit);
         self.edit_status(id)
     }
-    fn retire_edit(&mut self, id: EditId, mut edit: Edit, root: Option<usize>) {
+    pub(super) fn retire_edit(&mut self, id: EditId, mut edit: Edit, root: Option<usize>) {
         let slot = id.0.slot as usize;
         edit.retiring = true;
         edit.view.root = None;
         self.edits[slot].value = Some(edit);
         let owner = self.views.len() + 2 + slot;
+        if edit.base.is_some() {
+            for record in &edit.records[..edit.count] {
+                let block = self.blocks[record.block]
+                    .as_mut()
+                    .expect("owned private import");
+                block.references -= 1;
+                if block.references == 0 {
+                    self.enqueue(Garbage::Block(record.block, 0), owner, false);
+                }
+            }
+        }
         self.drop_root(root, owner, false);
         self.enqueue(Garbage::Edit(slot, 0), owner, false);
-        self.release_view(edit.source).expect("owned source pin");
+        if let Some(source) = edit.source {
+            self.release_view(source).expect("owned source pin");
+        }
     }
     pub fn cancel_edit(&mut self, id: EditId) -> Result<(), Error> {
         let edit = self.edit(id)?;
@@ -373,12 +394,13 @@ impl MidiStore {
         if !edit.ready {
             return Err(Error::Busy);
         }
-        let old = self.view(edit.target)?;
+        let target = edit.target.ok_or(Error::InvalidState)?;
+        let old = self.view(target)?;
         if old.revision != edit.expected {
             return Err(Error::StaleRevision);
         }
-        self.views[edit.target.slot as usize].value = Some(edit.view);
-        self.initial[edit.target.slot as usize] = self.edit_states[id.0.slot as usize * 3];
+        self.views[target.slot as usize].value = Some(edit.view);
+        self.initial[target.slot as usize] = self.edit_states[id.0.slot as usize * 3];
         self.work.add(0, 1, 0, 0);
         self.retire_edit(id, edit, old.root);
         io.store

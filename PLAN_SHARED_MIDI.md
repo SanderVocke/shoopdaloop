@@ -297,13 +297,13 @@ needed to avoid accumulating append-only fragments.
 
 ### M5 — Ordinary resources, loaded MIDI and lifecycle integration
 
-- [ ] Register the prepared MIDI backing in `ResourceStore`; connect ordinary
+- [x] Register the prepared MIDI backing in `ResourceStore`; connect ordinary
   snapshots, byte access, MIDI cursors/seeks and initial-state exports. Preserve
   the existing audio and linear MIDI paths and their work accounting.
-- [ ] Fork production indexed MIDI uploads as immutable bases, including content
+- [x] Fork production indexed MIDI uploads as immutable bases, including content
   longer than the history horizon. Implement byte-header rebasing and multi-page
   packet reads without eager materialization of the entire take.
-- [ ] Integrate source removal, superseding uploads, cancellation, fair bounded
+- [x] Integrate source removal, superseding uploads, cancellation, fair bounded
   reclamation and stopped cleanup. Update resource requests, documentation and
   tracing inventory where required.
 
@@ -311,6 +311,17 @@ Verification: generic readers consume grabbed/imported/edited sources with odd
 chunk sizes, partial headers and EOF. Read old exports after source removal and
 full-loop upload replacement; saturate leases/transactions and recover every
 credit. No special public playback/export path is required. Commit M5.
+
+M5 evidence: ordinary resource snapshots retain immutable exports; every byte
+starting offset is checked with odd transfer sizes, including split/rebased
+headers and multi-page packets. Generic MIDI enumeration and every logical seek
+agree with the packet/state oracle. Loaded indexed MIDI imports descriptor/index
+metadata with explicit bounded progress, retains packet bodies as a linear base,
+and remains independently editable beyond the history horizon. Source removal,
+superseding uploads, partial-import refusal/cancellation, stale pending resource
+commits and three-way bounded reclamation all pass guarded fixtures. Focused
+runtime, loop and codec suites pass. The public contract is documented in
+`rt_runtime/docs/reference/shared-midi.md`; application parity flags stay unchanged.
 
 ### M6 — Loop, mixed-media and persistence black-box proof
 

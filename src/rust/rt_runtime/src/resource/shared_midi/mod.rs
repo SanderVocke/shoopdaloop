@@ -10,9 +10,11 @@ use core::ops::Range;
 
 mod edit;
 mod history;
+mod import;
 mod read;
 mod storage;
 pub use edit::{EditId, EditStatus};
+pub use import::ImportId;
 pub use read::{Cursor, Event, Position};
 
 pub const EVENTS_PER_CHUNK: usize = 8;
@@ -48,6 +50,7 @@ pub struct Info {
     pub frames: u64,
     pub bytes: usize,
     pub events: usize,
+    pub checkpoints: usize,
     pub revision: Revision,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,10 +118,17 @@ struct Chunk {
     bytes: usize,
 }
 #[derive(Clone, Copy)]
+struct Base {
+    snapshot: crate::resource::Snapshot,
+    index: crate::resource::ReadIndex,
+    references: usize,
+}
+#[derive(Clone, Copy)]
 struct Block {
     references: usize,
     bytes: usize,
     pages: usize,
+    base: Option<(usize, usize)>,
 }
 #[derive(Clone, Copy)]
 enum Kind {
@@ -198,6 +208,8 @@ pub struct MidiStore {
     free_edits: Vec<usize>,
     edit_records: Box<[Record]>,
     edit_states: Box<[MidiState]>,
+    bases: Vec<Option<Base>>,
+    free_bases: Vec<usize>,
 }
 
 fn touched<T: Copy>(count: usize, value: T) -> Vec<T> {
@@ -281,13 +293,23 @@ impl MidiStore {
             .and_then(|n| n.checked_mul(config.chunks.checked_mul(2)?.checked_sub(1)?))
             .and_then(|n| n.checked_add(config.max_events.checked_add(1)?.checked_mul(depth + 1)?))
             .ok_or(Error::Capacity)?;
-        let map = config
+        let blocks = config
             .pages
-            .checked_mul(block_pages)
+            .checked_add(
+                chunks
+                    .checked_mul(EVENTS_PER_CHUNK)
+                    .ok_or(Error::Capacity)?,
+            )
             .ok_or(Error::Capacity)?;
+        let base_slots = config
+            .views
+            .checked_add(config.transactions)
+            .ok_or(Error::Capacity)?;
+        let map = blocks.checked_mul(block_pages).ok_or(Error::Capacity)?;
         let garbage = nodes
             .checked_add(chunks)
-            .and_then(|n| n.checked_add(config.pages))
+            .and_then(|n| n.checked_add(blocks))
+            .and_then(|n| n.checked_add(config.transactions))
             .ok_or(Error::Capacity)?;
         let state_bytes = chunks
             .checked_add(config.views)
@@ -301,11 +323,7 @@ impl MidiStore {
                 n.checked_add(chunks.checked_mul(size_of::<Option<Chunk>>() + size_of::<usize>())?)
             })
             .and_then(|n| {
-                n.checked_add(
-                    config
-                        .pages
-                        .checked_mul(size_of::<Option<Block>>() + size_of::<usize>())?,
-                )
+                n.checked_add(blocks.checked_mul(size_of::<Option<Block>>() + size_of::<usize>())?)
             })
             .and_then(|n| n.checked_add(map.checked_mul(size_of::<Option<LeaseId>>())?))
             .and_then(|n| {
@@ -316,6 +334,11 @@ impl MidiStore {
                 )
             })
             .and_then(|n| n.checked_add(garbage.checked_mul(2 * size_of::<Job>())?))
+            .and_then(|n| {
+                n.checked_add(
+                    base_slots.checked_mul(size_of::<Option<Base>>() + size_of::<usize>())?,
+                )
+            })
             .and_then(|n| n.checked_add(state_bytes))
             .and_then(|n| n.checked_add(page_bytes))
             .and_then(|n| {
@@ -389,9 +412,9 @@ impl MidiStore {
             chunks: touched(chunks, None),
             chunk_states,
             free_chunks: (0..chunks).rev().collect(),
-            blocks: touched(config.pages, None),
+            blocks: touched(blocks, None),
             block_map,
-            free_blocks: (0..config.pages).rev().collect(),
+            free_blocks: (0..blocks).rev().collect(),
             views: touched(
                 config.views,
                 Slot {
@@ -423,6 +446,8 @@ impl MidiStore {
             edit_records: touched(config.transactions * config.max_events, Record::default())
                 .into_boxed_slice(),
             edit_states,
+            bases: touched(base_slots, None),
+            free_bases: (0..base_slots).rev().collect(),
         })
     }
     fn check(&self, store: &ResourceStore) -> Result<(), Error> {
@@ -505,6 +530,16 @@ impl MidiStore {
         let state = self.initial[take.0.slot as usize];
         self.own(v, &state, false).map(ExportId)
     }
+    pub fn retain_export(&mut self, export: ExportId) -> Result<ExportId, Error> {
+        let view = self.view(export.0)?;
+        let state = self.initial[export.0.slot as usize];
+        self.own(view, &state, false).map(ExportId)
+    }
+    pub fn fork_export(&mut self, export: ExportId) -> Result<TakeId, Error> {
+        let view = self.view(export.0)?;
+        let state = self.initial[export.0.slot as usize];
+        self.own(view, &state, true).map(TakeId)
+    }
     pub fn take_index(&self, take: TakeId) -> Result<ReadIndex, Error> {
         self.view(take.0)?;
         Ok(ReadIndex(take.0))
@@ -519,6 +554,11 @@ impl MidiStore {
             frames: v.frames,
             bytes: v.bytes,
             events: v.events,
+            checkpoints: if v.first == v.last {
+                0
+            } else {
+                (v.last.serial - v.first.serial) as usize + usize::from(v.last.event > 0)
+            },
             revision: v.revision,
         })
     }

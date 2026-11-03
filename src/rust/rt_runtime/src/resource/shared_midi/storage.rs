@@ -159,6 +159,16 @@ impl MidiStore {
             }
             Garbage::Block(index, page) => {
                 let block = self.blocks[index].expect("retired bytes");
+                if let Some((base, _)) = block.base {
+                    store.charge_work(class, 0, 1)?;
+                    self.drop_base(store, base)?;
+                    self.blocks[index] = None;
+                    self.free_blocks.push(index);
+                    self.pending[job.owner] -= 1;
+                    self.work.add(0, 0, 0, 1);
+                    self.finish_owner(job.owner);
+                    return Ok(());
+                }
                 let lease = self.block_map[index * self.block_pages + page]
                     .take()
                     .expect("owned page");
@@ -181,6 +191,11 @@ impl MidiStore {
             Garbage::Edit(index, event) => {
                 store.charge_work(class, 0, 1)?;
                 let edit = self.edits[index].value.expect("retiring edit");
+                if event == edit.input_count {
+                    if let Some(base) = edit.base {
+                        self.drop_base(store, base)?;
+                    }
+                }
                 if event < edit.input_count {
                     let block = self.edit_records[index * self.config.max_events + event].block;
                     let b = self.blocks[block].as_mut().expect("owned edit packet");
@@ -199,10 +214,11 @@ impl MidiStore {
     }
     pub(super) fn block_read(
         &self,
-        store: &ResourceStore,
+        store: &mut ResourceStore,
         block: usize,
         offset: usize,
         out: &mut [u8],
+        class: WorkClass,
     ) -> Result<(), Error> {
         let b = self.blocks[block].ok_or(Error::InvalidState)?;
         if offset
@@ -210,6 +226,14 @@ impl MidiStore {
             .is_none_or(|end| end > b.bytes)
         {
             return Err(Error::InvalidOffset);
+        }
+        if let Some((base, at)) = b.base {
+            return store.copy_linear_span(
+                self.bases[base].expect("owned MIDI base").index,
+                at + offset,
+                out,
+                class,
+            );
         }
         let mut copied = 0;
         while copied < out.len() {
@@ -245,6 +269,7 @@ impl MidiStore {
             references: 0,
             bytes: data.len(),
             pages: count,
+            base: None,
         });
         slot
     }
@@ -262,6 +287,7 @@ impl MidiStore {
             references: 0,
             bytes: len,
             pages: 1,
+            base: None,
         });
         slot
     }
@@ -374,7 +400,13 @@ impl MidiStore {
     ) -> Result<(), Error> {
         let mut short = [0; 3];
         let count = record.len.min(3);
-        self.block_read(store, record.block, record.offset, &mut short[..count])?;
+        self.block_read(
+            store,
+            record.block,
+            record.offset,
+            &mut short[..count],
+            WorkClass::Render,
+        )?;
         super::super::midi_index::apply_short(state, short);
         self.work.add(1, 0, 0, 0);
         store.charge_work(WorkClass::Render, count, 1)

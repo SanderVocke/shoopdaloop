@@ -35,6 +35,131 @@ pub struct Position {
 }
 
 impl MidiStore {
+    pub(in crate::resource) fn read_bytes(
+        &self,
+        store: &mut ResourceStore,
+        index: ReadIndex,
+        offset: usize,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<usize, Error> {
+        self.check(store)?;
+        let view = self.view(index.0)?;
+        if offset > view.bytes {
+            return Err(Error::InvalidOffset);
+        }
+        let count = output.len().min(self.page_bytes).min(view.bytes - offset);
+        store.charge_work(class, count, 0)?;
+        let mut copied = 0;
+        while copied < count {
+            let step = self.read_piece(
+                store,
+                index,
+                offset + copied,
+                &mut output[copied..count],
+                class,
+            )?;
+            if step == 0 {
+                return Err(Error::InvalidState);
+            }
+            copied += step;
+        }
+        Ok(count)
+    }
+    fn read_piece(
+        &self,
+        store: &mut ResourceStore,
+        index: ReadIndex,
+        offset: usize,
+        output: &mut [u8],
+        class: WorkClass,
+    ) -> Result<usize, Error> {
+        self.check(store)?;
+        let view = self.view(index.0)?;
+        if offset > view.bytes {
+            return Err(Error::InvalidOffset);
+        }
+        if offset == view.bytes || output.is_empty() {
+            return Ok(0);
+        }
+        let end = view.last.serial + u64::from(view.last.event > 0);
+        let mut low = view.first.serial;
+        let mut high = end;
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let after = if mid + 1 == end {
+                view.last
+            } else {
+                Point {
+                    serial: mid + 1,
+                    event: 0,
+                }
+            };
+            if self.between(view.root, view.first, after)?.0 <= offset {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        let first = Point {
+            serial: low,
+            event: if low == view.first.serial {
+                view.first.event
+            } else {
+                0
+            },
+        };
+        let mut local = offset - self.between(view.root, view.first, first)?.0;
+        let chunk = self.chunks[self.find(view.root, low)?].expect("byte chunk");
+        let limit = if low == view.last.serial {
+            view.last.event
+        } else {
+            chunk.count
+        };
+        for record in &chunk.records[first.event..limit] {
+            if local >= 12 + record.len {
+                local -= 12 + record.len;
+                continue;
+            }
+            let count = output
+                .len()
+                .min(if local < 12 {
+                    12 - local
+                } else {
+                    12 + record.len - local
+                })
+                .min(self.page_bytes);
+            let index_steps = 4 * (self.depth + 1) * (2 * self.depth + 3);
+            store.charge_work(
+                class,
+                0,
+                if class == WorkClass::Render {
+                    index_steps
+                } else {
+                    0
+                },
+            )?;
+            for _ in 0..index_steps {
+                store.index_step(class);
+            }
+            if local < 12 {
+                let mut header = [0; 12];
+                header[..8].copy_from_slice(&(record.frame - view.origin).to_le_bytes());
+                header[8..].copy_from_slice(&(record.len as u32).to_le_bytes());
+                output[..count].copy_from_slice(&header[local..local + count]);
+            } else {
+                self.block_read(
+                    store,
+                    record.block,
+                    record.offset + local - 12,
+                    &mut output[..count],
+                    class,
+                )?;
+            }
+            return Ok(count);
+        }
+        Err(Error::InvalidState)
+    }
     pub(super) fn locate(&self, view: View, time: u64) -> Result<Point, Error> {
         if view.first == view.last {
             return Ok(view.last);
@@ -170,7 +295,13 @@ impl MidiStore {
         }
         io.store
             .charge_work(WorkClass::Render, r.len, self.depth + 1)?;
-        self.block_read(io.store, r.block, r.offset, &mut output[..r.len])?;
+        self.block_read(
+            io.store,
+            r.block,
+            r.offset,
+            &mut output[..r.len],
+            WorkClass::Render,
+        )?;
         Ok(r.len)
     }
     pub fn seek(

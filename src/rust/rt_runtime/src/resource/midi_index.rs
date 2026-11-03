@@ -361,6 +361,22 @@ impl ResourceStore {
             .active
             .ok_or(Error::InvalidState)?;
         let version = get(&self.versions, source.slot, source.generation)?;
+        if let Some(take) = version.shared_midi {
+            if take.store.scope != self.scope {
+                return Err(Error::InvalidId);
+            }
+            let midi = self
+                .midi_stores
+                .get(take.store.slot)
+                .and_then(Option::as_ref)
+                .ok_or(Error::InvalidId)?;
+            let info = midi.info(midi.take_index(take.take)?)?;
+            return Ok(MidiIndexInfo {
+                events: info.events as u64,
+                checkpoints: info.checkpoints,
+                replay_events: shared_midi::EVENTS_PER_CHUNK,
+            });
+        }
         self.midi_indexes
             .info(version.midi.ok_or(Error::InvalidState)?, source)
     }

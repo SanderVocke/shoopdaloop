@@ -64,7 +64,8 @@ impl MidiStore {
         }
         let touched = input.len() + 1;
         let needed = bytes.div_ceil(self.page_bytes) + input.len() + 1;
-        if self.reserved < needed
+        if self.pages.available_leases() < needed
+            || self.reserved < needed
             || self.free_chunks.len() < touched
             || self.free_nodes.len() < touched * (self.depth + 1)
         {
