@@ -407,7 +407,8 @@ review request was available; absence of review is not approval.
 The [A1–A11 index](acceptance.md) and [compact CI record](evidence/ci-929ed71b.json)
 retain exact source/run provenance. The completion follow-up retains production
 sources; its current-head CI is linked from the index and must pass
-before delivery. The 16 parity gaps remain OPEN, and physical hardware limitations
+before delivery. The 16 parity gaps were OPEN at that checkpoint; subsequent
+restorations are recorded in the feature parity ledger. Physical hardware limitations
 and the selected Miri scope remain explicit.
 
 ## Recording budget follow-up

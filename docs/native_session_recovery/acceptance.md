@@ -11,7 +11,8 @@ fixture's media budget;
 are required before delivery.
 The [plan](../../PLAN_NATIVE_SESSION_RECOVERY.md) retains the fixed A1–A11 contract.
 The [feature parity ledger](feature-parity.md) is the mandatory next-workstream
-handoff; all 16 gaps remain OPEN. A recovery pass does not close a parity gap.
+handoff; all 16 gaps were OPEN at that checkpoint. Subsequent restoration status
+is recorded in the ledger. A recovery pass does not close a parity gap.
 
 ## Acceptance evidence index
 

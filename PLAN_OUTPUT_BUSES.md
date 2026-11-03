@@ -2,7 +2,9 @@
 
 ## Status and delivery
 
-Implementation in progress on `feat/output-bus-parity`. Written under
+Completed on `feat/output-bus-parity`, delivered in
+[PR #926](https://github.com/SanderVocke/shoopdaloop/pull/926) into
+`feat/backend-replacement`. Written under
 [write_plan.md](.agents/prompts/write_plan.md) for P13 in the
 [feature parity ledger](docs/native_session_recovery/feature-parity.md).
 
@@ -148,7 +150,7 @@ Track/loop slots, channel bounds, media pages and wire record bounds are unchang
 Limits travel through native host settings, worklet configuration and service
 snapshots; old saved pool settings receive the new defaults.
 
-Implementation checkpoint: warning-denying workspace build, all-target and
+Completion checkpoint: warning-denying workspace build, all-target and
 no-default-feature service/adapter checks pass. The complete native suite passed
 2,543 tests (four optional/platform skips), including admitted creation/control/
 removal recovery. Hosted and single-file browser multi-bus/media/zero-bus workflows
@@ -160,8 +162,21 @@ nightly-2026-05-04, seed 0. Dependency boundaries pass for all four targets.
 records its source and hashed log; subsequent native meter assertions also pass.
 [Acceptance evidence](docs/native_session_recovery/evidence/output-buses.md)
 maps criteria to executable coverage. [PR #926](https://github.com/SanderVocke/shoopdaloop/pull/926)
-targets the integration branch. Final platform CI/delivery remain pending; P13
-is still open until those gates pass.
+targets the integration branch. Runtime head
+`884f1b90441f7e304cda3e4bf7c57c14e1f6ec7b` passes the complete
+[platform matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645542902),
+[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645542848),
+[documentation](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645542840)
+and both Codecov checks. All eight debug/release platform jobs, coverage and
+bare-metal checks pass. Hosted and isolated single-file optimized builds also
+pass the 33 MiB media workflow through zero-bus save/load, add and New Session.
+P13 is complete within negotiated replacement limits; P08 remains open. No
+automated code-review submission was provided. The coverage report was reviewed
+and passes the configured patch floor (94.87% versus 80%).
+
+The completion commit changes documentation only. Its final-head checks are
+tracked on the [PR checks page](https://github.com/SanderVocke/shoopdaloop/pull/926/checks)
+and must pass before handoff. The PR remains unmerged.
 
 Final review found a multi-target Lua balance validation gap: a stereo target
 could be queued before a later non-stereo target refused. Prevalidate every
@@ -315,7 +330,7 @@ documentation links and tracing/dependency boundary checks.
   create another bus; then New Session. Verify audio, meters, identities, order,
   missing-port intent and operation results. Repeat UI loss at admitted mutation
   and replacement boundaries. Keep unrelated core looping/media workflows green.
-- [ ] Run reference bus fixtures plus new production tests and the full applicable
+- [x] Run reference bus fixtures plus new production tests and the full applicable
   Linux/macOS/Windows and Wasm/browser matrix. Follow `.agents/info/build.md` for
   environment selection and `.agents/info/test.md` for gates:
   `cargo fmt --all -- --check`, a workspace build with `RUSTFLAGS="-D warnings"`,
@@ -323,10 +338,10 @@ documentation links and tracing/dependency boundary checks.
   `scripts/check_shoop_test_usage.py`, `scripts/check_feature_parity.py`, closed
   tracing inventory, RT dependency boundaries, and built-worklet artifact checks.
   Record focused Miri results and any unavailable external hardware separately.
-- [ ] Record acceptance evidence and final source heads; mark P13 complete only
+- [x] Record acceptance evidence and final source heads; mark P13 complete only
   when every criterion above is met within negotiated replacement limits. Update
   ledger summary counts without claiming bus FX or unrelated parity completion.
-- [ ] Commit milestones, push the implementation branch and create a reviewable
+- [x] Commit milestones, push the implementation branch and create a reviewable
   PR targeting `feat/backend-replacement`. Ensure CI is green on the final head.
   Check for automated review after pushes; if it arrives, address actionable
   feedback and repeat review until approval, rerunning checks affected by fixes.

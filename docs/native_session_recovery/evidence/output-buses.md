@@ -45,8 +45,8 @@ tests and production dummy-host processes. The complete nextest suite passed
 2,543 tests with four optional/platform skips, including the admitted bus mutation
 recovery expansion, multi-target Lua balance prevalidation and delayed slot
 reclamation after confirmed bus removal. Runtime validation is recorded at
-`2119e4ed` (the additional independent-meter assertions pass in the focused
-guarded engine test).
+`884f1b90441f7e304cda3e4bf7c57c14e1f6ec7b`, including the independent-meter
+assertions and confirmed-revision native recovery checks.
 The refusal fixture queues a new bus while an old bus removal refuses and verifies
 that both surviving buses remain usable. Formatting, test-attribute usage, parity inventory,
 closed tracing inventory and all four target dependency-boundary checks pass;
@@ -71,11 +71,23 @@ coverage, not a claim that the entire native test suite ran under Miri.
 
 The actual hosted and single-file Chromium AudioWorklet canaries passed at 900×600
 with fake microphone input and zero xruns when run without competing native test
-loads. Built-worklet and codec-worker artifact contracts both pass. Final-head CI
-results will be recorded before closing P13. Local device tests do not claim
+loads. Both optimized forms also pass the 33 MiB WAV/66 MiB canonical-media
+workflow, exact resave comparison and subsequent zero-bus save/load/add/New Session.
+Built-worklet and codec-worker artifact contracts both pass. Local device tests do not claim
 physical hardware coverage. Direct `file:`
 navigation is blocked by this environment's browser policy; the single-file
 canary therefore serves a directory containing only its embedded HTML.
+
+The [complete runtime matrix](https://github.com/SanderVocke/shoopdaloop/actions/runs/41645542902)
+is green on `884f1b90`: all eight Linux/macOS/Windows/web debug and release jobs,
+coverage and bare-metal checks pass. Chromium hosted/direct-file and Firefox
+checks pass in actual CI; the required Node Wasm suite passes. CodeQL,
+documentation and both Codecov checks pass too. P13 is complete with the explicit
+capacity qualification; the other fifteen rows, including P08, remain open. No automated
+code-review submission was provided; the coverage report passes the configured
+80% patch floor at 94.87%. The documentation-only completion commit's checks are
+available on the [PR](https://github.com/SanderVocke/shoopdaloop/pull/926/checks)
+and must pass before handoff.
 
 Native shared-memory delivery retains its existing single-attachment contract;
 reattachment uses sockets. Shared-memory reattachment, simultaneous clients,
