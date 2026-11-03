@@ -71,7 +71,9 @@ python3 platforms/zynq7000/build.py --fetch --app host --usb --credential-file /
 ```
 
 Outputs are `work/zynq/build/host-usb.{elf,map,json}` and
-`host-usb.licenses.txt`. The manifest records source pins, local patch hashes,
+`host-usb.licenses.txt`. Direct-load ELF files embed the supplied credential and
+must be kept private; share the generic deployment firmware and public evidence.
+The manifest records source pins, local patch hashes,
 source-input hash, tool versions and ELF hash. `--deployment --usb` selects the
 existing signed SD/network deployment path and produces `host-usb-deployment.elf`.
 Omitting `--usb` retains the original dummy-MIDI fixtures. Do not run another USB
@@ -177,8 +179,9 @@ Evidence is under `work/zynq/usb-suite/`, with portable results in
 `work/zynq/usb-portable/`. Per-case results retain firmware/emulator hashes,
 launch/QMP topology, independent raw USB traffic, serial diagnostics and memory
 readings. The read-only input/completion counters synchronize tests after actual
-transfers; they never inject into engine MIDI buffers. Test credentials, SD images,
-keys and unredacted Ethernet captures are private and excluded from CI artifacts.
+transfers; they never inject into engine MIDI buffers. Direct-load ELF files, test credential inputs, SD images, keys and unredacted
+Ethernet captures are private and excluded from USB CI artifacts. Public ELF
+evidence uses the generic deployment images, which contain no credential.
 
 The isolated QEMU 10.0.13 build adds a deterministic USB-MIDI fixture and the
 ChipIdea port-speed/ULPI register behavior needed to run the production driver.

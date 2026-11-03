@@ -198,7 +198,6 @@ jobs:
           name: zynq-usb-midi-evidence
           path: |
             platforms/zynq7000/pins.json
-            work/zynq/build/host-usb.elf
             work/zynq/build/host-usb.map
             work/zynq/build/host-usb.json
             work/zynq/qemu-usb-build/shoop-build.json
