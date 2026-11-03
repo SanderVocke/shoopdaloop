@@ -2,7 +2,7 @@
 
 ## Status and delivery
 
-Implementation complete; final delivery checks are in progress on the existing PR. Written using
+Completed on the existing PR; it remains open and unmerged. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Continue on `feat/host-manager` and update the existing
@@ -220,7 +220,7 @@ replacement. Show an unresponsive recognized host even when description fails.
 
 Depends on Stages 0–4.
 
-- [ ] Run the full native workflow on Linux, macOS and Windows using built and
+- [x] Run the full native workflow on Linux, macOS and Windows using built and
   packaged companions: discover CLI hosts; configure/start from the manager; Open UI;
   record/play; exit and reopen the manager; verify uninterrupted state; close the UI
   and reattach where supported; graceful Stop; unresponsive-process Force stop.
@@ -251,13 +251,13 @@ Depends on Stages 0–4.
 - [x] Commit each completed milestone, push to `feat/host-manager`, and update this
   existing PR's title/body around the final behavior, screenshots and evidence.
   Recheck the target branch for updates and validate any resulting merge.
-- [ ] Work through failures until required/relevant checks, including Codecov, pass
+- [x] Work through failures until required/relevant checks, including Codecov, pass
   on the final head. Inspect logs/artifacts, make targeted fixes and rerun the checks
   they affect; queued/running jobs are not evidence of a green final result.
 - [x] Check incoming automated reviews after pushes. Repeatedly address justified
   findings and recheck until participating automated reviewers approve. If no review
   is provided, record that fact. Do not merge the PR without a separate instruction.
-- [ ] Map each immutable acceptance criterion to final evidence and update this plan's
+- [x] Map each immutable acceptance criterion to final evidence and update this plan's
   checkboxes and status. Record any remaining blocker explicitly.
 
 ## Execution contract
@@ -418,6 +418,22 @@ Depends on Stages 0–4.
   optional capacity settings. Discovery and no-output fixtures use the new default
   bus capacities. The merged warning-denying workspace build and all 2,578 workspace
   tests pass (4 intentional skips), including the unchanged runtime stress fixture.
+- Merged candidate `6f8ea03f` also passes all 2,578 instrumented tests; measured
+  patch coverage is 3,408/3,792 (89.87%) against the new base `e68b15ac`.
+  The no-default build and four-target dependency-boundary audit pass. Native GUI
+  verification started a host with four buses/six bus channels, terminated/reopened
+  the manager and rediscovered the same PID/start/instance, attached its UI through
+  the startup pipe, closed only the UI and confirmed it was reaped, then completed
+  graceful Stop. A fresh manager showed no hosts afterward; all four isolated XDG
+  directories remained empty. Refreshed New host/empty captures and a ninth native
+  capacity screenshot accompany the completion record.
+- The merged candidate's six desktop CI jobs pass (Linux/macOS/Windows,
+  debug/release). Coverage includes native process fixtures, headless manager
+  forms/actions, real detached siblings and extracted-companion socket/shared/LAN
+  engine and persistence canaries. Interactive GUI checks and all nine captures
+  were performed on Linux; the other desktop platforms use their native CI tests.
+  Windows release's original exit-observation failure is fixed without weakening
+  its assertions; both ordinary and optimized early Windows fixtures pass.
 
 ## Acceptance evidence map
 
@@ -430,4 +446,31 @@ Depends on Stages 0–4.
 | 5. Host lifetime | Real manager termination/reopening preserves PID/start/instance; recording and socket reattachment tests use fresh manager models. Child reapers wait without controlling ready-host lifetime. |
 | 6. Advanced profiles | Advanced menu screenshots and form/action tests; endpoint-only schema excludes runtime IDs; no automatic load/save. Manual aliases deduplicate with local discoveries. |
 | 7. Correct termination | Real child identity/termination fixtures, unresponsive-host tests, local Force stop dialog/action and native GUI verification. Changed identities and manual remote PIDs refuse OS termination; graceful Stop retains live-controller protection. |
-| 8. Complete delivery | Eight native screenshots, current app/host/network/architecture docs and PR #916 metadata. Final CI and automated-review results are recorded in the completion entry below once verified. |
+| 8. Complete delivery | Nine native screenshots, current app/host/network/architecture docs and PR #916 metadata. Final CI, review results and source provenance are recorded below. |
+
+## Completion record — 2026-11-03
+
+- Final implementation: `6f8ea03f0c93c3a8483a17c2793d010af63c3d57`, including
+  integration of `e68b15ac551ff1899554311ddfe2d5e4dda1d3ea`. A final fetch confirmed
+  that integration revision is still the target head.
+- [Build and Test run 41660892573](https://github.com/SanderVocke/shoopdaloop/actions/runs/41660892573)
+  passes all eight debug/release desktop/web jobs, the three native inspection jobs
+  (including optimized Windows lifetime fixtures), Rust coverage and bare-metal
+  checks. Both Codecov project and patch checks pass with the 80% patch floor intact.
+- [CodeQL run 41660892918](https://github.com/SanderVocke/shoopdaloop/actions/runs/41660892918)
+  and [Docs run 41660893534](https://github.com/SanderVocke/shoopdaloop/actions/runs/41660893534)
+  pass. Both earlier automated findings are resolved; no unresolved review threads
+  or separate general automated-review verdict are present.
+- Local warning-denying workspace/no-default builds, all 2,578 ordinary and
+  instrumented tests (4 intentional skips), formatting, closed tracing inventory,
+  test-attribute policy and four-target dependency boundaries pass. Local patch
+  coverage is 89.87% against the final integration base. The native workflow and
+  isolated-directory checks above verify discovery, detached lifetime, keyless
+  attachment, explicit outputs and termination behavior.
+- PR #916 contains the implementation and documentation. Nine native captures
+  include default creation, optional capacity settings, discovery/status, Advanced,
+  connected UI, audio fallback, logs, Force stop and the empty manager.
+- The completion follow-up changes only this record and native captures. Its
+  [final-head checks](https://github.com/SanderVocke/shoopdaloop/pull/916/checks)
+  are rechecked before delivery. There are no remaining implementation blockers;
+  merging the PR requires a separate instruction.
