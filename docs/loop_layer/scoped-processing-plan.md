@@ -1,8 +1,7 @@
 # Scoped runtime execution and shared loop callback plans
 
-Status: In progress. Scoped execution, shared callback media, both real-media
-canaries and guarded adversarial cases are implemented. Complete native,
-browser/worklet and delivery gates are underway. See the
+Status: Implementation and local validation complete. Final CI/review closure on
+[PR #929](https://github.com/SanderVocke/shoopdaloop/pull/929) is underway. See the
 [API and reproduction guide](scoped-processing.md) and
 [execution contract](scoped-processing-contract.md).
 
@@ -274,18 +273,18 @@ the full worst-case allowance. The example reports 8,704 plan bytes per owner fo
 
 Depends on Stages 0-4.
 
-- [ ] Provide runnable examples for both paths and reproduce them from a clean
+- [x] Provide runnable examples for both paths and reproduce them from a clean
       checkout. Record source/commands, independent audio/MIDI checks, FX call
       sizes, timing advancement, storage and dense-case work in a new evidence
       directory. Any elapsed-time measurements are descriptive, not fragile CI
       timing thresholds or physical-device latency guarantees.
-- [ ] Run repository formatting, Rust test policy, warning-denying workspace
+- [x] Run repository formatting, Rust test policy, warning-denying workspace
       build, focused debug/release suites, complete native suite, tracing and
       dependency/boundary checks using `.agents/info/build.md` and `test.md`.
-- [ ] Build runtime/loop libraries for `armv7a-none-eabi`,
+- [x] Build runtime/loop libraries for `armv7a-none-eabi`,
       `aarch64-unknown-none`, `thumbv7em-none-eabihf` and `wasm32-unknown-unknown`;
       run affected engine/service/host builds and existing browser/worklet checks.
-- [ ] Add correctness-focused CI coverage for both canaries, including real media,
+- [x] Add correctness-focused CI coverage for both canaries, including real media,
       MIDI and full-block invocation counts. Retain existing native/browser and
       bare-metal gates and coverage thresholds.
 - [x] Document the resulting APIs, limits, event/activation matrix and migration
@@ -299,6 +298,27 @@ Depends on Stages 0-4.
       evidence here without inferring human approval from automated checks.
 - [ ] Mark this plan complete only after its acceptance criteria and delivery
       gates pass. Production FX integration remains a subsequent milestone.
+
+## Delivery evidence and status
+
+Local evidence is archived in
+[`evidence/scoped-processing-2026-11-03/`](evidence/scoped-processing-2026-11-03/README.md).
+Source `ea769ccc51814da43ca977d1d2060230b85a7edb` reproduces the example and all
+15 focused debug/release cases in a clean detached checkout. Native workspace:
+2,558 passed, 4 skipped. Node WebAssembly: 202 runtime and 176 loop tests passed.
+Both independent host replays passed in debug/release. Portable targets,
+warning build, tracing/boundary checks, browser/worklet artifacts and the browser
+bus/persistence workflow passed; the browser reported zero xruns.
+
+Final inspection fixed cleanup-error reporting (`62e993d0`). The independent
+runtime host oracle caught an extra validation step on graphs without readiness
+edges; `38d67376` restores the unchanged allowance/wire diagnostics. Initial CI
+Linux job `126109736387` showed that same failure at source `f46d6412`; both host
+replays pass with the correction. Final CI must run on the updated branch.
+
+Automated review and final CI conclusions will be recorded here after completion.
+No human review or inline review discussion has been received so far; this does
+not imply human approval. Production FX capabilities remain disabled.
 
 ## Execution contract
 

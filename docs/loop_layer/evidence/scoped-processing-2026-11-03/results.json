@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "source_revision": "ea769ccc51814da43ca977d1d2060230b85a7edb",
+  "base_revision": "e68b15ac551ff1899554311ddfe2d5e4dda1d3ea",
+  "branch": "feat/scoped-loop-processing",
+  "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/929",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "rust": "1.99.1",
+  "node": "22.22.2",
+  "wasm_pack": "0.15.0",
+  "wasm_bindgen": "0.2.127",
+  "chromium": "154.0.8037.57",
+  "native": {
+    "passed": 2558,
+    "skipped": 4
+  },
+  "focused": {
+    "runtime": 5,
+    "loops": 10,
+    "profiles": [
+      "debug",
+      "release"
+    ],
+    "clean_checkout": true
+  },
+  "wasm_node": {
+    "runtime": 202,
+    "loops": 176,
+    "failed": 0
+  },
+  "portable_targets": [
+    "armv7a-none-eabi",
+    "aarch64-unknown-none",
+    "thumbv7em-none-eabihf",
+    "wasm32-unknown-unknown"
+  ],
+  "dense": {
+    "callback_frames": 32,
+    "timing_intervals": 32,
+    "dsp_invocations": 1,
+    "plan_spans_per_owner": 32,
+    "plan_bytes_per_owner": 8704,
+    "callback_heap_operations": 0
+  },
+  "browser": {
+    "workflow": "new engine including bus persistence/zero/recreation",
+    "passed": true,
+    "reported_xruns": 0
+  },
+  "measurement_scope": "Correctness and bounded resource accounting; no physical-device latency or deadline certification.",
+  "commands": [
+    "cargo run --locked -p shoop_loops --example scoped_processing",
+    "cargo test --locked -p rt_runtime --test scoped_processing -p shoop_loops --test callback_runtime",
+    "cargo test --locked --release -p rt_runtime --test scoped_processing -p shoop_loops --test callback_runtime",
+    "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci",
+    "python3 scripts/run_wasm_tests.py --profile dev --runtime node --package rt_runtime --package shoop_loops --trace failure",
+    "python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug",
+    "python3 scripts/run_rt_runtime_hosts.py --native-only --profile release",
+    "python3 scripts/run_loops_hosts.py --native-only --profile debug",
+    "python3 scripts/run_loops_hosts.py --native-only --profile release",
+    "trunk build (src/rust/shoopdaloop)",
+    "NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs (src/rust/shoopdaloop)"
+  ],
+  "archive_sha256": "e6beb8a1202842751cc94521b33608a6f53b67736180fd3e4cb9948200ece7fc",
+  "notes": [
+    "The complete workspace and Wasm runs exercise the final production tree; the source commit additionally tightens MIDI-cut assertions and the example. The detached clean debug/release runs verify that complete source revision.",
+    "No earlier benchmark archive or parity completion record was modified."
+  ]
+}
