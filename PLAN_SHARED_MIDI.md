@@ -325,23 +325,43 @@ runtime, loop and codec suites pass. The public contract is documented in
 
 ### M6 — Loop, mixed-media and persistence black-box proof
 
-- [ ] Exercise real resolver/MIDI capture/render operations with two overlapping
+- [x] Exercise real resolver/MIDI capture/render operations with two overlapping
   grabs, independent edits, original/intermediate exports and continuing history.
   Compare whole, single-frame and irregular host partitions at matching cuts.
-- [ ] Exercise `NodePairSnapshot`, `Adopt`/`Select`, playback/export and complete
+- [x] Exercise `NodePairSnapshot`, `Adopt`/`Select`, playback/export and complete
   `ConfigurationReplace` with both grabbed and imported shared MIDI. Include
   shared audio and MIDI at one cut, with initial state matching those exact roots.
-- [ ] Round-trip original and edited exports through session and exact-MIDI
+- [x] Round-trip original and edited exports through session and exact-MIDI
   codecs, reload, fork and edit again. Check existing Standard MIDI conversion
   behavior separately. Preserve source originals exactly; use the established
   initial-state representation rather than inventing normalization to hide errors.
-- [ ] Cover output exhaustion/recovery, stopped/resumed playback, control/upload
+- [x] Cover output exhaustion/recovery, stopped/resumed playback, control/upload
   traffic, saturation and complete teardown under heap guards. Capture failures
   must not undo already observed input or authorize callback replay.
 
 Verification: independent packet/state and audio oracles agree on events, timing,
 restoration order and revision isolation. Mixed exports stay coherent across
 replacement, removal and reload. Commit the end-to-end functionality milestone.
+
+M6 evidence: a guarded resolver fixture compares complete packet/restoration and
+audio output against independent linear/splice oracles across whole, one-frame and
+irregular callbacks at fixed preparation/publication cuts. It covers overlapping
+grabs, delayed edits, ongoing capture, sixteen channels, pedals/controllers,
+resets, simultaneous originals, multi-page SysEx, wraps and stop/resume seeks.
+Audio/MIDI roots share the same cut; original/intermediate exports survive.
+Production node-pair validation, Adopt/Select, MIDI-initial queries, exports and
+ConfigurationReplace now run with both loaded and grabbed shared MIDI alongside
+shared audio. The graph overflow fixture repeats with shared MIDI and verifies
+required audio, downstream reset and media-state advancement. Capture refusal
+retains observed input and forces a truthful history segment.
+
+Mixed session and exact-MIDI round trips preserve packet bytes/order/time,
+duration and supported initial-state restoration, then reload into indexed bases,
+fork and edit again without changing the base. Original/intermediate/final exports
+remain pinned through source removal. SMF conversion is checked separately: its
+existing quantization warning remains, and its existing conversion drops realtime
+system-reset packets; exact/session formats retain those resets. Focused runtime,
+loop and codec suites pass, with complete guarded teardown.
 
 ### M7 — Final validation, documentation and delivery
 

@@ -598,3 +598,6 @@ fn validate_initials(image: &image::Image) -> Result<()> {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod shared_midi_tests;

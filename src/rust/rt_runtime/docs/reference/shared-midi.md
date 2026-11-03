@@ -107,3 +107,21 @@ After all owners and transactions settle, cleanup retires history and returns
 the page reservation. Prepared objects remain allocated until host teardown.
 These contracts establish bounded library operations, not physical-device
 deadline certification or application P04/P05 behavior.
+
+## Loop and persistence proof
+
+The resolver fixture exercises ordinary MIDI/audio renderers and MIDI capture at
+a common history cut across whole, one-frame and irregular callbacks. It checks
+raw splice contents and projected state independently, schedules preparation with
+explicit per-step quotas, and commits only at fixed musical cuts. Existing
+node-pair, Adopt/Select, export/MIDI-initial and ConfigurationReplace paths also
+exercise loaded and grabbed shared MIDI. Output exhaustion uses the existing
+runtime recovery path while required audio and media-state advancement continue.
+
+Session and exact-MIDI fixtures retain original/intermediate/final exports, save
+logical packets and supported restoration state, reload indexed bases, and edit
+those bases independently. Mixed audio/MIDI payloads survive removal and reload
+without storage identities entering file formats. Standard MIDI keeps the current
+conversion contract: the existing warning recommends exact MIDI for full state,
+timing is quantized, and realtime system-reset packets are dropped by conversion.
+Application P04/P05 mode flags and parity gaps remain unchanged.

@@ -27,7 +27,7 @@ fn prepared(media: bool, journal: usize, reverse: bool, packets: usize, spare: b
     h
 }
 fn prepared_shared(backing: SharedInput) -> Harness {
-    let mut h = Harness::with_audio_backing(
+    let mut h = Harness::with_shared_backing(
         true,
         0,
         false,
@@ -249,7 +249,12 @@ fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_valida
 
 #[shoop_test]
 fn complete_replacement_and_old_exports_accept_cow_loaded_audio_and_grabbed_history() {
-    for backing in [SharedInput::Loaded, SharedInput::History] {
+    for backing in [
+        SharedInput::Loaded,
+        SharedInput::History,
+        SharedInput::MixedLoaded,
+        SharedInput::MixedHistory,
+    ] {
         complete_replacement_case(prepared_shared(backing));
     }
 }

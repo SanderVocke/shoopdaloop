@@ -9,7 +9,12 @@ fn call(h: &mut Harness, operation: Operation) -> Reply {
 
 #[shoop_test]
 fn full_loop_adopt_select_and_export_use_immutable_shared_snapshots() {
-    for backing in [SharedInput::Loaded, SharedInput::History] {
+    for backing in [
+        SharedInput::Loaded,
+        SharedInput::History,
+        SharedInput::MixedLoaded,
+        SharedInput::MixedHistory,
+    ] {
         let mut h = prepared_shared(backing);
         let sources = source_pair(&mut h);
         let Reply::Adopted { media } = call(
@@ -54,6 +59,20 @@ fn full_loop_adopt_select_and_export_use_immutable_shared_snapshots() {
             .flat_map(f32::to_le_bytes)
             .collect::<Vec<_>>();
         assert_eq!(h.read_export(export, false, expected.len()), expected);
+        assert_eq!(
+            h.read_export(export, true, encoded_midi().len()),
+            encoded_midi()
+        );
+        for channel in 0..16 {
+            assert_eq!(
+                call(&mut h, Operation::MidiInitial { export, channel }),
+                Reply::MidiInitial {
+                    channel,
+                    state: *MidiState::default().channel(channel).unwrap(),
+                    system_reset_seen: false
+                }
+            );
+        }
         h.finish();
     }
 }

@@ -215,6 +215,19 @@ pub struct MidiCapture {
     state: Box<MidiState>,
 }
 impl MidiCapture {
+    /// Observe input before storing it. On a storage refusal the tracker stays
+    /// advanced; resume history with an explicit discontinuity and this state.
+    pub fn append_history(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        history: rt_runtime::resource::MidiStoreId,
+        frame: rt_runtime::Frame,
+        frames: usize,
+        input: &MidiBuffer,
+    ) -> Result<(), Error> {
+        self.process(io, input, frames, None)?;
+        io.append_midi_history(history, frame, frames, input)
+    }
     pub fn prepare(max_frames: usize, max_events: usize, max_bytes: usize) -> Result<Self, Error> {
         dimensions(max_frames, max_bytes)?;
         max_events

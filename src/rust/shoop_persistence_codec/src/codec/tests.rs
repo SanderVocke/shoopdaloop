@@ -1,6 +1,6 @@
 use super::*;
 use shoop_wasm_test_support::shoop_test;
-fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
+pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {
         object: Some(object),
         frames,
@@ -11,7 +11,7 @@ fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
         recording_started_at: None,
     }
 }
-fn content() -> image::Loop {
+pub(super) fn content() -> image::Loop {
     image::Loop {
         id: LoopId::from_raw(1),
         name: "User take/?".into(),
@@ -21,6 +21,64 @@ fn content() -> image::Loop {
         balance: 0.,
         audio: Vec::new(),
         midi: Vec::new(),
+    }
+}
+
+pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image::Session {
+    image::Session {
+        sample_rate: 48000,
+        global: GlobalControlState::default(),
+        tracks: vec![image::Track {
+            id: TrackId::from_raw(1),
+            name: "Track".into(),
+            port_name_base: "track".into(),
+            sync: false,
+            audio_channels: channels,
+            midi,
+            ports: vec![],
+            loops: vec![content.clone()],
+            controls: image::Controls {
+                input_gain_db: 0.,
+                input_balance: 0.,
+                monitoring: false,
+                output_gain_db: 0.,
+                output_balance: 0.,
+                muted: false,
+            },
+        }],
+        master: image::Master {
+            id: BusId::from_raw(1),
+            name: "Master".into(),
+            gain_db: 0.,
+            balance: 0.,
+            muted: false,
+            channels: ["Left", "Right"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, label)| image::MasterChannel {
+                    id: BusChannelId::from_raw(index as u64 + 1),
+                    label: label.into(),
+                    port: image::Port {
+                        state: ApplicationPortState {
+                            id: PortId::from_raw(index as u64 + 1),
+                            owner: ApplicationPortOwner::Bus {
+                                bus_id: BusId::from_raw(1),
+                            },
+                            name: label.into(),
+                            data_type: PortDataType::Audio,
+                            direction: PortDirection::Output,
+                            role: PortRole::AudioOutput,
+                            connection_policy: ConnectionPolicy::OwnerManaged,
+                        },
+                        external_connections: vec![],
+                    },
+                })
+                .collect(),
+        },
+        global_ports: vec![],
+        routes: vec![],
+        selected: vec![],
+        target: None,
     }
 }
 
@@ -96,61 +154,7 @@ fn session_and_audio_files_round_trip_pinned_shared_audio_then_reload_into_edita
                 ))
             })
             .collect::<Vec<_>>();
-        let session = image::Session {
-            sample_rate: 48000,
-            global: GlobalControlState::default(),
-            tracks: vec![image::Track {
-                id: TrackId::from_raw(1),
-                name: "Track".into(),
-                port_name_base: "track".into(),
-                sync: false,
-                audio_channels: 2,
-                midi: false,
-                ports: vec![],
-                loops: vec![content.clone()],
-                controls: image::Controls {
-                    input_gain_db: 0.,
-                    input_balance: 0.,
-                    monitoring: false,
-                    output_gain_db: 0.,
-                    output_balance: 0.,
-                    muted: false,
-                },
-            }],
-            master: image::Master {
-                id: BusId::from_raw(1),
-                name: "Master".into(),
-                gain_db: 0.,
-                balance: 0.,
-                muted: false,
-                channels: ["Left", "Right"]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, label)| image::MasterChannel {
-                        id: BusChannelId::from_raw(index as u64 + 1),
-                        label: label.into(),
-                        port: image::Port {
-                            state: ApplicationPortState {
-                                id: PortId::from_raw(index as u64 + 1),
-                                owner: ApplicationPortOwner::Bus {
-                                    bus_id: BusId::from_raw(1),
-                                },
-                                name: label.into(),
-                                data_type: PortDataType::Audio,
-                                direction: PortDirection::Output,
-                                role: PortRole::AudioOutput,
-                                connection_policy: ConnectionPolicy::OwnerManaged,
-                            },
-                            external_connections: vec![],
-                        },
-                    })
-                    .collect(),
-            },
-            global_ports: vec![],
-            routes: vec![],
-            selected: vec![],
-            target: None,
-        };
+        let session = session(content.clone(), 2, false);
         let captured = Arc::new(image::Image {
             manifest: image::Manifest::Session(session),
             payloads: payloads.clone(),

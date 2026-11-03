@@ -370,3 +370,5 @@ src/rust/rt_runtime/src/resource/shared_midi/edit.rs,generic_realtime_library,ex
 src/rust/rt_runtime/src/resource/midi_backing.rs,generic_realtime_library,excluded,Shared MIDI backing behind resource authority and bounded fair reclamation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/midi_backing/tests.rs,test_support,excluded,Guarded ordinary snapshot and MIDI cursor interoperability fixtures; no production boundary.
 src/rust/rt_runtime/src/resource/shared_midi/import.rs,generic_realtime_library,excluded,Bounded descriptor and checkpoint import retaining immutable indexed MIDI bases; no host tracing dependency.
+src/rust/shoop_loops/tests/shared_midi.rs,test_support,excluded,Guarded resolver and mixed-media packet state oracles; no production boundary.
+src/rust/shoop_persistence_codec/src/codec/shared_midi_tests.rs,test_support,excluded,Shared MIDI session and file round trips through ordinary resource exports; no production boundary.
