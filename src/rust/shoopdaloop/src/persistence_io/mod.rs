@@ -169,6 +169,7 @@ impl Provider {
     fn work(&mut self, work: Work) -> Result<()> {
         let kind = match &work {
             Work::Assemble(_) => "assemble",
+            Work::GenerateClick { .. } => "generate_click",
             Work::Decode { .. } => "decode",
             Work::Resample { .. } => "resample",
             Work::Prepare { .. } => "prepare",
@@ -251,6 +252,13 @@ impl Provider {
                 affected_media: "Session audio, MIDI and frame timing".into(),
             });
             self.phase = Phase::Decoded(decoded);
+        } else if task.view.kind == IoTaskKind::GenerateClickTrack {
+            let mapping = vec![0; task.audio_channels];
+            self.work(Work::Prepare {
+                decoded,
+                mapping,
+                update_length: true,
+            })?;
         } else if let Some(labels) = decoded.audio_labels() {
             ensure!(!labels.is_empty(), "the audio file has no channels");
             task.view.status = IoTaskStatus::AwaitingChannelMapping;
@@ -350,6 +358,15 @@ impl Provider {
                 self.start(state, kind, Some(loop_id))?; self.task.as_mut().unwrap().update_length = update_loop_length;
                 self.work(Work::Decode { kind, bytes, rate: state.status.sample_rate })?;
             }
+            AppIntent::GenerateClickTrack { loop_id, request } => {
+                ensure!(!state.tracks.iter().flat_map(|t| &t.loops).any(|l| matches!(l.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet)), "click generation is unavailable while recording or replacing");
+                let entry = state.tracks.iter().flat_map(|t| &t.loops).find(|l| l.id == loop_id).ok_or_else(|| anyhow!("the target loop no longer exists"))?;
+                ensure!(entry.composite_kind == CompositeKind::None, "click tracks require a primitive loop");
+                let kind = match request.kind { ClickTrackKind::Audio => IoTaskKind::ImportLoopAudio, ClickTrackKind::Midi => IoTaskKind::ImportLoopMidi };
+                self.start(state, kind, Some(loop_id))?;
+                self.task.as_mut().unwrap().view.kind = IoTaskKind::GenerateClickTrack;
+                self.work(Work::GenerateClick { request, rate: state.status.sample_rate })?;
+            }
             AppIntent::CompleteIoInput { task_id, bytes, .. } if self.matches(task_id) && matches!(self.phase, Phase::Input) => {
                 self.current(state)?; let t = self.task.as_ref().unwrap(); self.work(Work::Decode { kind: t.view.kind, bytes, rate: t.rate })?;
             }
@@ -382,6 +399,20 @@ impl Provider {
     }
 }
 impl PersistenceIo for Provider {
+    fn click_track(&self) -> ClickTrackState {
+        ClickTrackState {
+            sounds: shoop_session::click_sound_ids()
+                .map(|id| ClickSoundDescriptor {
+                    id: id.into(),
+                    name: id.into(),
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            max_click_count: shoop_session::MAX_CLICK_TRACK_CLICKS,
+            max_output_frames: shoop_session::MAX_CLICK_TRACK_FRAMES,
+            ..Default::default()
+        }
+    }
     fn handles(&self, intent: &AppIntent) -> bool {
         if matches!(intent, AppIntent::FailIoTask { task_id, .. } if task_id.raw() < (1 << 32)) {
             return false;
@@ -401,6 +432,7 @@ impl PersistenceIo for Provider {
                 | AppIntent::RequestLoopMidiImportPicker { .. }
                 | AppIntent::ImportLoopAudioBytes { .. }
                 | AppIntent::ImportLoopMidiBytes { .. }
+                | AppIntent::GenerateClickTrack { .. }
                 | AppIntent::ConfirmSampleRateConversion { .. }
                 | AppIntent::ConfirmAudioChannelMapping { .. }
                 | AppIntent::ConfirmAudioChannelSelection { .. }
@@ -447,6 +479,7 @@ impl PersistenceIo for Provider {
                 | AppIntent::RequestLoopMidiImportPicker { .. }
                 | AppIntent::ImportLoopAudioBytes { .. }
                 | AppIntent::ImportLoopMidiBytes { .. }
+                | AppIntent::GenerateClickTrack { .. }
         );
         if starting && (!matches!(self.phase, Phase::Idle) || self.worker.is_some()) {
             bail!("another file workflow is still active");

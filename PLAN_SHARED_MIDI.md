@@ -365,6 +365,12 @@ loop and codec suites pass, with complete guarded teardown.
 
 ### M7 — Final validation, documentation and delivery
 
+Integration refresh: upstream advanced to `64a4ad0634de1664b1ff723b36c635cd243d819b`
+(click-track generation, PR #923). This branch merges that head, preserving the
+new codec-provider click metadata alongside shared-MIDI tests. Audio PR #909
+remains open at `2f0d1a88`; its required foundation remains an explicit dependency.
+
+
 - [ ] Document public contracts, readiness/work bounds, measured memory, capacity
   tradeoffs and remaining P04/P05 gaps; keep this plan and parity evidence current.
 - [ ] Run focused runtime/loop/codec suites, then the complete Rust workspace
