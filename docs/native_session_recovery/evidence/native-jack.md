@@ -1,0 +1,87 @@
+# Native JACK restoration evidence
+
+Native JACK now drives audio and MIDI directly in the replacement engine. The
+fixed startup port bank is shared by application and independent-host launches;
+CPAL's JACK host remains a separate CPAL option. Live driver switching remains
+open under P14.
+
+## Behavioral coverage
+
+- `shoop_rt_host_native` direct adapter tests verify actual audio samples and MIDI
+  offsets at frame zero, the last frame, equal timestamps, and sub-block
+  boundaries. Callback heap guards include a canary that detects allocation and
+  destruction. Capacity refusals and output-write failures are counted.
+- Real JACK peer clients verify the production callback carries audio and MIDI,
+  preserves offsets through split callbacks, and delivers recovery before normal
+  stop. Further scenarios cover invalid/duplicate port names, failed startup
+  connection cleanup, resolved client-name collisions, buffer-size changes,
+  missing runtime libraries/server, and bounded cleanup after server shutdown.
+- A sample-rate notification test verifies that the initial matching rate is
+  accepted and a changed rate invalidates the prepared host. The callback
+  silences output while that failure is active.
+- The application startup test verifies direct JACK selection, resolved client
+  name, and actual sample rate/buffer metadata without CPAL substitution.
+- The service acceptance scenario runs with both an in-process engine and a real
+  independent `shoop_host` subprocess. It records and plays known audio/MIDI,
+  verifies peer output, reconnects the UI during playback, reads recorded media,
+  saves/loads through the production `.shoop` codec and persistence transfer,
+  and verifies fresh identities, retained PCM/MIDI payloads, and routing intent.
+- The host-process adapter test verifies custom port names, JACK driver identity,
+  and resolved instance metadata over socket and shared-memory setup.
+- Profile/codec/settings tests cover client-name-only profiles, port defaults and
+  validation, saved settings, appended driver tag 3, and bounded setup messages.
+
+## Reproduction
+
+From the repository's prescribed development environment, with `jackd` and its
+dummy backend installed:
+
+```sh
+python3 scripts/run_native_jack_tests.py
+```
+
+This runner creates an isolated named JACK server, removes
+`SHOOP_ALLOW_MISSING_BACKENDS`, verifies readiness, runs the scenarios above, and
+captures logs in `target/native-jack`. Failure to provide JACK is a test failure.
+The `Native JACK audio and MIDI acceptance` CI job runs the same strict runner
+and checks JACK-only, CPAL-only, combined, and driver-free native configurations.
+
+The general workspace suite can separately use its established missing-backend
+policy for unrelated hardware; it does not replace strict JACK acceptance.
+
+## Compatibility and scope
+
+The engine protocol is version 3, host setup is version 2, and the application
+protocol is version 12. Existing driver tags remain unchanged. Version checks
+reject older peers before exchanging the expanded JACK configuration and
+instance metadata. Existing JSON JACK profiles receive backward-compatible port
+defaults.
+
+The native host keeps `forbid(unsafe_code)`. A small native-only notification
+adapter isolates the JACK trait's required unsafe shutdown declaration; its body
+only stores an atomic flag. A control thread publishes server-loss status.
+
+Names in the engine projection use a stable `jack:` prefix, independent of a
+resolved JACK client-name suffix. The host registers the configured port bank
+once, and Master initially routes to its first audio outputs. External
+connections are configured startup pairs or JACK patchbay connections. Port-bank
+and sample-rate changes require host restart. Dynamic per-track port publishing,
+live driver switching, JACK transport/timebase, and JACK session management remain
+outside this restoration.
+
+## Local validation results
+
+- Full warning-denying native workspace build passed.
+- Full retained workspace suite: 2,550 passed, four pre-existing skips.
+- Strict JACK runner passed with hardware skips disabled, including both host
+  transports and production service/session scenarios.
+- All four native feature combinations passed build checks and host library tests.
+- All 143 Python script tests passed; formatting, tracing inventory, parity,
+  test-attribute, and four-target dependency audits passed.
+- Browser application build, generated codec/worklet Node contracts, and hosted
+  Chromium core workflow passed. The browser smoke completed with zero xruns,
+  including save/load/resave and restored playback at 900×600 (Node v24.19.0,
+  Chromium 154.0.8037.57).
+
+The implementation PR supplies the default Windows/macOS distribution builds,
+Linux strict JACK job and existing pinned browser matrix results.

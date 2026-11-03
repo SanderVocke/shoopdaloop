@@ -2,7 +2,7 @@
 
 Restore direct JACK audio and MIDI in the replacement backend. Selecting JACK must run the new engine through a native JACK client, with callback-local audio and MIDI, instead of translating the selection to CPAL.
 
-Status: implementation in progress. Stage 0 complete; baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
+Status: implementation complete; final validation and PR delivery in progress. Baseline `3aabf43789708a5640a8f5b368f737651ef1d29d`.
 
 Target branch and final PR base: `feat/backend-replacement`.
 Proposed implementation branch: `feat/backend-replacement-native-jack`.
@@ -69,11 +69,11 @@ Verification: the implementation branch starts from the intended target; the wor
 
 Depends on Stage 0.
 
-- [ ] Specify and record the startup port bank: counts, names, direction mapping, defaults for old profiles, preferred Master outputs, and optional startup external connections. Keep this layout fixed for the host lifetime; document how JACK patchbay connections relate to engine track connections.
-- [ ] Add portable saved JACK settings with backward-compatible deserialization defaults and validation, plus native `JackConfig`. Expose new settings through the existing settings registry rather than a parallel configuration path.
-- [ ] Add `DriverKind::Jack`, append its codec tag, and update runtime projection and affected exhaustive matches. Preserve the configured and actual driver distinction, including fallback.
-- [ ] Define host setup serialization/conversion for JACK port configuration and resolved runtime metadata. Update version/capability handling if fields or peer expectations require it; keep existing driver payloads compatible where possible.
-- [ ] Add focused tests for old profiles, new profile round trips, limits and invalid names, wire round trips, stable existing tags, and unsupported peer behavior.
+- [x] Specify and record the startup port bank: counts, names, direction mapping, defaults for old profiles, preferred Master outputs, and optional startup external connections. Keep this layout fixed for the host lifetime; document how JACK patchbay connections relate to engine track connections.
+- [x] Add portable saved JACK settings with backward-compatible deserialization defaults and validation, plus native `JackConfig`. Expose new settings through the existing settings registry rather than a parallel configuration path.
+- [x] Add `DriverKind::Jack`, append its codec tag, and update runtime projection and affected exhaustive matches. Preserve the configured and actual driver distinction, including fallback.
+- [x] Define host setup serialization/conversion for JACK port configuration and resolved runtime metadata. Update version/capability handling if fields or peer expectations require it; keep existing driver payloads compatible where possible.
+- [x] Add focused tests for old profiles, new profile round trips, limits and invalid names, wire round trips, stable existing tags, and unsupported peer behavior.
 
 Verification: targeted protocol, configuration, settings, and projection tests pass. No existing JACK profile silently changes to CPAL, and no driver starts before its production implementation is ready. Commit the contract milestone.
 
@@ -81,10 +81,10 @@ Verification: targeted protocol, configuration, settings, and projection tests p
 
 Depends on Stage 1.
 
-- [ ] Refactor `Cycle` minimally to accept bounded callback-local MIDI input and expose output and recovery events directly. Retain the queued CPAL/midir path and existing recovery ownership.
-- [ ] Add a deterministic process-block harness that exercises the same buffer/MIDI adapter the JACK callback will call, without requiring a running server.
-- [ ] Cover MIDI events at frame zero, the last frame, exact sub-block boundaries, and multiple events at one offset. Cover split audio buffers, zero-frame handling, output ordering, input/output overflow, and recovery on disconnect/fault.
-- [ ] Enforce the real-time heap contract around the exercised processing code, including checks that the guards themselves detect violations. Keep tests focused on samples, events, ownership, and counters rather than implementation structure.
+- [x] Refactor `Cycle` minimally to accept bounded callback-local MIDI input and expose output and recovery events directly. Retain the queued CPAL/midir path and existing recovery ownership.
+- [x] Add a deterministic process-block harness that exercises the same buffer/MIDI adapter the JACK callback will call, without requiring a running server.
+- [x] Cover MIDI events at frame zero, the last frame, exact sub-block boundaries, and multiple events at one offset. Cover split audio buffers, zero-frame handling, output ordering, input/output overflow, and recovery on disconnect/fault.
+- [x] Enforce the real-time heap contract around the exercised processing code, including checks that the guards themselves detect violations. Keep tests focused on samples, events, ownership, and counters rather than implementation structure.
 
 Verification: new direct-I/O tests and existing native CPAL/dummy tests pass; direct MIDI does not acquire bridge timing or buffering. Commit the callback-interface milestone.
 
@@ -92,12 +92,12 @@ Verification: new direct-I/O tests and existing native CPAL/dummy tests pass; di
 
 Depends on Stage 2.
 
-- [ ] Add the independent native `jack` feature and JACK dependency with runtime loading. Add `DriverConfig::Jack`, process/notification handlers, and all matching ownership/start/stop paths.
-- [ ] Open the client without server autostart, resolve its actual name/rate/buffer size, register the configured audio/MIDI port bank, and prepare the engine and default Master routes before activation. Apply external startup connections on the control side once ports are available; publish readiness only after required setup succeeds.
-- [ ] Copy or borrow JACK's planar audio through the prepared process adapter and transfer MIDI directly at cycle-relative offsets. Implement bounded splitting and output-writer ordering, without a CPAL duplex ring or midir connections.
-- [ ] Publish callbacks, processing load, xruns, MIDI drops/write failures, active driver state, and actual server configuration through existing status facilities.
-- [ ] Handle partial registration/activation/connection failure transactionally. Implement normal stop, client-name collision, server shutdown, buffer-size changes, and sample-rate invalidation; return or retire the render owner safely off the callback thread.
-- [ ] Add lifecycle/failure tests and a real-JACK peer-client test proving the driver's actual callback carries audio and timestamped MIDI.
+- [x] Add the independent native `jack` feature and JACK dependency with runtime loading. Add `DriverConfig::Jack`, process/notification handlers, and all matching ownership/start/stop paths.
+- [x] Open the client without server autostart, resolve its actual name/rate/buffer size, register the configured audio/MIDI port bank, and prepare the engine and default Master routes before activation. Apply external startup connections on the control side once ports are available; publish readiness only after required setup succeeds.
+- [x] Copy or borrow JACK's planar audio through the prepared process adapter and transfer MIDI directly at cycle-relative offsets. Implement bounded splitting and output-writer ordering, without a CPAL duplex ring or midir connections.
+- [x] Publish callbacks, processing load, xruns, MIDI drops/write failures, active driver state, and actual server configuration through existing status facilities.
+- [x] Handle partial registration/activation/connection failure transactionally. Implement normal stop, client-name collision, server shutdown, buffer-size changes, and sample-rate invalidation; return or retire the render owner safely off the callback thread.
+- [x] Add lifecycle/failure tests and a real-JACK peer-client test proving the driver's actual callback carries audio and timestamped MIDI.
 
 Verification: deterministic callback/lifecycle tests pass, and the direct driver passes real-JACK audio/MIDI loopback. Normal stop delivers recovery before deactivation; unavailable server/library and server loss have bounded, truthful failure behavior. Commit the driver milestone.
 
@@ -105,11 +105,11 @@ Verification: deterministic callback/lifecycle tests pass, and the direct driver
 
 Depends on Stage 3.
 
-- [ ] Replace the JACK-to-CPAL mapping in `shoop_host::engine` with native JACK configuration. Update inventory/probing, warnings, test-only driver matches, and both application and independent-host startup paths.
-- [ ] Carry JACK configuration through supported `shoop_rt_host_process` setup/conversion and diagnostics. Retain the architecture boundary that keeps that legacy process adapter out of the production application's dependency graph.
-- [ ] Add JACK to the replacement settings UI and remove its obsolete substitution message. Save the full startup profile and show the actual active driver; retain restart-based application of preferences.
-- [ ] Forward JACK features through the application and host crates and intended native release jobs. Ensure missing runtime JACK facilities do not break ordinary CPAL/dummy startup.
-- [ ] Exercise engine host-port projection, track routing, Master defaults, startup autoconnections, session port-name restoration/missing-port intent, and reconnect metadata for the new port bank.
+- [x] Replace the JACK-to-CPAL mapping in `shoop_host::engine` with native JACK configuration. Update inventory/probing, warnings, test-only driver matches, and both application and independent-host startup paths.
+- [x] Carry JACK configuration through supported `shoop_rt_host_process` setup/conversion and diagnostics. Retain the architecture boundary that keeps that legacy process adapter out of the production application's dependency graph.
+- [x] Add JACK to the replacement settings UI and remove its obsolete substitution message. Save the full startup profile and show the actual active driver; retain restart-based application of preferences.
+- [x] Forward JACK features through the application and host crates and intended native release jobs. Ensure missing runtime JACK facilities do not break ordinary CPAL/dummy startup.
+- [x] Exercise engine host-port projection, track routing, Master defaults, startup autoconnections, session port-name restoration/missing-port intent, and reconnect metadata for the new port bank.
 
 Verification: application and independent-host tests launch JACK without CPAL/midir in the path; host-process setup preserves JACK selection. Old saved profiles work, fallbacks are visible, and UI reconnection does not restart the driver. Commit the integration milestone.
 
@@ -117,13 +117,13 @@ Verification: application and independent-host tests launch JACK without CPAL/mi
 
 Depends on Stage 4. This is the final end-to-end validation stage before PR delivery.
 
-- [ ] Add a required Linux CI job that starts a dedicated JACK server with the dummy audio backend and uses peer JACK clients. Include readiness timeouts, teardown, and captured failure diagnostics. Run required JACK tests without `SHOOP_ALLOW_MISSING_BACKENDS=1`.
-- [ ] Drive production application/service paths: launch with JACK; create audio and MIDI tracks; connect ports; record known samples/events; play them back; verify samples, channel identity, MIDI offsets, and Master output through peer clients. Test both in-process and independent-host launches.
-- [ ] Save/load a supported session and verify routing intent and media survive. Disconnect/reconnect the independent host's UI during playback and prove continuous audio/MIDI and retained state.
-- [ ] Validate missing server/library, startup rollback, port collisions, server loss, buffer changes, sample-rate invalidation, and normal shutdown recovery. Keep server-dependent assertions strict in the dedicated job and distinguish unavailable recovery delivery from a successful reset.
+- [x] Add a required Linux CI job that starts a dedicated JACK server with the dummy audio backend and uses peer JACK clients. Include readiness timeouts, teardown, and captured failure diagnostics. Run required JACK tests without `SHOOP_ALLOW_MISSING_BACKENDS=1`.
+- [x] Drive production application/service paths: launch with JACK; create audio and MIDI tracks; connect ports; record known samples/events; play them back; verify samples, channel identity, MIDI offsets, and Master output through peer clients. Test both in-process and independent-host launches.
+- [x] Save/load a supported session and verify routing intent and media survive. Disconnect/reconnect the independent host's UI during playback and prove continuous audio/MIDI and retained state.
+- [x] Validate missing server/library, startup rollback, port collisions, server loss, buffer changes, sample-rate invalidation, and normal shutdown recovery. Keep server-dependent assertions strict in the dedicated job and distinguish unavailable recovery delivery from a successful reset.
 - [ ] Build/test JACK-only, CPAL-only, combined, and driver-free configurations of affected native packages. Check default native distribution features on Linux, macOS, and Windows according to existing CI targets; run available JACK-provider smoke checks without claiming untested providers are validated.
-- [ ] Run browser application/worklet builds and the browser smoke and dependency-boundary checks. Confirm no JACK/CPAL/midir dependency reaches browser production paths and no legacy engine dependency reaches the new host.
-- [ ] Update the native-host README, configuration examples, and parity ledger with the restored direct driver, fixed port model, restart requirements, and evidence. Keep live switching and other outstanding P14 work open.
+- [x] Run browser application/worklet builds and the browser smoke and dependency-boundary checks. Confirm no JACK/CPAL/midir dependency reaches browser production paths and no legacy engine dependency reaches the new host.
+- [x] Update the native-host README, configuration examples, and parity ledger with the restored direct driver, fixed port model, restart requirements, and evidence. Keep live switching and other outstanding P14 work open.
 
 Verification gates, using the target branch's prescribed development environment and current equivalent commands:
 
@@ -138,11 +138,12 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_en
 
 The permissive workspace command supplements the strict real-JACK job; it does not replace it. Read `.agents/info/build.md` before running commands, use the repository development shell on Nix/NixOS, and use the provisioned environment in CI. Run focused tests while iterating; run required gates before behavior changes are committed/pushed as instructed by repository mandates. Record exact commands, supported configurations, and evidence for each acceptance criterion. Commit the validation/documentation milestone.
 
+
 ### Stage 6 Deliver the implementation PR
 
 Depends on all preceding stages.
 
-- [ ] Review the final diff for unrelated changes, real-time contract violations, feature leakage, incorrect status, and acceptance gaps. Reconcile changes on the target branch and rerun affected checks if the baseline moves.
+- [x] Review the final diff for unrelated changes, real-time contract violations, feature leakage, incorrect status, and acceptance gaps. Reconcile changes on the target branch and rerun affected checks if the baseline moves.
 - [ ] Push `feat/backend-replacement-native-jack` and open a PR with base **`feat/backend-replacement`**. Lead the description with restored native JACK behavior; include configuration compatibility, fixed-port scope, test evidence, and restart/failure semantics.
 - [ ] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
 - [ ] Check for automated PR reviews. Address feedback, push fixes, and repeat review/check cycles until the automated reviewer approves where present. Document any remaining material limitations accurately.
@@ -165,3 +166,15 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - Protocol identity uses appended tag 3; engine protocol version increases from 2 to 3 so older peers refuse clearly. Existing driver tags are unchanged. Host-setup conversion will be finalized with the native driver rather than exposing a partial JACK path.
 - Stage 1 validation: warning-denying builds of protocol, API, adapter, and settings UI passed. Protocol/host configuration and recovery tests passed, including old JACK-profile deserialization and codec tag stability. Test-attribute policy passed.
 - The JACK crate requires an unsafe shutdown callback declaration. A small native-only notification adapter isolates that declaration with an atomic-store-only body; `shoop_rt_host_native` retains `forbid(unsafe_code)` and safe JACK APIs. No unsafe pointer/FFI operations are added to the host.
+
+- Stages 1–4 are implemented together as a coherent driver/integration milestone, with cross-crate enum matches and feature forwarding updated atomically. Host setup version 2 carries named JACK ports, startup connections and resolved instance names; application protocol version 12 rejects peers using the previous JACK profile layout.
+- Local strict JACK acceptance passed for direct callback samples/timestamps, MIDI recovery, invalid ports, failed connection rollback, name collisions, buffer-size changes, server loss, missing library/server, application startup, process adapter, and in-process/independent service recording/replay/reconnect plus `.shoop` save/load.
+- Warning-denying complete native workspace builds passed. All four native driver feature combinations passed `cargo check`. The engine/host dependency-boundary audit passed for Linux, Windows, macOS and WebAssembly. All 143 Python script tests passed; tracing, parity, formatting and test-attribute audits passed.
+- Browser application and worklet compilation passed. The generated codec and worklet Node artifact contracts passed with engine protocol version 3. Browser smoke and final CI evidence will be recorded before delivery.
+- An existing runtime stress test exhausted its iteration bound while native tests overlapped browser compilation. It passed all 10 isolated repetitions and the subsequent full run. Full-suite runs identified and corrected only the expected JACK settings field-count/missing-backend fixtures and application protocol byte fixtures; final clean-suite evidence is pending below.
+
+- Core native driver/integration milestone committed as `93e5e38d`. Final native workspace run: **2,550 passed, four pre-existing skips**, with the suite's established optional-hardware policy. Strict real-JACK acceptance passed separately with the skip flag removed.
+- JACK-only, CPAL-only, combined, and driver-free checks and native-host/host-library tests all passed. The strict CI job runs these same combinations.
+- Hosted Chromium browser core smoke passed at 900×600 with **zero xruns**, including record/play, waveform/MIDI detail, `.shoop` save/load/resave and restored playback. Node v24.19.0 and Chromium 154.0.8037.57 were used locally; the existing CI web matrix retains its pinned browser tooling.
+- Final formatting, warning-denying workspace build, test-attribute, tracing and parity audits passed. Workflow YAML parses. Native protocol byte fixtures and the browser canary are updated to their new versions.
+- Remaining Stage 5 platform evidence and Stage 6 PR/CI/review completion will be recorded from the implementation PR.
