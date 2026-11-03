@@ -3,7 +3,10 @@
 ## Status and delivery
 
 Execution authorized on 2026-11-03. Plan written using `.agents/prompts/write_plan.md`.
-Implementation is in progress. Prerequisite: the completed
+Implementation and functional qualification are complete. Delivery is complete
+only when the [final PR-head checks](https://github.com/SanderVocke/shoopdaloop/pull/924/checks)
+are green; PR #924 remains unmerged and targets `feat/backend-replacement`.
+Prerequisite: the completed
 `PLAN_ZYNQ_FREERTOS_HOST.md` and [PR #914](https://github.com/SanderVocke/shoopdaloop/pull/914).
 The inspected host head is `d58beffcd6d4e60a1d75a4ff29587c1f28458480`;
 `feat/backend-replacement` is at `3aabf437`. PR #914 is currently open.
@@ -336,7 +339,7 @@ Depends on all previous stages.
   server-free cold boot → failed candidate → automatic rollback → network recovery.
   Run the original full host suite and required native/browser/no_std, formatting,
   warning-denying build, tracing/boundary and applicable test-attribute checks.
-- [ ] Review final diffs, source/licenses, memory/SD maps, provisioning and recovery
+- [x] Review final diffs, source/licenses, memory/SD maps, provisioning and recovery
   docs against every criterion. Push the milestone commits; create/update the PR
   onto `feat/backend-replacement`. Resolve base movement and automated review,
   repeat affected checks and obtain green required/applicable CI on the final head.
@@ -512,3 +515,14 @@ revisions rather than treating moving documentation as a reproducible input.
   following Codecov upload failed because Debian slim lacked `gpg`, required by
   the action's signature verification. Add that package; keep verification and
   the 80% patch threshold enabled. Every other applicable CI check passed.
+- Final evidence review inspected the published CI ZIP: 908 public files,
+  all 16 deployment phases passed, exact RAM/card limits, passing output audit,
+  and no private inputs, card images, credentials, private keys or raw captures.
+  The separate redacted-packet artifact contains 65 sanitized captures. CI CLI
+  entry-point coverage is 83.52%, transport/orchestration 88.37%.
+  [Fresh CI evidence](https://github.com/SanderVocke/shoopdaloop/actions/runs/41621550875/artifacts/13226575044).
+- The final review covers source/license notices, reserved memory and SD regions,
+  generic artifact identity, provisioning, recovery and every acceptance criterion.
+  Both automated CodeQL threads are resolved. The worktree contains no unrelated
+  edits or live QEMU processes. This completion milestone is submitted to the
+  unchanged full CI matrix; its final-head checks above remain the delivery gate.
