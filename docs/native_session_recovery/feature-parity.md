@@ -70,6 +70,14 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 | P15 OPEN | System/Master click preview and click generation UI-local workflow are currently unavailable; preview state/assets are not populated by the new client. | `shoop_egui/click_track_dialog`; `shoopdaloop/{src/native_preview.rs,src/browser_preview.rs}`; click DSP/assets and reference tests named in P11. Original frontend preview canaries are retained in Git provenance below. | Restore local generation/cancel/stale-result handling and system output; use explicit service operations for Master playback/content insertion. A useful client-only preview can be restored independently of P11. |
 | P16 OPEN | Session/filesystem script ownership conversion and related session resource workflows are unavailable. Script source export, fresh scripts, local dialogs, timers, controller MIDI and explicit starts are available. | `shoop_scripting`, `shoop_script_resources`, `shoop_egui/script_dialogs`; reference tests `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. | Restore client-local file/resource workflows and explicit session-owned script data through service commands, without moving VM execution to the host. Respect the recovery no-auto-restart rule. |
 
+The P04/P05 storage foundations have library evidence for both
+[shared audio](../../src/rust/rt_runtime/docs/reference/shared-audio.md) and
+[shared MIDI](../../src/rust/rt_runtime/docs/reference/shared-midi.md), including
+immutable overlapping grabs, independent edits, ordinary loop-resource playback
+and persistence round trips. MIDI replacement prepares a complete private state
+index before an explicit publication cut. These foundations do not enable the
+application grab policies or Replacing mode; both rows remain open.
+
 ## Preserved evidence and retirement record
 
 - `shoop_app_reference` retains the old model and its executable behavioral tests,

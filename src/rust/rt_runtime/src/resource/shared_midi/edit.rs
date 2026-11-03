@@ -196,7 +196,16 @@ impl MidiStore {
         self.edit_states[slot * 3] = initial;
         self.edit_states[slot * 3 + 1] = state;
         self.edit_states[slot * 3 + 2] = state;
-        self.work.add(0, 4, 0, 0);
+        self.work.add(
+            0,
+            if frames > 0 && start == view.last && start != view.first {
+                5
+            } else {
+                6
+            },
+            0,
+            0,
+        );
         let mut count = 0;
         // Across a wrap, the later input portion is first in logical loop order.
         for pass in 0..if wraps { 2 } else { 1 } {

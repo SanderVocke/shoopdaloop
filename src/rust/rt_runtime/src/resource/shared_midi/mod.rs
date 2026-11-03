@@ -523,21 +523,25 @@ impl MidiStore {
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
         let v = self.view(take.0)?;
         let state = self.initial[take.0.slot as usize];
+        self.work.add(0, 1, 0, 0);
         self.own(v, &state, true).map(TakeId)
     }
     pub fn export(&mut self, take: TakeId) -> Result<ExportId, Error> {
         let v = self.view(take.0)?;
         let state = self.initial[take.0.slot as usize];
+        self.work.add(0, 1, 0, 0);
         self.own(v, &state, false).map(ExportId)
     }
     pub fn retain_export(&mut self, export: ExportId) -> Result<ExportId, Error> {
         let view = self.view(export.0)?;
         let state = self.initial[export.0.slot as usize];
+        self.work.add(0, 1, 0, 0);
         self.own(view, &state, false).map(ExportId)
     }
     pub fn fork_export(&mut self, export: ExportId) -> Result<TakeId, Error> {
         let view = self.view(export.0)?;
         let state = self.initial[export.0.slot as usize];
+        self.work.add(0, 1, 0, 0);
         self.own(view, &state, true).map(TakeId)
     }
     pub fn take_index(&self, take: TakeId) -> Result<ReadIndex, Error> {

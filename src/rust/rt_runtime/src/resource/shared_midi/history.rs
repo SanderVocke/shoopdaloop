@@ -80,6 +80,7 @@ impl MidiStore {
         let mut end = self.end;
         let mut state = *self.current;
         let mut checkpoint = state;
+        self.work.add(0, 2, 0, 0);
         let mut serial = end;
         let mut count = 0;
         let mut used = 0;
@@ -92,15 +93,12 @@ impl MidiStore {
                 count = chunk.count;
                 self.records = chunk.records;
                 checkpoint = self.chunk_states[index];
+                self.work.add(0, 1, 0, 0);
                 used = block.bytes;
-                let mut copied = 0;
-                while copied < used {
-                    let lease = self.block_map[chunk.records[0].block * self.block_pages]
-                        .expect("partial page");
-                    let data = self.pages.bytes(io.store, lease)?;
-                    self.scratch[copied..used].copy_from_slice(&data[copied..used]);
-                    copied = used;
-                }
+                let lease = self.block_map[chunk.records[0].block * self.block_pages]
+                    .expect("partial page");
+                let data = self.pages.bytes(io.store, lease)?;
+                self.scratch[..used].copy_from_slice(&data[..used]);
                 io.store.charge_work(WorkClass::Render, used, 0)?;
             }
         }
@@ -120,6 +118,7 @@ impl MidiStore {
                 count = 0;
                 used = 0;
                 checkpoint = state;
+                self.work.add(0, 1, 0, 0);
             }
             if data.len() > self.page_bytes {
                 let block = self.block_from(io.store, data);
@@ -135,10 +134,12 @@ impl MidiStore {
                     .expect("validated packet");
                 serial = end;
                 checkpoint = state;
+                self.work.add(0, 1, 0, 0);
                 self.work.add(1, 0, 0, 0);
             } else {
                 if count == 0 {
                     checkpoint = state;
+                    self.work.add(0, 1, 0, 0);
                     serial = end;
                 }
                 self.scratch[used..used + data.len()].copy_from_slice(data);

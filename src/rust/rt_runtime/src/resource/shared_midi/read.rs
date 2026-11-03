@@ -209,6 +209,8 @@ impl MidiStore {
         time: u64,
     ) -> Result<(MidiState, usize), Error> {
         if view.first == view.last {
+            self.work.add(0, 1, 0, 0);
+            store.charge_work(WorkClass::Render, size_of::<MidiState>(), 1)?;
             return Ok((*self.current, 0));
         }
         let point = self.locate(view, time)?;
@@ -317,6 +319,9 @@ impl MidiStore {
         }
         let point = self.locate(v, v.origin + frame)?;
         let (state, replayed_events) = if frame == 0 || v.first == v.last {
+            self.work.add(0, 1, 0, 0);
+            io.store
+                .charge_work(WorkClass::Render, size_of::<MidiState>(), 1)?;
             (self.initial[index.0.slot as usize], 0)
         } else {
             self.state_at(io.store, v, v.origin + frame)?

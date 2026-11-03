@@ -365,13 +365,23 @@ loop and codec suites pass, with complete guarded teardown.
 
 ### M7 — Final validation, documentation and delivery
 
+Validation routing update: the user requested relying on CI for the checks.
+The remaining native/Wasm/browser/bare-metal matrix and final-head validation
+therefore run through the PR's existing CI, rather than duplicating them locally.
+Local focused runtime/loop/codec suites, warning-denying workspace builds,
+formatting, test attributes, tracing, parity and documentation checks have passed.
+A local full run on the refreshed base passed 2,570 tests; two existing LAN
+management/shutdown fixtures timed out in this environment (four tests skipped).
+The attempted Node runner stopped at sandbox read-only tool setup before executing
+its suites. Neither result is represented as a passing final gate; CI is authoritative.
+
 Integration refresh: upstream advanced to `64a4ad0634de1664b1ff723b36c635cd243d819b`
 (click-track generation, PR #923). This branch merges that head, preserving the
 new codec-provider click metadata alongside shared-MIDI tests. Audio PR #909
 remains open at `2f0d1a88`; its required foundation remains an explicit dependency.
 
 
-- [ ] Document public contracts, readiness/work bounds, measured memory, capacity
+- [x] Document public contracts, readiness/work bounds, measured memory, capacity
   tradeoffs and remaining P04/P05 gaps; keep this plan and parity evidence current.
 - [ ] Run focused runtime/loop/codec suites, then the complete Rust workspace
   suite using the repository [build](.agents/info/build.md) and
