@@ -37,7 +37,8 @@ class Qemu:
         self.log = open(self.directory / "qemu.log", "w")
         version = subprocess.check_output([self.command[0], "--version"], text=True).splitlines()[0]
         expected = json.loads((Path(__file__).parent / "pins.json").read_text())["qemu"]
-        if not version.startswith("QEMU emulator version " + expected + " "):
+        prefix = "QEMU emulator version " + expected
+        if version != prefix and not version.startswith(prefix + " "):
             raise RuntimeError(f"Expected QEMU {expected}, found {version}")
         (self.directory / "version.txt").write_text(version + "\n")
         self.process = subprocess.Popen(self.command, stdout=self.log, stderr=self.log)

@@ -15,7 +15,7 @@ on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement" ]
+    branches: [ "master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/zynq-network-deployment" ]
   schedule:
     - cron: '24 5 * * 2'
 

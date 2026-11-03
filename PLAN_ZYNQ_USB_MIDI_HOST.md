@@ -271,15 +271,15 @@ device descriptors, hub topology and failures. Commit the compatibility mileston
 Depends on the Stage 0 probe and Stage 1 port; final integration requires Stages
 2–4. It may proceed alongside those stages once interfaces are stable.
 
-- [ ] Add a deterministic high-speed USB-MIDI device fixture with commandable
+- [x] Add a deterministic high-speed USB-MIDI device fixture with commandable
   input, independently observed output, descriptor variants and fault injection.
   Add minimal model adaptations for documented port-speed/schedule mismatches;
   preserve production controller behavior and the watchdog model.
-- [ ] Extend `qemu.py`, the deployment launcher and the firmware suite with owned,
+- [x] Extend `qemu.py`, the deployment launcher and the firmware suite with owned,
   bounded USB test processes, explicit bus/port discovery and attach/detach
   controls. Make exact RX/TX assertions traverse the guest USB stack and engine;
   direct injection into engine MIDI buffers does not pass this gate.
-- [ ] Update model/build manifests, patch allowlists, cache keys and CI tooling.
+- [x] Update model/build manifests, patch allowlists, cache keys and CI tooling.
   Retain ELF/map, source/patch hashes, launch/QMP topology, serial/USB traces,
   counters, watermarks and per-case results. Add a deliberate content-mismatch
   canary and verify it fails. Keep portable/fake-HCD tests independent of QEMU.
@@ -379,6 +379,12 @@ no QEMU result is presented as physical hub, DMA/cache or timing qualification.
   Cached emulator builds reconstruct the reviewed patch set and reject unexpected
   source changes. Test credentials/signing keys/private Ethernet captures are
   excluded from public evidence; deployment outputs pass the existing secret audit.
+- Transport/routing milestone committed as `c7635157`. The complete twelve-phase
+  USB suite passed locally, including the 100-cycle soak, mismatch canary,
+  endpoint stall/NAK and signed deployment recovery. Subsequent review corrected
+  nearest-high-speed-TT selection for FS→FS→HS nesting; the actual patched EHCI
+  constructor passes 32-bit sanitizer tests, with affected guest regressions next.
+  Hub status parsing now supports ports 1–31 and explicitly refuses larger hubs.
 - Physical qualification remains deferred at the user's request, not waived.
   `platforms/zynq7000/usb/QUALIFICATION.md` contains the required hardware matrix.
   No physical PHY/VBUS, cache/DMA, TT, DIN or latency result is claimed.

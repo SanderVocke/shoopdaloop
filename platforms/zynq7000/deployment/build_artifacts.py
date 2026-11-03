@@ -19,7 +19,7 @@ def run(arguments, **kwargs):
     subprocess.run([str(a) for a in arguments], cwd=ROOT, check=True, **kwargs)
 
 
-def build(directory, fetch=False, port_base=16400, native_coverage=False):
+def build(directory, fetch=False, port_base=16400, native_coverage=False, usb=False):
     artifacts, private = directory / "artifacts", directory / "private"
     artifacts.mkdir(); private.mkdir(mode=0o700)
     keys = private / "keys"; keys.mkdir(mode=0o700)
@@ -31,13 +31,13 @@ def build(directory, fetch=False, port_base=16400, native_coverage=False):
         credential.write(os.urandom(32))
     write_profile(private / "profile.json", (private / "credential").resolve(), port_base)
     for script in ["build_boot.py", "build_qemu.py"]:
-        run([sys.executable, PLATFORM / "deployment" / script, *(["--fetch"] if fetch else [])])
+        run([sys.executable, PLATFORM / "deployment" / script, *(["--fetch"] if fetch else []), *(["--usb"] if usb and script == "build_qemu.py" else [])])
     for index, (identity, fault) in enumerate([("firmware-a", None), ("firmware-b", None),
                             *[("fault-" + f, f) for f in ["before-ready", "render", "control", "broker", "handoff-version", "cleanup"]]]):
-        run([sys.executable, PLATFORM / "build.py", "--app", "host", "--deployment", "--build-id", identity,
+        run([sys.executable, PLATFORM / "build.py", "--app", "host", "--deployment", "--build-id", identity, *(["--usb"] if usb else []),
              *(["--fetch"] if fetch and index == 0 else []), *(["--deployment-test-fault", fault] if fault else [])])
-        source = ROOT / "work/zynq/build" / ("host-deployment-test.elf" if fault else "host-deployment.elf")
-        for suffix in [".elf", ".map", ".json"]:
+        source = ROOT / "work/zynq/build" / (("host-usb" if usb else "host") + ("-deployment-test.elf" if fault else "-deployment.elf"))
+        for suffix in [".elf", ".map", ".json", *([".licenses.txt"] if usb else [])]:
             shutil.copyfile(source.with_suffix(suffix), artifacts / (identity + ("-build.json" if suffix == ".json" else suffix)))
         bundle.create(artifacts / (identity + ".elf"), identity, keys, artifacts / (identity + ".itb"), artifacts / "loader")
     # Signed negative fixtures distinguish target/signature/load-contract refusals.
@@ -57,7 +57,7 @@ def build(directory, fetch=False, port_base=16400, native_coverage=False):
     (artifacts / "bad-range.elf").write_bytes(bad_elf)
     bundle.create(artifacts / "bad-range.elf", "bad-range", keys, artifacts / "bad-range.itb", artifacts / "loader")
     for source, target in [(bundle.BOOT / "shoop-build.json", "loader-build.json"),
-                           (ROOT / "work/zynq/qemu-build/shoop-build.json", "emulator-build.json"),
+                           (ROOT / ("work/zynq/qemu-usb-build/shoop-build.json" if usb else "work/zynq/qemu-build/shoop-build.json"), "emulator-build.json"),
                            (PLATFORM / "pins.json", "pins.json")]:
         shutil.copyfile(source, artifacts / target)
     shutil.copyfile(bundle.BOOT / "spl/u-boot-spl", artifacts / "loader/u-boot-spl")
