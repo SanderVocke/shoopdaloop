@@ -15,6 +15,54 @@ const KEY: Key = Key {
     epoch: 5,
 };
 
+#[shoop_test]
+fn host_limits_refuse_declarations_and_cumulative_objects_before_reserving_media() {
+    let limits = shoop_app_api::HostResourceLimits {
+        media_bytes: 16,
+        metadata_bytes: 2,
+        objects: 2,
+        midi_events: 1,
+    };
+    assert!(matches!(
+        Receiver::with_limits(AUTHORITY, description(17), limits),
+        Err(Refusal::Overloaded)
+    ));
+    let mut large_metadata = description(16);
+    large_metadata.metadata_bytes = 3;
+    assert!(matches!(
+        Receiver::with_limits(AUTHORITY, large_metadata, limits),
+        Err(Refusal::Overloaded)
+    ));
+    let mut many_objects = description(16);
+    many_objects.objects = 3;
+    assert!(matches!(
+        Receiver::with_limits(AUTHORITY, many_objects, limits),
+        Err(Refusal::Overloaded)
+    ));
+    let mut receiver = Receiver::with_limits(AUTHORITY, description(16), limits).unwrap();
+    metadata(&mut receiver);
+    assert_eq!(
+        receiver.apply(AUTHORITY, object(1, ObjectKind::Audio, 20)),
+        Err(Refusal::Overloaded)
+    );
+    receiver
+        .apply(AUTHORITY, object(1, ObjectKind::Audio, 16))
+        .unwrap();
+    receiver.apply(AUTHORITY, chunk(1, 0, &[1; 16])).unwrap();
+    receiver
+        .apply(
+            AUTHORITY,
+            Request::FinishObject {
+                key: KEY,
+                object: 1,
+            },
+        )
+        .unwrap();
+    assert!(receiver
+        .apply(AUTHORITY, Request::Finish { key: KEY })
+        .is_ok());
+}
+
 fn description(media_bytes: u64) -> Description {
     Description {
         key: KEY,

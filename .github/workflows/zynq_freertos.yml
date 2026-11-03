@@ -1,0 +1,76 @@
+name: Zynq FreeRTOS firmware
+on:
+  pull_request:
+    branches: ["master", "feat/backend-replacement"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zynq-freertos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    container: debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+    timeout-minutes: 35
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Install build and emulator tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends ca-certificates git patch python3 curl xz-utils \
+            build-essential pkg-config protobuf-compiler libasound2-dev libjack-jackd2-dev \
+            libgl1-mesa-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcursor-dev libxi-dev libxkbcommon-dev libxrandr-dev libwayland-dev \
+            gcc-arm-none-eabi=15:14.2.rel1-1 binutils-arm-none-eabi=2.44-3+23+b1 \
+            libnewlib-arm-none-eabi=4.5.0.20241231-1 libnewlib-dev=4.5.0.20241231-1 \
+            qemu-system-arm=1:10.0.13+ds-0+deb13u1
+      - uses: actions/checkout@v7
+      - name: Trust the runner checkout inside the build container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: armv7a-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            platforms/zynq7000/firmware -> target
+      - name: Build and execute all three firmware gates
+        run: python3 platforms/zynq7000/suite.py --fetch
+      - name: Save firmware and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zynq-freertos-evidence
+          path: |
+            platforms/zynq7000/pins.json
+            work/zynq/build/*.elf
+            work/zynq/build/*.map
+            work/zynq/build/*.json
+            work/zynq/suite/
+            work/zynq/echo-test/*.json
+            work/zynq/echo-test/*.log
+            work/zynq/echo-canary/*.log
+            work/zynq/integration/**/*.json
+            work/zynq/integration/**/*.log
+            work/zynq/*-test/*.json
+            work/zynq/*-test/*.log
+          retention-days: 14
+      - name: Save network and register diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zynq-freertos-failure-diagnostics
+          path: |
+            work/zynq/*/*.pcap
+            work/zynq/*/*.txt
+            work/zynq/integration/restart/*.pcap
+            work/zynq/integration/restart/*.txt
+          retention-days: 3

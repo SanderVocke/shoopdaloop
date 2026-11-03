@@ -18,12 +18,19 @@ pub struct Assembly {
     active: Option<Active>,
     payloads: Vec<Payload>,
     events: u64,
+    limits: shoop_app_api::HostResourceLimits,
     validation: Option<Validation>,
     finished: bool,
 }
 impl Assembly {
     pub fn new(objects: Vec<Object>) -> Result<Self, Refusal> {
-        if objects.is_empty() || objects.len() > MAX_SESSION_OBJECTS as usize {
+        Self::with_limits(objects, shoop_app_api::HostResourceLimits::default())
+    }
+    pub fn with_limits(
+        objects: Vec<Object>,
+        limits: shoop_app_api::HostResourceLimits,
+    ) -> Result<Self, Refusal> {
+        if !limits.is_valid() || objects.is_empty() || objects.len() > limits.objects as usize {
             return Err(Refusal::Invalid);
         }
         let mut objects = VecDeque::from(objects);
@@ -31,7 +38,7 @@ impl Assembly {
         if metadata.description.kind != ObjectKind::Metadata
             || metadata.description.index != 0
             || metadata.bytes.is_empty()
-            || metadata.bytes.len() as u64 > MAX_SESSION_METADATA_BYTES
+            || metadata.bytes.len() as u64 > limits.metadata_bytes
             || metadata.description.bytes != metadata.bytes.len() as u64
         {
             return Err(Refusal::Invalid);
@@ -49,7 +56,7 @@ impl Assembly {
             total = total
                 .checked_add(object.description.bytes)
                 .ok_or(Refusal::Invalid)?;
-            if total > MAX_SESSION_MEDIA_BYTES {
+            if total > limits.media_bytes {
                 return Err(Refusal::Overloaded);
             }
         }
@@ -59,6 +66,7 @@ impl Assembly {
             active: None,
             payloads: Vec::new(),
             events: 0,
+            limits,
             validation: None,
             finished: false,
         })
@@ -129,7 +137,7 @@ impl Assembly {
                         ) as usize;
                         if length == 0
                             || length > 1024 * 1024
-                            || self.events >= MAX_SESSION_MIDI_EVENTS
+                            || self.events >= self.limits.midi_events as u64
                         {
                             return Err(Refusal::Invalid);
                         }

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::{
     mirror::Mirror,
-    prepared::{Validation, MAX_MEDIA_BYTES},
+    prepared::Validation,
     reads::{empty_audio, empty_midi, Outcome},
     EngineClock, RtBackend,
 };
@@ -85,7 +85,31 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .copied()
             .filter(|id| only.is_none_or(|target| *id == target))
             .collect::<Vec<_>>();
-        let mut bytes = 0u64;
+        let mut bytes = self
+            .canonical_imports
+            .iter()
+            .filter(|id| only.is_some_and(|target| target != **id))
+            .try_fold(0u64, |total, id| {
+                total
+                    .checked_add(
+                        self.prepared_content
+                            .get(id)
+                            .ok_or_else(|| anyhow!("retained content lacks a validation proof"))?
+                            .bytes(),
+                    )
+                    .ok_or_else(|| anyhow!("retained capture size overflow"))
+            })?;
+        let mut event_count = self
+            .canonical_content
+            .iter()
+            .filter(|(id, _)| only.is_some_and(|target| target != **id))
+            .try_fold(0usize, |total, (_, content)| {
+                content.midi.iter().try_fold(total, |total, channel| {
+                    total
+                        .checked_add(channel.events.len())
+                        .ok_or_else(|| anyhow!("retained MIDI event count overflow"))
+                })
+            })?;
         for (index, id) in ids.iter().copied().enumerate() {
             if !self.canonical_content.contains_key(&id) {
                 let entry = &self.mirror.loops[&id];
@@ -95,8 +119,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let audio_bytes = u64::from(length)
                     .checked_mul(channels as u64 * 4)
                     .ok_or_else(|| anyhow!("audio size overflow"))?;
-                if audio_bytes > MAX_MEDIA_BYTES.saturating_sub(bytes) {
-                    bail!("session capture exceeds the remaining 256 MiB budget");
+                if audio_bytes > self.resource_limits.media_bytes.saturating_sub(bytes) {
+                    bail!("session capture exceeds the remaining host media budget");
                 }
                 let audio = if length == 0 || channels == 0 {
                     empty_audio(channels)
@@ -121,12 +145,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     bail!("MIDI initial state exceeds its bounded packet count");
                 }
                 let initial_bytes = initial.iter().map(|p| p.len() as u64 + 4).sum::<u64>();
-                let midi_limit = MAX_MEDIA_BYTES
+                let midi_limit = self
+                    .resource_limits
+                    .media_bytes
                     .checked_sub(bytes)
                     .and_then(|n| n.checked_sub(audio_bytes))
                     .and_then(|n| n.checked_sub(initial_bytes))
                     .ok_or_else(|| {
-                        anyhow!("session capture exceeds the remaining 256 MiB budget")
+                        anyhow!("session capture exceeds the remaining host media budget")
                     })?;
                 let events = if length == 0 || !midi {
                     empty_midi(version, midi)
@@ -173,6 +199,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.reads.forget(id);
             }
             let image = Arc::clone(&self.canonical_content[&id]);
+            event_count = image.midi.iter().try_fold(event_count, |count, channel| {
+                count
+                    .checked_add(channel.events.len())
+                    .ok_or_else(|| anyhow!("MIDI event count overflow"))
+            })?;
+            if event_count > self.resource_limits.midi_events {
+                bail!("capture exceeds host MIDI event capacity");
+            }
             if !self
                 .prepared_content
                 .get(&id)
@@ -197,8 +231,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             bytes = bytes
                 .checked_add(self.prepared_content[&id].bytes())
                 .ok_or_else(|| anyhow!("capture size overflow"))?;
-            if bytes > MAX_MEDIA_BYTES {
-                bail!("session capture exceeds the 256 MiB media budget");
+            if bytes > self.resource_limits.media_bytes {
+                bail!("session capture exceeds the host media budget");
             }
         }
         let port = |id: BackendPortId| -> BackendSessionPort {
