@@ -257,7 +257,7 @@ impl MidiPool {
         self.free.push(owner.0);
     }
 }
-fn apply_short(state: &mut MidiState, short: [u8; 3]) {
+pub(super) fn apply_short(state: &mut MidiState, short: [u8; 3]) {
     let count = match short[0] {
         0x80..=0xbf | 0xe0..=0xef => 3,
         0xc0..=0xdf => 2,

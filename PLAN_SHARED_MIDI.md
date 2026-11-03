@@ -196,17 +196,22 @@ restoration contract determines boundary-state/output expectations.
 
 ### M1 — Immutable MIDI pages and retained windows
 
-- [ ] Implement prepared complete-packet storage, immutable owners and borrowed
+- [x] Implement prepared complete-packet storage, immutable owners and borrowed
   cursors; keep event payloads shared across clipped/rebased views and forks.
-- [ ] Give each view matching initial state, duration and revision. Implement
+- [x] Give each view matching initial state, duration and revision. Implement
   strict-pre-target positioning using bounded checkpoints, preserving all
   originals at the target and stable equal-frame order.
-- [ ] Add a small guarded proof with two overlapping windows, a note held across
+- [x] Add a small guarded proof with two overlapping windows, a note held across
   the cut, events exactly on boundaries, an event-free span and multi-page SysEx.
 
 Verification: compare packets and state to an independent linear oracle; show no
 whole-window payload copy, stale/foreign-handle refusal, retained-reader isolation
 and complete credit recovery. Commit the immutable-window milestone.
+
+M1 evidence: the heap-guarded overlapping-cut fixture checks every seek against a
+linear packet/state oracle, including held state, simultaneous boundary originals,
+empty spans, three-page SysEx, immutable forks/exports and full reclamation. Grabs
+and forks leave the physical-page count unchanged.
 
 ### M2 — Rolling history and truthful coverage
 
