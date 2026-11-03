@@ -60,10 +60,11 @@ def worker(args):
             test = Path(temporary)
             for folder in ["private", "artifacts", "evidence"]:
                 (test / folder).mkdir()
-            secret = bytes([165]) * 32
-            (test / "private/credential").write_bytes(secret)
+            # Fixed public marker exercises chunk-boundary detection.
+            marker = bytes([165]) * 32
+            (test / "private/credential").write_bytes(marker)
             (test / "artifacts/clean").write_bytes(b"public artifact")
-            (test / "artifacts/leak").write_bytes(bytes(1024 * 1024 - 16) + secret)
+            (test / "artifacts/leak").write_bytes(bytes(1024 * 1024 - 16) + marker)
             (test / "evidence/leak").write_bytes(b"-----BEGIN PRIVATE KEY-----")
             assert sorted(audit_public_output(test)) == ["artifacts/leak", "evidence/leak"]
             assert (test / "artifacts/clean").exists() and not (test / "artifacts/leak").exists()
