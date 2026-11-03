@@ -62,8 +62,6 @@ fn discover(host: String) -> Devices {
 
 pub(super) struct Request {
     pub profile: PathBuf,
-    pub credential: PathBuf,
-    pub create_credential: bool,
     pub config: HostConfig,
     pub options: StartOptions,
 }
@@ -74,10 +72,6 @@ impl Request {
             !self.profile.exists(),
             "Profile already exists; select a new path"
         );
-        if self.create_credential {
-            shoop_host::remote::create_credential(&self.credential).context("Create credential")?;
-        }
-        shoop_host::remote::credential(&self.credential).context("Read credential")?;
         let executable = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
         let (mut child, _) = shoop_host::launch::spawn(&self.config, self.options, &executable)?;
         std::thread::spawn(move || {
@@ -112,8 +106,6 @@ pub(super) struct Dialog {
     management: String,
     advertised_host: String,
     profile: PathBuf,
-    credential: PathBuf,
-    new_credential: bool,
     log_enabled: bool,
     log_file: PathBuf,
     devices: Devices,
@@ -146,8 +138,6 @@ impl Default for Dialog {
             management: "127.0.0.1:0".into(),
             advertised_host: String::new(),
             profile: PathBuf::new(),
-            credential: PathBuf::new(),
-            new_credential: true,
             log_enabled: false,
             log_file: PathBuf::new(),
             devices: Devices::default(),
@@ -197,7 +187,6 @@ impl Dialog {
             "Name required (max 128 bytes)"
         );
         let profile = destination(&self.profile).context("Profile path")?;
-        let credential = destination(&self.credential).context("Credential path")?;
         let log_file = if self.log_enabled {
             Some(destination(&self.log_file).context("Log path")?)
         } else {
@@ -208,18 +197,8 @@ impl Dialog {
             "Profile already exists; select a new path"
         );
         ensure!(
-            !self.new_credential || !credential.exists(),
-            "Credential exists; select Use existing or a new key path"
-        );
-        ensure!(
-            profile != credential,
-            "Profile and credential paths must differ"
-        );
-        ensure!(
-            log_file
-                .as_ref()
-                .is_none_or(|path| path != &profile && path != &credential),
-            "Log path must differ from the profile and credential paths"
+            log_file.as_ref().is_none_or(|path| path != &profile),
+            "Log path must differ from the profile path"
         );
         let endpoint: SocketAddr = self.endpoint.parse().context("Invalid data bind address")?;
         let management: SocketAddr = self
@@ -243,8 +222,6 @@ impl Dialog {
         options.endpoint = endpoint;
         options.management_endpoint = management;
         options.lan = self.lan;
-        options.credential = Some(credential.clone());
-        options.export_credential = Some(credential.clone());
         options.export_profile = Some(profile.clone());
         options.log_file = log_file;
         if !self.advertised_host.trim().is_empty() {
@@ -265,7 +242,6 @@ impl Dialog {
                 name: self.name.clone(),
                 endpoint: options.advertised_endpoint.clone().unwrap(),
                 management: options.advertised_management.clone().unwrap(),
-                credential: self.credential.clone(),
                 network: options.network,
                 local: !self.lan,
                 transport: AppTransport::Socket,
@@ -318,8 +294,6 @@ impl Dialog {
         config.validate()?;
         Ok(Request {
             profile,
-            credential,
-            create_credential: self.new_credential,
             config,
             options,
         })
@@ -327,9 +301,6 @@ impl Dialog {
     pub fn failed(&mut self, message: String) {
         self.pending = false;
         self.error = Some(message);
-        if self.credential.exists() {
-            self.new_credential = false;
-        }
     }
     pub fn show(&mut self, context: &egui::Context) -> Option<Request> {
         self.poll_devices();
@@ -498,26 +469,12 @@ impl Dialog {
                 path_field(ui, &mut self.profile, true, "host-profile.json");
                 ui.end_row();
                 if self.profile != previous_profile {
-                    if self.credential.as_os_str().is_empty()
-                        || self.credential == previous_profile.with_extension("key")
-                    {
-                        self.credential = self.profile.with_extension("key");
-                    }
                     if self.log_file.as_os_str().is_empty()
                         || self.log_file == previous_profile.with_extension("log")
                     {
                         self.log_file = self.profile.with_extension("log");
                     }
                 }
-                ui.label("Credential");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.new_credential, true, "Create new");
-                    ui.selectable_value(&mut self.new_credential, false, "Use existing");
-                });
-                ui.end_row();
-                ui.label("Key file");
-                path_field(ui, &mut self.credential, self.new_credential, "host.key");
-                ui.end_row();
                 ui.label("Disk logging");
                 ui.checkbox(&mut self.log_enabled, "Enabled");
                 ui.end_row();
@@ -723,7 +680,6 @@ mod tests {
         Dialog {
             physical_audio: false,
             profile: root.join("profile.json"),
-            credential: root.join("host.key"),
             ..Default::default()
         }
     }
@@ -749,11 +705,6 @@ mod tests {
             request.options.export_profile.as_ref(),
             Some(&request.profile)
         );
-        assert_eq!(
-            request.options.export_credential.as_ref(),
-            Some(&request.credential)
-        );
-        assert!(request.create_credential);
         assert_eq!(midi_ports(&dialog.midi_inputs), ["none"]);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
@@ -761,11 +712,8 @@ mod tests {
     fn existing_profiles_and_aliasing_output_paths_are_rejected() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
-        dialog.credential = root.path().join("./profile.json");
-        assert!(dialog.request().is_err());
-        dialog.credential = root.path().join("host.key");
         dialog.log_enabled = true;
-        dialog.log_file = root.path().join("./host.key");
+        dialog.log_file = root.path().join("./profile.json");
         assert!(dialog.request().is_err());
         dialog.log_enabled = false;
         std::fs::write(&dialog.profile, b"existing configuration").unwrap();
@@ -892,7 +840,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn device_results_and_failed_startup_preserve_an_explicit_existing_key() {
+    fn device_results_and_failed_startup_leave_configuration_retryable() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
         let (sender, receiver) = mpsc::channel();
@@ -913,12 +861,8 @@ mod tests {
         drop(sender);
         dialog.poll_devices();
         assert_eq!(dialog.error.as_deref(), Some("Device enumeration failed"));
-        shoop_host::remote::create_credential(&dialog.credential).unwrap();
-        let key = std::fs::read(&dialog.credential).unwrap();
         dialog.failed("Bind failed".into());
-        assert!(!dialog.new_credential);
-        assert!(!dialog.request().unwrap().create_credential);
-        assert_eq!(std::fs::read(&dialog.credential).unwrap(), key);
+        assert!(dialog.request().is_ok());
         assert!(!dialog.profile.exists());
     }
 
@@ -927,7 +871,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
         dialog.profile = root.path().join("one.json");
-        dialog.credential = root.path().join("one.key");
         dialog.log_file = root.path().join("one.log");
         let mut screen = Screen::new(egui::vec2(800.0, 700.0));
         screen.frame(vec![], |ui| dialog.fields(ui));
@@ -967,12 +910,9 @@ mod tests {
             );
             assert_eq!(dialog.profile, root.path().join(format!("{name}.json")));
             if name == "two" {
-                assert_eq!(dialog.credential, root.path().join("two.key"));
                 assert_eq!(dialog.log_file, root.path().join("two.log"));
-                dialog.credential = root.path().join("custom.key");
                 dialog.log_file = root.path().join("custom.log");
             } else {
-                assert_eq!(dialog.credential, root.path().join("custom.key"));
                 assert_eq!(dialog.log_file, root.path().join("custom.log"));
             }
         }

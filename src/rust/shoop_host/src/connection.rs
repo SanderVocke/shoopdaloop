@@ -54,7 +54,6 @@ impl RecordPort for Port {
 fn open(
     entry: &HostTarget,
     address: &str,
-    token: &[u8; 32],
     deadline: Instant,
 ) -> Result<shoop_transport_socket::Port> {
     let addresses = crate::remote::resolve(address, deadline)?;
@@ -71,9 +70,9 @@ fn open(
             Default::default()
         };
         let result = if entry.network.is_some() {
-            shoop_transport_socket::setup::connect_lan(*address, token, config, budget)
+            shoop_transport_socket::setup::connect_lan(*address, config, budget)
         } else {
-            shoop_transport_socket::setup::connect(*address, token, config, budget)
+            shoop_transport_socket::setup::connect(*address, config, budget)
         };
         match result {
             Ok(port) => return Ok(port),
@@ -95,9 +94,7 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
                 WireMessage::Rejected(reason) => {
                     Err(anyhow!("session endpoint refused: {reason:?}"))
                 }
-                _ => Err(anyhow!(
-                    "session endpoint identity differs from its profile"
-                )),
+                _ => Err(anyhow!("unexpected session endpoint greeting")),
             };
         }
         if port.failure().is_some() {
@@ -109,10 +106,10 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
 }
 pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
     let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
+    entry.validate()?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.endpoint, &token, deadline)
-        .context("authenticate session data connection")?;
+    let mut port =
+        open(&entry, &entry.endpoint, deadline).context("connect to session data connection")?;
     greeting(&mut port, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
@@ -222,10 +219,10 @@ pub fn management(
     timeout: Duration,
 ) -> Result<ManagementReply> {
     let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
+    entry.validate()?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.management, &token, deadline)
-        .context("authenticate session management connection")?;
+    let mut port = open(&entry, &entry.management, deadline)
+        .context("connect to session management connection")?;
     greeting(&mut port, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode(&WireMessage::ManagementRequest(request), &mut bytes)
@@ -300,9 +297,9 @@ pub fn host_report(
     timeout: Duration,
 ) -> Result<shoop_app_protocol::HostReport> {
     let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
+    entry.validate()?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.management, &token, deadline)?;
+    let mut port = open(&entry, &entry.management, deadline)?;
     greeting(&mut port, deadline)?;
     let mut record = [0; MAX_RECORD_BYTES];
     let n = codec::encode(
@@ -350,4 +347,41 @@ pub fn host_report(
         remaining(deadline)?;
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+/// Inspect a host-owned socket without admitting a data or management session.
+pub fn describe(address: &str, timeout: Duration) -> Result<HostTarget> {
+    let deadline = Instant::now() + timeout;
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / (addresses.len() - index) as u32;
+        let result = (|| -> Result<HostTarget> {
+            let stream = shoop_transport_socket::setup::inspect(*address, budget)?;
+            stream.set_nonblocking(false)?;
+            stream.set_read_timeout(Some(remaining(deadline)?))?;
+            let mut target: HostTarget = crate::launch::read_message(stream)?;
+            if !address.ip().is_loopback() {
+                for endpoint in [&mut target.endpoint, &mut target.management] {
+                    if let Ok(mut socket) = endpoint.parse::<std::net::SocketAddr>() {
+                        if socket.ip().is_loopback() {
+                            socket.set_ip(address.ip());
+                            *endpoint = socket.to_string();
+                        }
+                    }
+                }
+            }
+            target.validate()?;
+            anyhow::ensure!(
+                target.process.is_some() && target.instance != 0,
+                "Host description lacks process identity"
+            );
+            Ok(target)
+        })();
+        match result {
+            Ok(target) => return Ok(target),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("No usable host endpoint")))
 }

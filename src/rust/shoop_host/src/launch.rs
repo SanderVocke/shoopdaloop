@@ -68,10 +68,6 @@ pub fn spawn(
     host_executable: &Path,
 ) -> Result<(Child, Target)> {
     config.validate()?;
-    ensure!(
-        options.credential.is_some(),
-        "independent hosts require an explicit credential file"
-    );
     let mut command = Command::new(host_executable);
     command.arg("--launch-stdin");
     independent(&mut command);

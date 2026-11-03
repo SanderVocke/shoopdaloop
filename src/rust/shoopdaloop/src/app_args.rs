@@ -54,9 +54,6 @@ pub struct AppArgs {
     #[arg(long)]
     pub snapshot_hz: Option<u32>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub credential_file: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
     #[arg(
         long = "host-profile",
         visible_alias = "remote-profile",
@@ -67,7 +64,7 @@ pub struct AppArgs {
     #[arg(long, requires = "remote_profile")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    /// Shut down the selected ownerless host using authenticated management authority.
+    /// Shut down the selected ownerless host using current management authority.
     #[arg(long, requires = "remote_profile", conflicts_with = "ui_only")]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.

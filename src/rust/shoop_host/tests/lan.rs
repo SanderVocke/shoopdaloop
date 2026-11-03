@@ -3,7 +3,7 @@ use shoop_app_client::{Client, State};
 use shoop_app_protocol::*;
 use shoop_host::{
     connection::{self, Connection},
-    remote::{create_credential, RemoteProfile},
+    remote::RemoteProfile,
 };
 use shoop_wasm_test_support::shoop_test;
 use std::{
@@ -32,8 +32,7 @@ fn host(ip: IpAddr) -> Host {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("config.json");
     std::fs::write(&config, b"{}").unwrap();
-    let key = root.path().join("host.key");
-    create_credential(&key).unwrap();
+
     let path = root.path().join("profile.json");
     let mut child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))
         .arg("--config")
@@ -43,8 +42,6 @@ fn host(ip: IpAddr) -> Host {
         .arg(SocketAddr::new(ip, 0).to_string())
         .arg("--management-endpoint")
         .arg(SocketAddr::new(ip, 0).to_string())
-        .arg("--credential-file")
-        .arg(key)
         .arg("--export-profile")
         .arg(&path)
         .stdin(Stdio::null())
@@ -160,11 +157,6 @@ fn lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints() {
         let mut wrong = profile.clone();
         wrong.version = VERSION + 1;
         assert!(connection::connect(&wrong, Duration::from_secs(5)).is_err());
-        let bad_key = host._root.path().join("wrong.key");
-        create_credential(&bad_key).unwrap();
-        let mut wrong = profile.clone();
-        wrong.credential = bad_key;
-        assert!(connection::connect(&wrong, Duration::from_secs(2)).is_err());
         assert!(matches!(
             status(&profile),
             ManagementReply::Status { busy: true, .. }
@@ -235,11 +227,9 @@ fn non_loopback_interface_is_supported_only_by_explicit_lan_policy() {
         .filter_map(|s| s.parse::<Ipv4Addr>().ok())
         .find(|ip| !ip.is_loopback())
         .expect("Linux LAN acceptance requires a non-loopback IPv4 interface");
-    assert!(shoop_transport_socket::setup::Listener::bind_with(
-        SocketAddr::new(ip.into(), 0),
-        [1; 32]
-    )
-    .is_err());
+    assert!(
+        shoop_transport_socket::setup::Listener::bind_with(SocketAddr::new(ip.into(), 0),).is_err()
+    );
     let host = host(ip.into());
     let (mut client, mut connection) = attach(&host.profile, 1);
     control(
@@ -270,7 +260,7 @@ fn wildcard_profiles_and_remote_shared_memory_are_refused() {
         .is_err());
     let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = occupied.local_addr().unwrap();
-    assert!(shoop_transport_socket::setup::Listener::bind_lan(address, [1; 32]).is_err());
+    assert!(shoop_transport_socket::setup::Listener::bind_lan(address).is_err());
 }
 
 struct Blackhole {
@@ -479,11 +469,8 @@ fn losing_a_management_reply_reconciles_the_same_shutdown_operation() {
     else {
         panic!()
     };
-    let target: shoop_host::remote::Target = host.profile.clone().into();
-    let token = target.token().unwrap();
     let mut raw = shoop_transport_socket::setup::connect_lan(
         host.profile.management.parse().unwrap(),
-        &token,
         Default::default(),
         Duration::from_secs(5),
     )
@@ -612,8 +599,6 @@ fn saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state()
         .arg(&profile.endpoint)
         .arg("--management-endpoint")
         .arg(&profile.management)
-        .arg("--credential-file")
-        .arg(&profile.credential)
         .arg("--export-profile")
         .arg(&host.path)
         .stdin(Stdio::null())

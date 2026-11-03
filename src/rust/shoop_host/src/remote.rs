@@ -1,4 +1,4 @@
-use crate::{config::AppTransport, private};
+use crate::config::AppTransport;
 use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_protocol::VERSION;
@@ -50,7 +50,6 @@ pub struct RemoteProfile {
     pub name: String,
     pub endpoint: String,
     pub management: String,
-    pub credential: PathBuf,
     #[serde(default)]
     pub network: NetworkOptions,
     #[serde(default)]
@@ -65,10 +64,7 @@ pub struct RemoteProfile {
 impl RemoteProfile {
     pub fn validate(&self) -> Result<()> {
         ensure!(self.version == VERSION, "incompatible session protocol");
-        ensure!(
-            self.name.len() <= 128 && !self.credential.as_os_str().is_empty(),
-            "invalid remote profile identity or credential path"
-        );
+        ensure!(self.name.len() <= 128, "invalid profile name");
         endpoint(&self.endpoint)?;
         endpoint(&self.management)?;
         self.network.validate()?;
@@ -105,12 +101,6 @@ impl RemoteProfile {
         ensure!(bytes.len() <= 65536, "remote profile exceeds 64 KiB");
         let mut profile: Self = serde_json::from_slice(&bytes)?;
         profile.validate()?;
-        if profile.credential.is_relative() {
-            profile.credential = path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .join(&profile.credential);
-        }
         if let Some(log) = profile.log_file.as_mut().filter(|log| log.is_relative()) {
             *log = path.parent().unwrap_or(Path::new(".")).join(&*log);
         }
@@ -134,12 +124,20 @@ impl RemoteProfile {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Target {
+    pub can_attach: bool,
+    #[serde(default)]
+    pub local_endpoint: Option<String>,
+    #[serde(default)]
+    pub local_management: Option<String>,
+    #[serde(default)]
+    pub process: Option<shoop_host_processes::Identity>,
+    #[serde(default)]
+    pub instance: u128,
     pub version: u16,
 
     pub name: String,
     pub endpoint: String,
     pub management: String,
-    pub credential: PathBuf,
     pub transport: AppTransport,
     pub shared_memory: Option<Vec<u8>>,
     pub warnings: Vec<String>,
@@ -149,12 +147,16 @@ pub struct Target {
 impl From<RemoteProfile> for Target {
     fn from(e: RemoteProfile) -> Self {
         Self {
+            can_attach: true,
+            local_endpoint: None,
+            local_management: None,
+            process: None,
+            instance: 0,
             version: e.version,
 
             name: e.name,
             endpoint: e.endpoint,
             management: e.management,
-            credential: e.credential,
             transport: e.transport,
             shared_memory: e.shared_memory,
             warnings: Vec::new(),
@@ -180,28 +182,23 @@ impl Target {
     pub fn read(path: &Path) -> Result<Self> {
         Ok(RemoteProfile::read(path)?.into())
     }
-    pub fn token(&self) -> Result<[u8; 32]> {
-        ensure!(self.version == VERSION, "incompatible session protocol");
-        if let Some(network) = self.network {
-            network.validate()?;
-            ensure!(
-                self.transport == AppTransport::Socket && self.shared_memory.is_none(),
-                "remote shared memory is unsupported"
-            );
-        }
-
-        credential(&self.credential)
+    pub fn validate(&self) -> Result<()> {
+        let profile = self.profile();
+        profile.validate()
     }
-}
-pub fn credential(path: &Path) -> Result<[u8; 32]> {
-    private::read(path, 32)?
-        .try_into()
-        .map_err(|_| anyhow!("invalid credential length"))
-}
-pub fn create_credential(path: &Path) -> Result<()> {
-    let mut token = [0; 32];
-    getrandom::fill(&mut token).map_err(|_| anyhow!("credential entropy unavailable"))?;
-    private::create(path, &token)
+    pub fn profile(&self) -> RemoteProfile {
+        RemoteProfile {
+            version: self.version,
+            name: self.name.clone(),
+            endpoint: self.endpoint.clone(),
+            management: self.management.clone(),
+            network: self.network.unwrap_or_default(),
+            local: self.network.is_none(),
+            transport: self.transport,
+            shared_memory: self.shared_memory.clone(),
+            log_file: self.log_file.clone(),
+        }
+    }
 }
 pub fn remaining(deadline: Instant) -> Result<Duration> {
     let remaining = deadline.saturating_duration_since(Instant::now());

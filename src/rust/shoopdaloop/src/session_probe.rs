@@ -139,13 +139,7 @@ fn launch(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
-    let credential = root.path().join("host.key");
-    shoop_host::remote::create_credential(&credential)?;
-    command
-        .arg("--credential-file")
-        .arg(credential)
-        .arg("--export-profile")
-        .arg(&profile_path);
+    command.arg("--export-profile").arg(&profile_path);
     if lan {
         command.arg("--lan");
     }
@@ -293,8 +287,8 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        path.exists() && entry.credential.exists(),
-        "explicit profile or credential was removed during shutdown"
+        path.exists(),
+        "explicit profile was removed during shutdown"
     );
     Ok(())
 }
@@ -592,8 +586,8 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        path.exists() && entry.credential.exists(),
-        "explicit file companion profile or credential was removed during shutdown"
+        path.exists(),
+        "explicit file companion profile was removed during shutdown"
     );
     println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
     Ok(())

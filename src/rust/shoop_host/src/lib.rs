@@ -6,7 +6,6 @@ pub mod connection;
 pub mod engine;
 pub mod launch;
 pub mod logging;
-mod private;
 pub mod serve;
 
 pub mod remote;

@@ -306,7 +306,6 @@ src/rust/shoop_app/src/service/management.rs,app_session,instrumented_indirect,M
 src/rust/shoop_host/src/lib.rs,app_session,excluded,Native composition exports.
 src/rust/shoop_host/src/main.rs,app_session,instrumented_indirect,CLI configuration enters the traced host session boundary.
 src/rust/shoop_host/src/config.rs,app_session,excluded,Bounded host configuration validation.
-src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file and ACL primitives; callers report failures without secret values.
 src/rust/shoop_host/src/engine.rs,app_session,instrumented_indirect,Native configuration maps settings inside traced engine startup.
 src/rust/shoop_host/src/serve.rs,app_session,instrumented_direct,Independent host session lifecycle boundary.
 src/rust/shoop_host/src/connection.rs,app_session,instrumented_indirect,Connection delivery executes under client and host session boundaries.

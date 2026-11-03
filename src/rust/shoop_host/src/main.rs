@@ -12,10 +12,8 @@ fn run() -> anyhow::Result<()> {
     use std::{io::Read, path::PathBuf};
     #[derive(Parser)]
     struct Args {
-        #[arg(long, required_unless_present_any = ["generate_credential", "launch_stdin"])]
+        #[arg(long)]
         config: Option<PathBuf>,
-        #[arg(long, conflicts_with_all = ["config", "launch_stdin"])]
-        generate_credential: Option<PathBuf>,
         #[arg(long, hide = true, conflicts_with = "config")]
         launch_stdin: bool,
         #[arg(long)]
@@ -36,19 +34,12 @@ fn run() -> anyhow::Result<()> {
         snapshot_hz: u32,
         #[arg(long, default_value = "127.0.0.1:0")]
         endpoint: std::net::SocketAddr,
-        #[arg(long, required_unless_present_any = ["generate_credential", "launch_stdin"])]
-        credential_file: Option<PathBuf>,
         #[arg(long)]
         log_file: Option<PathBuf>,
         #[arg(long, default_value = "ShoopDaLoop")]
         name: String,
     }
     let args = Args::parse();
-    if let Some(path) = args.generate_credential {
-        shoop_host::remote::create_credential(&path)?;
-        println!("Credential file created");
-        return Ok(());
-    }
     let (startup_config, mut options) = if args.launch_stdin {
         let startup: shoop_host::launch::Startup =
             shoop_host::launch::read_message(std::io::stdin().lock())?;
@@ -66,7 +57,6 @@ fn run() -> anyhow::Result<()> {
             heartbeat_timeout_ms: args.heartbeat_timeout_ms,
             snapshot_hz: args.snapshot_hz,
         };
-        options.credential = args.credential_file;
         options.log_file = args.log_file;
         options.name = args.name;
         (None, options)
@@ -95,6 +85,7 @@ fn run() -> anyhow::Result<()> {
     }
     let config = match startup_config {
         Some(config) => config,
+        None if args.config.is_none() => shoop_host::config::HostConfig::default(),
         None => {
             let mut bytes = Vec::new();
             std::fs::File::open(args.config.as_ref().unwrap())?

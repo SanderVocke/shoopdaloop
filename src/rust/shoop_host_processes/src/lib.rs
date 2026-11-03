@@ -190,10 +190,15 @@ pub fn force_stop(expected: &Identity) -> Result<()> {
     }
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if identity(expected.pid)?.as_ref() != Some(expected) {
+        let observation = identity(expected.pid);
+        if observation
+            .as_ref()
+            .is_ok_and(|value| value.as_ref() != Some(expected))
+        {
             return Ok(());
         }
         if Instant::now() >= deadline {
+            observation.context("Confirm process termination")?;
             bail!("Process termination has not completed");
         }
         std::thread::sleep(Duration::from_millis(10));

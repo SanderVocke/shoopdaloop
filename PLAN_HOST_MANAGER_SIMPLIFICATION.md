@@ -148,19 +148,19 @@ Depends on Stage 1's inspection abstraction. Platform feasibility CI runs in
 parallel with this independent transport work; Stage 4 integration remains gated
 on passing inspection tests on all three platforms.
 
-- [ ] Remove token generation/comparison, credential fields, key APIs, key-related
+- [x] Remove token generation/comparison, credential fields, key APIs, key-related
   CLI arguments and UI controls. Update `shoop_transport`, `shoop_transport_socket`,
   `shoop_host`, engine-process bootstrap callers and socket/shared-memory fixtures.
   Delete auth-only helpers/dependencies; retain randomness used for operational IDs.
-- [ ] Define a bounded keyless host description containing name, compatibility,
+- [x] Define a bounded keyless host description containing name, compatibility,
   endpoint roles/addresses, transport information, process/instance identity and
   optional log location. Keep OS-specific implementation outside portable protocols.
-- [ ] Add compatibility and probe/attach negotiation before handing sockets to data
+- [x] Add compatibility and probe/attach negotiation before handing sockets to data
   or management sessions. A probe must obtain a description or identify the
   management endpoint without allocating controller/shared-memory attachments.
-- [ ] Version the changed connection/bootstrap exchanges explicitly, updating affected
+- [x] Version the changed connection/bootstrap exchanges explicitly, updating affected
   codecs and fixtures. Old incompatible wire formats fail with a compatibility error.
-- [ ] Remove private-log ACL/ownership gates and authentication-only filesystem code;
+- [x] Remove private-log ACL/ownership gates and authentication-only filesystem code;
   retain log rotation, optional logging and useful I/O errors.
 
 Verification: compatible app, management and engine-process connections work with
@@ -292,3 +292,13 @@ Depends on Stages 0–4.
   matrix runs. These implementations are independent, and the long matrix build
   latency need not block transport work. Stage 4's discovery integration still
   requires platform feasibility evidence; goals and acceptance criteria are unchanged.
+
+- Stage 2: removed authentication across native app/management, portable socket
+  negotiation and engine-process bootstrap. Versioned the keyless greeting and
+  app/engine exchanges. Inspection returns a bounded live description before
+  session admission; shared-memory availability updates after first attachment.
+  Repeated probes exercise both endpoint roles before and during a controller.
+  Removed key CLI/UI fields and private file/ACL code; optional rotating logs remain.
+  Warning-denying workspace build and policy checks pass; full CI-shaped suite is
+  running. Early coverage CI exposed an exit-observation race in Stage 1: retry
+  transient inspection errors after termination, and require observed exit/change.

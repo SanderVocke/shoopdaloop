@@ -83,15 +83,11 @@ fn host_peer() {
         ..Default::default()
     };
     let mut options = StartOptions::new().unwrap();
-    let key = root.join("host.key");
-    if !key.exists() {
-        shoop_host::remote::create_credential(&key).unwrap();
-    }
-    options.credential = Some(key);
+
     options.export_profile = Some(root.join("profile.json"));
     if root.join("lan").exists() {
         options.lan = true;
-        options.credential = Some(root.join("host.key"));
+
         options.export_profile = Some(root.join("profile.json"));
     }
     shoop_host::serve::run(config, options).unwrap();
@@ -264,14 +260,14 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(path.exists() && entry.credential.exists());
+    assert!(path.exists());
 }
 
 #[shoop_wasm_test_support::shoop_test]
 fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_shutdown() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("lan"), b"1").unwrap();
-    shoop_host::remote::create_credential(&root.path().join("host.key")).unwrap();
+
     let mut host = peer("host_peer", root.path());
     let path = root.path().join("profile.json");
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -414,7 +410,7 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(path.exists() && root.path().join("host.key").exists());
+    assert!(path.exists());
 }
 
 #[shoop_wasm_test_support::shoop_test]

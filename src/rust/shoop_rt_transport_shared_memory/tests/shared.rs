@@ -85,14 +85,11 @@ fn shared_peer() {
         return;
     };
     let mut input = std::io::stdin().lock();
-    let mut token = [0; 32];
     let mut descriptor = [0; DESCRIPTOR_BYTES];
-    input.read_exact(&mut token).unwrap();
     input.read_exact(&mut descriptor).unwrap();
     let port = Port::open(Descriptor::decode(&descriptor).unwrap(), Side::Server).unwrap();
     let mut control = setup::connect(
         address.parse().unwrap(),
-        &token,
         Config::default(),
         Duration::from_secs(5),
     )
@@ -143,7 +140,6 @@ fn peer(mode: &str) -> (Guard, shoop_rt_transport_socket::Port, Port) {
         .unwrap();
     let mut child = Guard(child);
     let input = child.0.stdin.as_mut().unwrap();
-    input.write_all(listener.token()).unwrap();
     input.write_all(&descriptor.encode()).unwrap();
     let mut control = listener
         .accept(Config::default(), Duration::from_secs(5))

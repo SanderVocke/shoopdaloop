@@ -3624,9 +3624,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
                 command.arg(flag).arg(value.to_string());
             }
         }
-        if let Some(credential) = &args.credential_file {
-            command.arg("--credential-file").arg(credential);
-        }
         anyhow::ensure!(
             command.status()?.success(),
             "session host exited with an error"
@@ -3667,7 +3664,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;
     }
-    options.credential = args.credential_file.clone();
     options.export_profile = args.export_profile.clone();
     options.log_file = args.log_file.clone();
     let original: Vec<_> = std::env::args_os().skip(1).collect();

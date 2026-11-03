@@ -1672,7 +1672,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("provided-profile.json");
         std::fs::write(&path, serde_json::to_vec(&serde_json::json!({
-            "version": shoop_app_protocol::VERSION, "name": "Explicit host", "endpoint": "127.0.0.1:1", "management": "127.0.0.1:2", "credential": "missing.key", "local": true
+            "version": shoop_app_protocol::VERSION, "name": "Explicit host", "endpoint": "127.0.0.1:1", "management": "127.0.0.1:2", "local": true
         })).unwrap()).unwrap();
         let mut manager = Manager::new(Some(path.clone()));
         manager.scan();

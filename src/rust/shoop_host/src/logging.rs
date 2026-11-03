@@ -1,5 +1,4 @@
-//! Bounded private logs for independent native hosts.
-use crate::private;
+//! Bounded rotating logs for independent native hosts.
 use anyhow::Result;
 use std::{
     fs::{self, File, OpenOptions},
@@ -24,11 +23,7 @@ struct Log {
 }
 impl Log {
     fn open(path: PathBuf) -> Result<Self> {
-        if !path.exists() {
-            private::create(&path, &[])?;
-        }
-        private::check(&path, false)?;
-        let file = OpenOptions::new().append(true).open(&path)?;
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
         let length = file.metadata()?.len();
         Ok(Self {
             path,
@@ -46,11 +41,9 @@ impl Log {
                 backup(&self.path, index - 1)
             };
             if destination.exists() {
-                private::check(&destination, false).map_err(io::Error::other)?;
                 fs::remove_file(&destination)?;
             }
             if source.exists() {
-                private::check(&source, false).map_err(io::Error::other)?;
                 fs::rename(source, destination)?;
             }
         }
@@ -99,7 +92,6 @@ impl Write for Writer {
 
 /// Read only the latest bounded tail; logs survive host shutdown.
 pub fn tail(path: &Path) -> Result<String> {
-    private::check(path, false)?;
     let mut file = File::open(path)?;
     let start = file.metadata()?.len().saturating_sub(64 * 1024);
     file.seek(SeekFrom::Start(start))?;
@@ -111,7 +103,7 @@ pub fn tail(path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     #[shoop_wasm_test_support::shoop_test]
-    fn rotates_private_logs_and_bounds_the_tail() {
+    fn rotates_logs_and_bounds_the_tail() {
         use super::*;
         let root = tempfile::tempdir().unwrap();
         let mut writer = Writer::open(&root.path().join("host.log")).unwrap();
@@ -130,7 +122,6 @@ mod tests {
         let backup = path.with_extension("log.1");
         assert_eq!(fs::metadata(&backup).unwrap().len(), LIMIT);
         assert_eq!(tail(&backup).unwrap().len(), 64 * 1024);
-        private::check(&path, false).unwrap();
         for _ in 0..5 {
             writer.0.lock().unwrap().rotate().unwrap();
         }

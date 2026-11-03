@@ -5029,6 +5029,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_backend",
  "shoop_host",
+ "shoop_host_processes",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
@@ -5354,7 +5355,6 @@ dependencies = [
 name = "shoop_transport_socket"
 version = "0.3.0"
 dependencies = [
- "getrandom 0.4.3",
  "shoop_transport",
  "socket2",
 ]

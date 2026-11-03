@@ -2,10 +2,10 @@ use crate::{
     config::AppTransport,
     config::HostConfig,
     connection::Port,
-    engine, private,
+    engine,
     remote::{identity, RemoteProfile, Target},
 };
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
@@ -32,10 +32,7 @@ pub struct StartOptions {
     pub advertised_endpoint: Option<String>,
     pub advertised_management: Option<String>,
     pub export_profile: Option<PathBuf>,
-    #[serde(default)]
-    pub export_credential: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
-    pub credential: Option<PathBuf>,
     pub log_file: Option<PathBuf>,
 
     pub name: String,
@@ -49,9 +46,7 @@ impl StartOptions {
             advertised_endpoint: None,
             advertised_management: None,
             export_profile: None,
-            export_credential: None,
             network: Default::default(),
-            credential: None,
             log_file: None,
 
             name: "ShoopDaLoop".into(),
@@ -65,17 +60,32 @@ struct Acceptor {
     ports: Receiver<shoop_transport_socket::Port>,
 }
 impl Acceptor {
-    fn new(listener: Listener, lan: bool) -> Result<Self> {
+    fn new(
+        listener: Listener,
+        lan: bool,
+        target: &Target,
+        available: Arc<AtomicBool>,
+    ) -> Result<Self> {
+        use shoop_transport::{
+            handshake::{Handshake, Intent},
+            stream::ByteIo,
+        };
+        crate::launch::write_message(std::io::sink(), target)?;
+        let target = target.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = Arc::clone(&stop);
         let (sender, ports) = mpsc::sync_channel(4);
         let join = thread::Builder::new()
-            .name("shoop-auth".into())
+            .name("shoop-accept".into())
             .spawn(move || {
-                let mut pending: Vec<(
-                    shoop_transport_socket::NativeStream,
-                    shoop_transport::handshake::Handshake,
-                )> = Vec::with_capacity(4);
+                struct Pending {
+                    io: shoop_transport_socket::NativeStream,
+                    hello: Handshake,
+                    written: usize,
+                    description: Vec<u8>,
+                    deadline: Instant,
+                }
+                let mut pending = Vec::<Pending>::with_capacity(16);
                 let mut last = Instant::now();
                 while !stopping.load(Ordering::Acquire) {
                     let now = Instant::now();
@@ -83,14 +93,13 @@ impl Acceptor {
                     last = now;
                     for _ in 0..4 {
                         match listener.accept_stream() {
-                            Ok(Some(stream)) if pending.len() < 4 => pending.push((
-                                shoop_transport_socket::NativeStream(stream),
-                                shoop_transport::handshake::Handshake::new(
-                                    *listener.token(),
-                                    true,
-                                    Duration::from_secs(5),
-                                ),
-                            )),
+                            Ok(Some(stream)) if pending.len() < 16 => pending.push(Pending {
+                                io: shoop_transport_socket::NativeStream(stream),
+                                hello: Handshake::new(true, Duration::from_secs(2)),
+                                written: 0,
+                                description: Vec::new(),
+                                deadline: now + Duration::from_secs(2),
+                            }),
                             Ok(Some(_)) => {}
                             Ok(None) => break,
                             Err(_) => return,
@@ -98,11 +107,40 @@ impl Acceptor {
                     }
                     let mut index = 0;
                     while index < pending.len() {
-                        let (io, handshake) = &mut pending[index];
-                        match handshake.advance(io, elapsed) {
-                            Ok(false) => index += 1,
+                        if now >= pending[index].deadline {
+                            pending.swap_remove(index);
+                            continue;
+                        }
+                        let item = &mut pending[index];
+                        let mut remove = false;
+                        match item.hello.advance(&mut item.io, elapsed) {
+                            Ok(false) => {}
+                            Ok(true) if item.hello.intent() == Intent::Inspect => {
+                                if item.description.is_empty() {
+                                    let mut target = target.clone();
+                                    target.can_attach = available.load(Ordering::Acquire);
+                                    if crate::launch::write_message(&mut item.description, &target)
+                                        .is_err()
+                                    {
+                                        pending.swap_remove(index);
+                                        continue;
+                                    }
+                                }
+                                match item.io.try_write(&item.description[item.written..]) {
+                                    Ok(0) => remove = true,
+                                    Ok(count) => {
+                                        item.written += count;
+                                        remove = item.written == item.description.len();
+                                    }
+                                    Err(
+                                        shoop_transport::stream::IoError::WouldBlock
+                                        | shoop_transport::stream::IoError::Interrupted,
+                                    ) => {}
+                                    Err(_) => remove = true,
+                                }
+                            }
                             Ok(true) => {
-                                let (io, _) = pending.swap_remove(index);
+                                let item = pending.swap_remove(index);
                                 let config = if lan {
                                     shoop_transport_socket::Config {
                                         reliable: 8,
@@ -113,14 +151,18 @@ impl Acceptor {
                                     Default::default()
                                 };
                                 if let Ok(port) =
-                                    shoop_transport_socket::Port::from_stream(io.0, config)
+                                    shoop_transport_socket::Port::from_stream(item.io.0, config)
                                 {
                                     let _ = sender.try_send(port);
                                 }
+                                continue;
                             }
-                            Err(_) => {
-                                pending.swap_remove(index);
-                            }
+                            Err(_) => remove = true,
+                        }
+                        if remove {
+                            pending.swap_remove(index);
+                        } else {
+                            index += 1;
                         }
                     }
                     thread::sleep(Duration::from_millis(1));
@@ -157,10 +199,6 @@ pub fn run_with_ready(
     ensure!(
         !options.lan || config.transport == AppTransport::Socket,
         "LAN hosts require socket delivery"
-    );
-    ensure!(
-        options.credential.is_some(),
-        "hosts require an explicit credential file"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
     let (mut native, mut warnings) = engine::native_config(
@@ -220,20 +258,13 @@ pub fn run_with_ready(
         );
         thread::sleep(Duration::from_millis(2));
     }
-    let credential = options
-        .credential
-        .as_ref()
-        .context("missing host credential")?;
-    let token: [u8; 32] = private::read(credential, 32)?
-        .try_into()
-        .map_err(|_| anyhow!("invalid credential length"))?;
     let bind = if options.lan {
         Listener::bind_lan
     } else {
         Listener::bind_with
     };
-    let data = bind(options.endpoint, token)?;
-    let management = bind(options.management_endpoint, token)?;
+    let data = bind(options.endpoint)?;
+    let management = bind(options.management_endpoint)?;
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
             512, 32, 32,
@@ -249,18 +280,24 @@ pub fn run_with_ready(
             )
         })
         .transpose()?;
+    let local_endpoint = concrete(data.address()?).to_string();
+    let local_management = concrete(management.address()?).to_string();
     let target = Target {
+        can_attach: true,
+        local_endpoint: Some(local_endpoint.clone()),
+        local_management: Some(local_management.clone()),
+        process: shoop_host_processes::identity(std::process::id())?,
+        instance: identity()?,
         version: VERSION,
         name: options.name.clone(),
         endpoint: options
             .advertised_endpoint
             .clone()
-            .unwrap_or(data.address()?.to_string()),
+            .unwrap_or(local_endpoint),
         management: options
             .advertised_management
             .clone()
-            .unwrap_or(management.address()?.to_string()),
-        credential: credential.canonicalize()?,
+            .unwrap_or(local_management),
         transport: config.transport,
         shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
         warnings,
@@ -277,17 +314,6 @@ pub fn run_with_ready(
             name: target.name.clone(),
             endpoint: target.endpoint.clone(),
             management: target.management.clone(),
-            credential: if let Some(reference) = &options.export_credential {
-                reference.clone()
-            } else if options.lan {
-                PathBuf::from(
-                    credential
-                        .file_name()
-                        .context("credential filename unavailable")?,
-                )
-            } else {
-                target.credential.clone()
-            },
             network: options.network,
             local: !options.lan,
             transport: target.transport,
@@ -303,14 +329,9 @@ pub fn run_with_ready(
             ensure!(
                 existing.endpoint == profile.endpoint
                     && existing.management == profile.management
-                    && (if options.lan {
-                        existing.credential.file_name() == profile.credential.file_name()
-                    } else {
-                        existing.credential == profile.credential
-                    })
                     && existing.transport == profile.transport
                     && existing.shared_memory == profile.shared_memory,
-                "existing profile selects different endpoints or credentials"
+                "existing profile selects different endpoints"
             );
         } else {
             profile.write(path)?;
@@ -321,9 +342,10 @@ pub fn run_with_ready(
         target.endpoint,
         target.management
     );
+    let available = Arc::new(AtomicBool::new(true));
+    let data = Acceptor::new(data, options.lan, &target, Arc::clone(&available))?;
+    let management = Acceptor::new(management, options.lan, &target, Arc::clone(&available))?;
     ready(target)?;
-    let data = Acceptor::new(data, options.lan)?;
-    let management = Acceptor::new(management, options.lan)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();
 
@@ -340,7 +362,10 @@ pub fn run_with_ready(
             }
             let shared_port = if config.transport == AppTransport::SharedMemory {
                 match shared.take() {
-                    Some(shared) => Some(shared.with_liveness(port.stream().try_clone()?)?),
+                    Some(shared) => {
+                        available.store(false, Ordering::Release);
+                        Some(shared.with_liveness(port.stream().try_clone()?)?)
+                    }
                     None => {
                         let _ = send(&mut port, &WireMessage::Rejected(Refusal::Unsupported));
                         continue;
@@ -415,6 +440,16 @@ pub fn run_with_ready(
     Ok(())
 }
 
+fn concrete(mut address: SocketAddr) -> SocketAddr {
+    if address.ip().is_unspecified() {
+        address.set_ip(if address.is_ipv4() {
+            std::net::Ipv4Addr::LOCALHOST.into()
+        } else {
+            std::net::Ipv6Addr::LOCALHOST.into()
+        });
+    }
+    address
+}
 fn stop(host: NativeHost) -> Result<(), String> {
     let report = host.stop();
     let mut errors = Vec::new();
