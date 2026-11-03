@@ -103,12 +103,20 @@ Before that target update,
 passed all scheduled jobs: Linux, Windows and macOS debug/release; browser
 debug/release with Node/Wasm, Chromium and Firefox checks; strict native JACK;
 coverage; and bare-metal builds. Documentation, CodeQL and both Codecov checks
-also passed. Patch coverage is 93.04% against the unchanged 80% gate.
+also passed. Patch coverage at that checkpoint was 93.04% against the unchanged
+80% gate.
 
 The combined output-bus/JACK source passed the local gates above, including
 strict JACK service/session acceptance and the expanded browser bus workflow
 with zero xruns. Protocol versions 4/3/13 distinguish the combined wire layouts
-from both preceding branches. Current CI results are linked from the PR.
+from both preceding branches.
+
+[Combined source CI at `25c644c4`](https://github.com/SanderVocke/shoopdaloop/actions/runs/41663124404)
+passed all 11 scheduled jobs, including every native and browser debug/release
+configuration. All 20 commit checks completed without failures or pending
+checks. CodeQL, documentation and both Codecov checks passed; patch coverage is
+93.03% against the unchanged 80% gate. The target remains `e68b15ac`, and the PR
+is open, ready and mergeable with no submitted reviews or inline threads.
 
 Real JACK provider acceptance uses Linux JACK2 with its dummy backend. The
 Windows/macOS results establish distribution build and test compatibility;
