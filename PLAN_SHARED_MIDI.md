@@ -215,17 +215,29 @@ and forks leave the physical-page count unchanged.
 
 ### M2 — Rolling history and truthful coverage
 
-- [ ] Append explicit frame intervals, including empty input, while advancing the
+- [x] Append explicit frame intervals, including empty input, while advancing the
   current projection and retaining sufficient state for later cuts and eviction.
-- [ ] Add bounded time/event/byte/checkpoint capacity admission and retirement;
+- [x] Add bounded time/event/byte/checkpoint capacity admission and retirement;
   preserve old views through repeated wraps. Define gap/exhaustion recovery.
-- [ ] Test time eviction and event-pressure eviction separately, arbitrary cuts,
+- [x] Test time eviction and event-pressure eviction separately, arbitrary cuts,
   callbacks longer than the horizon and frame positions crossing the old u32 limit.
 
 Verification: a seeded lifecycle oracle checks coverage, events, state and pool
 usage through long runs; retained windows remain unchanged. Exhaust optional
 background allowances and demonstrate required capture/read progress. Record
 representative payload, metadata and state-memory sizing. Commit this milestone.
+
+M2 evidence: seeded time/density oracles pass across 128 irregular callbacks per
+configuration, including callbacks longer than the horizon and crossing u32 time.
+A retained window remains byte/state-identical. Required appends and reads succeed
+with both ordinary background allowances exhausted. Failure leaves committed
+history untouched; explicit `discontinuity` adopts the caller's observed state and
+starts a new complete coverage segment. Old history is retired incrementally;
+new admission can report capacity until those credits return. For the eight-chunk
+fixture, the projection is 15,120 bytes, checkpoint/initial/current state reserves
+2,086,560 bytes, and packet reservation is 64,000 bytes. This deliberately
+conservative ownership budget favors predictable admission over dense storage;
+metadata reporting also includes packet leases and reclamation stacks.
 
 ### M3 — Prove edit-index maintenance and publication readiness
 

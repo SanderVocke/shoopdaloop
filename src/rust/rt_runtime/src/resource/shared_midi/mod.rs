@@ -2,7 +2,7 @@
 use super::{
     get, index, release,
     shared_pages::{LeaseId, SharedPages},
-    slots, RenderIo, ResourceStore, Slot, WorkClass,
+    RenderIo, ResourceStore, Slot, WorkClass,
 };
 use crate::{buffer::MidiBuffer, midi::Message, midi_state::MidiState, Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -191,6 +191,14 @@ pub struct MidiStore {
     work: Work,
 }
 
+fn touched<T: Copy>(count: usize, value: T) -> Vec<T> {
+    let mut entries = vec![value; count];
+    for entry in &mut entries {
+        *core::hint::black_box(entry) = value;
+    }
+    entries
+}
+
 fn jobs(count: usize) -> Vec<Job> {
     let mut result = vec![
         Job {
@@ -222,6 +230,8 @@ impl MidiStore {
             || !config.chunks.is_power_of_two()
             || config.views == 0
             || config.max_events == 0
+            || config.max_events > store.config.limits().midi_events_per_port
+            || config.max_bytes > store.config.limits().midi_bytes_per_port
             || config.max_bytes == 0
             || config.max_packet == 0
             || config.max_packet > config.max_bytes
@@ -294,6 +304,15 @@ impl MidiStore {
             .and_then(|n| n.checked_add(garbage.checked_mul(2 * size_of::<Job>())?))
             .and_then(|n| n.checked_add(state_bytes))
             .and_then(|n| n.checked_add(page_bytes))
+            .and_then(|n| n.checked_add(store.pages.len().checked_mul(size_of::<usize>())?))
+            .and_then(|n| {
+                n.checked_add(
+                    config
+                        .pages
+                        .checked_mul(size_of::<Slot<usize>>() + size_of::<usize>())?,
+                )
+            })
+            .and_then(|n| n.checked_add(2 * size_of::<usize>() + size_of::<Self>()))
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         let mut chunk_states = vec![MidiState::default(); chunks].into_boxed_slice();
@@ -331,15 +350,21 @@ impl MidiStore {
                 state_bytes,
                 metadata_bytes,
             },
-            nodes: vec![None; nodes],
+            nodes: touched(nodes, None),
             free_nodes: (0..nodes).rev().collect(),
-            chunks: vec![None; chunks],
+            chunks: touched(chunks, None),
             chunk_states,
             free_chunks: (0..chunks).rev().collect(),
-            blocks: vec![None; config.pages],
+            blocks: touched(config.pages, None),
             block_map,
             free_blocks: (0..config.pages).rev().collect(),
-            views: slots(config.views),
+            views: touched(
+                config.views,
+                Slot {
+                    generation: 1,
+                    value: None,
+                },
+            ),
             initial: states,
             free_views: (0..config.views).rev().collect(),
             pages,

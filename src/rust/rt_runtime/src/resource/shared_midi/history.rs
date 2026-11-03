@@ -1,6 +1,31 @@
 use super::*;
 
 impl MidiStore {
+    /// Start a new complete segment after an unrecorded interval. The caller's
+    /// observed input projection is authoritative; failed append is never replayed.
+    /// Old retained owners remain valid. Retirement may need maintenance before
+    /// storage admission recovers.
+    pub fn discontinuity(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        next: Frame,
+        observed: &MidiState,
+    ) -> Result<(), Error> {
+        self.check(io.store)?;
+        if next < self.next {
+            return Err(Error::InvalidFrame);
+        }
+        let root = self.root.take();
+        self.drop_root(root, self.views.len(), false);
+        self.origin = next;
+        self.next = next;
+        self.pressure_start = next;
+        self.end = 0;
+        *self.current = *observed;
+        self.work.add(0, 1, 0, 0);
+        io.store
+            .charge_work(WorkClass::Render, size_of::<MidiState>(), 1)
+    }
     pub fn append(
         &mut self,
         io: &mut RenderIo<'_>,
