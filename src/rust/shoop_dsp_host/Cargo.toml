@@ -8,6 +8,7 @@ default = []
 carla = ["dep:shoop_carla_native"]
 
 [dependencies]
+shoop_dsp_link_native = { path = "../shoop_dsp_link_native" }
 shoop_dsp = { path = "../shoop_dsp" }
 shoop_remote_dsp = { path = "../shoop_remote_dsp", features = ["serde"] }
 shoop_carla_native = { path = "../shoop_carla_native", optional = true }

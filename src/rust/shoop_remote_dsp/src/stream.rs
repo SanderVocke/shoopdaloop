@@ -1,6 +1,7 @@
 use crate::{wire, Config, Error};
 use alloc::{vec, vec::Vec};
-use shoop_dsp::{Block, MidiBuffer, MidiEvent, Processor, Transport};
+use shoop_dsp::{MidiBuffer, MidiEvent, Processor, Transport};
+use shoop_dsp_link::service::ProcessingBlock;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -37,10 +38,7 @@ pub struct Stream {
     gap_since: Option<u64>,
     stats: Stats,
     concealment: Vec<(u64, u64)>,
-    input: Vec<f32>,
-    output: Vec<f32>,
-    midi_in: MidiBuffer,
-    midi_out: MidiBuffer,
+    processor: ProcessingBlock,
     packet_audio: Vec<f32>,
     packet_midi: MidiBuffer,
     encoded: Vec<u8>,
@@ -52,7 +50,6 @@ impl Stream {
             return Err(Error::Config);
         }
         let packet_samples = config.packet_frames as usize * config.channels as usize;
-        let samples = config.dsp().frames * config.channels as usize;
         let slots = (0..config.multiplier as usize + config.reorder_packets as usize + 1)
             .map(|_| Slot {
                 sequence: None,
@@ -72,10 +69,8 @@ impl Stream {
             gap_since: None,
             stats: Stats::default(),
             concealment: Vec::with_capacity(1024),
-            input: vec![0.; samples],
-            output: vec![0.; samples],
-            midi_in: MidiBuffer::new(midi_capacity),
-            midi_out: MidiBuffer::new(midi_capacity),
+            processor: ProcessingBlock::prepare(config.dsp(), midi_capacity)
+                .map_err(|_| Error::Config)?,
             packet_audio: vec![0.; packet_samples],
             packet_midi: MidiBuffer::new(config.midi_per_packet as usize),
             encoded: vec![0; config.max_packet_bytes()],
@@ -182,8 +177,8 @@ impl Stream {
                 return Ok(false);
             }
         }
-        self.input.fill(0.);
-        self.midi_in.clear();
+        self.processor.input.fill(0.);
+        self.processor.midi_input.clear();
         let mut transport = None;
         if missing != 0 {
             self.stats.concealed_packets += missing.count_ones() as u64;
@@ -194,7 +189,8 @@ impl Stream {
             }
             for channel in 0..16 {
                 for control in [120, 123] {
-                    self.midi_in
+                    self.processor
+                        .midi_input
                         .push(
                             MidiEvent::new(0, 0, &[0xb0 | channel, control, 0])
                                 .map_err(|_| Error::Dsp)?,
@@ -215,28 +211,28 @@ impl Stream {
             }
             transport = Some(slot.transport);
             for c in 0..self.config.channels as usize {
-                self.input[c * cframes + j * p..c * cframes + (j + 1) * p]
+                self.processor.input[c * cframes + j * p..c * cframes + (j + 1) * p]
                     .copy_from_slice(&slot.audio[c * p..(c + 1) * p]);
             }
             for event in slot.midi.as_slice() {
                 let mut event = *event;
                 event.frame += (j * p) as u32;
-                self.midi_in.push(event).map_err(|_| Error::Capacity)?;
+                self.processor
+                    .midi_input
+                    .push(event)
+                    .map_err(|_| Error::Capacity)?;
             }
             slot.sequence = None;
         }
         let transport = transport.unwrap_or_default();
         let started = clock();
-        if dsp
-            .process(Block {
-                frame: self.config.start_frame + self.next * p as u64,
-                frames: cframes,
-                input: &self.input,
-                output: &mut self.output,
-                midi_input: self.midi_in.as_slice(),
-                midi_output: &mut self.midi_out,
+        if self
+            .processor
+            .process(
+                dsp,
+                self.config.start_frame + self.next * p as u64,
                 transport,
-            })
+            )
             .is_err()
         {
             self.retire_with(Error::Dsp);
@@ -252,7 +248,7 @@ impl Stream {
                 0
             };
             self.packet_midi.clear();
-            for event in self.midi_out.as_slice() {
+            for event in self.processor.midi_output.as_slice() {
                 if event.frame as usize >= cframes || event.port != 0 || event.bytes().is_err() {
                     flags |= wire::MIDI_RESET;
                     continue;
@@ -270,8 +266,9 @@ impl Stream {
                 self.stats.midi_resets += 1;
             }
             for c in 0..self.config.channels as usize {
-                self.packet_audio[c * p..(c + 1) * p]
-                    .copy_from_slice(&self.output[c * cframes + j * p..c * cframes + (j + 1) * p]);
+                self.packet_audio[c * p..(c + 1) * p].copy_from_slice(
+                    &self.processor.output[c * cframes + j * p..c * cframes + (j + 1) * p],
+                );
             }
             let sequence = self.next + j as u64;
             let header = wire::Header {

@@ -4,12 +4,7 @@ use anyhow::{ensure, Result};
 use clap::Args;
 use serde_json::{json, Value};
 use shoop_remote_dsp::{wire, Config};
-use std::{
-    collections::BTreeMap,
-    net::{SocketAddr, TcpStream, UdpSocket},
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf, time::Instant};
 
 #[derive(Args)]
 pub struct Options {
@@ -163,20 +158,6 @@ pub fn run(options: Options) -> Result<()> {
             .is_some(),
         "source interval overflows frame range"
     );
-    let token = control::token(&options.credential_file)?;
-    let tcp = TcpStream::connect_timeout(&options.endpoint, Duration::from_secs(5))?;
-    let mut tcp =
-        shoop_transport_socket::setup::authenticate(tcp, token, false, Duration::from_secs(2))?;
-    let udp = UdpSocket::bind(SocketAddr::new(tcp.local_addr()?.ip(), 0))?;
-    let sock = socket2::SockRef::from(&udp);
-    sock.set_recv_buffer_size(1_048_576)?;
-    sock.set_send_buffer_size(1_048_576)?;
-    let client_receive_buffer = sock.recv_buffer_size()?;
-    let client_send_buffer = sock.send_buffer_size()?;
-    udp.set_nonblocking(true)?;
-    let mut random = [0; 8];
-    getrandom::fill(&mut random).map_err(anyhow::Error::msg)?;
-    let epoch = u64::from_le_bytes(random).max(1);
     let state = options
         .state_file
         .as_ref()
@@ -192,31 +173,19 @@ pub fn run(options: Options) -> Result<()> {
             delay: options.delay,
         }
     };
-    let ready = control::call(
-        &mut tcp,
-        &Request::Configure {
-            version: control::VERSION,
-            config,
-            epoch,
-            udp_port: udp.local_addr()?.port(),
-            algorithm: algorithm.clone(),
-        },
+    let mut session = shoop_dsp_link_native::Session::connect(
+        options.endpoint,
+        &options.credential_file,
+        config,
+        algorithm.clone(),
     )?;
-    let (port, latency, server_receive_buffer, server_send_buffer) = match ready {
-        Reply::Ready {
-            version,
-            udp_port,
-            latency_frames,
-            receive_buffer,
-            send_buffer,
-        } => {
-            ensure!(version == control::VERSION, "wrong control version");
-            (udp_port, latency_frames, receive_buffer, send_buffer)
-        }
-        _ => anyhow::bail!("expected stream readiness"),
-    };
-    let server = SocketAddr::new(options.endpoint.ip(), port);
-    udp.connect(server)?;
+    let epoch = session.epoch;
+    let latency = session.algorithm_latency;
+    let client_receive_buffer = session.client_receive_buffer;
+    let client_send_buffer = session.client_send_buffer;
+    let server_receive_buffer = session.server_receive_buffer;
+    let server_send_buffer = session.server_send_buffer;
+    let (mut tcp, udp) = session.parts_mut();
     let mut tx = vec![u64::MAX; count];
     let mut rx = vec![u64::MAX; count];
     let mut processing = vec![0; count];

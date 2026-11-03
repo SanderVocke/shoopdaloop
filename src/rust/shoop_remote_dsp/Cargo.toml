@@ -7,6 +7,7 @@ edition = "2021"
 serde = ["dep:serde"]
 
 [dependencies]
+shoop_dsp_link = { path = "../shoop_dsp_link" }
 serde = { workspace = true, features = ["derive"], optional = true }
 shoop_dsp = { path = "../shoop_dsp" }
 

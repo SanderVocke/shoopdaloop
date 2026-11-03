@@ -209,28 +209,28 @@ flowchart LR
 
 Depends on Stage 0 contracts; can precede the native worker implementation.
 
-- [ ] Extract authenticated negotiation, datagram operations and control lifecycle
+- [x] Extract authenticated negotiation, datagram operations and control lifecycle
       into the native client library. Keep CLI sample generation, synthetic clock,
       capture arrays and experiment/reporting policy in the CLI.
-- [ ] Define the portable logical-block descriptor/link without network headers,
+- [x] Define the portable logical-block descriptor/link without network headers,
       native handles or implicit threads. Extract reusable DSP block adaptation
       and service execution; let UDP translate between wire packets and this core.
       Keep the wire protocol compatible and Carla optional.
-- [ ] Implement a non-network in-memory reference binding using the common
+- [x] Implement a non-network in-memory reference binding using the common
       service. Exercise a separately configured `Q/B` shape without importing
       the UDP crate, configuring an MTU or requiring TCP/process supervision.
-- [ ] Verify existing delay-copy/Carla process and state workflows, authentication
+- [x] Verify existing delay-copy/Carla process and state workflows, authentication
       refusals, dependency isolation and existing CLI behavior after extraction.
 
 ### 2. Implement the portable node and deterministic graph tests
 
 Depends on Stage 0; uses the extracted descriptor from Stage 1.
 
-- [ ] Implement prepared logical-block accumulation, bounded submission,
+- [x] Implement prepared logical-block accumulation, bounded submission,
       frame-based returns and exactly-once consumption behind the link interface.
-- [ ] Implement runtime processor ports and generic planner/operation compatibility
+- [x] Implement runtime processor ports and generic planner/operation compatibility
       without changing the runtime's graph executor or adding network APIs to it.
-- [ ] Implement MIDI rebasing/limits/recovery and bounded diagnostic snapshots.
+- [x] Implement MIDI rebasing/limits/recovery and bounded diagnostic snapshots.
       Refuse incompatible shapes, insufficient latency, overflowing source ranges
       and unsupported session configurations during preparation.
 - [ ] Test an actual graph using a deterministic exchange: multiple channels,
@@ -243,7 +243,7 @@ Depends on Stage 0; uses the extracted descriptor from Stage 1.
 - [ ] Guard successful and failing render paths against heap activity. Verify
       bounded draining under a continuously producing peer and ownership return
       under exhaustion; check appropriate concurrent-queue invariants.
-- [ ] Build portable libraries for Cortex-A32, Cortex-A64 and the retained
+- [x] Build portable libraries for Cortex-A32, Cortex-A64 and the retained
       Cortex-M target. Inspect features/dependencies for native leakage.
 
 ### 3. Implement the native UDP binding and graph-to-server demo
@@ -303,3 +303,21 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution evidence
+
+- Stage 0 contract: `link-contract.md` defines the conservative frame bound,
+  lease ownership and fault table before implementation.
+- Added portable DSP-link/service and runtime-node crates, and a separate native
+  session/UDP adapter library. The original requester uses extracted session
+  operations; the UDP server and non-network service share prepared DSP execution.
+- Nine focused tests passed, including Q=3/B=5 audio and MIDI, exact L+A graph
+  output across variable callbacks, bounded credit exhaustion and irrevocable
+  fallback across a partial output block. Render/service heap guards passed.
+- Two additional recovery regressions failed before correction and passed after:
+  preserving transport context across an initial gap, and propagating MIDI reset
+  even when a DSP filters MIDI output.
+- Complete required-Carla native suite: **2564 passed, four skipped**. Formatting,
+  test attributes, warning-denying workspace build and closed tracing inventory
+  (378 modules) passed. Portable link/node builds passed on Cortex-A32, Cortex-A64,
+  Cortex-M and WebAssembly. Native graph demo and broader lifecycle checks remain.

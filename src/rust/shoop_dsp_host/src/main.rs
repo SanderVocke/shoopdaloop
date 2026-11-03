@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 mod client;
 mod control;
 mod polling;
-mod server;
+use shoop_dsp_host::server;
 
 #[derive(Parser)]
 #[command(about = "Timestamped network DSP worker and sample-clock requester")]
