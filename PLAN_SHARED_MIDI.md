@@ -2,7 +2,8 @@
 
 ## Status, baseline and delivery
 
-Implementation in progress on `feat/shared-midi-persistence`. Written under
+M0–M7 executed on `feat/shared-midi-persistence`; delivered as unmerged
+[PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927). Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Baseline: `feat/shared-audio-persistence` at `2f0d1a88`, including the upstream
@@ -394,23 +395,22 @@ Integration refresh: upstream advanced to `64a4ad0634de1664b1ff723b36c635cd243d8
 new codec-provider click metadata alongside shared-MIDI tests. Audio PR #909
 remains open at `2f0d1a88`; its required foundation remains an explicit dependency.
 
-
 - [x] Document public contracts, readiness/work bounds, measured memory, capacity
   tradeoffs and remaining P04/P05 gaps; keep this plan and parity evidence current.
-- [ ] Run focused runtime/loop/codec suites, then the complete Rust workspace
+- [x] Run focused runtime/loop/codec suites, then the complete Rust workspace
   suite using the repository [build](.agents/info/build.md) and
   [test](.agents/info/test.md) guidance. Run the warning-denying workspace
   build, formatting, test-attribute, tracing, parity, documentation and dependency
   boundary checks. Keep test execution separate from builds that overwrite its
   companion executables.
-- [ ] Verify the relevant package Node/browser Wasm suites, production Wasm
+- [x] Verify the relevant package Node/browser Wasm suites, production Wasm
   builds, existing mixed-media browser workflows and portable bare-metal targets.
   Use the existing CI matrix for Linux/macOS/Windows and browser coverage; report
   skips, unsupported facilities and evidence scope accurately.
-- [ ] Push milestone commits and create the implementation PR targeting
+- [x] Push milestone commits and create the implementation PR targeting
   `feat/backend-replacement`. Reconcile the audio dependency and refreshed upstream
   before final validation. Verify all required checks on the final head are green.
-- [ ] Inspect automated reviews after publishing and after fixes. Address
+- [x] Inspect automated reviews after publishing and after fixes. Address
   applicable feedback, repeat validation and continue until arriving automated
   reviewers approve. If none arrive, record that fact without claiming approval.
   Leave the PR unmerged.
@@ -419,6 +419,28 @@ Final end-to-end gate: demonstrate M6 through the ordinary resource/loop/media
 interfaces on the exact final tree, with complete cleanup, passing final-head CI
 and resolved applicable automated review. A standalone storage test, pending
 index builder, or manual-only MIDI export adapter is not completion.
+
+M7 verification record: all required checks passed on implementation head
+`a21b616f257856d76b0ae2b87a8ddc96518d4383`:
+
+- [Build/test matrix and coverage](https://github.com/SanderVocke/shoopdaloop/actions/runs/41650042287):
+  Linux, Windows and macOS debug/release; production web debug/release;
+  complete Node Wasm suites; pinned-Chrome runtime/loop/codec suites; existing
+  mixed-media browser workflows; and all three configured bare-metal targets.
+- Full instrumented Rust workspace: **2,572 passed, four skipped**. The earlier
+  shutdown failures are cleared after the prepared-registry change. The conditional
+  nightly CPAL-free job is skipped by the ordinary PR workflow, not claimed run.
+- [Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41650042114) and
+  [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41650042419): green.
+  Formatting, tracing, test attributes, parity and dependency boundaries pass in CI.
+- Automated feedback inspected after publication and fixes: Codecov reports
+  **94.08% patch coverage**, with both project and patch gates passing. Its missing
+  base-report comparison warning is recorded; no code-review submissions or
+  requested code changes arrived, and no reviewer approval is claimed.
+
+This completion commit changes only this execution record. The PR's checks
+validate its final head again; the implementation remains unmerged and retains
+its explicit audio-foundation dependency. Application P04/P05 flags stay open.
 
 ## Execution contract
 
