@@ -6,6 +6,7 @@ Plan written on 2026-11-03 using `.agents/prompts/write_plan.md`. Implementation
 authorized on 2026-11-03. The user selected the ZC702 reference profile and asked
 to defer physical testing until the software is ready for their assistance.
 Physical acceptance criteria remain required and unchecked until then.
+Implementation PR: https://github.com/SanderVocke/shoopdaloop/pull/928 (unmerged).
 
 Start implementation from `feat/zynq-network-deployment`, inspected at
 `de38520c8eb27d5bc9741a1fd8c394c817ba38bc`. Create
@@ -385,6 +386,16 @@ no QEMU result is presented as physical hub, DMA/cache or timing qualification.
   nearest-high-speed-TT selection for FS→FS→HS nesting; the actual patched EHCI
   constructor passes 32-bit sanitizer tests, with affected guest regressions next.
   Hub status parsing now supports ports 1–31 and explicitly refuses larger hubs.
+  EHCI interrupt intervals are validated before schedule access, including zero
+  and out-of-range HS intervals; the actual HCD entry point passes sanitizer tests.
+- The platform map places the static bridge at 17,060,352 bytes (below its 32 MiB
+  ceiling) and platform load regions below 64 MiB (within 128 MiB). In the 100-cycle
+  guest soak, Rust peak was 347,607,056 bytes within 768 MiB and final use was zero;
+  FreeRTOS minimum free heap was 16,149,992 bytes. USB stack free was 7873 words
+  of 8192. These are simulator margins; silicon load/timing qualification is open.
+- PR #928 targets the unchanged prerequisite at `de38520c`. Firmware, USB,
+  deployment, native/browser, coverage, documentation and CodeQL CI are running;
+  no automated review has arrived yet.
 - Physical qualification remains deferred at the user's request, not waived.
   `platforms/zynq7000/usb/QUALIFICATION.md` contains the required hardware matrix.
   No physical PHY/VBUS, cache/DMA, TT, DIN or latency result is claimed.

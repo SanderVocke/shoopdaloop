@@ -119,7 +119,20 @@
  
    return true;
  }
-@@ -465,19 +474,17 @@
+@@ -416,6 +425,12 @@
+ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc) {
+   // TODO not support ISO yet
+   TU_ASSERT (ep_desc->bmAttributes.xfer != TUSB_XFER_ISOCHRONOUS);
++
++  if (ep_desc->bmAttributes.xfer == TUSB_XFER_INTERRUPT) {
++    tuh_bus_info_t bus;
++    TU_VERIFY(tuh_bus_info_get(dev_addr, &bus));
++    TU_VERIFY(ep_desc->bInterval != 0 && (bus.speed != TUSB_SPEED_HIGH || ep_desc->bInterval <= 16));
++  }
+ 
+   //------------- Prepare Queue Head -------------//
+   ehci_qhd_t *p_qhd;
+@@ -465,19 +480,17 @@
  }
  
  bool hcd_edpt_close(uint8_t rhport, uint8_t daddr, uint8_t ep_addr) {
@@ -149,7 +162,7 @@
  }
  
  bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8]) {
-@@ -562,7 +569,7 @@
+@@ -562,7 +575,7 @@
    // HC is still processing, disable HC list schedule before making changes
    bool const is_period = (qhd->interval_ms > 0);
  
@@ -158,7 +171,7 @@
  
    // check active bit again just in case HC has just processed the TD
    bool const still_active = qtd->active;
-@@ -575,7 +582,7 @@
+@@ -575,7 +588,7 @@
      qhd_remove_qtd(qhd);
    }
  
@@ -167,7 +180,7 @@
  
    return still_active; // true if removed an active transfer
  }
-@@ -750,7 +757,7 @@
+@@ -750,7 +763,7 @@
    if (usb_int) {
      proccess_async_xfer_isr(list_get_async_head(rhport));
  
@@ -176,7 +189,7 @@
        process_period_xfer_isr(rhport, i);
      }
  
-@@ -772,7 +779,7 @@
+@@ -772,7 +785,7 @@
  // Get head of periodic list
  TU_ATTR_ALWAYS_INLINE static inline ehci_link_t* list_get_period_head(uint8_t rhport, uint32_t interval_ms) {
    (void) rhport;
@@ -185,7 +198,7 @@
  }
  
  // Get head of async list
-@@ -794,20 +801,14 @@
+@@ -794,20 +807,14 @@
  // Per EHCI 4.8.2 the removed qhd's next is linked to list head (which always reachable by Host Controller)
  // TODO support iTD/siTD
  TU_ATTR_ALWAYS_INLINE static inline void list_remove(ehci_link_t* head, ehci_link_t* prev, ehci_qhd_t* qhd) {
@@ -213,7 +226,7 @@
    hcd_dcache_clean(qhd, sizeof(ehci_qhd_t));
    hcd_dcache_clean(prev, sizeof(ehci_qhd_t));
  }
-@@ -939,8 +940,17 @@
+@@ -939,8 +946,17 @@
      default: break;
    }
  

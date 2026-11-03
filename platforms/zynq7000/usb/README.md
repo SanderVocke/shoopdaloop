@@ -88,7 +88,8 @@ serialization. USB audio and proprietary USB interfaces are unsupported.
 Connect the native UI using the existing authenticated remote-host profile.
 Select ports in the connection dialog. Each virtual cable is one selectable
 logical port carrying sixteen MIDI channels. Product labels include topology,
-MIDIStreaming interface and cable. Offline ports with saved routes remain visible
+MIDIStreaming interface and cable. The board MIO/reset values follow the
+[pinned ZC702 PS initialization](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zc702/ps7_init_gpl.c). Offline ports with saved routes remain visible
 as disconnected and can be disconnected explicitly. New connections require an
 available port. Saved missing-device routes reconnect when that identity returns.
 Firmware and clients must use session protocol version 12 together.
@@ -125,7 +126,9 @@ These are transport timestamps, not a physical sample-accurate delivery promise.
 
 Per-cable SysEx assembly expires after one second. Malformed packets, oversized
 or incomplete messages, pressure and disconnect discard bounded state and request
-recovery. Realtime messages remain separate during SysEx. Reserved recovery sends
+recovery. Realtime messages emit immediately; a complete SysEx emits at its end,
+so engine event order follows message completion. Playback packetizes each
+complete SysEx with realtime represented as separate engine events. Reserved recovery sends
 All Sound Off and All Notes Off on all sixteen channels (32 messages); ordinary
 output waits for recovery completion. Pressure counters distinguish accepted,
 completed, refused, dropped, malformed and recovery events.
