@@ -25,4 +25,4 @@ def header():
 
 
 if __name__ == "__main__":
-    (ROOT / "layout.h").write_text(header())
+    (ROOT / "shoop_layout.h").write_text(header())

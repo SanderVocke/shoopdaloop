@@ -222,15 +222,15 @@ no unresolved boot/reset capability is hidden behind a promised later workaround
 
 Depends on Stage 0.
 
-- [ ] Add deterministic first-stage/U-Boot builds and required Zynq configuration,
+- [x] Add deterministic first-stage/U-Boot builds and required Zynq configuration,
   producing the selected boot files, maps and manifests. Keep source patches
   separate, justified and hashed. Build the first stage even if CI must enter
   U-Boot directly; add the executable first-stage handoff check where supported.
-- [ ] Add regular-file SD image generation/provisioning with explicit keys/device
+- [x] Add regular-file SD image generation/provisioning with explicit keys/device
   configuration and initial A image. Extend the launcher for SD, bootloader entry,
   TFTP service, UDP forwarding and complete serial/QMP/reset evidence. Restrict
   host listeners to loopback; retain existing direct-load firmware development mode.
-- [ ] Prove U-Boot GEM exchange and guest SD read/write/readback across a fresh
+- [x] Prove U-Boot GEM exchange and guest SD read/write/readback across a fresh
   QEMU process, including correct card geometry, protected partition boundaries
   and a default local boot path. Commit the first deployment milestone.
 
@@ -385,3 +385,16 @@ revisions rather than treating moving documentation as a reproducible input.
 - The watchdog-enabled QEMU is built from upstream `98f88efe` plus the checked-in
   Cadence model patch. MMIO programming and virtual-time advancement produce
   QMP `WATCHDOG` and guest `RESET` events without a host restart request.
+- Stage 1 builds pinned SPL/U-Boot, signed FIT bundles and key-bearing loader
+  files. The regular-file card builder creates MBR/FAT32 without mounts; standard
+  `mdir` independently reads its boot files. Loader update commands expose no
+  raw flashing or remote shell, and the target checks FIT signatures/profile and
+  ELF bounds before loading.
+- A preliminary signed bundle containing the existing host ELF boots through
+  U-Boot and SD, passes the native-client workflow, and cleans Rust/socket/netconn
+  counts to zero. Two fresh processes using the same card advance guest-persisted
+  nonce records from 102 to 103 and refuse previous-boot authority. This is loader
+  integration evidence, not yet the generic credential/health-confirmation gate.
+- The reference SPL executes but stalls in its PS initialization `ioread` poll
+  (PC `0x404`, SLCR address `0xf8000b74`). QEMU deployment CI therefore enters
+  U-Boot proper; it does not claim BootROM or physical PS/DDR initialization.

@@ -1,9 +1,19 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef SHOOP_BOOT_STATE_H
 #define SHOOP_BOOT_STATE_H
+#ifdef __UBOOT__
+#include <linux/types.h>
+#ifndef UINT32_MAX
+#define UINT32_MAX 0xffffffffu
+#endif
+#ifndef UINT64_MAX
+#define UINT64_MAX 0xffffffffffffffffull
+#endif
+#else
 #include <stdint.h>
+#endif
 #include <stddef.h>
-#include "layout.h"
+#include "shoop_layout.h"
 
 #define SHOOP_RECORD_MAGIC 0x53484450u
 #define SHOOP_HANDOFF_MAGIC 0x53484f46u

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "boot_state.h"
+#include "shoop_boot_state.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

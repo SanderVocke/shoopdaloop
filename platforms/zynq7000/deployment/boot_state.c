@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "boot_state.h"
+#include "shoop_boot_state.h"
 #include <string.h>
 
 uint32_t shoop_crc32(const void *bytes, size_t size) {
