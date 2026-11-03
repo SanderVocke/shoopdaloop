@@ -162,7 +162,7 @@ from both planners and scheduled actions.
 
 Depends on Stage 0.
 
-- [ ] Add a deterministic full-block test processor with recorded frame origins,
+- [x] Add a deterministic full-block test processor with recorded frame origins,
       call sizes and nontrivial known audio/MIDI behavior. Keep it independent of
       Carla and the DSP-host stack.
 - [ ] Add the bus-shaped scope canary and capture the current global-subdivision
@@ -187,13 +187,20 @@ Depends on Stages 0-1; retains existing interleaved planner semantics.
       processing in one executor with one outer callback envelope.
 - [ ] Implement scoped action delivery and activation according to the contract;
       preserve MIDI offsets, receipt frames, generation checks and owner lifetimes.
-- [ ] Add a planner whose next decision depends on real processing observations.
+- [x] Add a planner whose next decision depends on real processing observations.
       Verify that it stays interleaved and does not subdivide an external probe.
 - [ ] Test invalid grouping/cycles, incompatible block placement, scope-local
       activation, stale candidates, capacity refusal and off-render retirement.
 
 Verification: the bus-shaped canary and existing runtime suites pass; heap guards
 cover successful and failing execution, and callback budgets remain shared.
+
+Progress: the generic feedback canary reproduced nine DSP calls for one 17-frame
+callback before cadence support, and now observes one call with exact audio/MIDI.
+Region contraction and incremental receiver validation refuse incompatible
+grouping. Existing runtime/loop suites and the warning-denying workspace build
+pass. The real-media bus canary and action/activation adversarial cases follow;
+this generic probe alone does not satisfy the real-media acceptance criterion.
 
 ### 3. Implement shared loop callback plans and staged media execution
 

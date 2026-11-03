@@ -6,6 +6,14 @@ use crate::planner::{ConsumerAccess, DecisionView, NoPlanner, ObservationWriter,
 use crate::{Error, Frame, PreparedConfig};
 use alloc::boxed::Box;
 
+/// The initial scope model has one subdividing region beneath the host callback.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Cadence {
+    #[default]
+    Interval,
+    Callback,
+}
+
 /// Construction and disposal of processors belong to non-render contexts.
 /// Implementations must preallocate and pre-touch their working storage here.
 pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
@@ -47,6 +55,10 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
+    /// Queried off-render; replacement must preserve this parent-block contract.
+    fn cadence(&self) -> Cadence {
+        Cadence::Interval
+    }
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
@@ -69,6 +81,9 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn cadence(&self) -> Cadence {
+        (**self).cadence()
+    }
     fn operation(
         &mut self,
         operation: Q,

@@ -9,6 +9,7 @@ pub mod activation;
 use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
 };
+use crate::processor::Cadence;
 use crate::{Error, NodeId, PreparedConfig};
 use alloc::collections::BTreeSet;
 use alloc::{vec, vec::Vec};
@@ -98,6 +99,7 @@ pub struct Catalog {
     slots: Vec<Option<NodeSpec>>,
     planner: Option<PlannerSpec>,
     consumers: Option<Vec<Option<ConsumerAccess>>>,
+    cadences: Vec<Cadence>,
 }
 
 impl Catalog {
@@ -136,6 +138,7 @@ impl Catalog {
             slots,
             planner: None,
             consumers: None,
+            cadences: vec![Cadence::Interval; limits.max_nodes],
         })
     }
 
@@ -179,6 +182,24 @@ impl Catalog {
 
     pub fn planner(&self) -> Option<PlannerSpec> {
         self.planner
+    }
+
+    /// Declare root callback contracts during allocating preparation.
+    pub fn with_cadences(mut self, nodes: &[(NodeId, Cadence)]) -> Result<Self, Error> {
+        let mut seen = BTreeSet::new();
+        for &(id, cadence) in nodes {
+            self.node(id)?;
+            if !seen.insert(id) {
+                return Err(Error::InvalidId);
+            }
+            self.cadences[id.slot() as usize] = cadence;
+        }
+        Ok(self)
+    }
+
+    pub fn cadence(&self, node: NodeId) -> Result<Cadence, Error> {
+        self.node(node)?;
+        Ok(self.cadences[node.slot() as usize])
     }
 
     pub fn consumer(&self, node: NodeId) -> Result<ConsumerAccess, Error> {
@@ -567,6 +588,39 @@ fn compile_signal(catalog: &Catalog, graph: &GraphDescription) -> Result<Prepare
         ordered.push(candidate);
         seen.insert(candidate);
     }
+    // Contract interval consumers into one child region before ordering the parent.
+    let group = |id| {
+        if catalog.cadence(id) == Ok(Cadence::Interval) {
+            None
+        } else {
+            Some(id)
+        }
+    };
+    let groups: BTreeSet<_> = ordered.iter().copied().map(group).collect();
+    let mut done = BTreeSet::new();
+    let mut scoped = Vec::with_capacity(ordered.len());
+    while done.len() != groups.len() {
+        let next = groups
+            .iter()
+            .copied()
+            .find(|candidate| {
+                !done.contains(candidate)
+                    && connections.iter().all(|edge| {
+                        match (edge.source.node, edge.destination.node) {
+                            (Some(source), Some(target))
+                                if group(target) == *candidate && group(source) != *candidate =>
+                            {
+                                done.contains(&group(source))
+                            }
+                            _ => true,
+                        }
+                    })
+            })
+            .ok_or(Error::Cycle)?;
+        scoped.extend(ordered.iter().copied().filter(|id| group(*id) == next));
+        done.insert(next);
+    }
+    let ordered = scoped;
     let mut descriptor = PlanDescriptor {
         steps: Vec::with_capacity(ordered.len()),
         connections: Vec::with_capacity(connections.len()),
@@ -631,6 +685,8 @@ pub struct PlanValidator {
     previous: Option<Connection>,
     previous_consumer: Option<NodeId>,
     observations: usize,
+    region_started: bool,
+    region_closed: bool,
 }
 
 impl PlanValidator {
@@ -643,6 +699,8 @@ impl PlanValidator {
             previous: None,
             previous_consumer: None,
             observations: 0,
+            region_started: false,
+            region_closed: false,
         }
     }
 
@@ -652,6 +710,8 @@ impl PlanValidator {
         self.previous = None;
         self.previous_consumer = None;
         self.observations = 0;
+        self.region_started = false;
+        self.region_closed = false;
     }
 
     pub fn advance(
@@ -714,6 +774,17 @@ impl PlanValidator {
                 if let Some(step) = descriptor.steps.get(index) {
                     catalog.node(step.node)?;
                     let access = catalog.consumer(step.node)?;
+                    match catalog.cadence(step.node)? {
+                        Cadence::Interval if self.region_closed => return Err(Error::InvalidGraph),
+                        Cadence::Interval => self.region_started = true,
+                        Cadence::Callback => {
+                            self.region_closed |= self.region_started;
+                            if access.decision_required || access.observations != 0 {
+                                return Err(Error::InvalidGraph);
+                            }
+                        }
+                    }
+
                     self.observations = self
                         .observations
                         .checked_add(access.observations)
