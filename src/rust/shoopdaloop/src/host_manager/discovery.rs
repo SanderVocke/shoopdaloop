@@ -312,6 +312,14 @@ mod tests {
         for _ in 0..3 {
             let observed = scan(vec![manual.clone()], previous);
             for fixture in [&socket, &shared] {
+                let related: Vec<_> = observed.hosts.iter().filter(|host| {
+                    matches!(&host.source, Source::Process(process) if process.executable == fixture.identity.executable)
+                }).collect();
+                assert_eq!(
+                    related.len(),
+                    1,
+                    "Host worker threads must not appear as independent hosts"
+                );
                 let matches: Vec<_> = observed
                     .hosts
                     .iter()

@@ -3681,8 +3681,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         command
             .args(&original)
             .arg("--ui-only")
-            .arg("--host-address")
-            .arg(&target.management);
+            .arg(format!("--host-address={}", target.management));
         command
     })?;
     Ok(true)

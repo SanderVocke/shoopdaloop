@@ -65,6 +65,7 @@ impl Acceptor {
         lan: bool,
         target: &Target,
         available: Arc<AtomicBool>,
+        endpoint: crate::connection::Endpoint,
     ) -> Result<Self> {
         use shoop_transport::{
             handshake::{Handshake, Intent},
@@ -72,6 +73,7 @@ impl Acceptor {
         };
         crate::launch::write_message(std::io::sink(), target)?;
         let target = target.clone();
+        let admission = crate::connection::admission_header(endpoint);
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = Arc::clone(&stop);
         let (sender, ports) = mpsc::sync_channel(4);
@@ -83,6 +85,8 @@ impl Acceptor {
                     hello: Handshake,
                     written: usize,
                     description: Vec<u8>,
+                    admission: [u8; 3],
+                    read: usize,
                     deadline: Instant,
                 }
                 let mut pending = Vec::<Pending>::with_capacity(16);
@@ -98,6 +102,8 @@ impl Acceptor {
                                 hello: Handshake::new(true, Duration::from_secs(2)),
                                 written: 0,
                                 description: Vec::new(),
+                                admission: [0; 3],
+                                read: 0,
                                 deadline: now + Duration::from_secs(2),
                             }),
                             Ok(Some(_)) => {}
@@ -140,6 +146,25 @@ impl Acceptor {
                                 }
                             }
                             Ok(true) => {
+                                match item.io.try_read(&mut item.admission[item.read..]) {
+                                    Ok(0) => remove = true,
+                                    Ok(count) => item.read += count,
+                                    Err(
+                                        shoop_transport::stream::IoError::WouldBlock
+                                        | shoop_transport::stream::IoError::Interrupted,
+                                    ) => {}
+                                    Err(_) => remove = true,
+                                }
+                                if remove
+                                    || (item.read == admission.len() && item.admission != admission)
+                                {
+                                    pending.swap_remove(index);
+                                    continue;
+                                }
+                                if item.read != admission.len() {
+                                    index += 1;
+                                    continue;
+                                }
                                 let item = pending.swap_remove(index);
                                 let config = if lan {
                                     shoop_transport_socket::Config {
@@ -341,8 +366,20 @@ pub fn run_with_ready(
         target.management
     );
     let available = Arc::new(AtomicBool::new(true));
-    let data = Acceptor::new(data, options.lan, &target, Arc::clone(&available))?;
-    let management = Acceptor::new(management, options.lan, &target, Arc::clone(&available))?;
+    let data = Acceptor::new(
+        data,
+        options.lan,
+        &target,
+        Arc::clone(&available),
+        crate::connection::Endpoint::Data,
+    )?;
+    let management = Acceptor::new(
+        management,
+        options.lan,
+        &target,
+        Arc::clone(&available),
+        crate::connection::Endpoint::Management,
+    )?;
     ready(target)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();

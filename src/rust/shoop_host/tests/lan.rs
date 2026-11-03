@@ -476,6 +476,15 @@ fn losing_a_management_reply_reconciles_the_same_shutdown_operation() {
     )
     .unwrap();
     use shoop_transport::RecordPort;
+    use std::io::Write;
+    let version = VERSION.to_le_bytes();
+    raw.stream()
+        .write_all(&[
+            version[0],
+            version[1],
+            connection::Endpoint::Management as u8,
+        ])
+        .unwrap();
     let mut bytes = [0; 1280];
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {

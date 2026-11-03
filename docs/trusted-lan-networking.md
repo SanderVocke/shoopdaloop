@@ -40,7 +40,9 @@ are keyless endpoint selections and omit process/session identities. They are no
 saved or restored automatically. Old credential-bearing profiles and wire versions
 are rejected. Remote hosts are added explicitly; discovery is local to the machine.
 
-Inspection negotiates a separate intent before session admission and returns a
+App connections send the protocol version and data/management role after the generic
+compatibility greeting. Both are checked before carrier/session admission, including
+shared-memory allocation. Inspection negotiates a separate intent and returns a
 bounded current host description. It never acquires a controller, consumes a shared
 attachment or changes musical state. Actual attachment checks protocol compatibility,
 acquires exclusive control and synchronizes a complete snapshot. A healthy controller

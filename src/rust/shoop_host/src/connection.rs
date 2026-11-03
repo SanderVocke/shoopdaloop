@@ -51,10 +51,21 @@ impl RecordPort for Port {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum Endpoint {
+    Data,
+    Management,
+}
+pub(crate) fn admission_header(endpoint: Endpoint) -> [u8; 3] {
+    let version = shoop_app_protocol::VERSION.to_le_bytes();
+    [version[0], version[1], endpoint as u8]
+}
 fn open(
     entry: &HostTarget,
     address: &str,
     deadline: Instant,
+    endpoint: Endpoint,
 ) -> Result<shoop_transport_socket::Port> {
     let addresses = crate::remote::resolve(address, deadline)?;
     let mut last = None;
@@ -75,7 +86,29 @@ fn open(
             shoop_transport_socket::setup::connect(*address, config, budget)
         };
         match result {
-            Ok(port) => return Ok(port),
+            Ok(port) => {
+                use std::io::Write;
+                let header = admission_header(endpoint);
+                let mut written = 0;
+                let mut stream = port.stream();
+                while written < header.len() {
+                    match stream.write(&header[written..]) {
+                        Ok(0) => return Err(anyhow!("Host closed during endpoint negotiation")),
+                        Ok(count) => written += count,
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                            ) => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                    remaining(deadline)?;
+                    if written < header.len() {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                }
+                return Ok(port);
+            }
             Err(error) => last = Some(error),
         }
     }
@@ -125,8 +158,8 @@ pub fn resolve_target(entry: &impl ConnectionTarget, timeout: Duration) -> Resul
 pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
     let deadline = Instant::now() + timeout;
     let entry = prepare(entry, deadline)?;
-    let mut port =
-        open(&entry, &entry.endpoint, deadline).context("connect to session data connection")?;
+    let mut port = open(&entry, &entry.endpoint, deadline, Endpoint::Data)
+        .context("connect to session data connection")?;
     greeting(&mut port, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
@@ -237,7 +270,7 @@ pub fn management(
 ) -> Result<ManagementReply> {
     let deadline = Instant::now() + timeout;
     let entry = prepare(entry, deadline)?;
-    let mut port = open(&entry, &entry.management, deadline)
+    let mut port = open(&entry, &entry.management, deadline, Endpoint::Management)
         .context("connect to session management connection")?;
     greeting(&mut port, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -314,7 +347,7 @@ pub fn host_report(
 ) -> Result<shoop_app_protocol::HostReport> {
     let deadline = Instant::now() + timeout;
     let entry = prepare(entry, deadline)?;
-    let mut port = open(&entry, &entry.management, deadline)?;
+    let mut port = open(&entry, &entry.management, deadline, Endpoint::Management)?;
     greeting(&mut port, deadline)?;
     let mut record = [0; MAX_RECORD_BYTES];
     let n = codec::encode(

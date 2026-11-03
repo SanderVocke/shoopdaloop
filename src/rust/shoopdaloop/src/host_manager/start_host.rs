@@ -68,11 +68,8 @@ impl Request {
     pub fn start(self) -> Result<Target> {
         self.config.validate()?;
         let executable = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
-        let (mut child, target) =
-            shoop_host::launch::spawn(&self.config, self.options, &executable)?;
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
+        let (child, target) = shoop_host::launch::spawn(&self.config, self.options, &executable)?;
+        shoop_host::launch::reap(child);
         Ok(target)
     }
 }

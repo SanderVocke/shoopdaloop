@@ -36,8 +36,7 @@ fn ui_command(target: &Target) -> Result<Command> {
     let mut command = Command::new(std::env::current_exe()?);
     command
         .arg("--ui-only")
-        .arg("--host-address")
-        .arg(&target.management);
+        .arg(format!("--host-address={}", target.management));
     Ok(command)
 }
 
@@ -78,7 +77,10 @@ impl Host {
     }
     fn unavailable(source: Source, error: String) -> Self {
         Self {
-            name: source.label(),
+            name: match &source {
+                Source::Process(process) => format!("shoop_host · PID {}", process.pid),
+                Source::Address(address) => address.clone(),
+            },
             remote: matches!(source, Source::Address(_)),
             source,
             target: None,
@@ -109,6 +111,9 @@ impl Host {
     }
     fn state(&self) -> (&'static str, egui::Color32) {
         match &self.report {
+            Err(error) if error.starts_with("No listening sockets") => {
+                ("Starting / unavailable", MUTED)
+            }
             Err(error) if error.contains("Protocol") || error.contains("incompatible") => {
                 ("Incompatible", AMBER)
             }
@@ -772,7 +777,7 @@ impl Manager {
                             }
                             let mut command = ui_command(&target)?;
                             shoop_host::launch::independent(&mut command);
-                            command.spawn().context("Start looper UI")?;
+                            shoop_host::launch::reap(command.spawn().context("Start looper UI")?);
                             Ok("Looper UI launched".into())
                         });
                     }
@@ -1385,7 +1390,7 @@ pub fn launch() -> Result<()> {
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("--manage-hosts");
     shoop_host::launch::independent(&mut command);
-    command.spawn().context("Open Host Manager")?;
+    shoop_host::launch::reap(command.spawn().context("Open Host Manager")?);
     Ok(())
 }
 fn configure_context(context: &egui::Context) {
@@ -1885,6 +1890,29 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn endpoint_values_cannot_change_the_spawned_ui_role() {
+        use clap::Parser;
+        for value in [
+            "--manage-hosts",
+            "--shutdown-host",
+            "--session=unexpected.shoop",
+        ] {
+            let mut target = target();
+            target.management = value.into();
+            let command = ui_command(&target).unwrap();
+            let argv = std::iter::once(command.get_program()).chain(command.get_args());
+            let parsed = AppArgs::try_parse_from(argv).unwrap();
+            assert!(
+                parsed.ui_only
+                    && !parsed.manage_hosts
+                    && !parsed.shutdown_host
+                    && parsed.session.is_none()
+            );
+            assert_eq!(parsed.host_address.as_deref(), Some(value));
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn intended_dummy_audio_and_physical_driver_fallback_are_distinct() {
         let mut host = host();
         assert_eq!(host.state().0, "Dummy audio");
@@ -1973,7 +2001,7 @@ mod tests {
             .get_args()
             .map(|arg| arg.to_string_lossy())
             .collect();
-        assert_eq!(args, ["--ui-only", "--host-address", "127.0.0.1:15401"]);
+        assert_eq!(args, ["--ui-only", "--host-address=127.0.0.1:15401"]);
         use clap::Parser;
         assert!(AppArgs::try_parse_from([
             "shoopdaloop",

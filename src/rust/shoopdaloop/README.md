@@ -263,3 +263,5 @@ Screenshots from the native manager (800 × 500):
 ![Host Manager with no running hosts](../../../docs/screenshots/host-manager-empty.png)
 
 ![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
+
+![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)

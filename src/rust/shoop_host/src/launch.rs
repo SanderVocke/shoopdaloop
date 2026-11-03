@@ -62,6 +62,11 @@ pub fn independent(command: &mut Command) {
         command.creation_flags(0x00000200 | 0x00000008);
     }
 }
+pub fn reap(mut child: Child) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+}
 pub fn spawn(
     config: &HostConfig,
     options: StartOptions,
@@ -132,15 +137,17 @@ pub fn pair(
     host_executable: &Path,
     ui: impl FnOnce(&Target) -> Command,
 ) -> Result<Target> {
-    let (_child, target) = spawn(config, options, host_executable)?;
+    let (child, target) = spawn(config, options, host_executable)?;
+    reap(child);
     let mut command = ui(&target);
     independent(&mut command);
-    command.spawn().with_context(|| {
+    let child = command.spawn().with_context(|| {
         format!(
             "UI failed to start; ready host remains available at {}",
             target.management
         )
     })?;
+    reap(child);
     Ok(target)
 }
 

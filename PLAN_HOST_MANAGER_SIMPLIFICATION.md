@@ -2,7 +2,7 @@
 
 ## Status and delivery
 
-Implementation in progress on the existing PR. Written using
+Implementation complete; final delivery checks are in progress on the existing PR. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Continue on `feat/host-manager` and update the existing
@@ -10,12 +10,12 @@ Implementation in progress on the existing PR. Written using
   `feat/backend-replacement`. No new implementation branch or PR is needed.
 - Inspected head: `c415774190f3a41ebfba15284405157724c38860`; inspected base:
   `3aabf43789708a5640a8f5b368f737651ef1d29d`. Recheck both when execution starts.
-- Current CI passes Linux debug/release, Rust coverage, web debug/release,
+- At the initial baseline, CI passed Linux debug/release, Rust coverage, web debug/release,
   bare-metal, Docs and CodeQL. Windows and macOS native tests fail on the log-path
   assertion in `audio_capacity_midi_and_lan_controls_feed_the_shared_configuration`:
   Windows expands short/verbatim paths; macOS resolves `/var` to `/private/var`.
   Subsequent missing replay-artifact failures follow the aborted test stage.
-- No submitted reviews or review threads were present when inspected.
+- No submitted reviews or review threads were present at the initial baseline.
 
 ## Goals and scope
 
@@ -224,10 +224,10 @@ Depends on Stages 0–4.
   packaged companions: discover CLI hosts; configure/start from the manager; Open UI;
   record/play; exit and reopen the manager; verify uninterrupted state; close the UI
   and reattach where supported; graceful Stop; unresponsive-process Force stop.
-- [ ] Compare isolated application-state directories before/after default operations
+- [x] Compare isolated application-state directories before/after default operations
   with logging disabled. Confirm there are no new credentials, profiles, registry,
   advertisement or remembered-host files. Verify explicit log/profile output works.
-- [ ] Refresh all relevant native screenshots, including automatic discovery after
+- [x] Refresh all relevant native screenshots, including automatic discovery after
   reopening, the simpler New host form and Advanced actions. Update the application
   and host READMEs, architecture/networking/CLI documentation and affected tracing
   inventory entries; remove obsolete profile-only/authentication claims.
@@ -336,3 +336,29 @@ Depends on Stages 0–4.
   descriptors rather than enumerating unrelated processes' sockets through netstat2.
   The checked union accesses remain isolated in the native helper. Final native CI
   will re-prove this refinement and the complete manager implementation.
+
+- Final local delivery checks: the Linux native GUI created a host through the
+  file-free form, attached/closed its UI, terminated/reopened the manager and
+  rediscovered the same PID, creation identity and runtime instance. All four
+  isolated XDG directories remained empty (Mesa cache disabled for this check).
+  Explicit CLI logging, local Force stop and protocol-based graceful Stop were
+  exercised; eight refreshed native screenshots cover the resulting UI.
+- Screenshot verification found Linux worker threads appearing as host processes:
+  disabled sysinfo task enumeration and added an executable/PID regression check.
+  Detached UI/manager children now have wait-only reapers, preserving independent
+  lifetime while avoiding zombies under a still-running parent.
+- Native app admission now checks protocol version and data/management role before
+  allocating an attachment. Real shared-memory tests reject wrong roles/versions,
+  preserve availability through a partial preface and accept its valid completion.
+- Local full-suite runs, including LLVM instrumentation, passed 2,565 tests with
+  four skips before the final admission/parser additions. The measured patch
+  coverage was 89.95% without gate changes. Bare-metal, Wasm protocol, no-default
+  build and all four-target dependency-boundary checks pass. New admission tests
+  pass all 24 host tests; final full-suite verification includes the added cases.
+- Incoming CodeQL review flagged a user-controlled endpoint command argument.
+  Bound the address to a single `--host-address=value` argument; a parser regression
+  proves flag-looking endpoint values cannot select another application role.
+  Recheck CodeQL and resolve its thread after final analysis.
+- Target branch recheck found `64a4ad06` (click-track generation) on top of `3aabf437`.
+  Merge and revalidate it before the final push. Remaining delivery work is the
+  final native/web/coverage matrix, automated review and final evidence mapping.

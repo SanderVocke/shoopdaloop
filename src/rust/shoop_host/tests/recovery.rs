@@ -315,6 +315,81 @@ fn killing_a_ui_preserves_recording_and_a_replacement_can_read_media_and_close_t
 }
 
 #[shoop_test]
+fn app_version_and_endpoint_role_are_checked_before_shared_attachment_admission() {
+    use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
+    use std::io::Write;
+    let mut host = host(AppTransport::SharedMemory);
+    let data = connection::Endpoint::Data as u8;
+    let management = connection::Endpoint::Management as u8;
+    for (address, version, role) in [
+        (&host.entry.endpoint, VERSION, management),
+        (&host.entry.management, VERSION, data),
+        (&host.entry.endpoint, VERSION + 1, data),
+        (&host.entry.management, VERSION + 1, management),
+    ] {
+        let mut raw = shoop_transport_socket::setup::connect(
+            address.parse().unwrap(),
+            Default::default(),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let version = version.to_le_bytes();
+        for byte in [version[0], version[1], role] {
+            raw.stream().write_all(&[byte]).unwrap();
+            thread::sleep(Duration::from_millis(2));
+        }
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while raw.failure().is_none() {
+            assert!(
+                raw.take(&mut [0; MAX_RECORD_BYTES]).is_none(),
+                "invalid admission reached the session"
+            );
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            connection::describe(&host.entry.endpoint, Duration::from_secs(2))
+                .unwrap()
+                .can_attach
+        );
+    }
+    let mut raw = shoop_transport_socket::setup::connect(
+        host.entry.endpoint.parse().unwrap(),
+        Default::default(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    raw.stream().write_all(&VERSION.to_le_bytes()).unwrap();
+    assert!(
+        connection::describe(&host.entry.management, Duration::from_secs(2))
+            .unwrap()
+            .can_attach
+    );
+    raw.stream().write_all(&[data]).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    loop {
+        if let Some(count) = raw.take(&mut bytes) {
+            assert!(matches!(
+                codec::decode(&bytes[..count]).unwrap(),
+                WireMessage::CarrierReady
+            ));
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        !connection::describe(&host.entry.endpoint, Duration::from_secs(2))
+            .unwrap()
+            .can_attach
+    );
+    drop(raw);
+    connection::shutdown_ownerless(&host.entry, Duration::from_secs(5)).unwrap();
+    assert!(host.child.wait().unwrap().success());
+}
+
+#[shoop_test]
 fn busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_and_exits() {
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
         let mut host = host(transport);

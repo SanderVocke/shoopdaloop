@@ -42,7 +42,9 @@ fn system(pids: ProcessesToUpdate<'_>) -> Result<System> {
     system.refresh_processes_specifics(
         pids,
         true,
-        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+        ProcessRefreshKind::nothing()
+            .without_tasks()
+            .with_exe(UpdateKind::Always),
     );
     Ok(system)
 }
