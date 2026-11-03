@@ -399,6 +399,20 @@ impl Provider {
     }
 }
 impl PersistenceIo for Provider {
+    fn click_track(&self) -> ClickTrackState {
+        ClickTrackState {
+            sounds: shoop_session::click_sound_ids()
+                .map(|id| ClickSoundDescriptor {
+                    id: id.into(),
+                    name: id.into(),
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            max_click_count: shoop_session::MAX_CLICK_TRACK_CLICKS,
+            max_output_frames: shoop_session::MAX_CLICK_TRACK_FRAMES,
+            ..Default::default()
+        }
+    }
     fn handles(&self, intent: &AppIntent) -> bool {
         if matches!(intent, AppIntent::FailIoTask { task_id, .. } if task_id.raw() < (1 << 32)) {
             return false;
