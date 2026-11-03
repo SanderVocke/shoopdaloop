@@ -1,0 +1,225 @@
+{
+  "started_utc": "2026-11-03T13:00:51.257096+00:00",
+  "source_revision": "ec4b52ec2de23b60714eadb8ebf1be69834dd3e0",
+  "source_changes": "M .pi/.goals-pool-snapshot.json\n M .pi/goals/.goal-ledger-checkpoint.json\n D .pi/goals/active_goal_2026102519485870_mvo6lnim-1xzkd7.md\n D .pi/goals/active_goal_2026102622420655_mvps85i2-uuvn9n.md\n D .pi/goals/active_goal_2026102711354435_mvqjv1pa-kwtmu3.md\n D .pi/goals/active_goal_2026102806553802_mvrpaoj0-u4f0gj.md\n M .pi/goals/goal_events.jsonl\n?? .pi/goals/archived/goal_2026102706243376_mvps85i2-uuvn9n.md\n?? .pi/goals/archived/goal_2026102711353184_mvo6lnim-1xzkd7.md\n?? .pi/goals/archived/goal_2026102816334216_mvrpaoj0-u4f0gj.md\n?? .pi/goals/archived/goal_2026102900362115_mvqjv1pa-kwtmu3.md\n?? scripts/compare_remote_dsp.py\n?? scripts/reproduce_remote_dsp_local.py\n?? scripts/tests/test_remote_dsp_comparison.py",
+  "binary": "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+  "binary_sha256": "d799a5b273203068f06b5eb6f9c9fd340d3e7fc9a2dd2e8779b893e4b659a186",
+  "runner_sha256": "d5afb83e56d1ad2551c2f011714e30d02d2a20cf9f3e04e443b4b281a5d06431",
+  "command": [
+    "scripts/reproduce_remote_dsp_local.py",
+    "--output",
+    "artifacts/remote-dsp-local",
+    "--client-cpu",
+    "2",
+    "--server-cpu",
+    "4"
+  ],
+  "os": "Linux-7.0.3-x86_64-with-glibc2.42",
+  "python": "3.14.7",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "build_profile": "release",
+  "rustflags": "",
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "client_cpu": 2,
+  "server_cpu": 4,
+  "inherited_scheduler": 0,
+  "inherited_nice": 0,
+  "priority_probes": [
+    {
+      "name": "fifo1",
+      "command": [
+        "chrt",
+        "--fifo",
+        "1",
+        "/nix/store/736zvvxpyxbmh78y52km47g5afl5l4y9-python3-3.14.7-env/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"scheduler\": 1, \"nice\": 0}\n",
+      "stderr": "",
+      "actual": {
+        "scheduler": 1,
+        "nice": 0
+      },
+      "available": true,
+      "prefix": [
+        "chrt",
+        "--fifo",
+        "1"
+      ]
+    },
+    {
+      "name": "rr1",
+      "command": [
+        "chrt",
+        "--rr",
+        "1",
+        "/nix/store/736zvvxpyxbmh78y52km47g5afl5l4y9-python3-3.14.7-env/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"scheduler\": 2, \"nice\": 0}\n",
+      "stderr": "",
+      "actual": {
+        "scheduler": 2,
+        "nice": 0
+      },
+      "available": true,
+      "prefix": [
+        "chrt",
+        "--rr",
+        "1"
+      ]
+    },
+    {
+      "name": "nice-minus10",
+      "command": [
+        "nice",
+        "-n",
+        "-10",
+        "/nix/store/736zvvxpyxbmh78y52km47g5afl5l4y9-python3-3.14.7-env/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"scheduler\": 0, \"nice\": 0}\n",
+      "stderr": "nice: cannot set niceness: Permission denied\n",
+      "actual": {
+        "scheduler": 0,
+        "nice": 0
+      },
+      "available": false,
+      "prefix": [
+        "nice",
+        "-n",
+        "-10"
+      ]
+    }
+  ],
+  "modes": {
+    "yield-free": [
+      "yield",
+      "yield",
+      false,
+      200
+    ],
+    "yield-pinned": [
+      "yield",
+      "yield",
+      true,
+      200
+    ],
+    "spin-free": [
+      "spin",
+      "spin",
+      false,
+      200
+    ],
+    "spin-pinned": [
+      "spin",
+      "spin",
+      true,
+      200
+    ],
+    "client-spin-pinned": [
+      "spin",
+      "yield",
+      true,
+      200
+    ],
+    "server-spin-pinned": [
+      "yield",
+      "spin",
+      true,
+      200
+    ],
+    "spin-pinned-gap1000": [
+      "spin",
+      "spin",
+      true,
+      1000
+    ]
+  },
+  "configs": [
+    [
+      8,
+      1,
+      4
+    ],
+    [
+      8,
+      1,
+      8
+    ],
+    [
+      8,
+      1,
+      16
+    ],
+    [
+      16,
+      4,
+      4
+    ],
+    [
+      16,
+      4,
+      8
+    ],
+    [
+      16,
+      4,
+      16
+    ],
+    [
+      128,
+      8,
+      8
+    ],
+    [
+      128,
+      8,
+      16
+    ]
+  ],
+  "seed": 20261103,
+  "screen_repetitions": 3,
+  "screen_seconds": 2,
+  "followup_seconds": 60,
+  "warmup_seconds": 0.5,
+  "limitations": "shared Linux host; affinity is not CPU isolation; cgroup counters include other tasks; no physical NIC/FPGA; no builds/tests during measurements",
+  "cpu2_topology": {
+    "physical_package_id": "0",
+    "core_id": "2",
+    "thread_siblings_list": "2,10"
+  },
+  "cpu4_topology": {
+    "physical_package_id": "0",
+    "core_id": "4",
+    "thread_siblings_list": "4,12"
+  },
+  "cpu.max": null,
+  "cpuset.cpus.effective": "0-15",
+  "memory.max": null,
+  "cpu_model": "AMD Ryzen AI 7 350 w/ Radeon 860M"
+}

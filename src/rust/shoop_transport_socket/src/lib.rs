@@ -1,6 +1,7 @@
 //! Native TCP adapter for bounded portable record progression.
 #![forbid(unsafe_code)]
 #![cfg(not(target_arch = "wasm32"))]
+pub mod private;
 pub mod setup;
 pub use shoop_transport::stream::Config;
 use shoop_transport::{

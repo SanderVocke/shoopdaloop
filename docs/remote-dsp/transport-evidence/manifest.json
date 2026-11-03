@@ -1,0 +1,1512 @@
+{
+  "started_utc": "2026-11-03T14:20:55.814104+00:00",
+  "arguments": {
+    "binary": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports-bin/shoop_dsp_host",
+    "output": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports",
+    "credential_file": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports/credential.key",
+    "server_ssh": null,
+    "server_root": null,
+    "server_binary": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports-bin/shoop_dsp_host",
+    "server_credential": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports/credential.key",
+    "server_python": "python3",
+    "ssh_port": 22,
+    "server_bind": "127.0.0.1:0",
+    "data_port": 0,
+    "client_cpu": 2,
+    "server_cpu": 4,
+    "config": null,
+    "profile": "all",
+    "repetitions": 3,
+    "screen_seconds": 2,
+    "followup_seconds": 60,
+    "warmup": 0.5,
+    "sample_rate": 48000,
+    "channels": 2,
+    "delay": 0,
+    "mtu": 1500,
+    "seed": 20261104,
+    "stall_us": 2000
+  },
+  "client": {
+    "binary": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports-bin/shoop_dsp_host",
+    "binary_sha256": "626d7470b1bbb46aa0284ae0be606d3ef2b0fe28a6019d19ade0cf78e7e97988",
+    "hostname": "sanderlaptop",
+    "platform": "Linux-7.0.3-x86_64-with-glibc2.42",
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "nice": 0,
+    "fifo_probe": {
+      "exit_code": 0,
+      "stdout": "1\n1",
+      "stderr": ""
+    },
+    "fifo_available": true,
+    "git_revision": {
+      "exit_code": 0,
+      "stdout": "ec4b52ec2de23b60714eadb8ebf1be69834dd3e0",
+      "stderr": ""
+    },
+    "git_changes": {
+      "exit_code": 0,
+      "stdout": "M .pi/.goals-pool-snapshot.json\n M .pi/goals/.goal-ledger-checkpoint.json\n D .pi/goals/active_goal_2026102519485870_mvo6lnim-1xzkd7.md\n D .pi/goals/active_goal_2026102622420655_mvps85i2-uuvn9n.md\n D .pi/goals/active_goal_2026102711354435_mvqjv1pa-kwtmu3.md\n D .pi/goals/active_goal_2026102806553802_mvrpaoj0-u4f0gj.md\n M .pi/goals/goal_events.jsonl\n M docs/remote-dsp/README.md\n M docs/tracing_coverage.csv\n M src/rust/shoop_dsp_host/src/client.rs\n M src/rust/shoop_dsp_host/src/control.rs\n M src/rust/shoop_dsp_host/src/main.rs\n M src/rust/shoop_dsp_host/src/server.rs\n M src/rust/shoop_dsp_host/tests/process.rs\n M src/rust/shoop_remote_dsp/src/stream.rs\n M src/rust/shoop_remote_dsp/tests/stream.rs\n?? .pi/goals/archived/goal_2026102706243376_mvps85i2-uuvn9n.md\n?? .pi/goals/archived/goal_2026102711353184_mvo6lnim-1xzkd7.md\n?? .pi/goals/archived/goal_2026102816334216_mvrpaoj0-u4f0gj.md\n?? .pi/goals/archived/goal_2026102900362115_mvqjv1pa-kwtmu3.md\n?? docs/remote-dsp/local-evidence/\n?? docs/remote-dsp/local-results.md\n?? scripts/benchmark_remote_dsp_transports.py\n?? scripts/compare_remote_dsp.py\n?? scripts/reproduce_remote_dsp_local.py\n?? scripts/tests/test_remote_dsp_comparison.py\n?? scripts/tests/test_remote_dsp_transports.py\n?? src/rust/shoop_dsp_host/src/audio.rs",
+      "stderr": ""
+    },
+    "rustc": {
+      "exit_code": 0,
+      "stdout": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+      "stderr": ""
+    },
+    "interfaces": {
+      "exit_code": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\",\"addr_info\":[{\"family\":\"inet\",\"local\":\"127.0.0.1\",\"prefixlen\":8,\"scope\":\"host\",\"label\":\"lo\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"noprefixroute\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":2,\"ifname\":\"eno1\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"operstate\":\"DOWN\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"b0:25:aa:7f:fb:57\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp100s0\",\"enxb025aa7ffb57\"],\"addr_info\":[]},{\"ifindex\":3,\"ifname\":\"wlp99s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"70:08:10:fe:40:84\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"wlx700810fe4084\"],\"addr_info\":[{\"family\":\"inet\",\"local\":\"192.168.2.21\",\"prefixlen\":24,\"broadcast\":\"192.168.2.255\",\"scope\":\"global\",\"dynamic\":true,\"noprefixroute\":true,\"label\":\"wlp99s0\",\"valid_life_time\":13101,\"preferred_life_time\":13101},{\"family\":\"inet6\",\"local\":\"2a02:a44c:6761:0:92e:2aea:51b9:1187\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":86385,\"preferred_life_time\":585},{\"family\":\"inet6\",\"local\":\"2a02:a44c:6761:0:6291:1b55:a943:f28b\",\"prefixlen\":64,\"scope\":\"global\",\"temporary\":true,\"dynamic\":true,\"valid_life_time\":86385,\"preferred_life_time\":585},{\"family\":\"inet6\",\"local\":\"fd4e:3732:3232:0:1d86:9904:394c:612b\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":885,\"preferred_life_time\":285},{\"family\":\"inet6\",\"local\":\"fd4e:3732:3232:0:d4bb:a7cf:6344:e79c\",\"prefixlen\":64,\"scope\":\"global\",\"temporary\":true,\"dynamic\":true,\"valid_life_time\":885,\"preferred_life_time\":285},{\"family\":\"inet6\",\"local\":\"fe80::e189:3f3:4547:427\",\"prefixlen\":64,\"scope\":\"link\",\"noprefixroute\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]",
+      "stderr": ""
+    },
+    "routes": {
+      "exit_code": 0,
+      "stdout": "[{\"dst\":\"default\",\"gateway\":\"192.168.2.254\",\"dev\":\"wlp99s0\",\"protocol\":\"dhcp\",\"prefsrc\":\"192.168.2.21\",\"metric\":600,\"flags\":[]},{\"dst\":\"192.168.2.0/24\",\"dev\":\"wlp99s0\",\"protocol\":\"kernel\",\"scope\":\"link\",\"prefsrc\":\"192.168.2.21\",\"metric\":600,\"flags\":[]}]",
+      "stderr": ""
+    },
+    "clock_ticks_per_second": 100,
+    "host_files": {
+      "/proc/cpuinfo": "processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1899.239\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 0\ncpu cores\t: 8\napicid\t\t: 0\ninitial apicid\t: 0\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 1\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 3309.055\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 1\ncpu cores\t: 8\napicid\t\t: 2\ninitial apicid\t: 2\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 2\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1900.251\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 2\ncpu cores\t: 8\napicid\t\t: 4\ninitial apicid\t: 4\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 3\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1959.152\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 3\ncpu cores\t: 8\napicid\t\t: 6\ninitial apicid\t: 6\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 4\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1689.545\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 4\ncpu cores\t: 8\napicid\t\t: 8\ninitial apicid\t: 8\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 5\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 5\ncpu cores\t: 8\napicid\t\t: 10\ninitial apicid\t: 10\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 6\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1898.902\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 6\ncpu cores\t: 8\napicid\t\t: 12\ninitial apicid\t: 12\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 7\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 3306.982\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 7\ncpu cores\t: 8\napicid\t\t: 14\ninitial apicid\t: 14\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 8\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 0\ncpu cores\t: 8\napicid\t\t: 1\ninitial apicid\t: 1\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 9\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 3306.927\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 1\ncpu cores\t: 8\napicid\t\t: 3\ninitial apicid\t: 3\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 10\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1897.074\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 2\ncpu cores\t: 8\napicid\t\t: 5\ninitial apicid\t: 5\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 11\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 3\ncpu cores\t: 8\napicid\t\t: 7\ninitial apicid\t: 7\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 12\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 4\ncpu cores\t: 8\napicid\t\t: 9\ninitial apicid\t: 9\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 13\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 3308.262\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 5\ncpu cores\t: 8\napicid\t\t: 11\ninitial apicid\t: 11\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 14\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 2116.352\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 6\ncpu cores\t: 8\napicid\t\t: 13\ninitial apicid\t: 13\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 15\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 3306.482\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 7\ncpu cores\t: 8\napicid\t\t: 15\ninitial apicid\t: 15\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]",
+      "/proc/meminfo": "MemTotal:       64932548 kB\nMemFree:         9414956 kB\nMemAvailable:   58852780 kB\nBuffers:            3620 kB\nCached:         49537036 kB\nSwapCached:            0 kB\nActive:         29857972 kB\nInactive:       22661248 kB\nActive(anon):    3023532 kB\nInactive(anon):    91492 kB\nActive(file):   26834440 kB\nInactive(file): 22569756 kB\nUnevictable:       13668 kB\nMlocked:           13648 kB\nSwapTotal:      32465916 kB\nSwapFree:       32141360 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:              1996 kB\nWriteback:             0 kB\nAnonPages:       2992064 kB\nMapped:          1712892 kB\nShmem:            131572 kB\nKReclaimable:     651916 kB\nSlab:            1008072 kB\nSReclaimable:     651916 kB\nSUnreclaim:       356156 kB\nKernelStack:       18520 kB\nPageTables:        59612 kB\nSecPageTables:      4248 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    64932188 kB\nCommitted_AS:   15085776 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      264480 kB\nVmallocChunk:          0 kB\nPercpu:            17664 kB\nHardwareCorrupted:     0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:     1927408 kB\nDirectMap2M:    20217856 kB\nDirectMap1G:    45088768 kB",
+      "/proc/self/cgroup": "0::/",
+      "/proc/self/limits": "Limit                     Soft Limit           Hard Limit           Units     \nMax cpu time              unlimited            unlimited            seconds   \nMax file size             unlimited            unlimited            bytes     \nMax data size             unlimited            unlimited            bytes     \nMax stack size            8388608              unlimited            bytes     \nMax core file size        unlimited            unlimited            bytes     \nMax resident set          unlimited            unlimited            bytes     \nMax processes             253561               253561               processes \nMax open files            99999                99999                files     \nMax locked memory         unlimited            unlimited            bytes     \nMax address space         unlimited            unlimited            bytes     \nMax file locks            unlimited            unlimited            locks     \nMax pending signals       253561               253561               signals   \nMax msgqueue size         819200               819200               bytes     \nMax nice priority         0                    0                    \nMax realtime priority     99                   99                   \nMax realtime timeout      unlimited            unlimited            us",
+      "/proc/interrupts": "CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7       CPU8       CPU9       CPU10      CPU11      CPU12      CPU13      CPU14      CPU15      \n   0:        121          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    2-edge      timer\n   1:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0      11057 IR-IO-APIC    1-edge      i8042\n   3:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    3-edge      AMDI0010:00\n   4:          0          0          0    4795655          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    4-edge      AMDI0010:01\n   7:          0          0          0          0          0     181736          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    7-fasteoi   pinctrl_amd\n   8:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    8-edge      rtc0\n   9:          0      26335          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    9-fasteoi   acpi\n  27:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 PCI-MSI-0000:00:00.2    0-edge      AMD-Vi\n  28:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio    0  ACPI:Event\n  29:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio    7  ACPI:Event\n  30:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   61  ACPI:Event\n  31:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   62  ACPI:Event\n  32:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   58  ACPI:Event\n  33:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   59  ACPI:Event\n  34:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio  130  ACPI:Event\n  35:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:01.2    0-edge      PCIe PME, pciehp\n  36:          0          0          0          0          0          0          0          2          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.1    0-edge      PCIe PME, PCIe bwctrl\n  37:          0          0          0          0          0          0          0          0          1          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.2    0-edge      PCIe PME, pciehp, PCIe bwctrl\n  38:          0          0          0          0          0          0          0          0          0          1          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.3    0-edge      PCIe PME, PCIe bwctrl\n  39:          0          0          0          0          0          0          0          0          0          0          1          0          0          0          0          0 IR-PCI-MSI-0000:00:02.4    0-edge      PCIe PME, PCIe bwctrl\n  40:          0          0          0          0          0          0          0          0          0          0          0          2          0          0          0          0 IR-PCI-MSI-0000:00:03.2    0-edge      PCIe PME, PCIe bwctrl\n  41:          0          0          0          0          0          0          0          0          0          0          0          0          1          0          0          0 IR-PCI-MSI-0000:00:08.1    0-edge      PCIe PME, PCIe bwctrl\n  42:          0          0          0          0          0          0          0          0          0          0          0          0          0          1          0          0 IR-PCI-MSI-0000:00:08.2    0-edge      PCIe PME, PCIe bwctrl\n  43:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          1          0 IR-PCI-MSI-0000:00:08.3    0-edge      PCIe PME, PCIe bwctrl\n  45:        720          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:66:00.4    0-edge      xhci_hcd\n  48:          0          0        194          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    0-edge      nvme1q0\n  50:          0        359          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.0    0-edge      xhci_hcd\n  52:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.3    0-edge      xhci_hcd\n  53:          0          0          0          0          0          0          0          0        165          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.6    0-edge      thunderbolt\n  54:        166          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.6    1-edge      thunderbolt\n  56:          0          0          0        211          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    0-edge      nvme0q0\n  58:          0    1216044          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    1-edge      nvme0q1\n  60:          0          0          0          0          0          0          0          0          0    1151206          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    2-edge      nvme0q2\n  62:          0          0          0    1423643          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    3-edge      nvme0q3\n  64:          0          0          0          0          0          0          0          0          0          0          0    1120584          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    4-edge      nvme0q4\n  66:          0          0          0          0    4278134          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    5-edge      nvme0q5\n  68:          0          0          0          0          0          0          0          0          0          0          0          0    3212711          0          0          0 IR-PCI-MSIX-0000:61:00.0    6-edge      nvme0q6\n  70:          0          0          0          0          0    1305418          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    7-edge      nvme0q7\n  72:          0          0          0          0          0          0          0          0          0          0          0          0          0    1034159          0          0 IR-PCI-MSIX-0000:61:00.0    8-edge      nvme0q8\n  74:          0          0          0          0          0          0    7809268          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    9-edge      nvme0q9\n  76:          0          0          0          0          0          0          0          0          0          0          0          0          0          0    5407748          0 IR-PCI-MSIX-0000:61:00.0   10-edge      nvme0q10\n  78:          0          0          0          0          0          0          0    1531028          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   11-edge      nvme0q11\n  80:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0    1213855 IR-PCI-MSIX-0000:61:00.0   12-edge      nvme0q12\n  81:          0          0    6302184          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   13-edge      nvme0q13\n  82:          0          0          0          0          0          0          0          0          0          0    4085388          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   14-edge      nvme0q14\n  83:    3128005          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   15-edge      nvme0q15\n  84:          0          0          0          0          0          0          0          0    4144827          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   16-edge      nvme0q16\n  86:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.4    0-edge      xhci_hcd\n  87:          0          0          0          0          0          0          0          0          0        189          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    1-edge      nvme1q1\n  88:          0          0          0          0          0          0          0          0          0          0          0        389          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    2-edge      nvme1q2\n  89:          0          0          0          0          0          0          0          0          0          0          0          0         37          0          0          0 IR-PCI-MSIX-0000:65:00.0    3-edge      nvme1q3\n  90:          0          0          0          0          0          0          0          0          0          0          0          0          0         20          0          0 IR-PCI-MSIX-0000:65:00.0    4-edge      nvme1q4\n  91:          0          0          0          0          0          0          0          0          0          0          0          0          0          0        223          0 IR-PCI-MSIX-0000:65:00.0    5-edge      nvme1q5\n  92:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0         10 IR-PCI-MSIX-0000:65:00.0    6-edge      nvme1q6\n  93:          0          0          0          0          0          0          0          0          0          0        230          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    7-edge      nvme1q7\n  94:          0          0          0          0          0          0          0          0         92          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    8-edge      nvme1q8\n  96:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:62:00.0    0-edge      mmc0\n  98:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:66:00.2    0-edge      psp-1\n 100:          0          0          0          0          0     145301          0          0          0          0          0          0          0          0          0          0 amd_gpio    8  UNIW0001:00\n 134:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC   15-fasteoi   ACP_I2S_IRQ\n 135:          0          0          0          0          0          0          0          0          0          0          0        688          0          0          0          0 IR-PCI-MSI-0000:66:00.1    0-edge      snd_hda_intel:card0\n 136:          0          0          0          0          0          0          0          0          0          0          0          0       3023          0          0          0 IR-PCI-MSI-0000:66:00.6    0-edge      snd_hda_intel:card1\n 138:          0          0          0          0          0          0          0          0          0          0          0          0          0          0     275177          0 IR-PCI-MSIX-0000:63:00.0    0-edge      iwlwifi:default_queue\n 139:      12226          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    1-edge      iwlwifi:queue_1\n 140:          0      18370          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    2-edge      iwlwifi:queue_2\n 141:          0          0      11747          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    3-edge      iwlwifi:queue_3\n 142:          0          0          0     119906          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    4-edge      iwlwifi:queue_4\n 143:          0          0          0          0       2255          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    5-edge      iwlwifi:queue_5\n 144:          0          0          0          0          0      12400          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    6-edge      iwlwifi:queue_6\n 145:          0          0          0          0          0          0       2673          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    7-edge      iwlwifi:queue_7\n 146:          0          0          0          0          0          0          0       5034          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    8-edge      iwlwifi:queue_8\n 147:          0          0          0          0          0          0          0          0      11199          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    9-edge      iwlwifi:queue_9\n 148:          0          0          0          0          0          0          0          0          0       7455          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   10-edge      iwlwifi:queue_10\n 149:          0          0          0          0          0          0          0          0          0          0       4661          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   11-edge      iwlwifi:queue_11\n 150:          0          0          0          0          0          0          0          0          0          0          0      13865          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   12-edge      iwlwifi:queue_12\n 151:          0          0          0          0          0          0          0          0          0          0          0          0       6314          0          0          0 IR-PCI-MSIX-0000:63:00.0   13-edge      iwlwifi:queue_13\n 152:          0          0          0          0          0          0          0          0          0          0          0          0          0       8917          0          0 IR-PCI-MSIX-0000:63:00.0   14-edge      iwlwifi:queue_14\n 153:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          5          0 IR-PCI-MSIX-0000:63:00.0   15-edge      iwlwifi:exception\n 154:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    0-edge      eno1:rx-0\n 158:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    4-edge      eno1:tx-0\n 159:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    5-edge      eno1:mac\n 160:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0    1271332 IR-PCI-MSIX-0000:66:00.0    0-edge      amdgpu\n NMI:        246        122        963        139       1070        129        632        134        291        117        286        116        369        115        464        126   Non-maskable interrupts\n LOC:    4739831    3796898    8626141    4535095   42870452    3849129    5497253    3778519    4363746    3633438    3953065    3589148    3709209    3611063    4346003    3183540   Local timer interrupts\n SPU:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Spurious interrupts\n PMI:        246        122        963        139       1070        129        632        134        291        117        286        116        369        115        464        126   Performance monitoring interrupts\n IWI:      17557       8993      25191      11166     425382       5542      18133       5225       9204       3944       8628       4314       9597       4397      14523     138407   IRQ work interrupts\n RTR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   APIC ICR read retries\n RES:    3312340    3864925    3534289    3979426    2866947    4275758    3304731    4226549    4162352    4185754    3739482    4071193    3135664    4249667    3072174    3482403   Rescheduling interrupts\n CAL:   43736965   40854306   41617765   41306159   34509636   41226489   44702517   43706144   39901896   34995140   40396974   35313281   33386305   34375929   43055897   37743926   Function call interrupts\n TLB:   37635491   39365548   41452350   41080708   34408107   41077121   44757560   43608753   39890401   34847455   40426930   35218653   33306215   34233699   43145527   37709634   TLB shootdowns\n TRM:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Thermal event interrupts\n THR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Threshold APIC interrupts\n DFR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Deferred Error APIC interrupts\n MCE:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Machine check exceptions\n MCP:         70         70         70         70         70         70         70         70         70         70         70         70         70         70         70         70   Machine check polls\n ERR:          0\n MIS:          0\n PIN:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Posted-interrupt notification event\n NPI:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Nested posted-interrupt event\n PIW:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Posted-interrupt wakeup event\nVPMI:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0  Perf Guest Mediated PMI",
+      "/proc/net/dev": "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo: 5661847896 27127370    0    0    0     0          0         0 5661847896 27127370    0    0    0     0       0          0\n  eno1:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0\nwlp99s0: 1608045104 1357231    0 1843    0     0          0         0 135250927  291616    0    0    0     0       0          0",
+      "/proc/sys/kernel/sched_rt_runtime_us": "950000",
+      "/proc/sys/kernel/sched_rt_period_us": "1000000",
+      "/proc/net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 27187304 0 1 0 0 0 27185699 27166369 20 0 0 0 0 0 0 0 0 27166369\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 40 0 0 40 0 0 0 0 0 0 0 0 0 0 41 0 0 0 41 0 0 0 0 0 0 0 0 0 0\nIcmpMsg: InType3 OutType3\nIcmpMsg: 40 41\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 1828 840 214 91 13 489448 479435 200 0 1007 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 26937667 41 3033 26924816 3033 0 0 0 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0",
+      "/proc/net/netstat": "TcpExt: SyncookiesSent SyncookiesRecv SyncookiesFailed EmbryonicRsts PruneCalled RcvPruned OfoPruned OutOfWindowIcmps LockDroppedIcmps ArpFilter TW TWRecycled TWKilled PAWSActive PAWSEstab BeyondWindow TSEcrRejected PAWSOldAck PAWSTimewait DelayedACKs DelayedACKLocked DelayedACKLost ListenOverflows ListenDrops TCPHPHits TCPPureAcks TCPHPAcks TCPRenoRecovery TCPSackRecovery TCPSACKReneging TCPSACKReorder TCPRenoReorder TCPTSReorder TCPFullUndo TCPPartialUndo TCPDSACKUndo TCPLossUndo TCPLostRetransmit TCPRenoFailures TCPSackFailures TCPLossFailures TCPFastRetrans TCPSlowStartRetrans TCPTimeouts TCPLossProbes TCPLossProbeRecovery TCPRenoRecoveryFail TCPSackRecoveryFail TCPRcvCollapsed TCPBacklogCoalesce TCPDSACKOldSent TCPDSACKOfoSent TCPDSACKRecv TCPDSACKOfoRecv TCPAbortOnData TCPAbortOnClose TCPAbortOnMemory TCPAbortOnTimeout TCPAbortOnLinger TCPAbortFailed TCPMemoryPressures TCPMemoryPressuresChrono TCPSACKDiscard TCPDSACKIgnoredOld TCPDSACKIgnoredNoUndo TCPSpuriousRTOs TCPMD5NotFound TCPMD5Unexpected TCPMD5Failure TCPSackShifted TCPSackMerged TCPSackShiftFallback TCPBacklogDrop PFMemallocDrop TCPMinTTLDrop TCPDeferAcceptDrop IPReversePathFilter TCPTimeWaitOverflow TCPReqQFullDoCookies TCPReqQFullDrop TCPRetransFail TCPRcvCoalesce TCPOFOQueue TCPOFODrop TCPOFOMerge TCPChallengeACK TCPSYNChallenge TCPFastOpenActive TCPFastOpenActiveFail TCPFastOpenPassive TCPFastOpenPassiveFail TCPFastOpenListenOverflow TCPFastOpenCookieReqd TCPFastOpenBlackhole TCPSpuriousRtxHostQueues BusyPollRxPackets TCPAutoCorking TCPFromZeroWindowAdv TCPToZeroWindowAdv TCPWantZeroWindowAdv TCPSynRetrans TCPOrigDataSent TCPHystartTrainDetect TCPHystartTrainCwnd TCPHystartDelayDetect TCPHystartDelayCwnd TCPACKSkippedSynRecv TCPACKSkippedPAWS TCPACKSkippedSeq TCPACKSkippedFinWait2 TCPACKSkippedTimeWait TCPACKSkippedChallenge TCPWinProbe TCPKeepAlive TCPMTUPFail TCPMTUPSuccess TCPDelivered TCPDeliveredCE TCPAckCompressed TCPZeroWindowDrop TCPRcvQDrop TCPWqueueTooBig TCPFastOpenPassiveAltKey TcpTimeoutRehash TcpDuplicateDataRehash TCPDSACKRecvSegs TCPDSACKIgnoredDubious TCPMigrateReqSuccess TCPMigrateReqFailure TCPPLBRehash TCPAORequired TCPAOBad TCPAOKeyNotFound TCPAOGood TCPAODroppedIcmps\nTcpExt: 0 0 0 0 159 0 0 0 0 0 1131 0 0 0 0 0 0 1 0 5867 0 4398 0 0 103977 27162 72358 0 3 0 9 0 0 1 0 2 0 69 0 0 0 8 2 89 122 0 0 0 0 766 4398 2 91 0 244 41 0 4 0 0 0 0 0 0 62 0 0 0 0 0 0 22 0 0 0 0 0 0 0 0 0 112441 1671 0 2 0 0 0 0 0 0 0 0 0 5 0 2305 15 15 92 49 256460 19 3812 3 756 0 0 11 0 0 0 13 2499 0 0 257941 0 31 0 0 0 0 85 75 91 0 0 0 0 0 0 0 0 0\nIpExt: InNoRoutes InTruncatedPkts InMcastPkts OutMcastPkts InBcastPkts OutBcastPkts InOctets OutOctets InMcastOctets OutMcastOctets InBcastOctets OutBcastOctets InCsumErrors InNoECTPkts InECT1Pkts InECT0Pkts InCEPkts ReasmOverlaps\nIpExt: 0 0 6362 738 108 0 5879507915 5667041966 1077004 129394 32365 0 0 27301963 0 0 0 0\nMPTcpExt: MPCapableSYNRX MPCapableSYNTX MPCapableSYNACKRX MPCapableACKRX MPCapableFallbackACK MPCapableFallbackSYNACK MPCapableSYNTXDrop MPCapableSYNTXDisabled MPCapableEndpAttempt MPFallbackTokenInit MPTCPRetrans MPJoinNoTokenFound MPJoinSynRx MPJoinSynBackupRx MPJoinSynAckRx MPJoinSynAckBackupRx MPJoinSynAckHMacFailure MPJoinAckRx MPJoinAckHMacFailure MPJoinRejected MPJoinSynTx MPJoinSynTxCreatSkErr MPJoinSynTxBindErr MPJoinSynTxConnectErr DSSNotMatching DSSCorruptionFallback DSSCorruptionReset InfiniteMapTx InfiniteMapRx DSSNoMatchTCP DataCsumErr OFOQueueTail OFOQueue OFOMerge NoDSSInWindow DuplicateData AddAddr AddAddrTx AddAddrTxDrop EchoAdd EchoAddTx EchoAddTxDrop PortAdd AddAddrDrop MPJoinPortSynRx MPJoinPortSynAckRx MPJoinPortAckRx MismatchPortSynRx MismatchPortAckRx RmAddr RmAddrDrop RmAddrTx RmAddrTxDrop RmSubflow MPPrioTx MPPrioRx MPFailTx MPFailRx MPFastcloseTx MPFastcloseRx MPRstTx MPRstRx SubflowStale SubflowRecover SndWndShared RcvWndShared RcvWndConflictUpdate RcvWndConflict MPCurrEstab Blackhole MPCapableDataFallback MD5SigFallback DssFallback SimultConnectFallback FallbackFailed WinProbe\nMPTcpExt: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+      "/sys/firmware/acpi/platform_profile": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy11/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy8/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy6/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy4/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy2/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy14/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy12/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy9/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy10/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy7/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy5/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy3/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy15/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy1/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy13/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpu11/topology/thread_siblings_list": "3,11",
+      "/sys/devices/system/cpu/cpu9/topology/thread_siblings_list": "1,9",
+      "/sys/devices/system/cpu/cpu7/topology/thread_siblings_list": "7,15",
+      "/sys/devices/system/cpu/cpu5/topology/thread_siblings_list": "5,13",
+      "/sys/devices/system/cpu/cpu3/topology/thread_siblings_list": "3,11",
+      "/sys/devices/system/cpu/cpu14/topology/thread_siblings_list": "6,14",
+      "/sys/devices/system/cpu/cpu1/topology/thread_siblings_list": "1,9",
+      "/sys/devices/system/cpu/cpu12/topology/thread_siblings_list": "4,12",
+      "/sys/devices/system/cpu/cpu10/topology/thread_siblings_list": "2,10",
+      "/sys/devices/system/cpu/cpu8/topology/thread_siblings_list": "0,8",
+      "/sys/devices/system/cpu/cpu6/topology/thread_siblings_list": "6,14",
+      "/sys/devices/system/cpu/cpu4/topology/thread_siblings_list": "4,12",
+      "/sys/devices/system/cpu/cpu15/topology/thread_siblings_list": "7,15",
+      "/sys/devices/system/cpu/cpu2/topology/thread_siblings_list": "2,10",
+      "/sys/devices/system/cpu/cpu13/topology/thread_siblings_list": "5,13",
+      "/sys/devices/system/cpu/cpu0/topology/thread_siblings_list": "0,8",
+      "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "0",
+      "/sys/class/power_supply/AC0/online": "1",
+      "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "1",
+      "/sys/class/thermal/thermal_zone2/temp": "29000",
+      "/sys/class/thermal/thermal_zone0/temp": "34000",
+      "/sys/class/thermal/thermal_zone1/temp": "34000"
+    }
+  },
+  "server": {
+    "binary": "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-transports-bin/shoop_dsp_host",
+    "binary_sha256": "626d7470b1bbb46aa0284ae0be606d3ef2b0fe28a6019d19ade0cf78e7e97988",
+    "hostname": "sanderlaptop",
+    "platform": "Linux-7.0.3-x86_64-with-glibc2.42",
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "nice": 0,
+    "fifo_probe": {
+      "exit_code": 0,
+      "stdout": "1\n1",
+      "stderr": ""
+    },
+    "fifo_available": true,
+    "git_revision": {
+      "exit_code": 0,
+      "stdout": "ec4b52ec2de23b60714eadb8ebf1be69834dd3e0",
+      "stderr": ""
+    },
+    "git_changes": {
+      "exit_code": 0,
+      "stdout": "M .pi/.goals-pool-snapshot.json\n M .pi/goals/.goal-ledger-checkpoint.json\n D .pi/goals/active_goal_2026102519485870_mvo6lnim-1xzkd7.md\n D .pi/goals/active_goal_2026102622420655_mvps85i2-uuvn9n.md\n D .pi/goals/active_goal_2026102711354435_mvqjv1pa-kwtmu3.md\n D .pi/goals/active_goal_2026102806553802_mvrpaoj0-u4f0gj.md\n M .pi/goals/goal_events.jsonl\n M docs/remote-dsp/README.md\n M docs/tracing_coverage.csv\n M src/rust/shoop_dsp_host/src/client.rs\n M src/rust/shoop_dsp_host/src/control.rs\n M src/rust/shoop_dsp_host/src/main.rs\n M src/rust/shoop_dsp_host/src/server.rs\n M src/rust/shoop_dsp_host/tests/process.rs\n M src/rust/shoop_remote_dsp/src/stream.rs\n M src/rust/shoop_remote_dsp/tests/stream.rs\n?? .pi/goals/archived/goal_2026102706243376_mvps85i2-uuvn9n.md\n?? .pi/goals/archived/goal_2026102711353184_mvo6lnim-1xzkd7.md\n?? .pi/goals/archived/goal_2026102816334216_mvrpaoj0-u4f0gj.md\n?? .pi/goals/archived/goal_2026102900362115_mvqjv1pa-kwtmu3.md\n?? docs/remote-dsp/local-evidence/\n?? docs/remote-dsp/local-results.md\n?? scripts/benchmark_remote_dsp_transports.py\n?? scripts/compare_remote_dsp.py\n?? scripts/reproduce_remote_dsp_local.py\n?? scripts/tests/test_remote_dsp_comparison.py\n?? scripts/tests/test_remote_dsp_transports.py\n?? src/rust/shoop_dsp_host/src/audio.rs",
+      "stderr": ""
+    },
+    "rustc": {
+      "exit_code": 0,
+      "stdout": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+      "stderr": ""
+    },
+    "interfaces": {
+      "exit_code": 0,
+      "stdout": "[{\"ifindex\":1,\"ifname\":\"lo\",\"flags\":[\"LOOPBACK\",\"UP\",\"LOWER_UP\"],\"mtu\":65536,\"qdisc\":\"noqueue\",\"operstate\":\"UNKNOWN\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"loopback\",\"address\":\"00:00:00:00:00:00\",\"broadcast\":\"00:00:00:00:00:00\",\"addr_info\":[{\"family\":\"inet\",\"local\":\"127.0.0.1\",\"prefixlen\":8,\"scope\":\"host\",\"label\":\"lo\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295},{\"family\":\"inet6\",\"local\":\"::1\",\"prefixlen\":128,\"scope\":\"host\",\"noprefixroute\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]},{\"ifindex\":2,\"ifname\":\"eno1\",\"flags\":[\"NO-CARRIER\",\"BROADCAST\",\"MULTICAST\",\"UP\"],\"mtu\":1500,\"qdisc\":\"mq\",\"operstate\":\"DOWN\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"b0:25:aa:7f:fb:57\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp100s0\",\"enxb025aa7ffb57\"],\"addr_info\":[]},{\"ifindex\":3,\"ifname\":\"wlp99s0\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"noqueue\",\"operstate\":\"UP\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"70:08:10:fe:40:84\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"wlx700810fe4084\"],\"addr_info\":[{\"family\":\"inet\",\"local\":\"192.168.2.21\",\"prefixlen\":24,\"broadcast\":\"192.168.2.255\",\"scope\":\"global\",\"dynamic\":true,\"noprefixroute\":true,\"label\":\"wlp99s0\",\"valid_life_time\":13101,\"preferred_life_time\":13101},{\"family\":\"inet6\",\"local\":\"2a02:a44c:6761:0:92e:2aea:51b9:1187\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":86385,\"preferred_life_time\":585},{\"family\":\"inet6\",\"local\":\"2a02:a44c:6761:0:6291:1b55:a943:f28b\",\"prefixlen\":64,\"scope\":\"global\",\"temporary\":true,\"dynamic\":true,\"valid_life_time\":86385,\"preferred_life_time\":585},{\"family\":\"inet6\",\"local\":\"fd4e:3732:3232:0:1d86:9904:394c:612b\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":885,\"preferred_life_time\":285},{\"family\":\"inet6\",\"local\":\"fd4e:3732:3232:0:d4bb:a7cf:6344:e79c\",\"prefixlen\":64,\"scope\":\"global\",\"temporary\":true,\"dynamic\":true,\"valid_life_time\":885,\"preferred_life_time\":285},{\"family\":\"inet6\",\"local\":\"fe80::e189:3f3:4547:427\",\"prefixlen\":64,\"scope\":\"link\",\"noprefixroute\":true,\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]",
+      "stderr": ""
+    },
+    "routes": {
+      "exit_code": 0,
+      "stdout": "[{\"dst\":\"default\",\"gateway\":\"192.168.2.254\",\"dev\":\"wlp99s0\",\"protocol\":\"dhcp\",\"prefsrc\":\"192.168.2.21\",\"metric\":600,\"flags\":[]},{\"dst\":\"192.168.2.0/24\",\"dev\":\"wlp99s0\",\"protocol\":\"kernel\",\"scope\":\"link\",\"prefsrc\":\"192.168.2.21\",\"metric\":600,\"flags\":[]}]",
+      "stderr": ""
+    },
+    "clock_ticks_per_second": 100,
+    "host_files": {
+      "/proc/cpuinfo": "processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 4635.243\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 0\ncpu cores\t: 8\napicid\t\t: 0\ninitial apicid\t: 0\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 1\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1948.672\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 1\ncpu cores\t: 8\napicid\t\t: 2\ninitial apicid\t: 2\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 2\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1543.644\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 2\ncpu cores\t: 8\napicid\t\t: 4\ninitial apicid\t: 4\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 3\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1945.687\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 3\ncpu cores\t: 8\napicid\t\t: 6\ninitial apicid\t: 6\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 4\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 2339.837\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 4\ncpu cores\t: 8\napicid\t\t: 8\ninitial apicid\t: 8\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 5\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 2967.549\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 5\ncpu cores\t: 8\napicid\t\t: 10\ninitial apicid\t: 10\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 6\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 6\ncpu cores\t: 8\napicid\t\t: 12\ninitial apicid\t: 12\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 7\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 7\ncpu cores\t: 8\napicid\t\t: 14\ninitial apicid\t: 14\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 8\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 4632.451\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 0\ncpu cores\t: 8\napicid\t\t: 1\ninitial apicid\t: 1\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 9\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 1\ncpu cores\t: 8\napicid\t\t: 3\ninitial apicid\t: 3\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 10\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 2\ncpu cores\t: 8\napicid\t\t: 5\ninitial apicid\t: 5\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 11\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 3\ncpu cores\t: 8\napicid\t\t: 7\ninitial apicid\t: 7\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 12\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 4636.901\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 4\ncpu cores\t: 8\napicid\t\t: 9\ninitial apicid\t: 9\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 13\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 2114.642\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 5\ncpu cores\t: 8\napicid\t\t: 11\ninitial apicid\t: 11\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 14\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 1544.729\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 6\ncpu cores\t: 8\napicid\t\t: 13\ninitial apicid\t: 13\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]\n\nprocessor\t: 15\nvendor_id\t: AuthenticAMD\ncpu family\t: 26\nmodel\t\t: 96\nmodel name\t: AMD Ryzen AI 7 350 w/ Radeon 860M\nstepping\t: 0\nmicrocode\t: 0xb60000e\ncpu MHz\t\t: 623.377\ncache size\t: 1024 KB\nphysical id\t: 0\nsiblings\t: 16\ncore id\t\t: 7\ncpu cores\t: 8\napicid\t\t: 15\ninitial apicid\t: 15\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpuid_fault cpb cat_l3 cdp_l3 hw_pstate ssbd mba perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk avx_vnni avx512_bf16 clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif x2avic v_spec_ctrl vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid bus_lock_detect movdiri movdir64b overflow_recov succor smca fsrm avx512_vp2intersect flush_l1d amd_lbr_pmc_freeze\nbugs\t\t: sysret_ss_attrs spectre_v1 spectre_v2 spec_store_bypass srso spectre_v2_user vmscape\nbogomips\t: 3992.68\nTLB size\t: 192 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]",
+      "/proc/meminfo": "MemTotal:       64932548 kB\nMemFree:         9396592 kB\nMemAvailable:   58834404 kB\nBuffers:            3620 kB\nCached:         49537020 kB\nSwapCached:            0 kB\nActive:         29859364 kB\nInactive:       22661232 kB\nActive(anon):    3024920 kB\nInactive(anon):    91492 kB\nActive(file):   26834444 kB\nInactive(file): 22569740 kB\nUnevictable:       13668 kB\nMlocked:           13648 kB\nSwapTotal:      32465916 kB\nSwapFree:       32141360 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:              2012 kB\nWriteback:            84 kB\nAnonPages:       2992660 kB\nMapped:          1712752 kB\nShmem:            131572 kB\nKReclaimable:     651916 kB\nSlab:            1008072 kB\nSReclaimable:     651916 kB\nSUnreclaim:       356156 kB\nKernelStack:       18488 kB\nPageTables:        59828 kB\nSecPageTables:      4248 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    64932188 kB\nCommitted_AS:   15085920 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      264416 kB\nVmallocChunk:          0 kB\nPercpu:            17664 kB\nHardwareCorrupted:     0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:     1927408 kB\nDirectMap2M:    20217856 kB\nDirectMap1G:    45088768 kB",
+      "/proc/self/cgroup": "0::/",
+      "/proc/self/limits": "Limit                     Soft Limit           Hard Limit           Units     \nMax cpu time              unlimited            unlimited            seconds   \nMax file size             unlimited            unlimited            bytes     \nMax data size             unlimited            unlimited            bytes     \nMax stack size            8388608              unlimited            bytes     \nMax core file size        unlimited            unlimited            bytes     \nMax resident set          unlimited            unlimited            bytes     \nMax processes             253561               253561               processes \nMax open files            99999                99999                files     \nMax locked memory         unlimited            unlimited            bytes     \nMax address space         unlimited            unlimited            bytes     \nMax file locks            unlimited            unlimited            locks     \nMax pending signals       253561               253561               signals   \nMax msgqueue size         819200               819200               bytes     \nMax nice priority         0                    0                    \nMax realtime priority     99                   99                   \nMax realtime timeout      unlimited            unlimited            us",
+      "/proc/interrupts": "CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7       CPU8       CPU9       CPU10      CPU11      CPU12      CPU13      CPU14      CPU15      \n   0:        121          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    2-edge      timer\n   1:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0      11057 IR-IO-APIC    1-edge      i8042\n   3:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    3-edge      AMDI0010:00\n   4:          0          0          0    4795655          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    4-edge      AMDI0010:01\n   7:          0          0          0          0          0     181736          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    7-fasteoi   pinctrl_amd\n   8:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    8-edge      rtc0\n   9:          0      26341          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC    9-fasteoi   acpi\n  27:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 PCI-MSI-0000:00:00.2    0-edge      AMD-Vi\n  28:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio    0  ACPI:Event\n  29:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio    7  ACPI:Event\n  30:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   61  ACPI:Event\n  31:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   62  ACPI:Event\n  32:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   58  ACPI:Event\n  33:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio   59  ACPI:Event\n  34:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 amd_gpio  130  ACPI:Event\n  35:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:01.2    0-edge      PCIe PME, pciehp\n  36:          0          0          0          0          0          0          0          2          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.1    0-edge      PCIe PME, PCIe bwctrl\n  37:          0          0          0          0          0          0          0          0          1          0          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.2    0-edge      PCIe PME, pciehp, PCIe bwctrl\n  38:          0          0          0          0          0          0          0          0          0          1          0          0          0          0          0          0 IR-PCI-MSI-0000:00:02.3    0-edge      PCIe PME, PCIe bwctrl\n  39:          0          0          0          0          0          0          0          0          0          0          1          0          0          0          0          0 IR-PCI-MSI-0000:00:02.4    0-edge      PCIe PME, PCIe bwctrl\n  40:          0          0          0          0          0          0          0          0          0          0          0          2          0          0          0          0 IR-PCI-MSI-0000:00:03.2    0-edge      PCIe PME, PCIe bwctrl\n  41:          0          0          0          0          0          0          0          0          0          0          0          0          1          0          0          0 IR-PCI-MSI-0000:00:08.1    0-edge      PCIe PME, PCIe bwctrl\n  42:          0          0          0          0          0          0          0          0          0          0          0          0          0          1          0          0 IR-PCI-MSI-0000:00:08.2    0-edge      PCIe PME, PCIe bwctrl\n  43:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          1          0 IR-PCI-MSI-0000:00:08.3    0-edge      PCIe PME, PCIe bwctrl\n  45:        720          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:66:00.4    0-edge      xhci_hcd\n  48:          0          0        194          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    0-edge      nvme1q0\n  50:          0        359          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.0    0-edge      xhci_hcd\n  52:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.3    0-edge      xhci_hcd\n  53:          0          0          0          0          0          0          0          0        165          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.6    0-edge      thunderbolt\n  54:        166          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.6    1-edge      thunderbolt\n  56:          0          0          0        211          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    0-edge      nvme0q0\n  58:          0    1216044          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    1-edge      nvme0q1\n  60:          0          0          0          0          0          0          0          0          0    1151206          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    2-edge      nvme0q2\n  62:          0          0          0    1423643          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    3-edge      nvme0q3\n  64:          0          0          0          0          0          0          0          0          0          0          0    1120584          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    4-edge      nvme0q4\n  66:          0          0          0          0    4278134          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    5-edge      nvme0q5\n  68:          0          0          0          0          0          0          0          0          0          0          0          0    3212711          0          0          0 IR-PCI-MSIX-0000:61:00.0    6-edge      nvme0q6\n  70:          0          0          0          0          0    1305418          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    7-edge      nvme0q7\n  72:          0          0          0          0          0          0          0          0          0          0          0          0          0    1034159          0          0 IR-PCI-MSIX-0000:61:00.0    8-edge      nvme0q8\n  74:          0          0          0          0          0          0    7809268          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0    9-edge      nvme0q9\n  76:          0          0          0          0          0          0          0          0          0          0          0          0          0          0    5407748          0 IR-PCI-MSIX-0000:61:00.0   10-edge      nvme0q10\n  78:          0          0          0          0          0          0          0    1531029          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   11-edge      nvme0q11\n  80:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0    1213855 IR-PCI-MSIX-0000:61:00.0   12-edge      nvme0q12\n  81:          0          0    6302184          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   13-edge      nvme0q13\n  82:          0          0          0          0          0          0          0          0          0          0    4085388          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   14-edge      nvme0q14\n  83:    3128005          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   15-edge      nvme0q15\n  84:          0          0          0          0          0          0          0          0    4144827          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:61:00.0   16-edge      nvme0q16\n  86:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:68:00.4    0-edge      xhci_hcd\n  87:          0          0          0          0          0          0          0          0          0        189          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    1-edge      nvme1q1\n  88:          0          0          0          0          0          0          0          0          0          0          0        389          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    2-edge      nvme1q2\n  89:          0          0          0          0          0          0          0          0          0          0          0          0         37          0          0          0 IR-PCI-MSIX-0000:65:00.0    3-edge      nvme1q3\n  90:          0          0          0          0          0          0          0          0          0          0          0          0          0         20          0          0 IR-PCI-MSIX-0000:65:00.0    4-edge      nvme1q4\n  91:          0          0          0          0          0          0          0          0          0          0          0          0          0          0        223          0 IR-PCI-MSIX-0000:65:00.0    5-edge      nvme1q5\n  92:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0         10 IR-PCI-MSIX-0000:65:00.0    6-edge      nvme1q6\n  93:          0          0          0          0          0          0          0          0          0          0        230          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    7-edge      nvme1q7\n  94:          0          0          0          0          0          0          0          0         92          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:65:00.0    8-edge      nvme1q8\n  96:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSI-0000:62:00.0    0-edge      mmc0\n  98:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:66:00.2    0-edge      psp-1\n 100:          0          0          0          0          0     145301          0          0          0          0          0          0          0          0          0          0 amd_gpio    8  UNIW0001:00\n 134:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-IO-APIC   15-fasteoi   ACP_I2S_IRQ\n 135:          0          0          0          0          0          0          0          0          0          0          0        688          0          0          0          0 IR-PCI-MSI-0000:66:00.1    0-edge      snd_hda_intel:card0\n 136:          0          0          0          0          0          0          0          0          0          0          0          0       3023          0          0          0 IR-PCI-MSI-0000:66:00.6    0-edge      snd_hda_intel:card1\n 138:          0          0          0          0          0          0          0          0          0          0          0          0          0          0     275178          0 IR-PCI-MSIX-0000:63:00.0    0-edge      iwlwifi:default_queue\n 139:      12226          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    1-edge      iwlwifi:queue_1\n 140:          0      18370          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    2-edge      iwlwifi:queue_2\n 141:          0          0      11747          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    3-edge      iwlwifi:queue_3\n 142:          0          0          0     119906          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    4-edge      iwlwifi:queue_4\n 143:          0          0          0          0       2255          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    5-edge      iwlwifi:queue_5\n 144:          0          0          0          0          0      12400          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    6-edge      iwlwifi:queue_6\n 145:          0          0          0          0          0          0       2673          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    7-edge      iwlwifi:queue_7\n 146:          0          0          0          0          0          0          0       5034          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    8-edge      iwlwifi:queue_8\n 147:          0          0          0          0          0          0          0          0      11199          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0    9-edge      iwlwifi:queue_9\n 148:          0          0          0          0          0          0          0          0          0       7455          0          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   10-edge      iwlwifi:queue_10\n 149:          0          0          0          0          0          0          0          0          0          0       4661          0          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   11-edge      iwlwifi:queue_11\n 150:          0          0          0          0          0          0          0          0          0          0          0      13865          0          0          0          0 IR-PCI-MSIX-0000:63:00.0   12-edge      iwlwifi:queue_12\n 151:          0          0          0          0          0          0          0          0          0          0          0          0       6314          0          0          0 IR-PCI-MSIX-0000:63:00.0   13-edge      iwlwifi:queue_13\n 152:          0          0          0          0          0          0          0          0          0          0          0          0          0       8917          0          0 IR-PCI-MSIX-0000:63:00.0   14-edge      iwlwifi:queue_14\n 153:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          5          0 IR-PCI-MSIX-0000:63:00.0   15-edge      iwlwifi:exception\n 154:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    0-edge      eno1:rx-0\n 158:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    4-edge      eno1:tx-0\n 159:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0 IR-PCI-MSIX-0000:64:00.0    5-edge      eno1:mac\n 160:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0    1271336 IR-PCI-MSIX-0000:66:00.0    0-edge      amdgpu\n NMI:        246        122        963        139       1070        129        632        134        291        117        286        116        369        115        464        126   Non-maskable interrupts\n LOC:    4739905    3796959    8626163    4535127   42870456    3849144    5497257    3778530    4363749    3633462    3953078    3589148    3709241    3611115    4346020    3183567   Local timer interrupts\n SPU:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Spurious interrupts\n PMI:        246        122        963        139       1070        129        632        134        291        117        286        116        369        115        464        126   Performance monitoring interrupts\n IWI:      17557       8993      25191      11166     425382       5542      18133       5225       9204       3944       8628       4314       9597       4397      14523     138407   IRQ work interrupts\n RTR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   APIC ICR read retries\n RES:    3312365    3864933    3534298    3979438    2866949    4275765    3304733    4226549    4162372    4185755    3739482    4071196    3135674    4249680    3072185    3482408   Rescheduling interrupts\n CAL:   43736967   40854320   41617806   41306169   34509643   41226494   44702518   43706144   39901908   34995143   40396975   35313281   33386305   34375933   43055897   37743926   Function call interrupts\n TLB:   37635491   39365554   41452350   41080710   34408107   41077123   44757561   43608753   39890401   34847457   40426931   35218653   33306215   34233702   43145527   37709634   TLB shootdowns\n TRM:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Thermal event interrupts\n THR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Threshold APIC interrupts\n DFR:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Deferred Error APIC interrupts\n MCE:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Machine check exceptions\n MCP:         70         70         70         70         70         70         70         70         70         70         70         70         70         70         70         70   Machine check polls\n ERR:          0\n MIS:          0\n PIN:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Posted-interrupt notification event\n NPI:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Nested posted-interrupt event\n PIW:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0   Posted-interrupt wakeup event\nVPMI:          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0          0  Perf Guest Mediated PMI",
+      "/proc/net/dev": "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo: 5661847896 27127370    0    0    0     0          0         0 5661847896 27127370    0    0    0     0       0          0\n  eno1:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0\nwlp99s0: 1608045104 1357231    0 1843    0     0          0         0 135250927  291616    0    0    0     0       0          0",
+      "/proc/sys/kernel/sched_rt_runtime_us": "950000",
+      "/proc/sys/kernel/sched_rt_period_us": "1000000",
+      "/proc/net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 27187304 0 1 0 0 0 27185699 27166369 20 0 0 0 0 0 0 0 0 27166369\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 40 0 0 40 0 0 0 0 0 0 0 0 0 0 41 0 0 0 41 0 0 0 0 0 0 0 0 0 0\nIcmpMsg: InType3 OutType3\nIcmpMsg: 40 41\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 1828 840 214 91 13 489448 479435 200 0 1007 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 26937667 41 3033 26924816 3033 0 0 0 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0",
+      "/proc/net/netstat": "TcpExt: SyncookiesSent SyncookiesRecv SyncookiesFailed EmbryonicRsts PruneCalled RcvPruned OfoPruned OutOfWindowIcmps LockDroppedIcmps ArpFilter TW TWRecycled TWKilled PAWSActive PAWSEstab BeyondWindow TSEcrRejected PAWSOldAck PAWSTimewait DelayedACKs DelayedACKLocked DelayedACKLost ListenOverflows ListenDrops TCPHPHits TCPPureAcks TCPHPAcks TCPRenoRecovery TCPSackRecovery TCPSACKReneging TCPSACKReorder TCPRenoReorder TCPTSReorder TCPFullUndo TCPPartialUndo TCPDSACKUndo TCPLossUndo TCPLostRetransmit TCPRenoFailures TCPSackFailures TCPLossFailures TCPFastRetrans TCPSlowStartRetrans TCPTimeouts TCPLossProbes TCPLossProbeRecovery TCPRenoRecoveryFail TCPSackRecoveryFail TCPRcvCollapsed TCPBacklogCoalesce TCPDSACKOldSent TCPDSACKOfoSent TCPDSACKRecv TCPDSACKOfoRecv TCPAbortOnData TCPAbortOnClose TCPAbortOnMemory TCPAbortOnTimeout TCPAbortOnLinger TCPAbortFailed TCPMemoryPressures TCPMemoryPressuresChrono TCPSACKDiscard TCPDSACKIgnoredOld TCPDSACKIgnoredNoUndo TCPSpuriousRTOs TCPMD5NotFound TCPMD5Unexpected TCPMD5Failure TCPSackShifted TCPSackMerged TCPSackShiftFallback TCPBacklogDrop PFMemallocDrop TCPMinTTLDrop TCPDeferAcceptDrop IPReversePathFilter TCPTimeWaitOverflow TCPReqQFullDoCookies TCPReqQFullDrop TCPRetransFail TCPRcvCoalesce TCPOFOQueue TCPOFODrop TCPOFOMerge TCPChallengeACK TCPSYNChallenge TCPFastOpenActive TCPFastOpenActiveFail TCPFastOpenPassive TCPFastOpenPassiveFail TCPFastOpenListenOverflow TCPFastOpenCookieReqd TCPFastOpenBlackhole TCPSpuriousRtxHostQueues BusyPollRxPackets TCPAutoCorking TCPFromZeroWindowAdv TCPToZeroWindowAdv TCPWantZeroWindowAdv TCPSynRetrans TCPOrigDataSent TCPHystartTrainDetect TCPHystartTrainCwnd TCPHystartDelayDetect TCPHystartDelayCwnd TCPACKSkippedSynRecv TCPACKSkippedPAWS TCPACKSkippedSeq TCPACKSkippedFinWait2 TCPACKSkippedTimeWait TCPACKSkippedChallenge TCPWinProbe TCPKeepAlive TCPMTUPFail TCPMTUPSuccess TCPDelivered TCPDeliveredCE TCPAckCompressed TCPZeroWindowDrop TCPRcvQDrop TCPWqueueTooBig TCPFastOpenPassiveAltKey TcpTimeoutRehash TcpDuplicateDataRehash TCPDSACKRecvSegs TCPDSACKIgnoredDubious TCPMigrateReqSuccess TCPMigrateReqFailure TCPPLBRehash TCPAORequired TCPAOBad TCPAOKeyNotFound TCPAOGood TCPAODroppedIcmps\nTcpExt: 0 0 0 0 159 0 0 0 0 0 1131 0 0 0 0 0 0 1 0 5867 0 4398 0 0 103977 27162 72358 0 3 0 9 0 0 1 0 2 0 69 0 0 0 8 2 89 122 0 0 0 0 766 4398 2 91 0 244 41 0 4 0 0 0 0 0 0 62 0 0 0 0 0 0 22 0 0 0 0 0 0 0 0 0 112441 1671 0 2 0 0 0 0 0 0 0 0 0 5 0 2305 15 15 92 49 256460 19 3812 3 756 0 0 11 0 0 0 13 2499 0 0 257941 0 31 0 0 0 0 85 75 91 0 0 0 0 0 0 0 0 0\nIpExt: InNoRoutes InTruncatedPkts InMcastPkts OutMcastPkts InBcastPkts OutBcastPkts InOctets OutOctets InMcastOctets OutMcastOctets InBcastOctets OutBcastOctets InCsumErrors InNoECTPkts InECT1Pkts InECT0Pkts InCEPkts ReasmOverlaps\nIpExt: 0 0 6362 738 108 0 5879507915 5667041966 1077004 129394 32365 0 0 27301963 0 0 0 0\nMPTcpExt: MPCapableSYNRX MPCapableSYNTX MPCapableSYNACKRX MPCapableACKRX MPCapableFallbackACK MPCapableFallbackSYNACK MPCapableSYNTXDrop MPCapableSYNTXDisabled MPCapableEndpAttempt MPFallbackTokenInit MPTCPRetrans MPJoinNoTokenFound MPJoinSynRx MPJoinSynBackupRx MPJoinSynAckRx MPJoinSynAckBackupRx MPJoinSynAckHMacFailure MPJoinAckRx MPJoinAckHMacFailure MPJoinRejected MPJoinSynTx MPJoinSynTxCreatSkErr MPJoinSynTxBindErr MPJoinSynTxConnectErr DSSNotMatching DSSCorruptionFallback DSSCorruptionReset InfiniteMapTx InfiniteMapRx DSSNoMatchTCP DataCsumErr OFOQueueTail OFOQueue OFOMerge NoDSSInWindow DuplicateData AddAddr AddAddrTx AddAddrTxDrop EchoAdd EchoAddTx EchoAddTxDrop PortAdd AddAddrDrop MPJoinPortSynRx MPJoinPortSynAckRx MPJoinPortAckRx MismatchPortSynRx MismatchPortAckRx RmAddr RmAddrDrop RmAddrTx RmAddrTxDrop RmSubflow MPPrioTx MPPrioRx MPFailTx MPFailRx MPFastcloseTx MPFastcloseRx MPRstTx MPRstRx SubflowStale SubflowRecover SndWndShared RcvWndShared RcvWndConflictUpdate RcvWndConflict MPCurrEstab Blackhole MPCapableDataFallback MD5SigFallback DssFallback SimultConnectFallback FallbackFailed WinProbe\nMPTcpExt: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+      "/sys/firmware/acpi/platform_profile": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy11/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy8/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy6/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy4/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy2/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy14/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy12/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy9/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy10/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy7/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy5/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy3/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy15/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy1/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpufreq/policy13/scaling_governor": "performance",
+      "/sys/devices/system/cpu/cpu11/topology/thread_siblings_list": "3,11",
+      "/sys/devices/system/cpu/cpu9/topology/thread_siblings_list": "1,9",
+      "/sys/devices/system/cpu/cpu7/topology/thread_siblings_list": "7,15",
+      "/sys/devices/system/cpu/cpu5/topology/thread_siblings_list": "5,13",
+      "/sys/devices/system/cpu/cpu3/topology/thread_siblings_list": "3,11",
+      "/sys/devices/system/cpu/cpu14/topology/thread_siblings_list": "6,14",
+      "/sys/devices/system/cpu/cpu1/topology/thread_siblings_list": "1,9",
+      "/sys/devices/system/cpu/cpu12/topology/thread_siblings_list": "4,12",
+      "/sys/devices/system/cpu/cpu10/topology/thread_siblings_list": "2,10",
+      "/sys/devices/system/cpu/cpu8/topology/thread_siblings_list": "0,8",
+      "/sys/devices/system/cpu/cpu6/topology/thread_siblings_list": "6,14",
+      "/sys/devices/system/cpu/cpu4/topology/thread_siblings_list": "4,12",
+      "/sys/devices/system/cpu/cpu15/topology/thread_siblings_list": "7,15",
+      "/sys/devices/system/cpu/cpu2/topology/thread_siblings_list": "2,10",
+      "/sys/devices/system/cpu/cpu13/topology/thread_siblings_list": "5,13",
+      "/sys/devices/system/cpu/cpu0/topology/thread_siblings_list": "0,8",
+      "/sys/class/power_supply/ucsi-source-psy-USBC000:002/online": "0",
+      "/sys/class/power_supply/AC0/online": "1",
+      "/sys/class/power_supply/ucsi-source-psy-USBC000:001/online": "1",
+      "/sys/class/thermal/thermal_zone2/temp": "29000",
+      "/sys/class/thermal/thermal_zone0/temp": "34000",
+      "/sys/class/thermal/thermal_zone1/temp": "34000"
+    }
+  },
+  "client_cpu": 2,
+  "server_cpu": 4,
+  "source_files_sha256": {
+    "Cargo.lock": "aa09fec6d7cae336aed0d615ba462935890d352472f3d63c484742d4a3116bf2",
+    "Cargo.toml": "a6839766d5481206b6909f8f1a9d559653578f07f0033055aaa0100f0dddb6de",
+    "flake.lock": "fccbd660a11edcadd579c02f979be063ecbeda1f813f662d7647ecb1a8246df8",
+    "flake.nix": "029453182778e65bbe71f799fdd3471a34833e8e893ef69e707a4157202211d1",
+    "rust-toolchain.toml": "e5cc0545f232bde807bd9394c2433322d1cd2cf42b060ceab2ac7329bc9cdaa2",
+    "scripts/benchmark_remote_dsp_transports.py": "730dd6c0233d77a794ad1546316b6b2e238048e8db83658cf5e76fe598389b9c",
+    "scripts/compare_remote_dsp.py": "e2d280c1580039574b1b4ebd1c0c83c0b75d3f02b28807f4abc3af02fdab4af9",
+    "scripts/sweep_remote_dsp.py": "7736b583e41c199e24aa036a98a3214198a29372287a7f8a7968adb999da871b",
+    "scripts/tests/test_remote_dsp_transports.py": "59e7f2a08b1b8caea63f8fc04df53a99c8b65c4e9925779f8d560a7432b9921a",
+    "scripts/tune_remote_dsp.py": "d5afb83e56d1ad2551c2f011714e30d02d2a20cf9f3e04e443b4b281a5d06431",
+    "src/rust/shoop_dsp/Cargo.toml": "5661001da123729941f7c586991d608828fa12a588f9b649884f493ebba3d41d",
+    "src/rust/shoop_dsp/src/lib.rs": "7569b3ee57f392ba4984b5c7727ad441f87375a1bb34b881a15b169427d24cb8",
+    "src/rust/shoop_dsp_host/Cargo.toml": "961809b2749efa50b8dc60a55dad4fc9fcad20effeff4cc163bb3fba0348a81e",
+    "src/rust/shoop_dsp_host/src/audio.rs": "8cb0a391897c5aa8a1267ba88f70c79f1a7535d07fa403a0df25de5863c599ba",
+    "src/rust/shoop_dsp_host/src/client.rs": "81134b9af0423e96adda3726b4da7b33f8323718e78d9691dad4be97d0cc245e",
+    "src/rust/shoop_dsp_host/src/control.rs": "38c4cc9bbdcd71fbaaeb5d82f4664c63658504bcbf8e202794e1e5f0089ceb2a",
+    "src/rust/shoop_dsp_host/src/main.rs": "06ae362ea96720f136e38310223a141c56aca85d30296834f06be39012a3d7f5",
+    "src/rust/shoop_dsp_host/src/polling.rs": "97edfb205b207010dd127be00a83475b34da45504c57b7a75aebde55c12dd835",
+    "src/rust/shoop_dsp_host/src/server.rs": "c33be6a0ee9e87367e1f928ff4e8bda52592dfad171bf3d5bea5efe511acd49e",
+    "src/rust/shoop_dsp_host/tests/process.rs": "bace4eba3f7b2d239412a30b44ca97f5f052aac9cb40974b78d6c25a0349691b",
+    "src/rust/shoop_remote_dsp/Cargo.toml": "cbea420bd8682010b7c388038580d9f8fd0722a6299f079f83095516e4da4067",
+    "src/rust/shoop_remote_dsp/src/lib.rs": "35d7b66ce6de3d69bb1e8ceabc3e7ddb622336f937b8ffe654f6c48eb33d62aa",
+    "src/rust/shoop_remote_dsp/src/returns.rs": "d7e479b1a9286cb275286b752a5a1b6ba5a8f26fce832dd897156226643a180f",
+    "src/rust/shoop_remote_dsp/src/stream.rs": "42d09c435c401072959b8c5d5a4920dfe2b2338ca80cdf74e15e774a6100cb75",
+    "src/rust/shoop_remote_dsp/src/wire.rs": "5b410f49f74de6b9069cba24ed7ef0c96cdaef54efb0e8da652196eb3dceaa95",
+    "src/rust/shoop_remote_dsp/tests/stream.rs": "a91c788aa5d9b12ba9997e370de9c660f6cf7d2cb980d35d84e983b8dcaac694",
+    "src/rust/shoop_transport_socket/Cargo.toml": "96e009b6d9379919160cb9b8f9e53d9b19160bb9103d7ac2e00e09266e74dd93",
+    "src/rust/shoop_transport_socket/src/lib.rs": "0543394905005f2cb859432efe535676d9ed6987330cde7f6d433927cbb2be11",
+    "src/rust/shoop_transport_socket/src/private.rs": "11f9e1d89cffd39d75144f327dfc0da6dc2985ccc54983b71ae2c1a87242aa83",
+    "src/rust/shoop_transport_socket/src/setup.rs": "2b9035eb12d00818ca31e502f40172c471eb6d4a421fccd1c6a92d2fc82596fc"
+  },
+  "modes": [
+    "other",
+    "fifo1"
+  ],
+  "cases": [
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "other",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      1,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "other",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      2,
+      2
+    ],
+    [
+      "screen",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "other",
+      2,
+      2
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "other",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        4
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      60
+    ],
+    [
+      "followup",
+      [
+        8,
+        1,
+        4
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      60
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "fifo1",
+      0,
+      1.0
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "other",
+      0,
+      1.0
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-complete",
+      "fifo1",
+      0,
+      1.0
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "other",
+      0,
+      1.0
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "udp-gap",
+      "other",
+      0,
+      1.0
+    ],
+    [
+      "stall",
+      [
+        16,
+        4,
+        8
+      ],
+      "tcp-complete",
+      "fifo1",
+      0,
+      1.0
+    ]
+  ],
+  "remote": false,
+  "limitations": "No automatic network/firewall/power changes. No audio device. Localhost measurements are not physical-LAN measurements. No builds/tests during capture. Host counters include unrelated work."
+}

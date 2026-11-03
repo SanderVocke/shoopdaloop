@@ -1,0 +1,2306 @@
+diff --git a/src/rust/shoop_dsp_host/src/client.rs b/src/rust/shoop_dsp_host/src/client.rs
+index cae7b56b..58f3c663 100644
+--- a/src/rust/shoop_dsp_host/src/client.rs
++++ b/src/rust/shoop_dsp_host/src/client.rs
+@@ -1,3 +1,4 @@
++use crate::audio::{self, Audio, InputPolicy, Transport};
+ use crate::control::{self, Algorithm, Reply, Request};
+ use crate::polling::{Polling, ServiceGaps};
+ use anyhow::{ensure, Result};
+@@ -6,7 +7,7 @@ use serde_json::{json, Value};
+ use shoop_remote_dsp::{wire, Config};
+ use std::{
+     collections::BTreeMap,
+-    net::{SocketAddr, TcpStream, UdpSocket},
++    net::{SocketAddr, TcpStream},
+     path::PathBuf,
+     time::{Duration, Instant},
+ };
+@@ -63,6 +64,14 @@ pub struct Options {
+     output: Option<PathBuf>,
+     #[arg(long)]
+     validate_only: bool,
++    #[arg(long, value_enum, default_value = "udp")]
++    transport: Transport,
++    #[arg(long, value_enum)]
++    input_policy: Option<InputPolicy>,
++    #[arg(long)]
++    catch_up: bool,
++    #[arg(long, default_value_t = 0)]
++    source_stall_us: u64,
+     #[arg(long, value_enum, default_value = "yield")]
+     polling: Polling,
+ }
+@@ -106,6 +115,22 @@ fn distribution(mut values: Vec<u64>) -> Value {
+         "max_ns":values.last(),"histogram_us":histogram.into_iter().collect::<Vec<_>>()})
+ }
+ pub fn run(options: Options) -> Result<()> {
++    let input_policy = options
++        .input_policy
++        .unwrap_or(if options.transport == Transport::Tcp {
++            InputPolicy::Complete
++        } else {
++            InputPolicy::Gap
++        });
++    ensure!(
++        options.transport != Transport::Tcp || input_policy == InputPolicy::Complete,
++        "TCP audio requires complete-input processing"
++    );
++    let catch_up = options.catch_up || options.transport == Transport::Tcp;
++    ensure!(
++        options.source_stall_us <= 1_000_000,
++        "source stall exceeds one second"
++    );
+     let config = Config {
+         start_frame: options.start_frame,
+         sample_rate: options.sample_rate,
+@@ -167,13 +192,19 @@ pub fn run(options: Options) -> Result<()> {
+     let tcp = TcpStream::connect_timeout(&options.endpoint, Duration::from_secs(5))?;
+     let mut tcp =
+         shoop_transport_socket::setup::authenticate(tcp, token, false, Duration::from_secs(2))?;
+-    let udp = UdpSocket::bind(SocketAddr::new(tcp.local_addr()?.ip(), 0))?;
+-    let sock = socket2::SockRef::from(&udp);
+-    sock.set_recv_buffer_size(1_048_576)?;
+-    sock.set_send_buffer_size(1_048_576)?;
+-    let client_receive_buffer = sock.recv_buffer_size()?;
+-    let client_send_buffer = sock.send_buffer_size()?;
+-    udp.set_nonblocking(true)?;
++    let mut udp_audio = if options.transport == Transport::Udp {
++        Some(Audio::udp_client(SocketAddr::new(
++            tcp.local_addr()?.ip(),
++            0,
++        ))?)
++    } else {
++        None
++    };
++    let udp_port = udp_audio
++        .as_ref()
++        .map(|audio| audio.address().map(|a| a.port()))
++        .transpose()?
++        .unwrap_or(0);
+     let mut random = [0; 8];
+     getrandom::fill(&mut random).map_err(anyhow::Error::msg)?;
+     let epoch = u64::from_le_bytes(random).max(1);
+@@ -198,25 +229,58 @@ pub fn run(options: Options) -> Result<()> {
+             version: control::VERSION,
+             config,
+             epoch,
+-            udp_port: udp.local_addr()?.port(),
++            udp_port,
++            transport: options.transport,
++            input_policy,
+             algorithm: algorithm.clone(),
+         },
+     )?;
+-    let (port, latency, server_receive_buffer, server_send_buffer) = match ready {
++    let (port, tcp_token, latency, server_receive_buffer, server_send_buffer) = match ready {
+         Reply::Ready {
+             version,
+             udp_port,
++            transport,
++            tcp_port,
++            tcp_token,
+             latency_frames,
+             receive_buffer,
+             send_buffer,
+         } => {
+-            ensure!(version == control::VERSION, "wrong control version");
+-            (udp_port, latency_frames, receive_buffer, send_buffer)
++            ensure!(
++                version == control::VERSION && transport == options.transport,
++                "wrong control version/transport"
++            );
++            (
++                if transport == Transport::Tcp {
++                    tcp_port.ok_or_else(|| anyhow::anyhow!("missing TCP audio port"))?
++                } else {
++                    udp_port
++                },
++                tcp_token,
++                latency_frames,
++                receive_buffer,
++                send_buffer,
++            )
+         }
+         _ => anyhow::bail!("expected stream readiness"),
+     };
+     let server = SocketAddr::new(options.endpoint.ip(), port);
+-    udp.connect(server)?;
++    let mut audio = if let Some(mut audio) = udp_audio.take() {
++        audio.connect_udp(server)?;
++        audio
++    } else {
++        let stream = TcpStream::connect_timeout(&server, Duration::from_secs(3))?;
++        control::write(&mut tcp, &Request::Start)?;
++        let stream = shoop_transport_socket::setup::authenticate(
++            stream,
++            tcp_token.ok_or_else(|| anyhow::anyhow!("missing TCP audio credential"))?,
++            false,
++            Duration::from_secs(3),
++        )?;
++        Audio::tcp(stream, config, 1_048_576)?
++    };
++    let (client_receive_buffer, client_send_buffer) = audio.buffer_sizes()?;
++    let client_runtime = audio::runtime_info();
+     let mut tx = vec![u64::MAX; count];
+     let mut rx = vec![u64::MAX; count];
+     let mut processing = vec![0; count];
+@@ -229,7 +293,15 @@ pub fn run(options: Options) -> Result<()> {
+     let mut presentation_midi = shoop_dsp::MidiBuffer::new(config.midi_per_packet as usize);
+     let mut delivered = vec![false; count];
+     let mut consume_next = 0usize;
+-    control::call(&mut tcp, &Request::Start)?;
++    if options.transport == Transport::Tcp {
++        let reply: Reply = control::read(&mut tcp, Duration::from_secs(5), || {})?;
++        ensure!(
++            matches!(reply, Reply::Ok),
++            "TCP audio start failed: {reply:?}"
++        );
++    } else {
++        control::call(&mut tcp, &Request::Start)?;
++    }
+     let origin = Instant::now();
+     let mut next = 0usize;
+     let mut duplicate = 0;
+@@ -240,13 +312,19 @@ pub fn run(options: Options) -> Result<()> {
+     let finish = config.deadline_ns(count as u64 - 1)? + 50_000_000;
+     let mut service_gaps = ServiceGaps::default();
+     let mut last_service = 0;
+-    while origin.elapsed().as_nanos() as u64 <= finish {
++    let mut transport_error = None;
++    let mut source_stalled = false;
++    'measurement: while origin.elapsed().as_nanos() as u64 <= finish {
+         let now = origin.elapsed().as_nanos() as u64;
+         service_gaps.observe(now - last_service);
+         last_service = now;
+         let mut progressed = false;
++        if let Err(error) = audio.flush() {
++            transport_error = Some(error.to_string());
++            break;
++        }
+         for _ in 0..128 {
+-            match udp.recv(&mut raw) {
++            match audio.receive(&mut raw) {
+                 Ok(len) => {
+                     let received_at = origin.elapsed().as_nanos() as u64;
+                     match wire::decode(&raw[..len], config) {
+@@ -276,8 +354,12 @@ pub fn run(options: Options) -> Result<()> {
+                 }
+                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+-                Err(_) => {
++                Err(error) => {
+                     invalid += 1;
++                    if options.transport == Transport::Tcp {
++                        transport_error = Some(error.to_string());
++                        break 'measurement;
++                    }
+                     break;
+                 }
+             }
+@@ -309,7 +391,7 @@ pub fn run(options: Options) -> Result<()> {
+                 deliberately_dropped += 1;
+                 continue;
+             }
+-            if backlog > config.reorder_packets as u64 + config.multiplier as u64 {
++            if !catch_up && backlog > config.reorder_packets as u64 + config.multiplier as u64 {
+                 send_errors += 1;
+                 continue;
+             }
+@@ -323,12 +405,22 @@ pub fn run(options: Options) -> Result<()> {
+             header.transport.playing = true;
+             let length = wire::encode(header, config, &input, &[], &mut out)?;
+             let sent_at = origin.elapsed().as_nanos() as u64;
+-            match udp.send(&out[..length]) {
+-                Ok(_) => tx[sequence] = sent_at,
+-                Err(_) => send_errors += 1,
++            match audio.send(&out[..length]) {
++                Ok(()) => tx[sequence] = sent_at,
++                Err(error) => {
++                    send_errors += 1;
++                    if options.transport == Transport::Tcp {
++                        transport_error = Some(error.to_string());
++                        break 'measurement;
++                    }
++                }
+             }
+             if options.duplicate_every > 0 && sequence as u64 % options.duplicate_every == 0 {
+-                let _ = udp.send(&out[..length]);
++                let _ = audio.send(&out[..length]);
++            }
++            if options.source_stall_us > 0 && sequence == warmup_packets {
++                source_stalled = true;
++                std::thread::sleep(Duration::from_micros(options.source_stall_us));
+             }
+         }
+         if !progressed {
+@@ -346,14 +438,23 @@ pub fn run(options: Options) -> Result<()> {
+         consume_next += 1;
+     }
+     control::call(&mut tcp, &Request::Pause)?;
+-    let (stats, concealment, next_sequence, server_service_gaps) =
++    let (stats, concealment, next_sequence, server_service_gaps, server_audio, worker_runtime) =
+         match control::call(&mut tcp, &Request::Stats)? {
+             Reply::Status {
+                 stats,
+                 concealment,
+                 next_sequence,
+                 service_gaps,
+-            } => (stats, concealment, next_sequence, service_gaps),
++                audio,
++                worker_runtime,
++            } => (
++                stats,
++                concealment,
++                next_sequence,
++                service_gaps,
++                audio,
++                worker_runtime,
++            ),
+             _ => anyhow::bail!("expected stream statistics"),
+         };
+     if let Some(path) = &options.state_output {
+@@ -458,7 +559,7 @@ pub fn run(options: Options) -> Result<()> {
+             dsp_times.push(processing[i]);
+         }
+     }
+-    let report = json!({"status":"measured","config":config,"algorithm":options.processor,"delay_frames":options.delay,
++    let mut report = json!({"status":"measured","config":config,"algorithm":options.processor,"delay_frames":options.delay,
+         "algorithm_latency_frames":latency,"seed":options.seed,"impulse":options.impulse,"warmup_seconds":options.warmup,"measurement_seconds":options.seconds,
+         "capture_grace_ms":50,"total_packets":count,"measured_packets":measured_packets,"sent":measured_sent,"on_time":on_time,"late":late,"missing":missing,
+         "deadline_miss_fraction":(late+missing) as f64/measured_packets as f64,"sender_period_overruns":sender_late,"maximum_sender_backlog_packets":max_source_backlog,
+@@ -466,8 +567,15 @@ pub fn run(options: Options) -> Result<()> {
+         "correctness_errors":correctness_errors,"verified_samples":verified_samples,"unverified_samples":unverified_samples,
+         "server":stats,"concealment":concealment,"next_sequence":next_sequence,
+         "polling":options.polling,"client_service_gaps":service_gaps,"server_service_gaps":server_service_gaps,
+-        "socket_buffers":{"server_receive":server_receive_buffer,"server_send":server_send_buffer,"client_receive":client_receive_buffer,"client_send":client_send_buffer},
++        "socket_buffers":{"server_receive":server_audio["receive_buffer"].as_u64().unwrap_or(server_receive_buffer as u64),"server_send":server_audio["send_buffer"].as_u64().unwrap_or(server_send_buffer as u64),"client_receive":client_receive_buffer,"client_send":client_send_buffer},
+         "rtt":distribution(rtt),"sender_lateness":distribution(lateness),"batch_turnaround":distribution(batch),"dsp_processing":distribution(dsp_times)});
++    if let Value::Object(fields) = json!({
++        "transport":options.transport,"input_policy":input_policy,"catch_up":catch_up,"transport_error":transport_error,
++        "source_stall_us":options.source_stall_us,"source_stalled":source_stalled,
++        "client_audio":audio.report(),"server_audio":server_audio,"client_runtime":client_runtime,"worker_runtime":worker_runtime
++    }) {
++        report.as_object_mut().unwrap().extend(fields);
++    }
+     if let Some(path) = &options.output {
+         std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+     }
+diff --git a/src/rust/shoop_dsp_host/src/control.rs b/src/rust/shoop_dsp_host/src/control.rs
+index 5100dc4b..1071d977 100644
+--- a/src/rust/shoop_dsp_host/src/control.rs
++++ b/src/rust/shoop_dsp_host/src/control.rs
+@@ -1,3 +1,4 @@
++use crate::audio::{InputPolicy, Transport};
+ use anyhow::{ensure, Result};
+ use serde::{Deserialize, Serialize};
+ use shoop_remote_dsp::{stream::Stats, Config};
+@@ -29,6 +30,10 @@ pub enum Request {
+         config: Config,
+         epoch: u64,
+         udp_port: u16,
++        #[serde(default)]
++        transport: Transport,
++        #[serde(default)]
++        input_policy: InputPolicy,
+         algorithm: Algorithm,
+     },
+     Start,
+@@ -50,6 +55,10 @@ pub enum Reply {
+     Ready {
+         version: u16,
+         udp_port: u16,
++        #[serde(default)]
++        transport: Transport,
++        tcp_port: Option<u16>,
++        tcp_token: Option<[u8; 32]>,
+         latency_frames: Option<u32>,
+         receive_buffer: usize,
+         send_buffer: usize,
+@@ -60,6 +69,8 @@ pub enum Reply {
+         service_gaps: crate::polling::ServiceGaps,
+         concealment: Vec<(u64, u64)>,
+         next_sequence: u64,
++        audio: serde_json::Value,
++        worker_runtime: serde_json::Value,
+     },
+     State {
+         state: String,
+diff --git a/src/rust/shoop_dsp_host/src/main.rs b/src/rust/shoop_dsp_host/src/main.rs
+index e344a889..c12bb323 100644
+--- a/src/rust/shoop_dsp_host/src/main.rs
++++ b/src/rust/shoop_dsp_host/src/main.rs
+@@ -1,4 +1,5 @@
+ use clap::{Parser, Subcommand};
++mod audio;
+ mod client;
+ mod control;
+ mod polling;
+diff --git a/src/rust/shoop_dsp_host/src/server.rs b/src/rust/shoop_dsp_host/src/server.rs
+index 4d3cbbe6..7df05b60 100644
+--- a/src/rust/shoop_dsp_host/src/server.rs
++++ b/src/rust/shoop_dsp_host/src/server.rs
+@@ -1,3 +1,4 @@
++use crate::audio::{self, Audio, InputPolicy, Transport};
+ use crate::control::{self, Algorithm, Reply, Request};
+ use crate::polling::{Polling, ServiceGaps};
+ use anyhow::{ensure, Result};
+@@ -5,7 +6,7 @@ use clap::Args;
+ use shoop_dsp::{DelayCopy, Latency, Processor};
+ use shoop_remote_dsp::{stream::Stream, Config};
+ use std::{
+-    net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
++    net::{SocketAddr, TcpListener, TcpStream},
+     path::PathBuf,
+     sync::{
+         atomic::{AtomicBool, Ordering},
+@@ -29,15 +30,18 @@ pub struct Options {
+     lan: bool,
+     #[arg(long, default_value_t = 1_048_576)]
+     socket_buffer: usize,
++    #[arg(long, default_value_t = 0)]
++    data_port: u16,
+     #[arg(long, value_enum, default_value = "yield")]
+     polling: Polling,
+ }
+ struct Work {
+     dsp: Box<dyn Processor>,
+     core: Stream,
+-    udp: UdpSocket,
++    audio: Audio,
+     config: Config,
+-    peer: SocketAddr,
++    input_policy: InputPolicy,
++    worker_runtime: serde_json::Value,
+     elapsed_ns: u64,
+     service_gaps: ServiceGaps,
+ }
+@@ -110,6 +114,7 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
+     let handle = thread::Builder::new()
+         .name("network-dsp".into())
+         .spawn(move || {
++            work.worker_runtime = audio::runtime_info();
+             let origin = Instant::now();
+             let elapsed_base = work.elapsed_ns;
+             let mut last_input = Instant::now();
+@@ -123,8 +128,12 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
+                 work.service_gaps.observe(serviced - last_service);
+                 last_service = serviced;
+                 let mut progress = false;
+-                match work.udp.recv_from(&mut raw) {
+-                    Ok((len, peer)) if peer == work.peer => {
++                if work.audio.flush().is_err() {
++                    work.core.retire_with(shoop_remote_dsp::Error::Io);
++                    continue;
++                }
++                match work.audio.receive(&mut raw) {
++                    Ok(len) => {
+                         let _ = work.core.accept(
+                             &raw[..len],
+                             elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
+@@ -132,7 +141,6 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
+                         last_input = Instant::now();
+                         progress = true;
+                     }
+-                    Ok(_) => {}
+                     Err(e)
+                         if e.kind() == std::io::ErrorKind::WouldBlock
+                             || e.kind() == std::io::ErrorKind::Interrupted => {}
+@@ -140,18 +148,21 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
+                 }
+                 for _ in 0..8 {
+                     let now = elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
+-                    let udp = &work.udp;
+-                    let peer = work.peer;
+-                    match work.core.process_one(
+-                        now,
+-                        &mut *work.dsp,
+-                        || elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
+-                        |packet| {
+-                            udp.send_to(packet, peer)
+-                                .map(|_| ())
+-                                .map_err(|_| shoop_remote_dsp::Error::Io)
+-                        },
+-                    ) {
++                    let audio = &mut work.audio;
++                    let clock = || elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
++                    let emit =
++                        |packet: &[u8]| audio.send(packet).map_err(|_| shoop_remote_dsp::Error::Io);
++                    let result = match work.input_policy {
++                        InputPolicy::Gap => work.core.process_one(now, &mut *work.dsp, clock, emit),
++                        InputPolicy::Complete => {
++                            work.core
++                                .process_one_complete(now, &mut *work.dsp, clock, emit)
++                        }
++                    };
++                    if work.audio.failed() {
++                        work.core.retire_with(shoop_remote_dsp::Error::Io);
++                    }
++                    match result {
+                         Ok(true) => progress = true,
+                         _ => break,
+                     }
+@@ -201,6 +212,8 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                         config,
+                         epoch,
+                         udp_port,
++                        transport,
++                        input_policy,
+                         algorithm,
+                     } => {
+                         ensure!(running.is_none(), "pause before configuring");
+@@ -208,10 +221,14 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                             version == control::VERSION
+                                 && epoch != 0
+                                 && !used_epochs.contains(&epoch)
+-                                && udp_port != 0,
++                                && (transport == Transport::Tcp || udp_port != 0),
+                             "invalid version or stream identity"
+                         );
+                         ensure!(used_epochs.len() < 1024, "connection stream limit reached");
++                        ensure!(
++                            transport != Transport::Tcp || input_policy == InputPolicy::Complete,
++                            "TCP audio requires complete-input processing"
++                        );
+                         ensure!(
+                             matches!(
+                                 (&*options.processor, &algorithm),
+@@ -226,21 +243,25 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                             Latency::Known(frames) => Some(frames),
+                             Latency::Unknown => None,
+                         };
+-                        let udp = UdpSocket::bind(SocketAddr::new(tcp.local_addr()?.ip(), 0))?;
+-                        let sock = socket2::SockRef::from(&udp);
+-                        sock.set_recv_buffer_size(options.socket_buffer)?;
+-                        sock.set_send_buffer_size(options.socket_buffer)?;
+-                        let receive_buffer = sock.recv_buffer_size()?;
+-                        let send_buffer = sock.send_buffer_size()?;
+-                        udp.set_nonblocking(true)?;
+-                        let udp_port_reply = udp.local_addr()?.port();
++                        drop(parked.take());
++                        let audio = Audio::server(
++                            transport,
++                            SocketAddr::new(tcp.local_addr()?.ip(), options.data_port),
++                            SocketAddr::new(peer.ip(), udp_port),
++                            config,
++                            options.socket_buffer,
++                        )?;
++                        let (receive_buffer, send_buffer) = audio.buffer_sizes()?;
++                        let data_port = audio.address()?.port();
++                        let tcp_token = audio.token();
+                         let core = Stream::prepare(config, epoch)?;
+                         parked = Some(Work {
+                             dsp,
+                             core,
+-                            udp,
++                            audio,
+                             config,
+-                            peer: SocketAddr::new(peer.ip(), udp_port),
++                            input_policy,
++                            worker_runtime: serde_json::Value::Null,
+                             elapsed_ns: 0,
+                             service_gaps: ServiceGaps::default(),
+                         });
+@@ -248,7 +269,14 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                         ui.pump();
+                         Reply::Ready {
+                             version: control::VERSION,
+-                            udp_port: udp_port_reply,
++                            udp_port: if transport == Transport::Udp {
++                                data_port
++                            } else {
++                                0
++                            },
++                            transport,
++                            tcp_port: (transport == Transport::Tcp).then_some(data_port),
++                            tcp_token,
+                             latency_frames: latency,
+                             receive_buffer,
+                             send_buffer,
+@@ -260,12 +288,11 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                             parked.as_ref().is_some_and(|w| !w.core.stats().retired),
+                             "configure a fresh stream after retirement"
+                         );
+-                        running = Some(start(
+-                            parked
+-                                .take()
+-                                .ok_or_else(|| anyhow::anyhow!("configure first"))?,
+-                            options.polling,
+-                        )?);
++                        let mut work = parked
++                            .take()
++                            .ok_or_else(|| anyhow::anyhow!("configure first"))?;
++                        work.audio = work.audio.activate()?;
++                        running = Some(start(work, options.polling)?);
+                         Reply::Ok
+                     }
+                     Request::Pause => {
+@@ -283,6 +310,8 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui)
+                             service_gaps: w.service_gaps,
+                             concealment: w.core.concealment().to_vec(),
+                             next_sequence: w.core.next_sequence(),
++                            audio: w.audio.report(),
++                            worker_runtime: w.worker_runtime.clone(),
+                         }
+                     }
+                     Request::Save => {
+diff --git a/src/rust/shoop_dsp_host/tests/process.rs b/src/rust/shoop_dsp_host/tests/process.rs
+index b26b5028..7c6da167 100644
+--- a/src/rust/shoop_dsp_host/tests/process.rs
++++ b/src/rust/shoop_dsp_host/tests/process.rs
+@@ -82,6 +82,82 @@ fn process_pair_preserves_non_aligned_delay_across_aggregation_and_input_loss()
+     }
+ }
+ 
++#[shoop_wasm_test_support::shoop_test(no_wasm = "native TCP and complete-input UDP process pairs")]
++fn complete_input_transports_preserve_non_aligned_delay_and_report_socket_policy() {
++    let root = tempfile::tempdir().unwrap();
++    let key = root.path().join("key");
++    assert!(Command::new(BIN)
++        .arg("generate-credential")
++        .arg(&key)
++        .status()
++        .unwrap()
++        .success());
++    for (transport, polling) in [("tcp", "yield"), ("tcp", "spin"), ("udp", "yield")] {
++        let mut server = Child(
++            Command::new(BIN)
++                .args(["serve", "--once", "--polling", polling, "--credential-file"])
++                .arg(&key)
++                .stdout(Stdio::piped())
++                .spawn()
++                .unwrap(),
++        );
++        let mut line = String::new();
++        BufReader::new(server.0.stdout.take().unwrap())
++            .read_line(&mut line)
++            .unwrap();
++        let ready: Value = serde_json::from_str(&line).unwrap();
++        let output = root.path().join("complete.json");
++        let result = Command::new(BIN)
++            .args([
++                "client",
++                "--endpoint",
++                ready["control_endpoint"].as_str().unwrap(),
++                "--credential-file",
++            ])
++            .arg(&key)
++            .args([
++                "--transport",
++                transport,
++                "--input-policy",
++                "complete",
++                "--polling",
++                polling,
++                "--catch-up",
++                "--seconds",
++                "0.05",
++                "--warmup",
++                "0",
++                "--allowance",
++                "64",
++                "--multiplier",
++                "4",
++                "--delay",
++                "67",
++                "--output",
++            ])
++            .arg(&output)
++            .output()
++            .unwrap();
++        assert!(
++            result.status.success(),
++            "{}",
++            String::from_utf8_lossy(&result.stderr)
++        );
++        let report: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
++        assert_eq!(report["transport"], transport);
++        assert_eq!(report["input_policy"], "complete");
++        assert_eq!(report["correctness_errors"], 0);
++        assert_eq!(report["unverified_samples"], 0);
++        assert!(report["verified_samples"].as_u64().unwrap() > 0);
++        assert_eq!(report["server"]["concealed_packets"], 0);
++        if transport == "tcp" {
++            assert_eq!(report["client_audio"]["nodelay"], true);
++            assert_eq!(report["server_audio"]["nodelay"], true);
++            assert!(report["transport_error"].is_null());
++        }
++    }
++}
++
+ #[shoop_wasm_test_support::shoop_test(no_wasm = "native process pair")]
+ fn invalid_deadline_is_reported_as_a_refusal_without_contacting_a_server() {
+     let root = tempfile::tempdir().unwrap();
+@@ -220,6 +296,151 @@ fn control_stays_responsive_and_new_epochs_fence_old_udp_then_disconnect_stops_w
+     }
+ }
+ 
++#[shoop_wasm_test_support::shoop_test(
++    no_wasm = "native TCP data authentication and control lifecycle"
++)]
++fn tcp_partial_input_keeps_control_responsive_and_audio_uses_a_fresh_credential() {
++    use serde_json::json;
++    use shoop_remote_dsp::{wire, Config};
++    use std::{
++        io::{Read, Write},
++        net::TcpStream,
++        time::{Duration, Instant},
++    };
++    let root = tempfile::tempdir().unwrap();
++    let key = root.path().join("key");
++    assert!(Command::new(BIN)
++        .arg("generate-credential")
++        .arg(&key)
++        .status()
++        .unwrap()
++        .success());
++    let mut server = Child(
++        Command::new(BIN)
++            .args(["serve", "--once", "--credential-file"])
++            .arg(&key)
++            .stdout(Stdio::piped())
++            .spawn()
++            .unwrap(),
++    );
++    let mut line = String::new();
++    BufReader::new(server.0.stdout.take().unwrap())
++        .read_line(&mut line)
++        .unwrap();
++    let ready: Value = serde_json::from_str(&line).unwrap();
++    let control = TcpStream::connect(ready["control_endpoint"].as_str().unwrap()).unwrap();
++    let mut control = shoop_transport_socket::setup::authenticate(
++        control,
++        std::fs::read(&key).unwrap().try_into().unwrap(),
++        false,
++        Duration::from_secs(3),
++    )
++    .unwrap();
++    control.set_nonblocking(false).unwrap();
++    control
++        .set_read_timeout(Some(Duration::from_secs(5)))
++        .unwrap();
++    let config = Config {
++        packet_frames: 16,
++        multiplier: 4,
++        allowance: 8,
++        ..Config::default()
++    };
++    let configure = |epoch| {
++        json!({"request":"configure","version":1,"config":config,"epoch":epoch,"udp_port":0,
++        "transport":"tcp","input_policy":"complete","algorithm":{"type":"delay-copy","delay":0}})
++    };
++    let mut invalid = configure(1);
++    invalid["input_policy"] = json!("gap");
++    assert_eq!(rpc(&mut control, invalid)["reply"], "error");
++    let ready = rpc(&mut control, configure(1));
++    let token: [u8; 32] = serde_json::from_value(ready["tcp_token"].clone()).unwrap();
++    let stream = TcpStream::connect(format!("127.0.0.1:{}", ready["tcp_port"])).unwrap();
++    let starting = std::thread::spawn(move || {
++        let reply = rpc(&mut control, json!({"request":"start"}));
++        (control, reply)
++    });
++    let mut data =
++        shoop_transport_socket::setup::authenticate(stream, token, false, Duration::from_secs(3))
++            .unwrap();
++    data.set_nonblocking(false).unwrap();
++    data.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
++    data.set_write_timeout(Some(Duration::from_secs(5)))
++        .unwrap();
++    let (mut control, started) = starting.join().unwrap();
++    assert_eq!(started["reply"], "ok");
++    let send = |data: &mut TcpStream, sequence| {
++        let mut raw = [0; 1452];
++        let n = wire::encode(
++            wire::Header::input(1, sequence, config),
++            config,
++            &[0.25; 32],
++            &[],
++            &mut raw,
++        )
++        .unwrap();
++        for byte in (n as u32).to_le_bytes() {
++            data.write_all(&[byte]).unwrap();
++        }
++        for chunk in raw[..n].chunks(3) {
++            data.write_all(chunk).unwrap();
++        }
++    };
++    send(&mut data, 0);
++    let deadline = Instant::now() + Duration::from_secs(5);
++    loop {
++        assert_eq!(rpc(&mut control, json!({"request":"ping"}))["reply"], "ok");
++        assert_eq!(rpc(&mut control, json!({"request":"pause"}))["reply"], "ok");
++        let stats = rpc(&mut control, json!({"request":"stats"}));
++        assert_eq!(stats["stats"]["blocks"], 0);
++        assert_eq!(stats["stats"]["concealed_packets"], 0);
++        assert_eq!(stats["next_sequence"], 0);
++        assert_eq!(rpc(&mut control, json!({"request":"start"}))["reply"], "ok");
++        if stats["stats"]["received"] == 1 {
++            break;
++        }
++        assert!(Instant::now() < deadline, "audio input was not received");
++        std::thread::sleep(Duration::from_millis(1));
++    }
++    for sequence in 1..4 {
++        send(&mut data, sequence);
++    }
++    for sequence in 0..4 {
++        let mut prefix = [0; 4];
++        data.read_exact(&mut prefix).unwrap();
++        let length = u32::from_le_bytes(prefix) as usize;
++        assert!(length <= config.max_packet_bytes());
++        let mut raw = vec![0; length];
++        data.read_exact(&mut raw).unwrap();
++        let packet = wire::decode(&raw, config).unwrap();
++        assert_eq!(packet.header.sequence, sequence);
++        assert_eq!(packet.header.missing_mask, 0);
++        assert_eq!(packet.sample(1, 15), 0.25);
++    }
++    assert_eq!(rpc(&mut control, json!({"request":"pause"}))["reply"], "ok");
++    let ready = rpc(&mut control, configure(2));
++    assert_ne!(
++        serde_json::from_value::<[u8; 32]>(ready["tcp_token"].clone()).unwrap(),
++        token
++    );
++    let stream = TcpStream::connect(format!("127.0.0.1:{}", ready["tcp_port"])).unwrap();
++    let starting = std::thread::spawn(move || {
++        let reply = rpc(&mut control, json!({"request":"start"}));
++        (control, reply)
++    });
++    assert!(shoop_transport_socket::setup::authenticate(
++        stream,
++        token,
++        false,
++        Duration::from_secs(3)
++    )
++    .is_err());
++    let (mut control, reply) = starting.join().unwrap();
++    assert_eq!(reply["reply"], "error");
++    assert_eq!(rpc(&mut control, json!({"request":"ping"}))["reply"], "ok");
++    assert_eq!(rpc(&mut control, json!({"request":"stop"}))["reply"], "ok");
++}
++
+ #[cfg(feature = "carla")]
+ #[shoop_wasm_test_support::shoop_test(no_wasm = "real native Carla process pair")]
+ fn native_carla_network_gain_and_saved_state_are_verified_when_required() {
+@@ -265,6 +486,8 @@ fn native_carla_network_gain_and_saved_state_are_verified_when_required() {
+             .args(["client", "--processor", "carla", "--state-file"])
+             .arg(state)
+             .args([
++                "--transport",
++                if index == 0 { "udp" } else { "tcp" },
+                 "--expected-gain",
+                 "0.5",
+                 "--endpoint",
+diff --git a/src/rust/shoop_remote_dsp/src/stream.rs b/src/rust/shoop_remote_dsp/src/stream.rs
+index 74218c1d..11c8fdfe 100644
+--- a/src/rust/shoop_remote_dsp/src/stream.rs
++++ b/src/rust/shoop_remote_dsp/src/stream.rs
+@@ -154,6 +154,25 @@ impl Stream {
+         &mut self,
+         now: u64,
+         dsp: &mut dyn Processor,
++        clock: impl FnMut() -> u64,
++        emit: impl FnMut(&[u8]) -> Result<(), Error>,
++    ) -> Result<bool, Error> {
++        self.process_one_inner(now, dsp, true, clock, emit)
++    }
++    pub fn process_one_complete(
++        &mut self,
++        now: u64,
++        dsp: &mut dyn Processor,
++        clock: impl FnMut() -> u64,
++        emit: impl FnMut(&[u8]) -> Result<(), Error>,
++    ) -> Result<bool, Error> {
++        self.process_one_inner(now, dsp, false, clock, emit)
++    }
++    fn process_one_inner(
++        &mut self,
++        now: u64,
++        dsp: &mut dyn Processor,
++        conceal_gaps: bool,
+         mut clock: impl FnMut() -> u64,
+         mut emit: impl FnMut(&[u8]) -> Result<(), Error>,
+     ) -> Result<bool, Error> {
+@@ -175,6 +194,9 @@ impl Stream {
+             }
+         }
+         if missing != 0 {
++            if !conceal_gaps {
++                return Ok(false);
++            }
+             let since = *self.gap_since.get_or_insert(now);
+             let wait =
+                 (k as u64 - 1) * self.config.packet_ns() + self.config.gap_timeout_us as u64 * 1000;
+diff --git a/src/rust/shoop_remote_dsp/tests/stream.rs b/src/rust/shoop_remote_dsp/tests/stream.rs
+index 810b2f0e..3c1ee592 100644
+--- a/src/rust/shoop_remote_dsp/tests/stream.rs
++++ b/src/rust/shoop_remote_dsp/tests/stream.rs
+@@ -30,6 +30,64 @@ fn packet(c: Config, epoch: u64, sequence: u64, raw: &mut [u8]) -> usize {
+     )
+     .unwrap()
+ }
++#[shoop_wasm_test_support::shoop_test]
++fn complete_input_policy_never_expires_or_advances_an_incomplete_block() {
++    let c = config();
++    let mut stream = Stream::prepare(c, 1).unwrap();
++    let mut dsp = DelayCopy::prepare(c.dsp(), 0).unwrap();
++    let mut raw = [0; 1452];
++    assert!(!stream
++        .process_one_complete(0, &mut dsp, || 0, |_| panic!("no source input"))
++        .unwrap());
++    for sequence in [0, 2, 3] {
++        let n = packet(c, 1, sequence, &mut raw);
++        stream.accept(&raw[..n], 0).unwrap();
++    }
++    shoop_wasm_test_support::heap::assert_no_heap(|| {
++        assert!(!stream
++            .process_one_complete(u64::MAX, &mut dsp, || 0, |_| panic!("incomplete input"))
++            .unwrap());
++    });
++    assert_eq!(stream.next_sequence(), 0);
++    assert_eq!(stream.stats().blocks, 0);
++    assert_eq!(stream.stats().concealed_packets, 0);
++    let n = packet(c, 1, 1, &mut raw);
++    stream.accept(&raw[..n], 0).unwrap();
++    let mut sequence = 0;
++    shoop_wasm_test_support::heap::assert_no_heap(|| {
++        assert!(stream
++            .process_one_complete(
++                u64::MAX,
++                &mut dsp,
++                || 0,
++                |raw| {
++                    let output = wire::decode(raw, c)?;
++                    assert_eq!(output.header.sequence, sequence);
++                    assert_eq!(output.header.missing_mask, 0);
++                    for channel in 0..2 {
++                        for i in 0..c.packet_frames as usize {
++                            assert_eq!(
++                                output.sample(channel, i),
++                                (channel * 10000
++                                    + sequence as usize * c.packet_frames as usize
++                                    + i
++                                    + 1) as f32
++                            );
++                        }
++                    }
++                    sequence += 1;
++                    Ok(())
++                }
++            )
++            .unwrap());
++    });
++    assert_eq!(sequence, 4);
++    assert_eq!(stream.stats().concealed_packets, 0);
++    assert!(!stream
++        .process_one_complete(u64::MAX, &mut dsp, || 0, |_| panic!("no more input"))
++        .unwrap());
++}
++
+ #[shoop_wasm_test_support::shoop_test]
+ fn negotiation_and_wire_boundaries_are_explicit() {
+     for k in [1, 2, 4, 8] {
+--- /dev/null
++++ b/scripts/benchmark_remote_dsp_transports.py
+@@ -0,0 +1,429 @@
++#!/usr/bin/env python3
++"""Matched UDP/TCP DSP measurements, locally or with an explicitly selected SSH server."""
++from __future__ import annotations
++
++import argparse
++import csv
++import datetime
++import difflib
++import gzip
++import hashlib
++import ipaddress
++import json
++import os
++from pathlib import Path, PurePosixPath
++import queue
++import random
++import resource
++import shlex
++import shutil
++import subprocess
++import sys
++import threading
++import time
++
++from sweep_remote_dsp import ROOT, digest, healthy
++from compare_remote_dsp import check_distribution, timing_ms
++
++CONFIGS = [(8, 1, 4), (8, 1, 8), (16, 4, 4), (16, 4, 8)]
++TRANSPORTS = {"udp-gap": ("udp", "gap"), "udp-complete": ("udp", "complete"), "tcp-complete": ("tcp", "complete")}
++PROBE = r'''
++import hashlib,json,os,platform,resource,subprocess,sys
++from pathlib import Path
++binary=Path(sys.argv[1]).resolve(); key=Path(sys.argv[2]).resolve()
++def command(args):
++    try:
++        p=subprocess.run(args,capture_output=True,text=True,timeout=15)
++        return {"exit_code":p.returncode,"stdout":p.stdout.strip(),"stderr":p.stderr.strip()}
++    except (OSError,subprocess.SubprocessError) as e: return {"error":str(e)}
++def read(path):
++    try: return Path(path).read_text().strip()
++    except OSError: return None
++probe=command(["chrt","--fifo","1",sys.executable,"-c","import os;print(os.sched_getscheduler(0));print(os.sched_getparam(0).sched_priority)"])
++files=["/proc/cpuinfo","/proc/meminfo","/proc/self/cgroup","/proc/self/limits","/proc/interrupts","/proc/net/dev","/proc/sys/kernel/sched_rt_runtime_us","/proc/sys/kernel/sched_rt_period_us","/proc/net/snmp","/proc/net/netstat","/sys/firmware/acpi/platform_profile"]
++files += [str(p) for pattern in ["/sys/devices/system/cpu/cpufreq/policy*/scaling_governor","/sys/devices/system/cpu/cpu*/topology/thread_siblings_list","/sys/class/power_supply/*/online","/sys/class/thermal/thermal_zone*/temp"] for p in Path('/').glob(pattern.lstrip('/'))]
++print(json.dumps({"binary":str(binary),"binary_sha256":hashlib.sha256(binary.read_bytes()).hexdigest(),
++    "credential_sha256":hashlib.sha256(key.read_bytes()).hexdigest(),"hostname":platform.node(),"platform":platform.platform(),
++    "allowed_cpus":sorted(os.sched_getaffinity(0)),"nice":os.getpriority(os.PRIO_PROCESS,0),"fifo_probe":probe,
++    "fifo_available":probe.get('exit_code')==0 and probe.get('stdout')=='1\n1',
++    "git_revision":command(['git','rev-parse','HEAD']),"git_changes":command(['git','status','--porcelain']),
++    "rustc":command(['rustc','--version']),"interfaces":command(['ip','-j','address']),"routes":command(['ip','-j','route']),
++    "clock_ticks_per_second":os.sysconf('SC_CLK_TCK'),"host_files":{p:read(p) for p in files}}))
++'''
++
++
++def utc():
++    return datetime.datetime.now(datetime.timezone.utc).isoformat()
++
++
++def cpus(text):
++    result = []
++    for part in text.split(","):
++        ends = list(map(int, part.split("-")))
++        result.extend(range(ends[0], ends[-1] + 1))
++    return result
++
++
++def parse_config(value):
++    try:
++        p, k, n = map(int, value.split(","))
++        if p <= 0 or k <= 0 or n < k:
++            raise ValueError()
++        return p, k, n
++    except ValueError as error:
++        raise argparse.ArgumentTypeError("expected positive P,k,N with N >= k") from error
++
++
++def server_command(args, command):
++    if not args.server_ssh:
++        return command
++    if args.server_ssh.startswith("-"):
++        raise ValueError("SSH destination must not start with '-'")
++    shell = f"cd {shlex.quote(args.server_root)} && exec {shlex.join(command)}"
++    return ["ssh", "-o", "BatchMode=yes", "-p", str(args.ssh_port), "--", args.server_ssh, shell]
++
++
++def source_identity():
++    paths = [ROOT / "scripts/benchmark_remote_dsp_transports.py", ROOT / "scripts/sweep_remote_dsp.py",
++             ROOT / "scripts/compare_remote_dsp.py", ROOT / "scripts/tune_remote_dsp.py",
++             ROOT / "scripts/tests/test_remote_dsp_transports.py"]
++    paths += [p for name in ["shoop_dsp_host", "shoop_remote_dsp", "shoop_dsp", "shoop_transport_socket"]
++              for p in (ROOT / "src/rust" / name).rglob("*") if p.suffix in [".rs", ".toml"]]
++    paths += [ROOT / "Cargo.toml", ROOT / "Cargo.lock", ROOT / "flake.nix", ROOT / "flake.lock", ROOT / "rust-toolchain.toml"]
++    return {str(p.relative_to(ROOT)): digest(p) for p in sorted(set(paths))}
++
++
++def prefix(host, mode, cpu):
++    mask = str(cpu) if mode == "fifo1" else ",".join(map(str, host["allowed_cpus"]))
++    return ["taskset", "--cpu-list", mask, "chrt", "--fifo", "1"] if mode == "fifo1" else ["taskset", "--cpu-list", mask, "chrt", "--other", "0"]
++
++
++def manifest(args, output):
++    path = output / "manifest.json"
++    identity = source_identity()
++    binary_hash = digest(args.binary)
++    arguments = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()
++                 if key not in ["report_only", "publish"]}
++    arguments = json.loads(json.dumps(arguments))
++    if path.exists():
++        old = json.loads(path.read_text())
++        if old["source_files_sha256"] != identity or old["client"]["binary_sha256"] != binary_hash or old["arguments"] != arguments:
++            raise RuntimeError("source/binary/arguments changed; use a fresh output directory")
++        client = json.loads(subprocess.check_output([sys.executable, "-c", PROBE, str(args.binary), str(args.credential_file)], text=True, cwd=ROOT))
++        server = json.loads(subprocess.check_output(server_command(args, [args.server_python, "-c", PROBE, args.server_binary, args.server_credential]), text=True, cwd=ROOT))
++        if client.pop("credential_sha256") != server.pop("credential_sha256"):
++            raise RuntimeError("client/server credential files differ")
++        for role, current in [("client", client), ("server", server)]:
++            if any(current[key] != old[role][key] for key in ["binary_sha256", "hostname", "platform", "allowed_cpus", "nice", "fifo_available"]):
++                raise RuntimeError(f"{role} binary/host/permissions changed; use a fresh output directory")
++        return old
++    client = json.loads(subprocess.check_output([sys.executable, "-c", PROBE, str(args.binary), str(args.credential_file)], text=True, cwd=ROOT))
++    server = json.loads(subprocess.check_output(server_command(args, [args.server_python, "-c", PROBE, args.server_binary, args.server_credential]), text=True, cwd=ROOT))
++    if client.pop("credential_sha256") != server.pop("credential_sha256"):
++        raise RuntimeError("client/server credential files differ")
++    client_cpu = args.client_cpu if args.client_cpu is not None else (2 if 2 in client["allowed_cpus"] else client["allowed_cpus"][0])
++    server_cpu = args.server_cpu if args.server_cpu is not None else next((c for c in [4, *server["allowed_cpus"]] if c in server["allowed_cpus"] and (args.server_ssh or c != client_cpu)), None)
++    if client_cpu not in client["allowed_cpus"] or server_cpu not in server["allowed_cpus"] or (not args.server_ssh and client_cpu == server_cpu):
++        raise RuntimeError("select allowed CPUs, distinct for a local process pair")
++    modes = ["other"]
++    if client["fifo_available"] and server["fifo_available"]:
++        modes.append("fifo1")
++    configurations = args.config or CONFIGS
++    if args.profile == "smoke" and not args.config:
++        configurations = [(16, 4, 8)]
++    cases = []
++    for suite, seconds, repeats in [("screen", 0.05 if args.profile == "smoke" else args.screen_seconds, 1 if args.profile == "smoke" else args.repetitions),
++                                     ("followup", args.followup_seconds, 1)]:
++        if suite == "followup" and args.profile != "all":
++            continue
++        stage = [(suite, list(config), variant, mode, repeat, seconds) for config in configurations
++                 for variant in TRANSPORTS for mode in modes for repeat in range(repeats)]
++        random.Random(args.seed + (suite == "followup")).shuffle(stage)
++        cases.extend(stage)
++    if args.profile == "all" and args.stall_us:
++        stall_config = next((c for c in configurations if tuple(c) == (16, 4, 8)),
++                            next((c for c in configurations if c[1] > 1), configurations[0]))
++        stage = [("stall", list(stall_config), variant, mode, 0, 1.0) for variant in TRANSPORTS for mode in modes]
++        random.Random(args.seed + 2).shuffle(stage)
++        cases.extend(stage)
++    data = {"started_utc": utc(), "arguments": arguments, "client": client, "server": server,
++            "client_cpu": client_cpu, "server_cpu": server_cpu, "source_files_sha256": identity,
++            "modes": modes, "cases": cases, "remote": bool(args.server_ssh),
++            "limitations": "No automatic network/firewall/power changes. No audio device. Localhost measurements are not physical-LAN measurements. No builds/tests during capture. Host counters include unrelated work."}
++    path.write_text(json.dumps(data, indent=2) + "\n")
++    tracked = list(identity)
++    patch = subprocess.check_output(["git", "diff", "HEAD", "--", *tracked], cwd=ROOT, text=True)
++    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "--", *tracked], cwd=ROOT, text=True).splitlines()
++    for name in untracked:
++        patch += "".join(difflib.unified_diff([], (ROOT / name).read_text().splitlines(keepends=True), fromfile="/dev/null", tofile="b/" + name))
++    (output / "implementation.patch").write_text(patch)
++    return data
++
++
++def case_name(case):
++    suite, (p, k, n), variant, mode, repeat, _ = case
++    return f"{suite}-p{p}-k{k}-n{n}-{variant}-{mode}-r{repeat}"
++
++
++def run_case(args, output, machine, case):
++    ident = case_name(case)
++    path = output / f"{ident}.json"
++    if path.exists():
++        return json.loads(path.read_text())
++    suite, (p, k, n), variant, mode, repeat, seconds = case
++    transport, policy = TRANSPORTS[variant]
++    temporary = output / f"{ident}.json.tmp"
++    client_args = ["--credential-file", str(args.credential_file), "--transport", transport, "--input-policy", policy,
++                   "--catch-up", "--polling", "yield", "--packet-frames", str(p), "--multiplier", str(k), "--allowance", str(n),
++                   "--reorder-packets", "64", "--gap-timeout-us", "200", "--sample-rate", str(args.sample_rate),
++                   "--channels", str(args.channels), "--delay", str(args.delay), "--mtu", str(args.mtu),
++                   "--seconds", str(seconds), "--warmup", str(args.warmup), "--seed", str(args.seed),
++                   "--source-stall-us", str(args.stall_us if suite == "stall" else 0), "--output", str(temporary)]
++    server_args = [args.server_binary, "serve", "--once", "--credential-file", args.server_credential, "--polling", "yield",
++                   "--bind", args.server_bind, "--data-port", str(args.data_port)]
++    if args.server_ssh or not args.server_bind.startswith("127.") and not args.server_bind.startswith("[::1]"):
++        server_args.append("--lan")
++    server = server_command(args, ["timeout", "--signal=TERM", f"{seconds + args.warmup + 45}s", *prefix(machine["server"], mode, machine["server_cpu"]), *server_args])
++    row = {"case": ident, "suite": suite, "variant": variant, "mode": mode, "repetition": repeat, "started_utc": utc(),
++           "requested": {"P":p,"k":k,"N":n,"A":args.delay,"channels":args.channels,"seconds":seconds,"warmup":args.warmup},
++           "server_command": server}
++    preflight = [str(args.binary), "client", "--validate-only", "--endpoint", "127.0.0.1:1", *client_args]
++    subprocess.run(preflight, check=True, capture_output=True, text=True, timeout=10, cwd=ROOT)
++    validated = json.loads(temporary.read_text())
++    temporary.unlink()
++    if validated["status"] != "admitted":
++        row.update(validated)
++        row["client_command"] = preflight
++        path.write_text(json.dumps(row, indent=2) + "\n")
++        return row
++    before = resource.getrusage(resource.RUSAGE_CHILDREN)
++    wall = time.monotonic()
++    with (output / f"{ident}.server.log").open("w") as log:
++        service = subprocess.Popen(server, stdout=subprocess.PIPE, stderr=log, text=True, cwd=ROOT)
++        client = None
++        try:
++            ready = queue.Queue()
++            threading.Thread(target=lambda: ready.put(service.stdout.readline()), daemon=True).start()
++            endpoint = json.loads(ready.get(timeout=20))["control_endpoint"]
++            command = prefix(machine["client"], mode, machine["client_cpu"]) + [str(args.binary), "client", "--endpoint", endpoint, *client_args]
++            row["client_command"] = command
++            client = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT)
++            stdout, stderr = client.communicate(timeout=seconds + args.warmup + 30)
++            (output / f"{ident}.client.log").write_text(stdout + stderr)
++            row["client_exit_code"] = client.returncode
++            service.wait(timeout=12)
++            row["server_exit_code"] = service.returncode
++            row.update(json.loads(temporary.read_text()))
++            temporary.unlink()
++        except Exception as error:
++            row.update(status="failed", error=f"{type(error).__name__}: {error}")
++        finally:
++            for child in [client, service]:
++                if child is not None:
++                    if child.poll() is None:
++                        child.kill()
++                    child.wait()
++    elapsed = time.monotonic() - wall
++    after = resource.getrusage(resource.RUSAGE_CHILDREN)
++    row["resources"] = {"wall_seconds": elapsed, "controller_children_cpu_seconds": after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime,
++                        "cpu_scope": "requester plus SSH, excludes remote server" if args.server_ssh else "both complete process lifetimes"}
++    row["finished_utc"] = utc()
++    path.write_text(json.dumps(row, indent=2) + "\n")
++    return row
++
++
++def read_rows(output):
++    paths = sorted(output.glob("screen-*.json")) + sorted(output.glob("followup-*.json")) + sorted(output.glob("stall-*.json"))
++    if paths:
++        return [json.loads(path.read_text()) for path in paths]
++    with gzip.open(output / "results.jsonl.gz", "rt") as handle:
++        return [json.loads(line) for line in handle if line.strip()]
++
++
++def audit_rows(rows, machine):
++    expected_cases = {case_name(case): case for case in machine["cases"]}
++    expected = set(expected_cases)
++    assert len({r["case"] for r in rows}) == len(rows)
++    assert {r["case"] for r in rows} <= expected
++    failed = []
++    for row in rows:
++        if row.get("status") != "measured" or row.get("client_exit_code", 0) or row.get("server_exit_code", 0):
++            failed.append(row["case"])
++            continue
++        declared = expected_cases[row["case"]]
++        requested = row["requested"]
++        assert (row["suite"], row["variant"], row["mode"], row["repetition"]) == (declared[0], declared[2], declared[3], declared[4])
++        assert [requested[key] for key in ["P", "k", "N"]] == declared[1]
++        assert requested["seconds"] == declared[5]
++        assert [row["config"][key] for key in ["packet_frames", "multiplier", "allowance"]] == declared[1]
++        assert row["config"]["sample_rate"] == machine["arguments"]["sample_rate"]
++        assert row["measured_packets"] == row["on_time"] + row["late"] + row["missing"]
++        assert row["verified_samples"] + row["unverified_samples"] == (row["on_time"] + row["late"]) * row["config"]["packet_frames"] * row["config"]["channels"]
++        for name in ["rtt", "sender_lateness", "batch_turnaround", "dsp_processing"]:
++            check_distribution(row[name])
++        assert row["sender_lateness"]["count"] == row["sent"]
++        assert row["rtt"]["count"] <= min(row["sent"], row["on_time"] + row["late"])
++        assert row["batch_turnaround"]["count"] <= row["dsp_processing"]["count"] <= row["measured_packets"] // row["config"]["multiplier"]
++        if not row["server"].get("diagnostics_truncated", False):
++            assert sum(mask.bit_count() for _, mask in row.get("concealment", [])) == row["server"]["concealed_packets"]
++        assert abs(row["deadline_miss_fraction"] - (row["late"] + row["missing"]) / row["measured_packets"]) < 1e-12
++        transport, policy = TRANSPORTS[row["variant"]]
++        assert (row["transport"], row["input_policy"], row["catch_up"]) == (transport, policy, True)
++        assert row["source_stall_us"] == (machine["arguments"]["stall_us"] if row["suite"] == "stall" else 0)
++        assert row["source_stalled"] == (row["source_stall_us"] > 0)
++        if policy == "complete":
++            assert row["server"]["concealed_packets"] == 0
++        if transport == "tcp":
++            assert row["client_audio"]["nodelay"] and row["server_audio"]["nodelay"]
++        for role, field in [("client", "client_runtime"), ("server", "worker_runtime")]:
++            actual = row[field]
++            assert actual["scheduler"] == (1 if row["mode"] == "fifo1" else 0)
++            assert actual["realtime_priority"] == (1 if row["mode"] == "fifo1" else 0)
++            assert actual["nice"] == machine[role]["nice"]
++            assert cpus(actual["affinity"]) == ([machine[f"{role}_cpu"]] if row["mode"] == "fifo1" else machine[role]["allowed_cpus"])
++        if row["correctness_errors"] or row["unverified_samples"]:
++            failed.append(row["case"])
++    return {"records":len(rows),"expected_records":len(expected),"complete":len(rows)==len(expected),"infrastructure_or_verification_failures":failed,
++            "measured_packets":sum(r.get("measured_packets",0) for r in rows),"verified_samples":sum(r.get("verified_samples",0) for r in rows),
++            "incorrect_samples":sum(r.get("correctness_errors",0) for r in rows),"unverified_samples":sum(r.get("unverified_samples",0) for r in rows),
++            "late":sum(r.get("late",0) for r in rows),"missing":sum(r.get("missing",0) for r in rows),
++            "concealed":sum(r.get("server",{}).get("concealed_packets",0) for r in rows),
++            "retired":sum(bool(r.get("server",{}).get("retired")) for r in rows),
++            "checks":["unique expected cases","packet/sample counts","histogram counts/means/quantile bins","actual per-thread policy/priority/affinity","complete-input semantics","TCP_NODELAY"]}
++
++
++def report(output, publish=None):
++    machine = json.loads((output / "manifest.json").read_text())
++    rows = read_rows(output)
++    audit = audit_rows(rows, machine)
++    payload = "".join(json.dumps(r,separators=(",",":"))+"\n" for r in rows).encode()
++    (output / "results.jsonl.gz").write_bytes(gzip.compress(payload, mtime=0))
++    audit["decompressed_sha256"] = hashlib.sha256(payload).hexdigest()
++    (output / "audit.json").write_text(json.dumps(audit,indent=2)+"\n")
++    fields = ["case","suite","variant","mode","P","k","N","audio_latency_ms","seconds","status","late","missing","concealed","retired","verified_samples","batch_p99_us","rtt_p99_us","sender_p99_us","transport_error"]
++    with (output / "summary.csv").open("w",newline="") as handle:
++        writer = csv.DictWriter(handle,fieldnames=fields,lineterminator="\n"); writer.writeheader()
++        for row in rows:
++            req=row["requested"]
++            record=dict(row)|req
++            record.update(audio_latency_ms=timing_ms(req["P"],req["k"],req["N"],req["A"],machine["arguments"]["sample_rate"])["audio_latency"],
++                          concealed=row.get("server",{}).get("concealed_packets"),retired=row.get("server",{}).get("retired"))
++            for field,source in [("batch_p99_us","batch_turnaround"),("rtt_p99_us","rtt"),("sender_p99_us","sender_lateness")]:
++                value=row.get(source,{}).get("p99_ns"); record[field]=None if value is None else value/1000
++            writer.writerow({key:record.get(key) for key in fields})
++    lines=["# Matched audio-transport measurements","",
++           f"{len(rows)} of {audit['expected_records']} expected records; {audit['verified_samples']:,} verified samples; {audit['incorrect_samples']} incorrect; {audit['unverified_samples']} unverified.","",
++           "All cases use yielding, catch-up without intentional overdue-source skips, identical source deadlines and DSP wire frames. "
++           "UDP-gap retains the 200 us gap policy; UDP-complete and TCP-complete only process complete input blocks. "
++           "TCP uses a separate authenticated, length-framed connection with TCP_NODELAY at both ends. "
++           "Audio latency is ((N+1)*P+A)/fs, excluding audio hardware and extra endpoint buffers. "
++           "Counts are output misses / concealed input; input counts include warm-up. No clock synchronization is needed.","",
++           "## Fixed long comparisons","",
++           "| P/k/N | Audio ms | Scheduling | UDP-gap | UDP-complete | TCP-complete |","| --- | ---: | --- | ---: | ---: | ---: |"]
++    configs=sorted({tuple(r["requested"][key] for key in ["P","k","N"]) for r in rows})
++    for c in configs:
++        for mode in machine["modes"]:
++            values=[]
++            for variant in TRANSPORTS:
++                group=[r for r in rows if r["suite"]=="followup" and r["variant"]==variant and r["mode"]==mode and tuple(r["requested"][key] for key in ["P","k","N"])==c]
++                if len(group)!=1 or group[0]["status"]!="measured": values.append("not measured"); continue
++                r=group[0]; suffix=" (retired)" if r["server"]["retired"] else ""
++                values.append(f"{r['late']+r['missing']:,} / {r['server']['concealed_packets']:,}{suffix}")
++            latency=timing_ms(*c,delay=machine["arguments"]["delay"],sample_rate=machine["arguments"]["sample_rate"])["audio_latency"]
++            lines.append(f"| {'/'.join(map(str,c))} | {latency:.3f} | {mode} | "+" | ".join(values)+" |")
++    lines += ["","## Every condition, with all repetitions retained","",
++              "| Suite | P/k/N | Variant | Scheduling | Runs | Misses / slots | Concealed | Retired | Healthy |",
++              "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"]
++    keys=sorted({(r["suite"],tuple(r["requested"][key] for key in ["P","k","N"]),r["variant"],r["mode"]) for r in rows})
++    for suite,c,variant,mode in keys:
++        group=[r for r in rows if (r["suite"],tuple(r["requested"][key] for key in ["P","k","N"]),r["variant"],r["mode"])==(suite,c,variant,mode)]
++        good=[r for r in group if r["status"]=="measured"]
++        lines.append(f"| {suite} | {'/'.join(map(str,c))} | {variant} | {mode} | {len(group)} | {sum(r['late']+r['missing'] for r in good):,} / {sum(r['measured_packets'] for r in good):,} | {sum(r['server']['concealed_packets'] for r in good)} | {sum(r['server']['retired'] for r in good)} | {sum(healthy(r) and not r.get('transport_error') for r in good)} |")
++    lines += ["","The manifest preserves both endpoint inventories, binary/source identities, permissions and expected cases. "
++              "The archive retains every outcome, histogram, native per-thread scheduling observation, socket/queue counter, command and timestamp. "
++              "Child CPU cost covers both processes locally; over SSH it excludes the remote server and is explicitly labeled. "
++              "Host network counters include unrelated traffic; these are not per-stream packet-loss measurements."]
++    (output / "report.md").write_text("\n".join(lines)+"\n")
++    if publish:
++        publish.mkdir(parents=True,exist_ok=True)
++        for name in ["manifest.json","implementation.patch","results.jsonl.gz","summary.csv","audit.json","report.md","finished.json"]:
++            if (output/name).exists() and output/name != publish/name:
++                shutil.copy2(output/name,publish/name)
++    return audit
++
++
++def main():
++    parser=argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--binary",type=Path,default=ROOT/"target/release/shoop_dsp_host")
++    parser.add_argument("--output",type=Path,default=ROOT/"artifacts/remote-dsp-transports")
++    parser.add_argument("--credential-file",type=Path)
++    parser.add_argument("--server-ssh")
++    parser.add_argument("--server-root")
++    parser.add_argument("--server-binary")
++    parser.add_argument("--server-credential")
++    parser.add_argument("--server-python",default="python3")
++    parser.add_argument("--ssh-port",type=int,default=22)
++    parser.add_argument("--server-bind",default="127.0.0.1:0")
++    parser.add_argument("--data-port",type=int,default=0)
++    parser.add_argument("--client-cpu",type=int)
++    parser.add_argument("--server-cpu",type=int)
++    parser.add_argument("--config",type=parse_config,action="append")
++    parser.add_argument("--profile",choices=["all","screen","smoke"],default="all")
++    parser.add_argument("--repetitions",type=int,default=3)
++    parser.add_argument("--screen-seconds",type=float,default=2)
++    parser.add_argument("--followup-seconds",type=float,default=60)
++    parser.add_argument("--warmup",type=float,default=0.5)
++    parser.add_argument("--sample-rate",type=int,default=48000)
++    parser.add_argument("--channels",type=int,default=2)
++    parser.add_argument("--delay",type=int,default=0)
++    parser.add_argument("--mtu",type=int,default=1500)
++    parser.add_argument("--seed",type=int,default=20261104)
++    parser.add_argument("--stall-us",type=int,default=2000)
++    parser.add_argument("--report-only",action="store_true")
++    parser.add_argument("--publish",type=Path)
++    args=parser.parse_args()
++    args.output=args.output.resolve(); args.output.mkdir(parents=True,exist_ok=True)
++    if args.report_only:
++        audit=report(args.output,args.publish)
++        print(json.dumps(audit,indent=2)); return int(bool(audit["infrastructure_or_verification_failures"]))
++    if not sys.platform.startswith("linux"):
++        parser.error("capture requires Linux taskset/chrt; report-only does not run measurements")
++    if not (0<args.screen_seconds<=120 and 0<args.followup_seconds<=120 and 0<=args.warmup<=10 and args.repetitions>0 and 0<=args.stall_us<=1000000):
++        parser.error("invalid duration/repetition count")
++    args.binary=args.binary.resolve()
++    args.credential_file=(args.credential_file or args.output/"credential.key").resolve()
++    if args.server_ssh:
++        bind_ip = ipaddress.ip_address(args.server_bind.rsplit(":", 1)[0].strip("[]"))
++        if not all([args.server_root,args.server_binary,args.server_credential]) or bind_ip.is_loopback or bind_ip.is_unspecified:
++            parser.error("SSH mode requires server root/binary/credential and a concrete non-loopback server-bind")
++        args.server_binary=str(PurePosixPath(args.server_root)/args.server_binary)
++        args.server_credential=str(PurePosixPath(args.server_root)/args.server_credential)
++        if not args.credential_file.exists(): parser.error("SSH mode requires an existing shared local credential")
++    else:
++        args.server_binary=str(Path(args.server_binary or args.binary).resolve())
++        args.server_credential=str(Path(args.server_credential or args.credential_file).resolve())
++        if not args.credential_file.exists():
++            subprocess.run([str(args.binary),"generate-credential",str(args.credential_file)],check=True)
++    machine=manifest(args,args.output)
++    for index,case in enumerate(machine["cases"]):
++        row=run_case(args,args.output,machine,case)
++        print(json.dumps({"progress":f"{index+1}/{len(machine['cases'])}",**{key:row.get(key) for key in ["case","status","late","missing","correctness_errors","error"]}}),flush=True)
++        if row.get("status") != "measured" or row.get("client_exit_code", 0) or row.get("server_exit_code", 0) or row.get("correctness_errors", 0) or row.get("unverified_samples", 0):
++            report(args.output, args.publish)
++            return 1
++    if source_identity() != machine["source_files_sha256"]:
++        raise RuntimeError("source changed during capture")
++    if not (args.output/"finished.json").exists():
++        client = json.loads(subprocess.check_output([sys.executable, "-c", PROBE, str(args.binary), str(args.credential_file)], text=True, cwd=ROOT))
++        server = json.loads(subprocess.check_output(server_command(args, [args.server_python, "-c", PROBE, args.server_binary, args.server_credential]), text=True, cwd=ROOT))
++        client.pop("credential_sha256"); server.pop("credential_sha256")
++        if client["binary_sha256"] != machine["client"]["binary_sha256"] or server["binary_sha256"] != machine["server"]["binary_sha256"]:
++            raise RuntimeError("binary changed during capture")
++        (args.output/"finished.json").write_text(json.dumps({"finished_utc":utc(),"client":client,"server":server},indent=2)+"\n")
++    audit=report(args.output,args.publish)
++    print(json.dumps(audit,indent=2))
++    return int(bool(audit["infrastructure_or_verification_failures"]))
++
++
++if __name__=="__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/scripts/compare_remote_dsp.py
+@@ -0,0 +1,341 @@
++#!/usr/bin/env python3
++"""Publish and audit a local DSP reproduction, with like-for-like cloud tables."""
++from __future__ import annotations
++
++import argparse
++from collections import Counter
++import gzip
++import hashlib
++import html
++import json
++import math
++from pathlib import Path
++import shutil
++
++import sweep_remote_dsp as sweep
++import tune_remote_dsp as tune
++
++ROOT = sweep.ROOT
++CAMPAIGNS = ["sweep", "tuning", "matched-tuning", "matched-sweep"]
++
++
++def read_archive(path):
++    with gzip.open(path, "rt") as handle:
++        return [json.loads(line) for line in handle if line.strip()]
++
++
++def config(row):
++    return tuple(row["requested"][key] for key in ["P", "k", "N"])
++
++
++def check_distribution(distribution):
++    count = distribution["count"]
++    histogram = distribution["histogram_us"]
++    assert sum(n for _, n in histogram) == count
++    assert histogram == sorted(histogram) and len({b for b, _ in histogram}) == len(histogram)
++    assert all(b >= 0 and n > 0 for b, n in histogram)
++    quantiles = [("p50_ns", 0.5), ("p95_ns", 0.95), ("p99_ns", 0.99), ("p999_ns", 0.999)]
++    if not count:
++        assert all(distribution[key] is None for key in ["mean_ns", "max_ns", *(key for key, _ in quantiles)])
++        return
++    previous = 0
++    for key, fraction in quantiles:
++        rank = math.ceil(count * fraction)
++        cumulative = 0
++        for bucket, n in histogram:
++            cumulative += n
++            if cumulative >= rank:
++                assert distribution[key] // 1000 == bucket
++                break
++        assert previous <= distribution[key] <= distribution["max_ns"]
++        previous = distribution[key]
++    assert distribution["max_ns"] // 1000 == histogram[-1][0]
++    lower = sum(bucket * 1000 * n for bucket, n in histogram) / count
++    assert lower <= distribution["mean_ns"] < lower + 1000
++
++
++def audit(data, archive):
++    assert len({row["case"] for row in data}) == len(data)
++    for row in data:
++        assert row["status"] in ["measured", "rejected"], (row["case"], row.get("error"))
++        assert not row.get("client_exit_code", 0) and not row.get("server_exit_code", 0)
++        if row["status"] == "rejected":
++            assert row.get("reason")
++            continue
++        p, k, n = config(row)
++        assert row["config"]["packet_frames"] == p and row["config"]["multiplier"] == k
++        assert row["config"]["allowance"] == n
++        assert row["measured_packets"] == row["on_time"] + row["late"] + row["missing"]
++        assert math.isclose(row["deadline_miss_fraction"], (row["late"] + row["missing"]) / row["measured_packets"])
++        assert row["verified_samples"] + row["unverified_samples"] == (row["on_time"] + row["late"]) * p * row["config"]["channels"]
++        assert row["correctness_errors"] == 0
++        assert row["sender_lateness"]["count"] == row["sent"]
++        assert row["rtt"]["count"] <= min(row["sent"], row["on_time"] + row["late"])
++        assert row["batch_turnaround"]["count"] <= row["dsp_processing"]["count"] <= row["measured_packets"] // k
++        for name in ["rtt", "sender_lateness", "batch_turnaround", "dsp_processing"]:
++            check_distribution(row[name])
++        if not row["server"]["diagnostics_truncated"]:
++            assert sum(mask.bit_count() for _, mask in row["concealment"]) == row["server"]["concealed_packets"]
++        assert len({base for base, _ in row["concealment"]}) == len(row["concealment"])
++        assert all(0 < mask < (1 << k) for _, mask in row["concealment"])
++        if "resources" in row:
++            assert all(value >= 0 for key, value in row["resources"].items() if key != "cgroup_delta")
++            assert all(value >= 0 for value in row["resources"]["cgroup_delta"].values())
++    measured = [r for r in data if r["status"] == "measured"]
++    return {"records": len(data), "by_suite": dict(Counter(r["suite"] for r in data)),
++            "by_status": dict(Counter(r["status"] for r in data)),
++            "fully_healthy": sum(sweep.healthy(r) for r in measured),
++            **{key: sum(r.get(key, 0) for r in measured) for key in
++               ["measured_packets", "verified_samples", "unverified_samples", "correctness_errors", "late", "missing", "send_errors_or_skipped"]},
++            "concealed_packets": sum(r["server"]["concealed_packets"] for r in measured),
++            "retired_runs": sum(r["server"]["retired"] for r in measured),
++            "decompressed_sha256": hashlib.sha256(gzip.decompress(archive.read_bytes())).hexdigest(),
++            "checks": ["unique cases", "status and process exits", "packet outcome sums and fractions",
++                       "independent sample counts", "histogram counts, means, quantile bins and maxima",
++                       "bounded concealment masks", "nonnegative resource deltas"]}
++
++
++def check_coverage(groups):
++    baseline = [r for r in groups["sweep"] if r["suite"] == "baseline"]
++    expected = {(p, k, n, repeat) for p in [8, 16, 32, 64, 128] for k in [1, 2, 4, 8]
++                for n in [1, 2, 4, 8, 16] for repeat in range(3 if n >= k else 1)}
++    assert {(*config(r), r["repetition"]) for r in baseline} == expected
++    assert all((r["status"] == "rejected") == (config(r)[2] < config(r)[1]) for r in baseline)
++    assert len([r for r in groups["sweep"] if r["suite"] == "delay"]) == 40
++    assert len([r for r in groups["sweep"] if r["suite"] == "mtu"]) == 2
++    assert len([r for r in groups["sweep"] if r["suite"] == "followup"]) == 6
++    screen = [r for r in groups["tuning"] if r["suite"] == "screen"]
++    manifest = json.loads((groups["root"] / "tuning/manifest.json").read_text())
++    expected = {(c, m, rep) for c in tune.CONFIGS for m in tune.modes(manifest) for rep in range(3)}
++    assert {(config(r), r["mode"], r["repetition"]) for r in screen} == expected
++    assert all(r["status"] == "measured" for r in screen)
++    followups = [r for r in groups["tuning"] + groups["matched-tuning"] if r["suite"] == "followup"]
++    for c in tune.CONFIGS:
++        for mode in ["yield-free", "yield-pinned", "yield-pinned-fifo1", "yield-pinned-rr1"]:
++            if mode in tune.modes(manifest):
++                assert len([r for r in followups if config(r) == c and r["mode"] == mode]) == 1
++    selection = json.loads((groups["root"] / "tuning/selection.json").read_text())
++    assert selection == json.loads(json.dumps(tune.select(screen, manifest)))
++    for row in groups["tuning"] + groups["matched-tuning"]:
++        client, server, pinned, gap = tune.modes(manifest)[row["mode"]]
++        assert row["polling"] == client and row["config"]["gap_timeout_us"] == gap
++        assert row["client_affinity"] == ([manifest["client_cpu"]] if pinned else manifest["allowed_cpus"])
++        assert row["server_affinity"] == ([manifest["server_cpu"]] if pinned else manifest["allowed_cpus"])
++    observations = []
++    for path in sorted((groups["root"] / "matched-tuning/scheduling").glob("*.json")):
++        data = json.loads(path.read_text())
++        mode = next(r["mode"] for r in groups["matched-tuning"] if r["case"] == path.stem)
++        expected_policy = 1 if mode.endswith("fifo1") else 2 if mode.endswith("rr1") else 0
++        assert len(data["processes"]) == 2
++        for proc in data["processes"]:
++            role = "client" if "client" in proc["command"] else "server"
++            for thread in proc["threads"]:
++                assert thread["policy"] == expected_policy and thread["priority"] == (1 if expected_policy else 0)
++                assert thread["nice"] == 0
++                pinned = tune.modes(manifest)[mode][2]
++                assert thread["affinity"] == ([manifest[f"{role}_cpu"]] if pinned else manifest["allowed_cpus"])
++        observations.append(path.name)
++    return {"complete_baseline_matrix": True, "complete_delay_mtu_followup_coverage": True,
++            "complete_tuning_screen": True, "selection_recomputed_identically": True,
++            "complete_fixed_priority_followups": True, "affinity_polling_gap_verified": True,
++            "live_process_thread_scheduling_verified": observations}
++
++
++def find_long(data, c, mode=None):
++    matches = [r for r in data if r["suite"] == "followup" and config(r) == c
++               and (mode is None or r.get("mode") == mode)]
++    assert len(matches) == 1, (c, mode, [r["case"] for r in matches])
++    return matches[0]
++
++
++def outcomes(row):
++    return f"{row['late'] + row['missing']:,} / {row['server']['concealed_packets']:,}"
++
++
++def timing_ms(p, k, n, delay=0, sample_rate=48000):
++    return {"packetization": p * 1000 / sample_rate,
++            "aggregation": (k - 1) * p * 1000 / sample_rate,
++            "allowance": n * p * 1000 / sample_rate,
++            "audio_latency": ((n + 1) * p + delay) * 1000 / sample_rate}
++
++
++def tables(groups, cloud_sweep, cloud_tuning):
++    lines = ["# Reproduced DSP comparison tables", "",
++             "Output misses = late + missing measured output slots. Concealments cover the whole stream, including warm-up. "
++             "These are different defects and their counts must not be conflated.", "",
++             "## Calculated digital audio latency", "",
++             "At 48 kHz, packetization is P/fs, the allowance after packet readiness is N*P/fs, and modeled source-to-output "
++             "audio latency is ((N+1)*P+A)/fs. All fixed-comparison rows use A=0. Aggregation (k-1)*P/fs and "
++             "network/DSP turnaround must fit inside the allowance; do not add them again. This assumes sample-paced "
++             "playback beginning at each packet's consumption deadline. It is not measured analogue input-to-output latency: "
++             "ADC/DAC, audio-device/callback and additional endpoint buffers are not included. Earlier reply arrival does not "
++             "reduce the fixed presentation delay.", "",
++             "## Complete campaign totals", "",
++             "| Campaign | Records | Measured slots | Verified samples | Output misses | Concealed input | Retired | Healthy measured runs |",
++             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
++    for name, data in [("Cloud sweep", cloud_sweep), ("Local sweep", groups["sweep"]),
++                       ("Cloud tuning", cloud_tuning), ("Local tuning", groups["tuning"]),
++                       ("Local matched tuning additions", groups["matched-tuning"]),
++                       ("Local matched sweep additions", groups["matched-sweep"])]:
++        lines.append(f"| {name} | {len(data)} | {sum(r.get('measured_packets',0) for r in data):,} | "
++                     f"{sum(r.get('verified_samples',0) for r in data):,} | {sum(r.get('late',0)+r.get('missing',0) for r in data):,} | "
++                     f"{sum(r.get('server',{}).get('concealed_packets',0) for r in data):,} | "
++                     f"{sum(r.get('server',{}).get('retired',False) for r in data)} | {sum(sweep.healthy(r) for r in data)} |")
++    lines += ["", "Totals mix configurations; local tuning also has two extra priority conditions. Use matched comparisons below.", "",
++              "## Strict baseline boundary (all three repetitions fully healthy)", "",
++              "Each cell is cloud → local minimum N, with calculated audio latency in parentheses. An em dash means no tested allowance was fully healthy in all repetitions.", "",
++              "| P | k=1 | k=2 | k=4 | k=8 |", "| --- | --- | --- | --- | --- |"]
++    for p in [8, 16, 32, 64, 128]:
++        cells = []
++        for k in [1, 2, 4, 8]:
++            values = []
++            for data in [cloud_sweep, groups["sweep"]]:
++                valid = []
++                for n in [1, 2, 4, 8, 16]:
++                    runs = [r for r in data if r["suite"] == "baseline" and config(r) == (p, k, n)]
++                    if len(runs) == 3 and all(sweep.healthy(r) for r in runs):
++                        valid.append(n)
++                values.append(f"{min(valid)} ({timing_ms(p,k,min(valid))['audio_latency']:.3f} ms)" if valid else "—")
++            cells.append(" → ".join(values))
++        lines.append(f"| {p} | " + " | ".join(cells) + " |")
++    lines += ["", "## Original sweep: fixed 60-second configurations", "",
++              "| P/k/N | Audio latency ms | Cloud miss % | Local miss % | Cloud late/missing | Local late/missing | Cloud/local concealments | Cloud/local retired | Cloud/local batch p99 us |",
++              "| --- | ---: | ---: | ---: | --- | --- | --- | --- | --- |"]
++    for cloud in sorted((r for r in cloud_sweep if r["suite"] == "followup"), key=config):
++        local = find_long(groups["sweep"] + groups["matched-sweep"], config(cloud))
++        lines.append(f"| {'/'.join(map(str,config(cloud)))} | {timing_ms(*config(cloud))['audio_latency']:.3f} | {100*cloud['deadline_miss_fraction']:.5f} | {100*local['deadline_miss_fraction']:.5f} | "
++                     f"{cloud['late']:,}/{cloud['missing']:,} | {local['late']:,}/{local['missing']:,} | "
++                     f"{cloud['server']['concealed_packets']:,}/{local['server']['concealed_packets']:,} | "
++                     f"{cloud['server']['retired']}/{local['server']['retired']} | "
++                     f"{cloud['batch_turnaround']['p99_ns']/1000:.1f}/{local['batch_turnaround']['p99_ns']/1000:.1f} |")
++    all_local = groups["tuning"] + groups["matched-tuning"]
++    lines += ["", "## Original tuning: same 60-second conditions on both hosts", "",
++              "Counts are output misses / concealed input. Baselines are fresh yield-free runs using the tuning executable.", "",
++              "| P/k/N | Audio latency ms | Cloud-selected alternative (held fixed locally) | Cloud baseline | Local baseline | Cloud alternative | Local same alternative |",
++              "| --- | ---: | --- | ---: | ---: | ---: | ---: |"]
++    for c in tune.CONFIGS:
++        cloud_base = find_long(cloud_tuning, c, "yield-free")
++        cloud_alt = next(r for r in cloud_tuning if r["suite"] == "followup" and config(r) == c and r["mode"] != "yield-free")
++        local_base = find_long(all_local, c, "yield-free")
++        local_alt = find_long(all_local, c, cloud_alt["mode"])
++        lines.append(f"| {'/'.join(map(str,c))} | {timing_ms(*c)['audio_latency']:.3f} | {cloud_alt['mode']} | {outcomes(cloud_base)} | {outcomes(local_base)} | {outcomes(cloud_alt)} | {outcomes(local_alt)} |")
++    lines += ["", "## Newly available real-time scheduling: matched 60-second runs", "",
++              "All three conditions use yielding, the same pinned CPUs, priority 1 for FIFO/RR, and a 200 us input gap. "
++              "Counts are output misses / concealed input. Ordinary scheduling has priority 0 and niceness 0.", "",
++              "| P/k/N | Allowance ms | Audio latency ms | Ordinary pinned | FIFO pinned | RR pinned |",
++              "| --- | ---: | ---: | ---: | ---: | ---: |"]
++    for c in tune.CONFIGS:
++        values = [outcomes(find_long(all_local, c, mode)) for mode in
++                  ["yield-pinned", "yield-pinned-fifo1", "yield-pinned-rr1"]]
++        times = timing_ms(*c)
++        lines.append(f"| {'/'.join(map(str,c))} | {times['allowance']:.3f} | {times['audio_latency']:.3f} | " + " | ".join(values) + " |")
++    lines += ["", "## Short screening, matched workloads (24 runs per condition)", "",
++              "Each condition has all eight configurations × three repetitions, mixing calculated audio latencies of 0.833–45.333 ms. "
++              "CPU cost covers both processes and their full lifetime, not DSP alone.", "",
++              "| Host | Condition | Output misses / slots | Concealed input | Retired | Fully healthy | Mean pair CPU cores |",
++              "| --- | --- | ---: | ---: | ---: | ---: | ---: |"]
++    for mode in list(tune.MODES) + ["yield-pinned-fifo1", "yield-pinned-rr1"]:
++        for host, data in [("Cloud", cloud_tuning), ("Local", groups["tuning"])]:
++            runs = [r for r in data if r["suite"] == "screen" and r["mode"] == mode]
++            if not runs:
++                continue
++            lines.append(f"| {host} | {mode} | {sum(r['late']+r['missing'] for r in runs):,} / {sum(r['measured_packets'] for r in runs):,} | "
++                         f"{sum(r['server']['concealed_packets'] for r in runs):,} | {sum(r['server']['retired'] for r in runs)} | "
++                         f"{sum(sweep.healthy(r) for r in runs)} | {sum(r['resources']['pair_cpu_cores'] for r in runs)/len(runs):.3f} |")
++    return "\n".join(lines) + "\n"
++
++
++def heatmap(cloud, local):
++    width, height = 1400, 660
++    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
++             '<rect width="100%" height="100%" fill="white"/>',
++             '<style>text{font-family: sans-serif;font-size:12px;fill:#222}.title{font-size:20px}.host{font-size:16px}</style>']
++
++    def text(x, y, value, kind="", anchor="middle"):
++        parts.append(f'<text x="{x}" y="{y}" class="{kind}" text-anchor="{anchor}">{html.escape(str(value))}</text>')
++
++    text(width / 2, 28, "Cloud VM vs local PREEMPT_RT laptop: baseline output deadline misses", "title")
++    text(width / 2, 50, "Three repetitions per admitted P/k/N; green means zero output misses, not necessarily zero input concealment")
++    for host_index, (name, data) in enumerate([("Cloud VM", cloud), ("Local laptop", local)]):
++        top = 105 + host_index * 265
++        text(20, top - 15, name, "host", "start")
++        for panel, k in enumerate([1, 2, 4, 8]):
++            left = 80 + panel * 335
++            text(left + 125, top - 15, f"k={k}")
++            for y, p in enumerate([8, 16, 32, 64, 128]):
++                text(left - 12, top + y * 35 + 23, p, anchor="end")
++                for x, n in enumerate([1, 2, 4, 8, 16]):
++                    runs = [r for r in data if r["suite"] == "baseline" and config(r) == (p, k, n) and r["status"] == "measured"]
++                    fill, label = "#dddddd", "ref"
++                    if runs:
++                        fraction = sum(r["late"] + r["missing"] for r in runs) / sum(r["measured_packets"] for r in runs)
++                        if fraction == 0:
++                            fill, label = "#d9f0d3", "0"
++                        else:
++                            strength = max(0, min(1, (math.log10(fraction) + 5) / 5))
++                            fill = f"rgb(255,{int(240-170*strength)},{int(160-90*strength)})"
++                            label = f"{100*fraction:.2g}%"
++                    parts.append(f'<rect x="{left+x*50}" y="{top+y*35}" width="50" height="35" fill="{fill}" stroke="white"/>')
++                    text(left + x * 50 + 25, top + y * 35 + 23, label)
++            for x, n in enumerate([1, 2, 4, 8, 16]):
++                text(left + x * 50 + 25, top + 195, n)
++            text(left + 125, top + 219, "Allowance N (packet periods)")
++    text(25, 632, "P = packet frames; k = block multiplier; ref = N < k (structural refusal). Color scale: 0.001% (pale) to 100% (red).", anchor="start")
++    parts.append("</svg>")
++    return "\n".join(parts) + "\n"
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--results", type=Path, default=ROOT / "artifacts/remote-dsp-local")
++    parser.add_argument("--output", type=Path, default=ROOT / "docs/remote-dsp/local-evidence")
++    args = parser.parse_args()
++    source, output = args.results.resolve(), args.output.resolve()
++    assert (source / "all-finished.json").exists(), "full campaign must finish before publication"
++    groups = {name: read_archive(source / name / "results.jsonl.gz") for name in CAMPAIGNS}
++    groups["root"] = source
++    checks = check_coverage(groups)
++    audits = {name: audit(groups[name], source / name / "results.jsonl.gz") for name in CAMPAIGNS}
++    cloud_sweep = read_archive(ROOT / "docs/remote-dsp/evidence/results.jsonl.gz")
++    cloud_tuning = read_archive(ROOT / "docs/remote-dsp/tuning-evidence/results.jsonl.gz")
++    for cloud in cloud_sweep:
++        if cloud["suite"] == "followup":
++            find_long(groups["sweep"] + groups["matched-sweep"], config(cloud))
++    for cloud in cloud_tuning:
++        if cloud["suite"] == "followup":
++            find_long(groups["tuning"] + groups["matched-tuning"], config(cloud), cloud["mode"])
++    output.mkdir(parents=True, exist_ok=True)
++    regeneration = {}
++    for name in CAMPAIGNS:
++        before = gzip.decompress((source / name / "results.jsonl.gz").read_bytes())
++        if "tuning" in name:
++            tune.report(source / name)
++        else:
++            sweep.write_report(source / name)
++        assert gzip.decompress((source / name / "results.jsonl.gz").read_bytes()) == before
++        regeneration[name] = True
++        dest = output / name
++        dest.mkdir(exist_ok=True)
++        for filename in ["manifest.json", "results.jsonl.gz", "summary.csv", "report.md", "selection.json", "reused.json"]:
++            path = source / name / filename
++            if path.exists():
++                shutil.copy2(path, dest / filename)
++        observations = source / name / "scheduling"
++        if observations.exists():
++            shutil.copytree(observations, dest / "scheduling", dirs_exist_ok=True)
++    for filename in ["campaign.json", "all-finished.json", "matched-sweep-reused.json"]:
++        shutil.copy2(source / filename, output / filename)
++    totals = {key: sum(data[key] for data in audits.values()) for key in
++              ["records", "measured_packets", "verified_samples", "unverified_samples", "correctness_errors", "late", "missing", "concealed_packets", "retired_runs"]}
++    result = {"campaigns": audits, "totals": totals, "coverage": checks,
++              "report_regeneration_payload_identical": regeneration,
++              "comparison_script_sha256": sweep.digest(Path(__file__)),
++              "credentials_excluded": True, "original_cloud_evidence_modified": False}
++    (output / "audit.json").write_text(json.dumps(result, indent=2) + "\n")
++    (output / "comparison-tables.md").write_text(tables(groups, cloud_sweep, cloud_tuning))
++    (output / "baseline-cloud-vs-local.svg").write_text(heatmap(cloud_sweep, groups["sweep"]))
++    print(json.dumps(result, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null
++++ b/scripts/tests/test_remote_dsp_transports.py
+@@ -0,0 +1,121 @@
++"""Transport-runner tests use synthetic records and do not launch timing campaigns."""
++import copy
++import importlib.util
++import json
++from pathlib import Path
++import shlex
++import sys
++import tempfile
++from types import SimpleNamespace
++import unittest
++from unittest import mock
++
++if sys.platform == "win32":
++    raise unittest.SkipTest("Linux measurement runner requires POSIX resource support")
++
++SCRIPTS = Path(__file__).resolve().parents[1]
++SPEC = importlib.util.spec_from_file_location("transport_benchmark", SCRIPTS / "benchmark_remote_dsp_transports.py")
++runner = importlib.util.module_from_spec(SPEC)
++with mock.patch.object(sys, "path", [str(SCRIPTS), *sys.path]):
++    SPEC.loader.exec_module(runner)
++
++
++class TransportBenchmarkTests(unittest.TestCase):
++    def setUp(self):
++        self.case = ["screen", [16, 4, 8], "tcp-complete", "other", 0, 0.05]
++        self.machine = {"cases": [self.case], "modes": ["other"], "client_cpu": 0, "server_cpu": 2,
++                        "arguments": {"sample_rate": 48000, "delay": 0, "stall_us": 2000},
++                        "client": {"allowed_cpus": [0, 1], "nice": 0},
++                        "server": {"allowed_cpus": [2, 3], "nice": 0}}
++        def distribution(count):
++            return {"count": count, "histogram_us": [[1, count]], "mean_ns": 1000,
++                    "max_ns": 1000, "p50_ns": 1000, "p95_ns": 1000, "p99_ns": 1000, "p999_ns": 1000}
++        self.row = {"case": runner.case_name(self.case), "suite": "screen", "variant": "tcp-complete",
++                    "mode": "other", "repetition": 0, "status": "measured", "client_exit_code": 0, "server_exit_code": 0,
++                    "requested": {"P": 16, "k": 4, "N": 8, "A": 0, "channels": 2, "seconds": 0.05, "warmup": 0},
++                    "config": {"packet_frames": 16, "multiplier": 4, "allowance": 8, "channels": 2, "sample_rate": 48000},
++                    "measured_packets": 12, "on_time": 12, "late": 0, "missing": 0, "deadline_miss_fraction": 0,
++                    "sent": 12, "verified_samples": 384, "unverified_samples": 0, "correctness_errors": 0,
++                    "transport": "tcp", "input_policy": "complete", "catch_up": True, "transport_error": None,
++                    "source_stall_us": 0, "source_stalled": False,
++                    "server": {"concealed_packets": 0, "retired": False},
++                    "client_audio": {"nodelay": True}, "server_audio": {"nodelay": True},
++                    "client_runtime": {"scheduler": 0, "realtime_priority": 0, "nice": 0, "affinity": "0-1"},
++                    "worker_runtime": {"scheduler": 0, "realtime_priority": 0, "nice": 0, "affinity": "2-3"},
++                    "rtt": distribution(12), "sender_lateness": distribution(12),
++                    "batch_turnaround": distribution(3), "dsp_processing": distribution(3)}
++
++    def test_config_parser_and_cpu_ranges(self):
++        self.assertEqual(runner.parse_config("16,4,8"), (16, 4, 8))
++        self.assertEqual(runner.cpus("0-2,5,8-9"), [0, 1, 2, 5, 8, 9])
++        for value in ["16,4,2", "0,1,1", "16,4", "a,b,c"]:
++            with self.subTest(value=value), self.assertRaises(runner.argparse.ArgumentTypeError):
++                runner.parse_config(value)
++
++    def test_ssh_command_quotes_paths_and_does_not_accept_option_destinations(self):
++        args = SimpleNamespace(server_ssh="user@host", server_root="/a path/project", ssh_port=2222)
++        command = runner.server_command(args, ["/a path/bin", "--credential-file", "/a path/key;not-shell"])
++        self.assertEqual(command[:-1], ["ssh", "-o", "BatchMode=yes", "-p", "2222", "--", "user@host"])
++        self.assertIn(shlex.quote("/a path/project"), command[-1])
++        self.assertIn(shlex.quote("/a path/key;not-shell"), command[-1])
++        args.server_ssh = "-oProxyCommand=bad"
++        with self.assertRaises(ValueError):
++            runner.server_command(args, ["binary"])
++
++    def test_valid_record_and_partial_coverage_are_distinct(self):
++        audit = runner.audit_rows([self.row], self.machine)
++        self.assertTrue(audit["complete"])
++        self.assertEqual(audit["verified_samples"], 384)
++        self.assertFalse(runner.audit_rows([], self.machine)["complete"])
++
++    def test_duplicate_and_inconsistent_counts_are_rejected(self):
++        with self.assertRaises(AssertionError):
++            runner.audit_rows([self.row, self.row], self.machine)
++        row = copy.deepcopy(self.row)
++        row["missing"] = 1
++        with self.assertRaises(AssertionError):
++            runner.audit_rows([row], self.machine)
++
++    def test_actual_priority_affinity_and_tcp_nodelay_are_required(self):
++        for section, field, bad in [("client_runtime", "scheduler", 1), ("worker_runtime", "affinity", "7"),
++                                    ("client_audio", "nodelay", False), ("server_audio", "nodelay", False)]:
++            with self.subTest(section=section, field=field):
++                row = copy.deepcopy(self.row)
++                row[section][field] = bad
++                with self.assertRaises(AssertionError):
++                    runner.audit_rows([row], self.machine)
++
++    def test_complete_policy_cannot_claim_concealed_input(self):
++        row = copy.deepcopy(self.row)
++        row["server"]["concealed_packets"] = 1
++        with self.assertRaises(AssertionError):
++            runner.audit_rows([row], self.machine)
++
++    def test_stall_is_explicit_instead_of_mislabeled_as_normal_operation(self):
++        row = copy.deepcopy(self.row)
++        row["source_stall_us"] = 2000
++        row["source_stalled"] = True
++        with self.assertRaises(AssertionError):
++            runner.audit_rows([row], self.machine)
++
++    def test_report_reproduces_archive_and_excludes_credentials_from_publication(self):
++        with tempfile.TemporaryDirectory() as directory:
++            output = Path(directory) / "raw"
++            output.mkdir()
++            (output / "manifest.json").write_text(json.dumps(self.machine))
++            (output / f"{self.row['case']}.json").write_text(json.dumps(self.row))
++            (output / "credential.key").write_bytes(bytes(32))
++            (output / "implementation.patch").write_text("fixture patch\n")
++            published = Path(directory) / "published"
++            runner.report(output, published)
++            before = (output / "results.jsonl.gz").read_bytes()
++            runner.report(output)
++            self.assertEqual(before, (output / "results.jsonl.gz").read_bytes())
++            self.assertEqual(runner.read_rows(published), [self.row])
++            self.assertFalse((published / "credential.key").exists())
++            self.assertIn("3.0", (published / "summary.csv").read_text())
++            self.assertIn("TCP_NODELAY", (published / "audit.json").read_text())
++
++
++if __name__ == "__main__":
++    unittest.main()
+--- /dev/null
++++ b/src/rust/shoop_dsp_host/src/audio.rs
+@@ -0,0 +1,500 @@
++use clap::ValueEnum;
++use serde::{Deserialize, Serialize};
++use shoop_remote_dsp::Config;
++use std::{
++    io::{self, Read, Write},
++    net::{IpAddr, SocketAddr, TcpListener, TcpStream, UdpSocket},
++    time::{Duration, Instant},
++};
++
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
++#[serde(rename_all = "kebab-case")]
++pub enum Transport {
++    #[default]
++    Udp,
++    Tcp,
++}
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
++#[serde(rename_all = "kebab-case")]
++pub enum InputPolicy {
++    #[default]
++    Gap,
++    Complete,
++}
++#[derive(Default, Serialize)]
++struct Counters {
++    queue_high_water_bytes: usize,
++    write_would_block: u64,
++    error: Option<String>,
++}
++
++pub(crate) struct Framing {
++    receive: Vec<u8>,
++    received: usize,
++    body_length: Option<usize>,
++    transmit: Vec<u8>,
++    head: usize,
++    queued: usize,
++    maximum: usize,
++    counters: Counters,
++}
++impl Framing {
++    fn new(maximum: usize, capacity: usize) -> Self {
++        Self {
++            receive: vec![0; maximum + 4],
++            received: 0,
++            body_length: None,
++            transmit: vec![0; capacity.max(maximum + 4)],
++            head: 0,
++            queued: 0,
++            maximum,
++            counters: Counters::default(),
++        }
++    }
++    fn receive(&mut self, reader: &mut impl Read, output: &mut [u8]) -> io::Result<usize> {
++        for _ in 0..32 {
++            if self.received == 4 && self.body_length.is_none() {
++                let length = u32::from_le_bytes(self.receive[..4].try_into().unwrap()) as usize;
++                if length == 0 || length > self.maximum || length > output.len() {
++                    return Err(io::Error::new(
++                        io::ErrorKind::InvalidData,
++                        "invalid audio frame length",
++                    ));
++                }
++                self.body_length = Some(length);
++            }
++            let target = self.body_length.map_or(4, |length| length + 4);
++            if self.received == target {
++                let length = self.body_length.unwrap();
++                output[..length].copy_from_slice(&self.receive[4..target]);
++                self.received = 0;
++                self.body_length = None;
++                return Ok(length);
++            }
++            match reader.read(&mut self.receive[self.received..target]) {
++                Ok(0) => {
++                    return Err(io::Error::new(
++                        io::ErrorKind::UnexpectedEof,
++                        "audio connection closed",
++                    ))
++                }
++                Ok(n) => self.received += n,
++                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
++                Err(e) => return Err(e),
++            }
++        }
++        Err(io::ErrorKind::WouldBlock.into())
++    }
++    fn enqueue(&mut self, packet: &[u8]) -> io::Result<()> {
++        if packet.is_empty() || packet.len() > self.maximum {
++            return Err(io::Error::new(
++                io::ErrorKind::InvalidInput,
++                "invalid outgoing audio length",
++            ));
++        }
++        if packet.len() + 4 > self.transmit.len() - self.queued {
++            return Err(io::Error::new(
++                io::ErrorKind::OutOfMemory,
++                "bounded TCP audio queue exhausted; stream cannot skip bytes",
++            ));
++        }
++        for bytes in [&(packet.len() as u32).to_le_bytes()[..], packet] {
++            let tail = (self.head + self.queued) % self.transmit.len();
++            let first = bytes.len().min(self.transmit.len() - tail);
++            self.transmit[tail..tail + first].copy_from_slice(&bytes[..first]);
++            self.transmit[..bytes.len() - first].copy_from_slice(&bytes[first..]);
++            self.queued += bytes.len();
++        }
++        self.counters.queue_high_water_bytes =
++            self.counters.queue_high_water_bytes.max(self.queued);
++        Ok(())
++    }
++    fn flush(&mut self, writer: &mut impl Write) -> io::Result<()> {
++        for _ in 0..32 {
++            if self.queued == 0 {
++                break;
++            }
++            let count = self.queued.min(self.transmit.len() - self.head);
++            match writer.write(&self.transmit[self.head..self.head + count]) {
++                Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
++                Ok(n) => {
++                    self.head = (self.head + n) % self.transmit.len();
++                    self.queued -= n;
++                }
++                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
++                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
++                    self.counters.write_would_block += 1;
++                    break;
++                }
++                Err(e) => return Err(e),
++            }
++        }
++        Ok(())
++    }
++}
++
++pub enum Audio {
++    Udp {
++        socket: UdpSocket,
++        peer: SocketAddr,
++        connected: bool,
++    },
++    Listening {
++        listener: TcpListener,
++        token: [u8; 32],
++        peer: IpAddr,
++        config: Config,
++        buffer_size: usize,
++    },
++    Tcp {
++        stream: TcpStream,
++        frames: Framing,
++    },
++}
++fn buffers(socket: &socket2::SockRef<'_>, size: usize) -> io::Result<()> {
++    socket.set_recv_buffer_size(size)?;
++    socket.set_send_buffer_size(size)
++}
++impl Audio {
++    pub fn udp_client(address: SocketAddr) -> io::Result<Self> {
++        let socket = UdpSocket::bind(address)?;
++        buffers(&socket2::SockRef::from(&socket), 1_048_576)?;
++        socket.set_nonblocking(true)?;
++        Ok(Self::Udp {
++            socket,
++            peer: address,
++            connected: false,
++        })
++    }
++    pub fn server(
++        transport: Transport,
++        address: SocketAddr,
++        peer: SocketAddr,
++        config: Config,
++        buffer_size: usize,
++    ) -> io::Result<Self> {
++        match transport {
++            Transport::Udp => {
++                let socket = UdpSocket::bind(address)?;
++                buffers(&socket2::SockRef::from(&socket), buffer_size)?;
++                socket.set_nonblocking(true)?;
++                Ok(Self::Udp {
++                    socket,
++                    peer,
++                    connected: false,
++                })
++            }
++            Transport::Tcp => {
++                let socket = socket2::Socket::new(
++                    socket2::Domain::for_address(address),
++                    socket2::Type::STREAM,
++                    Some(socket2::Protocol::TCP),
++                )?;
++                socket.set_reuse_address(true)?;
++                socket.bind(&address.into())?;
++                socket.listen(8)?;
++                let listener: TcpListener = socket.into();
++                buffers(&socket2::SockRef::from(&listener), buffer_size)?;
++                listener.set_nonblocking(true)?;
++                let mut token = [0; 32];
++                getrandom::fill(&mut token).map_err(io::Error::other)?;
++                Ok(Self::Listening {
++                    listener,
++                    token,
++                    peer: peer.ip(),
++                    config,
++                    buffer_size,
++                })
++            }
++        }
++    }
++    pub fn tcp(stream: TcpStream, config: Config, buffer_size: usize) -> io::Result<Self> {
++        buffers(&socket2::SockRef::from(&stream), buffer_size)?;
++        stream.set_nodelay(true)?;
++        stream.set_nonblocking(true)?;
++        let maximum = config.max_packet_bytes();
++        let packets = config.allowance as usize
++            + config.reorder_packets as usize
++            + config.multiplier as usize
++            + 1;
++        Ok(Self::Tcp {
++            stream,
++            frames: Framing::new(maximum, ((maximum + 4) * packets).min(8 * 1024 * 1024)),
++        })
++    }
++    pub fn activate(self) -> io::Result<Self> {
++        let Self::Listening {
++            listener,
++            token,
++            peer,
++            config,
++            buffer_size,
++        } = self
++        else {
++            return Ok(self);
++        };
++        let deadline = Instant::now() + Duration::from_secs(3);
++        loop {
++            if Instant::now() >= deadline {
++                return Err(io::Error::new(
++                    io::ErrorKind::TimedOut,
++                    "TCP audio attach timed out",
++                ));
++            }
++            match listener.accept() {
++                Ok((stream, address)) if address.ip() == peer => {
++                    let stream = shoop_transport_socket::setup::authenticate(
++                        stream,
++                        token,
++                        true,
++                        deadline.saturating_duration_since(Instant::now()),
++                    )?;
++                    return Self::tcp(stream, config, buffer_size);
++                }
++                Ok(_) => {}
++                Err(e)
++                    if e.kind() == io::ErrorKind::WouldBlock
++                        || e.kind() == io::ErrorKind::Interrupted =>
++                {
++                    std::thread::sleep(Duration::from_micros(100))
++                }
++                Err(e) => return Err(e),
++            }
++        }
++    }
++    pub fn connect_udp(&mut self, address: SocketAddr) -> io::Result<()> {
++        let Self::Udp {
++            socket,
++            peer,
++            connected,
++        } = self
++        else {
++            return Err(io::ErrorKind::InvalidInput.into());
++        };
++        socket.connect(address)?;
++        *peer = address;
++        *connected = true;
++        Ok(())
++    }
++    pub fn address(&self) -> io::Result<SocketAddr> {
++        match self {
++            Self::Udp { socket, .. } => socket.local_addr(),
++            Self::Listening { listener, .. } => listener.local_addr(),
++            Self::Tcp { stream, .. } => stream.local_addr(),
++        }
++    }
++    pub fn token(&self) -> Option<[u8; 32]> {
++        match self {
++            Self::Listening { token, .. } => Some(*token),
++            _ => None,
++        }
++    }
++    pub fn buffer_sizes(&self) -> io::Result<(usize, usize)> {
++        let socket = match self {
++            Self::Udp { socket, .. } => socket2::SockRef::from(socket),
++            Self::Listening { listener, .. } => socket2::SockRef::from(listener),
++            Self::Tcp { stream, .. } => socket2::SockRef::from(stream),
++        };
++        Ok((socket.recv_buffer_size()?, socket.send_buffer_size()?))
++    }
++    pub fn receive(&mut self, output: &mut [u8]) -> io::Result<usize> {
++        match self {
++            Self::Udp { socket, peer, .. } => match socket.recv_from(output) {
++                Ok((n, address)) if address == *peer => Ok(n),
++                Ok(_) => Err(io::ErrorKind::WouldBlock.into()),
++                Err(e) => Err(e),
++            },
++            Self::Tcp { stream, frames } => {
++                let result = frames.receive(stream, output);
++                if let Err(e) = &result {
++                    if e.kind() != io::ErrorKind::WouldBlock
++                        && e.kind() != io::ErrorKind::Interrupted
++                    {
++                        frames.counters.error.get_or_insert_with(|| e.to_string());
++                    }
++                }
++                result
++            }
++            Self::Listening { .. } => Err(io::ErrorKind::NotConnected.into()),
++        }
++    }
++    pub fn send(&mut self, packet: &[u8]) -> io::Result<()> {
++        match self {
++            Self::Udp {
++                socket,
++                peer,
++                connected,
++            } => {
++                let n = if *connected {
++                    socket.send(packet)?
++                } else {
++                    socket.send_to(packet, *peer)?
++                };
++                if n != packet.len() {
++                    return Err(io::ErrorKind::WriteZero.into());
++                }
++                Ok(())
++            }
++            Self::Tcp { stream, frames } => {
++                if frames.counters.error.is_some() {
++                    return Err(io::ErrorKind::BrokenPipe.into());
++                }
++                let result = frames
++                    .flush(stream)
++                    .and_then(|_| frames.enqueue(packet))
++                    .and_then(|_| frames.flush(stream));
++                if let Err(e) = &result {
++                    frames.counters.error.get_or_insert_with(|| e.to_string());
++                }
++                result
++            }
++            Self::Listening { .. } => Err(io::ErrorKind::NotConnected.into()),
++        }
++    }
++    pub fn flush(&mut self) -> io::Result<()> {
++        if let Self::Tcp { stream, frames } = self {
++            if frames.counters.error.is_some() {
++                return Err(io::ErrorKind::BrokenPipe.into());
++            }
++            let result = frames.flush(stream);
++            if let Err(e) = &result {
++                frames.counters.error.get_or_insert_with(|| e.to_string());
++            }
++            result?;
++        }
++        Ok(())
++    }
++    pub fn failed(&self) -> bool {
++        matches!(self, Self::Tcp { frames, .. } if frames.counters.error.is_some())
++    }
++    pub fn report(&self) -> serde_json::Value {
++        let (receive, send) = self.buffer_sizes().unwrap_or_default();
++        match self {
++            Self::Tcp { stream, frames } => {
++                serde_json::json!({"transport":"tcp", "nodelay":stream.nodelay().ok(),
++                "local_endpoint":stream.local_addr().ok().map(|v|v.to_string()),"peer_endpoint":stream.peer_addr().ok().map(|v|v.to_string()),
++                "receive_buffer":receive,"send_buffer":send,"queue_capacity_bytes":frames.transmit.len(),
++                "queued_bytes":frames.queued,"counters":frames.counters})
++            }
++            Self::Udp { socket, peer, .. } => {
++                serde_json::json!({"transport":"udp","receive_buffer":receive,"send_buffer":send,
++                "local_endpoint":socket.local_addr().ok().map(|v|v.to_string()),"peer_endpoint":peer.to_string()})
++            }
++            Self::Listening { .. } => serde_json::Value::Null,
++        }
++    }
++}
++
++pub fn runtime_info() -> serde_json::Value {
++    let stat = std::fs::read_to_string("/proc/thread-self/stat").unwrap_or_default();
++    let fields: Vec<_> = stat
++        .rsplit_once(')')
++        .map_or("", |(_, rest)| rest)
++        .split_whitespace()
++        .collect();
++    let number = |index| {
++        fields
++            .get(index)
++            .and_then(|value: &&str| value.parse::<i64>().ok())
++    };
++    let status = std::fs::read_to_string("/proc/thread-self/status").unwrap_or_default();
++    let affinity = status
++        .lines()
++        .find_map(|line| line.strip_prefix("Cpus_allowed_list:"))
++        .map(str::trim);
++    serde_json::json!({"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,
++        "kernel":std::fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|v|v.trim().to_string()),
++        "scheduler":number(38),"realtime_priority":number(37),"nice":number(16),"affinity":affinity})
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    struct Fragmented {
++        bytes: std::collections::VecDeque<u8>,
++        block: bool,
++    }
++    impl Read for Fragmented {
++        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
++            self.block = !self.block;
++            if self.block {
++                return Err(io::ErrorKind::WouldBlock.into());
++            }
++            match self.bytes.pop_front() {
++                Some(byte) => {
++                    out[0] = byte;
++                    Ok(1)
++                }
++                None => Ok(0),
++            }
++        }
++    }
++    impl Write for Fragmented {
++        fn write(&mut self, input: &[u8]) -> io::Result<usize> {
++            self.block = !self.block;
++            if self.block {
++                return Err(io::ErrorKind::WouldBlock.into());
++            }
++            self.bytes.push_back(input[0]);
++            Ok(1)
++        }
++        fn flush(&mut self) -> io::Result<()> {
++            Ok(())
++        }
++    }
++    #[shoop_wasm_test_support::shoop_test(no_wasm = "native TCP audio framing")]
++    fn fragmented_reads_writes_and_wrapped_queue_preserve_every_byte() {
++        let mut frames = Framing::new(12, 23);
++        let mut wire = Fragmented {
++            bytes: Default::default(),
++            block: false,
++        };
++        for _ in 0..3 {
++            frames.enqueue(b"first").unwrap();
++            frames.enqueue(b"second").unwrap();
++            while frames.queued != 0 {
++                frames.flush(&mut wire).unwrap();
++            }
++            let mut output = [0; 12];
++            for expected in [b"first".as_slice(), b"second".as_slice()] {
++                loop {
++                    match frames.receive(&mut wire, &mut output) {
++                        Ok(n) => {
++                            assert_eq!(&output[..n], expected);
++                            break;
++                        }
++                        Err(e) => assert_eq!(e.kind(), io::ErrorKind::WouldBlock),
++                    }
++                }
++            }
++        }
++        assert!(frames.counters.write_would_block > 0);
++    }
++    #[shoop_wasm_test_support::shoop_test(no_wasm = "native TCP audio framing")]
++    fn malformed_lengths_truncation_and_backpressure_are_explicit() {
++        for length in [0u32, 13, u32::MAX] {
++            let mut frames = Framing::new(12, 16);
++            assert_eq!(
++                frames
++                    .receive(&mut io::Cursor::new(length.to_le_bytes()), &mut [0; 12])
++                    .unwrap_err()
++                    .kind(),
++                io::ErrorKind::InvalidData
++            );
++        }
++        let mut frames = Framing::new(12, 16);
++        frames.enqueue(&[0; 12]).unwrap();
++        assert_eq!(
++            frames.enqueue(&[1]).unwrap_err().kind(),
++            io::ErrorKind::OutOfMemory
++        );
++        let partial = [3, 0, 0, 0, 1, 2];
++        assert_eq!(
++            frames
++                .receive(&mut io::Cursor::new(partial), &mut [0; 12])
++                .unwrap_err()
++                .kind(),
++            io::ErrorKind::UnexpectedEof
++        );
++    }
++}

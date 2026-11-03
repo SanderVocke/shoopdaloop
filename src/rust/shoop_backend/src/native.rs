@@ -8012,6 +8012,8 @@ mod tests {
         {
             let runtime = backend.runtime_mut().unwrap();
             runtime.driver.dummy_enter_controlled_mode();
+            // Finish any in-flight automatic cycle before staging the controlled input.
+            runtime.driver.wait_process();
             let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
             let output = runtime.tracks[&created.track_id].audio_outputs[0].clone();
             input.dummy_queue_data(&[1.0, -0.5, 0.25, 0.0]).unwrap();

@@ -1,0 +1,212 @@
+{
+  "started_utc": "2026-11-02T21:43:25.747909+00:00",
+  "source_revision": "e21ca5ee566f97724dbd11af79504e5a4ae45c80",
+  "source_changes": "",
+  "binary": "/workspace/shoopdaloop/work/benchmark-bin/shoop_dsp_host-tuning",
+  "binary_sha256": "36d952b0f15d49368913ab7b12cdf693e25bd1978bb3146432312ffdae6a4b89",
+  "runner_sha256": "109bb3afa8abf9d45d9723912c68fb59bc6e7abfdb5e234685828269b9f9b57b",
+  "command": [
+    "scripts/tune_remote_dsp.py",
+    "--binary",
+    "work/benchmark-bin/shoop_dsp_host-tuning",
+    "--client-cpu",
+    "1",
+    "--server-cpu",
+    "2",
+    "--profile",
+    "all",
+    "--output",
+    "work/remote-dsp-tuning"
+  ],
+  "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "python": "3.12.14",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "build_profile": "release",
+  "rustflags": "-D warnings",
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "client_cpu": 1,
+  "server_cpu": 2,
+  "inherited_scheduler": 0,
+  "inherited_nice": 0,
+  "priority_probes": [
+    {
+      "name": "fifo1",
+      "command": [
+        "chrt",
+        "--fifo",
+        "1",
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "chrt: failed to set pid 0's policy: Operation not permitted\n",
+      "actual": null,
+      "available": false,
+      "prefix": [
+        "chrt",
+        "--fifo",
+        "1"
+      ]
+    },
+    {
+      "name": "rr1",
+      "command": [
+        "chrt",
+        "--rr",
+        "1",
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "chrt: failed to set pid 0's policy: Operation not permitted\n",
+      "actual": null,
+      "available": false,
+      "prefix": [
+        "chrt",
+        "--rr",
+        "1"
+      ]
+    },
+    {
+      "name": "nice-minus10",
+      "command": [
+        "nice",
+        "-n",
+        "-10",
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "-c",
+        "import os,json;print(json.dumps({'scheduler':os.sched_getscheduler(0),'nice':os.getpriority(os.PRIO_PROCESS,0)}))"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"scheduler\": 0, \"nice\": 0}\n",
+      "stderr": "nice: cannot set niceness: Permission denied\n",
+      "actual": {
+        "scheduler": 0,
+        "nice": 0
+      },
+      "available": false,
+      "prefix": [
+        "nice",
+        "-n",
+        "-10"
+      ]
+    }
+  ],
+  "modes": {
+    "yield-free": [
+      "yield",
+      "yield",
+      false,
+      200
+    ],
+    "yield-pinned": [
+      "yield",
+      "yield",
+      true,
+      200
+    ],
+    "spin-free": [
+      "spin",
+      "spin",
+      false,
+      200
+    ],
+    "spin-pinned": [
+      "spin",
+      "spin",
+      true,
+      200
+    ],
+    "client-spin-pinned": [
+      "spin",
+      "yield",
+      true,
+      200
+    ],
+    "server-spin-pinned": [
+      "yield",
+      "spin",
+      true,
+      200
+    ],
+    "spin-pinned-gap1000": [
+      "spin",
+      "spin",
+      true,
+      1000
+    ]
+  },
+  "configs": [
+    [
+      8,
+      1,
+      4
+    ],
+    [
+      8,
+      1,
+      8
+    ],
+    [
+      8,
+      1,
+      16
+    ],
+    [
+      16,
+      4,
+      4
+    ],
+    [
+      16,
+      4,
+      8
+    ],
+    [
+      16,
+      4,
+      16
+    ],
+    [
+      128,
+      8,
+      8
+    ],
+    [
+      128,
+      8,
+      16
+    ]
+  ],
+  "seed": 20261103,
+  "screen_repetitions": 3,
+  "screen_seconds": 2,
+  "followup_seconds": 60,
+  "warmup_seconds": 0.5,
+  "limitations": "shared Linux host; affinity is not CPU isolation; cgroup counters include other tasks; no physical NIC/FPGA; no builds/tests during measurements",
+  "cpu1_topology": {
+    "physical_package_id": "0",
+    "core_id": "1",
+    "thread_siblings_list": "1"
+  },
+  "cpu2_topology": {
+    "physical_package_id": "0",
+    "core_id": "2",
+    "thread_siblings_list": "2"
+  },
+  "cpu.max": "400000 100000",
+  "cpuset.cpus.effective": "0-4",
+  "memory.max": "17179869184",
+  "cpu_model": "AMD EPYC 7763 64-Core Processor"
+}

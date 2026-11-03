@@ -1,0 +1,27 @@
+[package]
+name = "shoop_dsp_host"
+version.workspace = true
+edition = "2021"
+
+[features]
+default = []
+carla = ["dep:shoop_carla_native"]
+
+[dependencies]
+shoop_dsp = { path = "../shoop_dsp" }
+shoop_remote_dsp = { path = "../shoop_remote_dsp", features = ["serde"] }
+shoop_carla_native = { path = "../shoop_carla_native", optional = true }
+shoop_transport_socket = { path = "../shoop_transport_socket" }
+anyhow = { workspace = true, features = ["std"] }
+clap = { workspace = true }
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true }
+getrandom = "0.4"
+socket2 = "0.6"
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

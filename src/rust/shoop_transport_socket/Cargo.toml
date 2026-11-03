@@ -8,6 +8,14 @@ workspace = true
 [dependencies]
 shoop_transport = { path = "../shoop_transport" }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["user"] }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = { workspace = true, features = ["std"] }
 getrandom = "0.4"
 socket2 = "0.6"

@@ -1,0 +1,96 @@
+# Scheduling/polling experiment
+
+232 recorded runs; 218 fully healthy runs.
+
+All outcomes are retained. Pair CPU covers launch, warm-up, measurement and reporting. Service gaps include process work and scheduling delays, not just scheduler latency. Cgroup deltas include other tasks.
+
+| Suite | P | k | N | Mode | Runs | Output misses / slots | Concealed | Retired | Mean pair CPU cores |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| followup | 8 | 1 | 4 | client-spin-pinned | 1 | 0 / 360000 | 0 | 0 | 1.983 |
+| followup | 8 | 1 | 4 | yield-free | 1 | 147 / 360000 | 0 | 0 | 2.013 |
+| followup | 8 | 1 | 8 | server-spin-pinned | 1 | 0 / 360000 | 0 | 0 | 1.983 |
+| followup | 8 | 1 | 8 | yield-free | 1 | 0 / 360000 | 0 | 0 | 2.015 |
+| followup | 8 | 1 | 16 | server-spin-pinned | 1 | 0 / 360000 | 0 | 0 | 1.979 |
+| followup | 8 | 1 | 16 | yield-free | 1 | 0 / 360000 | 0 | 0 | 2.016 |
+| followup | 16 | 4 | 4 | spin-pinned | 1 | 5 / 180000 | 28 | 0 | 1.984 |
+| followup | 16 | 4 | 4 | yield-free | 1 | 3 / 180000 | 1 | 0 | 2.017 |
+| followup | 16 | 4 | 8 | spin-pinned-gap1000 | 1 | 0 / 180000 | 0 | 0 | 1.986 |
+| followup | 16 | 4 | 8 | yield-free | 1 | 0 / 180000 | 0 | 0 | 2.019 |
+| followup | 16 | 4 | 16 | yield-free | 1 | 0 / 180000 | 0 | 0 | 2.019 |
+| followup | 16 | 4 | 16 | yield-pinned | 1 | 0 / 180000 | 0 | 0 | 1.987 |
+| followup | 128 | 8 | 8 | yield-free | 1 | 0 / 22504 | 0 | 0 | 2.021 |
+| followup | 128 | 8 | 8 | yield-pinned | 1 | 0 / 22504 | 0 | 0 | 1.989 |
+| followup | 128 | 8 | 16 | spin-pinned-gap1000 | 1 | 0 / 22504 | 0 | 0 | 1.989 |
+| followup | 128 | 8 | 16 | yield-free | 1 | 0 / 22504 | 1 | 0 | 2.020 |
+| screen | 8 | 1 | 4 | client-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.978 |
+| screen | 8 | 1 | 4 | server-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.978 |
+| screen | 8 | 1 | 4 | spin-free | 3 | 0 / 36000 | 0 | 0 | 2.010 |
+| screen | 8 | 1 | 4 | spin-pinned | 3 | 5594 / 36000 | 0 | 1 | 1.849 |
+| screen | 8 | 1 | 4 | spin-pinned-gap1000 | 3 | 0 / 36000 | 0 | 0 | 1.979 |
+| screen | 8 | 1 | 4 | yield-free | 3 | 0 / 36000 | 0 | 0 | 2.011 |
+| screen | 8 | 1 | 4 | yield-pinned | 3 | 0 / 36000 | 0 | 0 | 1.980 |
+| screen | 8 | 1 | 4 | yield-pinned-fifo1 | 3 | 0 / 36000 | 0 | 0 | 1.985 |
+| screen | 8 | 1 | 4 | yield-pinned-rr1 | 3 | 0 / 36000 | 0 | 0 | 1.985 |
+| screen | 8 | 1 | 8 | client-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.979 |
+| screen | 8 | 1 | 8 | server-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.976 |
+| screen | 8 | 1 | 8 | spin-free | 3 | 0 / 36000 | 0 | 0 | 2.011 |
+| screen | 8 | 1 | 8 | spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.978 |
+| screen | 8 | 1 | 8 | spin-pinned-gap1000 | 3 | 0 / 36000 | 0 | 0 | 1.979 |
+| screen | 8 | 1 | 8 | yield-free | 3 | 0 / 36000 | 0 | 0 | 2.012 |
+| screen | 8 | 1 | 8 | yield-pinned | 3 | 0 / 36000 | 0 | 0 | 1.977 |
+| screen | 8 | 1 | 8 | yield-pinned-fifo1 | 3 | 0 / 36000 | 0 | 0 | 1.985 |
+| screen | 8 | 1 | 8 | yield-pinned-rr1 | 3 | 0 / 36000 | 0 | 0 | 1.984 |
+| screen | 8 | 1 | 16 | client-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.980 |
+| screen | 8 | 1 | 16 | server-spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.979 |
+| screen | 8 | 1 | 16 | spin-free | 3 | 0 / 36000 | 0 | 0 | 2.011 |
+| screen | 8 | 1 | 16 | spin-pinned | 3 | 0 / 36000 | 0 | 0 | 1.979 |
+| screen | 8 | 1 | 16 | spin-pinned-gap1000 | 3 | 0 / 36000 | 0 | 0 | 1.980 |
+| screen | 8 | 1 | 16 | yield-free | 3 | 0 / 36000 | 0 | 0 | 2.010 |
+| screen | 8 | 1 | 16 | yield-pinned | 3 | 0 / 36000 | 0 | 0 | 1.980 |
+| screen | 8 | 1 | 16 | yield-pinned-fifo1 | 3 | 0 / 36000 | 0 | 0 | 1.985 |
+| screen | 8 | 1 | 16 | yield-pinned-rr1 | 3 | 0 / 36000 | 0 | 0 | 1.984 |
+| screen | 16 | 4 | 4 | client-spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 4 | server-spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 4 | spin-free | 3 | 0 / 18000 | 0 | 0 | 2.015 |
+| screen | 16 | 4 | 4 | spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.982 |
+| screen | 16 | 4 | 4 | spin-pinned-gap1000 | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 4 | yield-free | 3 | 0 / 18000 | 0 | 0 | 2.016 |
+| screen | 16 | 4 | 4 | yield-pinned | 3 | 0 / 18000 | 2 | 0 | 1.983 |
+| screen | 16 | 4 | 4 | yield-pinned-fifo1 | 3 | 0 / 18000 | 0 | 0 | 1.987 |
+| screen | 16 | 4 | 4 | yield-pinned-rr1 | 3 | 0 / 18000 | 0 | 0 | 1.988 |
+| screen | 16 | 4 | 8 | client-spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 8 | server-spin-pinned | 3 | 0 / 18000 | 3 | 0 | 1.982 |
+| screen | 16 | 4 | 8 | spin-free | 3 | 0 / 18000 | 0 | 0 | 2.014 |
+| screen | 16 | 4 | 8 | spin-pinned | 3 | 2 / 18000 | 23 | 0 | 1.967 |
+| screen | 16 | 4 | 8 | spin-pinned-gap1000 | 3 | 0 / 18000 | 0 | 0 | 1.980 |
+| screen | 16 | 4 | 8 | yield-free | 3 | 0 / 18000 | 2 | 0 | 2.013 |
+| screen | 16 | 4 | 8 | yield-pinned | 3 | 0 / 18000 | 4 | 0 | 1.977 |
+| screen | 16 | 4 | 8 | yield-pinned-fifo1 | 3 | 0 / 18000 | 0 | 0 | 1.988 |
+| screen | 16 | 4 | 8 | yield-pinned-rr1 | 3 | 0 / 18000 | 0 | 0 | 1.988 |
+| screen | 16 | 4 | 16 | client-spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 16 | server-spin-pinned | 3 | 0 / 18000 | 1 | 0 | 1.981 |
+| screen | 16 | 4 | 16 | spin-free | 3 | 0 / 18000 | 13 | 0 | 2.007 |
+| screen | 16 | 4 | 16 | spin-pinned | 3 | 0 / 18000 | 0 | 0 | 1.983 |
+| screen | 16 | 4 | 16 | spin-pinned-gap1000 | 3 | 0 / 18000 | 0 | 0 | 1.982 |
+| screen | 16 | 4 | 16 | yield-free | 3 | 0 / 18000 | 0 | 0 | 2.015 |
+| screen | 16 | 4 | 16 | yield-pinned | 3 | 0 / 18000 | 0 | 0 | 1.981 |
+| screen | 16 | 4 | 16 | yield-pinned-fifo1 | 3 | 0 / 18000 | 0 | 0 | 1.988 |
+| screen | 16 | 4 | 16 | yield-pinned-rr1 | 3 | 0 / 18000 | 0 | 0 | 1.988 |
+| screen | 128 | 8 | 8 | client-spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.986 |
+| screen | 128 | 8 | 8 | server-spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.986 |
+| screen | 128 | 8 | 8 | spin-free | 3 | 0 / 2256 | 0 | 0 | 2.019 |
+| screen | 128 | 8 | 8 | spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.986 |
+| screen | 128 | 8 | 8 | spin-pinned-gap1000 | 3 | 0 / 2256 | 0 | 0 | 1.986 |
+| screen | 128 | 8 | 8 | yield-free | 3 | 0 / 2256 | 0 | 0 | 2.019 |
+| screen | 128 | 8 | 8 | yield-pinned | 3 | 0 / 2256 | 0 | 0 | 1.984 |
+| screen | 128 | 8 | 8 | yield-pinned-fifo1 | 3 | 0 / 2256 | 0 | 0 | 1.991 |
+| screen | 128 | 8 | 8 | yield-pinned-rr1 | 3 | 0 / 2256 | 0 | 0 | 1.990 |
+| screen | 128 | 8 | 16 | client-spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.985 |
+| screen | 128 | 8 | 16 | server-spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.985 |
+| screen | 128 | 8 | 16 | spin-free | 3 | 0 / 2256 | 0 | 0 | 2.015 |
+| screen | 128 | 8 | 16 | spin-pinned | 3 | 0 / 2256 | 0 | 0 | 1.985 |
+| screen | 128 | 8 | 16 | spin-pinned-gap1000 | 3 | 0 / 2256 | 0 | 0 | 1.982 |
+| screen | 128 | 8 | 16 | yield-free | 3 | 0 / 2256 | 0 | 0 | 2.017 |
+| screen | 128 | 8 | 16 | yield-pinned | 3 | 0 / 2256 | 0 | 0 | 1.984 |
+| screen | 128 | 8 | 16 | yield-pinned-fifo1 | 3 | 0 / 2256 | 0 | 0 | 1.991 |
+| screen | 128 | 8 | 16 | yield-pinned-rr1 | 3 | 0 / 2256 | 0 | 0 | 1.990 |

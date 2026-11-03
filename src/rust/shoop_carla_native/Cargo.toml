@@ -1,0 +1,25 @@
+[package]
+name = "shoop_carla_native"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+shoop_dsp = { path = "../shoop_dsp" }
+anyhow = { workspace = true, features = ["std"] }
+base64 = { workspace = true }
+libloading = { workspace = true }
+libc = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
+shoop_tracing = { workspace = true, features = ["perfetto"] }
+rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
+
+[features]
+carla-system-tests = []
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+assert_no_alloc = { workspace = true }
+
+[lints]
+workspace = true

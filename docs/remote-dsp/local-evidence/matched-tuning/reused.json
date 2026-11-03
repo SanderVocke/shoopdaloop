@@ -1,0 +1,47 @@
+[
+  {
+    "config": [
+      16,
+      4,
+      8
+    ],
+    "mode": "spin-pinned-gap1000",
+    "reused": "tuning/followup-p16-k4-n8-spin-pinned-gap1000-r0.json"
+  },
+  {
+    "config": [
+      128,
+      8,
+      8
+    ],
+    "mode": "yield-pinned",
+    "reused": "tuning/followup-p128-k8-n8-yield-pinned-r0.json"
+  },
+  {
+    "config": [
+      16,
+      4,
+      4
+    ],
+    "mode": "spin-pinned",
+    "reused": "tuning/followup-p16-k4-n4-spin-pinned-r0.json"
+  },
+  {
+    "config": [
+      16,
+      4,
+      16
+    ],
+    "mode": "yield-pinned",
+    "reused": "tuning/followup-p16-k4-n16-yield-pinned-r0.json"
+  },
+  {
+    "config": [
+      8,
+      1,
+      8
+    ],
+    "mode": "server-spin-pinned",
+    "reused": "tuning/followup-p8-k1-n8-server-spin-pinned-r0.json"
+  }
+]

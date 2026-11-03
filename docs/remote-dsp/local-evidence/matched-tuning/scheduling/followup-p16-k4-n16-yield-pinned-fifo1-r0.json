@@ -1,0 +1,84 @@
+{
+  "observed_utc": "2026-11-03T13:25:06.642999+00:00",
+  "processes": [
+    {
+      "pid": 24126,
+      "command": [
+        "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+        "serve",
+        "--polling",
+        "yield",
+        "--once",
+        "--processor",
+        "delay-copy",
+        "--credential-file",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/credential.key"
+      ],
+      "threads": [
+        {
+          "tid": 24126,
+          "name": "shoop_dsp_host",
+          "policy": 1,
+          "priority": 1,
+          "nice": 0,
+          "affinity": [
+            4
+          ]
+        },
+        {
+          "tid": 24129,
+          "name": "network-dsp",
+          "policy": 1,
+          "priority": 1,
+          "nice": 0,
+          "affinity": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "pid": 24128,
+      "command": [
+        "/home/sander/dev/shoopdaloop-nettest/target/release/shoop_dsp_host",
+        "client",
+        "--polling",
+        "yield",
+        "--endpoint",
+        "127.0.0.1:44897",
+        "--credential-file",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/credential.key",
+        "--packet-frames",
+        "16",
+        "--multiplier",
+        "4",
+        "--allowance",
+        "16",
+        "--gap-timeout-us",
+        "200",
+        "--reorder-packets",
+        "64",
+        "--seed",
+        "20261102",
+        "--seconds",
+        "60",
+        "--warmup",
+        "0.5",
+        "--output",
+        "/home/sander/dev/shoopdaloop-nettest/artifacts/remote-dsp-local/matched-tuning/followup-p16-k4-n16-yield-pinned-fifo1-r0.requester.json.tmp"
+      ],
+      "threads": [
+        {
+          "tid": 24128,
+          "name": "shoop_dsp_host",
+          "policy": 1,
+          "priority": 1,
+          "nice": 0,
+          "affinity": [
+            2
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+case,suite,P,k,N,A,channels,status,on_time,late,missing,correctness_errors,verified_samples,deadline_miss_fraction,rtt_p99_ns,rtt_max_ns,batch_p99_ns,sender_p99_ns,retired
+followup-p8-k1-n16-a0-c2-r0,followup,8,1,16,0,2,measured,359998,2,0,0,5760000,5.555555555555556e-06,3577,2870969,3577,550,False

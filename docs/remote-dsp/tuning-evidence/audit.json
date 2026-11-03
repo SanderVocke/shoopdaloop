@@ -1,0 +1,27 @@
+{
+  "runs": 184,
+  "screen_runs": 168,
+  "followup_runs": 16,
+  "measured_packet_slots": 4495600,
+  "verified_samples": 124441600,
+  "incorrect_samples": 0,
+  "unverified_samples": 0,
+  "late": 6813,
+  "missing": 0,
+  "retired_runs": 0,
+  "cgroup_throttled_periods": 0,
+  "decompressed_sha256": "f28f94f232fd6333b52b6f6bd5f08574f63c564d011f9e88fb627f5a905e4f5e",
+  "source_revision": "e21ca5ee566f97724dbd11af79504e5a4ae45c80",
+  "original_evidence_preserved": true,
+  "checks": [
+    "complete matrix/repetitions",
+    "selected paired followups",
+    "process exit/status",
+    "packet outcome sums",
+    "independent sample counts",
+    "histogram counts/quantiles",
+    "actual affinities/polling/gap",
+    "source deadline lower-bound consistency",
+    "nonnegative resource deltas"
+  ]
+}

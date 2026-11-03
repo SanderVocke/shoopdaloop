@@ -1,0 +1,23 @@
+{
+  "records": 102,
+  "expected_records": 102,
+  "complete": true,
+  "infrastructure_or_verification_failures": [],
+  "measured_packets": 7146000,
+  "verified_samples": 152640000,
+  "incorrect_samples": 0,
+  "unverified_samples": 0,
+  "late": 0,
+  "missing": 0,
+  "concealed": 7,
+  "retired": 0,
+  "checks": [
+    "unique expected cases",
+    "packet/sample counts",
+    "histogram counts/means/quantile bins",
+    "actual per-thread policy/priority/affinity",
+    "complete-input semantics",
+    "TCP_NODELAY"
+  ],
+  "decompressed_sha256": "19936987a6c8d66f429ad717de306f7154797377a486b5208f51682e50dddf24"
+}

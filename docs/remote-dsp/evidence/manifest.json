@@ -1,0 +1,36 @@
+{
+  "started_utc": "2026-11-02T20:36:48.356131+00:00",
+  "source_revision": "46b9fd8d5a593cd915dc310cf37f974da9b931c7",
+  "source_changes": "",
+  "binary": "/workspace/shoopdaloop/work/benchmark-bin/shoop_dsp_host",
+  "binary_sha256": "edf6a5e619eae7a82e2927dd71295711e9460e59a1e6b22eb45fbdefc2a45d93",
+  "runner_sha256": "7736b583e41c199e24aa036a98a3214198a29372287a7f8a7968adb999da871b",
+  "runner_arguments": {
+    "binary": "/workspace/shoopdaloop/work/benchmark-bin/shoop_dsp_host",
+    "output": "/workspace/shoopdaloop/work/remote-dsp-sweep",
+    "profile": "all",
+    "report_only": false
+  },
+  "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "python": "3.12.14",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "cpus_reported": 5,
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "scheduling": "inherited ordinary scheduling; no affinity, RT priority or system tuning applied",
+  "build_profile": "release",
+  "rustflags": "-D warnings",
+  "network": "localhost UDP audio; authenticated TCP control; separate native processes",
+  "environment": {
+    "cpu.max": "400000 100000",
+    "memory.max": "17179869184",
+    "cpu_model": "AMD EPYC 7763 64-Core Processor"
+  }
+}

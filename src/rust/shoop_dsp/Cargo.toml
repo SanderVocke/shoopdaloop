@@ -1,0 +1,12 @@
+[package]
+name = "shoop_dsp"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[lints]
+workspace = true
