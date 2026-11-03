@@ -1,0 +1,40 @@
+{
+  "algorithm_latency_frames": 17,
+  "backend": "reference",
+  "callback_frames": 7,
+  "channels": 2,
+  "correctness_errors": 0,
+  "dsp_frames": 5,
+  "fallback_samples": 0,
+  "link_latency_frames": 27,
+  "midi_output_events": 21,
+  "mismatch_examples": [],
+  "mode": "stepped",
+  "node": {
+    "concealed": 0,
+    "fallback": 0,
+    "input_dropped": 0,
+    "midi_dropped": 0,
+    "midi_resets": 0,
+    "observation_dropped": 0,
+    "processed": 325,
+    "received": 330,
+    "rejected": 0,
+    "retired": false,
+    "submitted": 333
+  },
+  "quantum": 3,
+  "sample_rate": 48000,
+  "service": {
+    "concealed_frames": 0,
+    "dsp_blocks": 199,
+    "output_dropped": 0
+  },
+  "source_frames": 1000,
+  "timing_claim": "simulated-time correctness; service waits occur outside render",
+  "total_known_latency_frames": 44,
+  "unverified_samples": 0,
+  "verified_samples": 1946,
+  "warmup_frames": 0,
+  "warmup_samples": 0
+}

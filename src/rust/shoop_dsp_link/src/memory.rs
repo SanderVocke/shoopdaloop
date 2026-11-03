@@ -26,6 +26,9 @@ pub struct ServiceEndpoint {
 pub fn pair(descriptor: Descriptor) -> Result<(RenderEndpoint, ServiceEndpoint), Error> {
     let d = descriptor.validate()?;
     let n = d.slots as usize;
+    if n > 4096 {
+        return Err(Error::Capacity);
+    }
     let (tx, stx) = RingBuffer::new(n);
     let (rx, rrx) = RingBuffer::new(n);
     let (mut fi, rfi) = RingBuffer::new(n);

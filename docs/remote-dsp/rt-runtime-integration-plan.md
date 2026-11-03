@@ -280,7 +280,7 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
       and the portable link/service contracts. Include adapter sketches for Zynq,
       shared-memory IPC and local socket bridging, identifying actual code versus
       future adapters. Do not describe the reference binding as production IPC.
-- [ ] Reproduce graph delay-copy and required real-Carla workflows from a clean
+- [x] Reproduce graph delay-copy and required real-Carla workflows from a clean
       checkout. Preserve both previous measurement campaigns; store any new demo
       evidence separately and avoid fragile CI timing-percentile thresholds.
 - [x] Run formatting, Rust test policy, warning-denying workspace build, focused
@@ -289,7 +289,7 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 - [x] Add a correctness-focused graph/UDP CI subset on supported native platforms
       plus the non-network core tests and bare-metal node compilation. Keep real-Carla validation mandatory
       in its prepared Linux environment; missing-runtime skips cannot satisfy it.
-- [ ] Push the branch and create a separate PR. While PR #915 is open, stack it
+- [x] Push the branch and create a separate PR. While PR #915 is open, stack it
       on `feat/network-dsp-host`; after that dependency merges, retarget to
       `feat/backend-replacement` and verify the integrated base.
 - [ ] Monitor CI to green, inspecting logs before targeted corrections. Check
@@ -320,7 +320,7 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 - Complete required-Carla native suite: **2564 passed, four skipped**. Formatting,
   test attributes, warning-denying workspace build and closed tracing inventory
   (378 modules) passed. Portable link/node builds passed on Cortex-A32, Cortex-A64,
-  Cortex-M and WebAssembly. Native graph demo and broader lifecycle checks remain.
+  Cortex-M and WebAssembly at that milestone.
 
 - The graph demo now runs a non-network reference or real UDP through the same
   node. Focused validation passed all 20 core/node/demo tests, including real
@@ -332,8 +332,7 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
   kept a stalled link alive. Only advancing source results now renew progress.
 - The six-case native demo script passed with configured Carla, including a
   software-paced UDP example. Carla's smoothing fixture uses an explicitly
-  reported warm-up; delay-copy remains bit-exact. Clean-checkout evidence and
-  final repository/remote gates are still pending.
+  reported warm-up; delay-copy remains bit-exact.
 
 - Final local gates: **2575 native tests passed, four skipped**, with required
   Carla. All 20 focused core/node/demo tests passed in release too. Warning-denying
@@ -344,3 +343,16 @@ Depends on Stages 1–3; finishes this milestone without adding strip/session UI
 - CI now includes the link/node in Cortex-A/M builds and the native graph/UDP
   correctness subset. Coverage requires the real Carla graph workflow; the 80%
   patch floor is unchanged. Workflow filters include the stacked PR target.
+- Clean detached checkout `13ff3c0d` reproduced all six cases with 55,002 verified
+  samples, zero mismatches/unverified samples, and 96 paced fallback samples.
+  [Results and reproduction](integration-results.md) link the audited JSON records;
+  original benchmark campaigns remain unchanged. Delivery is in
+  [PR #922](https://github.com/SanderVocke/shoopdaloop/pull/922), stacked on #915.
+- CodeQL review prompted explicit allocation bounds and a heap-guarded rejection
+  regression. The UDP correctness test's zero-fallback timing assertion failed
+  under local and CI contention; it now permits counted misses while retaining
+  positive processed output and complete sample checks. The non-network reference
+  still requires zero fallback. After these corrections, **2576 native tests passed,
+  four skipped**, all **23 focused DSP/link/node/demo release tests** passed,
+  and warning-denying workspace/portable builds, formatting and test policy passed.
+  Updated remote checks and automated-review resolution remain pending.

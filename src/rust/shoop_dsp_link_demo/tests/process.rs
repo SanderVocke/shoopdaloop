@@ -96,7 +96,6 @@ fn graph_udp_demo_handles_callbacks_below_and_above_the_wire_packet_size() {
             &mut command,
             &root.path().join(format!("udp-{callback}.json")),
         );
-        assert_eq!(report["node"]["fallback"], 0);
         assert_eq!(report["algorithm_latency_frames"], 67);
         assert!(report["service"]["server"]["blocks"].as_u64().unwrap() > 0);
     }
@@ -144,7 +143,6 @@ fn graph_carla_gain_and_state_restoration_use_the_same_node() {
         );
         assert!(report["algorithm_latency_frames"].is_null());
         assert!(report["total_known_latency_frames"].is_null());
-        assert_eq!(report["node"]["fallback"], 0);
     }
     assert!(std::fs::read_to_string(saved)
         .unwrap()

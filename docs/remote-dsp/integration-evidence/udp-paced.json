@@ -1,0 +1,62 @@
+{
+  "algorithm_latency_frames": 35,
+  "backend": "udp",
+  "callback_frames": 64,
+  "channels": 2,
+  "correctness_errors": 0,
+  "dsp_frames": 64,
+  "fallback_samples": 96,
+  "link_latency_frames": 1248,
+  "midi_output_events": 375,
+  "mismatch_examples": [],
+  "mode": "paced",
+  "node": {
+    "concealed": 1,
+    "fallback": 3,
+    "input_dropped": 0,
+    "midi_dropped": 0,
+    "midi_resets": 2,
+    "observation_dropped": 0,
+    "processed": 943,
+    "received": 1017,
+    "rejected": 0,
+    "retired": false,
+    "submitted": 1024
+  },
+  "quantum": 16,
+  "sample_rate": 48000,
+  "service": {
+    "adapter": {
+      "invalid": 3,
+      "last_received_frame": 16384,
+      "output_dropped": 0,
+      "received": 1021,
+      "send_dropped": 0,
+      "sent": 1024
+    },
+    "oracle_complete": true,
+    "server": {
+      "blocks": 256,
+      "concealed_packets": 3,
+      "diagnostics_truncated": false,
+      "duplicates": 0,
+      "fault": null,
+      "future": 0,
+      "invalid": 0,
+      "midi_resets": 4,
+      "process_ns": 1253975,
+      "received": 1021,
+      "retired": false,
+      "send_dropped": 0,
+      "sent": 1024,
+      "stale": 3
+    }
+  },
+  "source_frames": 16384,
+  "timing_claim": "software-paced demonstration; no real-time guarantee",
+  "total_known_latency_frames": 1283,
+  "unverified_samples": 0,
+  "verified_samples": 30176,
+  "warmup_frames": 0,
+  "warmup_samples": 0
+}

@@ -36,7 +36,7 @@ pub struct Adapter {
 impl Adapter {
     pub fn prepare(mut session: Session, endpoint: ServiceEndpoint) -> Result<Self> {
         let d = endpoint.descriptor();
-        let c = session.config;
+        let c = session.config.validate()?;
         ensure!(
             d.generation == session.epoch
                 && d.start_frame == c.start_frame
@@ -47,9 +47,15 @@ impl Adapter {
                 && d.midi_capacity == c.midi_per_packet,
             "incompatible UDP link descriptor"
         );
-        let encoded = vec![0; c.max_packet_bytes()];
-        let raw = vec![0; c.max_packet_bytes() + 1];
-        let midi = Vec::with_capacity(c.midi_per_packet as usize);
+        let packet_bytes = c.max_packet_bytes();
+        let midi_capacity = c.midi_per_packet as usize;
+        ensure!(
+            packet_bytes <= 65535 - 48 && midi_capacity <= 16,
+            "UDP storage exceeds wire limits"
+        );
+        let encoded = vec![0; packet_bytes];
+        let raw = vec![0; packet_bytes + 1];
+        let midi = Vec::with_capacity(midi_capacity);
         session.start()?;
         Ok(Self {
             session,

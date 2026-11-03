@@ -14,14 +14,14 @@ pub struct ProcessingBlock {
 impl ProcessingBlock {
     pub fn prepare(config: shoop_dsp::Config, midi_capacity: usize) -> Result<Self, Error> {
         config.validate().map_err(|_| Error::Shape)?;
-        if midi_capacity > 65536 {
+        if midi_capacity > shoop_dsp::MAX_MIDI_EVENTS {
             return Err(Error::Capacity);
         }
         Ok(Self {
             input: vec![0.; config.frames * config.channels],
             output: vec![0.; config.frames * config.channels],
-            midi_input: MidiBuffer::new(midi_capacity),
-            midi_output: MidiBuffer::new(midi_capacity),
+            midi_input: MidiBuffer::try_new(midi_capacity).map_err(|_| Error::Capacity)?,
+            midi_output: MidiBuffer::try_new(midi_capacity).map_err(|_| Error::Capacity)?,
             config,
             next: None,
         })

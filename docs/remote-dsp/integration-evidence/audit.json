@@ -1,0 +1,33 @@
+{
+  "source_revision": "13ff3c0d166be8359fe03b38f360edf0a9f8ad22",
+  "source_dirty": false,
+  "cases": 6,
+  "verified_samples": 55002,
+  "incorrect_samples": 0,
+  "unverified_samples": 0,
+  "fallback_samples": 96,
+  "warmup_samples": 16384,
+  "consumed_concealed_blocks": 1,
+  "binary_sha256": "431e4d82030c6ce4b1fd666dac74a8777f41001b9cb41e961559b171016f825a",
+  "carla_version": "2.5.10",
+  "carla_source_sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+  "carla_library_sha256": "c95376b5f27b6ae2ec88fceace1b6cea3899059cde4d0b77e3f42e416c432203",
+  "files_sha256": {
+    "carla-restored.json": "7fdcef32358b6a04e4e5e0327e82b0e919e1320872bfcace5cead1dc2ac1e136",
+    "carla.json": "014aae0620e2614fc038cc76b8ac7c3ee50a3bf455f4f0a51fd099a657e3d30a",
+    "manifest.json": "db74174887351dcfb12761572b0978a3e1d7599e61e5698217a2652172198247",
+    "reference.json": "0739289ccfe6d136922e1eff87273deac22ca3a4f520a1a67ec4413cd1dca70c",
+    "udp-7.json": "2b3fe13666078bf173f8435794a60820e747fddd0e01f64e35d710c1c811dc95",
+    "udp-96.json": "11630e05ad7918332b54d1d4437d4628452a6ba8b4ed1b8c02f7f3e608bfca35",
+    "udp-paced.json": "711b59e4d2c0a1545c18cfd60a9faf787a32f2faba108db8cec9155061d6628d"
+  },
+  "checks": [
+    "clean detached source checkout",
+    "all six configurations and process exits",
+    "independent sample checks",
+    "complete active-output sample accounting",
+    "positive processed output",
+    "no lost observations",
+    "unknown Carla latency retained"
+  ]
+}
