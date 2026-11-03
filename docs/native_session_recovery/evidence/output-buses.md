@@ -43,16 +43,22 @@ receive the new default bus limits.
 Local Linux validation uses warning-denying builds, heap-guarded native engine
 tests and production dummy-host processes. The complete nextest suite passed
 2,543 tests with four optional/platform skips, including the admitted bus mutation
-recovery expansion. Final multi-target Lua balance prevalidation and delayed
-slot reclamation after confirmed bus removal are being rerun before delivery.
+recovery expansion, multi-target Lua balance prevalidation and delayed slot
+reclamation after confirmed bus removal. Runtime validation is recorded at
+`2119e4ed` (the additional independent-meter assertions pass in the focused
+guarded engine test).
 The refusal fixture queues a new bus while an old bus removal refuses and verifies
 that both surviving buses remain usable. Formatting, test-attribute usage, parity inventory,
 closed tracing inventory and all four target dependency-boundary checks pass;
 the service and adapter also compile without their default features.
 
-The selected engine test
+The [selected Miri report](miri/output-buses/result.json) and its hashed log cover
+the selected engine test
 `ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio` passed under
-nightly-2026-05-04 Miri with seed 0, default isolation and borrow checks (259 seconds).
+nightly-2026-05-04 Miri with seed 0 and default isolation and borrow checks. Its
+source is `59812699`; subsequent production changes are in service/adapter admission,
+while the native engine test adds independent-meter assertions. The recorded wall
+time is 645 seconds under concurrent build/test load.
 Its render/control heap guards remain active. This is focused ownership/generation
 coverage, not a claim that the entire native test suite ran under Miri.
 

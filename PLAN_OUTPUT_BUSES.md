@@ -156,6 +156,8 @@ pass at 900×600 with zero xruns; built worklet/codec contracts pass. The single
 HTML was served alone over localhost because managed Chromium blocks direct
 `file:` navigation. The guarded multi-bus audio test passes Miri on
 nightly-2026-05-04, seed 0. Dependency boundaries pass for all four targets.
+[The Miri report](docs/native_session_recovery/evidence/miri/output-buses/result.json)
+records its source and hashed log; subsequent native meter assertions also pass.
 [Acceptance evidence](docs/native_session_recovery/evidence/output-buses.md)
 maps criteria to executable coverage. [PR #926](https://github.com/SanderVocke/shoopdaloop/pull/926)
 targets the integration branch. Final platform CI/delivery remain pending; P13
