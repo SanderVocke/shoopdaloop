@@ -50,9 +50,12 @@ impl Adapter {
         let packet_bytes = c.max_packet_bytes();
         let midi_capacity = c.midi_per_packet as usize;
         ensure!(
-            packet_bytes <= 65535 - 48 && midi_capacity <= 16,
+            packet_bytes <= 65535 - 48,
             "UDP storage exceeds wire limits"
         );
+        if midi_capacity > 16 {
+            return Err(anyhow::anyhow!("UDP MIDI capacity exceeds wire limit"));
+        }
         let encoded = vec![0; packet_bytes];
         let raw = vec![0; packet_bytes + 1];
         let midi = Vec::with_capacity(midi_capacity);
