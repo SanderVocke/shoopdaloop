@@ -1,7 +1,6 @@
 use crate::private;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
-use shoop_app_protocol::{HostId, SessionId};
 use std::{
     fs,
     net::SocketAddr,
@@ -20,8 +19,7 @@ pub enum AppTransport {
 #[serde(deny_unknown_fields)]
 pub struct HostEntry {
     pub version: u16,
-    pub host: HostId,
-    pub session: SessionId,
+
     pub name: String,
     pub process: u32,
     pub endpoint: SocketAddr,
@@ -39,9 +37,7 @@ impl HostEntry {
             "incompatible session protocol"
         );
         ensure!(
-            entry.host.0 != 0
-                && entry.session.0 != 0
-                && entry.name.len() <= 128
+            entry.name.len() <= 128
                 && entry.warnings.len() <= 64
                 && entry.warnings.iter().all(|warning| warning.len() <= 1024),
             "invalid session registry entry"
@@ -85,22 +81,22 @@ impl Registry {
     pub fn root(&self) -> &Path {
         &self.root
     }
-    pub fn entry_path(&self, host: HostId) -> PathBuf {
-        self.root.join(format!("{:032x}.json", host.0))
+    pub fn entry_path(&self, process: u32) -> PathBuf {
+        self.root.join(format!("{process}.json"))
     }
-    pub fn credential_path(&self, host: HostId) -> PathBuf {
-        self.root.join(format!("{:032x}.key", host.0))
+    pub fn credential_path(&self, process: u32) -> PathBuf {
+        self.root.join(format!("{process}.key"))
     }
-    pub fn create_credential(&self, host: HostId, token: &[u8; 32]) -> Result<PathBuf> {
-        let path = self.credential_path(host);
+    pub fn create_credential(&self, process: u32, token: &[u8; 32]) -> Result<PathBuf> {
+        let path = self.credential_path(process);
         private::create(&path, token)?;
         Ok(path)
     }
     pub fn publish(&self, entry: &HostEntry) -> Result<PathBuf> {
-        let path = self.entry_path(entry.host);
+        let path = self.entry_path(entry.process);
         let temp = path.with_extension("pending");
         private::create(&temp, &serde_json::to_vec(entry)?)?;
-        // Each host has a random identity. Never replace another host's registration.
+        // Never replace another process's registration.
         ensure!(!path.exists(), "session identity is already registered");
         fs::rename(&temp, &path)?;
         Ok(path)
@@ -116,7 +112,7 @@ impl Registry {
                 entries.push((path.clone(), HostEntry::read(&path)?));
             }
         }
-        entries.sort_by_key(|(_, entry)| (entry.name.clone(), entry.host.0));
+        entries.sort_by_key(|(_, entry)| (entry.name.clone(), entry.process));
         Ok(entries)
     }
     pub fn prune_stale(&self) -> Result<usize> {
@@ -131,16 +127,19 @@ impl Registry {
         Ok(removed)
     }
     pub fn remove(&self, entry: &HostEntry) -> Result<()> {
-        let path = self.entry_path(entry.host);
+        let path = self.entry_path(entry.process);
         if path.exists() {
             let current = HostEntry::read(&path)?;
             ensure!(
-                current.host == entry.host && current.session == entry.session,
+                current.process == entry.process
+                    && current.endpoint == entry.endpoint
+                    && current.management == entry.management
+                    && current.credential == entry.credential,
                 "registry identity changed"
             );
             fs::remove_file(path)?;
         }
-        if entry.credential == self.credential_path(entry.host) && entry.credential.exists() {
+        if entry.credential == self.credential_path(entry.process) && entry.credential.exists() {
             private::check(&entry.credential, false)?;
             fs::remove_file(&entry.credential)?;
         }

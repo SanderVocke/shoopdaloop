@@ -60,6 +60,12 @@ class EngineBoundaryTests(unittest.TestCase):
             for dependency in ("shoop_app", "shoop_backend", "shoop_scripting", "shoop_rt_protocol", "shoop_transport_socket", "cpal"):
                 self.assertEqual(MODULE.violations(dependency + " v0.3.0\n", package), [dependency])
 
+    def test_app_connection_uses_only_portable_contracts(self):
+        self.assertIn("shoop_app_connection", MODULE.PACKAGES)
+        self.assertEqual(MODULE.violations("shoop_app v0.3.0\nshoop_transport v0.3.0\n", "shoop_app_connection"), [])
+        for dependency in ("shoop_app_client", "shoop_host", "shoop_scripting", "shoop_transport_socket", "shoop_rt_engine", "cpal"):
+            self.assertEqual(MODULE.violations(dependency + " v0.3.0\n", "shoop_app_connection"), [dependency])
+
     def test_neutral_backend_contract_has_no_engine_or_application_runtime(self):
         self.assertIn("shoop_backend", MODULE.PACKAGES)
         self.assertEqual(MODULE.violations("shoop_app_api v0.3.0\nshoop_latency v0.3.0\n", "shoop_backend"), [])

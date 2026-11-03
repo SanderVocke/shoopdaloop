@@ -811,7 +811,10 @@ impl ConnectionDialog {
         let mut intents = Vec::new();
         let default_height = self.initial_window_height(context, state);
         egui::Window::new(title)
-            .id(egui::Id::new(("connections_dialog", self.open_generation)))
+            .id(egui::Id::unique((
+                "connections_dialog",
+                self.open_generation,
+            )))
             .open(&mut open)
             .resizable(true)
             .default_size([DEFAULT_WINDOW_WIDTH, default_height])
@@ -1234,7 +1237,7 @@ impl ConnectionDialog {
                 let response = ui
                     .interact(
                         hit_rect,
-                        ui.id().with(("connector", facet)),
+                        ui.scope_id().with(("connector", facet)),
                         if source && mutable {
                             egui::Sense::drag()
                         } else {
@@ -1413,7 +1416,7 @@ impl ConnectionDialog {
             let _ = egui::Tooltip::always_open(
                 ui.ctx().clone(),
                 ui.layer_id(),
-                ui.id().with(("route_tooltip", index)),
+                ui.scope_id().with(("route_tooltip", index)),
                 egui::PopupAnchor::Pointer,
             )
             .show(|ui| {
@@ -2873,6 +2876,7 @@ mod tests {
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(-700.0, 0.0),
                     phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Unknown,
                     modifiers: egui::Modifiers::NONE,
                 },
             ]

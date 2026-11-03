@@ -67,7 +67,7 @@ jobs:
         run: |
           for target in armv7a-none-eabi aarch64-unknown-none; do
             cargo build --locked --lib --no-default-features \
-              -p shoop_rt_engine -p shoop_app -p shoop_rt_backend -p shoop_script_resources \
+              -p shoop_rt_engine -p shoop_app -p shoop_app_connection -p shoop_rt_backend -p shoop_script_resources \
               --target "$target"
           done
 

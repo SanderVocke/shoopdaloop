@@ -3,17 +3,18 @@ use super::*;
 impl Service {
     pub fn management(&mut self, request: ManagementRequest) -> ManagementReply {
         match request {
-            ManagementRequest::ClaimShutdown {
-                version,
-                host,
-                session,
-                operation,
-            } => {
+            ManagementRequest::Settings { version } => {
+                ManagementReply::Refused(if version != VERSION {
+                    Refusal::Version
+                } else {
+                    Refusal::Unsupported
+                })
+            }
+            ManagementRequest::ClaimShutdown { version, operation } => {
                 if version != VERSION {
                     return ManagementReply::Refused(Refusal::Version);
                 }
-                if host != self.options.host || session != self.options.session || !request.valid()
-                {
+                if !request.valid() {
                     return ManagementReply::Refused(Refusal::Identity);
                 }
                 if self.lease.is_some() {
@@ -38,7 +39,7 @@ impl Service {
                 {
                     return ManagementReply::Refused(Refusal::NotReady);
                 }
-                if self.actors.contains_key(&operation.client) || self.actors.len() == MAX_ACTORS {
+                if self.actors.contains_key(&operation.client) {
                     return ManagementReply::Refused(Refusal::Duplicate);
                 }
                 let Some(generation) = self.generation.checked_add(1) else {
@@ -46,10 +47,11 @@ impl Service {
                 };
                 self.generation = generation;
                 let authority = Authority {
-                    session,
+                    lease: LeaseId(operation.client.0),
                     client: operation.client,
                     generation: ConnectionGeneration(generation),
                 };
+                self.actors.clear();
                 self.actors.insert(operation.client, 0);
                 self.last_authority = Some(authority);
                 self.management(ManagementRequest::Shutdown {
@@ -57,21 +59,12 @@ impl Service {
                     operation,
                 })
             }
-            ManagementRequest::Status {
-                version,
-                host,
-                session,
-            } => {
+            ManagementRequest::Status { version } => {
                 if version != VERSION {
                     return ManagementReply::Refused(Refusal::Version);
                 }
-                if host != self.options.host || session != self.options.session {
-                    return ManagementReply::Refused(Refusal::Identity);
-                }
                 ManagementReply::Status {
                     version: VERSION,
-                    host,
-                    session,
                     ready: self.is_ready(),
                     busy: self.lease.is_some(),
                     closed: self.closed,

@@ -2,8 +2,20 @@
 // the module has no imports, and the script prepares it from a configuration
 // record and moves records, MIDI and audio over a simulated MessagePort.
 import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 const wasmPath = process.argv[2] || './dist/generated/shoop_rt_host_worklet.wasm';
+const codecPath = process.argv[3] || join(dirname(wasmPath), 'shoop_persistence_codec_bg.wasm');
+const codecModule = await WebAssembly.compile(await readFile(codecPath));
+const codecBindingsPath = join(dirname(codecPath), 'shoop_persistence_codec.js');
+const codecBindings = await readFile(codecBindingsPath);
+const { default: initializeCodec } = await import(`data:text/javascript;base64,${codecBindings.toString('base64')}`);
+const codec = { exports: await initializeCodec({ module_or_path: codecModule }) };
+for (const name of ['memory', 'codec_input', 'codec_run', 'codec_output']) {
+  if (!(name in codec.exports)) throw new Error(`the client codec worker Wasm lacks ${name}`);
+}
+console.log('client codec worker artifact contract: ok');
+
 const wasmModule = await WebAssembly.compile(await readFile(wasmPath));
 const imports = WebAssembly.Module.imports(wasmModule);
 if (imports.length !== 0) {

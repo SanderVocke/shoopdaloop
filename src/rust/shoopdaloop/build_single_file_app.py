@@ -42,11 +42,13 @@ def build_single_file(dist: Path, output: Path) -> None:
     )
     rt_worklet_script_path = dist / "rt_audio_worklet.js"
     rt_worklet_wasm_path = dist / "generated" / "shoop_rt_host_worklet.wasm"
-    codec_wasm_path = dist / "generated" / "shoop_persistence_codec.wasm"
+    codec_wasm_path = dist / "generated" / "shoop_persistence_codec_bg.wasm"
+    codec_js_path = dist / "generated" / "shoop_persistence_codec.js"
     for path, description in [
         (rt_worklet_script_path, "new engine AudioWorklet script"),
         (rt_worklet_wasm_path, "new engine AudioWorklet WebAssembly file"),
         (codec_wasm_path, "session file codec worker WebAssembly file"),
+        (codec_js_path, "session file codec worker JavaScript bindings"),
     ]:
         if not path.is_file():
             raise RuntimeError(f"missing {description}: {path}")
@@ -101,6 +103,7 @@ def build_single_file(dist: Path, output: Path) -> None:
     encoded_rt_worklet_wasm = base64.b64encode(
         rt_worklet_wasm_path.read_bytes()
     ).decode("ascii")
+    encoded_codec_js = base64.b64encode(codec_js_path.read_bytes()).decode("ascii")
     encoded_codec_wasm = base64.b64encode(codec_wasm_path.read_bytes()).decode("ascii")
     encoded_wasm = base64.b64encode(wasm_path.read_bytes()).decode("ascii")
     builtins_root = dist / "builtins"
@@ -127,6 +130,7 @@ globalThis.shoopEmbeddedAudioWorklet = Object.freeze({{
     rtModuleUrl: "data:text/javascript;base64,{encoded_rt_worklet_source}",
     rtWasmBytes: Uint8Array.from(shoopRtWorkletBinary, character => character.charCodeAt(0)),
     codecWasmBytes: Uint8Array.from(shoopCodecWorkerBinary, character => character.charCodeAt(0)),
+    codecBindingsUrl: "data:text/javascript;base64,{encoded_codec_js}",
 }});
 {glue}
 const shoopWasmBinary = atob("{encoded_wasm}");

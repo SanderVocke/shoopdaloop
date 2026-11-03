@@ -22,15 +22,14 @@ cargo build --target wasm32-unknown-unknown -p shoop_rt_host_worklet --release
 python3 src/rust/shoopdaloop/build_worklet.py --profile release --output-dir <dir>
 ```
 
-`build_worklet.py` (Trunk's pre-build hook) builds the legacy module and this one
-in separate Cargo runs and copies `shoop_rt_host_worklet.wasm` next to
-`shoop_audio_worklet.wasm` in `generated/`, so it is served as
-`./generated/shoop_rt_host_worklet.wasm`; Trunk copies `rt_audio_worklet.js` next
-to `index.html`. The hosted web archive contains both files, and the single-file
-application embeds them as `shoopEmbeddedAudioWorklet.rtModuleUrl` and
-`rtWasmBytes`. The application depends on this crate without `exports`; build it
-with `-p shoopdaloop` (as Trunk does) so the exports are not feature-unified into
-the application module.
+`build_worklet.py` (Trunk's pre-build hook) builds this import-free module with
+Cargo and the client codec worker with `wasm-pack` 0.15.0. Their Cargo feature
+sets remain separate. It copies `shoop_rt_host_worklet.wasm` and the codec's
+JavaScript bindings and `_bg.wasm` into `generated/`. Trunk also copies
+`rt_audio_worklet.js` next to `index.html`. Hosted archives carry these assets;
+the single-file application embeds the rendering module and the complete codec
+bundle. The application depends on this crate without `exports`; build it with
+`-p shoopdaloop` so rendering exports stay out of the application module.
 
 `src/rust/shoopdaloop/rt_worklet_contract.mjs <wasm>` is the committed artifact
 check that CI runs on the built module: no imports, the expected exports, and the

@@ -5,15 +5,12 @@ use shoop_app_client::{
     runtime::{Runtime as ClientRuntime, Startup},
     Client,
 };
-use shoop_app_protocol::{local, ClientId, HostId, SessionId};
+use shoop_app_protocol::local;
 use shoop_backend::Backend;
 use shoop_egui::{AppIntent, AppSnapshot};
 use std::{
     collections::VecDeque,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -61,7 +58,6 @@ impl From<shoop_app_client::Error> for DispatchError {
         }
     }
 }
-static NEXT_LOCAL_ID: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
 struct FileMailbox {
     outputs: VecDeque<ApplicationFileOutput>,
@@ -97,20 +93,15 @@ impl CooperativeApplicationRuntime {
         options: ApplicationStartOptions,
         midi: Box<dyn shoop_scripting::MidiControlService>,
     ) -> Result<Self> {
-        let host = HostId(u128::from(NEXT_LOCAL_ID.fetch_add(1, Ordering::Relaxed)));
-        let session = SessionId(u128::from(NEXT_LOCAL_ID.fetch_add(1, Ordering::Relaxed)));
-        let actor = ClientId(u128::from(NEXT_LOCAL_ID.fetch_add(1, Ordering::Relaxed)));
         let service = Service::new(
             backend,
             ServiceOptions {
-                host,
-                session,
                 master_auto_connect: options.master_auto_connect,
                 loop_smoothing_ms: options.loop_smoothing_ms,
             },
         )?;
         let (client_port, port) = local::channel();
-        let client = Client::new(actor, host, session).map_err(|error| anyhow!("{error:?}"))?;
+        let client = Client::new();
         let mut client = ClientRuntime::new(
             client,
             Box::new(client_port),
@@ -441,22 +432,18 @@ mod native {
             })
         }
         pub fn attach(
-            entry: shoop_host::registry::HostEntry,
+            entry: impl Into<shoop_host::remote::Target>,
             options: ApplicationStartOptions,
         ) -> Result<Self> {
+            let entry = entry.into();
             Self::start_thread(false, move || {
                 let connection = shoop_host::connection::connect(&entry, Duration::from_secs(3))?;
-                let client = Client::new(
-                    ClientId(shoop_host::registry::identity()?),
-                    entry.host,
-                    entry.session,
-                )
-                .map_err(|error| anyhow!("{error:?}"))?;
+                let client = Client::new();
                 let mut runtime = ClientRuntime::new(
                     client,
                     Box::new(RemoteDelivery(connection)),
                     Box::new(shoop_scripting::NativeMidiService::new()),
-                    Startup::IfFresh(options.startup_scripts),
+                    Startup::Connected(options.startup_scripts),
                 )
                 .map_err(|error| anyhow!("{error:?}"))?
                 .with_persistence_io(Box::new(crate::persistence_io::Provider::new()));

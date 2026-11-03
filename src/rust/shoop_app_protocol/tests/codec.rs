@@ -7,7 +7,7 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const AUTHORITY: Authority = Authority {
-    session: SessionId(1),
+    lease: LeaseId(1),
     client: ClientId(2),
     generation: ConnectionGeneration(3),
 };
@@ -37,15 +37,9 @@ fn lifecycle_commands_and_results_roundtrip_and_reject_every_truncation() {
         revision: Revision(9),
     };
     for message in [
-        WireMessage::Client(ClientMessage::Attach {
-            version: VERSION,
-            host: HostId(5),
-            session: AUTHORITY.session,
-            client: AUTHORITY.client,
-        }),
+        WireMessage::Client(ClientMessage::Attach { version: VERSION }),
         WireMessage::Attached {
             authority: AUTHORITY,
-            host: HostId(5),
         },
         WireMessage::Client(ClientMessage::Ready {
             authority: AUTHORITY,
@@ -147,13 +141,7 @@ fn versions_protocol_discriminators_lengths_and_identity_are_checked() {
     let mut authority = AUTHORITY;
     authority.generation = ConnectionGeneration(0);
     assert_eq!(
-        codec::encode(
-            &WireMessage::Attached {
-                authority,
-                host: HostId(1)
-            },
-            &mut buffer
-        ),
+        codec::encode(&WireMessage::Attached { authority }, &mut buffer),
         Err(CodecError::Invalid)
     );
     let operation = OperationId {
@@ -264,4 +252,35 @@ fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
     )
     .unwrap();
     assert_eq!(message.data(), [0x90, 60, 100]);
+}
+
+#[shoop_test]
+fn heartbeat_records_have_a_canonical_cross_platform_representation() {
+    let mut bytes = [0; 1280];
+    let n = codec::encode(&WireMessage::Ping(42), &mut bytes).unwrap();
+    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 11, 0, 0, 42]);
+    let n = codec::encode(&WireMessage::Pong(0x1122334455667788), &mut bytes).unwrap();
+    assert_eq!(
+        &bytes[..n],
+        &[
+            18, 0, b'S', b'A', b'P', b'P', 11, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
+            0x11
+        ]
+    );
+}
+
+#[shoop_test]
+fn attachment_and_greeting_carry_no_host_or_session_identifiers() {
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let n = codec::encode(
+        &WireMessage::Client(ClientMessage::Attach { version: VERSION }),
+        &mut bytes,
+    )
+    .unwrap();
+    assert_eq!(
+        &bytes[..n],
+        &[11, 0, b'S', b'A', b'P', b'P', 11, 0, 3, 1, 11]
+    );
+    let n = codec::encode(&WireMessage::CarrierReady, &mut bytes).unwrap();
+    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 11, 0, 19]);
 }

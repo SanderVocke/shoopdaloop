@@ -118,7 +118,7 @@ impl OxiSynthEditor {
         let mut actions = Vec::new();
         let mut open = true;
         let _shown = egui::Window::new(format!("{} — Built-in Synth", state.name))
-            .id(egui::Id::new(("oxisynth_editor", state.id)))
+            .id(egui::Id::unique(("oxisynth_editor", state.id)))
             .open(&mut open)
             .resizable(true)
             .show(context, |ui| {
@@ -231,7 +231,7 @@ impl OxiSynthEditor {
         if self.info_open {
             let mut info_open = self.info_open;
             egui::Window::new("Built-in Synth information")
-                .id(egui::Id::new(("oxisynth_info", state.id)))
+                .id(egui::Id::unique(("oxisynth_info", state.id)))
                 .open(&mut info_open)
                 .collapsible(false)
                 .resizable(false)
@@ -280,7 +280,7 @@ impl OxiSynthEditor {
             let mut learn_open = self.midi_learn_open;
             let mut selected_parameter = self.selected_midi_parameter;
             egui::Window::new(format!("{} — MIDI Learn", state.name))
-                .id(egui::Id::new(("oxisynth_midi_learn", state.id)))
+                .id(egui::Id::unique(("oxisynth_midi_learn", state.id)))
                 .open(&mut learn_open)
                 .resizable(true)
                 .show(context, |ui| {

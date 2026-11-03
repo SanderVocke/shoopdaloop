@@ -508,7 +508,7 @@ fn mode(value: BackendLoopMode) -> LoopMode {
         BackendLoopMode::Unknown => LoopMode::Unknown,
     }
 }
-fn status(state: &BackendStatus) -> StatusState {
+pub(super) fn status(state: &BackendStatus) -> StatusState {
     let audio_driver = match state.driver_state {
         BackendDriverState::Dummy => AudioDriverState::Dummy,
         BackendDriverState::AwaitingGesture => AudioDriverState::AwaitingGesture,

@@ -6,7 +6,7 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const AUTHORITY: Authority = Authority {
-    session: SessionId(1),
+    lease: LeaseId(1),
     client: ClientId(2),
     generation: ConnectionGeneration(3),
 };

@@ -9,7 +9,7 @@ use std::sync::Arc;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 const AUTHORITY: Authority = Authority {
-    session: SessionId(1),
+    lease: LeaseId(1),
     client: ClientId(2),
     generation: ConnectionGeneration(3),
 };
@@ -39,12 +39,11 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
 }
 
 fn attaching() -> Client {
-    let mut client = Client::new(AUTHORITY.client, HostId(4), AUTHORITY.session).unwrap();
+    let mut client = Client::new();
     client.attach().unwrap();
     client
         .receive(ServiceMessage::Attached {
             authority: AUTHORITY,
-            host: HostId(4),
         })
         .unwrap();
     client
@@ -290,7 +289,6 @@ fn reattachment_reconciles_lost_replies_without_command_replay() {
     client
         .receive(ServiceMessage::Attached {
             authority: replacement,
-            host: HostId(4),
         })
         .unwrap();
     let mut state = (*snapshot(9)).clone();
@@ -602,7 +600,14 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
                 capture_alignment_frames: 0,
                 preplay: 0,
             }],
-            midi: vec![],
+            midi: vec![MidiMediaChannel {
+                events: Arc::from([]),
+                content_revision: 7,
+                length: 32768,
+                capture_alignment_frames: 16,
+                start_offset: -8,
+                preplay: 4,
+            }],
         });
         let message = ServiceMessage::Media {
             authority: AUTHORITY,
@@ -627,6 +632,12 @@ fn media_streams_are_bounded_ordered_and_cancelled_without_serializing_local_dat
                 .len(),
             32768
         );
+        let received = client.media().unwrap().as_ref().unwrap();
+        let midi = &received.midi[0];
+        assert_eq!(midi.length, 32768);
+        assert_eq!(midi.capture_alignment_frames, 16);
+        assert_eq!(midi.start_offset, -8);
+        assert_eq!(midi.preplay, 4);
         client.cancel_media().unwrap();
         assert!(client.media().is_none());
         client

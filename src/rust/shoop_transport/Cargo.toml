@@ -19,3 +19,6 @@ shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+assert_no_alloc = { workspace = true }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 27;
+pub const PROTOCOL_VERSION: u16 = 28;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 32 * 1024;
@@ -44,6 +44,14 @@ pub struct CommandEnvelope {
     pub version: u16,
     pub sequence: u64,
     pub command: Command,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireChannelTimingUpdate {
+    pub channel: usize,
+    pub is_midi: bool,
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
 }
 
 impl CommandEnvelope {
@@ -194,6 +202,10 @@ pub enum Command {
         start_offset: Option<i32>,
         preplay: Option<u32>,
         length: Option<u32>,
+    },
+    SetLoopChannelTimings {
+        loop_id: u64,
+        updates: Vec<WireChannelTimingUpdate>,
     },
     BeginLoopContentReplace {
         generation: u64,
@@ -1719,7 +1731,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":27,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":28,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1730,7 +1742,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":27,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":28,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

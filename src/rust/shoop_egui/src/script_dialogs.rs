@@ -97,7 +97,7 @@ impl ScriptDialogs {
                 .map(String::as_str)
                 .unwrap_or(&dialog.owner_script_name);
             egui::Window::new(&dialog.name)
-                .id(egui::Id::new(("script_dialog", dialog.id.raw())))
+                .id(egui::Id::unique(("script_dialog", dialog.id.raw())))
                 .open(&mut open)
                 .resizable(true)
                 .default_width(420.0)
@@ -888,7 +888,7 @@ mod tests {
         crate::initialize(&context);
         let dialogs = [simple(19, 1, "Stable dialog", 1)];
         let mut component = ScriptDialogs::default();
-        let window_id = egui::Id::new(("script_dialog", dialogs[0].id.raw()));
+        let window_id = egui::Id::unique(("script_dialog", dialogs[0].id.raw()));
         let mut heights = Vec::new();
         for _ in 0..8 {
             frame(

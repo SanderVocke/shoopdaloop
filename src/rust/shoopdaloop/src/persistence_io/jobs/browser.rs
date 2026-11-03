@@ -121,6 +121,11 @@ impl Peer {
             .unwrap_or(JsValue::UNDEFINED);
         let bytes = Reflect::get(&embedded, &"codecWasmBytes".into()).unwrap_or(JsValue::UNDEFINED);
         if !bytes.is_undefined() && !bytes.is_null() {
+            let bindings = Reflect::get(&embedded, &"codecBindingsUrl".into()).map_err(js_error)?;
+            ensure!(
+                bindings.as_string().is_some(),
+                "embedded codec bindings are missing"
+            );
             let worker = peer.worker.clone();
             let error = Rc::clone(&peer.error);
             wasm_bindgen_futures::spawn_local(async move {
@@ -131,6 +136,7 @@ impl Peer {
                     let message = Object::new();
                     Reflect::set(&message, &"init".into(), &true.into()).map_err(js_error)?;
                     Reflect::set(&message, &"module".into(), &module).map_err(js_error)?;
+                    Reflect::set(&message, &"bindingsUrl".into(), &bindings).map_err(js_error)?;
                     worker.post_message(&message).map_err(js_error)?;
                     Ok(())
                 }
@@ -143,7 +149,7 @@ impl Peer {
             #[cfg(test)]
             let module_url = option_env!("SHOOP_WASM_TEST_ASSET_BASE").map(|base| {
                 format!(
-                    "{}/shoop_persistence_codec.wasm",
+                    "{}/shoop_persistence_codec_bg.wasm",
                     base.trim_end_matches('/')
                 )
             });
@@ -152,7 +158,7 @@ impl Peer {
             let module_url = match module_url {
                 Some(url) => url,
                 None => web_sys::Url::new_with_base(
-                    "./generated/shoop_persistence_codec.wasm",
+                    "./generated/shoop_persistence_codec_bg.wasm",
                     &window.location().href().map_err(js_error)?,
                 )
                 .map_err(js_error)?
@@ -160,7 +166,13 @@ impl Peer {
             };
             let message = Object::new();
             Reflect::set(&message, &"init".into(), &true.into()).map_err(js_error)?;
+            let bindings_url = module_url.replace(
+                "shoop_persistence_codec_bg.wasm",
+                "shoop_persistence_codec.js",
+            );
             Reflect::set(&message, &"url".into(), &module_url.into()).map_err(js_error)?;
+            Reflect::set(&message, &"bindingsUrl".into(), &bindings_url.into())
+                .map_err(js_error)?;
             peer.worker.post_message(&message).map_err(js_error)?;
         }
         Ok(peer)
@@ -323,7 +335,7 @@ impl BrowserJob {
         receiver
             .apply(
                 Authority {
-                    session: SessionId(1),
+                    lease: LeaseId(1),
                     client: ClientId(1),
                     generation: ConnectionGeneration(1),
                 },
@@ -391,7 +403,7 @@ impl BrowserJob {
                     self.output = Output::Image(
                         transfer::Receiver::new(
                             Authority {
-                                session: SessionId(1),
+                                lease: LeaseId(1),
                                 client: ClientId(1),
                                 generation: ConnectionGeneration(1),
                             },
