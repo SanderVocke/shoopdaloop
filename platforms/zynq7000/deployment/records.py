@@ -33,7 +33,7 @@ def configuration(credential, mac, ip, netmask, gateway, server):
 
 
 def selection(digest, mode=0):
-    return record(2, struct.pack("<Q4I32s32s16sQ", 1, 0, NO_SLOT, 0, mode, digest, b"", b"", 0))
+    return record(2, struct.pack("<Q4I32s32s16sQII32s", 1, 0, NO_SLOT, 0, mode, digest, b"", b"", 0, 0, NO_SLOT, b""))
 
 
 def counter(seed):

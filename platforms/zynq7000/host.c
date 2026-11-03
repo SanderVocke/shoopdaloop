@@ -9,12 +9,17 @@
 #include "xtime_l.h"
 #include <stdatomic.h>
 #include <errno.h>
+#include <string.h>
+#include "deployment/runtime.h"
 
 extern void shoop_platform_init(void);
 extern void shoop_rust_main(void);
 extern int shoop_render_step(void *, size_t);
 extern void shoop_render_xruns(void *, uint32_t);
+#ifndef SHOOP_DEPLOYMENT
 extern const unsigned char shoop_credential[32];
+#endif
+extern const char shoop_build_identity[];
 static struct netif interface;
 static TaskHandle_t render_task;
 static _Atomic int render_done;
@@ -46,7 +51,30 @@ uint64_t shoop_millis(void) {
     XTime now; XTime_GetTime(&now);
     return now / (XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2000);
 }
-void shoop_token(unsigned char *output) { for (size_t i = 0; i < 32; ++i) output[i] = shoop_credential[i]; }
+void shoop_token(unsigned char *output) {
+#ifdef SHOOP_DEPLOYMENT
+    const unsigned char *token = shoop_deploy_config()->credential;
+#else
+    const unsigned char *token = shoop_credential;
+#endif
+    for (size_t i = 0; i < 32; ++i) output[i] = token[i];
+}
+void shoop_control_progress(void) { shoop_deploy_control(); }
+int shoop_deployment_ready(void) {
+#ifdef SHOOP_DEPLOYMENT
+    return shoop_deploy_confirm();
+#else
+    return 1;
+#endif
+}
+int shoop_deployment_info(struct shoop_deployment_info *output) {
+    if (!output) return 0;
+#ifdef SHOOP_DEPLOYMENT
+    return shoop_deploy_info(output);
+#else
+    (void)output; return 0;
+#endif
+}
 uint64_t shoop_nonce(void) { static uint64_t next; configASSERT(next != UINT64_MAX); return ++next; }
 uint64_t shoop_boot_nonce(void) {
     const volatile uint32_t *words = (const volatile uint32_t *)0x8000;
@@ -54,6 +82,7 @@ uint64_t shoop_boot_nonce(void) {
 }
 
 void vApplicationTickHook(void) {
+    shoop_deploy_tick();
 #ifdef SHOOP_FIXTURE
     shoop_fixture_irq();
     if (shoop_fixture_paused()) return;
@@ -79,6 +108,7 @@ static void render(void *owner) {
 #else
             int result = shoop_render_step(owner, 256);
 #endif
+            shoop_deploy_render();
             if (result != 0) {
                 atomic_store(&render_done, result == 1 ? 1 : -1);
                 vTaskSuspend(NULL);
@@ -105,6 +135,7 @@ int shoop_stop_render(void) {
     if (atomic_load(&render_done) != 1) return 0;
     render_stack_remaining = uxTaskGetStackHighWaterMark(render_task);
     vTaskDelete(render_task); render_task = NULL;
+    shoop_deploy_render_stopped();
     return 1;
 }
 int shoop_cleanup_allowed(void) {
@@ -141,13 +172,21 @@ static void stacks_report(void) {
 static void network(void *unused) {
     (void)unused;
     ip_addr_t ip, mask, gateway;
+#ifdef SHOOP_DEPLOYMENT
+    configASSERT(shoop_deploy_init());
+    const struct shoop_config *config = shoop_deploy_config();
+    memcpy(&ip, &config->ip, 4); memcpy(&mask, &config->netmask, 4); memcpy(&gateway, &config->gateway, 4);
+    unsigned char mac[6]; memcpy(mac, config->mac, 6);
+#else
     IP4_ADDR(&ip, 10, 0, 2, 15); IP4_ADDR(&mask, 255, 255, 255, 0); IP4_ADDR(&gateway, 10, 0, 2, 2);
     unsigned char mac[] = { 0x02, 0, 0, 0, 0, 1 };
+#endif
     lwip_init();
     configASSERT(xemac_add(&interface, &ip, &mask, &gateway, mac, 0xe000b000));
     netif_set_default(&interface); netif_set_up(&interface);
     sys_thread_new("gem-input", (void (*)(void *))xemacif_input_thread, &interface, 4096, 4);
     shoop_rust_main();
+    shoop_deploy_stopped();
     stacks_report();
     extern void shoop_network_stop(void);
     shoop_network_stop();
@@ -158,6 +197,7 @@ static void network(void *unused) {
 int main(void) {
     shoop_platform_init();
     xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP 1GiB\r\n");
+    xil_printf("SHOOP_BUILD %s\r\n", shoop_build_identity);
     configASSERT(xTaskCreate(network, "control", 65536, NULL, 3, NULL) == pdPASS);
     vTaskStartScheduler();
     vApplicationAssert("scheduler returned", 0);

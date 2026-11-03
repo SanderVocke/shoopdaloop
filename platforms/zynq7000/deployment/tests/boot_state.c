@@ -36,7 +36,7 @@ static struct shoop_io io = { NULL, read_sector, write_sector };
 static const uint8_t a[32] = { 0xaa }, b[32] = { 0xbb };
 static void initialize(void) {
     memset(disk, 0, sizeof disk); writes = fail_at = 0;
-    struct shoop_state state = { .generation = 1, .confirmed = 0, .pending = SHOOP_NO_SLOT };
+    struct shoop_state state = { .generation = 1, .confirmed = 0, .pending = SHOOP_NO_SLOT, .fallback = SHOOP_NO_SLOT };
     memcpy(state.confirmed_hash, a, 32);
     shoop_record_seal(&state, 2);
     memcpy(disk[2], &state, 512); memcpy(disk[3], &state, 512);
@@ -107,8 +107,24 @@ static void publication_faults(void) {
     memcpy(disk[2], &state, 512); memset(disk[3], 0xff, 512);
     assert(shoop_state_load(&io, &state) == SHOOP_INVALID);
 }
+static void confirmed_boot_loop(void) {
+    initialize();
+    struct shoop_state state;
+    assert(!shoop_state_load(&io, &state));
+    assert(!shoop_candidate(&io, &state, 1, b));
+    for (unsigned boot = 0; boot < 3; ++boot) {
+        uint32_t slot;
+        assert(!shoop_state_load(&io, &state));
+        assert(!shoop_select(&io, &state, &slot) && slot == 1);
+        assert(!shoop_confirm(&io, 1, b));
+    }
+    uint32_t slot;
+    assert(!shoop_state_load(&io, &state));
+    assert(!shoop_select(&io, &state, &slot) && slot == 0);
+    assert(!memcmp(state.confirmed_hash, a, 32));
+}
 int main(void) {
     assert(shoop_crc32("123456789", 9) == 0xcbf43926);
-    nonce_faults(); trials_and_confirmation(); publication_faults();
+    nonce_faults(); trials_and_confirmation(); publication_faults(); confirmed_boot_loop();
     puts("Boot state: nonce durability, trial rollback, confirmation and torn writes passed");
 }

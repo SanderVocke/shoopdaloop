@@ -42,7 +42,9 @@ struct shoop_state {
     uint32_t confirmed, pending, attempts, mode;
     uint8_t confirmed_hash[32], pending_hash[32], operation_client[16];
     uint64_t operation_sequence;
-    uint8_t reserved[380];
+    uint32_t boot_failures, fallback;
+    uint8_t fallback_hash[32];
+    uint8_t reserved[340];
     uint32_t crc;
 };
 struct shoop_counter {

@@ -52,8 +52,10 @@ static int state_valid(const struct shoop_state *state) {
     return shoop_record_valid(state, 2) && state->generation &&
         (state->confirmed < 2 || state->confirmed == SHOOP_NO_SLOT) &&
         (state->pending < 2 || state->pending == SHOOP_NO_SLOT) &&
+        (state->fallback < 2 || state->fallback == SHOOP_NO_SLOT) &&
+        (state->fallback == SHOOP_NO_SLOT || (state->fallback != state->confirmed && state->fallback != state->pending)) &&
         (state->pending == SHOOP_NO_SLOT || state->pending != state->confirmed) &&
-        state->attempts <= SHOOP_TRIAL_ATTEMPTS && state->mode <= SHOOP_BOOT_NETWORK;
+        state->attempts <= SHOOP_TRIAL_ATTEMPTS && state->boot_failures <= 3 && state->mode <= SHOOP_BOOT_NETWORK;
 }
 int shoop_state_load(const struct shoop_io *io, struct shoop_state *out) {
     struct shoop_state records[2];
@@ -99,8 +101,9 @@ int shoop_nonce_reserve(const struct shoop_io *io, uint64_t *out) {
     return SHOOP_OK;
 }
 int shoop_candidate(const struct shoop_io *io, struct shoop_state *state, uint32_t slot, const uint8_t *hash) {
-    if (slot >= 2 || slot == state->confirmed || state->pending != SHOOP_NO_SLOT) return SHOOP_CONFLICT;
+    if (slot >= 2 || slot == state->confirmed || slot == state->fallback || state->pending != SHOOP_NO_SLOT) return SHOOP_CONFLICT;
     state->pending = slot; state->attempts = SHOOP_TRIAL_ATTEMPTS;
+    state->boot_failures = 0;
     state->mode = SHOOP_BOOT_NORMAL;
     memcpy(state->pending_hash, hash, 32);
     return shoop_state_store(io, state);
@@ -109,19 +112,28 @@ int shoop_select(const struct shoop_io *io, struct shoop_state *state, uint32_t 
     if (state->pending != SHOOP_NO_SLOT) {
         if (state->attempts) {
             --state->attempts;
+            ++state->boot_failures;
             int result = shoop_state_store(io, state);
             if (result) return result;
             *slot = state->pending;
             return SHOOP_OK;
         }
         state->pending = SHOOP_NO_SLOT;
+        state->boot_failures = 0;
         memset(state->pending_hash, 0, 32);
         int result = shoop_state_store(io, state);
         if (result) return result;
     }
+    if (state->boot_failures >= 3) {
+        if (state->fallback >= 2) return SHOOP_CONFLICT;
+        state->confirmed = state->fallback; state->fallback = SHOOP_NO_SLOT;
+        memcpy(state->confirmed_hash, state->fallback_hash, 32);
+        memset(state->fallback_hash, 0, 32); state->boot_failures = 0;
+    }
     if (state->confirmed >= 2) return SHOOP_INVALID;
     *slot = state->confirmed;
-    return SHOOP_OK;
+    ++state->boot_failures;
+    return shoop_state_store(io, state);
 }
 int shoop_confirm(const struct shoop_io *io, uint32_t slot, const uint8_t *hash) {
     struct shoop_state state;
@@ -130,6 +142,8 @@ int shoop_confirm(const struct shoop_io *io, uint32_t slot, const uint8_t *hash)
     if (state.confirmed == slot && !memcmp(state.confirmed_hash, hash, 32))
         return shoop_state_store(io, &state);
     if (state.pending != slot || memcmp(state.pending_hash, hash, 32)) return SHOOP_CONFLICT;
+    state.fallback = state.confirmed;
+    memcpy(state.fallback_hash, state.confirmed_hash, 32);
     state.confirmed = slot; state.pending = SHOOP_NO_SLOT; state.attempts = 0;
     memcpy(state.confirmed_hash, hash, 32); memset(state.pending_hash, 0, 32);
     return shoop_state_store(io, &state);

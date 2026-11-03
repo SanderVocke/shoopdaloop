@@ -4,6 +4,7 @@
 #include <stdatomic.h>
 #include <errno.h>
 #include <string.h>
+#include "deployment/runtime.h"
 
 #define SLOTS 24
 #define CAPACITY 32768u
@@ -108,6 +109,7 @@ static void broker(void *unused) {
                 else if (!again()) atomic_store(&peer->failed, 1);
             }
         }
+        shoop_deploy_broker();
         vTaskDelay(1);
     }
 }

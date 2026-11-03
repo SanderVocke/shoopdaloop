@@ -52,13 +52,19 @@ static void configure_network(void) {
         puts("SHOOP_CONFIGURATION_INVALID recovery network defaults\n");
     } else {
         eth_env_set_enetaddr("ethaddr", configuration.mac);
-        snprintf(ip, sizeof ip, "%pI4", &configuration.ip); env_set("ipaddr", ip);
-        snprintf(ip, sizeof ip, "%pI4", &configuration.netmask); env_set("netmask", ip);
-        snprintf(ip, sizeof ip, "%pI4", &configuration.gateway); env_set("gatewayip", ip);
-        snprintf(ip, sizeof ip, "%pI4", &configuration.server); env_set("serverip", ip);
+        ip_to_string((struct in_addr){ .s_addr = configuration.ip }, ip); env_set("ipaddr", ip);
+        ip_to_string((struct in_addr){ .s_addr = configuration.netmask }, ip); env_set("netmask", ip);
+        ip_to_string((struct in_addr){ .s_addr = configuration.gateway }, ip); env_set("gatewayip", ip);
+        ip_to_string((struct in_addr){ .s_addr = configuration.server }, ip); env_set("serverip", ip);
     }
     env_set("netretry", "no");
     env_set("autoload", "no");
+    env_set("tftptimeout", "1000"); env_set("tftptimeoutcountmax", "2");
+    net_ip = string_to_ip(env_get("ipaddr"));
+    net_netmask = string_to_ip(env_get("netmask"));
+    net_gateway = string_to_ip(env_get("gatewayip"));
+    net_server_ip = string_to_ip(env_get("serverip"));
+    printf("SHOOP_NETWORK ip=%s server=%s\n", env_get("ipaddr"), env_get("serverip"));
 }
 static int open_card(void) {
     struct mmc *mmc = find_mmc_device(0);
@@ -169,7 +175,7 @@ static int install_bundle(void *data, uint32_t size) {
         shoop_config_load(&io, &configuration)) return SHOOP_INVALID;
     if (shoop_state_load(&io, &state)) {
         memset(&state, 0, sizeof state); state.generation = 1;
-        state.confirmed = state.pending = SHOOP_NO_SLOT;
+        state.confirmed = state.pending = state.fallback = SHOOP_NO_SLOT;
         puts("SHOOP_RECOVERY_INSTALL reconstructing selection only\n");
     }
     if (state.pending < 2) {
@@ -188,8 +194,11 @@ static int install_bundle(void *data, uint32_t size) {
             return shoop_state_store(&io, &state);
         }
     }
-    if (shoop_state_store(&io, &state)) return SHOOP_IO;
     uint32_t slot = state.confirmed < 2 ? state.confirmed ^ 1u : 0;
+    if (state.fallback == slot) {
+        state.fallback = SHOOP_NO_SLOT; memset(state.fallback_hash, 0, 32);
+    }
+    if (shoop_state_store(&io, &state)) return SHOOP_IO;
     uint32_t lba = shoop_slot_lba(slot), blocks = (size + 511) / 512;
     memset((uint8_t *)data + size, 0, blocks * 512 - size);
     printf("SHOOP_INSTALL_BEGIN slot=%u bytes=%u\n", slot, size);

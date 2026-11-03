@@ -242,13 +242,13 @@ QEMU entry-point coverage are reported separately.
 
 Depends on Stage 1.
 
-- [ ] Implement shared metadata validation, durable boot-nonce allocation and
+- [x] Implement shared metadata validation, durable boot-nonce allocation and
   device provisioning/handoff. Integrate runtime network/credential configuration
   and the bounded FreeRTOS SD metadata interface. Keep direct-load tests explicit.
-- [ ] Add bundle creation/verification and bounded ELF load/handoff. Prove TFTP
+- [x] Add bundle creation/verification and bounded ELF load/handoff. Prove TFTP
   RAM boot through GEM and local boot of slot A through SD, with nonce/config
   supplied exclusively by U-Boot. Enforce all loader and firmware memory ranges.
-- [ ] Execute authenticated native-client smoke and the actual UI workflow after
+- [x] Execute authenticated native-client smoke and the actual UI workflow after
   loader handoff. Cold boot without a TFTP server and warm reset at identical
   endpoints; verify fresh authority and exact running bundle identity. Commit.
 
@@ -398,3 +398,23 @@ revisions rather than treating moving documentation as a reproducible input.
 - The reference SPL executes but stalls in its PS initialization `ioread` poll
   (PC `0x404`, SLCR address `0xf8000b74`). QEMU deployment CI therefore enters
   U-Boot proper; it does not claim BootROM or physical PS/DDR initialization.
+- Stage 2 generic firmware has no `shoop_credential` symbol. Its validated
+  handoff supplies the provisioned token/MAC/IP; pinned AMD `sdps` reads and writes
+  raw metadata outside rendering. Health confirmation follows endpoint startup
+  and two guest seconds of observed render/broker progress.
+- The metadata format is now version 2. It additionally retains the previous
+  confirmed image and a boot-failure streak, allowing rollback after crashes
+  shortly after confirmation. Three unsuccessful boots select that fallback or
+  recovery; 60 guest seconds of stable operation or clean shutdown clear the
+  streak. Reusing a slot first clears its old fallback reference durably. Version-1
+  prototype cards are explicitly rejected rather than silently resetting identity.
+- The Stage 2 network probe transfers 4,362,471 bytes through GEM/TFTP and runs
+  from RAM (slot `4294967295`, nonce 8001); the next process boots SD slot A with
+  nonce 8002 without a TFTP server. Warm reset advances 9001 to 9002. Previous-boot
+  authority is refused. The actual native UI settings/edit/record/play/reattach/
+  save/load/shutdown workflow passes on deployed firmware.
+- All Stage 2 probes require zero final Rust allocations/sockets/netconns and
+  unchanged arena/RTOS bounds. `RUSTFLAGS="-D warnings" cargo build --workspace`
+  and hard-float generic firmware builds pass. U-Boot legacy networking requires
+  explicitly synchronizing live IP state after programmatic environment changes;
+  the test refuses an unintended SD fallback when network RAM boot is required.

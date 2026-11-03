@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -18,7 +19,7 @@ REVISION = PINS["embeddedsw"]
 SPARSE = ["lib/bsp/standalone", "ThirdParty/bsp/freertos10_xilinx",
           "ThirdParty/sw_services/lwip220", *[
               "XilinxProcessorIPLib/drivers/" + name for name in
-              ("emacps", "scugic", "scutimer", "ttcps", "uartps", "common")]]
+              ("emacps", "scugic", "scutimer", "ttcps", "uartps", "common", "sdps")]]
 
 
 def run(args, **kwargs):
@@ -31,7 +32,16 @@ def build():
     parser.add_argument("--app", choices=["echo", "host"], default="echo")
     parser.add_argument("--credential-file", type=Path)
     parser.add_argument("--fixture", action="store_true")
+    parser.add_argument("--deployment", action="store_true")
+    parser.add_argument("--build-id", default="direct-dev")
+    parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker"])
     args = parser.parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", args.build_id):
+        parser.error("--build-id requires 1–40 ASCII letters, digits, dots, dashes or underscores")
+    if (args.deployment or args.deployment_test_fault) and args.app != "host":
+        parser.error("Deployment is only supported by the host app")
+    if args.deployment_test_fault and not args.deployment:
+        parser.error("Deployment test faults require --deployment")
     if args.fetch:
         SOURCE.parent.mkdir(parents=True, exist_ok=True)
         if not (SOURCE / ".git").exists():
@@ -75,6 +85,11 @@ def build():
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / (args.app + ".c")]
+    if args.deployment:
+        deployment = PLATFORM / "deployment"
+        includes += [deployment, drivers / "sdps/src"]
+        sources += [deployment / "runtime.c", deployment / "boot_state.c", bsp / "common/xil_util.c"]
+        sources += [p for p in (drivers / "sdps/src").glob("*.c") if not p.name.endswith("_g.c")]
     if args.app == "host":
         sources.append(PLATFORM / "sockets.c")
     if args.fixture:
@@ -94,11 +109,13 @@ def build():
         patches[patch_name] = hashlib.sha256(patch.read_bytes()).hexdigest()
     rust_library = None
     if args.app == "host":
-        if args.credential_file is None or len(args.credential_file.read_bytes()) != 32:
+        if not args.deployment and (args.credential_file is None or len(args.credential_file.read_bytes()) != 32):
             raise SystemExit("Host requires --credential-file containing exactly 32 bytes")
         credential = BUILD / "credential.c"
-        credential.write_text("const unsigned char shoop_credential[32] = {" +
-                              ",".join(str(b) for b in args.credential_file.read_bytes()) + "};\n")
+        definition = "const char shoop_build_identity[] = " + json.dumps(args.build_id) + ";\n"
+        if not args.deployment:
+            definition += "const unsigned char shoop_credential[32] = {" + ",".join(str(b) for b in args.credential_file.read_bytes()) + "};\n"
+        credential.write_text(definition)
         sources.append(credential)
         manifest = PLATFORM / "firmware/Cargo.toml"
         rust_flags = "-D warnings -C target-cpu=cortex-a9"
@@ -117,12 +134,15 @@ def build():
     flags += ["-include", str(PLATFORM / "include/xparameters.h")]
     if args.fixture:
         flags += ["-DSHOOP_FIXTURE"]
+    if args.deployment:
+        fault = [None, "before-ready", "render", "control", "broker"].index(args.deployment_test_fault)
+        flags += ["-DSHOOP_DEPLOYMENT", "-DSHOOP_DEPLOY_FAULT=" + str(fault)]
     flags += ["-I" + str(p) for p in includes]
     BUILD.mkdir(parents=True, exist_ok=True)
 
     def compile_one(source):
         obj = BUILD / (hashlib.sha256(str(source).encode()).hexdigest()[:12] + ".o")
-        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent == PLATFORM else []
+        warnings = ["-Wall", "-Wextra", "-Werror"] if source.parent in {PLATFORM, PLATFORM / "deployment"} else []
         result = subprocess.run([cc, *flags, *warnings, "-c", str(source), "-o", str(obj)], capture_output=True, text=True)
         if result.returncode:
             return None, str(source.relative_to(ROOT)) + "\n" + result.stderr
@@ -134,7 +154,8 @@ def build():
     if errors:
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
-    elf = BUILD / (args.app + ("-fixture" if args.fixture else "") + ".elf")
+    elf = BUILD / (args.app + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
+                   ("-test" if args.deployment_test_fault else "") + ".elf")
     run([cc, *flags[:4], "-nostartfiles", "-Wl,--gc-sections", "-Wl,-z,noexecstack", "-Wl,-Map=" + str(elf.with_suffix(".map")),
          "-T", PLATFORM / "link.ld", "-o", elf, *objects, *([rust_library] if rust_library else []),
          "-Wl,--start-group", "-lc", "-lm", "-lgcc", "-lnosys", "-Wl,--end-group"])
@@ -143,6 +164,10 @@ def build():
     symbols = subprocess.check_output([nm, "-g", elf], text=True)
     if not args.fixture and ("shoop_fixture_" in symbols or b"SHOOP_FPU_PASS" in image):
         raise SystemExit("Fixture hooks leaked into production firmware")
+    if args.deployment and "shoop_credential" in symbols:
+        raise SystemExit("Generic firmware contains a compiled credential")
+    if not args.deployment_test_fault and b"SHOOP_DEPLOY_TEST_" in image:
+        raise SystemExit("Deployment fault hooks leaked into production firmware")
     if image[:6] != b"\x7fELF\x01\x01":
         raise SystemExit("Expected little-endian ELF32")
     phoff = struct.unpack_from("<I", image, 28)[0]
@@ -167,7 +192,8 @@ def build():
         "elf_sha256": hashlib.sha256(image).hexdigest(),
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
-        "fixture": args.fixture,
+        "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
+        "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": 1 << 30, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     print(elf)
 

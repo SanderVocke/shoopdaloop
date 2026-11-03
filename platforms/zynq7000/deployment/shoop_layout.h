@@ -1,7 +1,7 @@
 /* Generated from layout.json; regenerate with layout.py. */
 #ifndef SHOOP_DEPLOY_LAYOUT_H
 #define SHOOP_DEPLOY_LAYOUT_H
-#define SHOOP_VERSION 1u
+#define SHOOP_VERSION 2u
 #define SHOOP_CARD_SECTORS 1048576u
 #define SHOOP_BUNDLE_MAX 33554432u
 #define SHOOP_BOOT_LBA 2048u

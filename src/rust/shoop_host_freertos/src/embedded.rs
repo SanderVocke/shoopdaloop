@@ -32,6 +32,8 @@ extern "C" {
     fn shoop_token(bytes: *mut u8);
     fn shoop_nonce() -> u64;
     fn shoop_boot_nonce() -> u64;
+    fn shoop_control_progress();
+    fn shoop_deployment_ready() -> i32;
     fn shoop_memory_report();
 }
 
@@ -393,6 +395,11 @@ pub fn run() {
     let mut last = unsafe { shoop_millis() };
     let mut shutdown_at = None;
     let mut last_memory = last;
+    assert_eq!(
+        unsafe { shoop_deployment_ready() },
+        1,
+        "deployment health confirmation"
+    );
     log("SHOOP_HOST_READY\n");
     unsafe {
         shoop_memory_report();
@@ -474,6 +481,7 @@ pub fn run() {
             break;
         }
         unsafe {
+            shoop_control_progress();
             shoop_delay(2);
         }
     }
