@@ -1,5 +1,9 @@
 # shoop_loops
 
+The [fixed-tick primitive loop bank](docs/fixed-quantum.md) implements direct
+audio/MIDI playback and grouped recording for the fixed-quantum redesign.
+Application cutover, sync/program execution and live editing remain in progress.
+
 This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
 It works in ordinary `std` applications using their allocator and panic handling.
 Bare-metal hosts must provide both and support pointer-width and 32-bit atomics.

@@ -1,5 +1,9 @@
 # rt_runtime
 
+The [fixed-quantum migration core](docs/fixed-quantum.md) provides configurable
+Q-sized graph execution and host adapters. Production hosts continue using the
+existing executor until the migration's feature and lifecycle gates are complete.
+
 A prepared-storage audio/MIDI graph runtime for Rust hosts. Prepare storage before rendering, submit changes from a control context, and process borrowed buffers in your audio callback.
 
 ```mermaid

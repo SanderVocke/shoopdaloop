@@ -62,12 +62,27 @@ pub struct CommandQueue<C, R> {
     pending: Vec<Pending<C>>,
     quantum: Quantum,
     next: Frame,
+    ingress_limit: usize,
+    deferred_cancel: Option<Cancel>,
+    last_admitted: Option<u64>,
+    cancel_result: R,
 }
 
 pub fn command_channel<C: Copy + Default + Send, R: Copy + Default + Send>(
     quantum: Quantum,
     capacity: usize,
 ) -> Result<(CommandControl<C, R>, CommandQueue<C, R>), Error> {
+    command_channel_with_budget(quantum, capacity, capacity)
+}
+
+pub fn command_channel_with_budget<C: Copy + Default + Send, R: Copy + Default + Send>(
+    quantum: Quantum,
+    capacity: usize,
+    ingress_limit: usize,
+) -> Result<(CommandControl<C, R>, CommandQueue<C, R>), Error> {
+    if ingress_limit == 0 {
+        return Err(Error::InvalidConfig);
+    }
     if capacity == 0 || capacity >= i32::MAX as usize {
         return Err(Error::InvalidConfig);
     }
@@ -154,6 +169,10 @@ pub fn command_channel<C: Copy + Default + Send, R: Copy + Default + Send>(
             pending,
             quantum,
             next: Frame(0),
+            ingress_limit,
+            deferred_cancel: None,
+            last_admitted: None,
+            cancel_result: R::default(),
         },
     ))
 }
@@ -217,7 +236,7 @@ impl<C: Copy, R: Copy> CommandControl<C, R> {
         self.outstanding + usize::from(self.recovery)
     }
 }
-impl<C: Copy, R: Copy + Default> CommandQueue<C, R> {
+impl<C: Copy, R: Copy> CommandQueue<C, R> {
     pub fn pending(&self) -> usize {
         self.pending.len()
     }
@@ -231,9 +250,10 @@ impl<C: Copy, R: Copy + Default> CommandQueue<C, R> {
         }
         // Visible cancellations must include their preceding normal submissions.
         let cancels = self.cancels.slots();
-        let commands = self.commands.slots();
+        let commands = self.commands.slots().min(self.ingress_limit);
         for _ in 0..commands {
             let command = self.commands.pop().map_err(|_| Error::InvalidState)?;
+            self.last_admitted = Some(command.ticket.sequence);
             match self.quantum.effective(command.requested, next) {
                 Ok(effective) => {
                     if self.pending.len() == self.pending.capacity() {
@@ -255,8 +275,23 @@ impl<C: Copy, R: Copy + Default> CommandQueue<C, R> {
                 })?,
             }
         }
-        for _ in 0..cancels {
-            let cancel = self.cancels.pop().map_err(|_| Error::InvalidState)?;
+        if self.deferred_cancel.is_some() || cancels > 0 {
+            let cancel = match self.deferred_cancel.take() {
+                Some(c) => c,
+                None => self.cancels.pop().map_err(|_| Error::InvalidState)?,
+            };
+            if self
+                .pending
+                .iter()
+                .all(|p| p.command.ticket != cancel.target)
+                && self
+                    .last_admitted
+                    .is_none_or(|s| cancel.target.sequence > s)
+                && self.commands.slots() > 0
+            {
+                self.deferred_cancel = Some(cancel);
+                return Ok(());
+            }
             let result = if let Some(index) = self
                 .pending
                 .iter()
@@ -271,7 +306,7 @@ impl<C: Copy, R: Copy + Default> CommandQueue<C, R> {
                     actual: next,
                     result: Err(Error::Cancelled),
                 })?;
-                Ok(R::default())
+                Ok(self.cancel_result)
             } else {
                 Err(Error::InvalidState)
             };

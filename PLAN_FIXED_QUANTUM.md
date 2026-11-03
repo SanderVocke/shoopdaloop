@@ -51,6 +51,11 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
 - [ ] Implement direct tick-based loop playback, transitions, sync/programs,
   recording and media ownership. Verify against independent reference models,
   aligned legacy cases, capacity failures and resource reclamation.
+  - [x] Primitive audio/MIDI playback, aligned seeks, gain, stop and state queries.
+  - [x] Grouped whole-tick recording, coherent publication, monitored previous
+    content, explicit exhaustion and failed-start preservation.
+  - [ ] Sync/program compilation and domain precedence/request-family semantics.
+  - [ ] Live media/graph publication and complete shutdown/export transport.
 - [ ] Integrate engine, protocol/host configuration, settings, persistence and
   recovery. Verify native and browser production routes and capability parity.
 - [ ] Re-run whole-callback performance experiments for regular, two-transition,
@@ -78,14 +83,42 @@ Initial branch: `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2`.
 The earlier experiments are in `/workspace/work/fixed-quantum`; no experimental
 source edits were copied into this branch.
 
-Fixed-core milestone: `rt_runtime::fixed` now implements immutable prepared routing,
+Fixed-core milestone: `rt_runtime::fixed` implements immutable prepared routing,
 Q-sized buffers, direct state hooks, terminal faults and MIDI reset output, a
 bounded copy-command SPSC queue with reserved cancellation, and a constant-latency
-audio/MIDI host adapter. The application continues to use the interval path until
-feature parity. Dynamic graph publication is not implemented in the new core.
-Seven heap-guarded integration cases cover all four Q values, scalar DAG/MIDI
-output and partition invariance, queue saturation/cancellation, overflow/refusal
-and callback-wide copy budgets. The complete existing rt_runtime suite passed
-before the final preparation pre-touch and binding-validation changes; targeted
-fixed tests and a warning-denying build passed after those changes. A final full
-suite rerun remains required.
+audio/MIDI host adapter. Command ingress obeys a callback-wide budget, including
+when cancellation targets work that has not yet been admitted. Dynamic graph
+publication is not implemented in the new core.
+
+Primitive-loop milestone: `shoop_loops::fixed` owns cached sources and tick state,
+reusing capture/lease primitives without resolver preview/commit or consumer
+observations. It supports audio/MIDI playback, seeks, gain, stop, state queries,
+whole-tick recording, previous-content monitoring, coherent take publication,
+explicit capacity failure and cleanup. Content and active-capture revisions are
+separate. Repeated-take tests alternate banks 32 times and recover every page.
+Sync/program arbitration and production integration remain incomplete. The
+production application still selects the existing interval path.
+
+Validation completed:
+
+- Eight fixed-core and six fixed-loop integration cases pass natively, under
+  Node 24.19.0 / wasm-bindgen 0.2.127, and headless Chromium 154.0.8037.57 with a
+  matching-build ChromeDriver 154.0.8037.92. These are library/adapter browser
+  tests, not AudioWorklet or physical-device acceptance.
+- Warning-denying native workspace build passed. The full native nextest run
+  passed 2576 cases, with four host-facility skips, using the documented features,
+  three test workers and loopback permission. Test-attribute, boundary, book,
+  formatting and diff checks passed.
+- Initial validation attempts are retained under `work/`: the first full test
+  build exhausted disk space, resolved by removing only generated debug output
+  and rebuilding without debug info/incremental compilation. An earlier loaded
+  run passed 2574/2575 tests with an existing bounded lifecycle stress failure;
+  that test passed 20 actual isolated executions. A repeat omitted loopback
+  permission and failed IPC tests. The final correctly permitted full run is
+  green. No existing test was weakened or removed.
+
+The checked `fixed_quantum_benchmark` example and `benchmark_fixed_core.py` driver
+retain every callback, verify every sample and graph visit count outside timing,
+and report full-128-frame callback means, p99/p99.9, maxima and deadline misses.
+The implementation timing sweep and remote CI/review are next. Full application
+parity/cutover and device/plugin acceptance remain unchecked above.

@@ -305,6 +305,13 @@ fn invalid_blocks_are_inert_and_execution_faults_are_terminal() {
         Err(Error::InvalidState)
     );
     assert_eq!(r.state().callbacks, 1);
+    let mut reset_sink = MidiBuffer::new(1, 3).unwrap();
+    let mut resets = 0;
+    while r.midi_recovery_pending(0).unwrap() {
+        reset_sink.clear();
+        resets += assert_no_heap(|| r.drain_midi_recovery(0, &mut reset_sink, 32)).unwrap();
+    }
+    assert_eq!(resets, rt_runtime::midi::ResetState::EVENTS);
     assert_no_heap(|| {
         r.process(
             AudioBlock {
@@ -466,4 +473,53 @@ fn host_copy_budget_is_not_renewed_by_internal_ticks() {
     );
     assert_eq!(r.state().offset, 64);
     assert_eq!(r.next_frame(), Frame(64));
+}
+
+#[shoop_test]
+fn command_ingress_budget_does_not_renew_at_ticks_and_cancellation_can_wait_for_admission() {
+    let (mut control, mut queue) =
+        fixed::command_channel_with_budget::<u32, u32>(Quantum::default(), 3, 1).unwrap();
+    control.submit(Frame(0), 1).unwrap();
+    control.submit(Frame(0), 2).unwrap();
+    let target = control.submit(Frame(256), 3).unwrap();
+    let cancellation = control.cancel(target).unwrap();
+    queue.begin_callback(Frame(0)).unwrap();
+    let mut seen = Vec::with_capacity(2);
+    assert_no_heap(|| {
+        for frame in [0, 32, 64, 96] {
+            queue
+                .dispatch(Frame(frame), |v| {
+                    seen.push(v);
+                    Ok(v)
+                })
+                .unwrap();
+        }
+    });
+    assert_eq!(seen, [1]);
+    assert_eq!(queue.pending(), 0);
+    queue.begin_callback(Frame(128)).unwrap();
+    assert_no_heap(|| {
+        for frame in [128, 160, 192, 224] {
+            queue
+                .dispatch(Frame(frame), |v| {
+                    seen.push(v);
+                    Ok(v)
+                })
+                .unwrap();
+        }
+    });
+    assert_eq!(seen, [1, 2]);
+    queue.begin_callback(Frame(256)).unwrap();
+    queue.dispatch(Frame(256), Ok).unwrap();
+    let mut receipts = Vec::new();
+    while let Some(r) = control.try_receipt() {
+        receipts.push(r);
+    }
+    assert_eq!(receipts.len(), 4);
+    assert!(receipts
+        .iter()
+        .any(|r| r.ticket == target && r.result == Err(Error::Cancelled)));
+    assert!(receipts
+        .iter()
+        .any(|r| r.ticket == cancellation && r.result == Ok(0)));
 }

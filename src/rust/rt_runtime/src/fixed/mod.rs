@@ -10,5 +10,7 @@ mod queue;
 mod timing;
 pub use graph::{Block, Config, Diagnostics, PreparedConfig, Processor, Runtime, State};
 pub use host::BufferedHost;
-pub use queue::{command_channel, CommandControl, CommandQueue, Receipt, Ticket};
+pub use queue::{
+    command_channel, command_channel_with_budget, CommandControl, CommandQueue, Receipt, Ticket,
+};
 pub use timing::{Quantum, Tick};
