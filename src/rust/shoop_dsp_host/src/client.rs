@@ -1,3 +1,4 @@
+use crate::audio::{self, Audio, InputPolicy, Transport};
 use crate::control::{self, Algorithm, Reply, Request};
 use crate::polling::{Polling, ServiceGaps};
 use anyhow::{ensure, Result};
@@ -6,7 +7,7 @@ use serde_json::{json, Value};
 use shoop_remote_dsp::{wire, Config};
 use std::{
     collections::BTreeMap,
-    net::{SocketAddr, TcpStream, UdpSocket},
+    net::{SocketAddr, TcpStream},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -63,6 +64,14 @@ pub struct Options {
     output: Option<PathBuf>,
     #[arg(long)]
     validate_only: bool,
+    #[arg(long, value_enum, default_value = "udp")]
+    transport: Transport,
+    #[arg(long, value_enum)]
+    input_policy: Option<InputPolicy>,
+    #[arg(long)]
+    catch_up: bool,
+    #[arg(long, default_value_t = 0)]
+    source_stall_us: u64,
     #[arg(long, value_enum, default_value = "yield")]
     polling: Polling,
 }
@@ -106,6 +115,22 @@ fn distribution(mut values: Vec<u64>) -> Value {
         "max_ns":values.last(),"histogram_us":histogram.into_iter().collect::<Vec<_>>()})
 }
 pub fn run(options: Options) -> Result<()> {
+    let input_policy = options
+        .input_policy
+        .unwrap_or(if options.transport == Transport::Tcp {
+            InputPolicy::Complete
+        } else {
+            InputPolicy::Gap
+        });
+    ensure!(
+        options.transport != Transport::Tcp || input_policy == InputPolicy::Complete,
+        "TCP audio requires complete-input processing"
+    );
+    let catch_up = options.catch_up || options.transport == Transport::Tcp;
+    ensure!(
+        options.source_stall_us <= 1_000_000,
+        "source stall exceeds one second"
+    );
     let config = Config {
         start_frame: options.start_frame,
         sample_rate: options.sample_rate,
@@ -167,13 +192,19 @@ pub fn run(options: Options) -> Result<()> {
     let tcp = TcpStream::connect_timeout(&options.endpoint, Duration::from_secs(5))?;
     let mut tcp =
         shoop_transport_socket::setup::authenticate(tcp, token, false, Duration::from_secs(2))?;
-    let udp = UdpSocket::bind(SocketAddr::new(tcp.local_addr()?.ip(), 0))?;
-    let sock = socket2::SockRef::from(&udp);
-    sock.set_recv_buffer_size(1_048_576)?;
-    sock.set_send_buffer_size(1_048_576)?;
-    let client_receive_buffer = sock.recv_buffer_size()?;
-    let client_send_buffer = sock.send_buffer_size()?;
-    udp.set_nonblocking(true)?;
+    let mut udp_audio = if options.transport == Transport::Udp {
+        Some(Audio::udp_client(SocketAddr::new(
+            tcp.local_addr()?.ip(),
+            0,
+        ))?)
+    } else {
+        None
+    };
+    let udp_port = udp_audio
+        .as_ref()
+        .map(|audio| audio.address().map(|a| a.port()))
+        .transpose()?
+        .unwrap_or(0);
     let mut random = [0; 8];
     getrandom::fill(&mut random).map_err(anyhow::Error::msg)?;
     let epoch = u64::from_le_bytes(random).max(1);
@@ -198,25 +229,58 @@ pub fn run(options: Options) -> Result<()> {
             version: control::VERSION,
             config,
             epoch,
-            udp_port: udp.local_addr()?.port(),
+            udp_port,
+            transport: options.transport,
+            input_policy,
             algorithm: algorithm.clone(),
         },
     )?;
-    let (port, latency, server_receive_buffer, server_send_buffer) = match ready {
+    let (port, tcp_token, latency, server_receive_buffer, server_send_buffer) = match ready {
         Reply::Ready {
             version,
             udp_port,
+            transport,
+            tcp_port,
+            tcp_token,
             latency_frames,
             receive_buffer,
             send_buffer,
         } => {
-            ensure!(version == control::VERSION, "wrong control version");
-            (udp_port, latency_frames, receive_buffer, send_buffer)
+            ensure!(
+                version == control::VERSION && transport == options.transport,
+                "wrong control version/transport"
+            );
+            (
+                if transport == Transport::Tcp {
+                    tcp_port.ok_or_else(|| anyhow::anyhow!("missing TCP audio port"))?
+                } else {
+                    udp_port
+                },
+                tcp_token,
+                latency_frames,
+                receive_buffer,
+                send_buffer,
+            )
         }
         _ => anyhow::bail!("expected stream readiness"),
     };
     let server = SocketAddr::new(options.endpoint.ip(), port);
-    udp.connect(server)?;
+    let mut audio = if let Some(mut audio) = udp_audio.take() {
+        audio.connect_udp(server)?;
+        audio
+    } else {
+        let stream = TcpStream::connect_timeout(&server, Duration::from_secs(3))?;
+        control::write(&mut tcp, &Request::Start)?;
+        let stream = shoop_transport_socket::setup::authenticate(
+            stream,
+            tcp_token.ok_or_else(|| anyhow::anyhow!("missing TCP audio credential"))?,
+            false,
+            Duration::from_secs(3),
+        )?;
+        Audio::tcp(stream, config, 1_048_576)?
+    };
+    let (client_receive_buffer, client_send_buffer) = audio.buffer_sizes()?;
+    let client_runtime = audio::runtime_info();
     let mut tx = vec![u64::MAX; count];
     let mut rx = vec![u64::MAX; count];
     let mut processing = vec![0; count];
@@ -229,7 +293,15 @@ pub fn run(options: Options) -> Result<()> {
     let mut presentation_midi = shoop_dsp::MidiBuffer::new(config.midi_per_packet as usize);
     let mut delivered = vec![false; count];
     let mut consume_next = 0usize;
-    control::call(&mut tcp, &Request::Start)?;
+    if options.transport == Transport::Tcp {
+        let reply: Reply = control::read(&mut tcp, Duration::from_secs(5), || {})?;
+        ensure!(
+            matches!(reply, Reply::Ok),
+            "TCP audio start failed: {reply:?}"
+        );
+    } else {
+        control::call(&mut tcp, &Request::Start)?;
+    }
     let origin = Instant::now();
     let mut next = 0usize;
     let mut duplicate = 0;
@@ -240,13 +312,19 @@ pub fn run(options: Options) -> Result<()> {
     let finish = config.deadline_ns(count as u64 - 1)? + 50_000_000;
     let mut service_gaps = ServiceGaps::default();
     let mut last_service = 0;
-    while origin.elapsed().as_nanos() as u64 <= finish {
+    let mut transport_error = None;
+    let mut source_stalled = false;
+    'measurement: while origin.elapsed().as_nanos() as u64 <= finish {
         let now = origin.elapsed().as_nanos() as u64;
         service_gaps.observe(now - last_service);
         last_service = now;
         let mut progressed = false;
+        if let Err(error) = audio.flush() {
+            transport_error = Some(error.to_string());
+            break;
+        }
         for _ in 0..128 {
-            match udp.recv(&mut raw) {
+            match audio.receive(&mut raw) {
                 Ok(len) => {
                     let received_at = origin.elapsed().as_nanos() as u64;
                     match wire::decode(&raw[..len], config) {
@@ -276,8 +354,12 @@ pub fn run(options: Options) -> Result<()> {
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(_) => {
+                Err(error) => {
                     invalid += 1;
+                    if options.transport == Transport::Tcp {
+                        transport_error = Some(error.to_string());
+                        break 'measurement;
+                    }
                     break;
                 }
             }
@@ -309,7 +391,7 @@ pub fn run(options: Options) -> Result<()> {
                 deliberately_dropped += 1;
                 continue;
             }
-            if backlog > config.reorder_packets as u64 + config.multiplier as u64 {
+            if !catch_up && backlog > config.reorder_packets as u64 + config.multiplier as u64 {
                 send_errors += 1;
                 continue;
             }
@@ -323,12 +405,22 @@ pub fn run(options: Options) -> Result<()> {
             header.transport.playing = true;
             let length = wire::encode(header, config, &input, &[], &mut out)?;
             let sent_at = origin.elapsed().as_nanos() as u64;
-            match udp.send(&out[..length]) {
-                Ok(_) => tx[sequence] = sent_at,
-                Err(_) => send_errors += 1,
+            match audio.send(&out[..length]) {
+                Ok(()) => tx[sequence] = sent_at,
+                Err(error) => {
+                    send_errors += 1;
+                    if options.transport == Transport::Tcp {
+                        transport_error = Some(error.to_string());
+                        break 'measurement;
+                    }
+                }
             }
             if options.duplicate_every > 0 && sequence as u64 % options.duplicate_every == 0 {
-                let _ = udp.send(&out[..length]);
+                let _ = audio.send(&out[..length]);
+            }
+            if options.source_stall_us > 0 && sequence == warmup_packets {
+                source_stalled = true;
+                std::thread::sleep(Duration::from_micros(options.source_stall_us));
             }
         }
         if !progressed {
@@ -346,14 +438,23 @@ pub fn run(options: Options) -> Result<()> {
         consume_next += 1;
     }
     control::call(&mut tcp, &Request::Pause)?;
-    let (stats, concealment, next_sequence, server_service_gaps) =
+    let (stats, concealment, next_sequence, server_service_gaps, server_audio, worker_runtime) =
         match control::call(&mut tcp, &Request::Stats)? {
             Reply::Status {
                 stats,
                 concealment,
                 next_sequence,
                 service_gaps,
-            } => (stats, concealment, next_sequence, service_gaps),
+                audio,
+                worker_runtime,
+            } => (
+                stats,
+                concealment,
+                next_sequence,
+                service_gaps,
+                audio,
+                worker_runtime,
+            ),
             _ => anyhow::bail!("expected stream statistics"),
         };
     if let Some(path) = &options.state_output {
@@ -458,7 +559,7 @@ pub fn run(options: Options) -> Result<()> {
             dsp_times.push(processing[i]);
         }
     }
-    let report = json!({"status":"measured","config":config,"algorithm":options.processor,"delay_frames":options.delay,
+    let mut report = json!({"status":"measured","config":config,"algorithm":options.processor,"delay_frames":options.delay,
         "algorithm_latency_frames":latency,"seed":options.seed,"impulse":options.impulse,"warmup_seconds":options.warmup,"measurement_seconds":options.seconds,
         "capture_grace_ms":50,"total_packets":count,"measured_packets":measured_packets,"sent":measured_sent,"on_time":on_time,"late":late,"missing":missing,
         "deadline_miss_fraction":(late+missing) as f64/measured_packets as f64,"sender_period_overruns":sender_late,"maximum_sender_backlog_packets":max_source_backlog,
@@ -466,8 +567,15 @@ pub fn run(options: Options) -> Result<()> {
         "correctness_errors":correctness_errors,"verified_samples":verified_samples,"unverified_samples":unverified_samples,
         "server":stats,"concealment":concealment,"next_sequence":next_sequence,
         "polling":options.polling,"client_service_gaps":service_gaps,"server_service_gaps":server_service_gaps,
-        "socket_buffers":{"server_receive":server_receive_buffer,"server_send":server_send_buffer,"client_receive":client_receive_buffer,"client_send":client_send_buffer},
+        "socket_buffers":{"server_receive":server_audio["receive_buffer"].as_u64().unwrap_or(server_receive_buffer as u64),"server_send":server_audio["send_buffer"].as_u64().unwrap_or(server_send_buffer as u64),"client_receive":client_receive_buffer,"client_send":client_send_buffer},
         "rtt":distribution(rtt),"sender_lateness":distribution(lateness),"batch_turnaround":distribution(batch),"dsp_processing":distribution(dsp_times)});
+    if let Value::Object(fields) = json!({
+        "transport":options.transport,"input_policy":input_policy,"catch_up":catch_up,"transport_error":transport_error,
+        "source_stall_us":options.source_stall_us,"source_stalled":source_stalled,
+        "client_audio":audio.report(),"server_audio":server_audio,"client_runtime":client_runtime,"worker_runtime":worker_runtime
+    }) {
+        report.as_object_mut().unwrap().extend(fields);
+    }
     if let Some(path) = &options.output {
         std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
     }

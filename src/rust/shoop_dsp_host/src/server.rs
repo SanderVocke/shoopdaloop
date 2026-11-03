@@ -1,3 +1,4 @@
+use crate::audio::{self, Audio, InputPolicy, Transport};
 use crate::control::{self, Algorithm, Reply, Request};
 use crate::polling::{Polling, ServiceGaps};
 use anyhow::{ensure, Result};
@@ -5,7 +6,7 @@ use clap::Args;
 use shoop_dsp::{DelayCopy, Latency, Processor};
 use shoop_remote_dsp::{stream::Stream, Config};
 use std::{
-    net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
+    net::{SocketAddr, TcpListener, TcpStream},
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -29,15 +30,18 @@ pub struct Options {
     lan: bool,
     #[arg(long, default_value_t = 1_048_576)]
     socket_buffer: usize,
+    #[arg(long, default_value_t = 0)]
+    data_port: u16,
     #[arg(long, value_enum, default_value = "yield")]
     polling: Polling,
 }
 struct Work {
     dsp: Box<dyn Processor>,
     core: Stream,
-    udp: UdpSocket,
+    audio: Audio,
     config: Config,
-    peer: SocketAddr,
+    input_policy: InputPolicy,
+    worker_runtime: serde_json::Value,
     elapsed_ns: u64,
     service_gaps: ServiceGaps,
 }
@@ -110,6 +114,7 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
     let handle = thread::Builder::new()
         .name("network-dsp".into())
         .spawn(move || {
+            work.worker_runtime = audio::runtime_info();
             let origin = Instant::now();
             let elapsed_base = work.elapsed_ns;
             let mut last_input = Instant::now();
@@ -123,8 +128,12 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
                 work.service_gaps.observe(serviced - last_service);
                 last_service = serviced;
                 let mut progress = false;
-                match work.udp.recv_from(&mut raw) {
-                    Ok((len, peer)) if peer == work.peer => {
+                if work.audio.flush().is_err() {
+                    work.core.retire_with(shoop_remote_dsp::Error::Io);
+                    continue;
+                }
+                match work.audio.receive(&mut raw) {
+                    Ok(len) => {
                         let _ = work.core.accept(
                             &raw[..len],
                             elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
@@ -132,7 +141,6 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
                         last_input = Instant::now();
                         progress = true;
                     }
-                    Ok(_) => {}
                     Err(e)
                         if e.kind() == std::io::ErrorKind::WouldBlock
                             || e.kind() == std::io::ErrorKind::Interrupted => {}
@@ -140,18 +148,21 @@ fn start(mut work: Work, polling: Polling) -> Result<Worker> {
                 }
                 for _ in 0..8 {
                     let now = elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
-                    let udp = &work.udp;
-                    let peer = work.peer;
-                    match work.core.process_one(
-                        now,
-                        &mut *work.dsp,
-                        || elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64),
-                        |packet| {
-                            udp.send_to(packet, peer)
-                                .map(|_| ())
-                                .map_err(|_| shoop_remote_dsp::Error::Io)
-                        },
-                    ) {
+                    let audio = &mut work.audio;
+                    let clock = || elapsed_base.saturating_add(origin.elapsed().as_nanos() as u64);
+                    let emit =
+                        |packet: &[u8]| audio.send(packet).map_err(|_| shoop_remote_dsp::Error::Io);
+                    let result = match work.input_policy {
+                        InputPolicy::Gap => work.core.process_one(now, &mut *work.dsp, clock, emit),
+                        InputPolicy::Complete => {
+                            work.core
+                                .process_one_complete(now, &mut *work.dsp, clock, emit)
+                        }
+                    };
+                    if work.audio.failed() {
+                        work.core.retire_with(shoop_remote_dsp::Error::Io);
+                    }
+                    match result {
                         Ok(true) => progress = true,
                         _ => break,
                     }
@@ -201,6 +212,8 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                         config,
                         epoch,
                         udp_port,
+                        transport,
+                        input_policy,
                         algorithm,
                     } => {
                         ensure!(running.is_none(), "pause before configuring");
@@ -208,10 +221,14 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             version == control::VERSION
                                 && epoch != 0
                                 && !used_epochs.contains(&epoch)
-                                && udp_port != 0,
+                                && (transport == Transport::Tcp || udp_port != 0),
                             "invalid version or stream identity"
                         );
                         ensure!(used_epochs.len() < 1024, "connection stream limit reached");
+                        ensure!(
+                            transport != Transport::Tcp || input_policy == InputPolicy::Complete,
+                            "TCP audio requires complete-input processing"
+                        );
                         ensure!(
                             matches!(
                                 (&*options.processor, &algorithm),
@@ -226,21 +243,25 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             Latency::Known(frames) => Some(frames),
                             Latency::Unknown => None,
                         };
-                        let udp = UdpSocket::bind(SocketAddr::new(tcp.local_addr()?.ip(), 0))?;
-                        let sock = socket2::SockRef::from(&udp);
-                        sock.set_recv_buffer_size(options.socket_buffer)?;
-                        sock.set_send_buffer_size(options.socket_buffer)?;
-                        let receive_buffer = sock.recv_buffer_size()?;
-                        let send_buffer = sock.send_buffer_size()?;
-                        udp.set_nonblocking(true)?;
-                        let udp_port_reply = udp.local_addr()?.port();
+                        drop(parked.take());
+                        let audio = Audio::server(
+                            transport,
+                            SocketAddr::new(tcp.local_addr()?.ip(), options.data_port),
+                            SocketAddr::new(peer.ip(), udp_port),
+                            config,
+                            options.socket_buffer,
+                        )?;
+                        let (receive_buffer, send_buffer) = audio.buffer_sizes()?;
+                        let data_port = audio.address()?.port();
+                        let tcp_token = audio.token();
                         let core = Stream::prepare(config, epoch)?;
                         parked = Some(Work {
                             dsp,
                             core,
-                            udp,
+                            audio,
                             config,
-                            peer: SocketAddr::new(peer.ip(), udp_port),
+                            input_policy,
+                            worker_runtime: serde_json::Value::Null,
                             elapsed_ns: 0,
                             service_gaps: ServiceGaps::default(),
                         });
@@ -248,7 +269,14 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                         ui.pump();
                         Reply::Ready {
                             version: control::VERSION,
-                            udp_port: udp_port_reply,
+                            udp_port: if transport == Transport::Udp {
+                                data_port
+                            } else {
+                                0
+                            },
+                            transport,
+                            tcp_port: (transport == Transport::Tcp).then_some(data_port),
+                            tcp_token,
                             latency_frames: latency,
                             receive_buffer,
                             send_buffer,
@@ -260,12 +288,11 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             parked.as_ref().is_some_and(|w| !w.core.stats().retired),
                             "configure a fresh stream after retirement"
                         );
-                        running = Some(start(
-                            parked
-                                .take()
-                                .ok_or_else(|| anyhow::anyhow!("configure first"))?,
-                            options.polling,
-                        )?);
+                        let mut work = parked
+                            .take()
+                            .ok_or_else(|| anyhow::anyhow!("configure first"))?;
+                        work.audio = work.audio.activate()?;
+                        running = Some(start(work, options.polling)?);
                         Reply::Ok
                     }
                     Request::Pause => {
@@ -283,6 +310,8 @@ fn session(mut tcp: TcpStream, options: &Options, token: [u8; 32], ui: &mut Ui) 
                             service_gaps: w.service_gaps,
                             concealment: w.core.concealment().to_vec(),
                             next_sequence: w.core.next_sequence(),
+                            audio: w.audio.report(),
+                            worker_runtime: w.worker_runtime.clone(),
                         }
                     }
                     Request::Save => {

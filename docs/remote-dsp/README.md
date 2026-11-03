@@ -24,6 +24,19 @@ The service prints its concrete control endpoint. In another terminal:
   --delay 67 --seconds 2 --warmup 0.5 --output work/remote-dsp/result.json
 ```
 
+UDP remains the default. For client-driven, complete-input TCP audio, add
+`--transport tcp` to the client command. The server supports either transport:
+
+```sh
+./target/release/shoop_dsp_host client --credential-file work/remote-dsp/key \
+  --endpoint 127.0.0.1:PORT --transport tcp \
+  --packet-frames 16 --multiplier 4 --allowance 8 \
+  --delay 67 --seconds 2 --warmup 0.5 --output work/remote-dsp/tcp.json
+```
+
+See the [matched UDP/TCP results](transport-results.md) and the
+[two-machine cable benchmark instructions](cable-benchmarks.md).
+
 The requester generates reproducible multichannel samples, submits timestamped
 packets, consumes fixed deadline slots through a bounded return buffer, and
 checks received DSP samples against an independent reference. It retains late
@@ -34,9 +47,21 @@ reset indication; it never shifts a later slot. Delay-copy delays audio by exact
 Use `--start-frame` to attach at an existing absolute source frame.
 Use `--channels`, `--sample-rate`, `--reorder-packets`, `--gap-timeout-us` and
 `--mtu` for other stream shapes/budgets. `--impulse` selects an impulse input.
-`--drop-every` and `--duplicate-every` are requester-side failure injection, not
-properties of the DSP. Invalid static configurations produce a `rejected` JSON
-result without contacting the endpoint. The server independently validates them.
+`--drop-every` and `--duplicate-every` are application-level requester failure
+injection, not kernel packet loss or properties of the DSP. TCP cannot recover an
+application frame that was deliberately never submitted. `--source-stall-us`
+pauses dispatch once, immediately after submitting the first measured packet,
+without moving source deadlines. It defaults to zero and is separately reported.
+Invalid static configurations produce a `rejected` JSON result without contacting
+the endpoint. The server independently validates them.
+
+`--input-policy gap|complete` selects input recovery. UDP defaults to `gap`; TCP
+defaults to, and requires, `complete`. Complete mode never zero-substitutes or
+advances an incomplete DSP block. `--catch-up` disables the UDP requester's
+legacy overdue-source skipping; TCP always catches up. The matched comparison
+enables catch-up for all transports. Complete-input mode can still stall or retire
+on bounded-window overflow, inactivity or connection failure; it is not a promise
+of unlimited buffering or unlimited waiting.
 
 For native Carla:
 
@@ -58,10 +83,14 @@ plugins are not assumed to have a known transfer function or zero internal delay
 
 Loopback is the default. `serve --lan --bind ADDRESS:PORT` enables an explicit
 trusted LAN endpoint. Credential files follow the existing session host's owner,
-permission/ACL, size and symlink checks. TCP uses the shared token handshake;
-control and UDP are bound to the authenticated peer, negotiated port and stream
-epoch. Control supports one connection at a time. `--once` exits after that
-connection, which is useful for process tests and sweeps.
+permission/ACL, size and symlink checks. Control uses the shared token handshake;
+audio is bound to the authenticated peer and stream epoch. TCP audio uses a
+separate connection and a fresh per-configuration credential, authenticated with
+the same handshake during `Start` with a three-second attachment deadline. This
+is not TLS or audio encryption: use a trusted network. `serve --data-port PORT`
+fixes the audio port for either transport; zero chooses an ephemeral port.
+Control supports one connection at a time. `--once` exits after that connection,
+which is useful for process tests and sweeps.
 
 ## DSP and transport boundaries
 
@@ -96,8 +125,12 @@ not create earlier input availability within a large callback.
 
 Control uses the repository's 32-byte token handshake followed by bounded JSON
 frames (`u32` little-endian byte length, maximum 32 MiB). It negotiates the protocol
-version, configuration, nonzero never-reused per-connection epoch, requester UDP
-port and algorithm. JSON tags and invalid versions/configurations are rejected.
+version, configuration, nonzero never-reused per-connection epoch, audio transport,
+input policy, requester UDP port (UDP only) and algorithm. `Ready` includes the
+selected transport and, for TCP, its audio port and fresh credential. Omitted
+transport/policy fields retain UDP/gap defaults. Use matching builds at both ends;
+older servers can reject the additional configuration fields. JSON tags and
+invalid versions/configurations are rejected.
 Clients must choose a fresh epoch for every stream incarnation, including
 reconnection and process restart; the requester uses operating-system entropy.
 The service rejects repeated epochs within one connection. Partial reads and
@@ -107,7 +140,16 @@ cleanup can overlap active processing. Source inactivity retires processing afte
 two seconds; source-time progress is
 never synthesized indefinitely while no source exists.
 
-Audio uses UDP. The 64-byte header and every integer/float payload are explicitly
+Audio uses either one UDP datagram per audio packet or TCP frames consisting of
+a four-byte little-endian length followed by the same audio packet. TCP is
+nonblocking with `TCP_NODELAY` at both ends; partial reads/writes preserve framing.
+Its preallocated transmit ring is bounded by the negotiated packet window, capped
+at 8 MiB. Queue exhaustion, malformed lengths and broken connections are explicit
+errors, not permission to discard bytes and resume a misframed stream. Kernel
+socket buffer sizes, application queue high-water marks, write blocking and errors
+are included in results. A TCP segment is not necessarily one audio packet.
+
+The 64-byte audio header and every integer/float payload are explicitly
 little-endian. Planar float32 samples follow the header, then zero or more fixed
 72-byte MIDI records (frame `u32`, port `u16`, length `u16`, 64 data bytes).
 
@@ -140,23 +182,33 @@ Therefore `N<k` is structurally impossible with positive turnaround and is refus
 `N` is an allowance, not server holding time. The integer packet-period allowance
 and exact readiness/consumption boundaries are part of this version's contract.
 
-Reordering storage is `k + reorder_packets + 1` packet slots. A missing batch
-waits at most `(k-1)` packet periods plus `gap_timeout_us` from its first observed
-input; complete batches run immediately. Expiry substitutes zero input once and
-records the missing mask. Duplicates/stale epochs cannot advance the DSP. Excess
-future traffic is counted; sustained overflow retires the stream and requires a
-new epoch. The first 1024 concealment records are retained for finite experiments;
-truncation is explicit and prevents unverifiable sample claims.
+Reordering storage is `k + reorder_packets + 1` packet slots. Under the default
+UDP `gap` policy, a missing batch waits at most `(k-1)` packet periods plus
+`gap_timeout_us` from its first observed input; complete batches run immediately.
+Expiry substitutes zero input once and records the missing mask. Under `complete`,
+no such expiry occurs: the next block must have all its original packets before
+processing. Neither policy creates an independent server audio clock.
+
+Duplicates/stale epochs cannot advance the DSP. Excess future traffic is counted;
+sustained overflow retires the stream and requires a new epoch. The first 1024
+concealment records are retained for finite experiments; truncation is explicit
+and prevents unverifiable sample claims. Client output deadlines are independent
+of the input policy: TCP reliability cannot make an overdue output usable at an
+already-consumed playback slot.
 
 The return buffer is independently bounded by the allowance, multiplier and
 reorder capacity. It refuses late, old and excess-future output and consumes each
 slot once. At its deadline a slot is processed audio, marked concealed audio or
 silence. A late packet cannot replace already consumed fallback.
 
-Negotiation reserves the full MIDI capacity when checking MTU in both directions.
-It uses a conservative 48-byte IP/UDP allowance for IPv4 or IPv6, with no IP
-fragmentation. At a 1500-byte IP MTU, 16 channels with `P=16` fit; `P=32` do not.
-Algorithm sample delay remains separate from all scheduling/transport budgets.
+Negotiation reserves the full MIDI capacity when checking packet size in both
+directions. UDP uses a conservative 48-byte IP/UDP allowance for IPv4 or IPv6,
+intended to avoid IP fragmentation when the configured MTU matches the path.
+At a 1500-byte IP MTU, 16 channels with `P=16` fit; `P=32` do not. TCP retains the
+same conservative logical frame-size admission limit for matched experiments;
+it does not depend on TCP segment boundaries or imply that TCP cannot segment
+larger frames. Algorithm sample delay remains separate from all scheduling and
+transport budgets.
 
 ## Verification
 
@@ -166,8 +218,10 @@ cargo build --lib -p shoop_dsp -p shoop_remote_dsp --target thumbv7em-none-eabih
 SHOOP_REQUIRE_CARLA_TESTS=1 cargo test -p shoop_dsp_host --features carla
 ```
 
-The real-Carla test loads internal stereo Audio Gain at gain 0.5, checks network
-samples, saves state and checks another process pair restored from that state.
+The real-Carla test loads internal stereo Audio Gain at gain 0.5, checks UDP
+network samples, saves state and checks a TCP process pair restored from that
+state. Additional TCP tests cover fragmented framing, bounded backpressure,
+complete-input waiting, control responsiveness and fresh audio authentication.
 It requires the real runtime. Other tests inject loss, duplicates, reorder,
 retirement and stale epochs and verify independent sample references and fixed
 presentation slots, including allocator-guarded prepared operations.
@@ -203,8 +257,10 @@ missing. Timing misses never fail CI on a wall-clock percentile threshold.
 
 ## Scheduling and polling comparisons
 
-See the [recorded scheduling results](tuning-results.md) alongside the
-[original sweep](localhost-results.md).
+See the [recorded cloud scheduling results](tuning-results.md) alongside the
+[original cloud sweep](localhost-results.md). The [local PREEMPT_RT laptop
+reproduction](local-results.md) adds like-for-like cloud comparisons and the
+previously unavailable FIFO/RR scheduling experiments, with complete evidence.
 
 Both `serve` and `client` accept `--polling yield|spin`. The default keeps the
 original yielding behavior. Spinning avoids voluntary scheduler handoff; it does

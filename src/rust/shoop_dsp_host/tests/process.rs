@@ -82,6 +82,82 @@ fn process_pair_preserves_non_aligned_delay_across_aggregation_and_input_loss() 
     }
 }
 
+#[shoop_wasm_test_support::shoop_test(no_wasm = "native TCP and complete-input UDP process pairs")]
+fn complete_input_transports_preserve_non_aligned_delay_and_report_socket_policy() {
+    let root = tempfile::tempdir().unwrap();
+    let key = root.path().join("key");
+    assert!(Command::new(BIN)
+        .arg("generate-credential")
+        .arg(&key)
+        .status()
+        .unwrap()
+        .success());
+    for (transport, polling) in [("tcp", "yield"), ("tcp", "spin"), ("udp", "yield")] {
+        let mut server = Child(
+            Command::new(BIN)
+                .args(["serve", "--once", "--polling", polling, "--credential-file"])
+                .arg(&key)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+        let mut line = String::new();
+        BufReader::new(server.0.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let ready: Value = serde_json::from_str(&line).unwrap();
+        let output = root.path().join("complete.json");
+        let result = Command::new(BIN)
+            .args([
+                "client",
+                "--endpoint",
+                ready["control_endpoint"].as_str().unwrap(),
+                "--credential-file",
+            ])
+            .arg(&key)
+            .args([
+                "--transport",
+                transport,
+                "--input-policy",
+                "complete",
+                "--polling",
+                polling,
+                "--catch-up",
+                "--seconds",
+                "0.05",
+                "--warmup",
+                "0",
+                "--allowance",
+                "64",
+                "--multiplier",
+                "4",
+                "--delay",
+                "67",
+                "--output",
+            ])
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let report: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+        assert_eq!(report["transport"], transport);
+        assert_eq!(report["input_policy"], "complete");
+        assert_eq!(report["correctness_errors"], 0);
+        assert_eq!(report["unverified_samples"], 0);
+        assert!(report["verified_samples"].as_u64().unwrap() > 0);
+        assert_eq!(report["server"]["concealed_packets"], 0);
+        if transport == "tcp" {
+            assert_eq!(report["client_audio"]["nodelay"], true);
+            assert_eq!(report["server_audio"]["nodelay"], true);
+            assert!(report["transport_error"].is_null());
+        }
+    }
+}
+
 #[shoop_wasm_test_support::shoop_test(no_wasm = "native process pair")]
 fn invalid_deadline_is_reported_as_a_refusal_without_contacting_a_server() {
     let root = tempfile::tempdir().unwrap();
@@ -220,6 +296,151 @@ fn control_stays_responsive_and_new_epochs_fence_old_udp_then_disconnect_stops_w
     }
 }
 
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "native TCP data authentication and control lifecycle"
+)]
+fn tcp_partial_input_keeps_control_responsive_and_audio_uses_a_fresh_credential() {
+    use serde_json::json;
+    use shoop_remote_dsp::{wire, Config};
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        time::{Duration, Instant},
+    };
+    let root = tempfile::tempdir().unwrap();
+    let key = root.path().join("key");
+    assert!(Command::new(BIN)
+        .arg("generate-credential")
+        .arg(&key)
+        .status()
+        .unwrap()
+        .success());
+    let mut server = Child(
+        Command::new(BIN)
+            .args(["serve", "--once", "--credential-file"])
+            .arg(&key)
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut line = String::new();
+    BufReader::new(server.0.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let ready: Value = serde_json::from_str(&line).unwrap();
+    let control = TcpStream::connect(ready["control_endpoint"].as_str().unwrap()).unwrap();
+    let mut control = shoop_transport_socket::setup::authenticate(
+        control,
+        std::fs::read(&key).unwrap().try_into().unwrap(),
+        false,
+        Duration::from_secs(3),
+    )
+    .unwrap();
+    control.set_nonblocking(false).unwrap();
+    control
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let config = Config {
+        packet_frames: 16,
+        multiplier: 4,
+        allowance: 8,
+        ..Config::default()
+    };
+    let configure = |epoch| {
+        json!({"request":"configure","version":1,"config":config,"epoch":epoch,"udp_port":0,
+        "transport":"tcp","input_policy":"complete","algorithm":{"type":"delay-copy","delay":0}})
+    };
+    let mut invalid = configure(1);
+    invalid["input_policy"] = json!("gap");
+    assert_eq!(rpc(&mut control, invalid)["reply"], "error");
+    let ready = rpc(&mut control, configure(1));
+    let token: [u8; 32] = serde_json::from_value(ready["tcp_token"].clone()).unwrap();
+    let stream = TcpStream::connect(format!("127.0.0.1:{}", ready["tcp_port"])).unwrap();
+    let starting = std::thread::spawn(move || {
+        let reply = rpc(&mut control, json!({"request":"start"}));
+        (control, reply)
+    });
+    let mut data =
+        shoop_transport_socket::setup::authenticate(stream, token, false, Duration::from_secs(3))
+            .unwrap();
+    data.set_nonblocking(false).unwrap();
+    data.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    data.set_write_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let (mut control, started) = starting.join().unwrap();
+    assert_eq!(started["reply"], "ok");
+    let send = |data: &mut TcpStream, sequence| {
+        let mut raw = [0; 1452];
+        let n = wire::encode(
+            wire::Header::input(1, sequence, config),
+            config,
+            &[0.25; 32],
+            &[],
+            &mut raw,
+        )
+        .unwrap();
+        for byte in (n as u32).to_le_bytes() {
+            data.write_all(&[byte]).unwrap();
+        }
+        for chunk in raw[..n].chunks(3) {
+            data.write_all(chunk).unwrap();
+        }
+    };
+    send(&mut data, 0);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert_eq!(rpc(&mut control, json!({"request":"ping"}))["reply"], "ok");
+        assert_eq!(rpc(&mut control, json!({"request":"pause"}))["reply"], "ok");
+        let stats = rpc(&mut control, json!({"request":"stats"}));
+        assert_eq!(stats["stats"]["blocks"], 0);
+        assert_eq!(stats["stats"]["concealed_packets"], 0);
+        assert_eq!(stats["next_sequence"], 0);
+        assert_eq!(rpc(&mut control, json!({"request":"start"}))["reply"], "ok");
+        if stats["stats"]["received"] == 1 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "audio input was not received");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    for sequence in 1..4 {
+        send(&mut data, sequence);
+    }
+    for sequence in 0..4 {
+        let mut prefix = [0; 4];
+        data.read_exact(&mut prefix).unwrap();
+        let length = u32::from_le_bytes(prefix) as usize;
+        assert!(length <= config.max_packet_bytes());
+        let mut raw = vec![0; length];
+        data.read_exact(&mut raw).unwrap();
+        let packet = wire::decode(&raw, config).unwrap();
+        assert_eq!(packet.header.sequence, sequence);
+        assert_eq!(packet.header.missing_mask, 0);
+        assert_eq!(packet.sample(1, 15), 0.25);
+    }
+    assert_eq!(rpc(&mut control, json!({"request":"pause"}))["reply"], "ok");
+    let ready = rpc(&mut control, configure(2));
+    assert_ne!(
+        serde_json::from_value::<[u8; 32]>(ready["tcp_token"].clone()).unwrap(),
+        token
+    );
+    let stream = TcpStream::connect(format!("127.0.0.1:{}", ready["tcp_port"])).unwrap();
+    let starting = std::thread::spawn(move || {
+        let reply = rpc(&mut control, json!({"request":"start"}));
+        (control, reply)
+    });
+    assert!(shoop_transport_socket::setup::authenticate(
+        stream,
+        token,
+        false,
+        Duration::from_secs(3)
+    )
+    .is_err());
+    let (mut control, reply) = starting.join().unwrap();
+    assert_eq!(reply["reply"], "error");
+    assert_eq!(rpc(&mut control, json!({"request":"ping"}))["reply"], "ok");
+    assert_eq!(rpc(&mut control, json!({"request":"stop"}))["reply"], "ok");
+}
+
 #[cfg(feature = "carla")]
 #[shoop_wasm_test_support::shoop_test(no_wasm = "real native Carla process pair")]
 fn native_carla_network_gain_and_saved_state_are_verified_when_required() {
@@ -265,6 +486,8 @@ fn native_carla_network_gain_and_saved_state_are_verified_when_required() {
             .args(["client", "--processor", "carla", "--state-file"])
             .arg(state)
             .args([
+                "--transport",
+                if index == 0 { "udp" } else { "tcp" },
                 "--expected-gain",
                 "0.5",
                 "--endpoint",

@@ -366,4 +366,5 @@ src/rust/shoop_dsp_host/src/control.rs,control,excluded,Bounded native control f
 src/rust/shoop_dsp_host/src/server.rs,mixed_realtime_and_control,excluded,Standalone service publishes explicit stream counters and elapsed durations.
 src/rust/shoop_dsp_host/src/client.rs,control,excluded,Measurement requester exports timings histograms and sample correctness.
 src/rust/shoop_dsp_host/src/polling.rs,mixed_realtime_and_control,excluded,Polling selection and bounded service-gap counters are exported in measurements.
+src/rust/shoop_dsp_host/src/audio.rs,mixed_realtime_and_control,excluded,Bounded TCP framing and socket setup expose explicit transport counters in standalone measurements.
 src/rust/shoop_transport_socket/src/private.rs,control,excluded,Protected filesystem and platform ACL adapter.

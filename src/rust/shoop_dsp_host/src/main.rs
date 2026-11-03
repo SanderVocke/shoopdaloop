@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+mod audio;
 mod client;
 mod control;
 mod polling;

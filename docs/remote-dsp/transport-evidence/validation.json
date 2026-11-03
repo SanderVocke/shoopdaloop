@@ -1,0 +1,33 @@
+{
+  "native_workspace": {
+    "passed": 2560,
+    "skipped": 4,
+    "features": [
+      "shoop_engine/app_backend",
+      "shoop_backend/native-fx",
+      "shoop_dsp_host/carla"
+    ],
+    "SHOOP_REQUIRE_CARLA_TESTS": "1",
+    "SHOOP_ALLOW_MISSING_BACKENDS": "1"
+  },
+  "python_script_tests": 163,
+  "targeted_real_carla_process_tests": "passed with required real runtime; UDP capture and TCP restored state",
+  "format_check": "cargo fmt --all -- --check",
+  "warning_denial_build": "RUSTFLAGS=\"-D warnings\" cargo build --workspace",
+  "policy_checks": [
+    "scripts/check_shoop_test_usage.py",
+    "scripts/check_tracing_coverage.py --require-closed"
+  ],
+  "cached_resume_preserved_result_and_evidence_files": 109,
+  "frozen_source_files_reconstructed": 30,
+  "credential_exclusion_check": "private credential bytes/hex/JSON-array absent from published files",
+  "post_capture_runner_maintenance": "Process-group cleanup, absolute SSH root validation, and regression test. No native changes; no measured outcome replaced. Exact capture implementation remains frozen in implementation.patch.",
+  "validation_logs_sha256": {
+    "artifacts/tcp-dsp-validation/gates.log": "1661e54490a3cbcaf14c0a56e6f59801eae2e4e5dc9f4bac375014dbcf237f93",
+    "artifacts/tcp-dsp-validation/workspace-build.log": "475593151b9e338604c49e17ef2ae357200450d5d1fd8a2afda05da29ad9a786",
+    "artifacts/tcp-dsp-validation/workspace-tests.log": "279826d62681f81a8a01568df92e1a2676735fc7d3f05b1bd54145e97904d4e7",
+    "artifacts/tcp-dsp-validation/cached-resume.log": "58bd85633b7aa953562b37e1da9ea1fad4e623f606d7ede2de304635fadd20e7",
+    "artifacts/tcp-dsp-validation/cleanup-failure.log": "0d45cce8d986b916b35af0d12c219b7c601fdacacca1386f9df7bb75007ad5b7"
+  },
+  "failure_cleanup_integration": "Oversized capture fails before control attachment; failed case retained and no requester/server left running."
+}

@@ -154,6 +154,25 @@ impl Stream {
         &mut self,
         now: u64,
         dsp: &mut dyn Processor,
+        clock: impl FnMut() -> u64,
+        emit: impl FnMut(&[u8]) -> Result<(), Error>,
+    ) -> Result<bool, Error> {
+        self.process_one_inner(now, dsp, true, clock, emit)
+    }
+    pub fn process_one_complete(
+        &mut self,
+        now: u64,
+        dsp: &mut dyn Processor,
+        clock: impl FnMut() -> u64,
+        emit: impl FnMut(&[u8]) -> Result<(), Error>,
+    ) -> Result<bool, Error> {
+        self.process_one_inner(now, dsp, false, clock, emit)
+    }
+    fn process_one_inner(
+        &mut self,
+        now: u64,
+        dsp: &mut dyn Processor,
+        conceal_gaps: bool,
         mut clock: impl FnMut() -> u64,
         mut emit: impl FnMut(&[u8]) -> Result<(), Error>,
     ) -> Result<bool, Error> {
@@ -175,6 +194,9 @@ impl Stream {
             }
         }
         if missing != 0 {
+            if !conceal_gaps {
+                return Ok(false);
+            }
             let since = *self.gap_since.get_or_insert(now);
             let wait =
                 (k as u64 - 1) * self.config.packet_ns() + self.config.gap_timeout_us as u64 * 1000;

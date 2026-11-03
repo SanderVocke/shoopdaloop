@@ -31,6 +31,64 @@ fn packet(c: Config, epoch: u64, sequence: u64, raw: &mut [u8]) -> usize {
     .unwrap()
 }
 #[shoop_wasm_test_support::shoop_test]
+fn complete_input_policy_never_expires_or_advances_an_incomplete_block() {
+    let c = config();
+    let mut stream = Stream::prepare(c, 1).unwrap();
+    let mut dsp = DelayCopy::prepare(c.dsp(), 0).unwrap();
+    let mut raw = [0; 1452];
+    assert!(!stream
+        .process_one_complete(0, &mut dsp, || 0, |_| panic!("no source input"))
+        .unwrap());
+    for sequence in [0, 2, 3] {
+        let n = packet(c, 1, sequence, &mut raw);
+        stream.accept(&raw[..n], 0).unwrap();
+    }
+    shoop_wasm_test_support::heap::assert_no_heap(|| {
+        assert!(!stream
+            .process_one_complete(u64::MAX, &mut dsp, || 0, |_| panic!("incomplete input"))
+            .unwrap());
+    });
+    assert_eq!(stream.next_sequence(), 0);
+    assert_eq!(stream.stats().blocks, 0);
+    assert_eq!(stream.stats().concealed_packets, 0);
+    let n = packet(c, 1, 1, &mut raw);
+    stream.accept(&raw[..n], 0).unwrap();
+    let mut sequence = 0;
+    shoop_wasm_test_support::heap::assert_no_heap(|| {
+        assert!(stream
+            .process_one_complete(
+                u64::MAX,
+                &mut dsp,
+                || 0,
+                |raw| {
+                    let output = wire::decode(raw, c)?;
+                    assert_eq!(output.header.sequence, sequence);
+                    assert_eq!(output.header.missing_mask, 0);
+                    for channel in 0..2 {
+                        for i in 0..c.packet_frames as usize {
+                            assert_eq!(
+                                output.sample(channel, i),
+                                (channel * 10000
+                                    + sequence as usize * c.packet_frames as usize
+                                    + i
+                                    + 1) as f32
+                            );
+                        }
+                    }
+                    sequence += 1;
+                    Ok(())
+                }
+            )
+            .unwrap());
+    });
+    assert_eq!(sequence, 4);
+    assert_eq!(stream.stats().concealed_packets, 0);
+    assert!(!stream
+        .process_one_complete(u64::MAX, &mut dsp, || 0, |_| panic!("no more input"))
+        .unwrap());
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn negotiation_and_wire_boundaries_are_explicit() {
     for k in [1, 2, 4, 8] {
         for n in [1, 2, 4, 8, 16] {

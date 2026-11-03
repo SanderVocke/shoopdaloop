@@ -1,3 +1,4 @@
+use crate::audio::{InputPolicy, Transport};
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 use shoop_remote_dsp::{stream::Stats, Config};
@@ -29,6 +30,10 @@ pub enum Request {
         config: Config,
         epoch: u64,
         udp_port: u16,
+        #[serde(default)]
+        transport: Transport,
+        #[serde(default)]
+        input_policy: InputPolicy,
         algorithm: Algorithm,
     },
     Start,
@@ -50,6 +55,10 @@ pub enum Reply {
     Ready {
         version: u16,
         udp_port: u16,
+        #[serde(default)]
+        transport: Transport,
+        tcp_port: Option<u16>,
+        tcp_token: Option<[u8; 32]>,
         latency_frames: Option<u32>,
         receive_buffer: usize,
         send_buffer: usize,
@@ -60,6 +69,8 @@ pub enum Reply {
         service_gaps: crate::polling::ServiceGaps,
         concealment: Vec<(u64, u64)>,
         next_sequence: u64,
+        audio: serde_json::Value,
+        worker_runtime: serde_json::Value,
     },
     State {
         state: String,
