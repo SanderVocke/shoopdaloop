@@ -121,7 +121,8 @@ maximum is rendered in parts without an extra duplex buffer. MIDI offsets are
 rebased for each part and restored for JACK output; recovery and ordinary output
 are merged in timestamp order, with each output MIDI buffer cleared once per JACK
 cycle. Invalid/capacity-limited input and failed output writes are counted.
-Buffer-size changes remain supported through splitting. A sample-rate change
+Buffer-size changes remain supported through splitting. Control lead stays at
+least one current server period when the buffer size changes. A sample-rate change
 marks the host failed and silences output until restart. Server shutdown reports
 a device failure; cleanup is bounded and does not claim MIDI recovery delivery
 to an unavailable server. Normal stop drops the endpoint, delivers recovery,

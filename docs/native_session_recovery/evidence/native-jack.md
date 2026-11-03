@@ -23,6 +23,9 @@ open under P14.
   name, and actual sample rate/buffer metadata without CPAL substitution.
 - Preparation tests verify that control lead covers the actual JACK server
   period even when the engine renders it in smaller blocks.
+- An engine audio regression changes JACK's published period up and down and
+  verifies controls retain at least one current period of lead before changing
+  output samples.
 - The service acceptance scenario runs with both an in-process engine and a real
   independent `shoop_host` subprocess. It records and plays known audio/MIDI,
   verifies peer output, reconnects the UI during playback, reads recorded media,
@@ -78,7 +81,7 @@ outside this restoration.
 
 - Full warning-denying native workspace build passed.
 - Full retained workspace suite after merging target `64a4ad06` and adding the
-  JACK preparation regression: 2,553 passed, four pre-existing skips.
+  JACK preparation and buffer-change regressions: 2,554 passed, four pre-existing skips.
 - Strict JACK runner passed with hardware skips disabled, including both host
   transports and production service/session scenarios.
 - All four native feature combinations passed build checks and host library tests.

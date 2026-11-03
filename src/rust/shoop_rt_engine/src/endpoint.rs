@@ -33,9 +33,10 @@ use rt_runtime::{Epoch, Frame, NodeId, Sequence};
 use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_rt_protocol::{
-    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
-    HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
-    Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
+    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, DriverKind,
+    EngineMessage, HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode,
+    LoopSlotId, Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry,
+    PROTOCOL_VERSION,
 };
 use shoop_rt_transport::carrier::{Endpoint, Outbox};
 
@@ -286,7 +287,13 @@ impl ControlEndpoint {
     }
     /// The earliest frame a newly submitted command can be scheduled at.
     pub(crate) fn at(&self) -> Frame {
-        Frame(self.next_frame().0 + u64::from(self.settings.lead))
+        let driver = self.cells.driver();
+        let lead = if driver.kind == DriverKind::Jack {
+            self.settings.lead.max(driver.buffer_frames)
+        } else {
+            self.settings.lead
+        };
+        Frame(self.next_frame().0 + u64::from(lead))
     }
 
     /// No request, transaction or bulk read is in progress and every ramp of
