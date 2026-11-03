@@ -1,0 +1,11 @@
+[package]
+name = "shoop_jack"
+version.workspace = true
+edition = "2021"
+description = "Signal-safe JACK shutdown notification adapter"
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jack = { workspace = true }

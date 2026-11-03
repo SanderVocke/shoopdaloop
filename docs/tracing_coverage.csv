@@ -353,3 +353,6 @@ src/rust/shoop_app_connection/src/heartbeat.rs,app_session,excluded,Injected-clo
 src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Generic connection progression calls traced service handling and tick boundaries; native composition owns transport diagnostics.
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
+src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
+src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
+src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.

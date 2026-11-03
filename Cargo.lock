@@ -4906,6 +4906,7 @@ dependencies = [
  "clap",
  "directories",
  "getrandom 0.4.3",
+ "jack",
  "nix",
  "serde",
  "serde_json",
@@ -4916,6 +4917,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_backend",
  "shoop_host",
+ "shoop_persistence_codec",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
@@ -4926,6 +4928,13 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "shoop_jack"
+version = "0.3.0"
+dependencies = [
+ "jack",
 ]
 
 [[package]]
@@ -5015,9 +5024,11 @@ name = "shoop_rt_host_native"
 version = "0.3.0"
 dependencies = [
  "cpal 0.18.2",
+ "jack",
  "midir",
  "rt_runtime",
  "rtrb",
+ "shoop_jack",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",

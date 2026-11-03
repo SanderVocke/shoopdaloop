@@ -113,7 +113,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 3;
+const engineProtocolVersion = 4;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const first = quantum(node, 0.5);
 if (!first.alive) throw new Error('the processor stopped after its first quantum');

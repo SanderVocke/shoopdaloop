@@ -6,7 +6,8 @@ description = "Supervised native engine process over socket or shared-memory rec
 [lints]
 workspace = true
 [features]
-default = ["cpal"]
+default = ["cpal", "jack"]
+jack = ["shoop_rt_host_native/jack"]
 cpal = ["shoop_rt_host_native/cpal", "dep:cpal"]
 testing = []
 [dependencies]

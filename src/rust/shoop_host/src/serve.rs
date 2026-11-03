@@ -176,6 +176,8 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
             #[cfg(feature = "cpal")]
             DriverConfig::Cpal(_) => {}
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => {}
         }
     }
     #[cfg(not(feature = "testing"))]
@@ -195,8 +197,16 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     warnings.extend(started.host.warnings().iter().cloned());
+    let status = started.host.status().driver;
+    let profile = shoop_app_api::ResolvedAudioDriverConfig {
+        configured: config.driver.clone(),
+        sample_rate: status.sample_rate,
+        buffer_size: status.buffer_frames,
+        instance_name: started.host.instance_name().to_owned(),
+    };
     let mut host = Some(started.host);
-    let backend = RtBackend::connect(started.client, Sleep::default())?;
+    let mut backend = RtBackend::connect(started.client, Sleep::default())?;
+    backend.set_driver_profile(profile);
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {

@@ -736,15 +736,69 @@ impl Default for DummyAudioDriverConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
+    pub audio_inputs: Vec<String>,
+    pub audio_outputs: Vec<String>,
+    pub midi_inputs: Vec<String>,
+    pub midi_outputs: Vec<String>,
+    pub connections: Vec<(String, String)>,
 }
 
 impl Default for JackAudioDriverConfig {
     fn default() -> Self {
         Self {
             client_name: "ShoopDaLoop".to_owned(),
+            audio_inputs: vec!["audio_in_1".to_owned(), "audio_in_2".to_owned()],
+            audio_outputs: vec!["audio_out_1".to_owned(), "audio_out_2".to_owned()],
+            midi_inputs: vec!["midi_in_1".to_owned()],
+            midi_outputs: vec!["midi_out_1".to_owned()],
+            connections: Vec::new(),
         }
+    }
+}
+
+impl JackAudioDriverConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.client_name.trim().is_empty()
+            || self.client_name.len() > 63
+            || self.client_name.contains([':', '\0'])
+        {
+            return Err(
+                "JACK client name must contain 1 to 63 bytes without a colon or NUL".to_owned(),
+            );
+        }
+        let mut names = alloc::collections::BTreeSet::new();
+        for ports in [
+            &self.audio_inputs,
+            &self.audio_outputs,
+            &self.midi_inputs,
+            &self.midi_outputs,
+        ] {
+            if ports.len() > 64 {
+                return Err("JACK supports at most 64 ports per kind and direction".to_owned());
+            }
+            for name in ports {
+                if name.trim().is_empty()
+                    || name.len() > 59
+                    || name.contains([':', ',', '\0'])
+                    || !names.insert(name)
+                {
+                    return Err("JACK port names must be unique, nonempty, at most 59 bytes, without colons, commas or NUL".to_owned());
+                }
+            }
+        }
+        if self.connections.len() > 256
+            || self.connections.iter().any(|(source, target)| {
+                [source, target]
+                    .iter()
+                    .any(|name| name.trim().is_empty() || name.len() > 256 || name.contains('\0'))
+            })
+        {
+            return Err("invalid JACK startup connections".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -3792,6 +3846,11 @@ impl HostSettings {
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
+        }
+        if let AudioDriverConfig::Jack(config) = &self.driver {
+            config
+                .validate()
+                .map_err(|_| "invalid JACK driver configuration")?;
         }
         if self.loop_smoothing_ms > 100 {
             return Err("loop smoothing exceeds 100 ms");
