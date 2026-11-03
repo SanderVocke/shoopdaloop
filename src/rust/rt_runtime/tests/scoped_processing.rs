@@ -502,3 +502,86 @@ fn declared_readiness_edges_validate_signal_and_control_cycles_incrementally() {
         .with_dependencies(&[(node(0), node(1)), (node(0), node(1))])
         .is_err());
 }
+
+#[shoop_test]
+fn failed_fault_cleanup_is_reported_without_rewinding_the_outer_clock() {
+    struct FaultPlanner;
+    impl Planner for FaultPlanner {
+        type Decision = ();
+        type Observation = ();
+        type Operation = ();
+        type Result = ();
+        fn spec(&self) -> Option<PlannerSpec> {
+            None
+        }
+        fn decisions(&self) -> &[()] {
+            &[]
+        }
+        fn plan(&mut self, c: PlanContext<'_>) -> Result<Frame, Error> {
+            Ok(c.ceiling)
+        }
+        fn finish(&mut self, _: FinishContext<'_, ()>) -> Result<(), Error> {
+            Ok(())
+        }
+        fn abort(&mut self, c: FinishContext<'_, ()>, error: Error) -> Result<(), Error> {
+            assert_eq!(error, Error::InvalidParameter);
+            assert_eq!(
+                c.interval,
+                Interval {
+                    start: Frame(0),
+                    end: Frame(4)
+                }
+            );
+            Err(Error::Capacity)
+        }
+    }
+    struct Fault;
+    impl Processor<FaultPlanner> for Fault {
+        fn ports(&self) -> PortCounts {
+            PortCounts::default()
+        }
+        fn process(&mut self, _: &mut ProcessBlock<'_, FaultPlanner>) -> Result<(), Error> {
+            Err(Error::InvalidParameter)
+        }
+    }
+    let config = Config {
+        max_frames: 4,
+        max_nodes: 1,
+        audio_inputs: 0,
+        audio_outputs: 0,
+        midi_inputs: 0,
+        midi_outputs: 0,
+        ..Config::default()
+    }
+    .prepare()
+    .unwrap();
+    let (_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        vec![PreparedNode::new(node(0), Fault)],
+        FaultPlanner,
+        ResourceStore::new(config).unwrap(),
+        &GraphDescription {
+            nodes: vec![node(0)],
+            connections: vec![],
+        },
+        &[],
+    )
+    .unwrap();
+    let result = support::assert_no_heap(|| {
+        runtime.process(
+            AudioBlock {
+                frame: Frame(0),
+                frames: 4,
+                inputs: &[],
+                outputs: &mut [],
+            },
+            MidiBlock {
+                inputs: &[],
+                outputs: &mut [],
+            },
+        )
+    });
+    assert_eq!(result, Err(Error::Capacity));
+    assert_eq!(runtime.diagnostics().render_error, Some(Error::Capacity));
+    assert_eq!(runtime.next_frame(), Frame(4));
+}

@@ -128,6 +128,8 @@ Capture completion identifies actual effective window frames and real snapshots.
 An accepted request is not a successful capture. Previously exported snapshots
 retain their leases across refusal, replacement and cleanup. Final reclamation,
 including graph and processor owners, occurs off-render.
+If fault cleanup itself fails, that error is returned and recorded explicitly;
+outer time still advances once.
 
 ## Compatibility and proof
 

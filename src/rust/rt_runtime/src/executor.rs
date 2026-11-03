@@ -613,7 +613,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.apply_commands();
         self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
-        let result = self.run_scheduled(&mut audio, &mut midi);
+        let mut result = self.run_scheduled(&mut audio, &mut midi);
         if let Err(error) = result {
             let cleanup = self.planner.abort(
                 FinishContext {
@@ -627,9 +627,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 },
                 error,
             );
-            if let Err(cleanup_error) = cleanup {
-                self.diagnostics.render_error = Some(cleanup_error);
-            }
+            result = cleanup.and(Err(error));
         }
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);

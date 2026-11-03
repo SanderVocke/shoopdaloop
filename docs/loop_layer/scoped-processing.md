@@ -77,6 +77,13 @@ owner while reading the returned media and explicitly release it afterward.
 Copied IDs, sources and read indices do not create leases. Old exports remain
 readable when later capture fails.
 
+For the DSP stack in PR #922, declare callback cadence on the external DSP node
+and forward it through application wrappers. Transport/backend selection remains
+outside runtime scheduling. Bus FX can follow an interleaved loop region; later
+dry/wet integration needs the shared media-phase API. Changing the existing
+`LoopPlanner` nodes' cadence alone cannot replace their observation-dependent
+preflight/commit lifecycle.
+
 Prepare the constructor in a startup resource store; it creates domain resources
 there. Discard the construction store on a constructor error. Render-side capture
 admission has its own atomic refusal guarantees. After callbacks stop, consume the
