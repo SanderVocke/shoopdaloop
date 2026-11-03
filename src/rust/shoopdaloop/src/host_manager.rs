@@ -656,15 +656,12 @@ impl Manager {
                 ui.label(egui::RichText::new("Log file access is local to the host.").color(MUTED));
             } else if host.log_file.is_none() {
                 ui.label(
-                    egui::RichText::new("No log_file configured")
+                    egui::RichText::new("No log file configured")
                         .size(18.0)
                         .strong(),
                 );
                 ui.label(
-                    egui::RichText::new(
-                        "Configure --log-file on the host and log_file in the profile.",
-                    )
-                    .color(MUTED),
+                    egui::RichText::new("Disk logging is set when a host starts.").color(MUTED),
                 );
             } else {
                 self.show_logs(ui);
@@ -1161,6 +1158,38 @@ pub fn launch() -> Result<()> {
     command.spawn().context("Open Host Manager")?;
     Ok(())
 }
+fn configure_context(context: &egui::Context) {
+    context.set_visuals(egui::Visuals::dark());
+    context.style_mut_of(egui::Theme::Dark, |style| {
+        style.spacing.item_spacing = egui::vec2(6.0, 6.0);
+        style.spacing.button_padding = egui::vec2(8.0, 4.0);
+        style.visuals.override_text_color = Some(TEXT);
+        style.visuals.panel_fill = BACKGROUND;
+        style.visuals.window_fill = SURFACE;
+        style.visuals.faint_bg_color = SURFACE;
+        style.visuals.extreme_bg_color = SIDEBAR;
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(34, 69, 65);
+        style.visuals.widgets.noninteractive.fg_stroke.color = TEXT;
+        style.visuals.widgets.noninteractive.bg_stroke.color = BORDER;
+        style.visuals.widgets.inactive.weak_bg_fill = SURFACE;
+        style.visuals.widgets.inactive.fg_stroke.color = TEXT;
+        style.visuals.widgets.inactive.bg_stroke.color = BORDER;
+        style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(40, 48, 58);
+        style
+            .text_styles
+            .insert(egui::TextStyle::Body, egui::FontId::proportional(13.0));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Heading, egui::FontId::proportional(20.0));
+    });
+}
+
 pub fn run(args: &AppArgs) -> Result<()> {
     let manager = Manager::new(args.remote_profile.clone());
     let options = eframe::NativeOptions {
@@ -1175,35 +1204,7 @@ pub fn run(args: &AppArgs) -> Result<()> {
         "ShoopDaLoop Host Manager",
         options,
         Box::new(move |context| {
-            context.egui_ctx.set_visuals(egui::Visuals::dark());
-            context.egui_ctx.style_mut_of(egui::Theme::Dark, |style| {
-                style.spacing.item_spacing = egui::vec2(6.0, 6.0);
-                style.spacing.button_padding = egui::vec2(8.0, 4.0);
-                style.visuals.override_text_color = Some(TEXT);
-                style.visuals.panel_fill = BACKGROUND;
-                style.visuals.window_fill = SURFACE;
-                style.visuals.faint_bg_color = SURFACE;
-                style.visuals.extreme_bg_color = SIDEBAR;
-                style.visuals.selection.bg_fill = egui::Color32::from_rgb(34, 69, 65);
-                style.visuals.widgets.noninteractive.fg_stroke.color = TEXT;
-                style.visuals.widgets.noninteractive.bg_stroke.color = BORDER;
-                style.visuals.widgets.inactive.weak_bg_fill = SURFACE;
-                style.visuals.widgets.inactive.fg_stroke.color = TEXT;
-                style.visuals.widgets.inactive.bg_stroke.color = BORDER;
-                style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(40, 48, 58);
-                style
-                    .text_styles
-                    .insert(egui::TextStyle::Body, egui::FontId::proportional(13.0));
-                style
-                    .text_styles
-                    .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
-                style
-                    .text_styles
-                    .insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
-                style
-                    .text_styles
-                    .insert(egui::TextStyle::Heading, egui::FontId::proportional(20.0));
-            });
+            configure_context(&context.egui_ctx);
             Ok(Box::new(manager))
         }),
     )
@@ -1213,6 +1214,317 @@ pub fn run(args: &AppArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub(super) struct Screen {
+        pub context: egui::Context,
+        pub size: egui::Vec2,
+        text: Vec<(String, egui::Pos2)>,
+        time: f64,
+        pub copied: Vec<String>,
+    }
+    impl Screen {
+        pub fn new(size: egui::Vec2) -> Self {
+            let context = egui::Context::default();
+            configure_context(&context);
+            context.style_mut_of(egui::Theme::Dark, |style| style.animation_time = 0.0);
+            Self {
+                context,
+                size,
+                text: vec![],
+                time: 0.0,
+                copied: vec![],
+            }
+        }
+        pub fn frame(&mut self, events: Vec<egui::Event>, draw: impl FnMut(&mut egui::Ui)) {
+            self.time += 0.1;
+            let mut output = self.context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, self.size)),
+                    time: Some(self.time),
+                    events,
+                    ..Default::default()
+                },
+                draw,
+            );
+            output.textures_delta.clear();
+            self.copied.extend(
+                output
+                    .platform_output
+                    .commands
+                    .iter()
+                    .filter_map(|command| {
+                        if let egui::OutputCommand::CopyText(value) = command {
+                            Some(value.clone())
+                        } else {
+                            None
+                        }
+                    }),
+            );
+            fn collect(shape: &egui::Shape, text: &mut Vec<(String, egui::Pos2)>) {
+                match shape {
+                    egui::Shape::Text(value) => text.push((
+                        value.galley.text().into(),
+                        value.pos + value.galley.size() / 2.0,
+                    )),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            collect(shape, text);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            self.text.clear();
+            for shape in &output.shapes {
+                collect(&shape.shape, &mut self.text);
+            }
+        }
+        pub fn contains(&self, text: &str) -> bool {
+            self.text.iter().any(|(value, _)| value.contains(text))
+        }
+        pub fn click(&mut self, label: &str, mut draw: impl FnMut(&mut egui::Ui)) {
+            let pos = self
+                .text
+                .iter()
+                .find(|(value, _)| value == label)
+                .unwrap_or_else(|| panic!("Missing control {label:?}: {:?}", self.text))
+                .1;
+            for pressed in [true, false] {
+                self.frame(
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                    &mut draw,
+                );
+            }
+            self.frame(vec![], draw);
+        }
+    }
+    fn manager_with_host() -> Manager {
+        let source = Source {
+            path: "studio.json".into(),
+        };
+        let mut manager = Manager::new(Some(source.path.clone()));
+        manager.next_scan = Instant::now() + Duration::from_secs(3600);
+        let mut host = Host::query(source.clone());
+        host.name = "Studio".into();
+        host.endpoint = "127.0.0.1:15400".into();
+        host.report = Ok(HostReport {
+            ready: true,
+            busy: false,
+            closed: false,
+            master_auto_connect: true,
+            loop_smoothing_ms: 3,
+            requested: Some(Default::default()),
+            effective: Default::default(),
+            diagnostics: vec![],
+            pending_operations: 0,
+            restart_required_fields: vec![],
+        });
+        manager.hosts.push(host);
+        manager.select(source);
+        manager
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn compact_manager_preserves_operator_actions_and_live_controller_protection() {
+        for size in [egui::vec2(700.0, 400.0), egui::vec2(800.0, 500.0)] {
+            let mut screen = Screen::new(size);
+            let mut manager = manager_with_host();
+            screen.frame(vec![], |ui| manager.show(ui));
+            assert!(screen.contains("SAMPLE RATE") && screen.contains("Open UI"));
+            assert!(!screen.contains("Your hosts"));
+            screen.click("Advanced details", |ui| manager.show(ui));
+            assert!(screen.contains("Endpoint"));
+            screen.click("•••", |ui| manager.show(ui));
+            screen.click("Stop host…", |ui| manager.show(ui));
+            assert!(manager.confirm_stop.is_some());
+            assert!(screen.contains("discards the in-memory session"));
+            screen.click("Cancel", |ui| manager.show(ui));
+            assert!(manager.confirm_stop.is_none() && !manager.action_pending);
+
+            manager.hosts[0].report.as_mut().unwrap().busy = true;
+            screen.frame(vec![], |ui| manager.show(ui));
+            assert!(screen.contains("UI connected") && !screen.contains("Open UI"));
+            screen.click("•••", |ui| manager.show(ui));
+            screen.click("Stop host…", |ui| manager.show(ui));
+            assert!(manager.confirm_stop.is_none() && !manager.action_pending);
+        }
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_presents_fallback_remote_shared_and_unreachable_profiles() {
+        let mut screen = Screen::new(egui::vec2(800.0, 700.0));
+        let mut manager = manager_with_host();
+        let report = manager.hosts[0].report.as_mut().unwrap();
+        report.requested.as_mut().unwrap().driver =
+            shoop_app_api::AudioDriverConfig::Cpal(Default::default());
+        report.diagnostics.push("Output device disconnected".into());
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(
+            screen.contains("Audio device unavailable")
+                && screen.contains("Output device disconnected")
+        );
+        manager.hosts[0].remote = true;
+        screen.click("Logs", |ui| manager.show(ui));
+        assert!(screen.contains("Remote logs unavailable"));
+        manager.hosts[0].remote = false;
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("No log file configured"));
+        screen.click("Overview", |ui| manager.show(ui));
+        manager.hosts[0].transport = AppTransport::SharedMemory;
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("cannot reattach") && !screen.contains("Open UI"));
+        manager.hosts[0].report = Err("Connection refused".into());
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Host unreachable") && screen.contains("Connection refused"));
+        screen.click("Advanced details", |ui| manager.show(ui));
+        assert!(screen.contains("Profile: studio.json"));
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn log_view_handles_loading_empty_errors_and_async_refresh_without_losing_selection() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("host.log");
+        std::fs::write(&path, "operator diagnostic").unwrap();
+        let mut manager = manager_with_host();
+        let selected = manager.selected.clone();
+        manager.hosts[0].log_file = Some(path.clone());
+        let mut screen = Screen::new(egui::vec2(800.0, 500.0));
+        screen.frame(vec![], |ui| manager.show(ui));
+        screen.click("Logs", |ui| manager.show(ui));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while manager.logs.as_ref().is_some_and(|log| log.loading) {
+            manager.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("operator diagnostic") && manager.selected == selected);
+        screen.click("Copy logs", |ui| manager.show(ui));
+        std::fs::write(&path, "").unwrap();
+        screen.click("Refresh logs", |ui| manager.show(ui));
+        while manager.logs.as_ref().unwrap().loading {
+            manager.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Log is empty"));
+        manager.logs.as_mut().unwrap().contents = Some(Err("Permission denied".into()));
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Could not read this log") && screen.contains("Permission denied"));
+        manager.logs.as_mut().unwrap().contents = None;
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Loading log"));
+        manager.saved_log = true;
+        manager.selected = None;
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Saved host log"));
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn startup_results_select_only_successful_profiles_and_leave_failures_retryable() {
+        let mut manager = Manager::new(None);
+        manager.new_host();
+        manager
+            .sender
+            .send(Event::Started(Err("Listener already in use".into())))
+            .unwrap();
+        manager.poll();
+        assert!(manager.sources.is_empty());
+        assert_eq!(
+            manager.start_dialog.as_ref().unwrap().error.as_deref(),
+            Some("Listener already in use")
+        );
+        manager
+            .sender
+            .send(Event::Started(Ok("chosen-profile.json".into())))
+            .unwrap();
+        manager.poll();
+        assert_eq!(
+            manager.sources,
+            [Source {
+                path: "chosen-profile.json".into()
+            }]
+        );
+        assert_eq!(manager.selected, manager.sources.first().cloned());
+        assert!(manager.start_dialog.is_none() && !manager.action_pending);
+        manager
+            .sender
+            .send(Event::Started(Err("Startup failed".into())))
+            .unwrap();
+        manager.poll();
+        assert!(manager.notice.as_ref().unwrap().error);
+        manager.action(|| Ok("Completed".into()));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while manager.action_pending {
+            manager.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        assert_eq!(manager.notice.as_ref().unwrap().message, "Completed");
+        manager.action(|| anyhow::bail!("Refused"));
+        while manager.action_pending {
+            manager.poll();
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        assert!(manager.notice.as_ref().unwrap().error);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn empty_manager_opens_and_cancels_a_draft_without_adding_profiles() {
+        let mut manager = Manager::new(None);
+        manager.next_scan = Instant::now() + Duration::from_secs(3600);
+        let mut screen = Screen::new(egui::vec2(800.0, 500.0));
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("No profiles loaded"));
+        screen.click("New host…", |ui| manager.show(ui));
+        assert!(manager.start_dialog.is_some());
+        screen.click("Cancel", |ui| manager.show(ui));
+        assert!(manager.start_dialog.is_none() && manager.sources.is_empty());
+        manager.sources = (0..64)
+            .map(|n| Source {
+                path: format!("profile-{n}.json").into(),
+            })
+            .collect();
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(screen.contains("Querying host"));
+        screen.click("New host…", |ui| manager.show(ui));
+        assert!(manager.start_dialog.is_none());
+        assert!(screen.contains("Profile limit reached"));
+        screen.click("×", |ui| manager.show(ui));
+        assert!(manager.notice.is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn diagnostics_copy_and_expiring_notices_do_not_change_host_selection() {
+        let mut manager = manager_with_host();
+        let mut screen = Screen::new(egui::vec2(800.0, 500.0));
+        screen.frame(vec![], |ui| manager.show(ui));
+        screen.click("•••", |ui| manager.show(ui));
+        screen.click("Copy diagnostics", |ui| manager.show(ui));
+        assert!(screen
+            .copied
+            .iter()
+            .any(|text| text.contains("Host: Studio") && text.contains("127.0.0.1:15400")));
+        assert!(screen.contains("Diagnostics copied"));
+        manager.notice.as_mut().unwrap().created = Instant::now() - Duration::from_secs(6);
+        screen.frame(vec![], |ui| manager.show(ui));
+        assert!(manager.notice.is_none());
+        assert_eq!(manager.selected, manager.sources.first().cloned());
+        let previous = manager.hosts[0].clone();
+        manager
+            .sender
+            .send(Event::Scanned(vec![Host::query(previous.source.clone())]))
+            .unwrap();
+        manager.poll();
+        assert_eq!(manager.hosts[0].name, previous.name);
+        assert_eq!(manager.hosts[0].endpoint, previous.endpoint);
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn unreachable_profiles_and_dummy_audio_have_explicit_states() {

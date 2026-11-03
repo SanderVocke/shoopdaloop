@@ -716,6 +716,7 @@ fn midi_ports(selected: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::Screen;
     use super::*;
 
     fn form(root: &std::path::Path) -> Dialog {
@@ -794,5 +795,184 @@ mod tests {
         );
         dialog.transport = AppTransport::SharedMemory;
         assert!(dialog.request().is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn start_form_validates_before_launch_and_disables_duplicate_submissions() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        dialog.name.clear();
+        let mut screen = Screen::new(egui::vec2(700.0, 400.0));
+        for _ in 0..2 {
+            screen.frame(vec![], |ui| {
+                assert!(dialog.show(ui.ctx()).is_none());
+            });
+        }
+        screen.click("Start host", |ui| {
+            assert!(dialog.show(ui.ctx()).is_none());
+        });
+        assert!(dialog.error.as_deref().unwrap().contains("Name required"));
+        assert!(!dialog.pending);
+        dialog.name = "Studio".into();
+        let mut request = None;
+        screen.click("Start host", |ui| {
+            if let Some(value) = dialog.show(ui.ctx()) {
+                request = Some(value);
+            }
+        });
+        assert!(dialog.pending);
+        assert_eq!(request.unwrap().options.name, "Studio");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+        screen.click("Start host", |ui| {
+            assert!(dialog.show(ui.ctx()).is_none());
+        });
+        dialog.failed("Port already in use".into());
+        screen.frame(vec![], |ui| {
+            assert!(dialog.show(ui.ctx()).is_none());
+        });
+        assert!(screen.contains("Port already in use") && !dialog.pending);
+        screen.click("Cancel", |ui| {
+            assert!(dialog.show(ui.ctx()).is_none());
+        });
+        assert!(!dialog.open);
+    }
+
+    #[cfg(feature = "cpal")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn audio_capacity_midi_and_lan_controls_feed_the_shared_configuration() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        dialog.physical_audio = true;
+        dialog.device_defaults = false;
+        dialog.output = "Speakers".into();
+        dialog.devices.outputs = vec!["Speakers".into(), "Headphones".into()];
+        dialog.devices.midi_inputs = vec!["Controller keyboard".into()];
+        dialog.sample_rate = 44100;
+        dialog.buffer_size = 128;
+        let mut screen = Screen::new(egui::vec2(800.0, 1400.0));
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        screen.click("Speakers", |ui| dialog.fields(ui));
+        screen.click("Headphones", |ui| dialog.fields(ui));
+        assert_eq!(dialog.output, "Headphones");
+        for label in [
+            "Capacity and session defaults",
+            "Connection",
+            "Channels and MIDI",
+        ] {
+            screen.click(label, |ui| dialog.fields(ui));
+        }
+        assert!(screen.contains("Loop memory") && screen.contains("Output channels"));
+        screen.click("All ports", |ui| dialog.fields(ui));
+        assert!(dialog.midi_inputs.is_empty());
+        screen.click("Controller keyboard", |ui| dialog.fields(ui));
+        assert_eq!(dialog.midi_inputs, ["Controller keyboard"]);
+        screen.click("Controller keyboard", |ui| dialog.fields(ui));
+        screen.click("LAN access", |ui| dialog.fields(ui));
+        assert!(dialog.lan && screen.contains("Advertise host"));
+        assert_eq!(dialog.endpoint, "0.0.0.0:15400");
+        dialog.advertised_host = "studio.local".into();
+        dialog.log_enabled = true;
+        dialog.log_file = root.path().join("studio.log");
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        assert!(screen.contains("Log file"));
+        let request = dialog.request().unwrap();
+        let AudioDriverConfig::Cpal(ref driver) = request.config.driver else {
+            panic!("CPAL selection was lost");
+        };
+        assert_eq!((driver.sample_rate, driver.buffer_size), (44100, 128));
+        assert_eq!(driver.output_device, "Headphones");
+        assert_eq!(driver.midi_inputs, ["none"]);
+        assert_eq!(request.options.log_file, Some(dialog.log_file.clone()));
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+        screen.click("LAN access", |ui| dialog.fields(ui));
+        assert!(!dialog.lan && dialog.endpoint == "127.0.0.1:0");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn device_results_and_failed_startup_preserve_an_explicit_existing_key() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        let (sender, receiver) = mpsc::channel();
+        dialog.device_receiver = Some(receiver);
+        dialog.poll_devices();
+        assert!(dialog.device_receiver.is_some());
+        sender
+            .send(Devices {
+                host: "default".into(),
+                outputs: vec!["Speakers".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        dialog.poll_devices();
+        assert_eq!(dialog.devices.outputs, ["Speakers"]);
+        let (sender, receiver) = mpsc::channel();
+        dialog.device_receiver = Some(receiver);
+        drop(sender);
+        dialog.poll_devices();
+        assert_eq!(dialog.error.as_deref(), Some("Device enumeration failed"));
+        shoop_host::remote::create_credential(&dialog.credential).unwrap();
+        let key = std::fs::read(&dialog.credential).unwrap();
+        dialog.failed("Bind failed".into());
+        assert!(!dialog.new_credential);
+        assert!(!dialog.request().unwrap().create_credential);
+        assert_eq!(std::fs::read(&dialog.credential).unwrap(), key);
+        assert!(!dialog.profile.exists());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn editing_a_profile_suggests_sibling_files_and_preserves_custom_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        dialog.profile = root.path().join("one.json");
+        dialog.credential = root.path().join("one.key");
+        dialog.log_file = root.path().join("one.log");
+        let mut screen = Screen::new(egui::vec2(800.0, 700.0));
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        for name in ["two", "three"] {
+            let previous = dialog.profile.to_str().unwrap().to_owned();
+            screen.click(&previous, |ui| dialog.fields(ui));
+            let modifiers = egui::Modifiers {
+                ctrl: !cfg!(target_os = "macos"),
+                mac_cmd: cfg!(target_os = "macos"),
+                command: true,
+                ..Default::default()
+            };
+            screen.frame(
+                vec![
+                    egui::Event::Key {
+                        key: egui::Key::A,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers,
+                    },
+                    egui::Event::Text(
+                        root.path()
+                            .join(format!("{name}.json"))
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
+                    egui::Event::Key {
+                        key: egui::Key::A,
+                        physical_key: None,
+                        pressed: false,
+                        repeat: false,
+                        modifiers,
+                    },
+                ],
+                |ui| dialog.fields(ui),
+            );
+            assert_eq!(dialog.profile, root.path().join(format!("{name}.json")));
+            if name == "two" {
+                assert_eq!(dialog.credential, root.path().join("two.key"));
+                assert_eq!(dialog.log_file, root.path().join("two.log"));
+                dialog.credential = root.path().join("custom.key");
+                dialog.log_file = root.path().join("custom.log");
+            } else {
+                assert_eq!(dialog.credential, root.path().join("custom.key"));
+                assert_eq!(dialog.log_file, root.path().join("custom.log"));
+            }
+        }
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
 }
