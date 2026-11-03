@@ -17,6 +17,7 @@ pub trait Delivery {
 /// Client-local file tasks. The application supplies codecs without coupling the
 /// session client or service to file formats or platform APIs.
 pub trait PersistenceIo {
+    fn click_track(&self) -> ClickTrackState;
     fn handles(&self, intent: &AppIntent) -> bool;
     fn complete_platform(&mut self, intent: AppIntent);
     fn apply(
@@ -607,6 +608,7 @@ impl Runtime {
         view.details = self.details();
         view.io_task = self.io_task.clone();
         if let Some(provider) = &self.persistence_io {
+            view.click_track = provider.click_track();
             if let Some(task) = provider.task() {
                 view.io_task = Some(task);
             }
@@ -619,6 +621,13 @@ impl Runtime {
                 view.capabilities = view.capabilities.with(capability, false);
             }
         }
+        view.capabilities = view.capabilities.with(
+            BackendCapability::ClickTrackInsertion,
+            self.persistence_io.is_some()
+                && view
+                    .capabilities
+                    .supports(BackendCapability::LoopContentImport),
+        );
         view.revision = self.snapshot.revision.saturating_add(1);
         view.notifications = self
             .notifications

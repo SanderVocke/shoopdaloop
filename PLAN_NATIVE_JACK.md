@@ -144,7 +144,7 @@ The permissive workspace command supplements the strict real-JACK job; it does n
 Depends on all preceding stages.
 
 - [x] Review the final diff for unrelated changes, real-time contract violations, feature leakage, incorrect status, and acceptance gaps. Reconcile changes on the target branch and rerun affected checks if the baseline moves.
-- [ ] Push `feat/backend-replacement-native-jack` and open a PR with base **`feat/backend-replacement`**. Lead the description with restored native JACK behavior; include configuration compatibility, fixed-port scope, test evidence, and restart/failure semantics.
+- [x] Push `feat/backend-replacement-native-jack` and open a PR with base **`feat/backend-replacement`**. Lead the description with restored native JACK behavior; include configuration compatibility, fixed-port scope, test evidence, and restart/failure semantics.
 - [ ] Monitor every required CI job, fix failures in follow-up commits, and rerun affected checks until required CI is green.
 - [ ] Check for automated PR reviews. Address feedback, push fixes, and repeat review/check cycles until the automated reviewer approves where present. Document any remaining material limitations accurately.
 - [ ] Update this plan's checkboxes and evidence, verify the PR base/head and final passing commit, and return the PR URL with validation results.
@@ -178,3 +178,5 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - Hosted Chromium browser core smoke passed at 900×600 with **zero xruns**, including record/play, waveform/MIDI detail, `.shoop` save/load/resave and restored playback. Node v24.19.0 and Chromium 154.0.8037.57 were used locally; the existing CI web matrix retains its pinned browser tooling.
 - Final formatting, warning-denying workspace build, test-attribute, tracing and parity audits passed. Workflow YAML parses. Native protocol byte fixtures and the browser canary are updated to their new versions.
 - Remaining Stage 5 platform evidence and Stage 6 PR/CI/review completion will be recorded from the implementation PR.
+
+- PR opened: https://github.com/SanderVocke/shoopdaloop/pull/925, targeting `feat/backend-replacement`. The target advanced to `64a4ad06` (click generation); it was merged without conflicts and the combined warning-denying build and full suite passed: **2,552 passed, four pre-existing skips**.
