@@ -25,8 +25,9 @@ def main():
         raw = golden[index * 512:(index + 1) * 512]
         assert records.valid(raw, index + 1)
         for byte in range(512):
-            damaged = bytearray(raw); damaged[byte] ^= 1
-            assert not records.valid(damaged, index + 1)
+            for bit in range(8):
+                damaged = bytearray(raw); damaged[byte] ^= 1 << bit
+                assert not records.valid(damaged, index + 1)
     print("C/Python record golden vectors and all single-bit corruption positions passed")
 
 

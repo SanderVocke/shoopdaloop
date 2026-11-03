@@ -284,7 +284,11 @@ class Qualification:
         with self.vm(image, "refusals") as vm:
             vm.ready("Listening for fastboot", 60)
             with FastbootFixture(self.updater_port) as client:
-                for command in ["flash:boot", "erase:boot", "oem run:mmc erase 0 100", "oem board:erase", "download:02000001"]:
+                assert client.command("download:00000003") == b"DATA00000003"
+                assert client.exchange(3, b"abc") == b""
+                assert client.exchange(3, b"").startswith(b"OKAY")
+                for command in ["boot", "set_active:a", "reboot-bootloader", "reboot-fastboot", "reboot-recovery",
+                                "flash:boot", "erase:boot", "oem run:mmc erase 0 100", "oem board:erase", "download:02000001"]:
                     assert client.command(command).startswith(b"FAIL"), command
             for name in ["bad-signature", "bad-profile", "bad-range", "bad-length"]:
                 self.command(name, "stage", self.artifacts / (name + ".itb"), success=False)
@@ -330,3 +334,15 @@ class Qualification:
             assert boots(text)[-1]["build"] == "firmware-a"
         self.protected(image, before, "no-server")
         self.record("missing-tftp-server-bounded-local-fallback", seconds=round(time.monotonic() - started, 2))
+        image = self.factory("oversize-tftp", mode=2)
+        before = snapshot(image)
+        public = self.artifacts / "oversize-tftp"; public.mkdir()
+        with (public / "shoop.itb").open("wb") as stream:
+            stream.truncate(LAYOUT["bundle_max_bytes"] + 512)
+        with self.vm(image, "oversize-tftp", tftp=public) as vm:
+            vm.ready("SHOOP_HOST_READY", 180)
+            text = vm.serial.read_text()
+            assert "trying to overwrite reserved memory" in text
+            assert boots(text)[-1]["build"] == "firmware-a"
+        self.protected(image, before, "oversize-tftp")
+        self.record("oversize-tftp-refused-before-copying-past-32-MiB")

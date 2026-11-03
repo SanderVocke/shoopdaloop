@@ -187,7 +187,9 @@ explicit recovery action, not an automatic CLI fallback.
 U-Boot verifies the signed target, digest, size, and ELF load/entry ranges both
 before installation and before execution. Bundles are limited to 32 MiB, staged
 at 896–928 MiB; ELF segments must stay in the platform 1–128 MiB or Rust
-128–896 MiB ranges. Loader relocation/stack and its second verification buffer
+128–896 MiB ranges. An LMB guard rejects TFTP blocks before they can cross the
+32 MiB staging bound, including when a server supplies an oversized image.
+Loader relocation/stack and its second verification buffer
 remain in the upper reserved 128 MiB. The low-memory handoff is at `0x8000`.
 
 A candidate is published only after payload/descriptor write/readback verification.
@@ -244,7 +246,9 @@ their U-Boot use and the application repository. Preserve upstream U-Boot, QEMU,
 AMD, FreeRTOS and lwIP notices with redistributed sources/binaries.
 
 `uboot-network-deployment.patch` fixes server-side ARP reception, abandoned UDP
-download cancellation on fresh INIT, and duplicate sequence handling at wrap.
+download cancellation on fresh INIT, duplicate sequence handling at wrap, and
+adds a board command-policy hook. Shoop's allowlist refuses stock Fastboot `boot`,
+`set_active`, alternative reboot modes and arbitrary writes/shell commands.
 The custom command supplies signature/load checks, bounded SD writes, boot policy
 and handoff; stock Fastboot `set_active` does not supply this A/B policy.
 Build manifests record source/config/patch/input/artifact hashes and tool versions.

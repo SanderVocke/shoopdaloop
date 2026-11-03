@@ -268,7 +268,7 @@ Depends on Stage 2.
 - [x] Add supported watchdog/reset integration and updater-entry persistence.
   Test pre-ready crashes and post-start task stalls, success confirmation and
   cold boot of the last confirmed image without workstation involvement.
-- [ ] Test metadata codecs, torn-record selection, single-copy damage and boundary
+- [x] Test metadata codecs, torn-record selection, single-copy damage and boundary
   conditions; confirm safe recovery when both copies/configuration are unusable.
   Compare card regions before/after operations and commit the state-machine milestone.
 
@@ -285,7 +285,7 @@ Depends on Stage 3.
 - [x] Configure Fastboot UDP with restricted staging/commit operations and add
   workstation deployment/status commands. Preserve the confirmed slot, boot files
   and device configuration; check readback and signatures before marking pending.
-- [ ] Update A → B and B → A using distinguishable firmware identities. Have the
+- [x] Update A → B and B → A using distinguishable firmware identities. Have the
   CLI observe durable confirmation, then disconnect the workstation and cold boot
   the installed image using only the retained card. Document commands and commit.
 
@@ -323,11 +323,11 @@ host timeout. The invariant is a usable confirmed image or an honest recovery mo
 
 Depends on all previous stages.
 
-- [ ] Add bounded Linux PR CI for loader builds, SD generation, TFTP/local boot,
+- [x] Add bounded Linux PR CI for loader builds, SD generation, TFTP/local boot,
   network A/B update, watchdog rollback and representative interruption cases.
   Keep broader seeded fault coverage separately invocable/scheduled if necessary.
   Cache reproducible build inputs only; never reuse mutable cards, keys or state.
-- [ ] Retain compact manifests, boot/config versions, image hashes, QMP CPU/RAM
+- [x] Retain compact manifests, boot/config versions, image hashes, QMP CPU/RAM
   facts, loader/runtime serial logs, deployment transcripts and result records.
   Keep redacted metadata/card diagnostics and packet captures for failures;
   never archive live credentials/private keys. Provide a single full validation command.
@@ -451,3 +451,20 @@ revisions rather than treating moving documentation as a reproducible input.
   includes the new deployment job and all existing gates. Fault qualification
   found an invalid-configuration loader path that attempted app entry; it is
   being fixed to remain in recovery before consuming an application nonce.
+
+- Full native regression: 2,544 tests passed, five intentional skips, with two
+  nextest workers while QEMU ran. An existing scheduler-bounded RT stress test
+  had failed under the first concurrent four-worker run; it then passed 20/20
+  isolated repetitions. No RT-runtime implementation/test bounds were changed.
+- Deployment protocol golden tests pass on native, Node and headless Chrome.
+  Cortex-A builds pass for armv7a-none-eabi, armv7a-none-eabihf and
+  aarch64-unknown-none, plus all dependency-boundary target audits.
+- Actual QEMU corruption tests now pass both selection/confirmation/nonce copies,
+  torn/omitted writes, corrupted readback and blocked-write power cuts. The
+  consolidated run has also passed single-copy configuration/state/counter damage,
+  both-copy state recovery and incompatible state versions.
+- Final command-surface review added an explicit board Fastboot allowlist. Stock
+  `boot`, `set_active`, alternative reboot modes, raw writes and shell commands
+  are refused; verified staging/reboot still passes on real QEMU. TFTP additionally
+  reserves an LMB guard before transfer, enforcing the 32 MiB limit before copying
+  into the loader's reserved memory. Final suite/CI validation remains in progress.

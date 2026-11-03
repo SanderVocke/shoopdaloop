@@ -1,8 +1,33 @@
 diff --git a/drivers/fastboot/fb_command.c b/drivers/fastboot/fb_command.c
-index 18d86988..445e02dd 100644
+index 18d86988..28e4e8c9 100644
 --- a/drivers/fastboot/fb_command.c
 +++ b/drivers/fastboot/fb_command.c
-@@ -317,6 +317,13 @@ void fastboot_data_download(const void *fastboot_data,
+@@ -130,6 +130,13 @@ static const struct {
+ 	},
+ };
+ 
++bool __weak fastboot_command_allowed(const char *command, const char *parameter)
++{
++	(void)command;
++	(void)parameter;
++	return true;
++}
++
+ /**
+  * fastboot_handle_command - Handle fastboot command
+  *
+@@ -145,6 +152,10 @@ int fastboot_handle_command(char *cmd_string, char *response)
+ 
+ 	cmd_parameter = cmd_string;
+ 	strsep(&cmd_parameter, ":");
++	if (!fastboot_command_allowed(cmd_string, cmd_parameter)) {
++		fastboot_fail("Restricted command", response);
++		return -1;
++	}
+ 
+ 	for (i = 0; i < FASTBOOT_COMMAND_COUNT; i++) {
+ 		if (!strcmp(commands[i].command, cmd_string)) {
+@@ -317,6 +328,13 @@ void fastboot_data_download(const void *fastboot_data,
   *
   * Set image_size and ${filesize} to the total size of the downloaded image.
   */
@@ -31,10 +56,20 @@ index f570ae9e..2aa3684b 100644
  	if (device_is_compatible(dev, "amd,versal2-10gbe")) {
  		nwconfig &= ~ZYNQ_GEM_DBUS_WIDTH_MASK;
 diff --git a/include/fastboot.h b/include/fastboot.h
-index b106d617..29f7d058 100644
+index b106d617..54a802e5 100644
 --- a/include/fastboot.h
 +++ b/include/fastboot.h
-@@ -186,6 +186,9 @@ void fastboot_data_download(const void *fastboot_data,
+@@ -156,6 +156,9 @@ void fastboot_handle_boot(int command, bool success);
+  */
+ int fastboot_handle_command(char *cmd_string, char *response);
+ 
++/** Board policy hook; false refuses a command before dispatch/boot actions. */
++bool fastboot_command_allowed(const char *command, const char *parameter);
++
+ /**
+  * fastboot_data_remaining() - return bytes remaining in current transfer
+  *
+@@ -186,6 +189,9 @@ void fastboot_data_download(const void *fastboot_data,
   */
  void fastboot_data_complete(char *response);
  

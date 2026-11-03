@@ -17,6 +17,36 @@ PHASES = ["build", "records", "first-stage", "network-boot", "warm-boot", "ui", 
           "disk-faults", "metadata-damage", "network-faults", "refusals", "cleanup-refusal", "no-server"]
 
 
+def audit_public_output(directory):
+    """Quarantine a secret-bearing file before the always-run artifact upload."""
+    credential = directory / "private/credential"
+    if not credential.exists():
+        return []
+    secret = credential.read_bytes()
+    patterns = [b"-----BEGIN PRIVATE KEY-----", b"-----BEGIN RSA PRIVATE KEY-----"]
+    if len(secret) == 32:
+        patterns.append(secret)
+    rejected = []
+    for root in [directory / "artifacts", directory / "evidence"]:
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            found, tail = False, b""
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    data = tail + chunk
+                    if any(pattern in data for pattern in patterns):
+                        found = True; break
+                    tail = data[-64:]
+            if found:
+                relative = str(path.relative_to(directory))
+                quarantine = directory / "private/quarantine" / path.relative_to(directory)
+                quarantine.parent.mkdir(parents=True, exist_ok=True)
+                path.rename(quarantine)
+                rejected.append(relative)
+    return rejected
+
+
 def worker(args):
     directory = args.directory.resolve()
     if args.phase == "build":
@@ -25,6 +55,19 @@ def worker(args):
     q = Qualification(directory / "artifacts", directory / "private", directory / "evidence" / args.phase,
                       args.port_base, args.updater_port)
     if args.phase == "records":
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary)
+            for folder in ["private", "artifacts", "evidence"]:
+                (test / folder).mkdir()
+            secret = bytes([165]) * 32
+            (test / "private/credential").write_bytes(secret)
+            (test / "artifacts/clean").write_bytes(b"public artifact")
+            (test / "artifacts/leak").write_bytes(bytes(1024 * 1024 - 16) + secret)
+            (test / "evidence/leak").write_bytes(b"-----BEGIN PRIVATE KEY-----")
+            assert sorted(audit_public_output(test)) == ["artifacts/leak", "evidence/leak"]
+            assert (test / "artifacts/clean").exists() and not (test / "artifacts/leak").exists()
+            assert (test / "private/quarantine/artifacts/leak").exists()
         subprocess.run([sys.executable, PLATFORM / "deployment/tests/records.py"], check=True)
         executable = directory / "private/boot-state-tests"
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
@@ -124,7 +167,12 @@ def main():
                 raise RuntimeError(name + " failed:\n" + path.read_text()[-12000:])
         result["passed"] = True
     finally:
+        rejected = audit_public_output(directory)
+        result["public_output_audit"] = {"passed": not rejected, "quarantined_files": rejected}
+        result["passed"] &= not rejected
         (evidence / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+        if rejected:
+            raise RuntimeError("Secret-bearing public output was quarantined; refusing to publish those files")
     print("All Zynq network-deployment gates passed", flush=True)
 
 

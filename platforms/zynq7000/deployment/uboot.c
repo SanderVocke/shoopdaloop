@@ -6,6 +6,7 @@
 #include <hang.h>
 #include <image.h>
 #include <mmc.h>
+#include <lmb.h>
 #include <net.h>
 #include <dm.h>
 #include <asm/global_data.h>
@@ -226,6 +227,17 @@ static int install_bundle(void *data, uint32_t size) {
     if (!result) printf("SHOOP_INSTALL_PENDING slot=%u build=%s\n", slot, image.build);
     return result;
 }
+bool fastboot_command_allowed(const char *command, const char *parameter) {
+    static const char *const variables[] = { "version", "max-download-size", "shoop-state", "shoop-confirmed",
+        "shoop-pending", "shoop-operation", "shoop-client", "shoop-profile" };
+    if (!strcmp(command, "download")) return parameter != NULL;
+    if (!strcmp(command, "reboot") || !strcmp(command, "continue")) return !parameter || !*parameter;
+    if (!strcmp(command, "oem board")) return parameter && (!strcmp(parameter, "install") || !strcmp(parameter, "status"));
+    if (!strcmp(command, "getvar") && parameter)
+        for (unsigned i = 0; i < sizeof variables / sizeof variables[0]; ++i)
+            if (!strcmp(parameter, variables[i])) return true;
+    return false;
+}
 void fastboot_oem_board(char *parameter, void *data, u32 size, char *response) {
     if (!strcmp(parameter, "install")) {
         int result = install_bundle(data, size);
@@ -257,7 +269,11 @@ static int launch(const struct image *image, uint32_t slot, const struct shoop_s
     hang();
 }
 static int network_boot(struct shoop_state *state) {
-    if (run_command("tftpboot 0x38000000 shoop.itb", 0)) return SHOOP_IO;
+    phys_addr_t guard = SHOOP_STAGE_ADDRESS + SHOOP_BUNDLE_MAX;
+    if (lmb_alloc_mem(LMB_MEM_ALLOC_ADDR, 0, &guard, SHOOP_BUNDLE_MAX, LMB_NOOVERWRITE)) return SHOOP_IO;
+    int transfer = run_command("tftpboot 0x38000000 shoop.itb", 0);
+    int release = lmb_free(guard, SHOOP_BUNDLE_MAX, LMB_NOOVERWRITE);
+    if (transfer || release) return SHOOP_IO;
     ulong size = env_get_hex("filesize", 0);
     struct image image;
     if (size > SHOOP_BUNDLE_MAX || verify_bundle((void *)SHOOP_STAGE_ADDRESS, size, &image)) return SHOOP_INVALID;

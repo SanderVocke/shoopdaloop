@@ -56,7 +56,7 @@ def main():
     make = ["make", "-C", SOURCE, "O=" + str(BUILD), "CROSS_COMPILE=" + os.environ.get("ARM_CROSS_COMPILE", "arm-none-eabi-"), "DEVICE_TREE=zynq-zc702"]
     run([*make, "xilinx_zynq_virt_defconfig"], env=environment)
     config = [SOURCE / "scripts/config", "--file", BUILD / ".config"]
-    enable = ["NET_LEGACY", "UDP_FUNCTION_FASTBOOT", "FASTBOOT_OEM_BOARD", "USE_BOOTCOMMAND", "ENV_IS_NOWHERE", "ENV_OVERWRITE", "CMD_ELF"]
+    enable = ["LMB", "NET_LEGACY", "UDP_FUNCTION_FASTBOOT", "FASTBOOT_OEM_BOARD", "USE_BOOTCOMMAND", "ENV_IS_NOWHERE", "ENV_OVERWRITE", "CMD_ELF"]
     disable = ["NET_LWIP", "EFI_LOADER", "TOOLS_MKEFICAPSULE", "FASTBOOT_FLASH", "FASTBOOT_OEM_RUN", "FASTBOOT_UUU_SUPPORT",
                "FASTBOOT_CMD_OEM_CONSOLE", "USB_FUNCTION_FASTBOOT", "ENV_IS_IN_FAT", "ENV_IS_IN_SPI_FLASH",
                "ENV_IS_IN_NAND", "ENV_IS_IN_MMC", "ENV_IS_IN_EXT4", "USE_PREBOOT"]
