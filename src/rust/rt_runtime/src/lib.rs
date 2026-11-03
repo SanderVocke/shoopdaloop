@@ -41,6 +41,7 @@ pub mod buffer;
 pub mod config;
 pub mod error;
 pub mod executor;
+pub mod fixed;
 pub mod graph;
 pub mod ids;
 pub mod midi;

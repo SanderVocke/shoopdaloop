@@ -41,12 +41,12 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
 
 - [x] Create `feat/fixed-quantum-runtime` from `feat/backend-replacement`; retain
   independent benchmark worktree/evidence.
-- [ ] Specify timing types, alignment and callback contracts; verify with scalar
+- [x] Specify timing types, alignment and callback contracts; verify with scalar
   reference tests, overflow/refusal cases and all supported quantum sizes.
-- [ ] Implement compiled fixed audio/MIDI graph execution with prebound routing,
+- [x] Implement compiled fixed audio/MIDI graph execution with prebound routing,
   Q-sized buffers and a direct shared state lifecycle. Verify DAG output, exact
   tick counts, MIDI ordering, errors, heap guards and callback-scoped maintenance.
-- [ ] Implement direct and arbitrary-partition host adapters. Verify constant
+- [x] Implement direct and arbitrary-partition host adapters. Verify constant
   latency, clocks, audio/MIDI correspondence, zero blocks and partition invariance.
 - [ ] Implement direct tick-based loop playback, transitions, sync/programs,
   recording and media ownership. Verify against independent reference models,
@@ -77,3 +77,15 @@ that lacks currently supported functionality.
 Initial branch: `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2`.
 The earlier experiments are in `/workspace/work/fixed-quantum`; no experimental
 source edits were copied into this branch.
+
+Fixed-core milestone: `rt_runtime::fixed` now implements immutable prepared routing,
+Q-sized buffers, direct state hooks, terminal faults and MIDI reset output, a
+bounded copy-command SPSC queue with reserved cancellation, and a constant-latency
+audio/MIDI host adapter. The application continues to use the interval path until
+feature parity. Dynamic graph publication is not implemented in the new core.
+Seven heap-guarded integration cases cover all four Q values, scalar DAG/MIDI
+output and partition invariance, queue saturation/cancellation, overflow/refusal
+and callback-wide copy budgets. The complete existing rt_runtime suite passed
+before the final preparation pre-touch and binding-validation changes; targeted
+fixed tests and a warning-denying build passed after those changes. A final full
+suite rerun remains required.
