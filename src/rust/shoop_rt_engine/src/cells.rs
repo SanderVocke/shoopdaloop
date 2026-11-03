@@ -119,6 +119,7 @@ impl Cells {
             DriverKind::Dummy => 0,
             DriverKind::Cpal => 1,
             DriverKind::WebAudio => 2,
+            DriverKind::Jack => 3,
         };
         let state = match driver.state {
             DriverRunState::Starting => 0,
@@ -141,6 +142,7 @@ impl Cells {
             kind: match kind {
                 1 => DriverKind::Cpal,
                 2 => DriverKind::WebAudio,
+                3 => DriverKind::Jack,
                 _ => DriverKind::Dummy,
             },
             state: match state {

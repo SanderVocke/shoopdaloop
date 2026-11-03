@@ -116,3 +116,24 @@ fn host_text_and_record_bounds_are_checked() {
     assert!(decode_host_request(&[4, 0, 0xf0, 255]).is_err());
     assert!(decode_host_reply(&[4, 0, 0xf1, 255]).is_err());
 }
+
+#[shoop_test]
+fn jack_driver_identity_appends_a_tag_without_changing_existing_drivers() {
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for (kind, tag) in [
+        (DriverKind::Dummy, 0),
+        (DriverKind::Cpal, 1),
+        (DriverKind::WebAudio, 2),
+        (DriverKind::Jack, 3),
+    ] {
+        let reply = HostReply::Ready(DriverStatus {
+            kind,
+            state: DriverRunState::Running,
+            sample_rate: 48000,
+            buffer_frames: 128,
+        });
+        let len = encode_host_reply(&reply, &mut bytes).unwrap();
+        assert_eq!(bytes[4], tag);
+        assert_eq!(decode_host_reply(&bytes[..len]), Ok(reply));
+    }
+}

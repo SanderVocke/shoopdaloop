@@ -85,6 +85,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }),
             ),
             DriverKind::WebAudio => (AudioDriverKind::WebAudio, AudioDriverConfig::WebAudio),
+            DriverKind::Jack => (
+                AudioDriverKind::Jack,
+                AudioDriverConfig::Jack(Default::default()),
+            ),
         };
         AudioDriverRuntimeState {
             supported: false,

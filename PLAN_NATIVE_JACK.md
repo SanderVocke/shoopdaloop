@@ -157,3 +157,11 @@ Completion: an open implementation PR targeting `feat/backend-replacement`, with
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution evidence
+
+- Stage 0: implementation branch created from `3aabf43789708a5640a8f5b368f737651ef1d29d`; approved plan committed as `b0c4515b`.
+- Initial Stage 1 milestone: saved port defaults are two audio inputs/outputs and one MIDI input/output, named `audio_in_1`, `audio_out_1`, `midi_in_1` and so on. Port lists are configurable; engine names use the stable `jack:` prefix, independent of JACK's resolved client-name suffix. Startup connection pairs use local short names or external `client:port` names; absent required endpoints fail startup with diagnostics. Port capacity remains 64 per kind/direction.
+- Protocol identity uses appended tag 3; engine protocol version increases from 2 to 3 so older peers refuse clearly. Existing driver tags are unchanged. Host-setup conversion will be finalized with the native driver rather than exposing a partial JACK path.
+- Stage 1 validation: warning-denying builds of protocol, API, adapter, and settings UI passed. Protocol/host configuration and recovery tests passed, including old JACK-profile deserialization and codec tag stability. Test-attribute policy passed.
+- The JACK crate requires an unsafe shutdown callback declaration. A small native-only notification adapter isolates that declaration with an atomic-store-only body; `shoop_rt_host_native` retains `forbid(unsafe_code)` and safe JACK APIs. No unsafe pointer/FFI operations are added to the host.

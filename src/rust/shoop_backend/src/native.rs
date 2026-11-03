@@ -8270,6 +8270,7 @@ mod tests {
     fn native_jack_test_adapter_publishes_driver_ports() {
         let configured = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: "ShoopDaLoop-test".to_owned(),
+            ..Default::default()
         });
         let runtime = NativeRuntime::start_with(
             configured,
@@ -8439,6 +8440,7 @@ mod tests {
             AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig::default()),
             AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
                 client_name: "ShoopDaLoop-variant".to_owned(),
+                ..Default::default()
             }),
         ];
         for target in targets {
@@ -8498,6 +8500,7 @@ mod tests {
     fn invalid_preferred_driver_falls_back_without_changing_the_preference_value() {
         let preferred = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: String::new(),
+            ..Default::default()
         });
         let (mut backend, warning) = NativeBackend::new_with_fallback(preferred.clone()).unwrap();
         assert!(warning.unwrap().contains("preferred JACK"));

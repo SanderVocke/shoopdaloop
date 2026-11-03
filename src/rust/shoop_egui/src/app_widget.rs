@@ -112,6 +112,11 @@ pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.sel
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
 pub const JACK_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.jack.client_name");
+pub const JACK_AUDIO_INPUTS: SettingKey<String> = SettingKey::new("audio.jack.audio_inputs");
+pub const JACK_AUDIO_OUTPUTS: SettingKey<String> = SettingKey::new("audio.jack.audio_outputs");
+pub const JACK_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.jack.midi_inputs");
+pub const JACK_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.jack.midi_outputs");
+pub const JACK_CONNECTIONS: SettingKey<String> = SettingKey::new("audio.jack.connections");
 pub const CPAL_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.cpal.client_name");
 pub const CPAL_HOST: SettingKey<String> = SettingKey::new("audio.cpal.host");
 pub const CPAL_OUTPUT_DEVICE: SettingKey<String> = SettingKey::new("audio.cpal.output_device");
@@ -472,6 +477,16 @@ pub fn register_audio_settings_with_default_driver(
         .setting_order(20)
         .effect(effect),
     )?;
+    for (index, (key, value, label, help)) in [
+        (JACK_AUDIO_INPUTS, "audio_in_1,audio_in_2", "JACK audio inputs", "Comma-separated local audio input port names. Empty means no inputs."),
+        (JACK_AUDIO_OUTPUTS, "audio_out_1,audio_out_2", "JACK audio outputs", "Comma-separated local audio output port names. Master uses the first outputs."),
+        (JACK_MIDI_INPUTS, "midi_in_1", "JACK MIDI inputs", "Comma-separated local MIDI input port names."),
+        (JACK_MIDI_OUTPUTS, "midi_out_1", "JACK MIDI outputs", "Comma-separated local MIDI output port names."),
+        (JACK_CONNECTIONS, "", "JACK startup connections", "Semicolon-separated source -> destination pairs. Use local short names or external client:port names."),
+    ].into_iter().enumerate() {
+        builder.register(SettingDefinition::new(key, value.to_owned(), "Audio", label, help)
+            .category_order(5).setting_order(21 + index as u32).effect(effect))?;
+    }
     for definition in [
         SettingDefinition::new(
             CPAL_CLIENT_NAME,
@@ -848,9 +863,38 @@ fn audio_driver_config(
             if client_name.trim().is_empty() {
                 return Err("JACK client name must not be empty".to_owned());
             }
-            Ok(AudioDriverConfig::Jack(JackAudioDriverConfig {
+            let ports = |value: String| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            };
+            let connections = string(JACK_CONNECTIONS)?
+                .split(';')
+                .filter(|entry| !entry.trim().is_empty())
+                .map(|entry| {
+                    entry
+                        .split_once("->")
+                        .map(|(source, target)| {
+                            (source.trim().to_owned(), target.trim().to_owned())
+                        })
+                        .ok_or_else(|| {
+                            "JACK connections must be source -> destination pairs".to_owned()
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let config = JackAudioDriverConfig {
                 client_name,
-            }))
+                audio_inputs: ports(string(JACK_AUDIO_INPUTS)?),
+                audio_outputs: ports(string(JACK_AUDIO_OUTPUTS)?),
+                midi_inputs: ports(string(JACK_MIDI_INPUTS)?),
+                midi_outputs: ports(string(JACK_MIDI_OUTPUTS)?),
+                connections,
+            };
+            config.validate()?;
+            Ok(AudioDriverConfig::Jack(config))
         }
         AudioDriverKind::Cpal => {
             let config = CpalAudioDriverConfig {

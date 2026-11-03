@@ -2239,6 +2239,7 @@ mod tests {
         state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
             configured: crate::AudioDriverConfig::Jack(crate::JackAudioDriverConfig {
                 client_name: "ShoopDaLoop".to_owned(),
+                ..Default::default()
             }),
             sample_rate: 48_000,
             buffer_size: 128,

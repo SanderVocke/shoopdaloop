@@ -328,6 +328,7 @@ pub(crate) mod tests {
     fn jack_uses_the_nearest_cpal_host_with_a_warning() {
         let jack = AudioDriverConfig::Jack(shoop_egui::JackAudioDriverConfig {
             client_name: "Looper".to_owned(),
+            ..Default::default()
         });
         for (hosts, expected, wording) in [
             (
