@@ -8,6 +8,12 @@ request immediately and saves the preference in the background; no Save action
 or audio restart is needed. The window reports the engine's acknowledgement. Profiling is independent
 of developer tracing. There are no recording levels or xrun arming controls.
 
+![Profiling window using quantum-budget units](runtime_profiling/window-budget.png)
+
+The screenshot uses the native dummy driver in a debug build; its live readings
+illustrate the interface. [Microsecond presentation](runtime_profiling/window-us.png).
+Release performance measurements are linked below.
+
 The table contains **Node / Avg / Worst / Stddev** in graph execution order.
 Choose **µs** or **% budget**. Percentages use one fixed quantum's time budget:
 `100 × duration_ns / (quantum_frames × 1e9 / sample_rate)`. They represent a share

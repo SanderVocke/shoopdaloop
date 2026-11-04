@@ -22,6 +22,15 @@ from −0.07% to +30.71%. Consult the raw repetitions and tails, rather than tre
 those endpoints as general overhead estimates. The 12-node runs are more stable:
 off adds 0.28–3.53 µs at Q=16–128, and on adds 2.95–18.31 µs.
 
+A follow-up checks the largest apparent off regression (502 nodes, Q=128) with
+nine adjacent baseline/off pairs, alternating which binary runs first, 512
+callbacks per run and one pinned virtual CPU. All other heavy work is stopped.
+The median of run medians is 1,137.220 µs baseline versus 1,140.174 µs off:
+**+0.26% relative DSP time, or +0.055 callback-budget percentage points**. This
+supports run-to-run VM variation as the explanation for the unpaired +18.14%
+outlier. It does not establish a universal off-cost bound. The original matrix
+is retained unchanged, alongside [the paired raw data](paired-disabled.jsonl).
+
 With ordinary draining, all measured workloads have zero dropped live batches.
 Steady queue high-water is 257 pages at Q=1, nine at Q=32, and three at Q=128.
 Prepared sample-array storage is 3.30 / 7.41 / 12.17 MB for the three pool sizes.
@@ -42,8 +51,8 @@ The native primed clock costs a median 28.65 ns/read, with a 20 ns observed
 minimum positive step. The Node proxy costs a median 62.53 ns for a direct JS
 clock call, 8.61 ns for a constant Wasm call and 72.29 ns for the Wasm clock import.
 Actual AudioWorklet clock timing remains unavailable on the tested Chrome build.
-The profiling window uses median 0.094 / 0.562 / 2.876 ms per CPU frame for
-12 / 102 / 502 rows; P99 is 0.351 / 1.039 / 6.115 ms. GPU work is excluded.
+The final profiling window uses median 0.093 / 0.573 / 2.924 ms per CPU frame for
+12 / 102 / 502 rows; P99 is 0.342 / 0.905 / 4.034 ms. GPU work is excluded.
 
 ## Method
 
@@ -107,6 +116,8 @@ Already overloaded baselines cannot establish safe target-device operation.
 - [Profiling-window CPU frames](ui-frames.jsonl): 256 frames at each node count,
   after eight warm-up frames, with production egui layout and text formatting.
 - [Environment and source identities](environment.json).
+- [Node verification](node-validation.json): 34 packages, 2,207 passing tests,
+  combining the complete suite with the application/UI rerun after fixes.
 
 Chrome for Testing 147.0.7727.117 has no `performance` object in the actual
 AudioWorklet realm. Its elapsed-time profiling capability is unavailable, so an

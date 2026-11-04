@@ -33,7 +33,7 @@ use shoop_egui::register_audio_settings;
 use shoop_egui::register_bundled_script_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
 use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::AudioDriverConfig;
@@ -3616,6 +3616,11 @@ impl Runtime {
 
     fn audio_running(&self) -> bool {
         self.audio.running() && self.runtime.is_some()
+    }
+    fn session_operations_pending(&self) -> bool {
+        self.runtime
+            .as_ref()
+            .is_none_or(CooperativeApplicationRuntime::has_pending_operations)
     }
 }
 
