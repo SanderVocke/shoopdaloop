@@ -591,6 +591,7 @@ pub struct BackendStatus {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub driver_state: BackendDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,

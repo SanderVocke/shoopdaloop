@@ -6603,6 +6603,7 @@ impl Backend for EngineBackend {
                 } else {
                     BackendDriverState::Dummy
                 },
+                quantum_frames: 1,
                 callback_count: self.callback_count,
                 processed_frames: self.processed_frames,
                 input_peak: self.input_peak,
@@ -7393,6 +7394,7 @@ impl Default for FakeBackend {
             status: BackendStatus {
                 buffer_size: 256,
                 sample_rate: 48_000,
+                quantum_frames: 1,
                 ..Default::default()
             },
             active_audio_driver: ResolvedAudioDriverConfig {

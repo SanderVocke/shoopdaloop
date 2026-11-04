@@ -160,6 +160,35 @@ Dependencies: 1 -> 2 -> 3; stage 4 needs stage 2 and can precede completion of 3
 Stage 5 joins 3 and 4; then 6 -> 7 -> 8. Commit milestones locally throughout;
 do not push them until stage 8, since the existing PR would start CI.
 
+### Progress and field contract
+
+The initial milestone adds the shared rational planner and anchored, incremental
+48-tap windowed-sinc audio/MIDI converter. Application status now reports the
+prepared engine quantum separately from host callback size; application wire
+version 14 fences the changed snapshot schema. Import/session orchestration and
+family publication are still pending, so these primitives are not yet a complete
+production conversion path. Whole-session planning/conversion now also handles
+physical versus musical metadata, context-sensitive shared-media splitting,
+MIDI collision ordering, cancellation and converted save/reload idempotence.
+
+Initial milestone validation: 2,613 native tests pass, with four host-facility
+skips; the warning-denying workspace build, formatting, test-attribute and closed
+tracing inventory checks pass. Local socket tests require network permission in
+the execution sandbox. Logs: `work/retiming-core-native.log`,
+`work/retiming-stage1-build.log` and `work/retiming-core-session-tests.log`.
+
+Timing field classification: loop lengths, channel offsets, combined playback
+origin, capture alignment, preplay, raw audio/MIDI extents and event frames follow
+the musical map. Track/processor manual latency and port history capacities follow
+sample-rate scaling only. Cycle/delay/repetition counts remain dimensionless;
+absolute engine-clock deadlines retain their existing scheduling meaning. Names,
+identities, controls, routes and recording dates are unchanged.
+
+The sinc kernel evaluates explicit source positions rather than using the old
+rate-only wrapper's truncated/padded output. This supplies fractional playback
+origins and exact output bounds while retaining its 48-tap, squared Blackman-Harris
+window and 256-phase linear interpolation; it is one path for every correction.
+
 ### 1. Contracts, authoritative format and fixtures
 
 - [x] Inspect the existing conversion/publication paths and reuse the current
@@ -176,7 +205,7 @@ do not push them until stage 8, since the existing PR would start CI.
 
 - [ ] Build the post-import candidate and resolve its supported sync forest;
   implement checked alignment, source-first propagation and per-channel maps.
-- [ ] Identify the full affected family, retained media, required topology and
+- [x] Identify the full affected family, retained media, required topology and
   identity/deduplication cases without allocating output audio yet.
 - [ ] Verify with independent arithmetic expectations: chains, multiple roots,
   shuffled declarations, self-sync, empty/silent/MIDI-only loops, exact multiples,
@@ -185,11 +214,11 @@ do not push them until stage 8, since the existing PR would start CI.
 
 ### 3. Phase-coherent audio, MIDI and metadata conversion
 
-- [ ] Implement exact-length, origin-aware sinc resampling and the shared anchored
+- [x] Implement exact-length, origin-aware sinc resampling and the shared anchored
   MIDI/metadata map; retain original inputs until conversion succeeds or cancels.
-- [ ] Handle signed origins, history, periodic versus stored context, shared assets
+- [x] Handle signed origins, history, periodic versus stored context, shared assets
   with different maps and bounded cooperative conversion work.
-- [ ] Verify identity bit equality; impulse/transient position, constant/sine
+- [x] Verify identity bit equality; impulse/transient position, constant/sine
   behavior, stereo phase, filter delay and loop seams against independent oracles.
   Check MIDI start state, boundary events, timestamp collisions, negative pre-roll,
   prefix/suffix preservation and cancellation/resource limits.

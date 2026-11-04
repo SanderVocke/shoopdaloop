@@ -877,6 +877,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
+            quantum_frames: self.limits.map_or(0, |limits| limits.quantum),
             driver_state: self.driver_state(),
             callback_count: self.status.callbacks,
             processed_frames: self.status.frame,

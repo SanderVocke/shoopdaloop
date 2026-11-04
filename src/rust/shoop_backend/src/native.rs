@@ -5144,6 +5144,7 @@ impl Backend for NativeBackend {
                 xruns: driver.xruns_since_last,
                 buffer_size: driver.buffer_size.max(driver.last_processed),
                 sample_rate: driver.sample_rate,
+                quantum_frames: 1,
                 driver_state: if driver.active == 0 {
                     BackendDriverState::Stopped
                 } else if runtime.configured.kind() == AudioDriverKind::Dummy {

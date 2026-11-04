@@ -919,6 +919,19 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConversionTarget {
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+impl ConversionTarget {
+    pub fn is_valid(self) -> bool {
+        self.sample_rate > 0 && matches!(self.quantum_frames, 1 | 16 | 32 | 64 | 128)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
@@ -927,6 +940,7 @@ pub struct StatusState {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub audio_driver: AudioDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -941,6 +955,14 @@ pub struct StatusState {
 }
 
 impl StatusState {
+    pub fn conversion_target(&self) -> Option<ConversionTarget> {
+        let target = ConversionTarget {
+            sample_rate: self.sample_rate,
+            quantum_frames: self.quantum_frames,
+        };
+        target.is_valid().then_some(target)
+    }
+
     pub fn latency_ms(&self) -> Option<f32> {
         (self.sample_rate > 0).then(|| self.buffer_size as f32 * 1000.0 / self.sample_rate as f32)
     }

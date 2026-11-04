@@ -9803,6 +9803,7 @@ impl ApplicationModel {
             .saturating_add(callback_xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
+        self.status.quantum_frames = snapshot.status.quantum_frames;
         self.status.audio_driver = match snapshot.status.driver_state {
             shoop_backend::BackendDriverState::Dummy => AudioDriverState::Dummy,
             shoop_backend::BackendDriverState::AwaitingGesture => AudioDriverState::AwaitingGesture,

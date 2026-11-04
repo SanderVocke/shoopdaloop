@@ -199,6 +199,9 @@ src/rust/shoop_scripting/src/lib.rs,non_realtime_support,instrumented_indirect,"
 src/rust/shoop_scripting/src/midi.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/archive.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/click_track.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_session/src/conversion.rs,non_realtime_support,instrumented_indirect,Exact conversion planning runs inside traced client codec and persistence orchestration.
+src/rust/shoop_session/src/conversion/media.rs,non_realtime_support,instrumented_indirect,Bounded off-thread media conversion runs inside traced client codec orchestration.
+src/rust/shoop_session/src/conversion/session.rs,non_realtime_support,instrumented_indirect,Session conversion planning and transformation run inside traced persistence orchestration.
 src/rust/shoop_session/src/document.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/media.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

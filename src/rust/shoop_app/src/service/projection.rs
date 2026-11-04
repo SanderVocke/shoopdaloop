@@ -621,6 +621,7 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
         dsp_load_percent: state.dsp_load_percent,
         xruns: state.xruns,
         sample_rate: state.sample_rate,
+        quantum_frames: state.quantum_frames,
         buffer_size: state.buffer_size,
         audio_driver,
         callback_count: state.callback_count,
