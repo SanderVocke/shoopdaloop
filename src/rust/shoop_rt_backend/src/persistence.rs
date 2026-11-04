@@ -151,7 +151,6 @@ impl Job {
             return;
         };
         self.active.swap_remove(index);
-        tracing::trace!(?request, ?outcome, "backend.rt.persistence_answer");
         if matches!(request, Request::ContentApply { .. }) && outcome == Outcome::Done {
             self.fail("engine omitted the applied content revision".to_owned());
         }
