@@ -117,6 +117,15 @@ release and unchanged sostenuto suffixes after edits. This is a de-risking proof
 for one part of F3, not a completed writer, production density policy or state
 index. The complete projection/query and ownership tests remain required.
 
+Complete projection reconstruction is now implemented against an ordered-category
+query interface, using the pedal summaries for release/latch intervals. New
+heap-guarded scenarios compare every opaque channel field with linear packet
+application across initial latches, program-bank snapshots, resets/channel modes,
+equal-frame order above u32, erasure/wrap and changed logical-zero state. The test
+timeline is deliberately linear; the bounded persistent production store and
+callback work accounting are not implemented by that oracle. CI must validate
+the semantic reconstruction before the writer uses it.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

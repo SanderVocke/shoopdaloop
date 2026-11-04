@@ -5,8 +5,14 @@ use crate::{
     Error,
 };
 
+#[allow(dead_code)] // Ordered semantic store integration is staged separately.
+pub(crate) mod indexed;
 #[allow(dead_code)] // Interval-index writer integration is staged separately.
 pub(crate) mod interval;
+
+fn reset_preserves(cc: u8) -> bool {
+    matches!(cc, 0|32|7|39|10|42|70..=79|91..=95|122|124..=127)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NoteState {
@@ -189,7 +195,7 @@ impl ChannelState {
         // Retain controls that RP-015 leaves unchanged. Device-specific defaults
         // remain unknown; the reset marker preserves their baseline operation.
         for cc in 0..128 {
-            if !matches!(cc,0|32|7|39|10|42|70..=79|91..=95|122|124..=127) {
+            if !reset_preserves(cc as u8) {
                 self.set_controller(cc as u8, None);
             }
         }

@@ -2,9 +2,10 @@
 
 Design investigation for F2/F3 of [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
 This is not an implementation-complete contract or application parity evidence.
-The existing indexed candidate API remains available. The new interval-summary
-tests prove only the pedal composition below; the ordered store and complete state
-queries still need implementation and verification.
+The existing indexed candidate API remains available. Interval-summary and full
+projection query code now have linear packet-oracle tests. Fresh CI must validate
+them. The bounded ordered production store, work accounting and writer integration
+still need implementation and verification.
 
 ## Why the continuous writer needs another index
 
@@ -65,7 +66,7 @@ or two cases, independent of suffix length. Current tests compare sustain/Hold2
 composition against actual protocol note release for all initial hold states and
 verify unchanged sostenuto suffixes after deletion and Clear/Reset replacement.
 
-## Complete state queries to implement
+## Complete state query reconstruction
 
 All queries exclude originals at the requested frame. Internal queries at a
 specific packet use the complete ordered point so earlier equal-frame originals
@@ -99,7 +100,10 @@ public callers continue using the same getters and ordinary media interface.
 Verify every field against independent linear packet/state oracles, including
 pedal overlap, repeated controls, reset/channel modes, initial latches, unknown
 values, all keys/channels and long random edit sequences. A proof for pedals alone
-does not validate this reconstruction.
+does not validate this reconstruction. The query implementation now has a linear
+test timeline used only as an oracle adapter; it is not the production index.
+Tests compare the complete opaque projection across equal-frame/wide positions,
+initial state, all supported message families and deterministic edited streams.
 
 ## Writer and publication requirements
 
