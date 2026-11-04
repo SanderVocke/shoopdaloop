@@ -1335,9 +1335,12 @@ impl ControlEndpoint {
                     (Step::Prelude | Step::Cleanup | Step::Retire | Step::ClearStop, _) => None,
                     (_, Outcome::Refused(refusal)) => Some(refusal),
                     (_, Outcome::Done) => None,
-                    (_, Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. }) => {
-                        Some(Refusal::Internal)
-                    }
+                    (
+                        _,
+                        Outcome::TimingApplied(_)
+                        | Outcome::ContentApplied { .. }
+                        | Outcome::ContentPrepared { .. },
+                    ) => Some(Refusal::Internal),
                 };
                 (refusal, execution.operation_result, true, None)
             }

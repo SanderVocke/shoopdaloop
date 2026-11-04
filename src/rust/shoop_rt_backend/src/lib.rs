@@ -46,6 +46,7 @@ mod preview;
 mod reads;
 mod requests;
 mod session;
+mod timing;
 
 #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub use clock::Sleep;

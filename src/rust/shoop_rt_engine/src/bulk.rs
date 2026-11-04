@@ -434,9 +434,9 @@ impl ControlEndpoint {
             RuntimeResult::Execution(execution) => match execution_outcome(&execution) {
                 Outcome::Refused(refusal) => Err(refusal),
                 Outcome::Done => Ok(execution.operation_result),
-                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                    Err(Refusal::Internal)
-                }
+                Outcome::TimingApplied(_)
+                | Outcome::ContentApplied { .. }
+                | Outcome::ContentPrepared { .. } => Err(Refusal::Internal),
             },
         };
         self.bulk.waiting = Waiting::None;

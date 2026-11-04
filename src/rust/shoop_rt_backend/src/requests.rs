@@ -23,6 +23,7 @@ pub(crate) enum Purpose {
     Clear(BackendLoopId),
     LoopGain(BackendLoopId, f32),
     LoopBalance(BackendLoopId, f32),
+    Timing(BackendLoopId),
     Connect {
         port: BackendPortId,
         host: String,

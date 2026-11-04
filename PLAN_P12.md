@@ -172,6 +172,13 @@ Goals and these criteria require explicit user approval to change.
   alignment, and snapshots have independent timing revisions/metadata. Client and
   service capability gates remain enforced. All 28 app-client/protocol tests and
   warning-denying workspace check/build pass; RT wire/execution remains next.
+- RT transaction milestone: protocol version 8 carries bounded timing edits,
+  confirmed window states and resync metadata. The engine validates live strip
+  channels and fences raw/timing revisions at execution; loop telemetry publishes
+  coherent state without spinning. The adapter maps results into service snapshots.
+  All 88 engine/adapter regressions, protocol/loop checks, the all-Q timing/output
+  scenario and the warning-denying workspace build pass. Capabilities remain off
+  until raw-media persistence and UI acceptance are finished.
 - Ordering refinement: implement the core window semantics before fixing the wire
   layout, then finish Stage 1 alongside production integration. The accepted
   behavior matrix and completion criteria are unchanged.
@@ -211,7 +218,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 1 — timing transaction and projection contracts
 
-- [ ] Extend application/backend/RT contracts for scalar and bounded channel-batch
+- [x] Extend application/backend/RT contracts for scalar and bounded channel-batch
   edits, explicit optional fields, expected identity/revisions, reliable outcomes,
   and authoritative per-channel timing projection. Define metadata visibility for
   empty and recording loops and its relationship to raw-media revisions.

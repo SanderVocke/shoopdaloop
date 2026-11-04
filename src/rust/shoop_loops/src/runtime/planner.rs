@@ -41,7 +41,18 @@ impl LoopPlanner {
     fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut, Failure> {
         let state = self.resolver.state(target)?;
         if let Ok(row) = self.row(target) {
+            let media = self
+                .ledger
+                .playback(target)?
+                .map(|id| self.ledger.view(id))
+                .transpose()?;
             Ok(Cut {
+                raw_audio_frames: media
+                    .and_then(|m| m.audio)
+                    .map_or(0, |source| source.snapshot.description.frames),
+                raw_midi_frames: media
+                    .and_then(|m| m.midi)
+                    .map_or(0, |source| source.snapshot.description.frames),
                 windows: row.windows,
                 timing_revision: row.timing_revision,
                 frame,
@@ -58,6 +69,8 @@ impl LoopPlanner {
             })
         } else {
             Ok(Cut {
+                raw_audio_frames: 0,
+                raw_midi_frames: 0,
                 windows: Windows::default(),
                 timing_revision: 0,
                 frame,
@@ -1073,6 +1086,7 @@ impl LoopPlanner {
                         .expect("validated row");
                     row.windows = windows;
                     row.timing_revision = revision;
+                    self.resolver.publish_timing_revision(target, revision);
                     if let Some(length) = edit.length {
                         row.length_override = Some((state.content_revision, length));
                     }
@@ -1094,6 +1108,7 @@ impl LoopPlanner {
                         .expect("validated row");
                     row.windows = windows;
                     row.timing_revision = revision;
+                    self.resolver.publish_timing_revision(target, revision);
                     Ok(Disposition::Complete(Reply::Timing(
                         self.cut(target, context.frame)?,
                     )))

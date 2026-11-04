@@ -707,18 +707,47 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_family(update)
     }
 
-    fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopTimingEdits))
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        self.set_loop_timing(loop_id, None, None, Some(length))
     }
-
     fn set_loop_timing(
         &mut self,
-        _loop_id: BackendLoopId,
-        _start_offset: Option<i32>,
-        _preplay: Option<u32>,
-        _length: Option<u32>,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::LoopTimingEdits))
+        self.send_timing(
+            loop_id,
+            shoop_rt_protocol::TimingEdit {
+                start_offset,
+                preplay,
+                length: length.map(u64::from),
+                ..Default::default()
+            },
+        )
+    }
+    fn set_loop_channel_timings(
+        &mut self,
+        loop_id: BackendLoopId,
+        updates: &[shoop_backend::BackendChannelTimingUpdate],
+    ) -> Result<()> {
+        if updates.len() > shoop_rt_protocol::MAX_TIMING_UPDATES {
+            return Err(anyhow!("too many channel timing updates"));
+        }
+        let mut edit = shoop_rt_protocol::TimingEdit {
+            count: updates.len() as u8,
+            ..Default::default()
+        };
+        for (target, source) in edit.channels.iter_mut().zip(updates) {
+            *target = shoop_rt_protocol::ChannelTimingUpdate {
+                channel: u8::try_from(source.channel)?,
+                midi: source.is_midi,
+                start_offset: source.start_offset,
+                preplay: source.preplay,
+            };
+        }
+        self.send_timing(loop_id, edit)
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
@@ -948,7 +977,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 continue;
             };
             if entry.confirmed && track.confirmed {
-                loops.insert(*id, Mirror::loop_state(entry, track.audio_channels));
+                loops.insert(
+                    *id,
+                    Mirror::loop_state(entry, track.audio_channels, track.midi),
+                );
             }
         }
         let connections = BackendConnectionSnapshot {

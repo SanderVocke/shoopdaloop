@@ -7,6 +7,7 @@ pub const MAX_CHANNEL_UPDATES: usize = MAX_AUDIO_CHANNELS + 1;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ChannelWindow {
+    pub raw_frames: Option<u64>,
     pub start_offset: i32,
     pub capture_alignment: i32,
     pub preplay: u32,
@@ -111,6 +112,11 @@ impl Windows {
             .map(|w| (*w, raw_audio))
             .chain(midi.then_some((self.midi, raw_midi)))
         {
+            let frames = match window.raw_frames {
+                Some(raw) if raw > frames => return Err(Error::InvalidFrame),
+                Some(raw) => raw,
+                None => frames,
+            };
             if window.capture_alignment != 0 {
                 let start = window.origin();
                 if start < 0
@@ -141,6 +147,7 @@ pub fn span(
     frames: usize,
     raw_frames: u64,
 ) -> Span {
+    let raw_frames = window.raw_frames.unwrap_or(raw_frames).min(raw_frames);
     let position = i128::from(position);
     let raw = position + i128::from(window.origin());
     let begin = (-raw)

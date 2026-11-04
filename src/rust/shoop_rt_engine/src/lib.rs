@@ -46,6 +46,7 @@ mod replacement;
 mod resync;
 mod ring;
 mod stream;
+mod timing;
 mod topology;
 
 #[cfg(feature = "testing")]

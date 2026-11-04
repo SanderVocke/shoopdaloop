@@ -291,6 +291,8 @@ pub enum Operation {
 /// Media identities here are borrowed; use a successful export for independent ownership.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cut {
+    pub raw_audio_frames: u64,
+    pub raw_midi_frames: u64,
     pub windows: Windows,
     pub timing_revision: u64,
     pub frame: Frame,

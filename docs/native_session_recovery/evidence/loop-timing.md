@@ -37,6 +37,12 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 - Warning-denying workspace build and runtime/loop/engine dependency checks for
   all four supported dependency-audit targets passed; the test-attribute policy
   also passed.
+- RT transaction milestone: all 88 engine/adapter regression tests passed.
+  `timing_edits::window_edits_keep_raw_recordings_atomic_results_and_recoverable_state_at_every_quantum`
+  passes at Q=1/16/32/64/128 with guarded engine calls, actual recorded stereo
+  output/raw bulk comparisons, zero-length retention, resync and recording edits.
+  RT codec tests include full-window/result round-trips and malformed batch bounds.
+  The warning-denying workspace build and test-attribute policy pass.
 - Production capability is still disabled. Library evidence alone does not close
   P12 or establish production persistence, recovery or browser support.
 

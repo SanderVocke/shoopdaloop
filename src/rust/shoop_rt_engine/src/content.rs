@@ -499,9 +499,9 @@ impl ControlEndpoint {
             RuntimeResult::Completion(outcome, ..) => completion_refusal(*outcome),
             RuntimeResult::Execution(execution) => match execution_outcome(execution) {
                 Outcome::Done => None,
-                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
-                    Some(Refusal::Internal)
-                }
+                Outcome::TimingApplied(_)
+                | Outcome::ContentApplied { .. }
+                | Outcome::ContentPrepared { .. } => Some(Refusal::Internal),
                 Outcome::Refused(reason) => Some(reason),
             },
         };

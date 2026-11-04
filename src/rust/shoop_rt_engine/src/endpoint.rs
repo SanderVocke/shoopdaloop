@@ -71,6 +71,10 @@ pub(crate) struct Planned {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Purpose {
+    Timing {
+        slot: usize,
+        correlation: Option<u64>,
+    },
     /// Answer `correlation` with the execution's outcome.
     Reply(Option<u64>),
     /// A loop transition: answered when executed, or once scheduled if delayed.
@@ -461,9 +465,9 @@ impl ControlEndpoint {
         self.protocol_error = false;
         for pending in self.pending.iter_mut().flatten() {
             match &mut pending.purpose {
-                Purpose::Reply(correlation) | Purpose::Transition { correlation, .. } => {
-                    *correlation = None
-                }
+                Purpose::Reply(correlation)
+                | Purpose::Transition { correlation, .. }
+                | Purpose::Timing { correlation, .. } => *correlation = None,
                 Purpose::Content { correlation, .. } => *correlation = None,
                 _ => {}
             }
@@ -524,6 +528,7 @@ impl ControlEndpoint {
         let finished = pending.completed && (pending.executed || !pending.expects);
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
+            Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::Transition {
                 correlation,
@@ -750,6 +755,18 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::LoopTiming {
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            } => self.timing_request(
+                correlation,
+                loop_id,
+                expected_revision,
+                expected_content,
+                edit,
+            ),
             Request::PreviewStart {
                 request_id,
                 bus,
@@ -1111,7 +1128,11 @@ impl ControlEndpoint {
     fn loop_telemetry(&self, slot: usize) -> Option<Telemetry> {
         let entry = self.model.loops[slot]?;
         let cells = &self.cells.loops[slot];
-        let current = cells.generation.load(Ordering::Relaxed) == entry.id.0.generation;
+        let publication = cells.publication.load(Ordering::SeqCst);
+        if publication % 2 != 0 {
+            return None;
+        }
+        let current = cells.generation.load(Ordering::SeqCst) == entry.id.0.generation;
         let next = self.planned[slot]
             .iter()
             .flatten()
@@ -1121,28 +1142,34 @@ impl ControlEndpoint {
             .model
             .strip(entry.strip)
             .map_or(0, |strip| strip.shape.audio_outputs as usize);
-        Some(Telemetry::Loop {
+        let timing_revision = cells.timing_revision.load(Ordering::SeqCst);
+        let record = Telemetry::Loop {
             loop_id: entry.id,
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            timing_revision: if current { timing_revision } else { 0 },
             content_revision: if current {
-                cells.content_revision.load(Ordering::Relaxed)
+                cells.content_revision.load(Ordering::SeqCst)
             } else {
                 0
             },
             length: if current {
-                cells.length.load(Ordering::Relaxed)
+                cells.length.load(Ordering::SeqCst)
             } else {
                 0
             },
             position: if current {
-                cells.position.load(Ordering::Relaxed)
+                cells.position.load(Ordering::SeqCst)
             } else {
                 0
             },
             peaks: cells.peaks.take(channels),
-        })
+        };
+        if cells.publication.load(Ordering::SeqCst) != publication {
+            return None;
+        }
+        Some(record)
     }
 }
 

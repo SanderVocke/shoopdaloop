@@ -385,3 +385,13 @@ impl Resolver {
             })
     }
 }
+
+impl Resolver {
+    pub(crate) fn publish_timing_revision(&mut self, target: LoopId, revision: u64) {
+        self.states[target.slot() as usize]
+            .as_mut()
+            .expect("validated timing target")
+            .timing_revision = revision;
+        self.preview = None;
+    }
+}

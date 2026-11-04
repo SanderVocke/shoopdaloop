@@ -211,8 +211,16 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    cursor.index += 1;
                     if let Some(entry) = slot {
+                        if cursor.part == 1 {
+                            cursor.part = 0;
+                            cursor.index += 1;
+                            return Some(StateRecord::LoopTiming {
+                                loop_id: entry.id,
+                                timing: self.current_timing(*entry),
+                            });
+                        }
+                        cursor.part = 1;
                         return Some(StateRecord::Loop {
                             loop_id: entry.id,
                             strip: entry.strip,
@@ -221,6 +229,7 @@ impl ControlEndpoint {
                             balance: entry.balance,
                         });
                     }
+                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
