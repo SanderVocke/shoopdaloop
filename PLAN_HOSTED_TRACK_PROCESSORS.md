@@ -224,7 +224,7 @@ Each stage includes its own verification and a commit before moving on.
 - [x] Map existing primitives and missing work in RT mode/schema, engine graph/pools,
   backend/session adapter, service projection/admission and persistence. Identify
   compatibility/version changes; keep unrelated unsupported features refused.
-- [ ] Verify against named reference tests listed below and master documentation;
+- [x] Verify against named reference tests listed below and master documentation;
   establish baseline regressions. Commit the contract and plan.
 
 ### 2. Promote BufferedProcessor to a reusable production node

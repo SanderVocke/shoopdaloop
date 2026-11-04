@@ -99,8 +99,14 @@ FX remain separately refused. P06/P07 remain open until evidence is linked.
 
 ## Validation evidence
 
-Pending. Record exact commands, configurations, implementation revisions and CI
-links as stages complete. Tests named in the plan are the reference anchors;
+Baseline on `2e19210b` exposed duplicate test global allocators in the engine;
+the test crate now shares one allocator. With that fixture correction,
+`cargo test --locked -p rt_buffered -p shoop_rt_engine -p shoop_app_reference --lib`
+passed 2 adapter, 22 engine (one ignored), and 134 reference tests.
+`cargo build --locked --workspace` passed with `RUSTFLAGS="-D warnings"`; formatting
+and the test-attribute audit passed. Commands used `/workspace/.setup/activate.sh`
+on the provisioned Debian environment. No production feature is enabled by this
+baseline fix. Record implementation revisions and CI links as stages complete. Tests named in the plan are the reference anchors;
 production audio/MIDI, public UI/Lua, native carriers, hosted/self-contained
 browsers, resource limits, cold allocation guards and transactional recovery must
 also pass before declaring the restoration complete.
