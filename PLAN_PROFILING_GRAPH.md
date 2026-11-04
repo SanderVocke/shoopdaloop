@@ -475,3 +475,13 @@ wire-count fixture receive focused reruns. All 134 Python checks and the test
 attribute, tracing (427 modules), parity and dependency-boundary gates pass.
 Fresh Wasm/browser, final release measurements, screenshots and delivery checks
 remain in progress; Stage 6 stays open until their evidence is recorded.
+
+
+The fresh Node/Wasm run passes all ten affected packages (including 21 collector,
+244 egui and 40 backend tests). The built worklet contract passes codec worker,
+profiling timestamp/capture/toggle and production AudioWorklet checks. Fresh native
+socket/shared-memory probes pass profiling names, toggles, recording/recovery and
+shutdown. Updated synthetic screenshots show interval wrapper statistics and
+actual whole-callback costs beside the selected-tick timeline. Dotted context
+links use a neutral stroke that remains visible at overview zoom. Chrome and
+isolated production browser runs, final measurements and CI remain pending.

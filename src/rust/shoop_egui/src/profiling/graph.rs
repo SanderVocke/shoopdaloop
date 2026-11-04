@@ -1010,7 +1010,11 @@ impl State {
                                 } else {
                                     1.8
                                 },
-                                color(value, ready_max),
+                                if edge.context {
+                                    egui::Color32::from_gray(150)
+                                } else {
+                                    color(value, ready_max)
+                                },
                             );
                             let widget = Edge::new(edge.source, edge.destination, &mut selected)
                                 .distance_per_point(2. / scale)

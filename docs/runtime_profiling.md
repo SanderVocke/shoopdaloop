@@ -108,11 +108,11 @@ cannot distinguish preemption from work. Receiving, truncation, loss and clock
 resolution remain visible. Old detail responses are ignored after changing the
 selection, capture, graph generation or connection.
 
-The native preview below uses prescribed synthetic timestamps. It shows a collapsed
-track, a processing hotspot, and selected-tick timing with the original callback
-deadline; it is not a recorded production incident.
+The native preview below uses prescribed synthetic timestamps. It shows callback
+entry statistics, a processing hotspot, dotted context dependencies and selected
+callback timing with the original deadline; it is not a recorded production incident.
 
-![Profiling graph with a collapsed track](images/profiling_graph.png)
+![Profiling graph with callback entry statistics](images/profiling_graph.png)
 
 ![Selected callback and tick timeline](images/profiling_graph_timeline.png)
 
