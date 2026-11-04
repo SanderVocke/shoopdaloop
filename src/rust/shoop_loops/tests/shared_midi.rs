@@ -537,7 +537,7 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
                         projected(&source, MidiState::default(), end)
                     );
                     assert_eq!(store.copy_remaining(), 0);
-                    resolver.finish(interval.end).unwrap();
+                    resolver.finish().unwrap();
                     now = end;
                 }
             }

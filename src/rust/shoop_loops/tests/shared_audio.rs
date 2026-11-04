@@ -353,7 +353,7 @@ fn resolver_driven_grab_replace_export_and_history_are_partition_independent() {
                             assert_eq!(export(&media, &mut store, middle), middle_content);
                         }
                         assert_eq!(store.copy_remaining(), 0);
-                        resolver.finish(interval.end).unwrap();
+                        resolver.finish().unwrap();
                         if interval.end.0 == ceiling {
                             break;
                         }
