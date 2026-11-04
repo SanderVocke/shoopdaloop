@@ -268,11 +268,16 @@ impl Pinned {
         let mut dependent = session.tracks[0].loops[0].clone();
         dependent.id = child;
         dependent.frames *= 2;
+        let mut shorter = self.exact();
+        shorter.length_frames /= 2;
+        shorter
+            .events
+            .retain(|event| event.frame < shorter.length_frames);
         let base = Arc::new(image::Image {
             manifest: image::Manifest::FamilyUpdate {
                 format: ConversionTarget {
                     sample_rate: 1000,
-                    quantum_frames: (self.frames * 2) as u32,
+                    quantum_frames: self.frames as u32,
                 },
                 root,
                 members: vec![
@@ -299,7 +304,7 @@ impl Pinned {
             payloads: original.payloads.clone(),
         });
         let Value::Image(family) = (Work::ConvertFamily {
-            decoded: Decoded::Midi(self.exact()),
+            decoded: Decoded::Midi(shorter.clone()),
             base,
         })
         .run()
@@ -309,7 +314,7 @@ impl Pinned {
         let image::Manifest::FamilyUpdate { members, .. } = &family.manifest else {
             panic!("family manifest")
         };
-        assert_eq!(members[0].content.as_ref().unwrap().frames, self.frames * 2);
+        assert_eq!(members[0].content.as_ref().unwrap().frames, self.frames);
         assert_eq!(members[1].content.as_ref().unwrap().frames, self.frames * 4);
         for member in members {
             let content = member.content.as_ref().unwrap();
@@ -328,7 +333,17 @@ impl Pinned {
             else {
                 panic!("family MIDI")
             };
-            for (new, (old_frame, packet)) in events.iter().zip(midi_events(&self.midi)) {
+            let expected: Vec<_> = if member.loop_id == root {
+                shorter
+                    .events
+                    .iter()
+                    .map(|e| (e.frame, e.data.clone()))
+                    .collect()
+            } else {
+                midi_events(&self.midi)
+            };
+            assert_eq!(events.len(), expected.len());
+            for (new, (old_frame, packet)) in events.iter().zip(expected) {
                 assert_eq!(u64::from(new.frame), old_frame * 2);
                 assert_eq!(new.data.as_ref(), packet);
             }
