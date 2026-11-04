@@ -18,6 +18,46 @@ pub struct InlineTestProcessor {
     scratch: Box<[u8]>,
 }
 
+impl crate::Backend for InlineTestProcessor {
+    fn ports(&self) -> rt_runtime::graph::PortCounts {
+        rt_runtime::graph::PortCounts {
+            audio_inputs: 2,
+            audio_outputs: 2,
+            midi_inputs: 1,
+            midi_outputs: 1,
+        }
+    }
+
+    fn process(&mut self, batch: &mut crate::Batch<'_>) -> Result<(), Error> {
+        if batch.audio.input_count() != 2 || batch.audio.output_count() != 2 {
+            return Err(Error::InvalidShape);
+        }
+        for channel in 0..2 {
+            for frame in 0..batch.frames {
+                let value = batch.audio.input(channel).ok_or(Error::InvalidShape)?[frame];
+                batch.audio.output(channel).ok_or(Error::InvalidShape)?[frame] = value * 2.;
+            }
+        }
+        // The helper also checks and transforms MIDI; its audio slice may be empty.
+        self.submit(
+            Job {
+                generation: batch.tag.generation,
+                sequence: batch.tag.sequence,
+                source: batch.tag.source,
+            },
+            batch.frames,
+            &mut [],
+            batch.midi_inputs.first().ok_or(Error::InvalidShape)?,
+            batch.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
+        )?;
+        Ok(())
+    }
+
+    fn reset(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
 impl InlineTestProcessor {
     pub(crate) fn new(max_packet_bytes: usize) -> Self {
         let mut scratch = vec![0; max_packet_bytes].into_boxed_slice();
@@ -33,7 +73,7 @@ impl InlineTestProcessor {
         input: &MidiBuffer,
         output: &mut MidiBuffer,
     ) -> Result<Completion, Error> {
-        if frames.checked_mul(2) != Some(audio.len()) {
+        if !audio.is_empty() && frames.checked_mul(2) != Some(audio.len()) {
             return Err(Error::InvalidShape);
         }
         if input.len() > output.remaining_events() || input.byte_len() > output.remaining_bytes() {

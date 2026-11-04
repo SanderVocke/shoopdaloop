@@ -416,3 +416,4 @@ src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,in
 src/rust/rt_runtime/src/quantum.rs,generic_realtime_library,excluded,Validated processing quantum and checked frame alignment have no execution boundary.
 src/rust/rt_runtime/src/host_buffer.rs,generic_realtime_library,excluded,Prepared quantum buffering and bounded MIDI recovery must not trace during rendering.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
+src/rust/rt_buffered/src/backend.rs,buffered_processing,excluded,Portable prepared backend contract; render execution is observed by the owning runtime.

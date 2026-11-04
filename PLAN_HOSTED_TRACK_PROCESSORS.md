@@ -229,11 +229,11 @@ Each stage includes its own verification and a commit before moving on.
 
 ### 2. Promote BufferedProcessor to a reusable production node
 
-- [ ] Implement the public prepared synchronous backend contract, arbitrary validated
+- [x] Implement the public prepared synchronous backend contract, arbitrary validated
   port counts, separate bounded input/output/event/control capacities, generic
   construction and direct/unified entry points. Add live activation/deactivation,
   drain/abort/reset and retirement operations with explicit generation/timing rules.
-- [ ] Preserve exact source-time release for M/S, MIDI cleanup and all existing
+- [x] Preserve exact source-time release for M/S, MIDI cleanup and all existing
   overflow/error semantics. Reject arithmetic/shape/storage limits before mutation.
   Keep lifecycle work bounded and distinguish ordinary graph epochs from resets.
 - [ ] Verify Q=1/16/32/64/128, M=1/2/3, S=0/1/>M; mono/N/asymmetric/zero-port

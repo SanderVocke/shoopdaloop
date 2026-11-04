@@ -1,7 +1,12 @@
 # Buffered processor
 
-`rt_buffered` provides a stereo audio/MIDI node with fixed input batching and
-scheduled output. The development backend `InlineTestProcessor` runs on the render thread:
+`rt_buffered` provides prepared audio/MIDI nodes with fixed input batching and
+scheduled output. `BufferedProcessor::with_backend` accepts a production `Backend`
+with independent audio/MIDI input/output counts, including zero-port sides.
+`BufferLimits` bounds input MIDI, output MIDI and source-timed parameter events
+separately. Backends are prepared before construction and execute synchronously
+on the render thread; the adapter never allocates or destroys a backend there.
+ The development backend `InlineTestProcessor` runs on the render thread:
 it doubles audio samples and moves each MIDI channel-voice message to the next
 channel, wrapping channel 16 to channel 1. System messages pass through unchanged.
 The graph still supplies and consumes exactly its prepared quantum Q.
@@ -45,8 +50,9 @@ worker execution time. This backend neither simulates nor certifies remote timin
 
 Preparation validates all sizes before allocating and touches the backing storage.
 Supported limits are 65,536 frames per processing block, 262,144 frames of node
-latency, and 32 MiB of calculated slot/scratch storage, including MIDI recovery
-reserves and slot metadata. Requests exceeding any limit return `Error::Capacity`.
+latency, and 32 MiB of calculated adapter slot storage, including MIDI recovery
+reserves, parameter events and slot metadata. `storage_bytes()` reports this
+amount; the host must budget backend storage and allocator overhead separately. Requests exceeding any limit return `Error::Capacity`.
 
 The adapter prepares `ceil(latency_frames/batch_frames)+1` slots: a collecting
 block plus enough storage for completed blocks spanning the delay window. A slot
@@ -65,9 +71,16 @@ used for these adapter failures.
 
 The node implements the runtime's unified `Processor::process` interface through
 one core. `process_tick(frame, quantum, ...)` also accepts caller-owned audio/MIDI
-views. Both entry points require exact stereo/Q shape, the prepared quantum,
-contiguous timestamps, and an empty ordinary MIDI output buffer. Processor operation families are left to
-the composition; this dummy exposes no live parameters.
+views. The generic `process_ports_tick` and unified entry point require the prepared
+port/Q shape, contiguous timestamps and empty ordinary MIDI output buffers.
+`process_tick` retains the single-MIDI-input/output convenience API.
+`schedule_parameter` validates a source-frame event in the next uncollected
+quantum; backends receive stable batch-relative events and must apply them before
+the corresponding source sample. Equal-time controls retain admission order.
+The dummy exposes no live parameters. Backend errors fault the node until explicit
+reset/recovery; malformed or over-capacity output is never silently published.
+Backend intrinsic delay is reported in `latency_frames()` but is not applied a
+second time to the adapter release schedule.
 
 ## Lifecycle
 
@@ -76,8 +89,14 @@ audio/MIDI, advances the stream generation, resets the completed-batch counter,
 and starts at an aligned origin with the same initial silence. Use it only after
 callbacks stop and downstream MIDI recovery is settled. Frame gaps and replayed
 ticks are refused before mutation. Graph epoch changes alone do not clear audio
-history. Live removal/reactivation and asynchronous readiness/deadline policies
-are outside this initial implementation.
+history. `begin_drain()` stops collecting live input, pads an existing partial batch
+with silence once, and emits its retained output before entering `Suspended`.
+`abort(origin)` invalidates collected/completed data by generation and suspends
+without scanning audio storage. Call it only after downstream MIDI cleanup.
+`activate(origin)` resets an inactive backend and begins a new stream, including
+startup silence. The backend reset must itself have a documented bounded cost.
+Ordinary graph epoch changes do not change lifetime state. Asynchronous
+readiness/deadline policies remain outside this synchronous interface.
 
 ## Development check
 

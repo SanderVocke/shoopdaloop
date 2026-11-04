@@ -110,3 +110,19 @@ baseline fix. Record implementation revisions and CI links as stages complete. T
 production audio/MIDI, public UI/Lua, native carriers, hosted/self-contained
 browsers, resource limits, cold allocation guards and transactional recovery must
 also pass before declaring the restoration complete.
+
+### Buffered backend milestone
+
+The public `Backend`/`Batch` seam supports independent audio/MIDI shapes, separate
+input/output MIDI budgets, bounded source-timed controls, intrinsic latency queries
+and drain/abort/activation. Storage generations invalidate partial and completed
+batches without scanning audio. Backend failures require explicit recovery.
+
+`cargo test --locked -p rt_buffered -p shoop_rt_engine --lib --tests` passes the
+new six backend contract tests and existing adapter/engine tests. The guarded
+shape matrix includes zero-port, synth-style, mono, N=8, asymmetric and multi-MIDI
+backends over Q=1/16/32/64/128 and M/S=1/0,3/0,3/7.
+`cargo check --locked -p rt_buffered --target wasm32-unknown-unknown` and the
+production/build dependency audit for native/Wasm pass; the warning-denying
+workspace build, tracing inventory and test-attribute audit pass. Wasm execution
+is pending installation of the repository-pinned runner tools in this environment.
