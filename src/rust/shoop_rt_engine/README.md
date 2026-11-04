@@ -28,6 +28,9 @@ crate; `scripts/check_rt_engine_boundary.py` enforces that.
 
 ## Owners
 
+All hosts use the complete endpoint and loop-domain composition. Graph calls
+process whole prepared quanta; changing Q requires stop/reprepare.
+
 `prepare(&EngineDescription, DriverStatus)` allocates everything and returns an
 `Engine` with three owners:
 

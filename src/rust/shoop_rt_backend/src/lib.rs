@@ -35,6 +35,7 @@ use alloc::vec::Vec;
 mod backend;
 mod capture;
 mod clock;
+mod family;
 mod import;
 mod incoming;
 mod mirror;
@@ -126,6 +127,7 @@ struct Replacement {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    profiling: shoop_rt_protocol::profiling::Collector,
     client: ProtocolClient<C>,
     clock: K,
     link: Link,
@@ -178,6 +180,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .map_err(|error| anyhow!("could not reach the engine: {error:?}"))?;
         tracing::debug!("backend.rt.connecting");
         Ok(Self {
+            profiling: Default::default(),
             client,
             clock,
             link: Link::Connecting,
@@ -299,11 +302,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn ready(&self) -> Result<()> {
-        if self
-            .replacement
-            .as_ref()
-            .is_some_and(|replacement| !replacement.job.finished)
-        {
+        if self.replacement.as_ref().is_some_and(|replacement| {
+            !replacement.job.finished && replacement.job.family.is_none()
+        }) {
             return Err(anyhow!("a session replacement is in progress"));
         }
         match &self.link {
@@ -432,6 +433,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
+        self.profiling = Default::default();
         for pending in self
             .requests
             .outgoing

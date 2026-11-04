@@ -69,7 +69,7 @@ fn seeded_upload_snapshot_chunk_model_preserves_prefixes_and_recovers_all_pool_o
         }
         .prepare()
         .unwrap();
-        let mut store = ResourceStore::new(config).unwrap();
+        let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let mut resource = assert_no_heap(|| store.create()).unwrap();
         let mut revision = Revision(0);
         let mut active: Option<Content> = None;

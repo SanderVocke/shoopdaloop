@@ -30,6 +30,7 @@ fn store() -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
         MidiIndexConfig {
             versions: 16,
             checkpoints_per_version: 2,

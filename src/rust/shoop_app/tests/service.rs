@@ -8,6 +8,7 @@ use shoop_wasm_test_support::shoop_test;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -50,6 +51,7 @@ fn fixture() -> Fixture {
 }
 fn fixture_with_outputs(outputs: usize) -> Fixture {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, outputs, 1),
@@ -3090,7 +3092,10 @@ fn graph_control_is_explicitly_unsupported_without_a_host_adapter() {
     ));
 }
 
-struct BoundProvider(shoop_port_graph::Control);
+struct BoundProvider {
+    control: shoop_port_graph::Control,
+    refuse_unpublish: Arc<Mutex<Option<(String, shoop_port_graph::ErrorKind)>>>,
+}
 impl shoop_port_graph::Controller for BoundProvider {
     fn supports_io_binding(&self) -> bool {
         true
@@ -3100,7 +3105,7 @@ impl shoop_port_graph::Controller for BoundProvider {
         key: shoop_port_graph::LocalPortKey,
     ) -> Option<shoop_port_graph::IoBinding> {
         use shoop_port_graph::{DataType, Direction, PublicationState};
-        let snapshot = self.0.snapshot();
+        let snapshot = self.control.snapshot();
         let publication = snapshot.publication(key)?;
         if !matches!(publication.state, PublicationState::Published(_)) {
             return None;
@@ -3114,16 +3119,42 @@ impl shoop_port_graph::Controller for BoundProvider {
         Some(shoop_port_graph::IoBinding { port: port.into() })
     }
     fn snapshot(&mut self) -> std::sync::Arc<shoop_port_graph::Snapshot> {
-        self.0.snapshot()
+        self.control.snapshot()
     }
     fn submit(
         &mut self,
         request: shoop_port_graph::Request,
     ) -> Result<shoop_port_graph::OperationId, shoop_port_graph::Error> {
-        self.0.submit(request)
+        if let shoop_port_graph::Operation::Unpublish { key } = &request.operation {
+            let mut refusal = self.refuse_unpublish.lock().unwrap();
+            if refusal.as_ref().is_some_and(|(name, _)| {
+                self.control
+                    .snapshot()
+                    .publication(*key)
+                    .is_some_and(|port| port.spec.name == *name)
+            }) {
+                let (_, kind) = refusal.take().unwrap();
+                return Err(shoop_port_graph::Error::new(
+                    kind,
+                    "unpublish admission refused",
+                ));
+            }
+        }
+        if let shoop_port_graph::Operation::Publish { key, spec } = &request.operation {
+            assert!(
+                !self
+                    .control
+                    .snapshot()
+                    .ports
+                    .iter()
+                    .any(|port| { port.name == spec.name && port.local != Some(*key) }),
+                "publication reused a physical name before retirement"
+            );
+        }
+        self.control.submit(request)
     }
     fn take_result(&mut self) -> Option<shoop_port_graph::Completion> {
-        self.0.take_result()
+        self.control.take_result()
     }
 }
 #[shoop_test]
@@ -3133,7 +3164,10 @@ fn application_publication_is_provider_independent_and_failed_creation_rolls_bac
         let mut f = fixture();
         let mut provider = FakeProvider::new(9);
         f.service
-            .set_host_graph_controller(Box::new(BoundProvider(provider.control())))
+            .set_host_graph_controller(Box::new(BoundProvider {
+                control: provider.control(),
+                refuse_unpublish: Arc::new(Mutex::new(None)),
+            }))
             .unwrap();
         for _ in 0..32 {
             provider.advance();
@@ -3250,5 +3284,84 @@ fn application_publication_is_provider_independent_and_failed_creation_rolls_bac
             initial
         );
         assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}
+
+#[shoop_test]
+fn session_replacement_retains_publications_until_unpublish_admission_and_completion() {
+    use shoop_port_graph::{self as graph, testing::FakeProvider};
+    for encoded in [false, true] {
+        for kind in [graph::ErrorKind::Unavailable, graph::ErrorKind::Backend] {
+            let mut f = fixture();
+            let mut provider = FakeProvider::new(9);
+            let refusal = Arc::new(Mutex::new(None));
+            f.service
+                .set_host_graph_controller(Box::new(BoundProvider {
+                    control: provider.control(),
+                    refuse_unpublish: Arc::clone(&refusal),
+                }))
+                .unwrap();
+            for _ in 0..32 {
+                provider.advance();
+                f.service.tick(STEP);
+            }
+            assert!(f.service.is_ready());
+            let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+            let old: Vec<_> = client.snapshot().unwrap().host_graph.publications.clone();
+            assert_eq!(old.len(), 4);
+            let image = capture_image(&mut f.service, &mut client, 1, encoded);
+            release_image(&mut f.service, &mut client, 1, 1, encoded);
+            let key = stage_image(&mut f.service, &mut client, 2, image, encoded);
+            *refusal.lock().unwrap() = Some(("sync_loop_direct_in".into(), kind));
+            let id = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::CommitPersistence(key),
+            );
+            for _ in 0..16 {
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            }
+            assert!(refusal.lock().unwrap().is_none());
+            if kind == graph::ErrorKind::Unavailable {
+                assert!(!client.results().contains_key(&id));
+            } else {
+                assert!(matches!(
+                    client.results()[&id],
+                    Outcome::Refused {
+                        reason: Refusal::Engine,
+                        ..
+                    }
+                ));
+            }
+            assert_eq!(provider.control().snapshot().publications, old);
+            for _ in 0..64 {
+                provider.advance();
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            }
+            assert_eq!(
+                matches!(client.results()[&id], Outcome::Confirmed { .. }),
+                kind == graph::ErrorKind::Unavailable
+            );
+            let snapshot = client.snapshot().unwrap();
+            assert_eq!(snapshot.host_graph.publications.len(), old.len());
+            for previous in old {
+                assert!(snapshot.host_graph.publication(previous.key).is_none());
+                if previous.spec.name.starts_with("sync_loop_") {
+                    assert_eq!(
+                        snapshot
+                            .host_graph
+                            .publications
+                            .iter()
+                            .filter(|current| current.spec.name == previous.spec.name)
+                            .count(),
+                        1
+                    );
+                }
+            }
+            assert_eq!(f.waits.get(), f.initial_waits);
+        }
     }
 }

@@ -79,18 +79,17 @@ The example's `FailOnce` deliberately changes its internal state and returns an 
     );
 ```
 
-This `FailOnce`/`NoPlanner` example permits continuation at `next_frame()` rather than replaying frame zero. Its following two-frame callback succeeds:
+An execution error latches a terminal fault. Even if a processor changed state
+before returning the error, later nonempty callbacks remain silent and return
+that error without advancing or re-entering the graph. The host stops callbacks,
+extracts the owners and performs explicit cleanup. A zero-frame call remains a
+no-op. Validation refusals before execution do not latch a fault.
 
-```rust
-    output.fill(9.0);
-    assert_no_heap(|| callback(&mut runtime, &input, &mut output, 2))?;
-    assert_eq!(runtime.next_frame(), Frame(6));
-    assert_eq!(output[..2], [1.0; 2]);
-    assert_eq!(output[2..], [9.0; 6]);
-    assert_eq!(runtime.diagnostics().render_error, None);
-```
-
-That continuation is not a universal fault policy. A domain may already have published graph/program/media state and retain an unfinished committed interval. Stop callbacks and use its explicit off-render extraction/cleanup in that case; do not fake `finish`, replay samples or roll back ownership. See [shutdown and ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
+The example checks that its following two-frame call stays silent, retains the
+advanced frame from the failed callback and returns the same error. It never
+replays or resumes a partly mutated tick. Domain graph/program/media publication
+already performed before a fault remains real; do not fabricate `finish` or roll
+back ownership. See [shutdown and ownership](../part-5-configure-and-operate-the-runtime/19-stopping-disconnecting-and-reclaiming-ownership.md).
 
 Choose a host policy for reporting faults or stopping the stream; do not log or construct owning error reports through an unbounded callback path. MIDI output overflow uses a distinct recovery path rather than treating ordinary `Full` as a general processor fault.
 

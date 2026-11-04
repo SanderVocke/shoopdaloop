@@ -300,6 +300,7 @@ impl Fixture {
         self.send(message);
         self.until(|client| client.state() == State::Ready);
     }
+    #[track_caller]
     fn command(&mut self, command: protocol::Command) -> Outcome {
         let outcome = self.outcome(command);
         assert!(!matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");

@@ -139,6 +139,7 @@ impl Loop {
             let started = Instant::now();
             Shared::count(&shared.counters.callbacks, 1);
             let first = cycle.next_frame();
+            shared.begin_profiling(first, frames);
             for (port, samples) in cycle.inputs_mut().iter_mut().enumerate() {
                 let samples = &mut samples[..frames];
                 match input {
@@ -191,7 +192,86 @@ impl Loop {
                 std::thread::sleep(deadline - now);
             }
         }
+        if self.shared.stopping.load(Ordering::Acquire)
+            && self.shared.phase() == crate::RenderPhase::Running
+        {
+            self.step(self.buffer);
+        }
         self.cycle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "native driver shutdown")]
+    fn stopping_joins_the_final_reset_callback_before_reporting_confirmation() {
+        let template = EngineDescription {
+            segments: vec![shoop_rt_engine::Segment {
+                strips: 1,
+                loops: 1,
+            }],
+            resource_pages: 16,
+            page_bytes: 256,
+            ..Default::default()
+        };
+        let Prepared {
+            description,
+            endpoint,
+            outbox,
+            render,
+            shared,
+            layout,
+        } = Prepared::new(
+            &template,
+            HostPorts::numbered(0, 0, 1),
+            DriverKind::Dummy,
+            48000,
+            Some(128),
+        )
+        .unwrap();
+        drop(endpoint);
+        drop(outbox);
+        let cycle =
+            Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new()).unwrap();
+        let exit = Arc::new(AtomicBool::new(false));
+        let worker = Loop {
+            cycle,
+            shared: shared.clone(),
+            requests: Arc::new(Requests {
+                pending: AtomicU64::new(0),
+                sample_rate: 48000,
+                remainder: Mutex::new(0),
+            }),
+            exit: exit.clone(),
+            mode: DummyMode::Controlled,
+            buffer: 128,
+            input: None,
+            wrap: None,
+        };
+        let stopped = exit.clone();
+        let thread = std::thread::spawn(move || {
+            while !stopped.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+            worker.run()
+        });
+        let report = crate::Running {
+            shared,
+            driver: crate::Driver::Dummy(DummyThread { exit, thread }),
+            pump: None,
+            connections: Vec::new(),
+            layout,
+            warnings: Vec::new(),
+            reset_wait: Duration::ZERO,
+            dummy: None,
+            instance_name: "Shutdown test".into(),
+        }
+        .stop();
+        assert!(report.midi_reset);
+        assert_eq!(report.phase, crate::RenderPhase::Disconnected);
+        assert!(report.stopped.is_ok());
     }
 }
 

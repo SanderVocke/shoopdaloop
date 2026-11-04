@@ -6,6 +6,20 @@ pub const CONTENT_WRITE_WINDOW: usize = 64;
 pub const LEGACY_CONTENT_WRITE_WINDOW: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContentFamilyEdit {
+    pub loop_id: crate::LoopSlotId,
+    pub sync_source: crate::LoopSlotId,
+    pub expected_revision: u64,
+    pub expected_frames: u64,
+    pub frames: u64,
+    pub audio: Option<u64>,
+    pub midi: Option<u64>,
+    pub replace: bool,
+    pub restart: bool,
+    pub fence_content: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ContentDescription {
     pub id: u64,
     pub midi: bool,

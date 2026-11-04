@@ -154,7 +154,12 @@ impl Harness {
         Self::with_limits(nodes, config())
     }
     fn with_limits(nodes: Vec<PreparedNode<TestProcessor>>, limits: Config) -> Self {
-        let (control, runtime) = GraphRuntime::prepare(limits.prepare().unwrap(), nodes).unwrap();
+        let (control, runtime) = GraphRuntime::prepare(
+            limits.prepare().unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+        )
+        .unwrap();
         Self {
             control,
             runtime,
@@ -244,8 +249,8 @@ fn planar_fan_in_out_multichannel_routing_is_sample_exact_without_clipping() {
             .output
             .iter()
             .all(|channel| channel[frames..].iter().all(|&value| value == 99.0)));
-        assert_eq!(h.runtime.diagnostics().nodes_processed, 2);
-        assert_eq!(h.runtime.diagnostics().connections_processed, 7);
+        assert_eq!(h.runtime.diagnostics().nodes_processed, 2 * frames);
+        assert_eq!(h.runtime.diagnostics().connections_processed, 7 * frames);
     }
     h.install(GraphDescription::default());
     assert_eq!(h.output, [[0.0; 8]; 2]);
@@ -630,7 +635,7 @@ fn scheduled_parameters_apply_at_exact_frames_and_report_execution_separately() 
     h.step(8);
     assert_eq!(h.output[0], [2.0, 2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0]);
     assert_eq!(h.runtime.diagnostics().scheduled_events, 2);
-    assert_eq!(h.runtime.diagnostics().subranges, 2);
+    assert_eq!(h.runtime.diagnostics().subranges, 8);
     for offset in [0, 3] {
         assert_eq!(
             h.control.try_completion().unwrap().outcome,
@@ -753,7 +758,6 @@ fn midi_overflow_keeps_audio_running_and_recovers_through_reserved_one_event_sin
     let mut limits = config();
     limits.midi_events_per_port = 4;
     limits.budgets.events = 1;
-    limits.budgets.subranges = 2;
     let mut h = Harness::with_limits(vec![node(0, 2.0, mono(), &drops)], limits);
     h.install(GraphDescription {
         nodes: vec![id(0)],
@@ -766,8 +770,8 @@ fn midi_overflow_keeps_audio_running_and_recovers_through_reserved_one_event_sin
         ],
     });
     for port in &mut h.midi_in {
-        for offset in 0..3 {
-            port.push(offset, 8, &[0x90, 60, 100]).unwrap();
+        for _ in 0..3 {
+            port.push(0, 8, &[0x90, 60, 100]).unwrap();
         }
     }
     h.step(8);
@@ -1027,6 +1031,7 @@ fn overflow_delivers_reserved_resets_to_internal_processors_not_only_host_output
     .unwrap();
     let (mut control, mut runtime) = GraphRuntime::prepare(
         limits,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(
             id(0),
             Synth {

@@ -1,9 +1,9 @@
 //! Fixed capture-group ownership and prepared take lifecycle.
 use super::*;
 use crate::midi_state::MidiState;
-mod interval;
-use interval::AppendReservation;
-pub use interval::CaptureIntervalId;
+mod tick;
+pub use tick::CaptureTickId;
+use tick::TickReservation;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureGroupConfig {
@@ -42,8 +42,7 @@ pub enum CapturePhase {
 pub struct CaptureGroupInfo {
     pub phase: CapturePhase,
     pub take_sequence: u64,
-    pub interval_sequence: u64,
-    pub interval_frames: usize,
+    pub tick_sequence: u64,
     pub members: usize,
     pub staging_bytes: usize,
     pub start_frame: Option<Frame>,
@@ -62,7 +61,7 @@ struct Member {
     lease: Option<SnapshotId>,
     staging_start: usize,
     staging_bytes: usize,
-    append: Option<AppendReservation>,
+    append: Option<TickReservation>,
 }
 #[derive(Default)]
 pub(super) struct CapturePool {
@@ -145,13 +144,14 @@ impl ResourceStore {
     /// Prepare group storage before handing the store to a render runtime.
     pub fn with_capture_groups(
         config: PreparedConfig,
+        quantum: Quantum,
         indexing: Option<MidiIndexConfig>,
         groups: CaptureGroupConfig,
     ) -> Result<Self, Error> {
         let pool = CapturePool::new(groups, config)?;
         let mut store = match indexing {
-            Some(indexing) => Self::with_midi_indexing(config, indexing)?,
-            None => Self::new(config)?,
+            Some(indexing) => Self::with_midi_indexing(config, quantum, indexing)?,
+            None => Self::new(config, quantum)?,
         };
         store.capture_groups = pool;
         Ok(store)
@@ -207,8 +207,8 @@ impl ResourceStore {
                     if member.midi_events != 0 || member.midi_bytes != 0 {
                         return Err(Error::InvalidShape);
                     }
-                    limits
-                        .max_frames
+                    self.quantum
+                        .frames()
                         .checked_mul(channels as usize)
                         .and_then(|n| n.checked_mul(4))
                         .ok_or(Error::Capacity)?
@@ -250,7 +250,7 @@ impl ResourceStore {
         let mut staging_start = slot * config.staging_bytes_per_group;
         for (index, &spec) in members.iter().enumerate() {
             let staging_bytes = match spec.format {
-                Format::Audio { channels } => limits.max_frames * channels as usize * 4,
+                Format::Audio { channels } => self.quantum.frames() * channels as usize * 4,
                 Format::Midi => spec.midi_events * 12 + spec.midi_bytes,
             };
             self.capture_groups.set_member(
@@ -275,8 +275,7 @@ impl ResourceStore {
         self.capture_groups.groups[slot].value = Some(CaptureGroupInfo {
             phase: CapturePhase::Idle,
             take_sequence: 0,
-            interval_sequence: 0,
-            interval_frames: 0,
+            tick_sequence: 0,
             members: members.len(),
             staging_bytes: staging,
             start_frame: None,
@@ -429,7 +428,6 @@ impl ResourceStore {
         group.phase = CapturePhase::Prepared;
         group.start_frame = None;
         group.next_frame = None;
-        group.interval_frames = 0;
         group.take_sequence = sequence;
         self.capture_groups.groups[id.slot as usize].value = Some(group);
         Ok(CaptureTakeId {
@@ -467,6 +465,9 @@ impl ResourceStore {
         Ok(())
     }
     pub fn activate_capture_take(&mut self, take: CaptureTakeId, at: Frame) -> Result<(), Error> {
+        if !self.quantum.aligned(at) {
+            return Err(Error::InvalidFrame);
+        }
         self.note_operation(WorkClass::Render);
         let mut group = self.capture_take_info(take)?;
         let id = take.group;
@@ -539,6 +540,9 @@ impl ResourceStore {
         incomplete: Option<Error>,
         output: &mut [Option<Snapshot>],
     ) -> Result<(), Error> {
+        if !self.quantum.aligned(at) {
+            return Err(Error::InvalidFrame);
+        }
         self.note_operation(WorkClass::Render);
         let mut group = self.capture_take_info(take)?;
         let id = take.group;
@@ -595,6 +599,8 @@ impl ResourceStore {
                 capture: version.capture,
             };
             self.snapshots[lease.slot as usize].value = Some(Lease {
+                audio: None,
+                shared_midi: None,
                 snapshot,
                 version: take,
                 private_tail: None,

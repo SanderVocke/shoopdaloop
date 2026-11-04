@@ -1,13 +1,9 @@
-//! One planner, two consumers, exact automation and bounded observations.
+//! One planner, two consumers and exact automation through a shared domain.
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, GraphRuntime, PreparedNode};
-use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
-};
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
-};
+use rt_runtime::graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType};
+use rt_runtime::planner::{FinishContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::schedule::Action;
@@ -29,53 +25,31 @@ impl ProcessorOperation for Op {
 struct Clock {
     id: PlannerId,
     values: [f32; 1],
-    quantum: usize,
     callback_origins: [Frame; 32],
     observed: [usize; 2],
     finishes: usize,
 }
 
 impl Planner for Clock {
-    type Decision = f32;
-    type Observation = usize;
     type Operation = ();
     type Result = ();
 
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: self.id,
-            decision_slots: 1,
-            observation_capacity: 2,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(self.id)
     }
-    fn decisions(&self) -> &[f32] {
-        &self.values
-    }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
         assert_eq!(context.graph_epoch, Epoch(1));
         assert_eq!(
             context.callback_start,
             self.callback_origins[context.frame.0 as usize]
         );
         self.values[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
-        context
-            .frame
-            .checked_add(self.quantum - context.frame.0 as usize % self.quantum)
-            .map(|end| end.min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
-        assert_eq!(context.observations.len(), 2);
-        let frames = (context.interval.end.0 - context.interval.start.0) as usize;
-        let mut seen = [false; 2];
-        for observation in context.observations {
-            let slot = observation.producer.slot() as usize;
-            assert!(!seen[slot]);
-            assert_eq!(observation.value, frames);
-            seen[slot] = true;
-            self.observed[slot] += frames;
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        for frames in self.observed {
+            assert_eq!(frames as u64, context.interval.end.0);
         }
-        assert_eq!(seen, [true; 2]);
         self.finishes += 1;
         Ok(())
     }
@@ -90,13 +64,7 @@ impl Processor<Clock, Op> for Gain {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
-        }
-    }
+
     fn operation(
         &mut self,
         operation: Op,
@@ -113,22 +81,19 @@ impl Processor<Clock, Op> for Gain {
         Ok(value)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
-        let decision = block.decision.as_ref().ok_or(Error::InvalidState)?;
-        assert_eq!(decision.interval.start, block.frame);
-        assert_eq!(
-            decision.interval.end,
-            block.frame.checked_add(block.frames)?
-        );
-        let gain = *decision.value * self.0;
+        let slot = block.node.slot() as usize;
+        assert_eq!(block.domain.observed[slot] as u64, block.frame.0);
+        block.domain.observed[slot] += block.frames;
+        let gain = block.domain.values[0] * self.0;
         let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
         for (input, output) in input.iter().zip(output) {
             *output = input * gain;
         }
-        block.observations.push(block.frames)
+        Ok(())
     }
 }
 
-fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(), Error> {
+fn demonstrate(partition: &[usize], reverse: bool) -> Result<(), Error> {
     let config = Config {
         max_frames: 32,
         audio_inputs: 1,
@@ -143,7 +108,6 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
         page_bytes: 64,
         budgets: Budgets {
             events: 1,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()
@@ -176,18 +140,7 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
             },
         ]);
     }
-    let bindings = [
-        DecisionBinding {
-            planner: id,
-            consumer: a,
-            decision_slot: 0,
-        },
-        DecisionBinding {
-            planner: id,
-            consumer: b,
-            decision_slot: 0,
-        },
-    ];
+
     let mut callback_origins = [Frame(0); 32];
     let mut offset = 0;
     for &frames in partition {
@@ -198,23 +151,18 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     let planner = Clock {
         id,
         values: [1.0],
-        quantum,
         callback_origins,
         observed: [0; 2],
         finishes: 0,
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
-        &bindings,
     )?;
-    assert!(matches!(
-        compile_planned(runtime.catalog(), &graph, &[]),
-        Err(Error::InvalidGraph)
-    ));
     let ticket = control
         .submit(
             Lane::Normal,
@@ -295,7 +243,7 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     let (planner, resources) = runtime.into_planner_and_resources();
     assert_eq!(planner.observed, [32; 2]);
     if partition == [32] {
-        assert_eq!(planner.finishes, if quantum == 8 { 5 } else { 32 });
+        assert_eq!(planner.finishes, 32);
     }
     drop(planner);
     drop(resources);
@@ -303,14 +251,13 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     Ok(())
 }
 
-// One planner alternates a gain decision every 8 frames; two consumers borrow it per interval.
+// One planner alternates gain every 8 frames; two consumers borrow it per tick.
 fn main() -> Result<(), Error> {
     for reverse in [false, true] {
-        demonstrate(&[32], 8, reverse)?;
-        demonstrate(&[8, 5, 3, 8, 8], 8, reverse)?;
-        demonstrate(&[3, 10, 19], 8, reverse)?;
-        demonstrate(&[32], 1, reverse)?;
+        demonstrate(&[32], reverse)?;
+        demonstrate(&[8, 5, 3, 8, 8], reverse)?;
+        demonstrate(&[3, 10, 19], reverse)?;
     }
-    println!("planned pair: exact samples, two stamped observations, callback partitions and one-frame progress verified");
+    println!("planned pair: exact samples, per-node completion, callback partitions and one-frame progress verified");
     Ok(())
 }

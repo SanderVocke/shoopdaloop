@@ -9,14 +9,6 @@ browser-feature = "wasm-test-browser"
 
 [lib]
 
-[[example]]
-name = "carla_inprocess_benchmark"
-required-features = ["carla"]
-
-[[example]]
-name = "carla_bridge_benchmark"
-required-features = ["carla"]
-
 [dependencies]
 thiserror = { workspace = true, features = ["std"] }
 anyhow = { workspace = true, features = ["std"] }

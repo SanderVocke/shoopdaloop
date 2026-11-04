@@ -24,6 +24,7 @@ fn store() -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 1,
@@ -180,7 +181,8 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                 },
             )
             .unwrap();
-            let mut resolver = Resolver::prepare(topology).unwrap();
+            let mut resolver =
+                Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
             let mut renderer =
                 AudioRenderer::prepare(2, 64, Smoothing::LinearRestart { frames: smooth }).unwrap();
             let mut left = [0.; 40];
@@ -238,7 +240,7 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                     let mut cursor = store.cursor(old.id).unwrap();
                     assert_eq!(store.read(&mut cursor, &mut [0; 16]), Ok(16));
                     loop {
-                        let interval = resolver.preview(Frame(ceiling), &[]).unwrap();
+                        let interval = resolver.preview_tick(&[]).unwrap();
                         let decision = resolver.decisions().unwrap()[0];
                         let state = decision.state;
                         resolver.commit().unwrap();
@@ -261,7 +263,7 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                             )
                             .unwrap();
                         assert_eq!(store.copy_remaining(), 0);
-                        resolver.finish(interval.end).unwrap();
+                        resolver.finish().unwrap();
                         if interval.end.0 == ceiling {
                             break;
                         }
@@ -591,27 +593,30 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
             let mut cursor = store.cursor(donor.id).unwrap();
             assert_eq!(store.read(&mut cursor, &mut [0; 16]), Ok(16));
             let mut offset = 0;
-            for frames in &partitions {
-                let interval = store
-                    .reserve_capture_interval(take, Frame(offset as u64), *frames)
-                    .unwrap();
-                capture
-                    .stage(
-                        &mut store.render_io(),
-                        interval,
-                        0,
-                        &[
-                            &left[offset..offset + frames],
-                            &right[offset..offset + frames],
-                        ],
-                    )
-                    .unwrap();
-                assert_eq!(
-                    store.info(resource).unwrap().description.frames,
-                    offset as u64
-                );
-                store.commit_capture_interval(interval).unwrap();
-                offset += frames;
+            for &period in &partitions {
+                for _ in 0..period {
+                    let frames = 1;
+                    let interval = store
+                        .reserve_capture_tick(take, Frame(offset as u64))
+                        .unwrap();
+                    capture
+                        .stage(
+                            &mut store.render_io(),
+                            interval,
+                            0,
+                            &[
+                                &left[offset..offset + frames],
+                                &right[offset..offset + frames],
+                            ],
+                        )
+                        .unwrap();
+                    assert_eq!(
+                        store.info(resource).unwrap().description.frames,
+                        offset as u64
+                    );
+                    store.commit_capture_tick(interval).unwrap();
+                    offset += frames;
+                }
             }
             store
                 .freeze_capture_take(take, Frame(5), None, &mut frozen)
@@ -637,36 +642,39 @@ fn planar_capture_freezes_immediately_and_separate_playback_fx_capture_keeps_old
             let next = store.prepare_capture_take(group, &[]).unwrap();
             store.activate_capture_take(next, Frame(5)).unwrap();
             let mut offset = 0;
-            for frames in &partitions {
-                let interval = store
-                    .reserve_capture_interval(next, Frame(5 + offset as u64), *frames)
-                    .unwrap();
-                renderer
-                    .render(
-                        &mut store.render_io(),
-                        Playback {
-                            source: Some(old_index),
-                            position: offset as u64,
-                            gain: 2.,
-                            balance: 0.0,
-                            discontinuity: offset == 0,
-                        },
-                        &mut [
-                            &mut l[offset..offset + frames],
-                            &mut r[offset..offset + frames],
-                        ],
-                    )
-                    .unwrap();
-                capture
-                    .stage(
-                        &mut store.render_io(),
-                        interval,
-                        0,
-                        &[&l[offset..offset + frames], &r[offset..offset + frames]],
-                    )
-                    .unwrap();
-                store.commit_capture_interval(interval).unwrap();
-                offset += frames;
+            for &period in &partitions {
+                for _ in 0..period {
+                    let frames = 1;
+                    let interval = store
+                        .reserve_capture_tick(next, Frame(5 + offset as u64))
+                        .unwrap();
+                    renderer
+                        .render(
+                            &mut store.render_io(),
+                            Playback {
+                                source: Some(old_index),
+                                position: offset as u64,
+                                gain: 2.,
+                                balance: 0.0,
+                                discontinuity: offset == 0,
+                            },
+                            &mut [
+                                &mut l[offset..offset + frames],
+                                &mut r[offset..offset + frames],
+                            ],
+                        )
+                        .unwrap();
+                    capture
+                        .stage(
+                            &mut store.render_io(),
+                            interval,
+                            0,
+                            &[&l[offset..offset + frames], &r[offset..offset + frames]],
+                        )
+                        .unwrap();
+                    store.commit_capture_tick(interval).unwrap();
+                    offset += frames;
+                }
             }
             store
                 .freeze_capture_take(next, Frame(10), None, &mut processed)
@@ -741,7 +749,8 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                 },
             )
             .unwrap();
-            let mut resolver = Resolver::prepare(topology).unwrap();
+            let mut resolver =
+                Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
             let mut output = [0.; 128];
             let mut wraps = 0;
             assert_no_heap(|| {
@@ -758,38 +767,40 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                     })
                     .unwrap();
                 let mut end = 0;
-                for frames in &partitions {
-                    end += frames;
-                    loop {
-                        let interval = resolver.preview(Frame(end), &[]).unwrap();
-                        let decision = resolver.decisions().unwrap()[0];
-                        let state = decision.state;
-                        assert!(decision.playback_discontinuity);
-                        resolver.commit().unwrap();
-                        wraps += resolver
-                            .events()
-                            .iter()
-                            .filter(|e| e.kind == EventKind::Wrap)
-                            .count();
-                        assert_eq!(interval.end.0 - interval.start.0, 1);
-                        renderer
-                            .render(
-                                &mut store.render_io(),
-                                Playback {
-                                    source: Some(index),
-                                    position: state.position,
-                                    gain: 1.,
-                                    balance: 0.0,
-                                    discontinuity: decision.playback_discontinuity,
-                                },
-                                &mut [
-                                    &mut output[interval.start.0 as usize..interval.end.0 as usize]
-                                ],
-                            )
-                            .unwrap();
-                        resolver.finish(interval.end).unwrap();
-                        if interval.end.0 == end {
-                            break;
+                for &period in &partitions {
+                    for _ in 0..period {
+                        let frames = 1;
+                        end += frames;
+                        loop {
+                            let interval = resolver.preview_tick(&[]).unwrap();
+                            let decision = resolver.decisions().unwrap()[0];
+                            let state = decision.state;
+                            assert!(decision.playback_discontinuity);
+                            resolver.commit().unwrap();
+                            wraps += resolver
+                                .events()
+                                .iter()
+                                .filter(|e| e.kind == EventKind::Wrap)
+                                .count();
+                            assert_eq!(interval.end.0 - interval.start.0, 1);
+                            renderer
+                                .render(
+                                    &mut store.render_io(),
+                                    Playback {
+                                        source: Some(index),
+                                        position: state.position,
+                                        gain: 1.,
+                                        balance: 0.0,
+                                        discontinuity: decision.playback_discontinuity,
+                                    },
+                                    &mut [&mut output
+                                        [interval.start.0 as usize..interval.end.0 as usize]],
+                                )
+                                .unwrap();
+                            resolver.finish().unwrap();
+                            if interval.end.0 == end {
+                                break;
+                            }
                         }
                     }
                 }
@@ -820,7 +831,7 @@ fn capture_shape_and_token_refusals_never_publish_a_partial_contribution() {
     assert_no_heap(|| {
         let take = store.prepare_capture_take(group, &[]).unwrap();
         store.activate_capture_take(take, Frame(0)).unwrap();
-        let interval = store.reserve_capture_interval(take, Frame(0), 2).unwrap();
+        let interval = store.reserve_capture_tick(take, Frame(0)).unwrap();
         assert_eq!(
             capture.stage(&mut store.render_io(), interval, 0, &[&[1.]]),
             Err(MediaError::InvalidShape)
@@ -838,24 +849,24 @@ fn capture_shape_and_token_refusals_never_publish_a_partial_contribution() {
             Err(MediaError::InvalidShape)
         );
         assert_eq!(
-            capture.stage(&mut store.render_io(), interval, 0, &[&[1.], &[2.]]),
+            capture.stage(&mut store.render_io(), interval, 0, &[&[1., 2.], &[3., 4.]]),
             Err(MediaError::InvalidShape)
         );
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
         capture
-            .stage(&mut store.render_io(), interval, 0, &[&[1., 2.], &[3., 4.]])
+            .stage(&mut store.render_io(), interval, 0, &[&[1.], &[3.]])
             .unwrap();
         assert_eq!(
-            capture.stage(&mut store.render_io(), interval, 0, &[&[1., 2.], &[3., 4.]]),
+            capture.stage(&mut store.render_io(), interval, 0, &[&[1.], &[3.]]),
             Err(MediaError::InvalidState)
         );
-        store.cancel_capture_interval(interval).unwrap();
-        let next = store.reserve_capture_interval(take, Frame(0), 2).unwrap();
+        store.cancel_capture_tick(interval).unwrap();
+        let next = store.reserve_capture_tick(take, Frame(0)).unwrap();
         assert_eq!(
-            capture.stage(&mut store.render_io(), interval, 0, &[&[1., 2.], &[3., 4.]]),
+            capture.stage(&mut store.render_io(), interval, 0, &[&[1.], &[3.]]),
             Err(MediaError::InvalidId)
         );
-        store.cancel_capture_interval(next).unwrap();
+        store.cancel_capture_tick(next).unwrap();
         store
             .freeze_capture_take(take, Frame(0), None, &mut output)
             .unwrap();

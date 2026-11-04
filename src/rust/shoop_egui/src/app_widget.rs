@@ -107,6 +107,7 @@ pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scriptin
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
+pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
 pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
@@ -126,6 +127,7 @@ pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mid
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const NEW_ENGINE_QUANTUM: SettingKey<String> = SettingKey::new("audio.new_engine.quantum");
 pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
 pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
     SettingKey::new("audio.new_engine.bus_channels");
@@ -378,6 +380,11 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(2)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(RUNTIME_PROFILING, false, "Developer", "Runtime profiling",
+            "Measure graph node durations and automatically retain recent timing when an xrun occurs.")
+            .category_order(100).setting_order(0).effect(SettingEffect::Immediate),
     )?;
     builder.register_draft_validator(validate_track_default_latency);
     Ok(())
@@ -716,6 +723,17 @@ pub fn register_audio_backend_settings(
 ) -> Result<(), SettingsRegistryError> {
     let defaults = NewEnginePools::default();
     builder.register(
+        SettingDefinition::new(NEW_ENGINE_QUANTUM, defaults.quantum.to_string(),
+            "Audio", "Processing quantum",
+            "Loop lengths and state changes align to this many frames. Stream buffering adds one quantum of latency.")
+            .category_order(5).setting_order(57)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::StringChoice { choices: &[
+                ("16", "16 frames"), ("32", "32 frames"),
+                ("64", "64 frames"), ("128", "128 frames"),
+            ] }),
+    )?;
+    builder.register(
         SettingDefinition::new(
             ENGINE_TRANSPORT, EngineTransportKind::InProcess.id().to_owned(),
             "Audio", "Session delivery",
@@ -785,6 +803,11 @@ pub fn new_engine_pools_from_snapshot(
 ) -> Result<NewEnginePools, String> {
     let get = |key| snapshot.get(key).map_err(|error| error.to_string());
     Ok(NewEnginePools {
+        quantum: snapshot
+            .get(NEW_ENGINE_QUANTUM)
+            .map_err(|error| error.to_string())?
+            .parse::<u32>()
+            .map_err(|error| error.to_string())?,
         buses: get(NEW_ENGINE_BUSES)?,
         bus_channels: get(NEW_ENGINE_BUS_CHANNELS)?,
         tracks: get(NEW_ENGINE_TRACKS)?,
@@ -1233,6 +1256,7 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    profiling: crate::profiling::Window,
     script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
@@ -1323,6 +1347,10 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_profiling(&mut self) {
+        self.profiling.open = true;
+    }
+
     pub fn set_host_state(&mut self, state: crate::HostUiState) {
         self.host_controls.state = Some(state);
     }
@@ -1331,6 +1359,7 @@ impl AppWidget {
         let mut fresh = Self::new(self.settings.registry());
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
+        fresh.profiling = core::mem::take(&mut self.profiling);
         fresh.logo = self.logo.take();
         fresh.tracing_status = self.tracing_status;
         fresh.tracing_stopped = self.tracing_stopped.take();
@@ -1351,6 +1380,7 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            profiling: Default::default(),
             script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
@@ -1846,6 +1876,24 @@ impl AppWidget {
             &state.scripting.dialogs,
             script_paths,
         ));
+        let mut open_profiling = false;
+        self.host_controls.actions.retain(|action| {
+            if *action == crate::HostAction::OpenProfiling {
+                open_profiling = true;
+                false
+            } else {
+                true
+            }
+        });
+        self.profiling.open |= open_profiling;
+        if let Some(enabled) = self.profiling.show(
+            ui.ctx(),
+            &state.profiling,
+            &state.status,
+            controls_enabled && state.connections.backend_available,
+        ) {
+            settings_actions.push(SettingsAction::SetProfiling(enabled));
+        }
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
@@ -2588,23 +2636,20 @@ impl AppWidget {
                             actions.push(AppAction::CancelIoTask { task_id: task.id });
                         }
                     });
-                } else if let Some(warning) = &task.sample_rate_warning {
+                } else if task.format_conversion_warning.is_some() {
                     ui.colored_label(
                         colors::WARNING,
-                        format!(
-                            "This will resample {} from {} Hz to {} Hz.",
-                            warning.affected_media, warning.source_rate, warning.target_rate
-                        ),
+                        "This import requires resampling or retiming to the session's sample rate and processing quantum. This will slightly affect audio, MIDI timing and synchronized loop lengths.",
                     );
                     ui.horizontal(|ui| {
-                        if ui.button("Resample and load").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                        if ui.button("Convert").clicked() {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: true,
                             });
                         }
                         if ui.button("Cancel").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: false,
                             });
@@ -4044,6 +4089,7 @@ mod tests {
         );
         for key in [
             ENGINE_TRANSPORT.id(),
+            NEW_ENGINE_QUANTUM.id(),
             NEW_ENGINE_TRACKS.id(),
             NEW_ENGINE_LOOPS.id(),
             NEW_ENGINE_CHANNELS.id(),
@@ -4086,6 +4132,7 @@ mod tests {
         assert_eq!(
             new_engine_pools_from_snapshot(&resolved).unwrap(),
             NewEnginePools {
+                quantum: 32,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 4,
@@ -4095,6 +4142,11 @@ mod tests {
             }
         );
 
+        draft.set(NEW_ENGINE_QUANTUM, "64".to_owned());
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
+        assert!(registry.validate_draft(&draft).is_err());
+        draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
         draft.set(NEW_ENGINE_CHANNELS, 9);
         assert!(registry.validate_draft(&draft).is_err());
         for kind in [AudioBackendKind::NewEngine] {
@@ -5239,7 +5291,7 @@ mod tests {
                 status: crate::IoTaskStatus::AwaitingChannelSelection,
                 progress: 0.2,
                 message: "Select channels".to_owned(),
-                sample_rate_warning: None,
+                format_conversion_warning: None,
                 audio_channel_mapping: None,
                 audio_channel_selection: Some(crate::AudioChannelSelectionState {
                     available_channels: vec!["Direct 1".to_owned(), "Direct 2".to_owned()],

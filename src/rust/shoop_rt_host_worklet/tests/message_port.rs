@@ -28,6 +28,7 @@ const START: u64 = 48_000;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: QUANTUM,
         host: HostPorts::numbered(2, 2, 1),
@@ -440,6 +441,44 @@ fn records_and_plays_a_loop_through_the_message_port() {
 }
 
 #[shoop_test]
+fn fixed_quanta_cross_the_worklet_configuration_and_message_port() {
+    for q in [16, 32, 64, 128] {
+        let mut engine = description();
+        engine.quantum = q;
+        engine.max_frames = 128;
+        engine.page_bytes = 4096;
+        engine.midi_events = 256;
+        engine.midi_bytes = 4096;
+        let encoded = WorkletConfig::new(engine).encode().unwrap();
+        let config = WorkletConfig::decode(&encoded).unwrap();
+        let mut browser = Browser::connected(&config);
+        assert!(browser.lifecycle.iter().any(|m| matches!(m,
+            EngineMessage::Welcome { limits, .. } if limits.quantum == q as u32 && limits.processing_latency_frames == q as u32)));
+        let (_, looped) = track(&mut browser, false);
+        browser.input = Box::new(|channel, frame| {
+            if channel == 0 {
+                (frame - START) as f32
+            } else {
+                0.
+            }
+        });
+        browser.done(transition(looped, LoopMode::Recording));
+        browser.run(3 * q);
+        browser.input = Box::new(|_, _| 0.);
+        let played = browser.outputs[0].len();
+        browser.done(transition(looped, LoopMode::Playing));
+        let content = browser.read(looped, 0);
+        assert_eq!(content.len(), 4 * q);
+        assert!(content.windows(2).all(|p| p[1] == p[0] + 1.));
+        browser.run(3 * content.len());
+        let output = &browser.outputs[0][played..];
+        assert!(output[..q].iter().all(|&s| s == 0.));
+        assert_eq!(&output[q..q + 2 * content.len()], content.repeat(2));
+        assert_eq!(browser.counters(), Counters::default());
+    }
+}
+
+#[shoop_test]
 fn reports_driver_state_load_and_xruns_in_telemetry() {
     let mut browser = Browser::connected(&WorkletConfig::new(description()));
     browser.processor.load = Some(0.25);
@@ -527,6 +566,7 @@ fn delivers_a_bounded_number_of_records_per_quantum() {
         records_in_bytes: MAX_RECORD_BYTES,
         records_per_quantum: 2,
         ..WorkletConfig::new(EngineDescription {
+            quantum: 1,
             reliable_credits: 64,
             ..description()
         })

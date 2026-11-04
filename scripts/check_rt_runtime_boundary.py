@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+PACKAGES = ("rt_runtime", "rt_buffered")
 TARGETS = (
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
@@ -31,26 +32,27 @@ def violations(tree: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", action="append", help="Override the default four-target audit")
+    parser.add_argument("--package", action="append", choices=PACKAGES)
     args = parser.parse_args()
     failed = False
-    for target in args.target or TARGETS:
+    for package, target in ((p, t) for p in args.package or PACKAGES for t in args.target or TARGETS):
         result = subprocess.run(
-            ["cargo", "tree", "--locked", "-p", "rt_runtime", "--all-features",
+            ["cargo", "tree", "--locked", "-p", package, "--all-features",
              "--target", target, "-e", "normal,build", "--prefix", "none", "--format", "{p}"],
             cwd=ROOT, text=True, capture_output=True, check=False,
         )
         if result.returncode:
             sys.stderr.write(result.stdout + result.stderr)
             return result.returncode
-        if not re.search(r"^rt_runtime v\d", result.stdout, re.MULTILINE):
-            print(f"{target}: missing runtime root in dependency tree", file=sys.stderr)
+        if not re.search(rf"^{package} v\d", result.stdout, re.MULTILINE):
+            print(f"{target}: missing {package} root in dependency tree", file=sys.stderr)
             return 1
         forbidden = violations(result.stdout)
         if forbidden:
-            print(f"{target}: forbidden runtime dependencies: {', '.join(forbidden)}", file=sys.stderr)
+            print(f"{target}: forbidden {package} dependencies: {', '.join(forbidden)}", file=sys.stderr)
             failed = True
         else:
-            print(f"{target}: rt_runtime production/build boundary: ok")
+            print(f"{target}: {package} production/build boundary: ok")
     return int(failed)
 
 

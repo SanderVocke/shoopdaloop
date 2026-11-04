@@ -2,8 +2,7 @@
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Command, GraphRuntime, PreparedNode},
-    graph::{compile_planned, GraphDescription},
-    planner::DecisionBinding,
+    graph::GraphDescription,
     resource::ResourceStore,
     transport::{Lane, Outcome as Admission},
     Budgets, Config, Epoch, Error, NodeId, PlannerId, PreparedConfig,
@@ -66,7 +65,6 @@ fn config() -> PreparedConfig {
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 8,
-            subranges: 0,
         },
         ..Config::default()
     }
@@ -129,7 +127,7 @@ fn prepare() -> (LoopControl<NoEffects>, LoopRuntime<NoEffects>) {
     LoopRuntime::prepare_with_configuration_staging(
         config(),
         topology(),
-        ResourceStore::new(config()).unwrap(),
+        ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         settings(),
         bindings(),
         vec![],
@@ -213,17 +211,9 @@ fn generic_commit_without_a_loop_node_is_refused() {
 }
 
 #[shoop_test]
-fn generic_commit_with_crossed_decision_bindings_is_refused() {
+fn generic_commit_with_unassigned_loop_consumers_is_refused() {
     let (mut control, mut runtime) = prepare();
-    let planner = PlannerId::from_parts(0, 1).unwrap();
-    let crossed: Vec<_> = (0..4)
-        .map(|slot| DecisionBinding {
-            planner,
-            consumer: node(slot),
-            decision_slot: 1 - (slot / 2) as usize,
-        })
-        .collect();
-    let plan = compile_planned(control.catalog(), &graph(0..4), &crossed).unwrap();
+    let plan = control.compile_graph(&graph(0..6)).unwrap();
     assert_eq!(
         outcome(&mut control, &mut runtime, Command::commit(Epoch(1), plan)),
         Admission::Rejected(Error::InvalidShape)
@@ -261,13 +251,14 @@ fn generic_processor_changes_cannot_replace_loop_nodes() {
 
 #[shoop_test]
 fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
-    let mut resources = ResourceStore::new(config()).unwrap();
+    let mut resources = ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let Prepared {
         planner,
         nodes,
-        client,
+        client: _,
     } = LoopPlanner::prepare(
         config(),
+        rt_runtime::Quantum::new(1).unwrap(),
         topology(),
         &mut resources,
         settings(),
@@ -286,6 +277,7 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
     let initial = graph([0, 1, 2]);
     let refused = GraphRuntime::prepare_with_initial_graph(
         config(),
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node))
@@ -293,7 +285,102 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
         planner,
         resources,
         &initial,
-        &client.bindings_for(&initial),
     );
     assert_eq!(refused.err(), Some(Error::InvalidShape));
+}
+
+#[shoop_test]
+fn prepared_processors_refuse_wrong_roles_crossed_owners_and_stale_physical_ids() {
+    for mode in 0..3 {
+        let mut resources =
+            ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
+        let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
+            config(),
+            rt_runtime::Quantum::new(1).unwrap(),
+            topology(),
+            &mut resources,
+            settings(),
+            bindings(),
+            vec![],
+            Options {
+                node_pairs: NodePairSettings {
+                    candidates: 1,
+                    sources: 0,
+                    source_packets_per_callback: 0,
+                },
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let mut initial = graph(0..4);
+        let nodes = nodes
+            .into_iter()
+            .map(|(id, processor)| {
+                let id = match mode {
+                    0 if id.slot() < 2 => node(1 - id.slot()),
+                    1 if id.slot() == 0 => node(2),
+                    1 if id.slot() == 2 => node(0),
+                    2 if id.slot() == 0 => id.checked_next_generation().unwrap(),
+                    _ => id,
+                };
+                PreparedNode::new(id, processor)
+            })
+            .collect::<Vec<_>>();
+        if mode == 2 {
+            initial.nodes[0] = node(0).checked_next_generation().unwrap();
+        }
+        assert_eq!(
+            GraphRuntime::prepare_with_initial_graph(
+                config(),
+                rt_runtime::Quantum::new(1).unwrap(),
+                nodes,
+                planner,
+                resources,
+                &initial
+            )
+            .err(),
+            Some(Error::InvalidId)
+        );
+    }
+}
+
+#[shoop_test]
+fn runtime_preparation_refuses_a_different_quantum_from_its_loop_domain() {
+    let mut limits = config().limits();
+    limits.max_frames = 32;
+    let config = limits.prepare().unwrap();
+    let mut resources = ResourceStore::new(config, rt_runtime::Quantum::new(16).unwrap()).unwrap();
+    let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
+        config,
+        rt_runtime::Quantum::new(16).unwrap(),
+        topology(),
+        &mut resources,
+        settings(),
+        bindings(),
+        vec![],
+        Options {
+            node_pairs: NodePairSettings {
+                candidates: 1,
+                sources: 0,
+                source_packets_per_callback: 0,
+            },
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, node))
+        .collect();
+    assert_eq!(
+        GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            rt_runtime::Quantum::new(32).unwrap(),
+            nodes,
+            planner,
+            resources,
+        )
+        .err(),
+        Some(Error::InvalidConfig)
+    );
 }

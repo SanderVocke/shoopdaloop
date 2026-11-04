@@ -63,7 +63,10 @@ impl ControlEndpoint {
                 if id == 0 || id <= self.replacement.last_id {
                     return Err(Refusal::InvalidId);
                 }
-                if self.replacement.state != State::Empty || self.job.is_some() {
+                if self.replacement.state != State::Empty
+                    || self.job.is_some()
+                    || self.family.id.is_some()
+                {
                     return Err(Refusal::Busy);
                 }
                 let stage = &mut self.replacement;

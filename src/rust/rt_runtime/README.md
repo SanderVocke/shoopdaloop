@@ -1,5 +1,9 @@
 # rt_runtime
 
+`executor::GraphRuntime` processes whole configurable quanta, with direct domain
+access for loop consumers and buffered adaptation to arbitrary host callback sizes.
+`Quantum` validates frame alignment and is immutable after preparation.
+
 A prepared-storage audio/MIDI graph runtime for Rust hosts. Prepare storage before rendering, submit changes from a control context, and process borrowed buffers in your audio callback.
 
 ```mermaid
@@ -20,8 +24,8 @@ flowchart LR
 |---|---|
 | Typed audio/MIDI graphs | Deterministic DAG execution; audio fan-in sums without clipping |
 | Live graph edits | Old graph keeps rendering during validation; legacy commits activate at callback boundaries, opt-in staged permits coordinate exact domain boundaries |
-| Sample-frame scheduling | Parameter changes and MIDI injections split rendering at their target frames |
-| Generic interval planning | Explicit shared decision bindings and per-consumer observations; no internal subdivision quota |
+| Sample-frame scheduling | Graph changes occur at quantum boundaries; MIDI retains offsets inside each quantum |
+| Domain coordination | One begin/finish lifecycle per quantum; every processor borrows the render-owned domain directly |
 | Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed byte/event/state positioning; opt-in reserved capture groups and staged commits |
 | Bounded ownership transfer | Accepted commands reserve completion space; replaced objects return for non-RT disposal |
 | Revisioned resources | Fixed-page uploads, recording, immutable snapshots, and incremental reads |
@@ -55,11 +59,11 @@ cargo run -p rt_runtime --release --example gain_graph
 cargo test -p rt_runtime
 ```
 
-The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime example](examples/bounded_runtime.rs) measures seven synthetic offline workloads with legacy quota-based capture, not required/group/loop throughput. See [capacity and measurement limits](docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [repository performance evidence](../../../VALIDATION.md#performance-observations).
+The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal.
 
 ## Current boundaries
 
-- Generic planning supports borrowed decisions, observations and internal intervals through `GraphRuntime<P, L = NoPlanner, Q = ()>`. Planner and processor operations are typed independently; they have reliable terminal receipts and finite independent recovery. A planner admits generic graph and processor changes before they publish. Required resource access has separate counters; legacy optional access retains shared quotas. MIDI checkpoints and coordinated capture are opt-in prepared stores. [Staged graph activation](docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) separates Ready/retired owners and actual-boundary preflight/publication. Loop timing, node pairs, restoration, media/configuration and paired program/graph transactions belong to the [separate loop library](../shoop_loops/README.md) over prepared physical templates, not arbitrary new processor construction.
+- Generic planning supports render-owned domain state and whole-quantum processing through `GraphRuntime<P, L = NoPlanner, Q = ()>`. Planner and processor operations are typed independently; they have reliable terminal receipts and finite independent recovery. A planner admits generic graph and processor changes before they publish. Required resource access has separate counters; legacy optional access retains shared quotas. MIDI checkpoints and coordinated capture are opt-in prepared stores. [Staged graph activation](docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) separates Ready/retired owners and actual-boundary preflight/publication. Loop timing, node pairs, restoration, media/configuration and paired program/graph transactions belong to the [separate loop library](../shoop_loops/README.md) over prepared physical templates, not arbitrary new processor construction.
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
 - Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.

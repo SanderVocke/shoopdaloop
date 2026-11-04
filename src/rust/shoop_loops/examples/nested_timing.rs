@@ -93,7 +93,6 @@ fn run(parts: &[usize]) {
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 32,
-            subranges: 0,
         },
         ..Config::default()
     }
@@ -159,13 +158,14 @@ fn run(parts: &[usize]) {
             packet_bytes: 0,
         })
         .collect();
-    let mut resources = ResourceStore::new(config).unwrap();
+    let mut resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let Prepared {
         planner,
         nodes,
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology,
         &mut resources,
         Settings {
@@ -185,6 +185,7 @@ fn run(parts: &[usize]) {
     };
     let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node))
@@ -192,7 +193,6 @@ fn run(parts: &[usize]) {
         planner,
         resources,
         &graph,
-        &client.bindings_for(&graph),
     )
     .unwrap();
     let mut control = Controls {

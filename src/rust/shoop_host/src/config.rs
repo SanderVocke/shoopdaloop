@@ -37,6 +37,14 @@ mod tests {
         assert_eq!(config.pools.loop_memory_mb, 32);
         assert_eq!(config.pools.buses, 8);
         assert_eq!(config.pools.bus_channels, 8);
+        assert_eq!(config.pools.quantum, 32);
+        let mut custom = config.clone();
+        custom.settings.pools.quantum = 64;
+        let decoded: super::HostConfig =
+            serde_json::from_slice(&serde_json::to_vec(&custom).unwrap()).unwrap();
+        assert_eq!(decoded.pools.quantum, 64);
+        custom.settings.pools.quantum = 17;
+        assert!(custom.validate().is_err());
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());
         let mut invalid = config.settings.clone();
         invalid.pools.loops = 0;

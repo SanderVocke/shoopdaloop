@@ -97,6 +97,16 @@ pub struct MidiUpdate {
     pub content: MidiChannel,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FamilyMember {
+    pub loop_id: LoopId,
+    pub sync_source: Option<LoopId>,
+    pub expected_revision: u64,
+    pub expected_frames: u64,
+    pub fence_content: bool,
+    pub restart: bool,
+    pub content: Option<Loop>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Manifest {
     Session(Session),
     Loop {
@@ -108,6 +118,11 @@ pub enum Manifest {
         frames: Option<u64>,
         audio: Vec<AudioUpdate>,
         midi: Vec<MidiUpdate>,
+    },
+    FamilyUpdate {
+        format: ConversionTarget,
+        root: LoopId,
+        members: Vec<FamilyMember>,
     },
 }
 #[derive(Clone, Debug, PartialEq)]

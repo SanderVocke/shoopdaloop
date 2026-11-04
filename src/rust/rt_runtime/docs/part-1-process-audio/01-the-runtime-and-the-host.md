@@ -8,7 +8,7 @@
 
 The **control side** prepares processors and graphs, submits changes, and collects results and objects returned by the runtime. It can run on an application or worker thread.
 
-The **render side** owns the running graph and processors. The host calls it once per audio callback with borrowed input/output buffers. There is no internal thread or background executor.
+The **render side** owns the running graph and processors. The host calls it once per audio callback with borrowed input/output buffers. The graph always renders whole fixed ticks. Convenience constructors use a one-frame tick; the explicit fixed constructor supports Q=1/16/32/64/128. The production engine selects Q=32 by default. Host capacity and Q are separate: call `prepare_host_buffering()` before rendering arbitrary partitions and report its constant Q-frame delay. Direct hosts must supply aligned multiples of Q. There is no internal thread or background executor.
 
 ```text
 Control side                             Render side

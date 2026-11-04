@@ -375,6 +375,7 @@ mod tests {
                 },
             )
             .unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
         )
         .unwrap();
         let mut state = resolver.state(id).unwrap();

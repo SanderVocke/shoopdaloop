@@ -700,6 +700,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn replace_loop_family_async(
+        &mut self,
+        update: &shoop_backend::BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_family(update)
+    }
+
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
         Err(unavailable(BackendCapability::LoopTimingEdits))
     }
@@ -813,6 +820,22 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.persistence_progress()
     }
 
+    fn set_profiling(&mut self, enabled: bool) -> Result<()> {
+        self.ready()?;
+        if !self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::PROFILING)
+        {
+            if enabled {
+                return Err(anyhow!("Runtime profiling is unavailable on this engine"));
+            }
+            return Ok(());
+        }
+        self.requests
+            .push(Request::Profiling(enabled), Purpose::Profiling);
+        Ok(())
+    }
+
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.ready()?;
         let sample_rate = self.driver.map_or(0, |driver| driver.sample_rate);
@@ -920,6 +943,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
+            quantum_frames: self.limits.map_or(0, |limits| limits.quantum),
             driver_state: self.driver_state(),
             callback_count: self.status.callbacks,
             processed_frames: self.status.frame,
@@ -959,6 +983,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             failures: core::mem::take(&mut self.mixer_failures),
         };
         Ok(BackendSnapshot {
+            profiling: self.profiling.view(),
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,

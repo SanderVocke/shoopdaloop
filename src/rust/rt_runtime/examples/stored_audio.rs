@@ -89,7 +89,7 @@ fn main() -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
-    let mut store = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let resource = store.create()?;
     assert_eq!(store.revision(resource)?, Revision(0));
     let samples: [f32; 10] = [1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 2.0, -2.0, 0.0, 0.125];
@@ -143,8 +143,12 @@ fn main() -> Result<(), Error> {
     })?;
 
     let cursor = store.cursor(old.id)?;
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_resources(config, Vec::<PreparedNode<Unused>>::new(), store)?;
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_resources(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        Vec::<PreparedNode<Unused>>::new(),
+        store,
+    )?;
     let ticket = control
         .submit(
             Lane::Normal,

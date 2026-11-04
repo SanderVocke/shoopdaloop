@@ -5,7 +5,7 @@ prepared timing representation without compiling source sections or allocating
 on the callback. It is portable native/Wasm code with no browser dependency.
 
 **Ready means timing metadata is validated.** It does not certify runtime graph
-bindings, media/resource compatibility, current activation epochs or historical
+node membership, media/resource compatibility, current activation epochs or historical
 loop-generation watermarks. The planner adds distinct
 [publication paths](topology-activation.md) with their own identity, physical node-pair,
 media and epoch checks. Do not bypass those checks with unrestricted live mutation.

@@ -20,6 +20,7 @@ const POLL: usize = 768;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 48_000,
         max_frames: 256,
         host: HostPorts::numbered(2, 2, 1),

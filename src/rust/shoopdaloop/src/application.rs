@@ -251,6 +251,11 @@ impl BrowserApplicationRuntime {
     pub fn is_ready(&self) -> bool {
         self.inner.borrow().runtime.is_ready()
     }
+    pub fn has_pending_operations(&self) -> bool {
+        let pump = self.inner.borrow();
+        pump.runtime.client.has_pending_commands()
+            || pump.runtime.client.client().has_unfinished_operations()
+    }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
         self.inner.borrow_mut().runtime.dispatch(intent)
     }
@@ -674,6 +679,7 @@ mod browser_tests {
     #[shoop_wasm_test_support::shoop_test]
     async fn service_and_client_progress_without_ui_paints_and_release_their_pump() {
         let (render, client) = OfflineRender::new(&EngineDescription {
+            quantum: 1,
             sample_rate: 1000,
             max_frames: 16,
             host: HostPorts::numbered(2, 2, 1),

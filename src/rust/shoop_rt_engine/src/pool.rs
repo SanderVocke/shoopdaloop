@@ -66,6 +66,9 @@ impl Pool {
     pub(crate) fn loops(&self) -> usize {
         self.loops
     }
+    pub(crate) fn buses(&self) -> usize {
+        self.buses
+    }
     pub(crate) fn nodes(&self) -> usize {
         self.nodes
     }

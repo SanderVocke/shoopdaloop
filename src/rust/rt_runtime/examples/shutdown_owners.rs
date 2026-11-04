@@ -3,9 +3,7 @@
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired};
 use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
-use rt_runtime::planner::{
-    Disposition, FinishContext, OperationContext, PlanContext, Planner, PlannerSpec,
-};
+use rt_runtime::planner::{Disposition, OperationContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::{
     Currentness, Description, Format, Request, ResourceStore, Snapshot, UploadId,
@@ -47,27 +45,10 @@ struct Ledger {
     cancellations: usize,
 }
 impl Planner for Ledger {
-    type Decision = ();
-    type Observation = ();
     type Operation = Op;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 0,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
-    }
-    fn decisions(&self) -> &[()] {
-        &[]
-    }
-    fn plan(&mut self, context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
-        Ok(context.ceiling)
-    }
-    fn finish(&mut self, context: FinishContext<'_, (), Op, Reply>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
-        Ok(())
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
     fn recovery_safe(op: Op) -> bool {
         matches!(op, Op::Cancel(_))
@@ -184,7 +165,7 @@ fn run(graceful: bool) -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
-    let mut store = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let resource = store.create()?;
     let old = store.begin_upload(
         resource,
@@ -239,11 +220,11 @@ fn run(graceful: bool) -> Result<(), Error> {
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(), gain)],
         ledger,
         store,
         &graph,
-        &[],
     )?;
     let (completion, sample) = apply(
         &mut control,

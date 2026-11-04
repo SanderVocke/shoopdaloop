@@ -98,6 +98,8 @@ pub struct BulkReader {
     remaining: u64,
     scratch: Box<[u8]>,
     per_callback: usize,
+    callback: Option<rt_runtime::Frame>,
+    available: usize,
 }
 
 impl BulkReader {
@@ -108,6 +110,8 @@ impl BulkReader {
             remaining: 0,
             scratch: vec![0; page_bytes].into_boxed_slice(),
             per_callback: READ_PAGES * page_bytes,
+            callback: None,
+            available: 0,
         }
     }
 }
@@ -117,25 +121,31 @@ impl Processor<LoopPlanner, EngineOp> for BulkReader {
         PortCounts::default()
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
-        match operation {
-            EngineOp::ReadStart { cursor, bytes } => {
-                self.cursor = Some(cursor);
-                self.remaining = bytes;
-            }
-            EngineOp::ReadStop => {
-                self.cursor = None;
-                self.remaining = 0;
-            }
-            _ => return Err(Error::InvalidParameter),
-        }
-        Ok(())
+        self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.render(block)
+    }
+}
+
+impl BulkReader {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        #[cfg(test)]
+        if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
+            return Err(Error::InvalidState);
+        }
         let Some(mut cursor) = self.cursor else {
             return Ok(());
         };
         let ring = &self.cells.bulk;
-        let mut budget = self.per_callback.min(block.resources.copy_remaining());
+        if Some(block.callback_start) != self.callback {
+            self.callback = Some(block.callback_start);
+            self.available = self.per_callback;
+        }
+        let mut budget = self.available.min(block.resources.copy_remaining());
         while self.remaining > 0 && budget > 0 {
             let count = self
                 .scratch
@@ -153,6 +163,7 @@ impl Processor<LoopPlanner, EngineOp> for BulkReader {
                 Ok(read) if read > 0 => {
                     ring.push(&self.scratch[..read]);
                     budget -= read;
+                    self.available -= read;
                     self.remaining -= read as u64;
                 }
                 _ => {
@@ -162,6 +173,23 @@ impl Processor<LoopPlanner, EngineOp> for BulkReader {
             }
         }
         self.cursor = (self.remaining > 0).then_some(cursor);
+        Ok(())
+    }
+}
+
+impl BulkReader {
+    pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
+        match operation {
+            EngineOp::ReadStart { cursor, bytes } => {
+                self.cursor = Some(cursor);
+                self.remaining = bytes;
+            }
+            EngineOp::ReadStop => {
+                self.cursor = None;
+                self.remaining = 0;
+            }
+            _ => return Err(Error::InvalidParameter),
+        }
         Ok(())
     }
 }

@@ -16,7 +16,7 @@ fn exhausted_resource_version_and_lease_generations_are_never_reused() {
     }
     .prepare()
     .unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, crate::Quantum::new(1).unwrap()).unwrap();
     store.resources[0].generation = u32::MAX;
     store.versions[0].generation = u32::MAX;
     store.snapshots[0].generation = u32::MAX;

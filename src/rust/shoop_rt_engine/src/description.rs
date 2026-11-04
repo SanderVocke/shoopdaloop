@@ -49,6 +49,9 @@ pub struct EngineDescription {
     pub sample_rate: u32,
     /// Largest callback the host will render.
     pub max_frames: usize,
+    /// Fixed graph tick. Changing it requires preparing a new engine.
+    /// One frame provides sample-accurate fixed execution for offline/reference use.
+    pub quantum: usize,
     pub host: HostPorts,
     pub segments: Vec<Segment>,
     /// Audio channels per strip direction; also the channels of every loop.
@@ -88,6 +91,7 @@ impl Default for EngineDescription {
         Self {
             sample_rate: 48_000,
             max_frames: 512,
+            quantum: 32,
             host: HostPorts::numbered(2, 2, 1),
             segments: vec![Segment {
                 strips: 8,
@@ -125,6 +129,7 @@ impl EngineDescription {
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
         use rt_runtime::Error;
         let host = &self.host;
+        rt_runtime::Quantum::new(self.quantum)?;
         if self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0

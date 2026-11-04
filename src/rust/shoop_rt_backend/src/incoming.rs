@@ -48,6 +48,13 @@ fn app_control(control: StripControl) -> BackendTrackControl {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
+            EngineMessage::Profiling(packet) => self.profiling.receive(packet),
+            EngineMessage::ProfilingNode {
+                generation,
+                key,
+                name,
+            } => self.profiling.name(generation, key, name.as_str()),
             EngineMessage::Welcome {
                 capabilities,
                 limits,
@@ -66,6 +73,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ));
                     return;
                 }
+                self.profiling = Default::default();
                 self.capabilities = capabilities;
                 self.set_limits(limits);
                 self.driver = Some(driver);
@@ -170,6 +178,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 mode,
                 next_mode,
                 next_delay,
+                content_revision,
                 length,
                 position,
                 peaks,
@@ -179,8 +188,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 };
                 if let Some(entry) = self.mirror.loops.get_mut(id) {
                     let previous = entry.view;
+                    if content_revision < entry.rt_content_revision {
+                        return;
+                    }
                     if (mode == LoopMode::Recording && previous.mode != LoopMode::Recording)
                         || length != previous.length
+                        || content_revision != entry.rt_content_revision
                     {
                         entry.content += 1;
                         self.canonical_content.remove(id);
@@ -194,6 +207,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         length,
                         position,
                     };
+                    entry.rt_content_revision = content_revision;
                     entry.meter.record(peaks.as_slice());
                 }
             }
@@ -419,11 +433,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 sequence,
                 result: match outcome {
                     Outcome::Done => Ok(()),
+                    Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                        Err("unexpected content revision outcome".to_owned())
+                    }
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
                 },
             });
         let refusal = match outcome {
             Outcome::Done => None,
+            Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                Some(Refusal::Internal)
+            }
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {
@@ -697,6 +717,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
+            (Purpose::Profiling, Some(refusal)) => self.failure(
+                shoop_backend::BackendMutationKind::AudioProcessing,
+                None,
+                None,
+                format!("could not change profiling: {}", refusal_text(refusal)),
+            ),
             (Purpose::Smoothing(milliseconds), Some(refusal)) => self.failure(
                 BackendMutationKind::LoopControl,
                 None,
@@ -708,6 +734,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             ),
             (
                 Purpose::InjectMidi(_)
+                | Purpose::Profiling
                 | Purpose::Smoothing(_)
                 | Purpose::Preview
                 | Purpose::Persistence

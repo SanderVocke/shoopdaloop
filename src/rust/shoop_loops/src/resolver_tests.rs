@@ -45,8 +45,11 @@ fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work(
             mode: Mode::Playing,
         }],
     };
-    let mut resolver =
-        Resolver::prepare(compile(Limits::default(), &description).unwrap()).unwrap();
+    let mut resolver = Resolver::prepare(
+        compile(Limits::default(), &description).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     for slot in 0..2 {
         assert_no_heap(|| {
             resolver.submit(Request {
@@ -88,12 +91,12 @@ fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work(
             Err(Error::InvalidState)
         );
     }
-    let interval = assert_no_heap(|| resolver.preview(Frame(1), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     assert_eq!(resolver.preview_program_change(), Ok(None));
     assert_no_heap(|| resolver.commit()).unwrap();
     assert_eq!(resolver.preview_program_change(), Err(Error::InvalidState));
     assert_eq!(resolver.state(id(2)).unwrap().mode, Mode::Recording);
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
     let before = resolver.state(id(2)).unwrap();
     let probe = assert_no_heap(|| resolver.probe_program_boundary(id(1), &[])).unwrap();
     assert_eq!(probe.state.composite.unwrap().iteration, 1);
@@ -101,11 +104,11 @@ fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work(
     assert_eq!(resolver.scratch.states[2], Some(before));
     assert!(resolver.scratch.intents[2].is_none());
     assert!(resolver.scratch.intents[3].is_none());
-    let interval = assert_no_heap(|| resolver.preview(Frame(2), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     assert_no_heap(|| resolver.commit()).unwrap();
     assert_eq!(resolver.state(id(2)).unwrap().mode, Mode::Stopped);
     assert_eq!(resolver.state(id(3)).unwrap().mode, Mode::Playing);
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
     let probe = assert_no_heap(|| resolver.probe_program_boundary(id(1), &[])).unwrap();
     assert_eq!(probe.state.mode, Mode::Stopped);
     assert_eq!(probe.state.composite.unwrap().passes, 1);

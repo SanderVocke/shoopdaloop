@@ -21,6 +21,7 @@ fn config() -> NativeConfig {
             ..DummyConfig::default()
         }),
         engine: EngineDescription {
+            quantum: 1,
             max_frames: 16,
             segments: vec![Segment {
                 strips: 16,

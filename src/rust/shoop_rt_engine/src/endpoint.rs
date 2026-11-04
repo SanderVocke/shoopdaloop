@@ -26,7 +26,6 @@ use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 use rt_runtime::executor::Command;
 use rt_runtime::graph::PreparedPlan;
-use rt_runtime::planner::PlannerSpec;
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::{Lane, Outcome as RuntimeOutcome};
 use rt_runtime::{Epoch, Frame, NodeId, Sequence};
@@ -150,11 +149,15 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) profiling: Option<rt_runtime::profiling::Reader>,
+    pub(crate) profile_named: Box<[bool]>,
+    pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
+    pub(crate) profile_generation: u64,
+    pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
     pub(crate) shape: Shape,
-    pub(crate) planner: PlannerSpec,
     pub(crate) cells: Arc<Cells>,
     pub(crate) settings: Settings,
     pub(crate) host_ports: Box<[HostPort]>,
@@ -192,6 +195,7 @@ pub struct ControlEndpoint {
     pub(crate) bulk: Bulk,
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
+    pub(crate) family: crate::family::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -329,7 +333,8 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::MIDI_INJECTION
+        Capabilities::PROFILING
+            .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
@@ -413,9 +418,21 @@ impl ControlEndpoint {
                 }
                 _ => {}
             },
-            Command::Schedule { payload, .. } => {
+            Command::Schedule {
+                payload, action, ..
+            } => {
                 if !payload.is_empty() {
-                    self.work.return_payload(payload);
+                    if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::SelectFamily { .. },
+                            ..
+                        }
+                    ) {
+                        self.family.payload = Some(payload);
+                    } else {
+                        self.work.return_payload(payload);
+                    }
                 }
             }
             Command::StageGraph {
@@ -458,6 +475,9 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        if self.family.id.is_some() && !self.family.committing {
+            self.family.cancel_requested = true;
+        }
         self.bulk.disconnect();
         self.disconnect_preview();
         self.uploads.disconnect();
@@ -736,6 +756,13 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::Profiling(enabled) => match &self.profiling {
+                Some(reader) => {
+                    reader.control().set_enabled(enabled);
+                    Ok(Some(Outcome::Done))
+                }
+                _ => Err(Refusal::Unsupported),
+            },
             Request::PreviewStart {
                 request_id,
                 bus,
@@ -747,6 +774,15 @@ impl ControlEndpoint {
                 Ok(Some(Outcome::Done))
             }
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::ContentFamilyBegin { .. }
+            | Request::ContentFamilyEdit { .. }
+            | Request::ContentFamilyCommit { .. }
+            | Request::ContentFamilyCancel { .. } => {
+                if self.job.is_some() {
+                    return Err(());
+                }
+                self.family_request(correlation, request)
+            }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -1103,6 +1139,11 @@ impl ControlEndpoint {
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            content_revision: if current {
+                cells.content_revision.load(Ordering::Relaxed)
+            } else {
+                0
+            },
             length: if current {
                 cells.length.load(Ordering::Relaxed)
             } else {
@@ -1135,6 +1176,7 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.profile_status = None;
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
@@ -1205,6 +1247,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_content();
         self.flush(out);
         self.telemetry(out);
+        self.forward_profiling(out);
     }
 }
 

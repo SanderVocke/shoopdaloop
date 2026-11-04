@@ -3,7 +3,6 @@
   "examples": [
     {"name": "gain_graph", "args": []},
     {"name": "planned_gain", "args": []},
-    {"name": "bounded_runtime", "args": ["--iterations", "1024"]},
     {"name": "first_graph", "args": []},
     {"name": "prepared_processor", "args": []},
     {"name": "callback_adapter", "args": []},
@@ -36,7 +35,7 @@
     "14": ["pending_operations"],
     "15": ["staged_routes"],
     "16": ["coordinated_capture"],
-    "17": ["bounded_runtime", "coordinated_capture", "stored_audio"],
+    "17": ["coordinated_capture", "stored_audio"],
     "18": ["prepared_writes"],
     "19": ["shutdown_owners"]
   }

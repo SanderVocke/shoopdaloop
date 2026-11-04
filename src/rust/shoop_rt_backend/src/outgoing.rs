@@ -205,6 +205,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 view: LoopView::default(),
                 meter: Default::default(),
                 content: 0,
+                rt_content_revision: 0,
             },
         );
         self.mirror.slot_loops.insert(slot, id);

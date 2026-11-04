@@ -53,6 +53,15 @@ pub struct PreparedTopology {
 }
 
 impl PreparedTopology {
+    pub fn validate_quantum(&self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
+        let q = quantum.frames() as u64;
+        if self.nodes.iter().any(|n| n.length % q != 0)
+            || self.programs.iter().any(|p| p.nominal_unit_frames % q != 0)
+        {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(())
+    }
     pub fn limits(&self) -> Limits {
         self.limits
     }

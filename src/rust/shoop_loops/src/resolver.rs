@@ -6,8 +6,10 @@ use crate::*;
 use alloc::{vec, vec::Vec};
 
 mod program_change;
+mod retime;
 pub use program_change::ProgramChangeResult;
 use program_change::{ProgramChange, Replacement};
+pub use retime::ContentRetime;
 
 #[cfg(test)]
 #[path = "resolver_tests.rs"]
@@ -105,10 +107,13 @@ impl ProgramBoundary {
 }
 
 pub struct Resolver {
+    quantum: rt_runtime::Quantum,
     topology: PreparedTopology,
     epoch: Epoch,
     frame: Frame,
     states: Vec<Option<State>>,
+    retimed: Vec<Option<Transition>>,
+    retimed_pending: bool,
     records: Vec<Option<Record>>,
     loop_generations: Vec<u32>,
     request_generations: Vec<u32>,
@@ -134,6 +139,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<Decision>()
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
+                + size_of::<Option<Transition>>()
                 + 4,
         ),
         (
@@ -152,7 +158,11 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
 
 impl Resolver {
     /// Preparation may allocate; all execution storage is fixed afterwards.
-    pub fn prepare(topology: PreparedTopology) -> Result<Self, Error> {
+    pub fn prepare(
+        topology: PreparedTopology,
+        quantum: rt_runtime::Quantum,
+    ) -> Result<Self, Error> {
+        topology.validate_quantum(quantum)?;
         let limits = topology.limits().validate()?;
         let mut states = prepared(limits.loop_slots, None);
         let mut loop_generations = prepared(limits.loop_slots, 0);
@@ -182,6 +192,7 @@ impl Resolver {
             loop_generations[node.id.slot() as usize] = node.id.generation();
         }
         Ok(Self {
+            quantum,
             topology,
             epoch: Epoch(0),
             frame: Frame(0),
@@ -202,6 +213,8 @@ impl Resolver {
                 dropped: 0,
             },
             states,
+            retimed: prepared(limits.loop_slots, None),
+            retimed_pending: false,
             records: prepared(limits.pending_requests, None),
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
@@ -233,6 +246,9 @@ impl Resolver {
         self.quiescent
     }
 
+    pub fn quantum(&self) -> rt_runtime::Quantum {
+        self.quantum
+    }
     pub fn frame(&self) -> Frame {
         self.frame
     }
@@ -301,6 +317,19 @@ impl Resolver {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
+        {
+            let q = self.quantum;
+            let aligned = match request.transition {
+                Transition::Play { position, .. } | Transition::Seek { position, .. } => {
+                    position % q.frames() as u64 == 0
+                }
+                Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
+                _ => true,
+            };
+            if !aligned {
+                return Err(Error::InvalidFrame);
+            }
+        }
         let target = self.topology.node(request.target)?;
         if let Timing::AfterTicks { source, .. } = request.timing {
             self.topology.node(source)?;
@@ -326,7 +355,10 @@ impl Resolver {
         self.records[slot] = Some(Record {
             id,
             request,
-            effective: request.at.max(self.frame),
+            effective: self
+                .quantum
+                .effective(request.at, self.frame)
+                .map_err(|_| Error::InvalidFrame)?,
             remaining: match request.timing {
                 Timing::At => 0,
                 Timing::AfterTicks { skip, .. } => skip,
@@ -402,7 +434,10 @@ impl Resolver {
         target: LoopId,
         observations: &[Observation],
     ) -> Result<ProgramBoundary, Error> {
-        self.begin_preview(Frame(self.frame.0.saturating_add(1)), observations)?;
+        self.begin_preview(
+            Frame(self.frame.0.saturating_add(self.quantum.frames() as u64)),
+            observations,
+        )?;
         if self.topology.node(target)?.kind != LoopKind::Composite {
             return Err(Error::InvalidProgram);
         }
@@ -497,22 +532,41 @@ impl Resolver {
         scratch.events.clear();
         scratch.decisions.clear();
         scratch.dropped = 0;
+        if self.retimed_pending {
+            for (slot, transition) in self.retimed.iter().enumerate() {
+                let Some(transition) = transition else {
+                    continue;
+                };
+                let Some(state) = self.states[slot] else {
+                    continue;
+                };
+                scratch.playback_discontinuities[slot] = true;
+                if scratch.events.len() < self.topology.limits().journal_events {
+                    scratch.events.push(Event {
+                        frame: self.frame,
+                        target: state.id,
+                        kind: EventKind::Transition(*transition),
+                    });
+                } else {
+                    scratch.dropped = scratch.dropped.saturating_add(1);
+                }
+            }
+        }
         Ok(())
     }
 
     /// All preflight retries start from committed state and the same retained inputs.
-    pub fn preview(
-        &mut self,
-        ceiling: Frame,
-        observations: &[Observation],
-    ) -> Result<Interval, Error> {
-        self.begin_preview(ceiling, observations)?;
-        let replacement = self.select_program(ceiling, observations)?;
-        let replaced = replacement.map(|change| {
-            self.topology
-                .program(change.target)
-                .expect("validated old program")
-        });
+    /// Whole-tick transactional settlement. No future boundary search is performed.
+    pub fn preview_tick(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
+        let quantum = self.quantum;
+        let end = self
+            .frame
+            .checked_add(quantum.frames())
+            .map_err(|_| Error::Exhausted)?;
+        self.begin_preview(end, observations)?;
+        let replacement = self.select_program(end, observations)?;
+        let replaced =
+            replacement.map(|c| self.topology.program(c.target).expect("validated program"));
         let topology = if replacement.is_some() {
             &self
                 .program_change
@@ -531,32 +585,25 @@ impl Resolver {
             observations,
         };
         boundary.settle(None)?;
-        let mut end = ceiling.0;
-        for record in boundary.scratch.records.iter().flatten() {
-            if record.terminal.is_none() && record.effective > self.frame {
-                end = end.min(record.effective.0);
-            }
-        }
-        for node in self.topology.nodes() {
+        let q = quantum.frames() as u64;
+        for node in topology.nodes() {
             let slot = node.id.slot() as usize;
-            let state = boundary.scratch.states[slot].expect("prepared state");
-            if state.plays() {
-                let remaining = state
-                    .content_length
-                    .checked_sub(state.position)
-                    .ok_or(Error::InvalidState)?;
-                if remaining == 0 {
-                    return Err(Error::InvalidState);
-                }
-                end = end.min(self.frame.0.saturating_add(remaining));
+            let state = boundary.scratch.states[slot].ok_or(Error::InvalidState)?;
+            if state.content_length % q != 0
+                || state.position % q != 0
+                || state.capture_frames % q != 0
+                || (state.plays()
+                    && state
+                        .position
+                        .checked_add(q)
+                        .is_none_or(|p| p > state.content_length))
+            {
+                return Err(Error::InvalidFrame);
             }
-            if state.mode == Mode::Recording {
-                let remaining = u64::MAX - state.capture_frames;
-                if remaining == 0 {
-                    return Err(Error::Exhausted);
-                }
-                end = end.min(self.frame.0.saturating_add(remaining));
-            }
+            state
+                .capture_frames
+                .checked_add(if state.mode == Mode::Recording { q } else { 0 })
+                .ok_or(Error::Exhausted)?;
             boundary.scratch.decisions.push(Decision {
                 state,
                 playback_discontinuity: state.plays()
@@ -566,7 +613,7 @@ impl Resolver {
         }
         let interval = Interval {
             start: self.frame,
-            end: Frame(end),
+            end,
         };
         self.preview = Some(interval);
         Ok(interval)
@@ -591,11 +638,22 @@ impl Resolver {
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
         self.committed = true;
+        if self.retimed_pending {
+            self.retimed.fill(None);
+            self.retimed_pending = false;
+        }
         Ok(interval)
     }
 
-    pub fn finish(&mut self, end: Frame) -> Result<(), Error> {
-        if !self.committed || self.preview.map(|interval| interval.end) != Some(end) {
+    pub fn finish(&mut self) -> Result<(), Error> {
+        if !self.committed {
+            return Err(Error::InvalidState);
+        }
+        let end = self
+            .frame
+            .checked_add(self.quantum.frames())
+            .map_err(|_| Error::Exhausted)?;
+        if self.preview.map(|interval| interval.end) != Some(end) {
             return Err(Error::InvalidState);
         }
         let frames = end.0 - self.frame.0;
@@ -639,6 +697,10 @@ impl Resolver {
         stop_playback: bool,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
+            {
+                let q = self.quantum;
+                candidate.validate_quantum(q)?;
+            }
             if self.quiescent || self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
             }
@@ -685,6 +747,9 @@ impl Resolver {
         self.states.fill(None);
         for node in candidate.nodes() {
             let slot = node.id.slot() as usize;
+            if self.scratch.states[slot].is_none_or(|state| state.id != node.id) {
+                self.retimed[slot] = None;
+            }
             self.states[slot] = Some(
                 self.scratch.states[slot]
                     .filter(|state| state.id == node.id)
@@ -1417,6 +1482,40 @@ fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {
                 state.mode = Mode::Stopped;
             }
             Ok(false)
+        }
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn final_tick_and_exhausted_clocks_do_not_wrap_or_reexecute() {
+        for frames in [1, 16, 32, 64, 128] {
+            let topology = crate::compile(
+                crate::Limits::default(),
+                &crate::TopologyDescription::default(),
+            )
+            .unwrap();
+            let mut resolver =
+                Resolver::prepare(topology, rt_runtime::Quantum::new(frames).unwrap()).unwrap();
+            resolver.frame = Frame(u64::MAX - (frames as u64 - 1));
+            let at = resolver.frame;
+            assert_eq!(resolver.preview_tick(&[]), Err(Error::Exhausted));
+            assert_eq!(resolver.frame(), at);
+            assert_eq!(resolver.decisions(), Err(Error::InvalidState));
+            assert_eq!(resolver.finish(), Err(Error::InvalidState));
+            if frames == 1 {
+                resolver.frame = Frame(u64::MAX - 1);
+                assert_eq!(resolver.preview_tick(&[]).unwrap().end, Frame(u64::MAX));
+                resolver.commit().unwrap();
+                resolver.finish().unwrap();
+                assert_eq!(resolver.frame(), Frame(u64::MAX));
+                assert_eq!(resolver.preview_tick(&[]), Err(Error::Exhausted));
+                assert_eq!(resolver.finish(), Err(Error::InvalidState));
+            }
         }
     }
 }

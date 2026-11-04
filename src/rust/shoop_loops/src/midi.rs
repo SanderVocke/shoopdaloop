@@ -6,7 +6,7 @@ use rt_runtime::{
     buffer::MidiBuffer,
     midi::{Message, ResetState},
     midi_state::MidiState,
-    resource::{CaptureIntervalId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo},
+    resource::{CaptureTickId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo},
     Error,
 };
 
@@ -119,10 +119,10 @@ impl MidiRenderer {
                 report.emission(midi_restore::cleanup(&self.state, |packet| {
                     output.push(0, frames, packet)
                 }));
+                *self.state = MidiState::default();
             }
             self.stream = None;
             self.active = false;
-            *self.state = MidiState::default();
             return Ok(report);
         };
         let description = io.snapshot(index)?.description;
@@ -213,8 +213,22 @@ pub struct MidiCapture {
     max_events: usize,
     max_bytes: usize,
     state: Box<MidiState>,
+    state_dirty: bool,
 }
 impl MidiCapture {
+    /// Observe input before storing it. On a storage refusal the tracker stays
+    /// advanced; resume history with an explicit discontinuity and this state.
+    pub fn append_history(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        history: rt_runtime::resource::MidiStoreId,
+        frame: rt_runtime::Frame,
+        frames: usize,
+        input: &MidiBuffer,
+    ) -> Result<(), Error> {
+        self.process(io, input, frames, None)?;
+        io.append_midi_history(history, frame, frames, input)
+    }
     pub fn prepare(max_frames: usize, max_events: usize, max_bytes: usize) -> Result<Self, Error> {
         dimensions(max_frames, max_bytes)?;
         max_events
@@ -230,6 +244,7 @@ impl MidiCapture {
             max_events,
             max_bytes,
             state: prepared_state(),
+            state_dirty: false,
         })
     }
     /// Copy at the capture-start boundary before consuming that interval's input.
@@ -238,6 +253,13 @@ impl MidiCapture {
     }
     pub(crate) fn reset(&mut self) {
         *self.state = MidiState::default();
+        self.state_dirty = true;
+    }
+    pub(crate) fn publish_state(&mut self, output: &mut MidiState) {
+        if self.state_dirty {
+            *output = *self.state;
+            self.state_dirty = false;
+        }
     }
     /// Track connected input even while not recording. Invalid input leaves the
     /// tracker unchanged; a later staging refusal does not undo observed input.
@@ -246,7 +268,7 @@ impl MidiCapture {
         io: &mut RenderIo<'_>,
         input: &MidiBuffer,
         frames: usize,
-        capture: Option<(CaptureIntervalId, usize)>,
+        capture: Option<(CaptureTickId, usize)>,
     ) -> Result<(), Error> {
         if frames == 0 {
             return Ok(());
@@ -262,15 +284,18 @@ impl MidiCapture {
         if input.len() > events || input.byte_len() > bytes {
             return Err(Error::Capacity);
         }
-        let mut next = *self.state;
-        for index in 0..input.len() {
-            let (offset, packet) = input.get(index).ok_or(Error::InvalidEvent)?;
-            if offset as usize >= frames {
-                return Err(Error::InvalidFrame);
+        if !input.is_empty() {
+            let mut next = *self.state;
+            for index in 0..input.len() {
+                let (offset, packet) = input.get(index).ok_or(Error::InvalidEvent)?;
+                if offset as usize >= frames {
+                    return Err(Error::InvalidFrame);
+                }
+                next.apply(Message::parse(packet, self.max_bytes)?);
             }
-            next.apply(Message::parse(packet, self.max_bytes)?);
+            *self.state = next;
+            self.state_dirty = true;
         }
-        *self.state = next;
         if let Some((interval, member)) = capture {
             io.stage_midi(interval, member, input)?;
         }

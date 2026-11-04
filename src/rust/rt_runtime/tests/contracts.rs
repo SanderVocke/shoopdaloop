@@ -134,7 +134,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
             scheduled_events: 1024,
             budgets: rt_runtime::Budgets {
                 events: 1024,
-                subranges: 1025,
                 ..base.budgets
             },
             ..base
@@ -150,7 +149,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
             scheduled_events: 128,
             budgets: rt_runtime::Budgets {
                 events: 128,
-                subranges: 129,
                 ..base.budgets
             },
             ..base
@@ -164,7 +162,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
                 scheduled_events: 1024,
                 budgets: rt_runtime::Budgets {
                     events: 1024,
-                    subranges: 1025,
                     ..base.budgets
                 },
                 ..base
@@ -368,8 +365,11 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
     let mut midi_in = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
     let mut midi_out = [rt_runtime::buffer::MidiBuffer::new(1, 3).unwrap()];
     midi_in[0].push(2, 4, &[0x90, 60, 100]).unwrap();
-    let mut resources =
-        rt_runtime::resource::ResourceStore::new(Config::default().prepare().unwrap()).unwrap();
+    let mut resources = rt_runtime::resource::ResourceStore::new(
+        Config::default().prepare().unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     resources.begin_callback();
     assert_no_heap(|| {
         processor.process(&mut ProcessBlock {
@@ -380,8 +380,10 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
             midi_inputs: &midi_in,
             midi_outputs: &mut midi_out,
             resources: resources.io(),
-            decision: None,
-            observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
+            node: rt_runtime::NodeId::from_parts(0, 1).unwrap(),
+            callback_start: rt_runtime::Frame(0),
+            quantum: rt_runtime::Quantum::new(1).unwrap(),
+            domain: &mut rt_runtime::planner::NoPlanner,
         })
     })
     .unwrap();

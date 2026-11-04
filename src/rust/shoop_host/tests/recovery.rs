@@ -47,6 +47,7 @@ fn host_with_driver(
         settings: shoop_host::config::HostSettings {
             driver: driver.unwrap_or_default(),
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,
@@ -370,6 +371,15 @@ fn ui_peer() {
             action: LoopAction::RecordClicked,
         },
     );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while client.snapshot().unwrap().tracks[1].loops[0].mode != LoopMode::Recording {
+        connection.poll(&mut client).unwrap();
+        assert!(
+            Instant::now() < deadline,
+            "recording did not start before UI readiness"
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
     std::fs::write(
         std::env::var_os("SHOOP_TEST_READY").unwrap(),
         format!("{} {}", track.raw(), loops[0].raw()),
@@ -638,6 +648,7 @@ fn launcher_peer() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,
@@ -969,6 +980,7 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,

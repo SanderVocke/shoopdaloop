@@ -10,7 +10,6 @@ use alloc::sync::Arc;
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
 use rt_runtime::midi_state::MidiState;
-use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::Cursor;
 use rt_runtime::Error;
@@ -39,6 +38,10 @@ pub struct NodeConfiguration {
 pub enum EngineOp {
     /// Retain values for the next graph epoch without changing the active processor.
     Configure(NodeConfiguration),
+    InputSource {
+        epoch: rt_runtime::Epoch,
+        changed: bool,
+    },
     DiscardConfiguration {
         token: u64,
     },
@@ -72,6 +75,11 @@ pub enum EngineOp {
 }
 impl ProcessorOperation for EngineOp {
     type Result = ();
+}
+impl Default for EngineOp {
+    fn default() -> Self {
+        Self::Gain(1.)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -146,6 +154,14 @@ impl Gains {
     }
     /// Fill the per-sample gains, scaled by a further ramp.
     fn fill(&mut self, frames: usize, scale: &mut Ramp) {
+        if self.gain.remaining == 0 && self.balance.remaining == 0 && scale.remaining == 0 {
+            let gain = self.gain.value * scale.value;
+            let [left, right] = balance_factors(self.balance.value);
+            self.plain[..frames].fill(gain);
+            self.left[..frames].fill(gain * left);
+            self.right[..frames].fill(gain * right);
+            return;
+        }
         for i in 0..frames {
             let gain = self.gain.next() * scale.next();
             let [left, right] = balance_factors(self.balance.next());
@@ -166,6 +182,9 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    pending_history: Option<(rt_runtime::Epoch, bool)>,
+    history_token: u64,
+    midi_history_token: u64,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -270,6 +289,9 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            history_token: 1,
+            midi_history_token: 1,
+            pending_history: None,
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -374,40 +396,161 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
         }
     }
     fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
-        match operation {
-            EngineOp::Reset { inputs, .. } => {
-                self.reset(inputs);
-            }
-            EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
-            EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
-            EngineOp::Monitor(on) => {
-                self.release |= !on && self.monitor.target() > 0.;
-                self.monitor.set(f32::from(u8::from(on)), self.ramp)
-            }
-            EngineOp::Crossfade => {
-                let target = 1. - self.bank.target();
-                self.bank.set(target, self.ramp);
-            }
-            EngineOp::Inject(message) => {
-                let slot = self
-                    .injected
-                    .iter_mut()
-                    .find(|m| m.is_none())
-                    .ok_or(Error::Full)?;
-                *slot = Some(message);
-            }
-            EngineOp::Mute(_)
-            | EngineOp::Configure(_)
-            | EngineOp::DiscardConfiguration { .. }
-            | EngineOp::Presence(_)
-            | EngineOp::ReadStart { .. }
-            | EngineOp::ReadStop
-            | EngineOp::PreviewStart { .. }
-            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
-        }
-        Ok(())
+        self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.render(block)
+    }
+}
+
+impl Processor<LoopPlanner, EngineOp> for StripOutput {
+    fn ports(&self) -> PortCounts {
+        PortCounts {
+            audio_inputs: self.channels,
+            audio_outputs: 2 * self.channels,
+            midi_inputs: 1,
+            midi_outputs: 1,
+        }
+    }
+    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+        self.apply(operation)
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.render(block)
+    }
+}
+
+impl Processor<LoopPlanner, EngineOp> for LoopFader {
+    fn ports(&self) -> PortCounts {
+        PortCounts {
+            audio_inputs: self.channels,
+            audio_outputs: self.channels,
+            ..PortCounts::default()
+        }
+    }
+    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+        self.apply(operation)
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.render(block)
+    }
+}
+
+impl Processor<LoopPlanner, EngineOp> for BusMixer {
+    fn ports(&self) -> PortCounts {
+        PortCounts {
+            audio_inputs: self.channels,
+            audio_outputs: 2 * self.channels,
+            ..PortCounts::default()
+        }
+    }
+    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+        self.apply(operation)
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.render(block)
+    }
+}
+
+impl EngineNode {
+    fn configuration(&mut self) -> Option<&mut Option<NodeConfiguration>> {
+        match self {
+            Self::StripInput(node) => Some(&mut node.configuration),
+            Self::StripOutput(node) => Some(&mut node.configuration),
+            Self::Fader(node) => Some(&mut node.configuration),
+            Self::Bus(node) => Some(&mut node.configuration),
+            _ => None,
+        }
+    }
+    fn configure(&mut self, configuration: NodeConfiguration) {
+        match self {
+            Self::StripInput(node) => {
+                node.pending_history = None;
+                node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
+                node.reset(configuration.inputs);
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
+            }
+            Self::StripOutput(node) => {
+                node.reset(configuration.outputs);
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
+            }
+            Self::Fader(node) => {
+                node.presence = Ramp::at(1.);
+                node.cells.loops[node.slot].peaks.clear();
+            }
+            Self::Bus(node) => {
+                node.active_channels = configuration.outputs;
+                node.presence = Ramp::at(1.);
+                node.cells.buses[node.slot].clear();
+                node.bank = Ramp::at(f32::from(configuration.bank));
+                node.gains.gain = Ramp::at(configuration.gain);
+                node.gains.balance = Ramp::at(configuration.balance);
+                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
+            }
+            _ => unreachable!("configuration belongs to an engine control processor"),
+        }
+    }
+}
+
+impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn admit(&self, node: rt_runtime::NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        match self {
+            Self::Loop(processor) => processor.admit(node, domain),
+            _ => Ok(()),
+        }
+    }
+
+    fn ports(&self) -> PortCounts {
+        match self {
+            Self::Loop(node) => node.ports(),
+            Self::StripInput(node) => node.ports(),
+            Self::StripOutput(node) => node.ports(),
+            Self::Fader(node) => node.ports(),
+            Self::Bus(node) => node.ports(),
+            Self::Reader(node) => node.ports(),
+        }
+    }
+    fn operation(
+        &mut self,
+        operation: EngineOp,
+        context: OperationContext<'_>,
+    ) -> Result<(), Error> {
+        self.apply_signal(operation, context.graph_epoch)
+    }
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        self.apply_configuration(block.graph_epoch);
+        match self {
+            Self::Loop(node) => node.process(block),
+            Self::StripInput(node) => {
+                node.render(block)?;
+                block.domain.observe_history(
+                    node.slot as u32,
+                    node.history_token,
+                    node.midi_history_token,
+                    block.frame,
+                    block.quantum.frames(),
+                    &mut block.audio,
+                    block.midi_outputs.first(),
+                    &mut block.resources,
+                )
+            }
+            _ => self.render_signal(block),
+        }
+    }
+}
+
+impl StripInput {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.inputs == 2;
@@ -450,7 +593,7 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
             }
         }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
-        let [capture, monitor] = &mut *block.midi_outputs else {
+        let [capture, monitor] = block.midi_outputs else {
             return Err(Error::InvalidShape);
         };
         if self.release {
@@ -494,32 +637,39 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
     }
 }
 
-impl Processor<LoopPlanner, EngineOp> for StripOutput {
-    fn ports(&self) -> PortCounts {
-        PortCounts {
-            audio_inputs: self.channels,
-            audio_outputs: 2 * self.channels,
-            midi_inputs: 1,
-            midi_outputs: 1,
-        }
-    }
-    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+impl StripInput {
+    pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
-            EngineOp::Reset { outputs, .. } => {
-                self.reset(outputs);
+            EngineOp::Reset { inputs, .. } => {
+                self.pending_history = None;
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
+                self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
+                self.reset(inputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
             EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
-            EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
-            EngineOp::Presence(on) => self.presence.set(f32::from(u8::from(on)), self.ramp),
+            EngineOp::Monitor(on) => {
+                self.release |= !on && self.monitor.target() > 0.;
+                self.monitor.set(f32::from(u8::from(on)), self.ramp)
+            }
             EngineOp::Crossfade => {
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }
-            EngineOp::Monitor(_)
+            EngineOp::Inject(message) => {
+                let slot = self
+                    .injected
+                    .iter_mut()
+                    .find(|m| m.is_none())
+                    .ok_or(Error::Full)?;
+                *slot = Some(message);
+            }
+            EngineOp::Mute(_)
+            | EngineOp::InputSource { .. }
             | EngineOp::Configure(_)
             | EngineOp::DiscardConfiguration { .. }
-            | EngineOp::Inject(_)
+            | EngineOp::Presence(_)
             | EngineOp::ReadStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
@@ -527,7 +677,13 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
         }
         Ok(())
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+}
+
+impl StripOutput {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.outputs == 2;
@@ -576,26 +732,39 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
     }
 }
 
-impl Processor<LoopPlanner, EngineOp> for LoopFader {
-    fn ports(&self) -> PortCounts {
-        PortCounts {
-            audio_inputs: self.channels,
-            audio_outputs: self.channels,
-            ..PortCounts::default()
-        }
-    }
-    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+impl StripOutput {
+    pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
-            EngineOp::Reset { .. } => {
-                self.presence = Ramp::at(1.);
-                self.cells.loops[self.slot].peaks.clear();
+            EngineOp::Reset { outputs, .. } => {
+                self.reset(outputs);
             }
+            EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
+            EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
+            EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
             EngineOp::Presence(on) => self.presence.set(f32::from(u8::from(on)), self.ramp),
-            _ => return Err(Error::InvalidParameter),
+            EngineOp::Crossfade => {
+                let target = 1. - self.bank.target();
+                self.bank.set(target, self.ramp);
+            }
+            EngineOp::Monitor(_)
+            | EngineOp::InputSource { .. }
+            | EngineOp::Configure(_)
+            | EngineOp::DiscardConfiguration { .. }
+            | EngineOp::Inject(_)
+            | EngineOp::ReadStart { .. }
+            | EngineOp::ReadStop
+            | EngineOp::PreviewStart { .. }
+            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+}
+
+impl LoopFader {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let peaks: &Peak = &self.cells.loops[self.slot].peaks;
         for channel in 0..self.channels {
@@ -605,10 +774,25 @@ impl Processor<LoopPlanner, EngineOp> for LoopFader {
                 .pair(channel, channel)
                 .ok_or(Error::InvalidShape)?;
             let mut peak = 0f32;
-            for i in 0..frames {
-                let value = input[i] * presence.next();
-                output[i] = value;
-                peak = peak.max(value.abs());
+            if presence.remaining == 0 {
+                let gain = presence.value;
+                if gain == 1. {
+                    output.copy_from_slice(input);
+                    for sample in input {
+                        peak = peak.max(sample.abs());
+                    }
+                } else {
+                    for (sample, value) in input.iter().zip(output.iter_mut()) {
+                        *value = *sample * gain;
+                        peak = peak.max(value.abs());
+                    }
+                }
+            } else {
+                for i in 0..frames {
+                    let value = input[i] * presence.next();
+                    output[i] = value;
+                    peak = peak.max(value.abs());
+                }
             }
             peaks.raise(channel, peak);
             if channel + 1 == self.channels {
@@ -619,63 +803,25 @@ impl Processor<LoopPlanner, EngineOp> for LoopFader {
     }
 }
 
-impl Processor<LoopPlanner, EngineOp> for BusMixer {
-    fn ports(&self) -> PortCounts {
-        PortCounts {
-            audio_inputs: self.channels,
-            audio_outputs: 2 * self.channels,
-            ..PortCounts::default()
-        }
-    }
-    fn operation(&mut self, operation: EngineOp, _: OperationContext<'_>) -> Result<(), Error> {
+impl LoopFader {
+    pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
-            EngineOp::PreviewStart {
-                cursor,
-                frames,
-                request_id,
-                source_channels,
-            } => {
-                if frames == 0 || request_id == 0 || source_channels == 0 {
-                    return Err(Error::InvalidParameter);
-                }
-                self.preview = Some((cursor, frames, request_id, source_channels as usize));
-                self.cells
-                    .preview_finished
-                    .store(0, core::sync::atomic::Ordering::Release);
-                self.cells
-                    .preview_playing
-                    .store(request_id, core::sync::atomic::Ordering::Release);
-            }
-            EngineOp::PreviewStop => {
-                self.preview = None;
-                self.cells
-                    .preview_playing
-                    .store(0, core::sync::atomic::Ordering::Release);
-            }
-            EngineOp::Reset { outputs, .. } => {
-                self.preview = None;
-                self.active_channels = outputs;
-                self.bank = Ramp::at(0.);
-                self.mute = Ramp::at(1.);
+            EngineOp::Reset { .. } => {
                 self.presence = Ramp::at(1.);
-                self.gains.reset();
-                self.cells.buses[self.slot].clear();
+                self.cells.loops[self.slot].peaks.clear();
             }
-            EngineOp::Presence(present) => {
-                self.presence.set(f32::from(u8::from(present)), self.ramp)
-            }
-            EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
-            EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
-            EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
-            EngineOp::Crossfade => {
-                let target = 1. - self.bank.target();
-                self.bank.set(target, self.ramp);
-            }
+            EngineOp::Presence(on) => self.presence.set(f32::from(u8::from(on)), self.ramp),
             _ => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+}
+
+impl BusMixer {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.active_channels == 2;
@@ -756,72 +902,73 @@ impl Processor<LoopPlanner, EngineOp> for BusMixer {
     }
 }
 
-impl EngineNode {
-    fn configuration(&mut self) -> Option<&mut Option<NodeConfiguration>> {
-        match self {
-            Self::StripInput(node) => Some(&mut node.configuration),
-            Self::StripOutput(node) => Some(&mut node.configuration),
-            Self::Fader(node) => Some(&mut node.configuration),
-            Self::Bus(node) => Some(&mut node.configuration),
-            _ => None,
+impl BusMixer {
+    pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
+        match operation {
+            EngineOp::PreviewStart {
+                cursor,
+                frames,
+                request_id,
+                source_channels,
+            } => {
+                if frames == 0 || request_id == 0 || source_channels == 0 {
+                    return Err(Error::InvalidParameter);
+                }
+                self.preview = Some((cursor, frames, request_id, source_channels as usize));
+                self.cells
+                    .preview_finished
+                    .store(0, core::sync::atomic::Ordering::Release);
+                self.cells
+                    .preview_playing
+                    .store(request_id, core::sync::atomic::Ordering::Release);
+            }
+            EngineOp::PreviewStop => {
+                self.preview = None;
+                self.cells
+                    .preview_playing
+                    .store(0, core::sync::atomic::Ordering::Release);
+            }
+            EngineOp::Reset { outputs, .. } => {
+                self.preview = None;
+                self.active_channels = outputs;
+                self.bank = Ramp::at(0.);
+                self.mute = Ramp::at(1.);
+                self.presence = Ramp::at(1.);
+                self.gains.reset();
+                self.cells.buses[self.slot].clear();
+            }
+            EngineOp::Presence(present) => {
+                self.presence.set(f32::from(u8::from(present)), self.ramp)
+            }
+            EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
+            EngineOp::Balance(value) => self.gains.balance.set(value, self.ramp),
+            EngineOp::Mute(muted) => self.mute.set(f32::from(u8::from(!muted)), self.ramp),
+            EngineOp::Crossfade => {
+                let target = 1. - self.bank.target();
+                self.bank.set(target, self.ramp);
+            }
+            _ => return Err(Error::InvalidParameter),
         }
-    }
-    fn configure(&mut self, configuration: NodeConfiguration) {
-        match self {
-            Self::StripInput(node) => {
-                node.reset(configuration.inputs);
-                node.bank = Ramp::at(f32::from(configuration.bank));
-                node.gains.gain = Ramp::at(configuration.gain);
-                node.gains.balance = Ramp::at(configuration.balance);
-                node.monitor = Ramp::at(f32::from(u8::from(configuration.monitoring)));
-            }
-            Self::StripOutput(node) => {
-                node.reset(configuration.outputs);
-                node.bank = Ramp::at(f32::from(configuration.bank));
-                node.gains.gain = Ramp::at(configuration.gain);
-                node.gains.balance = Ramp::at(configuration.balance);
-                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
-            }
-            Self::Fader(node) => {
-                node.presence = Ramp::at(1.);
-                node.cells.loops[node.slot].peaks.clear();
-            }
-            Self::Bus(node) => {
-                node.active_channels = configuration.outputs;
-                node.presence = Ramp::at(1.);
-                node.cells.buses[node.slot].clear();
-                node.bank = Ramp::at(f32::from(configuration.bank));
-                node.gains.gain = Ramp::at(configuration.gain);
-                node.gains.balance = Ramp::at(configuration.balance);
-                node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
-            }
-            _ => unreachable!("configuration belongs to an engine control processor"),
-        }
+        Ok(())
     }
 }
 
-impl Processor<LoopPlanner, EngineOp> for EngineNode {
-    fn ports(&self) -> PortCounts {
-        match self {
-            Self::Loop(node) => node.ports(),
-            Self::StripInput(node) => node.ports(),
-            Self::StripOutput(node) => node.ports(),
-            Self::Fader(node) => node.ports(),
-            Self::Bus(node) => node.ports(),
-            Self::Reader(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            _ => ConsumerAccess::default(),
-        }
-    }
-    fn operation(
+impl EngineNode {
+    pub(crate) fn apply_signal(
         &mut self,
         operation: EngineOp,
-        context: OperationContext<'_>,
+        graph_epoch: rt_runtime::Epoch,
     ) -> Result<(), Error> {
+        if let EngineOp::InputSource { epoch, changed } = operation {
+            if graph_epoch.checked_next()? != epoch {
+                return Err(Error::StaleEpoch);
+            }
+            let Self::StripInput(node) = self else {
+                return Err(Error::InvalidParameter);
+            };
+            node.pending_history = Some((epoch, changed));
+            return Ok(());
+        }
         if let EngineOp::DiscardConfiguration { token } = operation {
             let pending = self.configuration().ok_or(Error::InvalidParameter)?;
             if pending.is_some_and(|configuration| configuration.token != token) {
@@ -831,7 +978,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             return Ok(());
         }
         if let EngineOp::Configure(configuration) = operation {
-            if context.graph_epoch.checked_next()? != configuration.epoch {
+            if graph_epoch.checked_next()? != configuration.epoch {
                 return Err(Error::StaleEpoch);
             }
             if configuration.token == 0
@@ -857,26 +1004,40 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         }
         match self {
             Self::Loop(_) => Err(Error::InvalidEvent),
-            Self::StripInput(node) => node.operation(operation, context),
-            Self::StripOutput(node) => node.operation(operation, context),
-            Self::Fader(node) => node.operation(operation, context),
-            Self::Bus(node) => node.operation(operation, context),
-            Self::Reader(node) => node.operation(operation, context),
+            Self::StripInput(node) => node.apply(operation),
+            Self::StripOutput(node) => node.apply(operation),
+            Self::Fader(node) => node.apply(operation),
+            Self::Bus(node) => node.apply(operation),
+            Self::Reader(node) => node.apply(operation),
         }
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        if let Some(configuration) = self.configuration().and_then(|pending| {
-            pending.take_if(|configuration| configuration.epoch == block.graph_epoch)
-        }) {
+    fn apply_configuration(&mut self, graph_epoch: rt_runtime::Epoch) {
+        if let Some(configuration) = self
+            .configuration()
+            .and_then(|pending| pending.take_if(|configuration| configuration.epoch == graph_epoch))
+        {
             self.configure(configuration);
         }
+        if let Self::StripInput(node) = self {
+            if let Some((_, changed)) = node
+                .pending_history
+                .take_if(|(epoch, _)| *epoch == graph_epoch)
+            {
+                if changed {
+                    node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                    node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
+                }
+            }
+        }
+    }
+    fn render_signal(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         match self {
-            Self::Loop(node) => node.process(block),
-            Self::StripInput(node) => node.process(block),
-            Self::StripOutput(node) => node.process(block),
-            Self::Fader(node) => node.process(block),
-            Self::Bus(node) => node.process(block),
-            Self::Reader(node) => node.process(block),
+            Self::Loop(_) => Err(Error::InvalidState),
+            Self::StripInput(node) => node.render(block),
+            Self::StripOutput(node) => node.render(block),
+            Self::Fader(node) => node.render(block),
+            Self::Bus(node) => node.render(block),
+            Self::Reader(node) => node.render(block),
         }
     }
 }
@@ -887,6 +1048,33 @@ mod tests {
     use crate::{testing::OfflineHost, EngineDescription, Segment};
     use shoop_rt_protocol::*;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn gain_blocks_preserve_ramps_balance_and_unwritten_suffixes() {
+        let mut gains = Gains::new(8);
+        let mut scale = Ramp::at(1.);
+        gains.plain.fill(42.);
+        gains.left.fill(42.);
+        gains.right.fill(42.);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[1.; 4]);
+        assert_eq!(&gains.left[..4], &[1.; 4]);
+        assert_eq!(&gains.right[..4], &[1.; 4]);
+        gains.gain.set(0.5, 2);
+        gains.balance.set(1., 2);
+        scale.set(0.5, 2);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[0.5625, 0.25, 0.25, 0.25]);
+        assert_eq!(&gains.left[..4], &[0.28125, 0., 0., 0.]);
+        assert_eq!(&gains.right[..4], &[0.5625, 0.25, 0.25, 0.25]);
+        gains.fill(4, &mut scale);
+        assert_eq!(&gains.plain[..4], &[0.25; 4]);
+        assert_eq!(&gains.left[..4], &[0.; 4]);
+        assert_eq!(&gains.right[..4], &[0.25; 4]);
+        assert_eq!(&gains.plain[4..], &[42.; 4]);
+        assert_eq!(&gains.left[4..], &[42.; 4]);
+        assert_eq!(&gains.right[4..], &[42.; 4]);
+    }
 
     fn tick(host: &mut OfflineHost) {
         host.input_mut(0).fill(1.);
@@ -914,6 +1102,7 @@ mod tests {
     #[shoop_test]
     fn configuration_for_an_unpublished_epoch_leaves_live_monitoring_untouched() {
         let mut host = OfflineHost::new(&EngineDescription {
+            quantum: 1,
             sample_rate: 1000,
             max_frames: 16,
             ramp_frames: 4,

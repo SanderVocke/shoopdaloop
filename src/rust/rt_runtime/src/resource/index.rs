@@ -52,7 +52,7 @@ impl ResourceStore {
     pub fn index_work(&self) -> IndexWork {
         self.index_work
     }
-    fn index_step(&mut self, class: WorkClass) {
+    pub(super) fn index_step(&mut self, class: WorkClass) {
         let counter = match class {
             WorkClass::Background => &mut self.index_work.background_steps,
             WorkClass::Render => &mut self.index_work.render_steps,
@@ -180,6 +180,9 @@ impl ResourceStore {
         if offset == lease.snapshot.description.bytes {
             return Ok(cursor);
         }
+        if lease.audio.is_some() || lease.shared_midi.is_some() {
+            return Ok(cursor);
+        }
         let ordinal = (offset / self.config.limits().page_bytes) as u32;
         let mut node = version.index.root;
         while let Some(current) = node {
@@ -233,7 +236,7 @@ mod tests {
         }
         .prepare()
         .unwrap();
-        let mut store = ResourceStore::new(config).unwrap();
+        let mut store = ResourceStore::new(config, crate::Quantum::new(1).unwrap()).unwrap();
         let resource = store.create().unwrap();
         let upload = store
             .begin_upload(
@@ -269,7 +272,11 @@ mod tests {
         assert_eq!(allocate_scope(&counter), Ok(u32::MAX - 1));
         assert_eq!(allocate_scope(&counter), Err(Error::Exhausted));
         assert_eq!(allocate_scope(&counter), Err(Error::Exhausted));
-        let mut store = ResourceStore::new(crate::Config::default().prepare().unwrap()).unwrap();
+        let mut store = ResourceStore::new(
+            crate::Config::default().prepare().unwrap(),
+            crate::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         store.index_work.background_steps = usize::MAX;
         store.index_work.render_steps = usize::MAX;
         store.index_step(WorkClass::Background);

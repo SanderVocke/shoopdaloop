@@ -73,42 +73,50 @@ impl CaptureNode {
         })
     }
 }
-const CONSUMER: ConsumerAccess = ConsumerAccess {
-    decision_required: true,
-    observations: 1,
-    operation_bytes: 0,
-};
 impl Processor<LoopPlanner> for LoopNode {
-    fn ports(&self) -> PortCounts {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
-            Self::Playback(node) => node.ports(),
-            Self::Capture(node) => node.ports(),
+            Self::Playback(processor) => processor.admit(node, domain),
+            Self::Capture(processor) => processor.admit(node, domain),
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         match self {
             Self::Playback(node) => node.process(block),
             Self::Capture(node) => node.process(block),
         }
     }
-}
-impl Processor<LoopPlanner> for PlaybackNode {
     fn ports(&self) -> PortCounts {
-        PortCounts {
-            audio_outputs: self.binding.channels,
-            midi_outputs: usize::from(self.binding.midi),
-            ..PortCounts::default()
+        match self {
+            Self::Playback(node) => node.ports(),
+            Self::Capture(node) => node.ports(),
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
+}
+impl Processor<LoopPlanner> for PlaybackNode {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        let row = domain
+            .rows
+            .get(self.binding.target.slot() as usize)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        if node != self.binding.playback
+            || row.binding.playback != self.binding.playback
+            || row.binding.capture != self.binding.capture
+            || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.channels != self.binding.channels
+            || row.binding.midi != self.binding.midi
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(())
     }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?.value;
-        if view.decision.state.id.slot() != self.binding.target.slot()
+        let slot = self.binding.target.slot() as usize;
+        let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
+        if block.node != self.binding.playback
             || view.playback_node != self.binding.playback
             || view.capture_node != self.binding.capture
         {
@@ -136,34 +144,50 @@ impl Processor<LoopPlanner> for PlaybackNode {
                     position: view.decision.state.position,
                     discontinuity: view.decision.playback_discontinuity,
                 },
-                block.frames,
-                block.midi_outputs.get_mut(0).ok_or(Error::InvalidShape)?,
+                block.quantum.frames(),
+                block.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
             )?
             .output_error
         } else {
             None
         };
-        block.observations.push(Observed::Playback {
-            target: view.decision.state.id,
-            overflow: error.is_some(),
-        })?;
+        if error.is_some() {
+            let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
+            row.overflows = row.overflows.saturating_add(1);
+        }
         error.map_or(Ok(()), Err)
     }
-}
-impl Processor<LoopPlanner> for CaptureNode {
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: self.binding.channels,
-            midi_inputs: usize::from(self.binding.midi),
+            audio_outputs: self.binding.channels,
+            midi_outputs: usize::from(self.binding.midi),
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
+}
+impl Processor<LoopPlanner> for CaptureNode {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        let row = domain
+            .rows
+            .get(self.binding.target.slot() as usize)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        if node != self.binding.capture
+            || row.binding.playback != self.binding.playback
+            || row.binding.capture != self.binding.capture
+            || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.channels != self.binding.channels
+            || row.binding.midi != self.binding.midi
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(())
     }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?.value;
-        if view.decision.state.id.slot() != self.binding.target.slot()
+        let slot = self.binding.target.slot() as usize;
+        let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
+        if block.node != self.binding.capture
             || view.playback_node != self.binding.playback
             || view.capture_node != self.binding.capture
         {
@@ -179,19 +203,19 @@ impl Processor<LoopPlanner> for CaptureNode {
             midi.process(
                 &mut block.resources.render(),
                 block.midi_inputs.first().ok_or(Error::InvalidShape)?,
-                block.frames,
+                block.quantum.frames(),
                 view.capture
                     .map(|interval| (interval, usize::from(self.binding.channels > 0))),
             )?;
-            block.observations.push(Observed::Input {
-                target: view.decision.state.id,
-                state: *midi.state(),
-            })?;
-        } else {
-            block.observations.push(Observed::NoMidiInput {
-                target: view.decision.state.id,
-            })?;
+            midi.publish_state(&mut block.domain.inputs[slot]);
         }
         Ok(())
+    }
+    fn ports(&self) -> PortCounts {
+        PortCounts {
+            audio_inputs: self.binding.channels,
+            midi_inputs: usize::from(self.binding.midi),
+            ..PortCounts::default()
+        }
     }
 }

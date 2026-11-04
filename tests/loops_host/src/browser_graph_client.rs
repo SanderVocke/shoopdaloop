@@ -33,9 +33,7 @@ impl BrowserGraphClient {
             counts: Counts {
                 steps: plan.descriptor().steps.len() as u32,
                 edges: plan.descriptor().connections.len() as u32,
-                bindings: plan.planning().bindings.len() as u32,
             },
-            planned: plan.planning().step.is_some(),
         }];
         template.extend(
             plan.descriptor()
@@ -55,19 +53,6 @@ impl BrowserGraphClient {
                 .map(|(offset, &edge)| Payload::Edge {
                     offset: offset as u32,
                     edge,
-                }),
-        );
-        if let Some(step) = plan.planning().step {
-            template.push(Payload::Planning(step));
-        }
-        template.extend(
-            plan.planning()
-                .bindings
-                .iter()
-                .enumerate()
-                .map(|(offset, &binding)| Payload::Binding {
-                    offset: offset as u32,
-                    binding,
                 }),
         );
         template.push(Payload::Seal);

@@ -54,6 +54,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            profiling: self.observed.profiling.clone(),
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()
@@ -65,6 +66,16 @@ impl Service {
             preview_bus: self.preview_bus,
             bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
+            sync_sources: self
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let source = self.observed.loops.get(&entry.backend)?.sync_source?;
+                    self.loops.iter().find_map(|(source_id, source_entry)| {
+                        (source_entry.backend == source).then_some((*id, *source_id))
+                    })
+                })
+                .collect(),
             revision: self.revision,
             tracks,
             buses,
@@ -498,6 +509,7 @@ impl Service {
 
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
+            || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {
             self.bump();
@@ -702,6 +714,7 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
         dsp_load_percent: state.dsp_load_percent,
         xruns: state.xruns,
         sample_rate: state.sample_rate,
+        quantum_frames: state.quantum_frames,
         buffer_size: state.buffer_size,
         audio_driver,
         callback_count: state.callback_count,

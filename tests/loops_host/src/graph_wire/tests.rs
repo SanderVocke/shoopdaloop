@@ -42,9 +42,7 @@ fn load(bridge: &mut Bridge, sequence: &mut u64, id: Id, epoch: Epoch, plan: &Pr
         counts: Counts {
             steps: plan.descriptor().steps.len() as u32,
             edges: plan.descriptor().connections.len() as u32,
-            bindings: plan.planning().bindings.len() as u32,
         },
-        planned: plan.planning().step.is_some(),
     });
     for (offset, &step) in plan.descriptor().steps.iter().enumerate() {
         record(Payload::Step {
@@ -56,15 +54,6 @@ fn load(bridge: &mut Bridge, sequence: &mut u64, id: Id, epoch: Epoch, plan: &Pr
         record(Payload::Edge {
             offset: offset as u32,
             edge,
-        });
-    }
-    if let Some(step) = plan.planning().step {
-        record(Payload::Planning(step));
-    }
-    for (offset, &binding) in plan.planning().bindings.iter().enumerate() {
-        record(Payload::Binding {
-            offset: offset as u32,
-            binding,
         });
     }
     record(Payload::Seal);
@@ -113,7 +102,6 @@ fn stage_response(request: Request) -> Response {
             capacity: Counts {
                 steps: u32::MAX,
                 edges: u32::MAX,
-                bindings: u32::MAX,
             },
         }),
     }
@@ -149,7 +137,7 @@ fn graph_command_codec_preserves_full_width_fields_and_canonical_padding() {
         };
         let bytes = guarded(|| request.encode()).unwrap();
         let mut expected = [0; REQUEST_BYTES];
-        expected[..8].copy_from_slice(&[76, 76, 71, 49, 1, 0, i as u8 + 1, 1]);
+        expected[..8].copy_from_slice(&[76, 76, 71, 49, 2, 0, i as u8 + 1, 1]);
         expected[8..24].fill(255);
         expected[24] = 1;
         match i {
@@ -198,7 +186,7 @@ fn graph_command_codec_preserves_full_width_fields_and_canonical_padding() {
         };
         let bytes = guarded(|| response.encode()).unwrap();
         let mut expected = [0; RESPONSE_BYTES];
-        expected[..6].copy_from_slice(b"LLS1\x01\x00");
+        expected[..6].copy_from_slice(b"LLS1\x02\x00");
         expected[8..24].fill(255);
         expected[24] = 1;
         if i == 0 {
@@ -206,7 +194,7 @@ fn graph_command_codec_preserves_full_width_fields_and_canonical_padding() {
             expected[7] = 6;
             expected[28] = 1;
             expected[124] = 1;
-            for range in [32..40, 64..72, 76..96, 104..124] {
+            for range in [32..40, 64..72, 76..96, 104..120] {
                 expected[range].fill(255);
             }
         } else {
@@ -307,11 +295,7 @@ fn graph_client_credits_validate_identity_phase_and_last_sequence_without_wrappi
                 slot: 0,
                 generation: 0,
             },
-            capacity: Counts {
-                steps: 0,
-                edges: 0,
-                bindings: 0,
-            },
+            capacity: Counts { steps: 0, edges: 0 },
         }),
     };
     let mut wrong_bank = released;
@@ -565,7 +549,6 @@ fn actual_bridge_graph_staging_activation_and_retirement_match_all_media_and_rec
             Counts {
                 steps: 3,
                 edges: 12,
-                bindings: 2
             }
         );
         assert_eq!(bridge.retained_graphs(), 0);
@@ -743,7 +726,11 @@ fn stalled_graph_credits_preserve_music_and_independent_primitive_recovery() {
 fn graph_candidate_returns_and_domain_failure_origins_survive_128_wire_cycles() {
     let plan = reference(false);
     let mut invalid = PreparedPlan::with_capacity(plan.config()).unwrap();
-    for &step in &plan.descriptor().steps {
+    for (index, &step) in plan.descriptor().steps.iter().enumerate() {
+        let mut step = step;
+        if index == 0 {
+            step.input_end = usize::MAX;
+        }
         invalid.push_step(step).unwrap();
     }
     for &edge in &plan.descriptor().connections {

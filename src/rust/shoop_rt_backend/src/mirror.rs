@@ -168,6 +168,7 @@ pub(crate) struct Loop {
     pub meter: Meter,
     /// Changes whenever the recorded content may have changed.
     pub content: u64,
+    pub rt_content_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -575,6 +576,7 @@ impl Mirror {
         let view = entry.view;
         BackendLoopState {
             content_revision: entry.content,
+            sync_source: entry.sync,
             mode: app_mode(view.mode),
             length: u32::try_from(view.length).unwrap_or(u32::MAX),
             position: u32::try_from(view.position).unwrap_or(u32::MAX),

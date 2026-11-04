@@ -1,5 +1,8 @@
 # shoop_loops
 
+Loop processing uses `runtime::LoopPlanner`, including sync/program settlement,
+media ownership and grouped recording at quantum boundaries.
+
 This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
 It works in ordinary `std` applications using their allocator and panic handling.
 Bare-metal hosts must provide both and support pointer-width and 32-bit atomics.
@@ -29,6 +32,7 @@ processor construction or hard-deadline certification.
 | Prepare and install the parts, submit/cancel work, export and stop | [Runtime](docs/runtime.md) |
 | Execute audio conversion, gain and discontinuity smoothing | [Audio](docs/audio.md) |
 | Render/index/track/capture original packets | [MIDI](docs/midi.md) |
+| Retain input history and publish private shared-media edits on fixed ticks | [Shared history](docs/shared-history.md) |
 | Emit cleanup → projected restoration → original events | [MIDI restoration](docs/midi-restore.md) |
 | Retain media and publish logical-owner batches | [Media ownership](docs/media.md) |
 | Borrow flat/sparse compiled timing metadata | [Topology](docs/topology.md) |
@@ -46,7 +50,7 @@ cargo run --locked -p shoop_loops --example configuration_cut
 cargo run --locked -p shoop_loops --example program_graph_cut
 ```
 
-Each example assembles its own runtime from the parts. Tests and the benchmark use
+Each example assembles its own runtime from the parts. Tests use
 the dev-only `shoop_loops_test_support` crate instead, which is not part of the API.
 
 Add `--release` for the optimized profile. `coordinated_loop` asserts stereo/MIDI
@@ -77,17 +81,14 @@ stage/activate/release and recycle owners through bounded results. Actual offlin
 graph worklets now transfer descriptors/commands/returns and check downstream output
 against native replay using an explicit audible Ready checkpoint. That test-driver
 pause is not continuous wall-clock live-edit/deadline evidence.
-The separate [native benchmark](docs/performance.md) now measures fourteen guarded
-loop workloads with full correctness checks and raw timing/work/credit data;
-it does not measure browser/device deadlines. A production browser adapter is
-still outside this milestone.
 
 ## Timing and ownership contracts
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
-`cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
+`cancel`, `preview_tick`, `commit`, and `finish`. Prepare the resolver with its
+immutable `Quantum`; `preview_tick` produces candidate
 `decisions`; only `commit` publishes state, terminal outcomes, and semantic
-events. Finish the selected interval before another submission or boundary.
+events. `finish()` completes exactly that whole quantum before another submission or boundary.
 A failed or invalidated preview cannot be committed or expose valid decisions.
 `Decision::playback_discontinuity` is an authoritative, transactional media restart
 flag, independent of optional journal storage. Same-position seeks and explicit
@@ -152,13 +153,6 @@ Do not mix standalone resolver mutation with a running planner.
 The resolver owns authoritative timing; separate render operations execute
 supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;
 transport, devices, UI, and AudioWorklet bindings stay outside this crate.
-
-Native callback measurements are available through
-[`scripts/benchmark_loops.py`](../../../scripts/benchmark_loops.py)
-and the guarded `benchmark_loop` example. [Measuring native callbacks](docs/performance.md)
-explains the fourteen workloads, full scalar/packet checks, raw distributions,
-resource samples, deliberate heap failures and limits. Dense deadline misses are
-reported, never hidden or used as a brittle success threshold.
 
 ## Adversarial regression models
 

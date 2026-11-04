@@ -87,7 +87,10 @@ fn midi_events(
     }
 }
 
-fn backend_loop(image: &image::Image, content: &image::Loop) -> Result<BackendLoopContent> {
+pub(super) fn backend_loop(
+    image: &image::Image,
+    content: &image::Loop,
+) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
         source_id: content.id.raw(),
         length: content.frames as u32,

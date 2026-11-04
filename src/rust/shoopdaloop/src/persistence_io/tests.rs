@@ -388,24 +388,13 @@ async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_pub
             },
         ],
     };
-    let converted = resample_loop_audio(&source, 1000).unwrap();
+    let expected_left = vec![0.25; 64];
+    let expected_right = vec![-0.5; 64];
     f.dispatch(AppIntent::ImportLoopAudioBytes {
         loop_id,
         name: "source.shoop-audio".into(),
         bytes: encode_loop_audio(&source).unwrap().into(),
         update_loop_length: true,
-    });
-    let state = f
-        .until(|s| {
-            s.io_task
-                .as_ref()
-                .is_some_and(|t| t.status == IoTaskStatus::AwaitingSampleRateConfirmation)
-        })
-        .await;
-    assert_eq!(state.tracks[1].loops[0].length_frames, 0);
-    f.dispatch(AppIntent::ConfirmSampleRateConversion {
-        task_id: state.io_task.as_ref().unwrap().id,
-        accept: true,
     });
     let state = f
         .until(|s| {
@@ -417,6 +406,18 @@ async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_pub
     f.dispatch(AppIntent::ConfirmAudioChannelMapping {
         task_id: state.io_task.as_ref().unwrap().id,
         source_for_destination: vec![1, 0],
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingFormatConversionConfirmation)
+        })
+        .await;
+    assert_eq!(state.tracks[1].loops[0].length_frames, 0);
+    f.dispatch(AppIntent::ConfirmFormatConversion {
+        task_id: state.io_task.as_ref().unwrap().id,
+        accept: true,
     });
     f.until(|s| {
         s.io_task
@@ -455,10 +456,7 @@ async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_pub
         })
     })
     .await;
-    assert_eq!(
-        f.runtime.snapshot().tracks[1].loops[0].length_frames,
-        converted.channels[0].samples.len() as u64
-    );
+    assert_eq!(f.runtime.snapshot().tracks[1].loops[0].length_frames, 64);
     f.dispatch(AppIntent::RequestSaveSession);
     let file = f.output().await;
     let saved = decode_session(&file.bytes).unwrap();
@@ -471,13 +469,7 @@ async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_pub
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        audio,
-        [
-            &converted.channels[1].samples,
-            &converted.channels[0].samples
-        ]
-    );
+    assert_eq!(audio, [&expected_right, &expected_left]);
     assert!(saved
         .media
         .values()
@@ -586,7 +578,11 @@ async fn platform_output_reports_its_real_completion_after_the_backend_connectio
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_quantum(1)
+    }
+    fn with_quantum(quantum: usize) -> Self {
         let (render, client) = OfflineRender::new(&EngineDescription {
+            quantum,
             sample_rate: 1000,
             max_frames: 16,
             host: HostPorts::numbered(2, 2, 1),
@@ -693,6 +689,389 @@ impl Fixture {
             );
         }
         panic!("file output timed out")
+    }
+}
+
+#[shoop_test]
+async fn session_retiming_warns_once_preserves_sync_cycles_and_reloads_without_conversion() {
+    use shoop_session::*;
+    for source_rate in [1000, 2000] {
+        let mut f = Fixture::with_quantum(32);
+        f.dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)));
+        f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Retime".into(),
+            audio_channels: 1,
+            midi: true,
+        }));
+        f.until(|state| state.tracks.len() == 2 && state.tracks[1].loops.len() == 8)
+            .await;
+        f.dispatch(AppIntent::RequestSaveSession);
+        let baseline = f.output().await;
+        let mut bundle = decode_session(&baseline.bytes).unwrap();
+        f.dispatch(AppIntent::CompleteIoOutput {
+            task_id: baseline.task_id,
+            outcome: FileOutputOutcome::Saved,
+        });
+        bundle.document.sample_rate = source_rate;
+        bundle.document.global.sync = true;
+        for track in bundle
+            .document
+            .track_groups
+            .iter_mut()
+            .flat_map(|group| &mut group.tracks)
+        {
+            let loop_ = &mut track.loops[0];
+            let frames = u64::from(source_rate / 1000) * if track.is_sync { 1008 } else { 4032 };
+            loop_.length_frames = frames;
+            for channel in &mut loop_.channels {
+                channel.data_length_frames = frames;
+                channel.start_offset_frames = 0;
+                channel.capture_alignment_frames = 0;
+                let id = format!("retime_{}", channel.id);
+                let payload = match channel.data_type {
+                    DataTypeDocument::Audio => MediaPayload::Audio(AudioPayload {
+                        samples: vec![0.25; frames as usize],
+                    }),
+                    DataTypeDocument::Midi => MediaPayload::Midi(ExactMidi {
+                        sample_rate: source_rate,
+                        length_frames: frames,
+                        start_state: vec![vec![0xb0, 7, 99]],
+                        events: vec![
+                            ExactMidiEvent {
+                                frame: 0,
+                                order: 0,
+                                data: vec![0x90, 60, 100],
+                            },
+                            ExactMidiEvent {
+                                frame: frames - 1,
+                                order: 1,
+                                data: vec![0x80, 60, 0],
+                            },
+                        ],
+                    }),
+                };
+                channel.media_id = Some(id.clone());
+                bundle.media.insert(id, payload);
+            }
+        }
+        let bytes: Arc<Vec<u8>> = encode_session(&bundle, "retime-workflow").unwrap().into();
+        let before = f.runtime.snapshot();
+        for accept in [false, true] {
+            f.dispatch(AppIntent::LoadSessionBytes {
+                name: "old-quantum.shoop".into(),
+                bytes: Arc::clone(&bytes),
+            });
+            let warning = f
+                .until(|state| {
+                    state.io_task.as_ref().is_some_and(|task| {
+                        task.status == IoTaskStatus::AwaitingFormatConversionConfirmation
+                    })
+                })
+                .await;
+            assert!(warning
+                .io_task
+                .as_ref()
+                .unwrap()
+                .format_conversion_warning
+                .is_some());
+            assert_eq!(warning.tracks[0].loops[0].length_frames, 0);
+            f.dispatch(AppIntent::ConfirmFormatConversion {
+                task_id: warning.io_task.as_ref().unwrap().id,
+                accept,
+            });
+            if !accept {
+                assert_eq!(
+                    f.runtime.snapshot().io_task.as_ref().unwrap().status,
+                    IoTaskStatus::Cancelled
+                );
+                assert_eq!(
+                    f.runtime.snapshot().tracks[0].loops[0].id,
+                    before.tracks[0].loops[0].id
+                );
+            } else {
+                let loaded = f
+                    .until(|state| {
+                        state
+                            .io_task
+                            .as_ref()
+                            .is_some_and(|task| task.status == IoTaskStatus::Completed)
+                    })
+                    .await;
+                assert_eq!(loaded.status.quantum_frames, 32);
+                assert_eq!(loaded.tracks[0].loops[0].length_frames, 1024);
+                assert_eq!(loaded.tracks[1].loops[0].length_frames, 4096);
+                assert!(loaded
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .all(|loop_| loop_.mode == LoopMode::Stopped));
+            }
+        }
+        f.dispatch(AppIntent::RequestSaveSession);
+        let converted = f.output().await;
+        f.dispatch(AppIntent::CompleteIoOutput {
+            task_id: converted.task_id,
+            outcome: FileOutputOutcome::Saved,
+        });
+        let saved = decode_session(&converted.bytes).unwrap();
+        assert!(saved
+            .media
+            .values()
+            .filter_map(|payload| match payload {
+                MediaPayload::Audio(audio) => Some(&audio.samples),
+                _ => None,
+            })
+            .flatten()
+            .all(|sample| *sample == 0.25));
+        f.dispatch(AppIntent::LoadSessionBytes {
+            name: "converted.shoop".into(),
+            bytes: Arc::clone(&converted.bytes),
+        });
+        f.until(|state| {
+            state
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+        assert_eq!(bundle.document.sample_rate, source_rate);
+    }
+}
+
+async fn live_family_fixture(quantum: usize) -> Fixture {
+    use shoop_session::*;
+    let mut f = Fixture::with_quantum(quantum);
+    f.dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)));
+    f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Family".into(),
+        audio_channels: 1,
+        midi: true,
+    }));
+    f.until(|state| state.tracks.len() == 2 && state.tracks[1].loops.len() == 8)
+        .await;
+    f.dispatch(AppIntent::RequestSaveSession);
+    let saved = f.output().await;
+    let mut bundle = decode_session(&saved.bytes).unwrap();
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: saved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    bundle.document.global.sync = true;
+    for track in bundle
+        .document
+        .track_groups
+        .iter_mut()
+        .flat_map(|group| &mut group.tracks)
+    {
+        let content = &mut track.loops[0];
+        let frames = quantum as u64 * if track.is_sync { 3 } else { 12 };
+        content.length_frames = frames;
+        for channel in &mut content.channels {
+            channel.data_length_frames = frames + 8;
+            channel.start_offset_frames = 2;
+            channel.capture_alignment_frames = 2;
+            let id = format!("family_{}", channel.id);
+            channel.media_id = Some(id.clone());
+            bundle.media.insert(
+                id,
+                match channel.data_type {
+                    DataTypeDocument::Audio => MediaPayload::Audio(AudioPayload {
+                        samples: vec![0.25; frames as usize + 8],
+                    }),
+                    DataTypeDocument::Midi => MediaPayload::Midi(ExactMidi {
+                        sample_rate: 1000,
+                        length_frames: frames + 8,
+                        start_state: vec![vec![0xb0, 7, 99]],
+                        events: vec![
+                            ExactMidiEvent {
+                                frame: 5,
+                                order: 0,
+                                data: vec![0x90, 60, 100],
+                            },
+                            ExactMidiEvent {
+                                frame: frames + 5,
+                                order: 1,
+                                data: vec![0x80, 60, 0],
+                            },
+                        ],
+                    }),
+                },
+            );
+        }
+    }
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "aligned-family.shoop".into(),
+        bytes: encode_session(&bundle, "family").unwrap().into(),
+    });
+    let state = f
+        .until(|state| {
+            state
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+    for track in &state.tracks {
+        f.dispatch(AppIntent::Loop {
+            track_id: track.id,
+            loop_id: track.loops[0].id,
+            action: LoopAction::PlayClicked,
+        });
+    }
+    f.until(|state| {
+        state
+            .tracks
+            .iter()
+            .all(|track| track.loops[0].mode == LoopMode::Playing)
+    })
+    .await;
+    f
+}
+
+#[shoop_test]
+async fn live_audio_and_midi_retiming_preserves_history_sync_dependents_and_current_controls() {
+    use shoop_session::*;
+    for audio in [true, false] {
+        for rate in [1000, 2000] {
+            let mut f = live_family_fixture(32).await;
+            let before = f.runtime.snapshot();
+            let target_track = usize::from(!audio);
+            let target = before.tracks[target_track].loops[0].id;
+            let child = before.tracks[1].loops[0].id;
+            let bytes: Arc<Vec<u8>> = if audio {
+                encode_float_wav(&LoopAudio {
+                    sample_rate: rate,
+                    channels: vec![LoopAudioChannel {
+                        label: "Incoming".into(),
+                        role: "direct".into(),
+                        samples: vec![0.5; (112 * rate / 1000) as usize],
+                    }],
+                })
+                .unwrap()
+                .into()
+            } else {
+                encode_exact_midi(&ExactMidi {
+                    sample_rate: rate,
+                    length_frames: u64::from(112 * rate / 1000),
+                    start_state: vec![vec![0xb0, 7, 75]],
+                    events: vec![ExactMidiEvent {
+                        frame: u64::from(9 * rate / 1000),
+                        order: 0,
+                        data: vec![0x90, 62, 100],
+                    }],
+                })
+                .unwrap()
+                .into()
+            };
+            for accept in [false, true] {
+                f.dispatch(if audio {
+                    AppIntent::ImportLoopAudioBytes {
+                        loop_id: target,
+                        name: "unaligned.wav".into(),
+                        bytes: Arc::clone(&bytes),
+                        update_loop_length: true,
+                    }
+                } else {
+                    AppIntent::ImportLoopMidiBytes {
+                        loop_id: target,
+                        name: "unaligned.shoop-midi".into(),
+                        bytes: Arc::clone(&bytes),
+                        update_loop_length: true,
+                    }
+                });
+                if audio {
+                    let mapping = f
+                        .until(|state| {
+                            state.io_task.as_ref().is_some_and(|task| {
+                                task.status == IoTaskStatus::AwaitingChannelMapping
+                            })
+                        })
+                        .await;
+                    f.dispatch(AppIntent::ConfirmAudioChannelMapping {
+                        task_id: mapping.io_task.as_ref().unwrap().id,
+                        source_for_destination: vec![0],
+                    });
+                }
+                let warning = f
+                    .until(|state| {
+                        state.io_task.as_ref().is_some_and(|task| {
+                            task.status == IoTaskStatus::AwaitingFormatConversionConfirmation
+                        })
+                    })
+                    .await;
+                assert_eq!(warning.tracks[0].loops[0].length_frames, 96);
+                assert_eq!(warning.tracks[1].loops[0].length_frames, 384);
+                f.dispatch(AppIntent::ConfirmFormatConversion {
+                    task_id: warning.io_task.as_ref().unwrap().id,
+                    accept,
+                });
+                if !accept {
+                    assert_eq!(
+                        f.runtime.snapshot().io_task.as_ref().unwrap().status,
+                        IoTaskStatus::Cancelled
+                    );
+                }
+            }
+            f.dispatch(AppIntent::Loop {
+                track_id: before.tracks[1].id,
+                loop_id: child,
+                action: LoopAction::GainChanged(0.625),
+            });
+            let state = f
+                .until(|state| {
+                    state
+                        .io_task
+                        .as_ref()
+                        .is_some_and(|task| task.status == IoTaskStatus::Completed)
+                })
+                .await;
+            assert_eq!(state.tracks[target_track].loops[0].length_frames, 128);
+            assert_eq!(state.tracks[1].loops[0].gain, 0.625);
+            assert!(state
+                .tracks
+                .iter()
+                .all(|track| track.loops[0].mode == LoopMode::Playing));
+            assert_eq!(state.tracks[0].loops[0].id, before.tracks[0].loops[0].id);
+            if audio {
+                assert_eq!(state.tracks[1].loops[0].length_frames, 448);
+            } else {
+                assert_eq!(state.tracks[0].loops[0].length_frames, 96);
+            }
+            f.dispatch(AppIntent::RequestSaveSession);
+            let saved = f.output().await;
+            let bundle = decode_session(&saved.bytes).unwrap();
+            let track = bundle
+                .document
+                .track_groups
+                .iter()
+                .flat_map(|group| &group.tracks)
+                .find(|track| !track.is_sync)
+                .unwrap();
+            let content = &track.loops[0];
+            for channel in &content.channels {
+                let payload = &bundle.media[channel.media_id.as_ref().unwrap()];
+                match payload {
+                    MediaPayload::Audio(samples) => {
+                        assert_eq!(samples.samples.len(), if audio { 458 } else { 449 });
+                        assert_eq!(
+                            channel.start_offset_frames + channel.capture_alignment_frames,
+                            5
+                        );
+                    }
+                    MediaPayload::Midi(midi) if audio => {
+                        assert_eq!(midi.length_frames, 458);
+                        assert_eq!(midi.events[0].frame, 6);
+                        assert_eq!(midi.start_state, vec![vec![0xb0, 7, 99]]);
+                        assert_eq!(midi.events[1].data, vec![0x80, 60, 0]);
+                    }
+                    MediaPayload::Midi(midi) => {
+                        assert_eq!(midi.length_frames, 128);
+                        assert_eq!(midi.events[0].frame, 10);
+                        assert_eq!(midi.start_state, vec![vec![0xb0, 7, 75]]);
+                    }
+                }
+            }
+        }
     }
 }
 #[shoop_test]
@@ -1026,10 +1405,10 @@ async fn task_callbacks_are_fenced_and_rate_decline_preserves_the_session() {
         .until(|s| {
             s.io_task
                 .as_ref()
-                .is_some_and(|t| t.status == IoTaskStatus::AwaitingSampleRateConfirmation)
+                .is_some_and(|t| t.status == IoTaskStatus::AwaitingFormatConversionConfirmation)
         })
         .await;
-    f.dispatch(AppIntent::ConfirmSampleRateConversion {
+    f.dispatch(AppIntent::ConfirmFormatConversion {
         task_id: state.io_task.as_ref().unwrap().id,
         accept: false,
     });
@@ -1077,6 +1456,155 @@ async fn queued_global_commands_keep_their_original_session_epoch() {
                 ..
             }
         )));
+}
+
+async fn unaligned_audio(f: &mut Fixture, quantum: usize, update_length: bool) -> TaskId {
+    let root = f.runtime.snapshot().tracks[0].loops[0].id;
+    let audio = shoop_session::LoopAudio {
+        sample_rate: 1000,
+        channels: vec![shoop_session::LoopAudioChannel {
+            label: "New".into(),
+            role: "direct".into(),
+            samples: vec![0.5; quantum * 7 / 2],
+        }],
+    };
+    f.dispatch(AppIntent::ImportLoopAudioBytes {
+        loop_id: root,
+        name: "new.wav".into(),
+        bytes: shoop_session::encode_float_wav(&audio).unwrap().into(),
+        update_loop_length: update_length,
+    });
+    let state = f
+        .until(|state| {
+            state
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::AwaitingChannelMapping)
+        })
+        .await;
+    let id = state.io_task.as_ref().unwrap().id;
+    f.dispatch(AppIntent::ConfirmAudioChannelMapping {
+        task_id: id,
+        source_for_destination: vec![0],
+    });
+    id
+}
+
+#[shoop_test]
+async fn live_family_import_cancels_during_capture_and_refuses_stale_consent() {
+    for stale in [false, true] {
+        let mut f = live_family_fixture(32).await;
+        let id = unaligned_audio(&mut f, 32, true).await;
+        let state = f
+            .until(|state| {
+                state.io_task.as_ref().is_some_and(|task| {
+                    task.status == IoTaskStatus::AwaitingFormatConversionConfirmation
+                })
+            })
+            .await;
+        if stale {
+            f.dispatch(AppIntent::Loop {
+                track_id: state.tracks[1].id,
+                loop_id: state.tracks[1].loops[0].id,
+                action: LoopAction::RecordClicked,
+            });
+            f.until(|state| state.tracks[1].loops[0].mode == LoopMode::Recording)
+                .await;
+            f.dispatch(AppIntent::ConfirmFormatConversion {
+                task_id: id,
+                accept: true,
+            });
+            let state = f
+                .until(|state| {
+                    state
+                        .io_task
+                        .as_ref()
+                        .is_some_and(|task| task.status == IoTaskStatus::Failed)
+                })
+                .await;
+            assert!(state.io_task.as_ref().unwrap().message.contains("changed"));
+            assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Recording);
+        } else {
+            f.dispatch(AppIntent::ConfirmFormatConversion {
+                task_id: id,
+                accept: true,
+            });
+            let state = f
+                .until(|state| {
+                    state
+                        .io_task
+                        .as_ref()
+                        .is_some_and(|task| task.message.contains("Capturing"))
+                })
+                .await;
+            assert_eq!(state.tracks[1].loops[0].length_frames, 384);
+            f.dispatch(AppIntent::CancelIoTask { task_id: id });
+            assert_eq!(
+                f.runtime.snapshot().io_task.as_ref().unwrap().status,
+                IoTaskStatus::Cancelled
+            );
+            for _ in 0..16 {
+                f.step();
+                idle().await;
+            }
+            assert_eq!(f.runtime.snapshot().tracks[1].loops[0].length_frames, 384);
+            let id = unaligned_audio(&mut f, 32, true).await;
+            f.until(|state| {
+                state.io_task.as_ref().is_some_and(|task| {
+                    task.status == IoTaskStatus::AwaitingFormatConversionConfirmation
+                })
+            })
+            .await;
+            f.dispatch(AppIntent::ConfirmFormatConversion {
+                task_id: id,
+                accept: false,
+            });
+        }
+        assert_eq!(f.runtime.snapshot().tracks[0].loops[0].length_frames, 96);
+    }
+}
+
+#[shoop_test]
+async fn live_import_at_16_and_64_frames_keeps_raw_lengths_when_the_window_is_unchanged() {
+    for quantum in [16, 64] {
+        let mut f = live_family_fixture(quantum).await;
+        unaligned_audio(&mut f, quantum, false).await;
+        let state = f
+            .until(|state| {
+                state
+                    .io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            })
+            .await;
+        assert_eq!(state.tracks[0].loops[0].length_frames, quantum as u64 * 3);
+        assert_eq!(state.tracks[1].loops[0].length_frames, quantum as u64 * 12);
+        let id = unaligned_audio(&mut f, quantum, true).await;
+        f.until(|state| {
+            state.io_task.as_ref().is_some_and(|task| {
+                task.status == IoTaskStatus::AwaitingFormatConversionConfirmation
+            })
+        })
+        .await;
+        f.dispatch(AppIntent::ConfirmFormatConversion {
+            task_id: id,
+            accept: true,
+        });
+        let state = f
+            .until(|state| {
+                state
+                    .io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            })
+            .await;
+        assert_eq!(state.tracks[0].loops[0].length_frames, quantum as u64 * 4);
+        assert_eq!(state.tracks[1].loops[0].length_frames, quantum as u64 * 14);
+        assert!(state
+            .tracks
+            .iter()
+            .all(|track| track.loops[0].mode == LoopMode::Playing));
+    }
 }
 
 async fn idle() {

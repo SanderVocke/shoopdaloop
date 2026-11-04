@@ -36,15 +36,11 @@ fn main() {
     .prepare()
     .unwrap();
     // Capture storage for the loop's takes: two banks, one stereo member each.
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        None,
-        CaptureGroupConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
             groups: 2,
             members_per_group: 1,
             staging_bytes_per_group: 64,
-        },
-    )
+        })
     .unwrap();
 
     // 2. Describe the musical loop: one empty primitive loop, no sync source.
@@ -105,34 +101,19 @@ fn main() {
         planner,
         nodes,
         client,
-    } = LoopPlanner::prepare(
-        config,
-        topology,
-        &mut resources,
-        Settings {
+    } = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 3,
             media_slots: 4,
             export_slots: 0,
-        },
-        vec![binding],
-        vec![],
-        Options::default(),
-    )
+        }, vec![binding], vec![], Options::default())
     .unwrap();
     let nodes = nodes
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
     // 6. Install everything in a runtime; the control endpoint takes submissions.
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &graph,
-        &client.bindings_for(&graph),
-    )
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
     .unwrap();
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));

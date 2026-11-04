@@ -74,7 +74,7 @@ connection.
 - `shoop_app_connection/tests/network.rs`: Master staging/playback/cancellation
   through throttled serialized records, bounded ingress and unchanged media.
 
-Application protocol version is 19; engine protocol version is 5. Rebuild clients
+Application protocol version is 20; engine protocol version is 7. Rebuild clients
 and hosts together.
 
 ### Available-device acceptance (Linux, 2026-11-04)

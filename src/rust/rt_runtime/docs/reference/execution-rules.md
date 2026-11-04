@@ -2,22 +2,22 @@
 
 [Book](../README.md) · [Reference](README.md)
 
-These rules describe generic GraphRuntime. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
+These rules describe generic GraphRuntime. There is one execution kernel. Every constructor takes an explicit immutable `Quantum`; `prepare_for_host` also declares the maximum outer callback size. Buffered hosts declare a constant Q-frame stream delay. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
 
 ## Callback envelope and half-open time
 
-A zero-frame call returns immediately without shape/frame validation, ingress, recycling, planning, resource work or output mutation. It is not a flush. A nonempty call validates host shapes/packet bounds and the expected absolute frame; bounded output clearing can precede refusal. Validated clock advancement occurs before processing, so a later fault can leave the next-frame clock advanced.
+A zero-frame call returns immediately without shape/frame validation, ingress, recycling, planning, resource work or output mutation. It is not a flush. A nonempty call validates host shapes/packet bounds and the expected absolute frame; bounded output clearing can precede refusal. Validated clock advancement occurs before processing, so a later fault can leave the next-frame clock advanced. An execution fault is terminal: silence subsequent calls and stop/extract the owners without replay.
 
 For each valid nonempty callback:
 
 1. Recycle execution credits and reset callback resource/diagnostic allowances.
 2. Snapshot eligible transport work, apply ingress commands and incremental graph validation.
-3. Deliver due scheduled actions, plan a positive interval up to the external/host ceiling, process its graph, then finish its observations/resource publication.
-4. Repeat internal intervals while inside the host block; reclaim with remaining validation work and publish bounded diagnostics.
+3. Deliver actions due at the next fixed tick, settle its domain, process the whole prepared quantum, then finish capture/state publication.
+4. Repeat whole ticks while inside the host block (or as buffering completes each tick); reclaim with remaining validation work and publish bounded diagnostics.
 
-Intervals are `[frame,end)`. An action at host callback end is settled by the next nonempty callback, not by the preceding finish. `callback_start` remains the host origin while `frame` advances internally. `graph_epoch` is the context-entry identity; after activation use the returned next epoch. Neither more intervals nor newly read results refresh callback ingress/recycle/validation/optional-copy/recovery/publication allowances. `budgets.subranges` is ignored.
+Ticks are `[frame,frame+Q)`. An action at host callback end is settled by the next nonempty callback, not by the preceding finish. `callback_start` remains the host origin while `frame` advances internally. `graph_epoch` is the context-entry identity; after activation use the returned next epoch. Neither more intervals nor newly read results refresh callback ingress/recycle/validation/optional-copy/recovery/publication allowances. Internal graph ticks have no quota.
 
-A planner must establish finite same-frame settlement and return `frame < end <= ceiling`. Required reads/capture have independent work counters and physical/shape/time checks, not optional quotas.
+The domain must establish finite same-tick settlement. A compatibility `Planner::plan` implementation must return the supplied tick end exactly; it cannot subdivide execution. Required reads/capture have independent work counters and physical/shape/time checks, not optional quotas.
 
 ## Transport order and cancellation observation
 
@@ -29,13 +29,13 @@ Only original dequeue observes a ticket's cancellation flag: a request cancelled
 
 ## Scheduled order is not submission order
 
-The scheduler orders by `(effective_frame, action target/category/subkey, sequence)`:
+Requested times round upward to the prepared grid. The scheduler orders by `(effective_frame, action target/category/subkey, sequence)`:
 
 - Planner-target operations precede processor-target actions at the same frame.
 - Processor targets are ordered by identity. Within one target, parameter actions precede MIDI, which precedes typed processor operations; parameter/port indices form subkeys.
 - Sequence breaks otherwise equal keys. Transport recovery priority is not a different scheduler sort key.
 
-Signal graph order is separately canonical and acyclic. Decision bindings are not signal edges. Routed MIDI preserves stable source ordering; equal-offset injected packets follow the routed source contribution. Complete packet order does not imply arbitrary downstream synthesizer state is reversible.
+Signal graph order is separately canonical and acyclic. Domain state is independent of signal edges. Routed MIDI preserves stable source ordering; equal-offset injected packets follow the routed source contribution. Complete packet order does not imply arbitrary downstream synthesizer state is reversible.
 
 Operation-time graph removal precedes later processor/MIDI delivery, making an old target InvalidId. Planning-time removal after injection is Busy if it would discard unconsumed input; the old graph consumes that packet once. Submission order cannot reverse these categories, and graph changes synthesize no note/pedal cleanup.
 
@@ -59,12 +59,14 @@ Cancellation cuts are distinct: ticket before dequeue; `cancel_queued` for undel
 | Path | Publication and ownership |
 |---|---|
 | `prepare_with_initial_graph` | Startup epoch 1/frame 0, no warm-up callback or queued owner. |
-| Normal `Command::Commit` | Incremental validation; old graph continues until callback-ingress publication. Completion returns displaced plan. |
+| Normal `Command::Commit` | Incremental validation; old graph continues until ingress can publish at an eligible core tick. Completion returns displaced plan. |
 | Normal `StageGraph` then planner permit | Owning completion means Ready only; later actual-boundary preflight/commit coordinates domain and graph. |
 
 The planner admits the first two paths through `Planner::admit_graph`, and generic `Remove`/`Install` through `Planner::admit_processor_change`, before anything changes. A refusal fails preparation or rejects the command with the planner's error; the active graph, epoch and slots stay as they were. Both hooks default to admitting everything. Permit-based publication is checked by the planner that holds the permit.
 
 Stage identities check runtime scope/slot/generation. Ready is neither active nor locked by copied/pending references. Preflight checks current/validation epochs, actual retained/displaced capacities, next epoch and pending MIDI compatibility. All fallible application preflight must precede domain mutation. An unused permit changes no graph state; it cannot undo arbitrary application mutations.
+
+Buffered-host graph commits and generic capture start/stop/snapshot operations wait until the next collected tick is eligible for their original request boundary. A partial earlier tick retains its graph/capture state. Snapshot cuts use the core clock. Callback budgets and owning credits are retained while waiting.
 
 Commit swaps the graph/epoch without freeing the displaced owner. The slot becomes Taken, retaining that owner—or legitimately none when no graph was active. Normal ReleaseGraph returns Ready/Taken ownership and retires the identity; reuse advances generation. Graph/catalog changes invalidate earlier candidate validation. Do not mutate borrowed metadata or merely rewrite an expected epoch to evade restaging.
 

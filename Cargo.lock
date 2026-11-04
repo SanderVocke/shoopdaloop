@@ -4490,10 +4490,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_buffered"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
+name = "rt_profiling"
+version = "0.3.0"
+dependencies = [
+ "libm",
+ "rtrb",
+ "serde",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
  "loom",
+ "rt_profiling",
  "rtrb",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -4797,6 +4818,7 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "rt_profiling",
  "serde",
  "shoop_latency",
  "shoop_port_graph",
@@ -4992,20 +5014,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shoop_engine_service"
-version = "0.3.0"
-dependencies = [
- "rt_runtime",
- "rtrb",
- "shoop_engine",
- "shoop_example_dsp",
- "shoop_latency",
- "shoop_loops",
- "shoop_wasm_test_support",
- "wasm-bindgen-test",
-]
-
-[[package]]
 name = "shoop_example_dsp"
 version = "0.3.0"
 dependencies = [
@@ -5112,7 +5120,12 @@ name = "shoop_loops_test_support"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_engine",
+ "shoop_example_dsp",
+ "shoop_latency",
  "shoop_loops",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5171,11 +5184,16 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
+ "rt_buffered",
  "rt_runtime",
+ "shoop_app_api",
+ "shoop_app_protocol",
  "shoop_loops",
+ "shoop_persistence_codec",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
+ "shoop_session",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -5237,6 +5255,7 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "rt_profiling",
  "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

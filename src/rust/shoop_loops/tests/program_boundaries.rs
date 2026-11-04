@@ -75,6 +75,7 @@ fn prepare(input: &TopologyDescription, journal: usize, pending: usize) -> Resol
             input,
         )
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }
@@ -105,9 +106,9 @@ fn start(resolver: &mut Resolver) -> [RequestId; 2] {
 }
 fn advance(resolver: &mut Resolver, end: u64) {
     while resolver.frame() < Frame(end) {
-        let interval = assert_no_heap(|| resolver.preview(Frame(end), &[])).unwrap();
+        assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
         assert_no_heap(|| resolver.commit()).unwrap();
-        assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+        assert_no_heap(|| resolver.finish()).unwrap();
     }
 }
 
@@ -172,8 +173,8 @@ fn unpublished_program_cuts_match_scalar_clocks_across_partitions_orders_and_unr
                     }
                     let probe =
                         assert_no_heap(|| resolver.probe_program_boundary(id(1), &[])).unwrap();
-                    let interval = assert_no_heap(|| resolver.preview(end, &[])).unwrap();
-                    let expected = assert_no_heap(|| baseline.preview(end, &[])).unwrap();
+                    let interval = assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
+                    let expected = assert_no_heap(|| baseline.preview_tick(&[])).unwrap();
                     assert_eq!(interval, expected);
                     assert_eq!(resolver.decisions().unwrap(), baseline.decisions().unwrap());
                     assert_eq!(
@@ -190,8 +191,8 @@ fn unpublished_program_cuts_match_scalar_clocks_across_partitions_orders_and_unr
                     assert_no_heap(|| baseline.commit()).unwrap();
                     assert_eq!(resolver.events(), baseline.events());
                     assert_eq!(resolver.dropped_events(), baseline.dropped_events());
-                    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
-                    assert_no_heap(|| baseline.finish(expected.end)).unwrap();
+                    assert_no_heap(|| resolver.finish()).unwrap();
+                    assert_no_heap(|| baseline.finish()).unwrap();
                     assert_eq!(resolver.retained_requests(), 2);
                 }
             }
@@ -283,7 +284,7 @@ fn prospective_zero_cut_obeys_same_frame_control_priority_and_actual_source_puls
         if let Some(request) = request {
             assert_eq!(resolver.completion(request).unwrap().is_some(), case == 6);
         }
-        let interval = assert_no_heap(|| resolver.preview(Frame(7), &observations)).unwrap();
+        assert_no_heap(|| resolver.preview_tick(&observations)).unwrap();
         assert_no_heap(|| resolver.commit()).unwrap();
         assert_eq!(resolver.state(id(1)).unwrap(), probe.state);
         if let Some(request) = request {
@@ -301,7 +302,7 @@ fn prospective_zero_cut_obeys_same_frame_control_priority_and_actual_source_puls
                 expected
             );
         }
-        assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+        assert_no_heap(|| resolver.finish()).unwrap();
     }
 }
 
@@ -362,7 +363,7 @@ fn nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_un
         assert_no_heap(|| resolver.commit()),
         Err(Error::InvalidState)
     );
-    let interval = assert_no_heap(|| resolver.preview(Frame(1), &[refusal])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[refusal])).unwrap();
     assert_no_heap(|| resolver.commit()).unwrap();
     let decisions = resolver.decisions().unwrap().to_vec();
     assert_eq!(
@@ -370,7 +371,7 @@ fn nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_un
         Err(Error::InvalidState)
     );
     assert_eq!(resolver.decisions().unwrap(), decisions);
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
     let candidate = compile(resolver.topology().limits(), &input).unwrap();
     let retired = assert_no_heap(|| resolver.replace_topology(Epoch(0), candidate)).unwrap();
     let probe = assert_no_heap(|| resolver.probe_program_boundary(id(1), &[])).unwrap();
@@ -404,7 +405,7 @@ fn nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_un
     assert_eq!(stalled.state.last_pulse, Some(Frame(0)));
     assert!(!stalled.enters_zero());
     assert_eq!(resolver.completion(start).unwrap(), None);
-    let interval = assert_no_heap(|| resolver.preview(Frame(3), &[unavailable])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[unavailable])).unwrap();
     assert_no_heap(|| resolver.commit()).unwrap();
     assert_eq!(resolver.state(id(1)).unwrap(), stalled.state);
     assert_eq!(
@@ -414,5 +415,5 @@ fn nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_un
             reason: Error::Capacity
         }
     );
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
 }

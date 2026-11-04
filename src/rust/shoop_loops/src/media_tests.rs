@@ -15,6 +15,7 @@ fn exhausted_media_and_export_generations_retire_instead_of_retargeting() {
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap();
     let owner = LoopId::from_parts(0, 1).unwrap();
