@@ -1,15 +1,19 @@
 mod support;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
-    executor::{Command, GraphRuntime},
+    executor::{Command, GraphRuntime, PreparedNode},
     graph::{self, Connection, Endpoint, GraphDescription, PortCounts, PortType},
     planner::NoPlanner,
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
     transport::Lane,
-    Config, Epoch, Error, Frame, Quantum,
+    Config, Epoch, Error, Frame, NodeId, Quantum,
 };
 use shoop_wasm_test_support::shoop_test;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use support::assert_no_heap;
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
@@ -148,37 +152,37 @@ fn buffered_audio_preserves_every_prepared_port_across_host_partitions() {
     }
 }
 
+fn midi_step<P: Processor>(
+    runtime: &mut GraphRuntime<P>,
+    input: &MidiBuffer,
+    frames: usize,
+    expected_audio: f32,
+) -> MidiBuffer {
+    let audio = vec![1.; frames];
+    let mut output = vec![99.; frames];
+    let mut midi = [MidiBuffer::new(4, 12).unwrap()];
+    assert_no_heap(|| {
+        runtime.process(
+            AudioBlock {
+                frame: runtime.next_frame(),
+                frames,
+                inputs: &[&audio],
+                outputs: &mut [&mut output],
+            },
+            MidiBlock {
+                inputs: core::slice::from_ref(input),
+                outputs: &mut midi,
+            },
+        )
+    })
+    .unwrap();
+    assert_eq!(output, vec![expected_audio; frames]);
+    let [midi] = midi;
+    midi
+}
+
 #[shoop_test]
 fn buffered_midi_recovery_discards_delayed_notes_before_acknowledgment() {
-    fn process(
-        runtime: &mut GraphRuntime<Unused>,
-        input: &MidiBuffer,
-        frames: usize,
-        expected_audio: f32,
-    ) -> MidiBuffer {
-        let audio = vec![1.; frames];
-        let mut output = vec![99.; frames];
-        let mut midi = [MidiBuffer::new(4, 12).unwrap()];
-        assert_no_heap(|| {
-            runtime.process(
-                AudioBlock {
-                    frame: runtime.next_frame(),
-                    frames,
-                    inputs: &[&audio],
-                    outputs: &mut [&mut output],
-                },
-                MidiBlock {
-                    inputs: core::slice::from_ref(input),
-                    outputs: &mut midi,
-                },
-            )
-        })
-        .unwrap();
-        assert_eq!(output, vec![expected_audio; frames]);
-        let [midi] = midi;
-        midi
-    }
-
     for q in [16, 32, 64] {
         for overflow in [false, true] {
             for sink_events in [32, 1] {
@@ -226,7 +230,7 @@ fn buffered_midi_recovery_discards_delayed_notes_before_acknowledgment() {
                 for offset in [3 * q / 4, 3 * q / 4 + 1] {
                     input.push(offset as u32, q, &[0x90, 60, 100]).unwrap();
                 }
-                assert!(process(&mut runtime, &input, q, 0.).is_empty());
+                assert!(midi_step(&mut runtime, &input, q, 0.).is_empty());
                 input.clear();
                 let frames = if overflow {
                     for offset in [0, 1, 2, 3 * q / 4] {
@@ -241,7 +245,7 @@ fn buffered_midi_recovery_discards_delayed_notes_before_acknowledgment() {
                         .unwrap_or_else(|error| panic!("{:?}", error.error));
                     q / 2
                 };
-                assert!(process(&mut runtime, &input, frames, 1.).is_empty());
+                assert!(midi_step(&mut runtime, &input, frames, 1.).is_empty());
                 assert_eq!(runtime.diagnostics().midi_overflows > 0, overflow);
                 input.clear();
                 let mut reset = MidiBuffer::new(sink_events, 3 * sink_events).unwrap();
@@ -268,18 +272,175 @@ fn buffered_midi_recovery_discards_delayed_notes_before_acknowledgment() {
                         );
                     }
                     if runtime.midi_recovery_pending(0).unwrap() {
-                        assert!(process(&mut runtime, &input, q / 2, 1.).is_empty());
+                        assert!(midi_step(&mut runtime, &input, q / 2, 1.).is_empty());
                     }
                 }
                 assert!(!runtime.midi_recovery_pending(0).unwrap());
-                assert!(process(&mut runtime, &input, q / 2, 1.).is_empty());
+                assert!(midi_step(&mut runtime, &input, q / 2, 1.).is_empty());
                 input.push((q / 4) as u32, q, &[0x90, 62, 100]).unwrap();
-                assert!(process(&mut runtime, &input, q, 1.).is_empty());
+                assert!(midi_step(&mut runtime, &input, q, 1.).is_empty());
                 input.clear();
-                let output = process(&mut runtime, &input, q, 1.);
+                let output = midi_step(&mut runtime, &input, q, 1.);
                 assert_eq!(output.len(), 1);
                 assert_eq!(output.get(0), Some(((q / 4) as u32, &[0x90, 62, 100][..])));
             }
+        }
+    }
+}
+
+#[shoop_test]
+fn buffered_reset_waits_for_pending_input_without_losing_history_or_fresh_notes() {
+    struct MidiHistory(Arc<[AtomicUsize; 4]>);
+    impl Processor for MidiHistory {
+        fn ports(&self) -> PortCounts {
+            PortCounts {
+                midi_inputs: 1,
+                midi_outputs: 1,
+                ..Default::default()
+            }
+        }
+        fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+            for index in 0..block.midi_inputs[0].len() {
+                let (offset, data) = block.midi_inputs[0].get(index).unwrap();
+                if data[1] == 60 || data[1] == 61 {
+                    let slot = 2 * (data[1] - 60) as usize;
+                    self.0[slot].store(
+                        block.frame.0 as usize + offset as usize + 1,
+                        Ordering::Relaxed,
+                    );
+                    self.0[slot + 1].fetch_add(1, Ordering::Relaxed);
+                }
+                block.midi_outputs[0].push(offset, block.frames, data)?;
+            }
+            Ok(())
+        }
+    }
+    for q in [16, 32, 64] {
+        for sink_events in [32, 1] {
+            let quantum = Quantum::new(q).unwrap();
+            let config = Config {
+                max_frames: q,
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_inputs: 1,
+                midi_outputs: 1,
+                midi_events_per_port: 4,
+                midi_bytes_per_port: 12,
+                max_nodes: 1,
+                max_ports: 6,
+                max_edges: 3,
+                resource_slots: 1,
+                resource_pages: 1,
+                page_bytes: 16,
+                ..Default::default()
+            }
+            .prepare()
+            .unwrap();
+            let history = Arc::new(core::array::from_fn(|_| AtomicUsize::new(0)));
+            let node = NodeId::from_parts(0, 1).unwrap();
+            let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
+                config,
+                128,
+                quantum,
+                vec![PreparedNode::new(node, MidiHistory(history.clone()))],
+                NoPlanner,
+                ResourceStore::new(config, quantum).unwrap(),
+            )
+            .unwrap();
+            runtime.prepare_host_buffering().unwrap();
+            runtime
+                .prepare_initial_graph(&GraphDescription {
+                    nodes: vec![node],
+                    connections: vec![
+                        Connection {
+                            source: Endpoint::host(PortType::Audio, 0),
+                            destination: Endpoint::host(PortType::Audio, 0),
+                        },
+                        Connection {
+                            source: Endpoint::host(PortType::Midi, 0),
+                            destination: Endpoint::node(node, PortType::Midi, 0),
+                        },
+                        Connection {
+                            source: Endpoint::node(node, PortType::Midi, 0),
+                            destination: Endpoint::host(PortType::Midi, 0),
+                        },
+                    ],
+                })
+                .unwrap();
+            let h = q / 4;
+            let mut input = MidiBuffer::new(4, 12).unwrap();
+            let mut reset = MidiBuffer::new(sink_events, 3 * sink_events).unwrap();
+            input.push((q / 8) as u32, h, &[0x90, 60, 100]).unwrap();
+            assert!(midi_step(&mut runtime, &input, h, 0.).is_empty());
+            input.clear();
+            input.push(0, h, &[0x90, 62, 100]).unwrap();
+            control
+                .submit(Lane::Recovery, Command::ResetMidi)
+                .unwrap_or_else(|e| panic!("{:?}", e.error));
+            for part in 1..4 {
+                assert!(midi_step(&mut runtime, &input, h, 0.).is_empty());
+                reset.clear();
+                assert_eq!(
+                    assert_no_heap(|| runtime.drain_midi_recovery(0, &mut reset, h)).unwrap(),
+                    if part == 3 { sink_events } else { 0 }
+                );
+            }
+            assert_eq!(history[0].load(Ordering::Relaxed), q / 8 + 1);
+            assert_eq!(history[1].load(Ordering::Relaxed), 1);
+            assert!(control.try_completion().is_some());
+            if sink_events == 1 {
+                for _ in 1..31 {
+                    assert!(midi_step(&mut runtime, &input, h + 1, 1.).is_empty());
+                    reset.clear();
+                    assert_eq!(
+                        assert_no_heap(|| runtime.drain_midi_recovery(0, &mut reset, h + 1))
+                            .unwrap(),
+                        1
+                    );
+                }
+                let second = runtime.next_frame().0 as usize;
+                input.clear();
+                input.push(0, 1, &[0x90, 61, 100]).unwrap();
+                assert!(midi_step(&mut runtime, &input, 1, 1.).is_empty());
+                input.clear();
+                control
+                    .submit(Lane::Recovery, Command::ResetMidi)
+                    .unwrap_or_else(|e| panic!("{:?}", e.error));
+                for _ in 0..q {
+                    assert!(midi_step(&mut runtime, &input, 1, 1.).is_empty());
+                    reset.clear();
+                    let recorded = history[3].load(Ordering::Relaxed) == 1;
+                    assert_eq!(
+                        assert_no_heap(|| runtime.drain_midi_recovery(0, &mut reset, 1)).unwrap(),
+                        usize::from(recorded)
+                    );
+                    if !runtime.midi_recovery_pending(0).unwrap() {
+                        break;
+                    }
+                }
+                assert_eq!(history[2].load(Ordering::Relaxed), second + 1);
+                assert_eq!(history[3].load(Ordering::Relaxed), 1);
+            }
+            assert!(!runtime.midi_recovery_pending(0).unwrap());
+            let mut expected = Vec::new();
+            let mut observed = Vec::new();
+            for part in 0..=10 {
+                let frames = if part == 10 { q } else { h + 1 };
+                input.clear();
+                let frame = runtime.next_frame().0;
+                if part < 10 {
+                    input.push(0, frames, &[0x90, 63, 100]).unwrap();
+                    expected.push(frame + q as u64);
+                }
+                let output = midi_step(&mut runtime, &input, frames, 1.);
+                for index in 0..output.len() {
+                    let (offset, packet) = output.get(index).unwrap();
+                    assert_eq!(packet, [0x90, 63, 100]);
+                    observed.push(frame + offset as u64);
+                }
+            }
+            assert_eq!(observed, expected);
+            assert_eq!(history[1].load(Ordering::Relaxed), 1);
         }
     }
 }

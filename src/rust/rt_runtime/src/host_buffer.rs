@@ -67,6 +67,7 @@ pub(crate) struct HostBuffer {
     output: Box<[f32]>,
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
+    midi_recovery_wait: bool,
     overflows: usize,
 }
 impl HostBuffer {
@@ -91,6 +92,7 @@ impl HostBuffer {
             output,
             midi_input: midi(c.midi_inputs)?,
             midi_output: midi(c.midi_outputs)?,
+            midi_recovery_wait: false,
             overflows: 0,
         })
     }
@@ -148,6 +150,7 @@ impl HostBuffer {
                 for m in &mut self.midi_input {
                     m.clear();
                 }
+                self.midi_recovery_wait = false;
                 self.fill = 0;
             }
         }
@@ -159,6 +162,14 @@ impl HostBuffer {
 
     pub fn clear_midi_output(&mut self, port: usize) {
         self.midi_output[port].clear();
+    }
+
+    pub fn defer_midi_recovery(&mut self) {
+        self.midi_recovery_wait |= self.midi_input.iter().any(|port| !port.is_empty());
+    }
+
+    pub fn midi_recovery_ready(&self) -> bool {
+        !self.midi_recovery_wait
     }
 }
 
