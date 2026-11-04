@@ -40,6 +40,11 @@ Each indexed version reserves one mutable state slot and a full checkpoint row. 
 
 Approximate state storage is `versions × (1 + C) × size_of::<MidiState>()`, plus fixed metadata/free stacks. These are independent prepared rows, not a copy of all media pages. Arithmetic/capacity checks do not certify available OS memory or callback deadlines.
 
+The prepared projection packs per-note flags/pressure and shares controller
+presence with the known-controller mask. Portable tests bound its size to 9 KiB
+while preserving unknown values, known zero, pedal flags and opaque channel
+round trips. This affects memory size, not packet capacity or replay cadence.
+
 ## 2. Supply history before the first recorded packet
 
 The example's initial state contains held key 62 at velocity 40:

@@ -88,6 +88,15 @@ also found that legacy Control Grab expands selected targets while raw
 AdoptRingbuffers uses the exact list; the initial plan conflated them. This
 behavior choice has been raised with the user before service integration.
 
+The MIDI projection representation now packs per-note flags and unknown-pressure
+state and uses the existing controller-known mask for byte values. All public
+getters and packet semantics are preserved. A portable size gate bounds the full
+projection to 9 KiB (the prior native shape was 15,120 bytes), with edge-state and
+canonical-reset tests alongside the existing independent pedal/state suites.
+This reduces ordinary as well as shared prepared checkpoint arrays without
+lowering an event/byte limit or seek bound. Global production limits and the
+continuous-writer mechanism remain unresolved and no application flag is enabled.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |
