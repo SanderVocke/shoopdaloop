@@ -378,7 +378,6 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
         budgets: Budgets {
             transfer_bytes: 16,
             validation_steps: 128,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()

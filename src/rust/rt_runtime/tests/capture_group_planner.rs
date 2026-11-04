@@ -171,7 +171,6 @@ fn reservation_failure_changes_dependent_output_before_the_affected_sample() {
             budgets: Budgets {
                 transfer_bytes: 16,
                 validation_steps: 512,
-                subranges: 0,
                 ..Budgets::default()
             },
             ..Config::default()

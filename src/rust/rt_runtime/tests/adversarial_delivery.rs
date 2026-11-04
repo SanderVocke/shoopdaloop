@@ -75,7 +75,6 @@ fn seeded_typed_payloads_receipts_and_recycled_tokens_match_a_full_length_indepe
         page_bytes: 64,
         budgets: Budgets {
             events: 2,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()

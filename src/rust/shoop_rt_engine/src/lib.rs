@@ -200,7 +200,6 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         budgets: Budgets {
             commands: slots,
             events: slots,
-            subranges: 0,
             transfer_bytes: payload
                 + (2 + stream::READ_PAGES) * page_bytes
                 + content::RUNTIME_UPLOAD_BUFFERS

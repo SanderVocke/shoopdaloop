@@ -236,7 +236,6 @@ fn config(events: usize) -> rt_runtime::PreparedConfig {
         scheduled_events: events,
         budgets: Budgets {
             events,
-            subranges: 0,
             transfer_bytes: 128,
             validation_steps: 64,
             ..Budgets::default()

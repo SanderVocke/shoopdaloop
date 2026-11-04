@@ -758,7 +758,6 @@ fn midi_overflow_keeps_audio_running_and_recovers_through_reserved_one_event_sin
     let mut limits = config();
     limits.midi_events_per_port = 4;
     limits.budgets.events = 1;
-    limits.budgets.subranges = 2;
     let mut h = Harness::with_limits(vec![node(0, 2.0, mono(), &drops)], limits);
     h.install(GraphDescription {
         nodes: vec![id(0)],

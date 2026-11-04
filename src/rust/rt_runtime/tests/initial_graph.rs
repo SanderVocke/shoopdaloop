@@ -43,7 +43,6 @@ fn config() -> rt_runtime::PreparedConfig {
         budgets: Budgets {
             commands: 1,
             events: 1,
-            subranges: 0,
             transfer_bytes: 16,
             validation_steps: 1,
             publications: 1,
