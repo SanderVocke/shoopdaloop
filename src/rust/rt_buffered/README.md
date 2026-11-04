@@ -1,21 +1,21 @@
-# External block processor
+# Buffered processor
 
-`rt_external` provides a stereo audio/MIDI node with fixed input batching and
-scheduled output. The development backend `InlineTest` runs on the render thread:
+`rt_buffered` provides a stereo audio/MIDI node with fixed input batching and
+scheduled output. The development backend `InlineTestProcessor` runs on the render thread:
 it doubles audio samples and moves each MIDI channel-voice message to the next
 channel, wrapping channel 16 to channel 1. System messages pass through unchanged.
 The graph still supplies and consumes exactly its prepared quantum Q.
 
 ```rust
-use rt_external::{External, MidiLimits, Timing};
+use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::fixed::Quantum;
 # fn main() -> Result<(), rt_runtime::Error> {
-let node = External::prepare(
+let node = BufferedProcessor::prepare(
     Quantum::new(16)?,
-    Timing { block_quanta: 2, slack_quanta: 1 },
+    Timing { batch_quanta: 2, slack_quanta: 1 },
     MidiLimits::default(),
 )?;
-assert_eq!(node.timing().block_frames(), 32);
+assert_eq!(node.timing().batch_frames(), 32);
 assert_eq!(node.latency_frames(), 48);
 # Ok(())
 # }
@@ -23,7 +23,7 @@ assert_eq!(node.latency_frames(), 48);
 
 ## Timing
 
-For block multiple M and extra slack S, a batch collected at ticks b through
+For batch size M quanta and extra slack S quanta, input collected at ticks b through
 b+M-1 is computed once at b+M-1 and begins output at b+M+S. The exact stream delay
 is `(M+S)*Q` frames. Even M=1, S=0 delays output by one quantum; inline completion
 does not release the result early. M can be any supported positive integer,
@@ -48,7 +48,7 @@ Supported limits are 65,536 frames per processing block, 262,144 frames of node
 latency, and 32 MiB of calculated slot/scratch storage, including MIDI recovery
 reserves and slot metadata. Requests exceeding any limit return `Error::Capacity`.
 
-The adapter prepares `ceil(latency_frames/block_frames)+1` slots: a collecting
+The adapter prepares `ceil(latency_frames/batch_frames)+1` slots: a collecting
 block plus enough storage for completed blocks spanning the delay window. A slot
 cannot be reused until its final output quantum is emitted. Each completion is
 tagged with stream generation, block sequence, and source frame. The inline
@@ -83,10 +83,10 @@ are outside this initial implementation.
 ## Development check
 
 ```sh
-cargo run --locked -p rt_external --example inline_gain
-cargo run --locked -p rt_external --example inline_gain -- 32 3 7
-cargo test --locked -p rt_external
-cargo test --locked -p shoop_rt_engine --test external_processor
+cargo run --locked -p rt_buffered --example inline_gain
+cargo run --locked -p rt_buffered --example inline_gain -- 32 3 7
+cargo test --locked -p rt_buffered
+cargo test --locked -p shoop_rt_engine --test buffered_processor
 ```
 
 The example checks stereo samples, channel-wrapped MIDI note pairs, SysEx, startup,

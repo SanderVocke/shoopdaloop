@@ -14,6 +14,6 @@ mod inline;
 mod processor;
 mod timing;
 
-pub use inline::InlineTest;
-pub use processor::{External, MidiLimits, MAX_STORAGE_BYTES};
-pub use timing::{PreparedTiming, Timing, MAX_BLOCK_FRAMES, MAX_LATENCY_FRAMES};
+pub use inline::InlineTestProcessor;
+pub use processor::{BufferedProcessor, MidiLimits, MAX_STORAGE_BYTES};
+pub use timing::{PreparedTiming, Timing, MAX_BATCH_FRAMES, MAX_LATENCY_FRAMES};

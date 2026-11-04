@@ -375,10 +375,10 @@ src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile reso
 src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
 src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
-src/rust/rt_external/src/lib.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
-src/rust/rt_external/src/timing.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
-src/rust/rt_external/src/inline.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
-src/rust/rt_external/src/processor.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
+src/rust/rt_buffered/src/lib.rs,buffered_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
+src/rust/rt_buffered/src/timing.rs,buffered_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
+src/rust/rt_buffered/src/inline.rs,buffered_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
+src/rust/rt_buffered/src/processor.rs,buffered_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
 src/rust/shoop_app/src/service/persistence/family.rs,app_session,instrumented_indirect,Runs inside traced service receive and cooperative tick boundaries with scoped persistence authority and operation ownership.
 src/rust/shoop_rt_backend/src/family.rs,application_ui_and_control,instrumented_indirect,Prepared content and read progression run within traced adapter requests/outcomes and application polling; no per-sample tracing.
 src/rust/shoop_persistence_codec/src/codec/family.rs,client_codec_worker,excluded,Pure portable codecs and bounded worker ABI; import-free Wasm worker has no tracing host dependency. Frontend persistence task/codec boundaries track orchestration.

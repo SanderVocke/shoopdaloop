@@ -4376,7 +4376,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rt_external"
+name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
@@ -5019,7 +5019,7 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
- "rt_external",
+ "rt_buffered",
  "rt_runtime",
  "shoop_loops",
  "shoop_rt_engine",

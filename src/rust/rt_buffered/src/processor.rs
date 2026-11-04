@@ -1,6 +1,6 @@
 use crate::{
     inline::{Completion, Job},
-    InlineTest, PreparedTiming, Timing,
+    InlineTestProcessor, PreparedTiming, Timing,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
@@ -39,7 +39,7 @@ struct Slot {
 }
 
 /// A render-owned node whose completed batches retain a fixed stream position.
-pub struct External<B = InlineTest> {
+pub struct BufferedProcessor<B = InlineTestProcessor> {
     backend: B,
     timing: PreparedTiming,
     limits: MidiLimits,
@@ -53,10 +53,10 @@ pub struct External<B = InlineTest> {
     sequence: u64,
 }
 
-impl External<InlineTest> {
+impl BufferedProcessor<InlineTestProcessor> {
     pub fn prepare(quantum: Quantum, timing: Timing, limits: MidiLimits) -> Result<Self, Error> {
         let timing = timing.prepare(quantum)?;
-        let m = timing.timing().block_quanta;
+        let m = timing.timing().batch_quanta;
         let events = limits
             .events_per_quantum
             .checked_mul(m)
@@ -76,7 +76,7 @@ impl External<InlineTest> {
             .and_then(|v| v.checked_add(reserved_bytes))
             .ok_or(Error::Capacity)?;
         let samples = timing
-            .block_frames()
+            .batch_frames()
             .checked_mul(2)
             .ok_or(Error::Capacity)?;
         let storage = samples
@@ -102,7 +102,7 @@ impl External<InlineTest> {
             });
         }
         Ok(Self {
-            backend: InlineTest::new(limits.bytes_per_quantum),
+            backend: InlineTestProcessor::new(limits.bytes_per_quantum),
             timing,
             limits,
             slots: slots.into_boxed_slice(),
@@ -122,7 +122,7 @@ impl External<InlineTest> {
     pub fn latency_frames(&self) -> usize {
         self.timing.latency_frames()
     }
-    pub fn completed_blocks(&self) -> u64 {
+    pub fn completed_batches(&self) -> u64 {
         self.sequence
     }
     pub fn generation(&self) -> u64 {
@@ -172,7 +172,7 @@ impl External<InlineTest> {
         output: &mut MidiBuffer,
     ) -> Result<(), Error> {
         let q = self.timing.quantum().frames();
-        let b = self.timing.block_frames();
+        let b = self.timing.batch_frames();
         if tick.quantum != self.timing.quantum() || tick.frame != self.next {
             return Err(Error::InvalidFrame);
         }
@@ -318,7 +318,9 @@ fn capacity(error: Error) -> Error {
     }
 }
 
-impl<S: fixed::State, O: ProcessorOperation> fixed::Processor<S, O> for External<InlineTest> {
+impl<S: fixed::State, O: ProcessorOperation> fixed::Processor<S, O>
+    for BufferedProcessor<InlineTestProcessor>
+{
     fn ports(&self) -> PortCounts {
         self.ports()
     }
@@ -336,7 +338,7 @@ impl<S: fixed::State, O: ProcessorOperation> fixed::Processor<S, O> for External
 }
 
 impl<P: Planner, O: ProcessorOperation> rt_runtime::processor::Processor<P, O>
-    for External<InlineTest>
+    for BufferedProcessor<InlineTestProcessor>
 {
     fn ports(&self) -> PortCounts {
         self.ports()

@@ -1,4 +1,4 @@
-use rt_external::{External, MidiLimits, Timing};
+use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     fixed::{self, Processor, Quantum, Runtime},
@@ -19,20 +19,20 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 enum Node {
     Engine(engine::Node),
-    External(External),
+    BufferedProcessor(BufferedProcessor),
 }
 
 impl Processor<engine::State, EngineOp> for Node {
     fn ports(&self) -> PortCounts {
         match self {
             Self::Engine(n) => <engine::Node as Processor<engine::State, EngineOp>>::ports(n),
-            Self::External(n) => n.ports(),
+            Self::BufferedProcessor(n) => n.ports(),
         }
     }
     fn validate_state(&self, id: NodeId, state: &engine::State) -> Result<(), Error> {
         match self {
             Self::Engine(n) => n.validate_state(id, state),
-            Self::External(_) => Ok(()),
+            Self::BufferedProcessor(_) => Ok(()),
         }
     }
     fn process(
@@ -42,8 +42,8 @@ impl Processor<engine::State, EngineOp> for Node {
     ) -> Result<(), Error> {
         match self {
             Self::Engine(n) => n.process(block, state),
-            Self::External(n) => {
-                <External as Processor<engine::State, EngineOp>>::process(n, block, state)
+            Self::BufferedProcessor(n) => {
+                <BufferedProcessor as Processor<engine::State, EngineOp>>::process(n, block, state)
             }
         }
     }
@@ -55,13 +55,13 @@ impl Processor<engine::State, EngineOp> for Node {
     ) -> Result<(), Error> {
         match self {
             Self::Engine(n) => n.operation(value, context, state),
-            Self::External(_) => Err(Error::InvalidEvent),
+            Self::BufferedProcessor(_) => Err(Error::InvalidEvent),
         }
     }
 }
 
 #[shoop_test]
-fn external_composes_with_prepared_engine_dsp_and_typed_controls() {
+fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
     let quantum = Quantum::new(16).unwrap();
     let description = EngineDescription {
         quantum: 16,
@@ -89,18 +89,22 @@ fn external_composes_with_prepared_engine_dsp_and_typed_controls() {
         quantum,
     )
     .unwrap();
-    let external_id = NodeId::from_parts(1, 1).unwrap();
+    let buffered_id = NodeId::from_parts(1, 1).unwrap();
     let downstream = NodeId::from_parts(3, 1).unwrap();
     let nodes = prepared
         .nodes
         .into_iter()
         .filter_map(|(id, node)| {
-            if id == external_id {
+            if id == buffered_id {
                 Some((
                     id,
-                    Node::External(
-                        External::prepare(quantum, Timing::default(), MidiLimits::default())
-                            .unwrap(),
+                    Node::BufferedProcessor(
+                        BufferedProcessor::prepare(
+                            quantum,
+                            Timing::default(),
+                            MidiLimits::default(),
+                        )
+                        .unwrap(),
                     ),
                 ))
             } else if id == downstream {
@@ -111,7 +115,7 @@ fn external_composes_with_prepared_engine_dsp_and_typed_controls() {
         })
         .collect();
     let mut graph = GraphDescription {
-        nodes: vec![downstream, external_id],
+        nodes: vec![downstream, buffered_id],
         connections: Vec::new(),
     };
     for (kind, count) in [(PortType::Audio, 2), (PortType::Midi, 1)] {
@@ -119,10 +123,10 @@ fn external_composes_with_prepared_engine_dsp_and_typed_controls() {
             for (source, destination) in [
                 (
                     Endpoint::host(kind, c),
-                    Endpoint::node(external_id, kind, c),
+                    Endpoint::node(buffered_id, kind, c),
                 ),
                 (
-                    Endpoint::node(external_id, kind, c),
+                    Endpoint::node(buffered_id, kind, c),
                     Endpoint::node(downstream, kind, c),
                 ),
                 (Endpoint::node(downstream, kind, c), Endpoint::host(kind, c)),

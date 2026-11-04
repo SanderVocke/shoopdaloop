@@ -1,5 +1,5 @@
 [package]
-name = "rt_external"
+name = "rt_buffered"
 version.workspace = true
 edition = "2021"
 description = "Prepared block processing behind a fixed-quantum audio and MIDI node"

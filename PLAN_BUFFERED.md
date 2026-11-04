@@ -1,4 +1,4 @@
-# Plan: inline External processor with block timing and test MIDI
+# Plan: inline buffered processor with block timing and test MIDI
 
 ## Status and scope
 
@@ -7,7 +7,7 @@ on `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
 
-Build a reusable fixed-quantum External processor whose first backend executes
+Build a reusable fixed-quantum buffered processor whose first backend executes
 on the render thread: stereo audio receives 2x gain, and MIDI channel messages
 move to the next channel. Real batching and scheduled output make the timing
 configuration observable despite immediate computation.
@@ -27,7 +27,7 @@ These criteria must not change without explicit user approval.
 - **A1 — ordinary node.** The graph invokes the processor with exactly its
   prepared Q frames. The node exposes two audio inputs, two audio outputs, one
   MIDI input, and one MIDI output. Its batching and slack are private to the node.
-- **A2 — timing.** Configuration consists of positive `block_quanta = M` and
+- **A2 — timing.** Configuration consists of positive `batch_quanta = M` and
   nonnegative `slack_quanta = S`, with Q supplied by the runtime. A processing
   block contains `B = M * Q` frames. A batch whose first input tick is b is
   completed inline at tick `b + M - 1` and starts output at tick `b + M + S`.
@@ -61,20 +61,20 @@ These criteria must not change without explicit user approval.
 
 ## Design rules and code ownership
 
-- Add `src/rust/rt_external` as a sibling of `rt_runtime`: `no_std` with `alloc`,
+- Add `src/rust/rt_buffered` as a sibling of `rt_runtime`: `no_std` with `alloc`,
   safe Rust, and a normal dependency on `rt_runtime` only. Test support stays
   dev-only. Use a small module set such as `timing`, `processor`, and `inline`.
-  Do not add external-processing policy to the runtime scheduler or loop domain.
+  Do not add buffered-processing policy to the runtime scheduler or loop domain.
 - Public entry points should be small: `Timing`, validated `PreparedTiming`,
-  `External<InlineTest>`, preparation, latency queries, and quiescent reset.
-  `InlineTest` names the combined 2x-audio/channel-rotation backend. Timing is
+  `BufferedProcessor<InlineTestProcessor>`, preparation, latency queries, and quiescent reset.
+  `InlineTestProcessor` names the combined 2x-audio/channel-rotation backend. Timing is
   immutable after preparation. Accept non-power-of-two block multiples such as
-  M=3; an external block size is not another `fixed::Quantum`.
+  M=3; a processing batch size is not another `fixed::Quantum`.
 - Validate checked products/sums for block frames, latency, channel samples,
   event/byte capacity, frame timestamps, and allocation sizes before allocating.
   Publish supported preparation limits. Reject requests exceeding those limits
   rather than attempting huge allocations. Count M/S in quanta, not callbacks.
-- Keep batching, readiness, and scheduled release in `External`; the backend
+- Keep batching, readiness, and scheduled release in `BufferedProcessor`; the backend
   receives complete owned/preallocated block storage and never borrowed graph
   buffers. Retain a small crate-private submit/completion seam: the inline backend
   computes on submission and marks the result ready immediately. No real queue,
@@ -143,7 +143,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
 
 ### 2. Inline audio/MIDI backend
 
-- [x] Implement `InlineTest` over complete prepared blocks: stereo 2x gain and
+- [x] Implement `InlineTestProcessor` over complete prepared blocks: stereo 2x gain and
   next-channel MIDI rotation. System packets and event timing remain unchanged.
 - [x] Verify two focused groups: distinct signed stereo samples proving 2x gain
   without clipping/crosstalk; MIDI packet tables covering channel wrap, note pairs,
@@ -174,11 +174,11 @@ preceding stage. Keep fixes and verification within their owning milestone.
   callbacks. Assert exact timestamps with node latency L and host latency H
   separately; flush enough zero input to observe the final delayed output.
 - [x] Add one engine-composition test in `shoop_rt_engine` using a dev-only
-  `rt_external` dependency and a test node enum combining existing prepared
-  engine nodes with External. Route audio and MIDI through the processor and a
+  `rt_buffered` dependency and a test node enum combining existing prepared
+  engine nodes with BufferedProcessor. Route audio and MIDI through the processor and a
   downstream consumer. No application catalog, protocol, or production graph
   changes are required to select the dummy.
-- [x] Add a small runnable `rt_external` example with Q/M/S settings and checked
+- [x] Add a small runnable `rt_buffered` example with Q/M/S settings and checked
   audio/MIDI output, defaulting to the reference case above. Document preparation,
   latency, capacities, reset, and the inline/worker timing distinction. Commit.
 
@@ -202,12 +202,12 @@ preceding stage. Keep fixes and verification within their owning milestone.
   SysEx; verify exact output against the independent reference, including startup,
   slack, delayed tail, reset, and a fresh instance. Record the tested revision.
 - [x] Run the complete native regression gate once the focused checks pass; run
-  portable External tests in Node and Chromium and the existing application/
+  portable BufferedProcessor tests in Node and Chromium and the existing application/
   worklet build gates. Keep environment failures or unavailable facilities visible;
   do not count skips as passes or weaken existing assertions.
 - [x] Update this plan, crate documentation and relevant architecture/validation
   notes with results and limitations. Commit each final meaningful fix.
-- [ ] Push the implementation branch and open a PR targeting
+- [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
   behavior.
 - [ ] Ensure required CI is green on the final head.
@@ -227,11 +227,11 @@ Use `#[shoop_wasm_test_support::shoop_test]` and the existing heap guards.
 Run commands in the development environment selected by the build guidance:
 
 ```sh
-cargo test --locked -p rt_external
-cargo test --locked -p shoop_rt_engine --test external_processor
-cargo run --locked -p rt_external --example inline_gain
-python3 scripts/run_wasm_tests.py --runtime node --package rt_external
-python3 scripts/run_wasm_tests.py --runtime chrome --package rt_external
+cargo test --locked -p rt_buffered
+cargo test --locked -p shoop_rt_engine --test buffered_processor
+cargo run --locked -p rt_buffered --example inline_gain
+python3 scripts/run_wasm_tests.py --runtime node --package rt_buffered
+python3 scripts/run_wasm_tests.py --runtime chrome --package rt_buffered
 python3 scripts/check_rt_runtime_boundary.py
 python3 scripts/check_rt_engine_boundary.py
 python3 scripts/check_shoop_test_usage.py
@@ -241,7 +241,7 @@ RUSTFLAGS="-D warnings" cargo build --workspace
 SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
 ```
 
-Also run the new External dependency audit and the application/worklet Wasm build
+Also run the new BufferedProcessor dependency audit and the application/worklet Wasm build
 and artifact checks through the existing CI entry points. Native full-suite
 execution requires cargo-nextest 0.9.116 and the documented host facilities.
 During iteration, use affected tests; repeat broader gates only for changed code,
@@ -281,12 +281,12 @@ builds or implementation tests.
   submission/completion seam is intentionally crate-private. Eight timing/backend/
   node tests and two runtime integration tests pass natively with warnings denied.
   The runtime exposes generic remaining MIDI capacities for atomic preflight;
-  External returns `Capacity` on exhaustion, since the integrated runtime treats
+  BufferedProcessor returns `Capacity` on exhaustion, since the integrated runtime treats
   `Full` as recoverable MIDI overflow. No runtime scheduling policy was changed.
 
 - Stage 4: all eleven focused native tests and the crate documentation example
   pass. Direct/integrated runtimes agree across direct and buffered callback
-  partitions. The engine fixture combines External with prepared strip DSP and
+  partitions. The engine fixture combines BufferedProcessor with prepared strip DSP and
   typed half-gain control under a heap guard. The executable passes Q/M/S cases
   16/2/1, 32/3/7, and 1/1/0, including zero-input tail flushing.
 - The warning-denying full workspace build passes. Full native regression,
@@ -296,7 +296,7 @@ builds or implementation tests.
 - Stage 5: all focused native checks pass, including maximum-MIDI heap guards,
   independent direct/integrated callback references, atomic event/byte refusal,
   quiescent reset of pending and partially collected blocks, and terminal MIDI
-  recovery without resuming ordinary output. Runtime/External and engine boundary
+  recovery without resuming ordinary output. Runtime/BufferedProcessor and engine boundary
   audits pass on all four targets; Wasm test dependency isolation, formatting,
   test attributes, tracing inventory, and the 14 existing boundary-policy tests
   pass. Existing CI filters omitted the target branch, so build/docs/CodeQL
@@ -330,8 +330,22 @@ builds or implementation tests.
   workspace build, all 2641 native tests (four intentionally ignored failure
   canaries), eleven focused Wasm cases plus the API doctest in both Node and
   Chromium, Wasm application check, paired codec/worklet artifact contracts,
-  bare-metal External library build, four-target dependency audits, Wasm test
+  bare-metal BufferedProcessor library build, four-target dependency audits, Wasm test
   dependency isolation, formatting, tracing inventory, test attributes, 28 Python
   report/boundary tests, and both executable timing examples pass. Hardware
   availability was handled with the documented missing-backend setting; physical
   device, remote DSP and performance acceptance are not claimed.
+
+- Delivery: [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937) is open
+  against feat/fixed-quantum-runtime at head 31ddc295. Remote build/test run
+  41851455852 is in progress; documentation and bare-metal checks already pass.
+  No automated review or inline review threads have been posted so far.
+
+- User-approved naming revision: the reusable wrapper is `BufferedProcessor`,
+  the crate is `rt_buffered`, and timing uses `batch_quanta`/`slack_quanta`. The
+  inline gain/MIDI backend is `InlineTestProcessor`. Renamed the plan to
+  PLAN_BUFFERED.md; timing behavior and acceptance criteria are unchanged.
+  Warning-denying workspace build, all focused native tests and the API doctest,
+  both timing examples, bare-metal build, dependency audits, formatting, tracing
+  inventory and shared test attributes pass after the rename. Historical branch
+  and commit identifiers retain their actual names.

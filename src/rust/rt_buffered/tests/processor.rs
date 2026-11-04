@@ -1,4 +1,4 @@
-use rt_external::{External, MidiLimits, Timing};
+use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioPorts, MidiBuffer},
     fixed::{Quantum, Tick},
@@ -15,7 +15,7 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 struct Harness {
-    node: External,
+    node: BufferedProcessor,
     input: Vec<f32>,
     output: Vec<f32>,
     midi_input: MidiBuffer,
@@ -25,10 +25,10 @@ struct Harness {
 impl Harness {
     fn new(q: usize, m: usize, s: usize, limits: MidiLimits) -> Self {
         Self {
-            node: External::prepare(
+            node: BufferedProcessor::prepare(
                 Quantum::new(q).unwrap(),
                 Timing {
-                    block_quanta: m,
+                    batch_quanta: m,
                     slack_quanta: s,
                 },
                 limits,
@@ -71,7 +71,7 @@ fn sample(channel: usize, frame: usize) -> f32 {
 }
 
 #[shoop_test]
-fn external_stream_mapping_startup_batch_counts_and_slot_reuse() {
+fn buffered_stream_mapping_startup_batch_counts_and_slot_reuse() {
     for (q, m, s) in [
         (1, 1, 0),
         (16, 1, 0),
@@ -106,13 +106,13 @@ fn external_stream_mapping_startup_batch_counts_and_slot_reuse() {
                     );
                 }
             }
-            assert_eq!(h.node.completed_blocks(), ((tick + 1) / m) as u64);
+            assert_eq!(h.node.completed_batches(), ((tick + 1) / m) as u64);
         }
     }
 }
 
 #[shoop_test]
-fn external_midi_offsets_boundaries_equal_time_order_and_slack() {
+fn buffered_midi_offsets_boundaries_equal_time_order_and_slack() {
     let mut h = Harness::new(16, 3, 7, MidiLimits::default());
     let source: &[(u64, &[u8], &[u8])] = &[
         (0, &[0x9f, 60, 100], &[0x90, 60, 100]),
@@ -147,7 +147,7 @@ fn external_midi_offsets_boundaries_equal_time_order_and_slack() {
 }
 
 #[shoop_test]
-fn external_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
+fn buffered_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
     let limits = MidiLimits {
         events_per_quantum: 2,
         bytes_per_quantum: 6,
@@ -186,7 +186,7 @@ fn external_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
     assert_eq!(h.midi_output.byte_len(), 6);
     assert_eq!(h.midi_output.get(1), Some((15, &[0x91, 61, 100][..])));
     assert!(matches!(
-        External::prepare(
+        BufferedProcessor::prepare(
             Quantum::new(16).unwrap(),
             Timing::default(),
             MidiLimits {
@@ -197,10 +197,10 @@ fn external_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        External::prepare(
+        BufferedProcessor::prepare(
             Quantum::new(1).unwrap(),
             Timing {
-                block_quanta: 1,
+                batch_quanta: 1,
                 slack_quanta: 262_143
             },
             MidiLimits::default()
@@ -210,7 +210,7 @@ fn external_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
 }
 
 #[shoop_test]
-fn external_reset_and_discontinuity_refusal_preserve_stream_identity() {
+fn buffered_reset_and_discontinuity_refusal_preserve_stream_identity() {
     let mut h = Harness::new(16, 2, 1, MidiLimits::default());
     h.input.fill(3.);
     h.midi_input.push(0, 16, &[0x90, 60, 100]).unwrap();
@@ -220,14 +220,14 @@ fn external_reset_and_discontinuity_refusal_preserve_stream_identity() {
     assert_eq!(h.node.next_frame(), Frame(16));
     h.render(16).unwrap();
     h.render(32).unwrap();
-    assert_eq!(h.node.completed_blocks(), 1);
+    assert_eq!(h.node.completed_batches(), 1);
     let generation = h.node.generation();
     assert_eq!(h.node.reset(Frame(1)), Err(Error::InvalidFrame));
     assert_eq!(h.node.reset(Frame(u64::MAX - 15)), Err(Error::Exhausted));
     assert_eq!(h.node.generation(), generation);
     h.node.reset(Frame(160)).unwrap();
     assert_eq!(h.node.generation(), generation + 1);
-    assert_eq!(h.node.completed_blocks(), 0);
+    assert_eq!(h.node.completed_batches(), 0);
     h.input.fill(0.);
     h.midi_input.clear();
     for frame in (160..320).step_by(16) {
@@ -266,7 +266,7 @@ fn external_reset_and_discontinuity_refusal_preserve_stream_identity() {
 }
 
 #[shoop_test]
-fn external_rendering_has_no_heap_work_with_maximum_admitted_midi() {
+fn buffered_rendering_has_no_heap_work_with_maximum_admitted_midi() {
     let limits = MidiLimits {
         events_per_quantum: 4,
         bytes_per_quantum: 12,

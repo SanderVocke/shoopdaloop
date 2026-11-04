@@ -2,11 +2,11 @@
 
 [Workstreams, acceptance and remaining checks](PLAN.md) · [Architecture](ARCHITECTURE.md) · [Historical records](docs/history/README.md)
 
-## External block processor
+## Buffered processor
 
 The implementation and focused coverage are tracked in
-[PLAN_EXTERNAL.md](PLAN_EXTERNAL.md); the public timing and MIDI contract is in
-[the crate documentation](src/rust/rt_external/README.md). Source revision
+[PLAN_BUFFERED.md](PLAN_BUFFERED.md); the public timing and MIDI contract is in
+[the crate documentation](src/rust/rt_buffered/README.md). Source revision
 `1dcf26f9` includes the updated fixed-quantum base `cb79706e`.
 
 Local validation passes: warning-denying workspace build; 2641 native tests with

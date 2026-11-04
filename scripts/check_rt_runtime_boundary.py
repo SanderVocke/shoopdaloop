@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PACKAGES = ("rt_runtime", "rt_external")
+PACKAGES = ("rt_runtime", "rt_buffered")
 TARGETS = (
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",

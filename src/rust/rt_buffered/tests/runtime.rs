@@ -1,4 +1,4 @@
-use rt_external::{External, MidiLimits, Timing};
+use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{GraphRuntime, PreparedNode},
@@ -14,16 +14,16 @@ use shoop_wasm_test_support::shoop_test;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 enum Host {
-    Direct(Runtime<External, ()>),
-    Buffered(BufferedHost<External, ()>),
-    Integrated(GraphRuntime<External>),
+    Direct(Runtime<BufferedProcessor, ()>),
+    Buffered(BufferedHost<BufferedProcessor, ()>),
+    Integrated(GraphRuntime<BufferedProcessor>),
 }
 
 impl Host {
     fn new(q: usize, timing: Timing, buffered: bool, integrated: bool, limits: MidiLimits) -> Self {
         let quantum = Quantum::new(q).unwrap();
         let node = NodeId::from_parts(0, 1).unwrap();
-        let external = External::prepare(quantum, timing, limits).unwrap();
+        let processor = BufferedProcessor::prepare(quantum, timing, limits).unwrap();
         let capacities = Config {
             max_frames: q,
             audio_inputs: 2,
@@ -60,7 +60,7 @@ impl Host {
                 config,
                 128,
                 quantum,
-                vec![PreparedNode::new(node, external)],
+                vec![PreparedNode::new(node, processor)],
                 NoPlanner,
                 ResourceStore::new(config).unwrap(),
             )
@@ -80,7 +80,7 @@ impl Host {
             .unwrap();
             let runtime = Runtime::prepare(
                 config,
-                vec![(node, external)],
+                vec![(node, processor)],
                 (),
                 ResourceStore::new(config.resources()).unwrap(),
                 &graph,
@@ -120,7 +120,7 @@ fn run(
     integrated: bool,
 ) -> Journal {
     let timing = Timing {
-        block_quanta: m,
+        batch_quanta: m,
         slack_quanta: s,
     };
     let mut host = Host::new(q, timing, buffered, integrated, MidiLimits::default());
@@ -219,7 +219,7 @@ fn run(
 }
 
 #[shoop_test]
-fn external_fixed_interfaces_and_host_partitions_match_independent_reference() {
+fn buffered_fixed_interfaces_and_host_partitions_match_independent_reference() {
     for (q, m, s) in [(16, 2, 1), (32, 3, 7)] {
         let reference = run(q, m, s, q, false, false);
         for integrated in [false, true] {
@@ -240,12 +240,12 @@ fn external_fixed_interfaces_and_host_partitions_match_independent_reference() {
 }
 
 #[shoop_test]
-fn external_capacity_fault_silences_audio_and_recovers_rotated_notes() {
+fn buffered_capacity_fault_silences_audio_and_recovers_rotated_notes() {
     for integrated in [false, true] {
         let mut host = Host::new(
             16,
             Timing {
-                block_quanta: 1,
+                batch_quanta: 1,
                 slack_quanta: 0,
             },
             false,

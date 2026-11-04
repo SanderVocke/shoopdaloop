@@ -14,11 +14,11 @@ pub(crate) struct Completion {
 }
 
 /// Inline development backend: stereo 2x gain and next-channel MIDI rotation.
-pub struct InlineTest {
+pub struct InlineTestProcessor {
     scratch: Box<[u8]>,
 }
 
-impl InlineTest {
+impl InlineTestProcessor {
     pub(crate) fn new(max_packet_bytes: usize) -> Self {
         let mut scratch = vec![0; max_packet_bytes].into_boxed_slice();
         core::hint::black_box(&mut *scratch).fill(0);
@@ -80,8 +80,8 @@ mod tests {
     }
 
     #[shoop_test]
-    fn external_inline_audio_doubles_signed_stereo_without_clipping() {
-        let mut backend = InlineTest::new(0);
+    fn buffered_inline_audio_doubles_signed_stereo_without_clipping() {
+        let mut backend = InlineTestProcessor::new(0);
         let input = MidiBuffer::new(0, 0).unwrap();
         let mut output = MidiBuffer::new(0, 0).unwrap();
         let mut audio = [0., 0.25, -0.5, 2., -2., 1., 0.5, -0.25];
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[shoop_test]
-    fn external_inline_midi_rotates_voice_packets_and_preserves_system_packets() {
+    fn buffered_inline_midi_rotates_voice_packets_and_preserves_system_packets() {
         let packets: &[(&[u8], &[u8])] = &[
             (&[0x90, 60, 100], &[0x91, 60, 100]),
             (&[0x80, 60, 40], &[0x81, 60, 40]),
@@ -109,7 +109,7 @@ mod tests {
             (&[0xf2, 1, 2], &[0xf2, 1, 2]),
             (&[0xf0, 1, 2, 3, 4, 0xf7], &[0xf0, 1, 2, 3, 4, 0xf7]),
         ];
-        let mut backend = InlineTest::new(6);
+        let mut backend = InlineTestProcessor::new(6);
         let mut input = MidiBuffer::new(packets.len(), 64).unwrap();
         let mut output = MidiBuffer::new(packets.len(), 64).unwrap();
         for &(packet, _) in packets {

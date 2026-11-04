@@ -1,4 +1,4 @@
-use rt_external::{External, MidiLimits, Timing};
+use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     fixed::{Config, Quantum, Runtime},
@@ -14,12 +14,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Result<_, _>>()?;
     let quantum = Quantum::new(args.first().copied().unwrap_or(16))?;
     let timing = Timing {
-        block_quanta: args.get(1).copied().unwrap_or(2),
+        batch_quanta: args.get(1).copied().unwrap_or(2),
         slack_quanta: args.get(2).copied().unwrap_or(1),
     };
-    let node = External::prepare(quantum, timing, MidiLimits::default())?;
+    let node = BufferedProcessor::prepare(quantum, timing, MidiLimits::default())?;
     let latency = node.latency_frames();
-    let block = node.timing().block_frames();
+    let block = node.timing().batch_frames();
     let q = quantum.frames();
     let config = Config {
         quantum,
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    let mut runtime = Runtime::<External, ()>::prepare(
+    let mut runtime = Runtime::<BufferedProcessor, ()>::prepare(
         config,
         vec![(id, node)],
         (),
