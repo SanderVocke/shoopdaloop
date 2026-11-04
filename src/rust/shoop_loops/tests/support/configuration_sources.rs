@@ -6,6 +6,76 @@ fn call(h: &mut Harness, operation: Operation) -> Reply {
     h.drain();
     h.reply(sequence)
 }
+
+#[shoop_test]
+fn full_loop_adopt_select_and_export_use_immutable_shared_snapshots() {
+    for backing in [
+        SharedInput::Loaded,
+        SharedInput::History,
+        SharedInput::MixedLoaded,
+        SharedInput::MixedHistory,
+    ] {
+        let mut h = prepared_shared(backing);
+        let sources = source_pair(&mut h);
+        let Reply::Adopted { media, .. } = call(
+            &mut h,
+            Operation::Adopt {
+                target: id(1),
+                frames: 4,
+                audio: Some(sources[0]),
+                midi: Some(sources[1]),
+            },
+        ) else {
+            panic!("adoption");
+        };
+        let reply = call(
+            &mut h,
+            Operation::Select {
+                target: id(1),
+                timing: Timing::At,
+                media,
+                preserve_position: false,
+            },
+        );
+        assert!(!matches!(reply, Reply::Failed(_)), "{reply:?}");
+        call(&mut h, play(1));
+        let first = h.samples.len();
+        h.step(4);
+        assert_eq!(
+            &h.samples[first..],
+            &[[4., 40.], [6., 60.], [8., 80.], [2., 20.]]
+        );
+        let Reply::Export { id: export, .. } = call(
+            &mut h,
+            Operation::Export {
+                target: id(1),
+                selection: Selection::Playback,
+            },
+        ) else {
+            panic!("export");
+        };
+        let expected = [4f32, 40., 8., 80., 12., 120., 16., 160.]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect::<Vec<_>>();
+        assert_eq!(h.read_export(export, false, expected.len()), expected);
+        assert_eq!(
+            h.read_export(export, true, encoded_midi().len()),
+            encoded_midi()
+        );
+        for channel in 0..16 {
+            assert_eq!(
+                call(&mut h, Operation::MidiInitial { export, channel }),
+                Reply::MidiInitial {
+                    channel,
+                    state: *MidiState::default().channel(channel).unwrap(),
+                    system_reset_seen: false
+                }
+            );
+        }
+        h.finish();
+    }
+}
 #[shoop_test]
 fn source_validation_shares_callback_work_and_cancel_recovers_owned_inputs_under_saturation() {
     let mut h = prepared(true, 0, false, 1, false);

@@ -409,7 +409,10 @@ impl NewEngineSelfTest {
             }
             Step::SyncPlayback => {
                 let sync = first_loop(snapshot, ids.sync)?;
-                if sync.mode != LoopMode::Playing {
+                if sync.mode != LoopMode::Playing
+                    || waiting < Duration::from_millis(200)
+                    || sync.position > 0.1
+                {
                     return Ok(None);
                 }
                 self.sync_length = sync.length_frames;

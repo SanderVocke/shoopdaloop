@@ -43,6 +43,53 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  shared_foundation:
+    name: Fixed shared media foundation
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    runs-on: ubuntu-24.04
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: shared-foundation
+      - name: Test fixed runtime, loop, engine and codec contracts
+        run: cargo test --locked -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_persistence_codec
+      - name: Check formatting, tracing, attributes and parity
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
+          python3 scripts/check_feature_parity.py
+
+      - name: Measure production fixed shared media callbacks
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
+          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
+          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
+          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
+          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
+          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
+
+      - name: Upload production shared media callback measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
   host_process_inspection:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Host process inspection (${{ matrix.os }})
@@ -50,7 +97,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        # A PR may explicitly waive unavailable macOS runners with this label.
+        os: ${{ fromJSON(contains(github.event.pull_request.labels.*.name, 'ci:skip-macos') && '["ubuntu-24.04","windows-2025"]' || '["ubuntu-24.04","macos-15","windows-2025"]') }}
     env:
       RUSTFLAGS: -D warnings
       CARGO_INCREMENTAL: "0"
@@ -131,7 +179,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops -p shoop_port_graph --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p rt_buffered -p shoop_loops -p shoop_port_graph --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -334,72 +382,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: ""
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-debug.tar.gz
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: ""
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-release.tar.gz
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/debug/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-debug.zip
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/release/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-release.zip
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: debug
-            cargo_args: ""
-            rust_targets: aarch64-apple-darwin
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-debug.tar.gz
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: release
-            cargo_args: --release
-            rust_targets: aarch64-apple-darwin
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-release.tar.gz
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: debug
-            cargo_args: --no-default-features
-            trunk_args: ""
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-debug.zip
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: release
-            cargo_args: --release --no-default-features
-            trunk_args: --release
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-release.zip
-            html_artifact: shoopdaloop-web-wasm32-release.html
+        # Keep the complete matrix unless this PR explicitly waives macOS.
+        include: >-
+          ${{ fromJSON(format('[{0}{1},{2}]',
+            '{"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-debug.tar.gz"},
+            {"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-release.tar.gz"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"x86_64-pc-windows-msvc","binary":"target/debug/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-debug.zip"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"x86_64-pc-windows-msvc","binary":"target/release/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-release.zip"}',
+            !contains(github.event.pull_request.labels.*.name, 'ci:skip-macos')
+              && ',{"target":"macos","os":"macos-15","arch":"arm64","profile":"debug","cargo_args":"","rust_targets":"aarch64-apple-darwin","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-macos-arm64-debug.tar.gz"},
+            {"target":"macos","os":"macos-15","arch":"arm64","profile":"release","cargo_args":"--release","rust_targets":"aarch64-apple-darwin","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-macos-arm64-release.tar.gz"}' || '',
+            '{"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"debug","cargo_args":"--no-default-features","trunk_args":"","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-debug.zip"},
+            {"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"release","cargo_args":"--release --no-default-features","trunk_args":"--release","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-release.zip","html_artifact":"shoopdaloop-web-wasm32-release.html"}'
+          )) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -438,7 +433,7 @@ jobs:
             'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
 
       - name: Reclaim unused Linux runner SDKs
-        if: matrix.target == 'linux' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: (matrix.target == 'web' || (matrix.target == 'linux' && matrix.profile == 'debug')) && env.ACT != 'true'
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet
           df -h .
@@ -803,7 +798,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
+            --package rt_runtime --package rt_buffered --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
             --package shoop_app_protocol --package shoop_app_client --package shoop_port_graph \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \
@@ -864,6 +859,23 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
+
+      - name: Install pinned Chrome for library browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        uses: browser-actions/setup-chrome@v2
+        id: library_chrome
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Run runtime, loop, engine and codec browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
+        run: >-
+          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
+          --package rt_runtime --package shoop_loops --package shoop_rt_engine --package shoop_persistence_codec
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'

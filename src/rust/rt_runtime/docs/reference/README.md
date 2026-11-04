@@ -7,6 +7,8 @@ Task chapters teach independent runnable examples. These pages consolidate contr
 - [Configuration and errors](configuration-and-errors.md): field/default tables, storage/work classes, graph capacities, action/flag/result pools and error meanings.
 - [Execution rules](execution-rules.md): callback envelopes, scheduler/category order, cancellation, frame identities, graph publication and retirement.
 - [Media and MIDI policy](media-and-midi-policy.md): formats, pinned prefixes, scoped access, strict-pre-target state, capture authority and explicit leases.
+- [Shared audio history and takes](shared-audio.md): immutable sample ownership and COW replacement behind ordinary resource snapshots.
+- [Shared MIDI history and takes](shared-midi.md): truthful rolling coverage and private bounded replacement/index preparation.
 - [Lower-level APIs](lower-level-apis.md): direct transport/scheduler/store obligations, inactive descriptor materialization and disabled versus runtime-lent authority.
 - [Host boundaries](host-boundaries.md): native/Wasm ownership, complete packets, reset delivery, instance isolation, evidence limits and stopped device/storage cleanup.
 

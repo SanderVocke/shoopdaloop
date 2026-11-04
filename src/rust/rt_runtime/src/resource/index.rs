@@ -52,7 +52,7 @@ impl ResourceStore {
     pub fn index_work(&self) -> IndexWork {
         self.index_work
     }
-    fn index_step(&mut self, class: WorkClass) {
+    pub(super) fn index_step(&mut self, class: WorkClass) {
         let counter = match class {
             WorkClass::Background => &mut self.index_work.background_steps,
             WorkClass::Render => &mut self.index_work.render_steps,
@@ -178,6 +178,9 @@ impl ResourceStore {
             page: None,
         };
         if offset == lease.snapshot.description.bytes {
+            return Ok(cursor);
+        }
+        if lease.audio.is_some() || lease.shared_midi.is_some() {
             return Ok(cursor);
         }
         let ordinal = (offset / self.config.limits().page_bytes) as u32;

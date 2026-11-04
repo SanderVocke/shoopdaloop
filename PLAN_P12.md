@@ -4,7 +4,8 @@ Status: implementation in progress on `feat/p12-loop-timing`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Base and PR target: **`feat/fixed-quantum-runtime`**, inspected at
-  `df4683527dbde0ec7483c3e522fc3873e39a81c8`.
+  `df4683527dbde0ec7483c3e522fc3873e39a81c8`; reconciled with target
+  `2e19210bdbb5e32510322f8b8344715ce7cbefe5` before final validation.
 - Implementation branch: `feat/p12-loop-timing`, created from the inspected
   target; remote head was unchanged when implementation began.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, including
@@ -214,6 +215,14 @@ Goals and these criteria require explicit user approval to change.
   which reproduced one failure in twelve isolated runs under contention. It now
   uses a 30-second elapsed-time watchdog, retaining the same 10,000 operations,
   sequence/publication assertions and callback allocation guard.
+
+- Target reconciliation: merged the shared fixed-media foundation and buffered
+  processor updates from `2e19210b`. Window reads support stored and shared audio;
+  shared MIDI validation uses bounded checkpoint queries without full state copies.
+  Timing revisions fence prepared shared candidates. New all-Q/host-partition
+  sample tests preserve the raw history and exported old owners. Consolidated the
+  engine test allocator after the two upstream test modules introduced duplicate
+  global allocator declarations. P04/P05 application gates remain unchanged.
 
 ## Execution contract
 

@@ -8,11 +8,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-TEST_LINE = re.compile(r"^test (?P<name>.+?) \.\.\. (?P<status>ok|FAIL|ignored(?:, .+)?)$")
+TEST_LINE = re.compile(r"^test (?P<name>.+?) \.\.\. (?P<status>ok|FAIL(?:ED)?|ignored(?:, .+)?)$")
 SUMMARY = re.compile(
     r"^test result: (?P<result>ok|FAILED)\. "
     r"(?P<passed>\d+) passed; (?P<failed>\d+) failed; "
-    r"(?P<ignored>\d+) ignored; (?P<filtered>\d+) filtered out;"
+    r"(?P<ignored>\d+) ignored; (?:\d+ measured; )?(?P<filtered>\d+) filtered out;"
 )
 
 
@@ -74,7 +74,7 @@ def parse_output(output: str) -> ParsedReport:
                 "passed"
                 if status_text == "ok"
                 else "failed"
-                if status_text == "FAIL"
+                if status_text in {"FAIL", "FAILED"}
                 else "ignored"
             )
             detail = status_text.split(", ", 1)[1] if ", " in status_text else ""

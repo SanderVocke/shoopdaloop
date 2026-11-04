@@ -120,6 +120,11 @@ impl ResourceStore {
         if frame > lease.snapshot.description.frames {
             return Err(Error::InvalidFrame);
         }
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |store, midi_store| {
+                midi_store.parameter_history_untracked(&mut store.render_io(), midi.index, frame)
+            });
+        }
         let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
         let (mut history, offset, span) = self.midi_indexes.history_before(
             version.midi.ok_or(Error::InvalidState)?,
@@ -150,6 +155,19 @@ impl ResourceStore {
         let lease = self.midi_lease(index)?;
         if frame > lease.snapshot.description.frames {
             return Err(Error::InvalidFrame);
+        }
+        if let Some(midi) = lease.shared_midi {
+            return self.with_midi(midi.store, |store, midi_store| {
+                let position = midi_store.seek(&mut store.render_io(), midi.index, frame)?;
+                Ok(MidiPosition {
+                    cursor: MidiCursor {
+                        index,
+                        offset: position.cursor.byte_position(),
+                    },
+                    state: position.state,
+                    replayed_events: position.replayed_events,
+                })
+            });
         }
         let version = get(&self.versions, lease.version.slot, lease.version.generation)?;
         let (mut state, offset, span) = self.midi_indexes.before(

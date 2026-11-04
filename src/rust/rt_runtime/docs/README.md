@@ -68,5 +68,7 @@ Preparation still allocates; rendering retains its prepared-storage contract.
 - [Configuration and errors](reference/configuration-and-errors.md)
 - [Execution rules](reference/execution-rules.md)
 - [Media and MIDI policy](reference/media-and-midi-policy.md)
+- [Shared audio history and takes](reference/shared-audio.md)
+- [Shared MIDI history and takes](reference/shared-midi.md)
 - [Lower-level APIs](reference/lower-level-apis.md)
 - [Host boundaries](reference/host-boundaries.md)

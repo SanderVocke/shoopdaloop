@@ -321,7 +321,7 @@ def selected_cases(package=None):
         cases.append(("shoop_loops", "runtime", [name, "--", "--exact"], 1, 0))
     cases.append(("shoop_loops", "audio", [], 8, 0))
     cases.append(("shoop_loops", "audio_ports", [], 2, 0))
-    cases.append(("shoop_loops", "lib", [], 8, 0))
+    cases.append(("shoop_loops", "lib", [], 9, 0))
     cases.append(("shoop_loops", "graph_guards", [], 6, 0))
     cases.append(("shoop_loops", "program_boundaries", [], 3, 0))
     cases.append(("shoop_loops", "program_changes", [], 10, 0))
