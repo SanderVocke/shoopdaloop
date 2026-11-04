@@ -115,6 +115,7 @@ impl Pinned {
                 }],
                 buses: vec![],
                 bus_display_order: vec![],
+                preview_bus: None,
                 global_ports: vec![],
                 routes: vec![],
                 selected: vec![],

@@ -13,9 +13,6 @@ use shoop_rt_protocol::{
 pub(crate) struct HostMask([u64; crate::MAX_HOST_PORTS / 64]);
 impl HostMask {
     pub const EMPTY: Self = Self([0; crate::MAX_HOST_PORTS / 64]);
-    pub fn words(self) -> [u64; crate::MAX_HOST_PORTS / 64] {
-        self.0
-    }
     pub fn contains(self, index: usize) -> bool {
         self.0[index / 64] & (1 << (index % 64)) != 0
     }

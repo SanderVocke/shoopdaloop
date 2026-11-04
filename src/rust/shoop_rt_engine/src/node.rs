@@ -22,7 +22,6 @@ const INJECTED: usize = 16;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeConfiguration {
     pub token: u64,
-    pub midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
     pub epoch: rt_runtime::Epoch,
     pub inputs: u8,
     pub outputs: u8,
@@ -41,7 +40,7 @@ pub enum EngineOp {
     Configure(NodeConfiguration),
     InputSource {
         epoch: rt_runtime::Epoch,
-        midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
+        changed: bool,
     },
     DiscardConfiguration {
         token: u64,
@@ -175,9 +174,8 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
-    pending_history: Option<(rt_runtime::Epoch, [u64; crate::MAX_HOST_PORTS / 64])>,
+    pending_history: Option<(rt_runtime::Epoch, bool)>,
     history_token: u64,
-    history_midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -284,7 +282,6 @@ impl StripInput {
         Self {
             history_token: 1,
             pending_history: None,
-            history_midi_inputs: [0; crate::MAX_HOST_PORTS / 64],
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -461,7 +458,6 @@ impl EngineNode {
                 node.pending_history = None;
                 node.history_token = node.history_token.checked_add(1).unwrap_or(0);
                 node.reset(configuration.inputs);
-                node.history_midi_inputs = configuration.midi_inputs;
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
@@ -934,14 +930,14 @@ impl EngineNode {
         operation: EngineOp,
         graph_epoch: rt_runtime::Epoch,
     ) -> Result<(), Error> {
-        if let EngineOp::InputSource { epoch, midi_inputs } = operation {
+        if let EngineOp::InputSource { epoch, changed } = operation {
             if graph_epoch.checked_next()? != epoch {
                 return Err(Error::StaleEpoch);
             }
             let Self::StripInput(node) = self else {
                 return Err(Error::InvalidParameter);
             };
-            node.pending_history = Some((epoch, midi_inputs));
+            node.pending_history = Some((epoch, changed));
             return Ok(());
         }
         if let EngineOp::DiscardConfiguration { token } = operation {
@@ -994,13 +990,12 @@ impl EngineNode {
             self.configure(configuration);
         }
         if let Self::StripInput(node) = self {
-            if let Some((_, mask)) = node
+            if let Some((_, changed)) = node
                 .pending_history
                 .take_if(|(epoch, _)| *epoch == graph_epoch)
             {
-                if mask != node.history_midi_inputs {
+                if changed {
                     node.history_token = node.history_token.checked_add(1).unwrap_or(0);
-                    node.history_midi_inputs = mask;
                 }
             }
         }
@@ -1114,7 +1109,6 @@ mod tests {
         let at = host.endpoint().at();
         let configuration = NodeConfiguration {
             token: 1,
-            midi_inputs: [0; crate::MAX_HOST_PORTS / 64],
             epoch: epoch.checked_next().unwrap(),
             inputs: 1,
             outputs: 1,

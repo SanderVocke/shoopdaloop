@@ -242,7 +242,6 @@ impl ControlEndpoint {
         };
         let base = crate::NodeConfiguration {
             token: self.replacement.id.expect("live replacement"),
-            midi_inputs: [0; crate::MAX_HOST_PORTS / 64],
             epoch,
             inputs: 0,
             outputs: 0,
@@ -263,7 +262,6 @@ impl ControlEndpoint {
                 self.pool.strip_input(slot),
                 crate::NodeConfiguration {
                     inputs: strip.shape.audio_inputs,
-                    midi_inputs: strip.midi_inputs.words(),
                     bank: strip.inputs.active as u8,
                     gain: controls.input_gain,
                     balance: controls.input_balance,
@@ -1063,7 +1061,8 @@ impl ControlEndpoint {
                     self.pool.strip_input(slot),
                     EngineOp::InputSource {
                         epoch,
-                        midi_inputs: strip.midi_inputs.words(),
+                        changed: self.model.strips[slot]
+                            .is_none_or(|old| old.midi_inputs != strip.midi_inputs),
                     },
                 );
             }
