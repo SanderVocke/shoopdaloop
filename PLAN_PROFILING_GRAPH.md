@@ -1,6 +1,6 @@
 # Interactive runtime profiling graph implementation plan
 
-Status: implementation in progress; core collection/transport and graph UI implemented, final validation pending.
+Status: implementation and local validation complete; final CI delivery gate pending.
 
 Target branch: `feat/runtime-profiling-graph`, targeting `feat/fixed-quantum-runtime` after basic profiling PR #938 was merged.
 Investigated baseline: `ac4748a4` (2026-11-04).
@@ -320,21 +320,21 @@ Depends on Stages 1–5; this is the final implementation/validation stage.
 
 - [x] Extend user docs with readiness origins, separate color meanings, aggregation
   versus actual selection, grouping, units, unavailable timing and xrun limits.
-- [ ] Run affected collector/runtime/engine/backend/protocol/transport/app/UI tests,
+- [x] Run affected collector/runtime/engine/backend/protocol/transport/app/UI tests,
   RT no-heap/lock and dependency-boundary guards, then the complete suite prescribed
   by current `.agents/info/test.md` in the selected build environment. Run formatting,
   warning-denying workspace build, test-attribute and tracing inventory checks.
-- [ ] Run native packaged socket/shared-memory and browser/worklet flows: enable,
+- [x] Run native packaged socket/shared-memory and browser/worklet flows: enable,
   inspect graph/table, record/play, route/rebuild, switch units, inject xrun,
   inspect interval and selected callback/tick/timeline, disable/re-enable,
   reconnect/replace host and shut down. Exercise actual unavailable browser clocks
   and injected-clock contracts separately; report unavailable real facilities.
-- [ ] Compare release off/on/stalled performance with the recorded pre-graph
+- [x] Compare release off/on/stalled performance with the recorded pre-graph
   profiling baseline across graph sizes and Q=1/16/32/64/128. Record callback tails/
   misses, publication bytes, collector memory/CPU, capture detail latency, layout
   time and steady UI frame cost. Resolve unexplained RT regressions and verify
   fixed bounds under dense topology, capture saturation and slow clients.
-- [ ] Commit meaningful milestones, push `feat/runtime-profiling-graph` and update its
+- [x] Commit meaningful milestones, push `feat/runtime-profiling-graph` and update its
   dedicated PR against `feat/fixed-quantum-runtime` with final graph scope and evidence.
   Basic profiling PR #938 is already merged. Do not merge this graph PR.
 - [ ] Work through CI failures until required checks are green. Check for automated
@@ -503,3 +503,76 @@ against the exact shared profiling content at `5036ad06` preserves the graph
 implementation and brings in exactly the new target's six-file content delta.
 The final performance baseline moves to `a192b0ce` so the render optimizations
 are present on both sides. Affected validation is repeated after reconciliation.
+
+
+## Final local verification (2026-11-05)
+
+PR #939 targets `feat/fixed-quantum-runtime` and resolves the profiling squash
+merge. Both performance binaries include #944; baseline `a192b0ce`, implementation
+`a7e2f7ee`. The merged target contained two global test allocators; retaining one
+preserves allocation guards and fixes test compilation.
+
+- Full prescribed native CI-profile command: **2,782 passed, seven skipped**.
+  Warning-denying workspace builds, formatting, test policy, tracing inventory
+  (427 modules), feature parity and runtime/engine/loop boundary checks pass.
+  The Python suite passes 134 checks.
+- All ten affected Node/Chrome Wasm packages pass. After retargeting, backend,
+  host worklet and application checks pass again: Node **40/17/45** tests;
+  Chrome **36/17/49** tests. Collector and egui suites contain **21/244** tests.
+- Socket/shared-memory canaries require nonzero callback wrapper statistics with
+  matching prefix/suffix/between sample counts; both pass. Debug and release
+  built-worklet contracts pass, including exact callback execution counts.
+- Production Chrome workflow and the **release** large-media round-trip pass at
+  900×600, with zero xruns. The worklet's missing elapsed clock stays unavailable;
+  injected-clock contracts test real timestamp semantics separately. An extra
+  debug large-media attempt timed out after 120 seconds at LargeLoaded. CI runs
+  that case in release only; no timeout was changed. The baseline debug attempt
+  was interrupted by the environment restart and proves no attribution.
+- Native synthetic screenshots cover interval wrapper statistics and actual
+  callback/tick selection. Physical audio/MIDI hardware was unavailable locally.
+
+### Acceptance evidence
+
+| Criterion | Evidence |
+| --- | --- |
+| 1 — shared controls and table | Profiling UI control/table tests; native interaction preview; browser settings persistence. |
+| 2 — executable topology and stable layout | Atomic descriptor/activation tests; transport canaries; native/Wasm graph interaction tests; semantic serialized-topology cache. |
+| 3 — processor and link statistics | Independent collector fixtures; hover/pin tests; current UI names with role/slot identity. |
+| 4 — per-tick cumulative statistics | Independent-branch and anti-correlated-spike fixtures; malformed/unfinished records remain unavailable. |
+| 5 — color scales and influence | Pointer/zoom/pinning and grouping checks; native screenshots; bounded release UI measurements. |
+| 6 — interval versus actual xrun selection | Original-budget, partial-parent, paging and selection fencing fixtures; actual callback/tick timeline preview. |
+| 7 — coherent lifecycle | Connection/attachment/generation/epoch fencing, reused owner generations, mapping retries, reset and replacement checks. |
+| 8 — deployment boundaries and RT bounds | Full native/Node/Chrome checks, packaged carriers, production browser/worklet workflows, no-heap guards and dependency checks. |
+| 9 — callback wrapper context | Independent multi-tick/split-part envelope fixtures, missing-record checks, transported nonzero statistics and dotted-node UI tests. |
+
+### Measurement evidence and limits
+
+See `docs/profiling_graph_validation.md`, `docs/profiling_graph_benchmark.json`
+and compressed raw arrays in `docs/profiling_graph_measurements.jsonl.gz`.
+The final matrix contains 110 cases / 440 runs. Median case changes are −3.45%
+off, −2.84% on and −1.91% stalled on this shared VM. These are measurements,
+not evidence of a guaranteed speedup. On-mode control/collection cost increases
+from 15.855 to 31.491 µs per callback; initial on-mode deadline misses are 124/160
+baseline/current and are retained, not hidden.
+
+Historical suspect cases and four largest fresh suspects receive ten alternating
+pairs each. Fresh median paired changes are −1.83%, +5.54%, −0.96% and −0.05%.
+The initial +30.75% off partitioned case does not reproduce. For the +5.54% paired
+case, ratios span −21.49% to +15.25%; separate run medians are 11.883/11.818 µs.
+This spread limits causal conclusions and does not establish hard real-time safety.
+No added per-edge clock reads or render allocations are present; fixed bounds and
+saturated-consumer behavior pass their guards.
+
+Steady graph frame medians for 12/102/502 processors are 0.399/1.377/4.537 ms.
+The 4,094-processor/16,293-signal-link stress case takes 1.088 s initially and
+90.115 ms per steady frame: explicitly not 60 fps. Capture queries retain 8,192
+summaries and 14,221,312 raw bytes; 128-node pages have 134.132 µs median query time.
+
+### External delivery gate
+
+Required current-head CI remains pending. Live checks:
+<https://github.com/SanderVocke/shoopdaloop/pull/939/checks>.
+Review and inline-comment queries currently return no reviewers or feedback;
+reviewer approval is unavailable and is not claimed. The Codecov report is
+coverage information, not review approval. Keep the remaining CI checklist item
+open until required checks are green, then record final delivery state.

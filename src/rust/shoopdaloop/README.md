@@ -255,7 +255,7 @@ NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 # After release packaging:
 NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 python3 browser_firefox_smoke.py --backend new_engine
-# Additional >32 MiB file round-trip through the codec worker and AudioWorklet:
+# After a release Trunk build, test the >32 MiB file round-trip through the codec worker and AudioWorklet:
 NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
 

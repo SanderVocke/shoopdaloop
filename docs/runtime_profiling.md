@@ -123,6 +123,29 @@ reports truncation. Selected node details arrive in pages of at most 256 steps
 and 64 phase boundaries, without putting the complete raw capture in every app
 snapshot. Graph/selection state is local to the window and is not saved in sessions.
 
+### Callback wrapper nodes
+
+The graph includes **Callback entry** and **Callback exit** virtual nodes. Dotted
+connections link them to graph roots and sinks; these are callback context,
+not audio/MIDI connections or extra measured readiness links. Entry measures
+callback entry to the first graph start. Exit measures the last processor's
+completion to callback exit, including final output routing. Their Avg, Worst
+and population Stddev use complete callbacks; ordinary processor statistics
+use individual graph executions. Work between graph executions is shown
+separately above the graph, so multiple ticks cannot inflate entry/exit costs.
+Selected-callback entry/exit values cover the whole callback even when a middle
+tick is selected. Percentages retain the displayed quantum-budget denominator;
+the timeline uses the selected callback's original deadline budget.
+
+The callback hooks cover native host preparation/render/output work and the
+worklet's input preparation through output copying/MIDI publication. They do not
+measure device/OS scheduling outside those hooks, or every instruction before
+entry and after exit. Partial engine callback records are labeled partial and
+receive no independent driver deadline. Missing/unfinished graph records leave
+wrapper attribution unknown. A callback without graph execution retains its
+measured total, but has no artificial entry/exit split. An unavailable elapsed
+clock leaves measurements unavailable, including these virtual nodes.
+
 ## Clocks and browser support
 
 Native hosts supply nanoseconds from a primed `Instant` epoch. A browser worklet
@@ -211,26 +234,3 @@ projection and UI loss while recording. The browser core workflow checks request
 state, available/unavailable acknowledgement, graph resets and toggles through the
 same application intents as the UI. The worklet artifact contract checks the raw
 ABI and JavaScript processor together.
-
-### Callback wrapper nodes
-
-The graph includes **Callback entry** and **Callback exit** virtual nodes. Dotted
-connections link them to graph roots and sinks; these are callback context,
-not audio/MIDI connections or extra measured readiness links. Entry measures
-callback entry to the first graph start. Exit measures the last processor's
-completion to callback exit, including final output routing. Their Avg, Worst
-and population Stddev use complete callbacks; ordinary processor statistics
-use individual graph executions. Work between graph executions is shown
-separately above the graph, so multiple ticks cannot inflate entry/exit costs.
-Selected-callback entry/exit values cover the whole callback even when a middle
-tick is selected. Percentages retain the displayed quantum-budget denominator;
-the timeline uses the selected callback's original deadline budget.
-
-The callback hooks cover native host preparation/render/output work and the
-worklet's input preparation through output copying/MIDI publication. They do not
-measure device/OS scheduling outside those hooks, or every instruction before
-entry and after exit. Partial engine callback records are labeled partial and
-receive no independent driver deadline. Missing/unfinished graph records leave
-wrapper attribution unknown. A callback without graph execution retains its
-measured total, but has no artificial entry/exit split. An unavailable elapsed
-clock leaves measurements unavailable, including these virtual nodes.
