@@ -29,6 +29,11 @@ tick. Unaligned stored durations are refused until an explicit conversion is sup
 original media is retained. Tempo conversion must derive related lengths from a
 shared tick clock and must not silently drift through independent rounding.
 
+Explicit sample-rate/quantum conversion, dependency-aware loop retiming and atomic
+live import are specified in [the media conversion plan](PLAN_MEDIA_FORMAT_CONVERSION.md).
+Its implementation and local validation precede all remaining CI work and human
+acceptance.
+
 The outer callback owns ingress and maintenance budgets. Each tick settles changes,
 executes the compiled graph, then advances capture/state. No partial graph tick is
 permitted. General host adaptation has constant declared latency; direct divisible
@@ -101,6 +106,8 @@ preflight remains necessary for coherent capacity failures and request families.
   processing, preserving endpoint transactions, exports, telemetry and recovery.
 - [x] Carry quantum through native/process/worklet setup, protocol,
   application settings and persisted configuration; report Q and stream latency.
+- [ ] Implement explicit session/media format conversion and atomic affected-family
+  imports using [the conversion plan](PLAN_MEDIA_FORMAT_CONVERSION.md).
 - [ ] Run parity scenarios against the separate reference checkout, including sync,
   program families, slot generations, media replacement, cancellation, shutdown,
   persistence and reconnect/recovery. Keep component tests as additional evidence.
