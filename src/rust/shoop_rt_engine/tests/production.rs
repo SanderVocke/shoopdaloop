@@ -16,6 +16,64 @@ fn transition(loop_id: LoopSlotId, mode: LoopMode) -> Request {
     }
 }
 
+#[shoop_test]
+fn removing_playing_strips_waits_for_the_stop_tick_and_preserves_other_audio() {
+    for quantum in [16, 32, 64] {
+        for ramp in [4, quantum + 3] {
+            let mut d = description();
+            d.quantum = quantum;
+            d.max_frames = 128;
+            d.ramp_frames = ramp as u32;
+            let mut h = Harness::new(&d);
+            h.input = Box::new(|port, _| if port == 0 { 1. } else { 0.25 });
+            for index in 0..2 {
+                let track = strip(index, 1);
+                h.done(Request::CreateStrip {
+                    strip: track,
+                    shape: shape(1, 1, false),
+                });
+                for (kind, host) in [
+                    (PortKind::AudioIn, audio_in(index)),
+                    (PortKind::AudioOut, audio_out(index)),
+                ] {
+                    h.done(Request::Connect {
+                        port: port(track, kind, 0),
+                        host,
+                        connected: true,
+                    });
+                }
+                h.done(Request::StripControl {
+                    strip: track,
+                    control: StripControl::Monitoring(true),
+                });
+            }
+            let recorded = loop_id(0, 1);
+            h.done(Request::CreateLoop {
+                loop_id: recorded,
+                strip: strip(0, 1),
+            });
+            h.done(transition(recorded, LoopMode::Recording));
+            h.run(2 * quantum, 13);
+            h.done(transition(recorded, LoopMode::Playing));
+            h.run(2 * quantum, 13);
+            assert!(h.outputs[0].last().is_some_and(|&sample| sample > 0.));
+            let before = h.outputs[1].len();
+            h.done(Request::RemoveStrip { strip: strip(0, 1) });
+            h.run(2 * quantum, 13);
+            assert_eq!(h.outputs[0].last(), Some(&0.));
+            assert!(h.outputs[1][before..].iter().all(|&sample| sample == 0.25));
+            h.done(Request::CreateStrip {
+                strip: strip(0, 2),
+                shape: shape(1, 1, false),
+            });
+            h.done(Request::CreateLoop {
+                loop_id: loop_id(0, 2),
+                strip: strip(0, 2),
+            });
+        }
+    }
+}
+
 fn record(q: usize, partition: usize) -> (Vec<f32>, Vec<(u64, Vec<u8>)>) {
     let mut d = description();
     d.quantum = q;

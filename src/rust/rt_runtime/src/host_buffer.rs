@@ -4,7 +4,59 @@ use crate::{
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
-const PORTS: usize = 64;
+pub(crate) trait AudioIo {
+    fn frame(&self) -> Frame;
+    fn frames(&self) -> usize;
+    fn input(&self, port: usize) -> &[f32];
+    fn output(&mut self, port: usize) -> &mut [f32];
+    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]);
+}
+
+impl AudioIo for AudioBlock<'_, '_> {
+    fn frame(&self) -> Frame {
+        self.frame
+    }
+    fn frames(&self) -> usize {
+        self.frames
+    }
+    fn input(&self, port: usize) -> &[f32] {
+        self.inputs[port]
+    }
+    fn output(&mut self, port: usize) -> &mut [f32] {
+        self.outputs[port]
+    }
+    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]) {
+        (self.inputs[input], self.outputs[output])
+    }
+}
+
+pub(crate) struct BufferedAudio<'a> {
+    frame: Frame,
+    frames: usize,
+    inputs: &'a [f32],
+    outputs: &'a mut [f32],
+}
+
+impl AudioIo for BufferedAudio<'_> {
+    fn frame(&self) -> Frame {
+        self.frame
+    }
+    fn frames(&self) -> usize {
+        self.frames
+    }
+    fn input(&self, port: usize) -> &[f32] {
+        &self.inputs[port * self.frames..(port + 1) * self.frames]
+    }
+    fn output(&mut self, port: usize) -> &mut [f32] {
+        &mut self.outputs[port * self.frames..(port + 1) * self.frames]
+    }
+    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]) {
+        (
+            &self.inputs[input * self.frames..(input + 1) * self.frames],
+            &mut self.outputs[output * self.frames..(output + 1) * self.frames],
+        )
+    }
+}
 
 /// One-tick stream delay, independent of callback partitioning.
 pub(crate) struct HostBuffer {
@@ -20,9 +72,6 @@ pub(crate) struct HostBuffer {
 impl HostBuffer {
     pub fn prepare(config: PreparedConfig, quantum: crate::Quantum) -> Result<Self, Error> {
         let c = config.limits();
-        if c.audio_inputs > PORTS || c.audio_outputs > PORTS {
-            return Err(Error::InvalidConfig);
-        }
         let q = quantum.frames();
         let midi = |n| {
             (0..n)
@@ -49,7 +98,7 @@ impl HostBuffer {
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
-        mut tick: impl FnMut(&mut AudioBlock<'_, '_>, &mut MidiBlock<'_>) -> Result<(), Error>,
+        mut tick: impl FnMut(&mut BufferedAudio<'_>, &mut MidiBlock<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let q = self.q;
         self.overflows = 0;
@@ -79,24 +128,16 @@ impl HostBuffer {
             at += count;
             self.fill += count;
             if self.fill == q {
-                let mut inputs = [&[][..]; PORTS];
-                for (dst, src) in inputs.iter_mut().zip(self.input.chunks_exact(q)) {
-                    *dst = src;
-                }
                 self.output.fill(0.);
-                let mut outputs: [&mut [f32]; PORTS] = core::array::from_fn(|_| &mut [][..]);
-                for (dst, src) in outputs.iter_mut().zip(self.output.chunks_exact_mut(q)) {
-                    *dst = src;
-                }
                 for m in &mut self.midi_output {
                     m.clear();
                 }
                 tick(
-                    &mut AudioBlock {
+                    &mut BufferedAudio {
                         frame: self.processed,
                         frames: q,
-                        inputs: &inputs[..audio.inputs.len()],
-                        outputs: &mut outputs[..audio.outputs.len()],
+                        inputs: &self.input,
+                        outputs: &mut self.output,
                     },
                     &mut MidiBlock {
                         inputs: &self.midi_input,

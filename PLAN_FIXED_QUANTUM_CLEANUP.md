@@ -565,3 +565,56 @@ native suite (**2,661 passed, six skips**), **117 affected Node22 tests**, all
 pass. The first protocol check correctly exposed two stale byte tables after the
 version bump; the corrected final full suite above passes. Logs:
 `work/cleanup-delivery-{build,native-final,node,retiming-browser,python}.log`.
+
+
+Review/CI corrections after 435eb2a2 (2026-11-04): Codex review identified the
+HostBuffer 64-port restriction. Default JACK preparation reserves 96 audio outputs;
+the generic runtime must honor prepared counts. Removed that limit and per-tick
+slice-reference arrays. A private borrowed audio interface lends either host slices
+or the contiguous prepared buffers to the same graph traversal. It adds no public
+processor entry point or alternate planner lifecycle. A heap-guarded independent
+128-frame stream oracle verifies all 96/1,025 ports across whole/irregular/zero
+callbacks, exact channel reversal and one-quantum latency. Native, Node and Miri
+pass; the unchanged Miri workload completed in 583.94s, below the existing 900s limit.
+
+Strict local JACK acceptance then reproduced a structural timing error: Stop and
+activation separated by one requested frame could round onto the same tick, making
+removal of playing strips Busy. Structural bases and ramp ends now align, with
+activation one complete quantum after Stop settlement. A new Q16/Q32/Q64 test with
+ramps 4 and Q+3 fails before the fix and passes afterward, retaining every unrelated
+output sample and reusing the removed strip/loop slots. All 13 production/structural
+tests, including Q1 scalar oracles, pass.
+
+Coverage and Windows debug both exposed a UI shutdown failure. Inspected the two
+uploaded Perfetto traces using the pinned repository wrapper/checksum, with its
+cache relocated in an uncommitted workspace copy. Original traces show continued
+UI/client work but do not record the remote host's completion/error; no timing-only
+cause was inferred from them. Improved shutdown assertion diagnostics and reproduced
+ShutdownFailed/MIDI-reset-not-confirmed on the first 2-CPU contention trial with
+detailed tracing. The dummy owner could exit without its final reset callback when
+an in-flight callback exceeded the existing grace period; reset confirmation was
+also read before joining the driver. The dummy now completes that final callback
+on its render owner, and confirmation is sampled after join. A deterministic
+zero-grace/no-sleep regression proves reset completion during join and stopped
+cleanup. Both original UI assertions pass in **10 constrained/traced trials × 2
+cases** after the fix. The grace period and UI deadlines are unchanged.
+
+Fresh strict JACK acceptance passes all seven commands, including all five session
+scenarios through local/socket/shared-memory/TCP, native Master preview, companion
+and UI startup. The portable affected core suite passes **436 Node tests**; the
+wide-port Miri case brings local selected interpreter evidence to **27 tests**.
+Detailed logs: `work/cleanup-review-*`, `work/cleanup-final-review-*`,
+`work/cleanup-ui-stress-final.log` and `work/cleanup-native-jack-final`.
+
+First remote run 41871899675: Linux debug/release, all three platform process
+inspections and bare-metal gates pass. JACK and coverage/Windows shutdown failures
+are addressed above. Both macOS build jobs were canceled without acquiring a runner;
+GitHub annotations explicitly report hosted macOS arm64 capacity constraints. These
+are unfulfilled platform gates, not passes. Restart the full matrix with the fixes
+and obtain fresh automated review before completing stage 7.
+
+
+Final review-fix local gate: warning-denying workspace build and full native suite
+pass (**2,664 passed, six existing skips**). Fresh actual non-isolated loop worklets
+pass in offline/live debug contexts with all six deliberate failure gates. Formatting,
+test policy, tracing, parity/book checks and all 133 Python tooling tests pass.
