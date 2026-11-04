@@ -186,6 +186,23 @@ Goals and these criteria require explicit user approval to change.
   checked timing revision. Existing ledger/export leases retain raw snapshots;
   metadata edits do not need a new media allocation or mutate earlier export cuts.
 
+- Raw-media/persistence milestone: uploads now retain original interleaved PCM,
+  channel gains and exact MIDI timestamps. A bounded private-source window header
+  separates logical periods from raw extents without changing family/replacement
+  transaction records. Imported metadata and later edits share immutable media.
+  Shorten/zero/re-extend and nonzero pre-play replacement round trips pass.
+- Timing edits serialize with persistence preparation/capture; a settled reliable
+  result publishes the whole header. No-op and empty batches confirm a new timing
+  revision without changing raw media. Active/all-armed recording is checked again
+  before any length-containing transaction publishes.
+- Editor projection uses authoritative timing even without media, including active
+  recording. End previews use effective Q-aligned periods; API calls never round.
+  Engine/backend/service capability advertisement is now enabled for integration
+  acceptance. Other parity gates remain unchanged.
+- Validation checkpoint: native loop-host direct/wire/threaded debug and release
+  replay and bare-metal builds pass. Three selected Miri timing cases pass. Both
+  packaged transports pass live edits; final browser/full-suite/CI gates remain open.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -222,37 +239,37 @@ Each stage's verification must pass before its dependent stage is closed.
   edits, explicit optional fields, expected identity/revisions, reliable outcomes,
   and authoritative per-channel timing projection. Define metadata visibility for
   empty and recording loops and its relationship to raw-media revisions.
-- [ ] Specify one atomic publication cut, conflicts with capture/clear/import/load/
+- [x] Specify one atomic publication cut, conflicts with capture/clear/import/load/
   removal, no-op/empty-batch outcomes and queue ordering. Reserve staging/result
   credits before admission; revalidate active and all armed recording at execution.
-- [ ] Define quantum length validation and effective-frame reporting. Carry Q to
+- [x] Define quantum length validation and effective-frame reporting. Carry Q to
   editor validation; preserve frame-precision offsets/pre-play and MIDI timestamps.
-- [ ] Verify: typed/wire codec round-trips, version refusal, oversized/duplicate/
+- [x] Verify: typed/wire codec round-trips, version refusal, oversized/duplicate/
   foreign/stale channels, integer overflow, nonaligned lengths and protocol bounds.
 
 ### Stage 2 — retained raw media and channel windows
 
-- [ ] Extend the loop media ledger, planner views, audio/MIDI renderers and export
+- [x] Extend the loop media ledger, planner views, audio/MIDI renderers and export
   descriptors to distinguish raw data duration from logical window duration,
   with independent audio-channel offsets and MIDI start/pre-play metadata.
-- [ ] Implement prepared immutable window versions sharing existing media leases,
+- [x] Implement prepared immutable window versions sharing existing media leases,
   transactional activation and off-render retirement. Preserve raw data beyond a
   shortened logical loop and in-flight exports of previous versions.
-- [ ] Apply signed raw-position mapping with silence outside audio bounds and
+- [x] Apply signed raw-position mapping with silence outside audio bounds and
   correct MIDI indexed seek/restore. Keep timing-only/empty-MIDI duration valid.
-- [ ] Verify: Q=1 and larger-Q render oracles for negative/positive/different-channel
+- [x] Verify: Q=1 and larger-Q render oracles for negative/positive/different-channel
   offsets, shorten/re-extend, empty media, aligned-take rejection, raw export
   retention, saturation/stale sources and heap-guarded publication/cleanup.
 
 ### Stage 3 — manual length and live timing execution
 
-- [ ] Add the manual timing transaction to resolver/planner execution: preserve
+- [x] Add the manual timing transaction to resolver/planner execution: preserve
   position or modulo it, update period without scaling media, retain pending
   transitions, and recalculate source pulse prediction without retiming followers.
-- [ ] Apply whole-loop and channel-batch fields atomically. Permit reference-valid
+- [x] Apply whole-loop and channel-batch fields atomically. Permit reference-valid
   offset/pre-play changes during capture/armed recording while keeping capture
   progress/alignment fixed; refuse length-containing transactions in those states.
-- [ ] Integrate capture start/restart/finalization and clear with timing generations;
+- [x] Integrate capture start/restart/finalization and clear with timing generations;
   prevent a completing take or stale queued edit from restoring old metadata.
 - [ ] Verify: stopped/playing/recording/armed matrix; position inside/outside new
   length; zero length; multiple pending transitions; source/follower sync; coincident
@@ -261,7 +278,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 4 — complete audio/MIDI pre-play
 
-- [ ] Implement resolver-owned imminent-start prediction and per-channel lead-in
+- [x] Implement resolver-owned imminent-start prediction and per-channel lead-in
   views, preserving logical Stopped state and emitting no early pulse/cycle. Render
   available raw lead-in, silence outside retained audio and start exactly at the
   published effective boundary; do not fabricate missing capture history.
@@ -279,13 +296,13 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 5 — production commands, confirmation and recovery
 
-- [ ] Implement RT request handling, reliable publication/results and full state/
+- [x] Implement RT request handling, reliable publication/results and full state/
   resync metadata; implement backend timing setters with bounded asynchronous
   completion and generation-safe cache invalidation rather than media re-upload.
-- [ ] Add service admission/handlers and client intent routing for both intents.
+- [x] Add service admission/handlers and client intent routing for both intents.
   Validate alignment-adjusted channel coordinates against authoritative topology,
   including newly recorded loops and requests without selected media loaded.
-- [ ] Reconcile pending results and snapshots by confirmed revisions. Keep all
+- [x] Reconcile pending results and snapshots by confirmed revisions. Keep all
   admitted work owned by the service after UI loss; abandon unadmitted preparation
   safely. Stop/clear/removal/session replacement fence stale work and raw reads.
 - [ ] Verify: typed and encoded production client/service/adapter/engine tests for
@@ -296,11 +313,11 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 6 — persistence, import/export and coherent capture
 
-- [ ] Carry timing and raw lengths through RT capture/read descriptors, service
+- [x] Carry timing and raw lengths through RT capture/read descriptors, service
   persistence images/mappings, adapter preparation/replacement and portable codecs.
   Remove only P12 pre-play refusals in document, image and prepared validation;
   retain unrelated channel-mode/latency/unsupported-MIDI diagnostics.
-- [ ] Save/load edited media and timing as one immutable cut; fence pending edits
+- [x] Save/load edited media and timing as one immutable cut; fence pending edits
   against capture/import/load, retain fresh live IDs and stopped loops on load.
   Preserve existing sample-rate consent, resampling, exact/raw exports and logical
   WAV/SMF window rules, including lead-in metadata in formats that represent it.
@@ -313,11 +330,11 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 7 — editor integration and capability enablement
 
-- [ ] Supply confirmed channel timing independently of optional media reads, with
+- [x] Supply confirmed channel timing independently of optional media reads, with
   consistent audio/MIDI alignment coordinates and stable generation-safe IDs.
   Preserve lanes or metadata controls during active recording; loading a waveform
   is not a prerequisite for a valid timing command.
-- [ ] Connect existing start/pre-play/end tools and metadata controls. Preserve
+- [x] Connect existing start/pre-play/end tools and metadata controls. Preserve
   single/all scope, relative starts, shared length, grid/snap anchoring and preview.
   Preview valid quantum-aligned periods and show actual refusals/pending outcomes;
   never present an unconfirmed edit as authoritative or silently quantize an API call.

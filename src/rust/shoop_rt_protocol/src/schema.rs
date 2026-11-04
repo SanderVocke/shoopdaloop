@@ -154,6 +154,11 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ContentWindow {
+        id: u64,
+        frames: u64,
+        windows: crate::PlaybackWindows,
+    },
     LoopTiming {
         loop_id: LoopSlotId,
         expected_revision: u64,

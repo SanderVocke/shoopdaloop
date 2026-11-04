@@ -39,7 +39,7 @@ impl ControlEndpoint {
         if request_id == 0 || frames == 0 || self.model.bus(bus).is_none() {
             return Err(Refusal::InvalidId);
         }
-        let source = self.uploads.source(content, false, frames)?;
+        let source = self.uploads.source_raw(content, false, frames)?;
         self.submit_loop(
             self.at(),
             Operation::NodePairSourceCursor { id: source },

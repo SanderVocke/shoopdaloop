@@ -52,6 +52,10 @@ enum Step {
     Waveform,
     MidiDetail,
     ImmediateStop,
+    TimingScalar,
+    TimingChannels,
+    TimingPickup,
+    TimingPlaying,
     CancelSaving,
     Saving,
     Cleared,
@@ -253,6 +257,17 @@ impl NewEngineSelfTest {
                     return Err("a new session has only the sync track".to_owned());
                 }
                 if self.preview_only {
+                    let audio = &snapshot.tracks[1].loops[0];
+                    if audio.length_frames != self.sync_length - 10240
+                        || audio.channel_timings.len() != 2
+                        || audio.channel_timings[0].start_offset != 8192
+                        || audio.channel_timings[1].start_offset != 8320
+                        || audio.channel_timings[0].preplay_samples != 8192
+                        || audio.channel_timings[1].preplay_samples != 4096
+                        || snapshot.tracks[2].loops[0].channel_timings[0].preplay_samples != 256
+                    {
+                        return Err("save/load changed timing windows".into());
+                    }
                     self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
                     self.ids.master = snapshot.buses.first().map(|b| b.id);
                     return Ok(Some(Step::PreviewReady));
@@ -603,6 +618,90 @@ impl NewEngineSelfTest {
                 if first_loop(snapshot, ids.audio)?.mode != LoopMode::Stopped {
                     return Ok(None);
                 }
+                let audio = first_loop(snapshot, ids.audio)?;
+                send(AppIntent::SetLoopTimeline {
+                    loop_id: audio.id,
+                    start_offset: Some(8192),
+                    preplay_samples: Some(8192),
+                    loop_length: Some(self.sync_length - 10240),
+                })?;
+                Step::TimingScalar
+            }
+            Step::TimingScalar => {
+                let audio = first_loop(snapshot, ids.audio)?;
+                if audio.length_frames != self.sync_length - 10240
+                    || audio.channel_timings.iter().any(|channel| {
+                        channel.start_offset != 8192 || channel.preplay_samples != 8192
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::SetLoopChannelTimings {
+                    loop_id: audio.id,
+                    updates: audio
+                        .channel_timings
+                        .iter()
+                        .enumerate()
+                        .map(|(index, channel)| shoop_egui::ChannelTimelineUpdate {
+                            channel_id: channel.id,
+                            start_offset: Some(8192 + index as i64 * 128),
+                            preplay_samples: Some(if index == 0 { 8192 } else { 4096 }),
+                        })
+                        .collect(),
+                })?;
+                send(AppIntent::SetLoopTimeline {
+                    loop_id: ids.keys.unwrap().1,
+                    start_offset: Some(128),
+                    preplay_samples: Some(256),
+                    loop_length: None,
+                })?;
+                send(AppIntent::Track {
+                    track_id: ids.audio.unwrap().0,
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: false,
+                        respect_auto_mute: false,
+                    },
+                })?;
+                Step::TimingChannels
+            }
+            Step::TimingChannels => {
+                let audio = first_loop(snapshot, ids.audio)?;
+                let keys = first_loop(snapshot, ids.keys)?;
+                if audio.channel_timings.len() != 2
+                    || audio.channel_timings[1].start_offset != 8320
+                    || audio.channel_timings[1].preplay_samples != 4096
+                    || keys.channel_timings.first().is_none_or(|channel| {
+                        channel.start_offset != 128 || channel.preplay_samples != 256
+                    })
+                {
+                    return Ok(None);
+                }
+                if signal && audio.peak_left_db > SIGNAL_DB {
+                    return Ok(None);
+                }
+                send(AppIntent::Global(GlobalControlAction::SetSync(true)))?;
+                send(loop_intent(ids.audio, LoopAction::PlayClicked)?)?;
+                Step::TimingPickup
+            }
+            Step::TimingPickup => {
+                let audio = first_loop(snapshot, ids.audio)?;
+                if audio.mode != LoopMode::Stopped || (signal && audio.peak_left_db < SIGNAL_DB) {
+                    if waiting > Duration::from_secs(3) {
+                        return Err(format!(
+                            "pickup missing: target {audio:?}, source {:?}",
+                            first_loop(snapshot, ids.sync)?
+                        ));
+                    }
+                    return Ok(None);
+                }
+                Step::TimingPlaying
+            }
+            Step::TimingPlaying => {
+                if first_loop(snapshot, ids.audio)?.mode != LoopMode::Playing {
+                    return Ok(None);
+                }
+                send(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
+                send(loop_intent(ids.audio, LoopAction::StopClicked)?)?;
                 send(AppIntent::RequestSaveSession)?;
                 Step::CancelSaving
             }
@@ -677,6 +776,17 @@ impl NewEngineSelfTest {
                         "loaded session did not restore controls, lengths and fresh stopped owners"
                             .into(),
                     );
+                }
+                let audio = &snapshot.tracks[1].loops[0];
+                if audio.length_frames != self.sync_length - 10240
+                    || audio.channel_timings.len() != 2
+                    || audio.channel_timings[0].start_offset != 8192
+                    || audio.channel_timings[1].start_offset != 8320
+                    || audio.channel_timings[0].preplay_samples != 8192
+                    || audio.channel_timings[1].preplay_samples != 4096
+                    || snapshot.tracks[2].loops[0].channel_timings[0].preplay_samples != 256
+                {
+                    return Err("save/load changed timing windows".into());
                 }
                 self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
                 self.ids.audio = Some((snapshot.tracks[1].id, snapshot.tracks[1].loops[0].id));

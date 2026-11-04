@@ -210,6 +210,23 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         &mut connection,
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(-3),
+            preplay_samples: Some(17),
+            loop_length: None,
+        },
+    )?;
+    ensure!(
+        client.snapshot().unwrap().tracks[1].loops[0]
+            .channel_timings
+            .iter()
+            .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17),
+        "recording timing was not confirmed"
+    );
     let before = client.snapshot().unwrap().status.processed_frames;
     shoop_host_manager::verify_host_discovery(
         &entry,
@@ -228,6 +245,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         );
         ensure!(
             state.tracks[1].loops[0].mode == LoopMode::Recording
+                && state.tracks[1].loops[0]
+                    .channel_timings
+                    .iter()
+                    .all(|channel| channel.start_offset == -3 && channel.preplay_samples == 17)
                 && state.status.processed_frames > before,
             "recording did not survive UI loss"
         );
@@ -264,6 +285,49 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             && !media.audio[0].samples.is_empty()
             && media.midi[0].events.len() == 2,
         "recorded audio/MIDI was not preserved"
+    );
+    let length = client.snapshot().unwrap().tracks[1].loops[0].length_frames;
+    let retained = media.audio[0].samples.len();
+    command(
+        &mut client,
+        &mut connection,
+        Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(1),
+            preplay_samples: Some(31),
+            loop_length: Some((length / 64).max(1) * 32),
+        },
+    )?;
+    let state = &client.snapshot().unwrap().tracks[1].loops[0];
+    ensure!(
+        state.length_frames == (length / 64).max(1) * 32
+            && state
+                .channel_timings
+                .iter()
+                .all(|channel| channel.start_offset == 1 && channel.preplay_samples == 31),
+        "playing timing did not settle"
+    );
+    connection
+        .send(
+            client
+                .read_media(loops[0])
+                .map_err(|error| anyhow!("{error:?}"))?,
+        )
+        .map_err(|error| anyhow!("{error:?}"))?;
+    wait(&mut client, &mut connection, |client| {
+        client.media().is_some()
+    })?;
+    ensure!(
+        client
+            .media()
+            .unwrap()
+            .as_ref()
+            .map_err(|error| anyhow!("{error:?}"))?
+            .audio[0]
+            .samples
+            .len()
+            == retained,
+        "timing truncated raw media"
     );
     let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
     crate::recovery::shutdown(&entry, ticket)

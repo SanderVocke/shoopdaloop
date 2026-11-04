@@ -318,3 +318,102 @@ fn preplay_is_audible_while_stopped_and_pickup_notes_continue_across_start() {
     assert_eq!(cut.state.mode, Mode::Playing);
     assert_ne!(cut.windows, Windows::default());
 }
+
+#[shoop_test]
+fn cancelled_superseded_and_invalidated_pickups_release_notes_without_starting() {
+    for action in 0..3 {
+        let (mut control, mut engine, _) = setup_with(
+            32,
+            false,
+            Options {
+                imports: true,
+                source: true,
+                ..Options::default()
+            },
+        );
+        let mut host = Host::new();
+        host.early = false;
+        let source = LoopId::from_parts(1, 1).unwrap();
+        edit(
+            &mut control,
+            0,
+            0,
+            Edit {
+                start_offset: Some(2),
+                preplay: Some(2),
+                ..Default::default()
+            },
+        );
+        submit(
+            &mut control,
+            0,
+            Operation::Transition {
+                target: source,
+                timing: Timing::At,
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            },
+        );
+        host.step(&mut engine, 1);
+        let planned = submit(
+            &mut control,
+            1,
+            Operation::Transition {
+                target: id(),
+                timing: Timing::AfterTicks { source, skip: 0 },
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            },
+        );
+        host.step(&mut engine, 6);
+        assert!(host.output[0][5] != 0.);
+        assert!((0..host.midi_out[0].len())
+            .filter_map(|index| host.midi_out[0].get(index))
+            .any(|(_, packet)| packet == [0x90, 61, 100]));
+        match action {
+            0 => {
+                submit(&mut control, 7, Operation::Cancel { sequence: planned });
+            }
+            1 => {
+                submit(
+                    &mut control,
+                    7,
+                    Operation::Transition {
+                        target: source,
+                        timing: Timing::At,
+                        transition: Transition::Stop,
+                    },
+                );
+            }
+            _ => {
+                submit(&mut control, 7, Operation::Cancel { sequence: planned });
+                submit(
+                    &mut control,
+                    7,
+                    Operation::Transition {
+                        target: id(),
+                        timing: Timing::AfterTicks { source, skip: 1 },
+                        transition: Transition::Play {
+                            position: 0,
+                            retrigger: false,
+                        },
+                    },
+                );
+            }
+        }
+        host.step(&mut engine, 1);
+        assert_eq!(host.output[0][0], 0.);
+        assert!(
+            (0..host.midi_out[0].len())
+                .filter_map(|index| host.midi_out[0].get(index))
+                .any(|(_, packet)| packet == [0x80, 61, 0]),
+            "pickup note leaked after action {action}"
+        );
+        host.step(&mut engine, 4);
+        assert_eq!(&host.output[0][..4], &[0.; 4]);
+    }
+}

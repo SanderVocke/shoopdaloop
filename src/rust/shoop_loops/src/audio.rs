@@ -258,7 +258,9 @@ impl AudioRenderer {
                         }
                         if source_channel == channel {
                             let byte = (frame * channels + channel) * 4;
-                            self.bytes[byte..byte + 4].copy_from_slice(&source);
+                            let value =
+                                f32::from_le_bytes(source) * f32::from_bits(window.gain_bits);
+                            self.bytes[byte..byte + 4].copy_from_slice(&value.to_le_bytes());
                         }
                     }
                 }

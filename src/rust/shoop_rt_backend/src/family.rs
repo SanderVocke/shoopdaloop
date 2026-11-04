@@ -30,6 +30,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.pump();
         self.ready()?;
+        if self.requests.timing_pending() {
+            bail!("a timing edit is pending");
+        }
         if update.sample_rate != self.driver.map_or(0, |driver| driver.sample_rate)
             || update.quantum_frames != u32::from(self.limits().quantum)
             || update.members.is_empty()
@@ -123,10 +126,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }));
         for member in &update.members {
             let mut pair = [None; 2];
-            if let Some(image) = content
-                .get(&member.loop_id)
-                .filter(|image| image.length > 0)
-            {
+            if let Some(image) = content.get(&member.loop_id).filter(|image| {
+                image.length > 0
+                    || image
+                        .audio
+                        .iter()
+                        .any(|channel| !channel.samples.is_empty())
+                    || image.midi.iter().any(|channel| channel.length > 0)
+            }) {
                 for (index, midi) in [false, true].into_iter().enumerate() {
                     let token = self.family_token()?;
                     let upload = Upload::new(
@@ -141,6 +148,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         upload,
                         begun: false,
                     });
+                    work.push_back(Work::Request(Request::ContentWindow {
+                        id: token,
+                        frames: u64::from(image.length),
+                        windows: crate::prepared::windows(&image),
+                    }));
                 }
             }
             let entry = &self.mirror.loops[&member.loop_id];

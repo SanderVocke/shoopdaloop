@@ -76,6 +76,7 @@ pub struct Rejected {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct View {
+    pub windows: Option<crate::windows::Windows>,
     pub description: Description,
     pub audio: Option<Source>,
     pub midi: Option<Source>,
@@ -299,6 +300,7 @@ impl Ledger {
         }
         self.allocate(
             View {
+                windows: None,
                 description,
                 audio: None,
                 midi: None,
@@ -307,6 +309,14 @@ impl Ledger {
         )
     }
     fn validate(&self, io: &mut ResourceIo<'_>, input: &Input) -> Result<(), Error> {
+        self.validate_input(io, input, None)
+    }
+    fn validate_input(
+        &self,
+        io: &mut ResourceIo<'_>,
+        input: &Input,
+        windows: Option<crate::windows::Windows>,
+    ) -> Result<(), Error> {
         for slot in &self.media {
             if let Some(media) = slot.value {
                 Self::check_sources(io, media)?;
@@ -340,7 +350,8 @@ impl Ledger {
                         return Err(Error::InvalidId);
                     }
                     if source.snapshot.description.format != format
-                        || source.snapshot.description.frames != description.frames
+                        || (windows.is_none()
+                            && source.snapshot.description.frames != description.frames)
                     {
                         return Err(Error::InvalidShape);
                     }
@@ -351,17 +362,48 @@ impl Ledger {
                 None => {}
             }
         }
+        if let Some(windows) = windows {
+            if description.channels as usize > crate::windows::MAX_AUDIO_CHANNELS {
+                return Err(Error::Capacity);
+            }
+            windows
+                .validate_alignment(
+                    description.channels as usize,
+                    description.midi,
+                    input.audio.map_or(0, |s| s.snapshot.description.frames),
+                    input.midi.map_or(0, |s| s.snapshot.description.frames),
+                    description.frames,
+                )
+                .map_err(|_| Error::InvalidShape)?;
+        }
         Ok(())
     }
     pub fn adopt(&mut self, io: &mut ResourceIo<'_>, input: Input) -> Result<MediaId, Rejected> {
+        self.adopt_input(io, input, None)
+    }
+    pub fn adopt_windowed(
+        &mut self,
+        io: &mut ResourceIo<'_>,
+        input: Input,
+        windows: crate::windows::Windows,
+    ) -> Result<MediaId, Rejected> {
+        self.adopt_input(io, input, Some(windows))
+    }
+    fn adopt_input(
+        &mut self,
+        io: &mut ResourceIo<'_>,
+        input: Input,
+        windows: Option<crate::windows::Windows>,
+    ) -> Result<MediaId, Rejected> {
         let result = (|| {
             self.owner(input.description.owner)?;
             if self.free_media.is_empty() {
                 return Err(Error::Capacity);
             }
-            self.validate(io, &input)?;
+            self.validate_input(io, &input, windows)?;
             self.allocate(
                 View {
+                    windows,
                     description: input.description,
                     audio: input.audio,
                     midi: input.midi,
@@ -392,6 +434,7 @@ impl Ledger {
             self.validate(io, &input)?;
             self.media[id.slot as usize].value = Some(Media {
                 view: View {
+                    windows: None,
                     description: input.description,
                     audio: input.audio,
                     midi: input.midi,

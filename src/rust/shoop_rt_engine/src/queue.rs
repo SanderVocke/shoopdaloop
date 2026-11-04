@@ -198,7 +198,8 @@ impl ControlEndpoint {
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => false,
             Request::ContentBegin(_) => false,
-            Request::ContentWrite { id, .. }
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
             | Request::ContentInitial { id, .. }
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.blocked(id),
@@ -280,7 +281,8 @@ impl ControlEndpoint {
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {}
             Request::ContentBegin(_) => {}
-            Request::ContentWrite { id, .. }
+            Request::ContentWindow { id, .. }
+            | Request::ContentWrite { id, .. }
             | Request::ContentInitial { id, .. }
             | Request::ContentFinish { id }
             | Request::ContentRelease { id } => self.uploads.block(id),

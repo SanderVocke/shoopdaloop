@@ -1469,6 +1469,8 @@ pub struct CompositeDetailsState {
 
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
+    pub quantum_frames: u32,
+    pub length_frames: u64,
     pub generation: u64,
     pub loop_id: LoopId,
     pub title: String,

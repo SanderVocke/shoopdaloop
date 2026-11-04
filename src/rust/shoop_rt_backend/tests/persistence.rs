@@ -101,7 +101,7 @@ fn cancelled_or_invalid_replacement_preserves_all_live_identities_and_media() {
         .contains("cancelled"));
     assert!(backend.poll().unwrap().loops.contains_key(&old.loops[0]));
     assert_eq!(backend.capture_session().unwrap(), before);
-    session.tracks[0].loops[0].audio[0].preplay = 1;
+    session.tracks[0].loops[0].audio[0].gain = f32::NAN;
     assert!(backend.replace_session_async(&session).is_err());
     assert_eq!(backend.capture_session().unwrap(), before);
 }
@@ -501,12 +501,14 @@ fn large_private_validation_yields_and_checks_samples_outside_the_render_window(
         .expect("failed preparation releases its image")
         .last_mut()
         .unwrap() = 0.25;
-    loaded(&mut backend, &candidate).unwrap();
-    let saved = backend.capture_session().unwrap();
-    assert!(Arc::ptr_eq(
-        &saved.tracks[0].loops[0].audio[0].samples,
-        &candidate.tracks[0].loops[0].audio[0].samples
-    ));
+    assert!(loaded(&mut backend, &candidate)
+        .unwrap_err()
+        .to_string()
+        .contains("Capacity"));
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops,
+        before.tracks[0].loops
+    );
 }
 
 #[shoop_test]
@@ -636,4 +638,114 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
             &vec![0.25; 4096]
         );
     }
+}
+
+#[shoop_test]
+fn timing_windows_preserve_raw_audio_midi_proofs_and_preplay_through_replacement() {
+    let (mut backend, old, mut session) = fixture();
+    let content = &mut session.tracks[0].loops[0];
+    content.length = 4;
+    content.audio[0].samples = vec![0., 0.25, 0.5, 0.75, 1., 0.125, -0.5].into();
+    content.audio[0].gain = 0.5;
+    content.audio[0].start_offset = 2;
+    content.audio[0].preplay = 2;
+    content.midi[0].length = 9;
+    content.midi[0].start_offset = 2;
+    content.midi[0].preplay = 2;
+    content.midi[0].events = vec![
+        BackendMidiEvent {
+            frame: 1,
+            data: vec![0x90, 60, 100].into(),
+        },
+        BackendMidiEvent {
+            frame: 7,
+            data: vec![0x80, 60, 0].into(),
+        },
+    ]
+    .into();
+    let mapping = loaded(&mut backend, &session).unwrap();
+    let id = mapping.loops[&old.loops[0].raw()];
+    let initial = backend.capture_session().unwrap();
+    backend
+        .set_loop_channel_timings(
+            id,
+            &[
+                BackendChannelTimingUpdate {
+                    channel: 0,
+                    is_midi: false,
+                    start_offset: Some(-1),
+                    preplay: Some(3),
+                },
+                BackendChannelTimingUpdate {
+                    channel: 0,
+                    is_midi: true,
+                    start_offset: Some(1),
+                    preplay: Some(1),
+                },
+            ],
+        )
+        .unwrap();
+    backend.wait_idle();
+    assert!(backend.poll().unwrap().mutation_failures.is_empty());
+    let midi = backend.loop_midi_data(id).unwrap().unwrap();
+    assert_eq!(
+        midi.channels[0].events,
+        initial.tracks[0].loops[0].midi[0].events
+    );
+    assert_eq!(
+        (midi.channels[0].length, midi.channels[0].start_offset),
+        (9, 1)
+    );
+    for length in [2, 0, 6, 4] {
+        backend.set_loop_length(id, length).unwrap();
+        backend.wait_idle();
+        let state = backend.poll().unwrap();
+        assert!(state.mutation_failures.is_empty(), "{state:?}");
+        assert_eq!(state.loops[&id].length, length);
+        let saved = backend.capture_session().unwrap();
+        let content = &saved.tracks[0].loops[0];
+        assert_eq!(content.length, length);
+        assert_eq!(
+            content.audio[0].samples,
+            initial.tracks[0].loops[0].audio[0].samples
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &content.audio[0].samples,
+            &initial.tracks[0].loops[0].audio[0].samples
+        ));
+        assert_eq!(
+            (
+                content.audio[0].start_offset,
+                content.audio[0].preplay,
+                content.audio[0].gain
+            ),
+            (-1, 3, 0.5)
+        );
+        assert_eq!(
+            content.midi[0].events,
+            initial.tracks[0].loops[0].midi[0].events
+        );
+        assert_eq!(
+            (
+                content.midi[0].length,
+                content.midi[0].start_offset,
+                content.midi[0].preplay
+            ),
+            (9, 1, 1)
+        );
+    }
+    let saved = backend.capture_session().unwrap();
+    let mapping = loaded(&mut backend, &saved).unwrap();
+    let new = mapping.loops[&id.raw()];
+    let mut expected = saved.tracks[0].loops[0].clone();
+    expected.source_id = new.raw();
+    assert_eq!(
+        backend.capture_session().unwrap().tracks[0].loops[0],
+        expected
+    );
+    backend.clear_loop(new).unwrap();
+    backend.wait_idle();
+    let cleared = backend.capture_session().unwrap();
+    assert_eq!(cleared.tracks[0].loops[0].audio[0].start_offset, 0);
+    assert!(cleared.tracks[0].loops[0].audio[0].samples.is_empty());
 }

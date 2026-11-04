@@ -204,6 +204,7 @@ impl Wire for i32 {
 }
 impl Wire for ChannelWindow {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.gain_bits)?;
         self.start_offset.put(w)?;
         self.capture_alignment.put(w)?;
         w.u32(self.preplay)?;
@@ -211,6 +212,7 @@ impl Wire for ChannelWindow {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            gain_bits: r.u32()?,
             start_offset: i32::get(r)?,
             capture_alignment: i32::get(r)?,
             preplay: r.u32()?,
@@ -502,6 +504,16 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ContentWindow {
+                id,
+                frames,
+                windows,
+            } => {
+                w.u8(36)?;
+                w.u64(id)?;
+                w.u64(frames)?;
+                windows.put(w)
+            }
             Self::LoopTiming {
                 loop_id,
                 expected_revision,
@@ -723,6 +735,11 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            36 => Self::ContentWindow {
+                id: r.u64()?,
+                frames: r.u64()?,
+                windows: PlaybackWindows::get(r)?,
+            },
             35 => Self::LoopTiming {
                 loop_id: LoopSlotId::get(r)?,
                 expected_revision: r.u64()?,

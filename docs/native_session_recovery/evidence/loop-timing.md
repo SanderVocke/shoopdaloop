@@ -48,3 +48,31 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 
 Final acceptance must add all nine plan criteria, final source/check identities,
 Q matrix, native/browser output artifacts, persistence/recovery results and review.
+
+## Retained-media and deployment checkpoint
+
+Raw uploads carry a bounded private-source window header; raw durations need not
+be quantum aligned. Logical periods still must be aligned. Imported channel gains
+apply during rendering and raw export samples remain exact. The adapter retains
+validation proofs across window-only edits of the same immutable buffers.
+
+- `shoop_rt_backend::persistence::timing_windows_preserve_raw_audio_midi_proofs_and_preplay_through_replacement`
+  covers independent audio/MIDI timing, channel gain, nonzero pre-play, zero length,
+  re-extension, raw-buffer sharing, save/load/save and clear.
+- `shoop_rt_engine::timing_edits::retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups`
+  verifies actual output at Q=1/16/32/64/128, frame-precise raw media, different
+  channel lead-in onsets, no gap/duplicate pickup at start and delayed output cleanup.
+- `shoop_loops::runtime::timing_scenarios::cancelled_superseded_and_invalidated_pickups_release_notes_without_starting`
+  checks cancellation, replaced starts and source Stop against samples and packets.
+- Production service tests check typed/encoded channel batches, recording admission,
+  retained results, stale-attachment refusal and no render waits. Lua length getters
+  and change events observe confirmed edits without restarting the script.
+- `scripts/run_loops_hosts.py --native-only --profile debug/release`: both pass.
+- Bare-metal `thumbv7em-none-eabihf` build: pass.
+- Selected pinned Miri cases for raw windows, pickup continuity and atomic armed
+  refusal: pass, seed 0; reports retained locally for final source/hash inventory.
+- Packaged socket/shared-memory canaries: live timing and retained raw reads pass;
+  socket reattachment retains admitted recording metadata.
+
+The capability is enabled for integration acceptance. Full-suite, final browser
+acceptance and final-head CI are still required before P12 can close.

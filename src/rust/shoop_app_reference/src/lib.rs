@@ -12101,6 +12101,8 @@ impl ApplicationModel {
         });
         Some(LoopDetailsState {
             generation: self.revision,
+            quantum_frames: 1,
+            length_frames: u64::from(model.length),
             loop_id: model.id,
             title: model.name.clone(),
             loading: composite.is_none() && model.state.has_audio && model.audio_data.is_none(),

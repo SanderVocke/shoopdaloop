@@ -78,6 +78,7 @@ impl Edit {
     }
 }
 struct SourceSlot {
+    windows: Option<(u64, Windows)>,
     generation: u32,
     source: Option<media::Source>,
     cursor: Option<MidiCursor>,
@@ -166,6 +167,7 @@ impl NodePairs {
         }
         let mut sources: Vec<_> = (0..settings.sources)
             .map(|_| SourceSlot {
+                windows: None,
                 generation: 1,
                 source: None,
                 cursor: None,
@@ -253,6 +255,7 @@ impl NodePairs {
     fn take_source(&mut self, id: NodePairSourceId) -> media::Source {
         let slot = &mut self.sources[id.slot as usize];
         let source = slot.source.take().expect("validated source");
+        slot.windows = None;
         slot.generation = slot.generation.checked_add(1).unwrap_or(0);
         source
     }
@@ -314,6 +317,68 @@ impl NodePairs {
         self.take_source(id);
         Ok(())
     }
+    pub(super) fn set_windows(
+        &mut self,
+        id: NodePairSourceId,
+        frames: u64,
+        windows: Windows,
+    ) -> Result<(), Error> {
+        let source = self.source(id)?;
+        if !matches!(self.source_status(id)?, NodePairSourceStatus::Ready { .. }) {
+            return Err(Error::InvalidState);
+        }
+        let (channels, midi) = match source.snapshot.description.format {
+            Format::Audio { channels } => (channels as usize, false),
+            Format::Midi => (0, true),
+        };
+        if channels > crate::windows::MAX_AUDIO_CHANNELS {
+            return Err(Error::Capacity);
+        }
+        windows
+            .validate_alignment(
+                channels,
+                midi,
+                source.snapshot.description.frames,
+                source.snapshot.description.frames,
+                frames,
+            )
+            .map_err(|_| Error::InvalidShape)?;
+        let slot = &mut self.sources[id.slot as usize];
+        if slot
+            .windows
+            .is_some_and(|previous| previous != (frames, windows))
+        {
+            return Err(Error::InvalidState);
+        }
+        slot.windows = Some((frames, windows));
+        Ok(())
+    }
+    fn windows(
+        &self,
+        audio: Option<NodePairSourceId>,
+        midi: Option<NodePairSourceId>,
+        frames: u64,
+    ) -> Result<Option<Windows>, Error> {
+        let mut result = None;
+        let mut unset = false;
+        for id in [audio, midi].into_iter().flatten() {
+            self.source(id)?;
+            match self.sources[id.slot as usize].windows {
+                Some((length, windows)) if length == frames => {
+                    if result.is_some_and(|previous| previous != windows) {
+                        return Err(Error::InvalidShape);
+                    }
+                    result = Some(windows);
+                }
+                Some(_) => return Err(Error::InvalidShape),
+                None => unset = true,
+            }
+        }
+        if unset && result.is_some() {
+            return Err(Error::InvalidShape);
+        }
+        Ok(result)
+    }
     pub(super) fn adopt(
         &mut self,
         description: media::Description,
@@ -333,16 +398,16 @@ impl NodePairs {
                 _ => return Err(Error::InvalidState),
             }
         }
-        let media = ledger
-            .adopt(
-                io,
-                media::Input {
-                    description,
-                    audio: audio.map(|id| self.source(id)).transpose()?,
-                    midi: midi.map(|id| self.source(id)).transpose()?,
-                },
-            )
-            .map_err(|e| e.error)?;
+        let input = media::Input {
+            description,
+            audio: audio.map(|id| self.source(id)).transpose()?,
+            midi: midi.map(|id| self.source(id)).transpose()?,
+        };
+        let media = match self.windows(audio, midi, description.frames)? {
+            Some(windows) => ledger.adopt_windowed(io, input, windows),
+            None => ledger.adopt(io, input),
+        }
+        .map_err(|e| e.error)?;
         for id in [audio, midi].into_iter().flatten() {
             self.take_source(id);
         }
@@ -420,20 +485,23 @@ impl NodePairs {
             }
             let audio = initial.audio.map(|id| self.source(id)).transpose()?;
             let midi = initial.midi.map(|id| self.source(id)).transpose()?;
-            media::OwnerChange::replace(
-                edit.previous,
-                media::Input {
-                    description: media::Description {
-                        owner: initial.target,
-                        revision: Revision(0),
-                        frames: initial.frames,
-                        channels: binding.channels as u32,
-                        midi: binding.midi,
-                    },
-                    audio,
-                    midi,
+            let input = media::Input {
+                description: media::Description {
+                    owner: initial.target,
+                    revision: Revision(0),
+                    frames: initial.frames,
+                    channels: binding.channels as u32,
+                    midi: binding.midi,
                 },
-            )
+                audio,
+                midi,
+            };
+            match self.windows(initial.audio, initial.midi, initial.frames)? {
+                Some(windows) => {
+                    media::OwnerChange::replace_windowed(edit.previous, input, windows)
+                }
+                None => media::OwnerChange::replace(edit.previous, input),
+            }
         } else {
             media::OwnerChange::remove(edit.previous.ok_or(Error::InvalidId)?)
         };

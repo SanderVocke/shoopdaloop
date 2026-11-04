@@ -13,6 +13,7 @@ use shoop_rt_protocol::{
 
 fn window(value: windows::ChannelWindow) -> ChannelWindow {
     ChannelWindow {
+        gain_bits: value.gain_bits,
         start_offset: value.start_offset,
         capture_alignment: value.capture_alignment,
         preplay: value.preplay,
@@ -33,6 +34,12 @@ fn state(cut: Cut) -> TimingState {
     }
 }
 impl ControlEndpoint {
+    pub(crate) fn timing_pending(&self) -> bool {
+        self.pending
+            .iter()
+            .flatten()
+            .any(|pending| matches!(pending.purpose, Purpose::Timing { .. }))
+    }
     pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> TimingState {
         let mut timing = entry.timing;
         let cells = &self.cells.loops[entry.id.0.index as usize];
@@ -40,7 +47,7 @@ impl ControlEndpoint {
             return timing;
         }
         let revision = cells.content_revision.load(Ordering::Acquire);
-        if revision != timing.content_revision || timing.revision == 0 {
+        if revision != timing.content_revision || timing == TimingState::default() {
             let frames = cells.length.load(Ordering::Acquire);
             let shape = self
                 .model
@@ -48,6 +55,17 @@ impl ControlEndpoint {
                 .expect("live loop strip")
                 .shape;
             timing.content_revision = revision;
+            for window in timing
+                .windows
+                .audio
+                .iter_mut()
+                .chain(core::iter::once(&mut timing.windows.midi))
+            {
+                window.raw_frames = None;
+            }
+            if frames == 0 && cells.mode.load(Ordering::Acquire) == 0 {
+                timing.windows = PlaybackWindows::default();
+            }
             timing.length = frames;
             timing.raw_audio_frames = if shape.audio_outputs > 0 { frames } else { 0 };
             timing.raw_midi_frames = if shape.midi_output { frames } else { 0 };
@@ -62,6 +80,9 @@ impl ControlEndpoint {
         expected_content: u64,
         edit: TimingEdit,
     ) -> Result<Option<Outcome>, Refusal> {
+        if self.family.id.is_some() || self.replacement.id.is_some() {
+            return Err(Refusal::Busy);
+        }
         let entry = self.model.find_loop(target).ok_or(Refusal::InvalidId)?;
         let shape = self
             .model
@@ -146,5 +167,36 @@ impl ControlEndpoint {
         if let (Some(correlation), Some(outcome)) = (correlation, outcome) {
             self.answer(correlation, outcome);
         }
+    }
+}
+
+pub(crate) fn loop_windows(windows: PlaybackWindows) -> windows::Windows {
+    let channel = |value: ChannelWindow| windows::ChannelWindow {
+        gain_bits: value.gain_bits,
+        start_offset: value.start_offset,
+        capture_alignment: value.capture_alignment,
+        preplay: value.preplay,
+        raw_frames: value.raw_frames,
+    };
+    windows::Windows {
+        audio: windows.audio.map(channel),
+        midi: channel(windows.midi),
+    }
+}
+
+impl ControlEndpoint {
+    pub(crate) fn publish_content_timing(&mut self, target: LoopSlotId, mut timing: TimingState) {
+        for model in [&mut self.model, &mut self.next] {
+            if let Some(entry) = model
+                .loops
+                .get_mut(target.0.index as usize)
+                .and_then(Option::as_mut)
+                .filter(|entry| entry.id == target)
+            {
+                timing.revision = entry.timing.revision;
+                entry.timing = timing;
+            }
+        }
+        self.dirty[target.0.index as usize] = true;
     }
 }

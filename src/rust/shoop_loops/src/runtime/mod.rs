@@ -106,15 +106,16 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    NodePairSourceWindows {
+        id: NodePairSourceId,
+        frames: u64,
+        windows: Windows,
+    },
     EditWindows {
         target: LoopId,
         expected_revision: u64,
         expected_content: Revision,
         edit: Edit,
-    },
-    InstallWindows {
-        target: LoopId,
-        windows: Windows,
     },
     SelectFamily {
         root: LoopId,

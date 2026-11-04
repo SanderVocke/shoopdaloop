@@ -89,6 +89,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopTimingEdits,
             ]
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {

@@ -199,6 +199,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     if content_revision != entry.timing.content_revision {
                         let track = &self.mirror.tracks[&entry.track];
                         entry.timing.content_revision = content_revision;
+                        for window in entry
+                            .timing
+                            .windows
+                            .audio
+                            .iter_mut()
+                            .chain(core::iter::once(&mut entry.timing.windows.midi))
+                        {
+                            window.raw_frames = None;
+                        }
                         entry.timing.length = length;
                         entry.timing.raw_audio_frames =
                             if track.audio_channels > 0 { length } else { 0 };
@@ -613,6 +622,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.canonical_imports.remove(&id);
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;
+                    entry.timing.windows = Default::default();
+                    entry.timing.length = 0;
+                    entry.timing.raw_audio_frames = 0;
+                    entry.timing.raw_midi_frames = 0;
                 }
             }
             (

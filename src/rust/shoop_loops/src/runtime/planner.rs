@@ -373,6 +373,10 @@ impl LoopPlanner {
                             if self.ledger.view(media)?.description.owner == row.binding.target {
                                 self.ledger
                                     .set_playback(io, row.binding.target, Some(media))?;
+                                let windows = self.ledger.view(media)?.windows.unwrap_or_default();
+                                let row = self.rows[slot].as_mut().expect("validated row");
+                                row.windows = windows;
+                                row.length_override = None;
                                 if clear {
                                     self.ledger.set_latest(io, row.binding.target, None)?;
                                     let row = self.rows[slot].as_mut().expect("validated row");
@@ -389,6 +393,14 @@ impl LoopPlanner {
                     io.capture().activate(token, frame)?;
                 }
                 let row = self.rows[slot].as_mut().expect("row");
+                for window in row
+                    .windows
+                    .audio
+                    .iter_mut()
+                    .chain(core::iter::once(&mut row.windows.midi))
+                {
+                    window.raw_frames = None;
+                }
                 row.active = Some(take);
                 row.prepared = None;
                 row.next_bank = 1 - take.bank;
@@ -766,6 +778,17 @@ impl LoopPlanner {
                     )?;
                     return Ok(Disposition::Complete(Reply::Done));
                 }
+                Operation::NodePairSourceWindows {
+                    id,
+                    frames,
+                    windows,
+                } => {
+                    if frames % self.resolver.quantum().frames() as u64 != 0 {
+                        return Err(Error::InvalidFrame.into());
+                    }
+                    self.node_pairs.set_windows(id, frames, windows)?;
+                    return Ok(Disposition::Complete(Reply::Done));
+                }
                 Operation::NodePairSourceCursor { id } => {
                     let source = self.node_pairs.source(id)?;
                     return Ok(Disposition::Complete(Reply::Cursor(
@@ -1077,6 +1100,28 @@ impl LoopPlanner {
                         midi_frames,
                         edit.length.unwrap_or(state.content_length),
                     )?;
+                    if let Some(source) = media.and_then(|view| view.midi) {
+                        for position in [
+                            windows.midi.origin(),
+                            windows.midi.origin() - i64::from(windows.midi.preplay),
+                        ] {
+                            let position = position.max(0) as u64;
+                            if position < midi_frames {
+                                let seek = context
+                                    .resources
+                                    .render()
+                                    .midi_seek(source.index, position)?;
+                                if (0..16).any(|channel| {
+                                    seek.state
+                                        .channel(channel)
+                                        .expect("MIDI channel")
+                                        .parameter_history_untracked()
+                                }) {
+                                    return Err(Error::InvalidParameter.into());
+                                }
+                            }
+                        }
+                    }
                     let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
                     if let Some(length) = edit.length {
                         self.resolver.edit_length(target, length)?;
@@ -1090,25 +1135,6 @@ impl LoopPlanner {
                     if let Some(length) = edit.length {
                         row.length_override = Some((state.content_revision, length));
                     }
-                    Ok(Disposition::Complete(Reply::Timing(
-                        self.cut(target, context.frame)?,
-                    )))
-                }
-                Operation::InstallWindows { target, windows } => {
-                    let row = self.row(target)?;
-                    if self.resolver.state(target)?.mode != Mode::Stopped {
-                        return Err(Error::Busy.into());
-                    }
-                    if row.binding.channels > crate::windows::MAX_AUDIO_CHANNELS {
-                        return Err(Error::Capacity.into());
-                    }
-                    let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
-                    let row = self.rows[target.slot() as usize]
-                        .as_mut()
-                        .expect("validated row");
-                    row.windows = windows;
-                    row.timing_revision = revision;
-                    self.resolver.publish_timing_revision(target, revision);
                     Ok(Disposition::Complete(Reply::Timing(
                         self.cut(target, context.frame)?,
                     )))
@@ -1340,7 +1366,8 @@ impl LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::NodePairSourceCursor { .. }
+                Operation::NodePairSourceWindows { .. }
+                | Operation::NodePairSourceCursor { .. }
                 | Operation::NodePairSnapshot { .. }
                 | Operation::NodePairSourceStatus { .. }
                 | Operation::NodePairSourceValidate { .. }

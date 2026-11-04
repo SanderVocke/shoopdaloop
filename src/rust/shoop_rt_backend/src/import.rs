@@ -32,6 +32,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             });
         }
         self.ready()?;
+        if self.requests.timing_pending() {
+            bail!("a timing edit is pending");
+        }
         if self.mirror.live_loop(loop_id).is_none() {
             bail!("unknown loop {loop_id:?}");
         }
@@ -134,7 +137,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut uploads = Vec::new();
         let mut pair = [None; 2];
         let mut bytes = 0;
-        if content.length > 0 {
+        if content.length > 0
+            || content
+                .audio
+                .iter()
+                .any(|channel| !channel.samples.is_empty())
+            || content.midi.iter().any(|channel| channel.length > 0)
+        {
             for (index, midi) in [false, true].into_iter().enumerate() {
                 let token = self.next_persistence;
                 self.next_persistence = token
@@ -156,6 +165,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     upload,
                     begun: false,
                 });
+                work.push_back(Work::Request(Request::ContentWindow {
+                    id: token,
+                    frames: u64::from(content.length),
+                    windows: crate::prepared::windows(&content),
+                }));
             }
         }
         work.push_back(Work::Request(Request::ContentApply {

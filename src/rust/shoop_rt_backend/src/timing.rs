@@ -16,6 +16,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 shoop_app_api::BackendCapability::LoopTimingEdits.unavailable_reason()
             ));
         }
+        if self.replacement.is_some() {
+            return Err(anyhow!("a persistence operation is active"));
+        }
         let entry = self
             .mirror
             .live_loop(id)
@@ -53,19 +56,66 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         if let Some(content) = self.canonical_content.get_mut(&id) {
-            let content = alloc::sync::Arc::make_mut(content);
-            content.length = state.length as u32;
-            for (channel, window) in content.audio.iter_mut().zip(state.windows.audio) {
+            let image = alloc::sync::Arc::make_mut(content);
+            image.length = state.length as u32;
+            for (channel, window) in image.audio.iter_mut().zip(state.windows.audio) {
                 channel.start_offset = window.start_offset;
                 channel.capture_alignment_frames = window.capture_alignment;
                 channel.preplay = window.preplay;
             }
-            if let Some(channel) = content.midi.first_mut() {
+            if let Some(channel) = image.midi.first_mut() {
                 channel.start_offset = state.windows.midi.start_offset;
                 channel.capture_alignment_frames = state.windows.midi.capture_alignment;
                 channel.preplay = state.windows.midi.preplay;
             }
-            self.prepared_content.remove(&id);
+            if let Some(proof) = self
+                .prepared_content
+                .get(&id)
+                .and_then(|proof| proof.rebind_windows(alloc::sync::Arc::clone(content)))
+            {
+                self.prepared_content.insert(id, proof);
+            } else {
+                self.prepared_content.remove(&id);
+            }
         }
+    }
+}
+
+impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn audio_timing(
+        &self,
+        id: BackendLoopId,
+        mut data: shoop_backend::BackendAudioData,
+    ) -> shoop_backend::BackendAudioData {
+        if let Some(entry) = self.mirror.loops.get(&id) {
+            for (channel, window) in data.channels.iter_mut().zip(entry.timing.windows.audio) {
+                channel.start_offset = window.start_offset;
+                channel.capture_alignment_frames = window.capture_alignment;
+                channel.preplay = window.preplay;
+                if let Some(frames) = window.raw_frames {
+                    if (frames as usize) < channel.samples.len() {
+                        channel.samples =
+                            alloc::sync::Arc::new(channel.samples[..frames as usize].to_vec());
+                    }
+                }
+            }
+        }
+        data
+    }
+    pub(crate) fn midi_timing(
+        &self,
+        id: BackendLoopId,
+        mut data: shoop_backend::BackendMidiData,
+    ) -> shoop_backend::BackendMidiData {
+        if let Some(entry) = self.mirror.loops.get(&id) {
+            for channel in &mut data.channels {
+                let window = entry.timing.windows.midi;
+                channel.start_offset = window.start_offset;
+                channel.capture_alignment_frames = window.capture_alignment;
+                channel.preplay = window.preplay;
+                channel.length = window.raw_frames.unwrap_or(entry.timing.raw_midi_frames) as u32;
+            }
+        }
+        data
     }
 }

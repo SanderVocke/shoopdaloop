@@ -40,6 +40,11 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::ContentWindow {
+            id: u64::MAX,
+            frames: u64::MAX,
+            windows: PlaybackWindows::default(),
+        },
         Request::LoopTiming {
             loop_id: loop_id(0),
             expected_revision: u64::MAX,
@@ -319,6 +324,7 @@ fn engine_samples() -> Vec<EngineMessage> {
         ..TimingState::default()
     };
     timing.windows.audio[0] = ChannelWindow {
+        gain_bits: 0.5f32.to_bits(),
         start_offset: i32::MIN,
         capture_alignment: i32::MAX,
         preplay: u32::MAX,

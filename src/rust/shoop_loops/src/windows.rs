@@ -5,8 +5,9 @@ use crate::Error;
 pub const MAX_AUDIO_CHANNELS: usize = 8;
 pub const MAX_CHANNEL_UPDATES: usize = MAX_AUDIO_CHANNELS + 1;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelWindow {
+    pub gain_bits: u32,
     pub raw_frames: Option<u64>,
     pub start_offset: i32,
     pub capture_alignment: i32,
@@ -15,6 +16,18 @@ pub struct ChannelWindow {
 impl ChannelWindow {
     pub fn origin(self) -> i64 {
         i64::from(self.start_offset) + i64::from(self.capture_alignment)
+    }
+}
+
+impl Default for ChannelWindow {
+    fn default() -> Self {
+        Self {
+            gain_bits: 1f32.to_bits(),
+            start_offset: 0,
+            capture_alignment: 0,
+            preplay: 0,
+            raw_frames: None,
+        }
     }
 }
 
@@ -112,6 +125,9 @@ impl Windows {
             .map(|w| (*w, raw_audio))
             .chain(midi.then_some((self.midi, raw_midi)))
         {
+            if !f32::from_bits(window.gain_bits).is_finite() {
+                return Err(Error::InvalidConfig);
+            }
             let frames = match window.raw_frames {
                 Some(raw) if raw > frames => return Err(Error::InvalidFrame),
                 Some(raw) => raw,

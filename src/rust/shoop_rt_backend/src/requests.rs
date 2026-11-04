@@ -68,6 +68,13 @@ impl Requests {
         self.next_sequence
     }
 
+    pub fn timing_pending(&self) -> bool {
+        self.outgoing
+            .iter()
+            .chain(self.in_flight.values())
+            .any(|pending| matches!(pending.purpose, Purpose::Timing(_)))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.outgoing.is_empty() && self.in_flight.is_empty()
     }

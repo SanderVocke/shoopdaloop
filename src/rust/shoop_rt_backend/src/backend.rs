@@ -135,7 +135,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.audio(loop_id, version, slot, channels) {
-                return Ok(Some(data));
+                return Ok(Some(self.audio_timing(loop_id, data)));
             }
             let content = &self.canonical_content[&loop_id];
             if content
@@ -161,16 +161,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             };
             self.reads
                 .remember_audio(loop_id, version, slot, data.clone());
-            return Ok(Some(data));
+            return Ok(Some(self.audio_timing(loop_id, data)));
         }
-        if entry.view.length == 0 {
-            return Ok(Some(empty_audio(channels)));
+        if entry.timing.raw_audio_frames == 0 {
+            return Ok(Some(self.audio_timing(loop_id, empty_audio(channels))));
         }
         let (version, slot) = (entry.content, entry.slot);
         let outcome = self.reads.audio(loop_id, version, slot, channels);
         self.pump();
         match outcome {
-            Outcome::Done(data) => Ok(Some(data)),
+            Outcome::Done(data) => Ok(Some(self.audio_timing(loop_id, data))),
             Outcome::Reading => Ok(None),
             Outcome::Failed(message) => {
                 tracing::warn!(message = %message, "backend.rt.read_failed");
@@ -244,6 +244,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::LoopTimingEdits,
+                self.capabilities.contains(Capabilities::LOOP_TIMING),
+            )
             .with(BackendCapability::BusManagement, self.is_ready())
             .with(
                 BackendCapability::MidiInjection,
@@ -571,7 +575,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
-                return Ok(Some(data));
+                return Ok(Some(self.midi_timing(loop_id, data)));
             }
             let content = &self.canonical_content[&loop_id];
             let bytes = self
@@ -600,10 +604,12 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             };
             self.reads
                 .remember_midi(loop_id, version, slot, data.clone());
-            return Ok(Some(data));
+            return Ok(Some(self.midi_timing(loop_id, data)));
         }
-        if !midi || entry.view.length == 0 && entry.view.mode != LoopMode::Recording {
-            return Ok(Some(empty_midi(entry.content, midi)));
+        if !midi || entry.timing.raw_midi_frames == 0 && entry.view.mode != LoopMode::Recording {
+            return Ok(Some(
+                self.midi_timing(loop_id, empty_midi(entry.content, midi)),
+            ));
         }
         if !self.capabilities.contains(Capabilities::BULK_MIDI) {
             return Err(anyhow!("this engine cannot read loop MIDI"));
@@ -615,7 +621,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let outcome = self.reads.midi(loop_id, version, slot);
         self.pump();
         match outcome {
-            Outcome::Done(data) => Ok(Some(data)),
+            Outcome::Done(data) => Ok(Some(self.midi_timing(loop_id, data))),
             Outcome::Reading => Ok(None),
             Outcome::Failed(message) => {
                 tracing::warn!(message = %message, "backend.rt.read_failed");

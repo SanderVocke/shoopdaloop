@@ -3,13 +3,26 @@
 use crate::MAX_STRIP_CHANNELS;
 pub const MAX_TIMING_UPDATES: usize = MAX_STRIP_CHANNELS + 1;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChannelWindow {
+    pub gain_bits: u32,
     pub start_offset: i32,
     pub capture_alignment: i32,
     pub preplay: u32,
     pub raw_frames: Option<u64>,
 }
+impl Default for ChannelWindow {
+    fn default() -> Self {
+        Self {
+            gain_bits: 1f32.to_bits(),
+            start_offset: 0,
+            capture_alignment: 0,
+            preplay: 0,
+            raw_frames: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PlaybackWindows {
     pub audio: [ChannelWindow; MAX_STRIP_CHANNELS],

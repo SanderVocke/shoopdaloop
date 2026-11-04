@@ -187,6 +187,7 @@ impl Job {
             if matches!(
                 request,
                 Request::ReplacementCommit { .. }
+                    | Request::ContentWindow { .. }
                     | Request::ContentApply { .. }
                     | Request::ContentFamilyCommit { .. }
             ) {
@@ -202,6 +203,7 @@ impl Job {
         } else if matches!(
             request,
             Request::ReplacementCommit { .. }
+                | Request::ContentWindow { .. }
                 | Request::ContentApply { .. }
                 | Request::ContentFamilyCommit { .. }
         ) {
@@ -289,6 +291,7 @@ impl Job {
         if matches!(
             request,
             Request::ReplacementCommit { .. }
+                | Request::ContentWindow { .. }
                 | Request::ContentApply { .. }
                 | Request::ContentFamilyCommit { .. }
         ) {
@@ -340,6 +343,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.content += 1;
                         entry.rt_content_revision = replacement.job.revisions[&entry.slot];
                         entry.view.length = u64::from(content.length);
+                        entry.timing = crate::prepared::timing(
+                            &content,
+                            entry.rt_content_revision,
+                            entry.timing.revision,
+                        );
                     }
                     self.prepared_content
                         .insert(id, replacement.job.prepared[&content.source_id].clone());

@@ -1222,9 +1222,9 @@ async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
         .find(|track| track.name == "Files")
         .unwrap()
         .loops[0]
-        .length_frames = shoop_app_protocol::persistence::MAX_SESSION_MEDIA_BYTES / 8 + 1;
+        .length_frames = u64::MAX;
     f.dispatch(AppIntent::LoadSessionBytes {
-        name: "one-frame-over-budget.shoop".into(),
+        name: "invalid-period.shoop".into(),
         bytes: shoop_session::encode_session(&oversized, "test")
             .unwrap()
             .into(),
@@ -1242,7 +1242,7 @@ async fn production_files_roundtrip_audio_midi_and_fresh_session_identities() {
             .as_ref()
             .unwrap()
             .message
-            .contains("256 MiB"),
+            .contains("Invalid"),
         "{:?}",
         refused.io_task
     );
