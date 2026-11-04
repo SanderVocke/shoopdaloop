@@ -112,9 +112,11 @@ when another client uses the hint; runtime metadata reports the resolved name.
 Engine port identities use `jack:<short name>`, independent of that suffix, so
 session connection intent survives restart. Master initially uses the first
 configured audio outputs; external playback connections are explicit startup
-pairs or JACK patchbay connections. Track-to-host routing uses the existing
+pairs, live graph commands, or JACK patchbay connections. Track-to-host routing uses the existing
 application connection UI. The port bank is fixed for the host lifetime; changing
-it requires restart, rather than dynamically registering per-track JACK ports.
+it requires restart. Dynamic per-track JACK registration is not yet implemented.
+`NativeHost::graph_control` provides bounded off-callback discovery and connection
+control. See the [session graph contract](../../../docs/native_session_recovery/jack-graph.md).
 
 The server determines sample rate and callback size. A callback above the engine
 maximum is rendered in parts without an extra duplex buffer. MIDI offsets are

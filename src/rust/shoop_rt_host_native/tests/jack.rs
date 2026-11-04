@@ -61,6 +61,7 @@ impl jack::ProcessHandler for Peer {
         jack::Control::Continue
     }
 }
+#[track_caller]
 fn wait(mut done: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !done() {
@@ -162,7 +163,9 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
     assert_eq!(host.status().stats.midi_out_failed, 0);
     let resets_before = resets.load(Ordering::Relaxed);
     drop(client);
+    let graph = host.graph_control().unwrap();
     let report = host.stop();
+    assert!(!graph.snapshot().available);
     assert!(report.midi_reset);
     assert!(report.stopped.is_ok());
     wait(|| resets.load(Ordering::Relaxed) >= resets_before + 32);
@@ -263,6 +266,8 @@ fn native_jack_server_loss_peer() {
     );
     drop(started.client);
     let begun = Instant::now();
+    let graph = started.host.graph_control().unwrap();
+    wait(|| !graph.snapshot().available);
     let report = started.host.stop();
     assert!(begun.elapsed() < Duration::from_secs(2));
     assert!(

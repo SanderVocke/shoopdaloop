@@ -67,6 +67,7 @@ impl Service {
                 caps.with(capability, self.backend.capabilities().supports(capability))
             }),
             connections: Arc::new(connections),
+            host_graph: self.host_graph.clone(),
             track_processors: Arc::from([]),
             bus_processors: Arc::from([]),
             pending: self

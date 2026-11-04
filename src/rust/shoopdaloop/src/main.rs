@@ -2484,6 +2484,9 @@ impl Runtime {
                 master_auto_connect,
                 startup_warnings,
             },
+            engine_host
+                .as_ref()
+                .and_then(|host| host.graph_controller()),
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;

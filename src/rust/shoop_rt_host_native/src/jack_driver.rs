@@ -1,16 +1,17 @@
+use crate::graph;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jack::{AudioIn, AudioOut, MidiIn, MidiOut, Port};
 use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, Name};
 
 use crate::cycle::{Cycle, DirectIo};
-use crate::status::{Shared, StreamFailure};
+use crate::status::{RenderPhase, Shared, StreamFailure};
 use crate::{assemble, reset_wait, Driver, Prepared, Running, StartError, Started};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,8 +81,26 @@ impl JackConfig {
     }
 }
 
-struct Notifications(Arc<Shared>);
+struct Notifications(Arc<Shared>, Arc<AtomicU64>, Arc<AtomicU64>);
 impl jack::NotificationHandler for Notifications {
+    fn port_registration(&mut self, _: &jack::Client, _: jack::PortId, _: bool) {
+        self.2.fetch_add(1, Ordering::Release);
+        self.1.fetch_add(1, Ordering::Release);
+    }
+    fn port_rename(
+        &mut self,
+        _: &jack::Client,
+        _: jack::PortId,
+        _: &str,
+        _: &str,
+    ) -> jack::Control {
+        self.2.fetch_add(1, Ordering::Release);
+        self.1.fetch_add(1, Ordering::Release);
+        jack::Control::Continue
+    }
+    fn ports_connected(&mut self, _: &jack::Client, _: jack::PortId, _: jack::PortId, _: bool) {
+        self.1.fetch_add(1, Ordering::Release);
+    }
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
         self.0.xrun(&self.0.counters.stream_underruns);
         jack::Control::Continue
@@ -172,18 +191,14 @@ impl jack::ProcessHandler for Process {
 }
 
 pub(crate) struct Client {
-    active: jack::AsyncClient<shoop_jack::Notifications<Notifications>, Process>,
+    pub graph: graph::Control,
     monitor_stop: Arc<AtomicBool>,
-    monitor: JoinHandle<()>,
+    monitor: JoinHandle<Option<Cycle>>,
 }
 impl Client {
     pub fn stop(self) -> Option<Cycle> {
         self.monitor_stop.store(true, Ordering::Release);
-        let _ = self.monitor.join();
-        self.active
-            .deactivate()
-            .ok()
-            .map(|(_, _, process)| process.cycle)
+        self.monitor.join().ok().flatten()
     }
 }
 fn error(error: impl std::fmt::Display) -> StartError {
@@ -261,9 +276,17 @@ pub(crate) fn start(
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
     let shutdown = Arc::new(AtomicBool::new(false));
+    let dirty = Arc::new(AtomicU64::new(1));
+    let topology = Arc::new(AtomicU64::new(1));
+    let mut epoch = [0; 8];
+    getrandom::fill(&mut epoch).map_err(error)?;
+    let graph = graph::Control::new(u64::from_ne_bytes(epoch).max(1));
     let active = client
         .activate_async(
-            shoop_jack::Notifications::new(Notifications(shared.clone()), shutdown.clone()),
+            shoop_jack::Notifications::new(
+                Notifications(shared.clone(), dirty.clone(), topology.clone()),
+                shutdown.clone(),
+            ),
             Process {
                 cycle,
                 audio_inputs,
@@ -295,16 +318,93 @@ pub(crate) fn start(
     let monitor_stop = Arc::new(AtomicBool::new(false));
     let finished = monitor_stop.clone();
     let observed = shared.clone();
+    let control = graph.clone();
     let monitor = thread::Builder::new()
-        .name("jack-status".into())
+        .name("jack-control".into())
         .spawn(move || {
+            let client = active.as_client();
+            let mut seen = 0;
+            let mut last_scan = Instant::now();
+            let mut seen_topology = 0;
+            let mut refresh = |seen: &mut u64| {
+                for _ in 0..3 {
+                    let before = dirty.load(Ordering::Acquire);
+                    let structural = topology.load(Ordering::Acquire);
+                    let snapshot = graph::read(client);
+                    if before != dirty.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    let snapshot = match snapshot {
+                        Ok(snapshot) => snapshot,
+                        Err(error) => graph::Snapshot {
+                            error: Some(error.to_string()),
+                            ..Default::default()
+                        },
+                    };
+                    control.publish(snapshot, seen_topology != structural);
+                    seen_topology = structural;
+                    *seen = before;
+                    return Ok(());
+                }
+                Err(graph::Error::Stale)
+            };
             while !finished.load(Ordering::Acquire) {
                 if shutdown.load(Ordering::Acquire) {
                     observed.fail(StreamFailure::DeviceNotAvailable);
                     break;
                 }
+                if seen != dirty.load(Ordering::Acquire)
+                    || last_scan.elapsed() >= Duration::from_secs(1)
+                {
+                    let _ = refresh(&mut seen);
+                    last_scan = Instant::now();
+                }
+                if let Some((id, request)) = control.next_request() {
+                    let result = refresh(&mut seen)
+                        .and_then(|()| graph::apply(client, &control.snapshot(), &request));
+                    let result = result.and_then(|()| {
+                        refresh(&mut seen)?;
+                        let snapshot = control.snapshot();
+                        if !snapshot.available {
+                            return Err(graph::Error::Unavailable);
+                        }
+                        let connected = snapshot.links.iter().any(|link| {
+                            (link.source == request.local && link.destination == request.peer)
+                                || (link.source == request.peer
+                                    && link.destination == request.local)
+                        });
+                        if connected == request.connected {
+                            Ok(())
+                        } else {
+                            Err(graph::Error::Failed(
+                                "JACK did not retain the requested connection state".into(),
+                            ))
+                        }
+                    });
+                    control.complete(id, result);
+                }
                 thread::sleep(Duration::from_millis(5));
             }
+            control.close();
+            if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
+                // Let the reset block cross the graph, including feedback edges, before removing ports.
+                let through = observed.stats().callbacks.saturating_add(2);
+                let deadline = Instant::now()
+                    + reset_wait(observed.driver().buffer_frames, observed.sample_rate());
+                while observed.stats().callbacks < through
+                    && !shutdown.load(Ordering::Acquire)
+                    && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }
+            if shutdown.load(Ordering::Acquire) {
+                observed.fail(StreamFailure::DeviceNotAvailable);
+            }
+            active
+                .deactivate()
+                .ok()
+                .map(|(_, _, process)| process.cycle)
         })
         .map_err(|failure| StartError::Thread(failure.to_string()))?;
     Ok(assemble(
@@ -313,7 +413,7 @@ pub(crate) fn start(
         Running {
             shared,
             driver: Driver::Jack(Client {
-                active,
+                graph,
                 monitor_stop,
                 monitor,
             }),
@@ -353,7 +453,11 @@ mod tests {
                 buffer_frames: 128,
             },
         ));
-        let notifications = Notifications(shared.clone());
+        let notifications = Notifications(
+            shared.clone(),
+            Arc::new(AtomicU64::new(0)),
+            Arc::new(AtomicU64::new(0)),
+        );
         notifications.observe_sample_rate(48000);
         assert!(shared.failure().is_none());
         notifications.observe_sample_rate(44100);

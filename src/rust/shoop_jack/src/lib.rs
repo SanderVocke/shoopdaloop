@@ -6,7 +6,7 @@ use std::sync::{
     Arc,
 };
 
-/// Forwards rate/xrun notifications and records shutdown without invoking application code.
+/// Forwards graph/rate/xrun notifications and records shutdown without invoking application code.
 pub struct Notifications<N> {
     handler: N,
     shutdown: Arc<AtomicBool>,
@@ -21,6 +21,27 @@ impl<N: jack::NotificationHandler> jack::NotificationHandler for Notifications<N
     unsafe fn shutdown(&mut self, _: jack::ClientStatus, _: &str) {
         // Only a lock-free atomic store is permitted in the signal-style callback.
         self.shutdown.store(true, Ordering::Release);
+    }
+    fn port_registration(&mut self, client: &jack::Client, port: jack::PortId, registered: bool) {
+        self.handler.port_registration(client, port, registered);
+    }
+    fn port_rename(
+        &mut self,
+        client: &jack::Client,
+        port: jack::PortId,
+        old: &str,
+        new: &str,
+    ) -> jack::Control {
+        self.handler.port_rename(client, port, old, new)
+    }
+    fn ports_connected(
+        &mut self,
+        client: &jack::Client,
+        a: jack::PortId,
+        b: jack::PortId,
+        connected: bool,
+    ) {
+        self.handler.ports_connected(client, a, b, connected);
     }
     fn sample_rate(&mut self, client: &jack::Client, rate: jack::Frames) -> jack::Control {
         self.handler.sample_rate(client, rate)

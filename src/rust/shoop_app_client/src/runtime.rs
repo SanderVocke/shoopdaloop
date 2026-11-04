@@ -603,6 +603,7 @@ impl Runtime {
                 audio_drivers: state.audio_drivers.clone(),
                 capabilities: state.capabilities,
                 connections: Arc::clone(&state.connections),
+                host_graph: Arc::clone(&state.host_graph),
                 ..Default::default()
             })
             .unwrap_or_default();
@@ -937,6 +938,7 @@ impl Runtime {
             AppIntent::AddLoop { track_id } => Command::AddLoop { track: track_id },
             AppIntent::Global(action) => Command::Global(action),
             AppIntent::Piano(action) => Command::Piano(action),
+            AppIntent::SetHostGraphConnected(request) => Command::SetHostGraphConnected(request),
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,

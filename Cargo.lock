@@ -5171,6 +5171,7 @@ name = "shoop_rt_host_native"
 version = "0.3.0"
 dependencies = [
  "cpal 0.18.2",
+ "getrandom 0.4.3",
  "jack",
  "midir",
  "rt_runtime",

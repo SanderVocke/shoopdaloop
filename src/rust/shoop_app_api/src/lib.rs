@@ -1,6 +1,9 @@
 #![no_std]
 extern crate alloc;
 
+mod host_graph;
+pub use host_graph::*;
+
 #[cfg(test)]
 extern crate std;
 
@@ -2043,6 +2046,7 @@ pub struct AppSnapshot {
     pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
@@ -2571,6 +2575,7 @@ pub enum AppIntent {
         dialog_id: ScriptDialogId,
         button_id: ScriptDialogButtonId,
     },
+    SetHostGraphConnected(HostGraphRequest),
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -2862,6 +2867,7 @@ impl AppIntent {
             Self::ConvertScriptKind { .. } => "scripting.convert_kind",
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
+            Self::SetHostGraphConnected(_) => "host_graph.set",
             Self::SetPortConnected { .. } => "connection.set",
             Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",

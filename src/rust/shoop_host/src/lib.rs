@@ -5,6 +5,7 @@ pub mod audio_args;
 pub mod config;
 pub mod connection;
 pub mod engine;
+pub mod host_graph;
 pub mod launch;
 pub mod logging;
 pub mod serve;

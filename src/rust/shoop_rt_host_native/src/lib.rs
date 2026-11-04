@@ -25,6 +25,8 @@ mod cpal_driver;
 mod cycle;
 mod dummy;
 #[cfg(feature = "jack")]
+pub mod graph;
+#[cfg(feature = "jack")]
 mod jack_driver;
 mod midi;
 #[cfg(feature = "cpal")]
@@ -223,10 +225,10 @@ impl Running {
             std::thread::sleep(Duration::from_millis(1));
         }
         let mut midi_reset = shared.phase() != RenderPhase::Running;
+        let cycle = self.driver.stop();
         if shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
         }
-        let cycle = self.driver.stop();
         drop(self.pump);
         drop(self.connections);
         shared.set_state(DriverRunState::Stopped);
@@ -265,6 +267,13 @@ fn cleanup(render: Render) -> Result<Stopped, StopError> {
 }
 
 impl NativeHost {
+    #[cfg(feature = "jack")]
+    pub fn graph_control(&self) -> Option<graph::Control> {
+        match &self.running.as_ref()?.driver {
+            Driver::Jack(client) => Some(client.graph.clone()),
+            _ => None,
+        }
+    }
     fn running(&self) -> &Running {
         self.running
             .as_ref()

@@ -5,9 +5,9 @@ use shoop_app_api::*;
 use shoop_app_client::{Client, State};
 use shoop_app_protocol::{self as protocol, persistence as p, *};
 use shoop_host::{
-    config::HostConfig,
+    config::{AppTransport, HostConfig},
     connection::{self, Connection},
-    remote::Target as HostEntry,
+    remote::{RemoteProfile, Target},
 };
 use shoop_rt_backend::{RtBackend, Sleep};
 use shoop_rt_host_native::NativeHost;
@@ -131,17 +131,35 @@ enum Delivery {
     },
     Remote {
         connection: Option<Connection>,
-        entry: HostEntry,
+        entry: Target,
         _owner: ChildOwner,
         _root: tempfile::TempDir,
     },
 }
+#[derive(Clone, Copy, Debug)]
+enum DeliveryMode {
+    Local,
+    Socket,
+    SharedMemory,
+    Tcp,
+}
+
 struct Fixture {
     client: Client,
     delivery: Delivery,
 }
 impl Fixture {
     fn new(driver: AudioDriverConfig, independent: bool) -> Self {
+        Self::new_on(
+            driver,
+            if independent {
+                DeliveryMode::Socket
+            } else {
+                DeliveryMode::Local
+            },
+        )
+    }
+    fn new_on(driver: AudioDriverConfig, mode: DeliveryMode) -> Self {
         let settings = HostSettings {
             driver,
             pools: NewEnginePools {
@@ -152,17 +170,34 @@ impl Fixture {
             },
             ..Default::default()
         };
-        let delivery = if independent {
+        let delivery = if !matches!(mode, DeliveryMode::Local) {
             let root = tempfile::tempdir().unwrap();
+            let profile = root.path().join("profile.json");
+            let mut options = shoop_host::serve::StartOptions::new().unwrap();
+            if matches!(mode, DeliveryMode::Tcp) {
+                options.lan = true;
+                options.export_profile = Some(profile.clone());
+            }
             let (child, entry) = shoop_host::launch::spawn(
                 &HostConfig {
                     settings,
+                    transport: if matches!(mode, DeliveryMode::SharedMemory) {
+                        AppTransport::SharedMemory
+                    } else {
+                        AppTransport::Socket
+                    },
                     ..Default::default()
                 },
-                shoop_host::serve::StartOptions::new().unwrap(),
+                options,
                 std::path::Path::new(env!("CARGO_BIN_EXE_shoop_host")),
             )
             .unwrap();
+
+            let entry = if matches!(mode, DeliveryMode::Tcp) {
+                RemoteProfile::read(&profile).unwrap().into()
+            } else {
+                entry
+            };
             let connection = Some(connection::connect(&entry, Duration::from_secs(2)).unwrap());
             Delivery::Remote {
                 connection,
@@ -194,6 +229,9 @@ impl Fixture {
                 },
             )
             .unwrap();
+            if let Some(controller) = shoop_host::host_graph::controller(&started.host) {
+                service.set_host_graph_controller(controller);
+            }
             service.set_host_settings(settings, Vec::new()).unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
             while !service.is_ready() {
@@ -259,6 +297,11 @@ impl Fixture {
         self.until(|client| client.state() == State::Ready);
     }
     fn command(&mut self, command: protocol::Command) -> Outcome {
+        let outcome = self.outcome(command);
+        assert!(!matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+        outcome
+    }
+    fn outcome(&mut self, command: protocol::Command) -> Outcome {
         let message = self.client.command(command, None).unwrap();
         let ClientMessage::Submit { operation, .. } = &message else {
             unreachable!()
@@ -266,9 +309,7 @@ impl Fixture {
         let operation = *operation;
         self.send(message);
         self.until(|client| client.results().contains_key(&operation));
-        let outcome = self.client.results()[&operation].clone();
-        assert!(!matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
-        outcome
+        self.client.results()[&operation].clone()
     }
     fn reconnect(&mut self) {
         match &mut self.delivery {
@@ -562,5 +603,281 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
         assert_eq!(f.capture(3).payloads, image.payloads);
         drop(f);
         drop(peer);
+    }
+}
+
+fn graph_request(f: &Fixture, local: &str, peer: &str, connected: bool) -> HostGraphRequest {
+    let state = &f.client.snapshot().unwrap().host_graph;
+    HostGraphRequest {
+        epoch: state.epoch,
+        revision: state.revision,
+        local: local.into(),
+        peer: peer.into(),
+        connected,
+    }
+}
+fn graph_link(f: &mut Fixture, local: &str, peer: &str, connected: bool) {
+    let request = graph_request(f, local, peer, connected);
+    f.command(protocol::Command::SetHostGraphConnected(request));
+    f.until(|client| {
+        let state = &client.snapshot().unwrap().host_graph;
+        state.links.iter().any(|link| {
+            (link.source == local && link.destination == peer)
+                || (link.source == peer && link.destination == local)
+        }) == connected
+    });
+}
+
+#[shoop_test(no_wasm = "real JACK graph over native session carriers")]
+fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
+    for mode in [
+        DeliveryMode::Local,
+        DeliveryMode::Socket,
+        DeliveryMode::SharedMemory,
+        DeliveryMode::Tcp,
+    ] {
+        eprintln!("JACK graph delivery: {mode:?}");
+        let probe = match jack::Client::new("graph-probe", jack::ClientOptions::NO_START_SERVER) {
+            Ok((client, _)) => client,
+            Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
+            Err(error) => panic!("required JACK server unavailable: {error}"),
+        };
+        drop(probe);
+        let driver = JackAudioDriverConfig {
+            client_name: format!("graph-host-{}-{mode:?}", std::process::id()),
+            ..Default::default()
+        };
+        let mut f = Fixture::new_on(AudioDriverConfig::Jack(driver), mode);
+        f.until(|client| client.snapshot().unwrap().host_graph.available);
+        let initial = f.client.snapshot().unwrap().host_graph.clone();
+        assert!(initial.valid());
+        assert_eq!(initial.ports.iter().filter(|port| port.owned).count(), 6);
+        let owner = f
+            .client
+            .snapshot()
+            .unwrap()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .instance_name
+            .clone();
+        let local = |short| format!("{owner}:{short}");
+        let peer_name = format!("graph-peer-{}-{mode:?}", std::process::id());
+        let (peer, _) =
+            jack::Client::new(&peer_name, jack::ClientOptions::NO_START_SERVER).unwrap();
+        let name = |short| format!("{}:{short}", peer.name());
+        let source_name = name("source");
+        let sink_name = name("sink");
+        let keys_name = name("keys");
+        let synth_name = name("synth");
+        let source = peer
+            .register_port("source", jack::AudioOut::default())
+            .unwrap();
+        let sink = peer
+            .register_port("sink", jack::AudioIn::default())
+            .unwrap();
+        let keys = peer
+            .register_port("keys", jack::MidiOut::default())
+            .unwrap();
+        let synth = peer
+            .register_port("synth", jack::MidiIn::default())
+            .unwrap();
+        let audio = Arc::new(AtomicUsize::new(0));
+        let midi = Arc::new(AtomicUsize::new(0));
+        let peer = peer
+            .activate_async(
+                (),
+                Peer {
+                    source,
+                    sink,
+                    keys,
+                    synth,
+                    audio: audio.clone(),
+                    midi: midi.clone(),
+                },
+            )
+            .unwrap();
+        f.until(|client| {
+            let graph = &client.snapshot().unwrap().host_graph;
+            graph
+                .ports
+                .iter()
+                .filter(|port| port.name.starts_with(&format!("{peer_name}:")))
+                .count()
+                == 4
+        });
+        let mut wrong_epoch = graph_request(&f, &local("audio_in_1"), &source_name, true);
+        wrong_epoch.epoch = wrong_epoch.epoch.wrapping_add(1).max(1);
+        assert!(matches!(
+            f.outcome(protocol::Command::SetHostGraphConnected(wrong_epoch)),
+            Outcome::Refused {
+                reason: Refusal::RevisionConflict,
+                ..
+            }
+        ));
+        let mut stale = graph_request(&f, &local("audio_in_1"), &source_name, true);
+        stale.revision = initial.revision;
+        assert!(matches!(
+            f.outcome(protocol::Command::SetHostGraphConnected(stale)),
+            Outcome::Refused {
+                reason: Refusal::RevisionConflict,
+                ..
+            }
+        ));
+        for (a, b) in [
+            (local("audio_in_1"), keys_name.clone()),
+            (local("audio_out_1"), source_name.clone()),
+            (source_name.clone(), sink_name.clone()),
+        ] {
+            let request = graph_request(&f, &a, &b, true);
+            assert!(matches!(
+                f.outcome(protocol::Command::SetHostGraphConnected(request)),
+                Outcome::Refused {
+                    reason: Refusal::Invalid,
+                    ..
+                }
+            ));
+        }
+        for (bank, other) in [
+            ("audio_in_1", &source_name),
+            ("audio_out_1", &sink_name),
+            ("midi_in_1", &keys_name),
+            ("midi_out_1", &synth_name),
+        ] {
+            graph_link(&mut f, &local(bank), other, true);
+            graph_link(&mut f, &local(bank), other, true);
+        }
+        assert_eq!(f.client.snapshot().unwrap().host_graph.links.len(), 4);
+        f.command(protocol::Command::Global(GlobalControlAction::SetSync(
+            false,
+        )));
+        let Outcome::TrackCreated { track, loops, .. } =
+            f.command(protocol::Command::AddTrack(TrackSpec {
+                name: "Graph take".into(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 1,
+                    midi: true,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Master".into()],
+                creation_request_id: None,
+            }))
+        else {
+            panic!("track missing")
+        };
+        let ports = f
+            .client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .clone();
+        for (role, bank) in [
+            (PortRole::AudioInput, "jack:audio_in_1"),
+            (PortRole::MidiInput, "jack:midi_in_1"),
+            (PortRole::MidiOutput, "jack:midi_out_1"),
+        ] {
+            let port = ports.iter().find(|port| port.role == role && matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track)).unwrap();
+            f.command(protocol::Command::SetPortConnected {
+                port: port.id,
+                host_port: HostPortId::new(bank),
+                connected: true,
+            });
+        }
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        });
+        f.until(|client| client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Recording);
+        thread::sleep(Duration::from_millis(80));
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::PlayClicked,
+        });
+        f.until(|_| audio.load(Ordering::Relaxed) > 3 && midi.load(Ordering::Relaxed) > 6);
+        let before = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
+        if !matches!(mode, DeliveryMode::SharedMemory) {
+            f.reconnect();
+        }
+        f.until(|_| {
+            audio.load(Ordering::Relaxed) > before.0 + 3
+                && midi.load(Ordering::Relaxed) > before.1 + 6
+        });
+        assert_eq!(f.client.snapshot().unwrap().host_graph.epoch, initial.epoch);
+        assert_eq!(f.client.snapshot().unwrap().host_graph.links.len(), 4);
+        graph_link(&mut f, &local("audio_out_1"), &sink_name, false);
+        graph_link(&mut f, &local("midi_out_1"), &synth_name, false);
+        thread::sleep(Duration::from_millis(30));
+        let disconnected = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
+        thread::sleep(Duration::from_millis(30));
+        assert_eq!(
+            disconnected,
+            (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed))
+        );
+        peer.as_client()
+            .connect_ports_by_name(&local("audio_out_1"), &sink_name)
+            .unwrap();
+        peer.as_client()
+            .connect_ports_by_name(&local("midi_out_1"), &synth_name)
+            .unwrap();
+        f.until(|client| client.snapshot().unwrap().host_graph.links.len() == 4);
+        f.until(|_| {
+            audio.load(Ordering::Relaxed) > disconnected.0 + 3
+                && midi.load(Ordering::Relaxed) > disconnected.1 + 6
+        });
+        let mut renamed = peer.as_client().port_by_name(&source_name).unwrap();
+        renamed.set_name("source_renamed").unwrap();
+        let renamed_name = format!("{peer_name}:source_renamed");
+        f.until(|client| {
+            let graph = &client.snapshot().unwrap().host_graph;
+            graph.ports.iter().any(|port| port.name == renamed_name)
+                && !graph.ports.iter().any(|port| port.name == source_name)
+                && graph.links.iter().any(|link| link.source == renamed_name)
+        });
+        renamed.set_name("source").unwrap();
+        f.until(|client| {
+            client
+                .snapshot()
+                .unwrap()
+                .host_graph
+                .ports
+                .iter()
+                .any(|port| port.name == source_name)
+        });
+        drop(renamed);
+        let old = graph_request(&f, &local("audio_in_1"), &source_name, true);
+        drop(peer);
+        f.until(|client| {
+            let graph = &client.snapshot().unwrap().host_graph;
+            graph.links.is_empty()
+                && !graph
+                    .ports
+                    .iter()
+                    .any(|port| port.name.starts_with(&format!("{peer_name}:")))
+        });
+        let (replacement, _) =
+            jack::Client::new(&peer_name, jack::ClientOptions::NO_START_SERVER).unwrap();
+        let _source = replacement
+            .register_port("source", jack::AudioOut::default())
+            .unwrap();
+        f.until(|client| {
+            client
+                .snapshot()
+                .unwrap()
+                .host_graph
+                .ports
+                .iter()
+                .any(|port| port.name == source_name)
+        });
+        assert!(matches!(
+            f.outcome(protocol::Command::SetHostGraphConnected(old)),
+            Outcome::Refused {
+                reason: Refusal::RevisionConflict,
+                ..
+            }
+        ));
     }
 }

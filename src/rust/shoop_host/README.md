@@ -32,3 +32,6 @@ See [roles and manager controls](../shoopdaloop/README.md) and
 `cargo test -p shoop_host --features testing` covers real subprocess recovery,
 keyless compatibility, harmless inspection, detached launch and optional output.
 Deterministic dummy input is confined to test fixtures.
+
+Live JACK graph inventory and connection commands use the same session protocol.
+See the [graph contract and scope](../../../docs/native_session_recovery/jack-graph.md).

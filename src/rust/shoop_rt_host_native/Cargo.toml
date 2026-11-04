@@ -9,7 +9,7 @@ workspace = true
 
 [features]
 default = ["cpal", "jack"]
-jack = ["dep:jack", "dep:shoop_jack"]
+jack = ["dep:jack", "dep:shoop_jack", "dep:getrandom"]
 # CPAL audio and midir MIDI are independent of native JACK.
 cpal = ["dep:cpal", "dep:midir"]
 
@@ -28,5 +28,6 @@ midir = { workspace = true, optional = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { version = "0.4", optional = true }
 jack = { workspace = true, optional = true }
 shoop_jack = { path = "../shoop_jack", optional = true }

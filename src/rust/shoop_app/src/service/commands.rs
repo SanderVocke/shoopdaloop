@@ -13,6 +13,22 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::SetHostGraphConnected(request) => {
+                let controller =
+                    self.host_graph_controller
+                        .as_mut()
+                        .ok_or_else(|| CommandError {
+                            reason: Refusal::Unsupported,
+                            message: "the active host does not support graph control".into(),
+                        })?;
+                controller
+                    .submit(request)
+                    .map(Effect::HostGraph)
+                    .map_err(|error| CommandError {
+                        reason: error.reason,
+                        message: error.message,
+                    })
+            }
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {

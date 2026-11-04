@@ -366,3 +366,7 @@ src/rust/shoop_host_manager/src/args.rs,native_ui,excluded,Explicit advanced man
 src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
 src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
+src/rust/shoop_app_api/src/host_graph.rs,non_realtime_support,excluded,Portable graph values and validation have no execution boundary.
+src/rust/shoop_app/src/host_graph.rs,app_session,excluded,Host control trait and error values have no execution boundary.
+src/rust/shoop_host/src/host_graph.rs,app_session,instrumented_indirect,Adapter runs within service command and tick boundaries.
+src/rust/shoop_rt_host_native/src/graph.rs,native_engine_host,instrumented_direct,Graph mutations are traced on the control worker outside rendering.

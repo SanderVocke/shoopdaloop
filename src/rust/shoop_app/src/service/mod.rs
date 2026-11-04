@@ -81,6 +81,7 @@ enum Effect {
     TrackRemoved(TrackId),
     Shutdown,
     Persistence(persistence::Key),
+    HostGraph(u64),
 }
 
 struct Pending {
@@ -123,6 +124,8 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
+    host_graph: Arc<HostGraphState>,
     backend: Box<dyn Backend>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
@@ -179,6 +182,8 @@ impl Service {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
         }
         let mut service = Self {
+            host_graph_controller: None,
+            host_graph: Arc::default(),
             backend,
             options,
             host_settings: None,
@@ -245,6 +250,35 @@ impl Service {
         }
         service.init_through = service.backend.mutation_cursor();
         Ok(service)
+    }
+
+    pub fn set_host_graph_controller(&mut self, controller: Box<dyn crate::HostGraphController>) {
+        self.host_graph_controller = Some(controller);
+        self.poll_host_graph();
+    }
+
+    fn poll_host_graph(&mut self) {
+        let Some(controller) = &mut self.host_graph_controller else {
+            return;
+        };
+        while let Some((id, result)) = controller.take_result() {
+            for pending in self.pending.values_mut() {
+                if matches!(pending.effect, Effect::HostGraph(candidate) if candidate == id) {
+                    pending.effect = Effect::None;
+                    if let Err(error) = &result {
+                        pending.error = Some(CommandError {
+                            reason: error.reason,
+                            message: error.message.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        let graph = controller.snapshot();
+        if graph != self.host_graph {
+            self.host_graph = graph;
+            self.bump();
+        }
     }
 
     pub fn set_host_settings(
@@ -656,7 +690,8 @@ impl Service {
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
             Some(
-                Command::SelectLoops { .. }
+                Command::SetHostGraphConnected(_)
+                | Command::SelectLoops { .. }
                 | Command::SetTarget(_)
                 | Command::Track {
                     action: TrackAction::NameChanged(_) | TrackAction::MoveBefore(_),
@@ -743,6 +778,7 @@ impl Service {
             pending = self.pending.len()
         )
         .entered();
+        self.poll_host_graph();
         for _ in 0..MAX_MESSAGES_PER_TURN {
             if self.backend.mutation_capacity() == 0 {
                 break;
@@ -771,7 +807,11 @@ impl Service {
             let done: Vec<_> = self
                 .pending
                 .values()
-                .filter(|pending| pending.first > pending.last && !self.shutdown_ready)
+                .filter(|pending| {
+                    pending.first > pending.last
+                        && !self.shutdown_ready
+                        && !matches!(pending.effect, Effect::HostGraph(_))
+                })
                 .map(|pending| pending.id)
                 .collect();
             for id in done {
@@ -825,12 +865,14 @@ impl Service {
                     .pending
                     .values()
                     .filter(|pending| {
-                        !matches!(pending.effect, Effect::Persistence(_))
-                            && pending.completed.len() as u64
-                                == pending
-                                    .last
-                                    .checked_sub(pending.first)
-                                    .map_or(0, |count| count + 1)
+                        !matches!(
+                            pending.effect,
+                            Effect::Persistence(_) | Effect::HostGraph(_)
+                        ) && pending.completed.len() as u64
+                            == pending
+                                .last
+                                .checked_sub(pending.first)
+                                .map_or(0, |count| count + 1)
                             && !(self.shutdown_ready && self.shutdown == Some(pending.id))
                     })
                     .map(|pending| pending.id)
