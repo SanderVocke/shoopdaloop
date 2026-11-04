@@ -36,6 +36,20 @@ pub struct NodeConfiguration {
 /// immediately before their frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineOp {
+    ProcessorClaim {
+        generation: u32,
+    },
+    ProcessorStart {
+        generation: u32,
+    },
+    ProcessorRetire {
+        generation: u32,
+    },
+    ProcessorParameter {
+        generation: u32,
+        parameter: u32,
+        value: f32,
+    },
     /// Retain values for the next graph epoch without changing the active processor.
     Configure(NodeConfiguration),
     InputSource {
@@ -247,6 +261,7 @@ pub struct BusMixer {
 }
 
 pub enum EngineNode {
+    Processor(crate::HostedProcessor),
     Loop(LoopNode),
     StripInput(StripInput),
     StripOutput(StripOutput),
@@ -507,6 +522,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Fader(node) => node.ports(),
             Self::Bus(node) => node.ports(),
             Self::Reader(node) => node.ports(),
+            Self::Processor(node) => node.ports(),
         }
     }
     fn operation(
@@ -514,6 +530,19 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         operation: EngineOp,
         context: OperationContext<'_>,
     ) -> Result<(), Error> {
+        if let Self::Processor(node) = self {
+            return match operation {
+                EngineOp::ProcessorClaim { generation } => node.claim(context.frame, generation),
+                EngineOp::ProcessorStart { generation } => node.start(context.frame, generation),
+                EngineOp::ProcessorRetire { generation } => node.retire(context.frame, generation),
+                EngineOp::ProcessorParameter {
+                    generation,
+                    parameter,
+                    value,
+                } => node.parameter(context.frame, generation, parameter, value),
+                _ => Err(Error::InvalidEvent),
+            };
+        }
         self.apply_signal(operation, context.graph_epoch)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -665,7 +694,11 @@ impl StripInput {
             | EngineOp::ReadStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
-            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
+            | EngineOp::PreviewStop
+            | EngineOp::ProcessorClaim { .. }
+            | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorRetire { .. }
+            | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -746,7 +779,11 @@ impl StripOutput {
             | EngineOp::ReadStart { .. }
             | EngineOp::ReadStop
             | EngineOp::PreviewStart { .. }
-            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
+            | EngineOp::PreviewStop
+            | EngineOp::ProcessorClaim { .. }
+            | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorRetire { .. }
+            | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -980,7 +1017,7 @@ impl EngineNode {
             return Ok(());
         }
         match self {
-            Self::Loop(_) => Err(Error::InvalidEvent),
+            Self::Loop(_) | Self::Processor(_) => Err(Error::InvalidEvent),
             Self::StripInput(node) => node.apply(operation),
             Self::StripOutput(node) => node.apply(operation),
             Self::Fader(node) => node.apply(operation),
@@ -1015,6 +1052,7 @@ impl EngineNode {
             Self::Fader(node) => node.render(block),
             Self::Bus(node) => node.render(block),
             Self::Reader(node) => node.render(block),
+            Self::Processor(node) => node.process(block),
         }
     }
 }

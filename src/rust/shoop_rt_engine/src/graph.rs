@@ -90,6 +90,9 @@ impl Builder {
             *count += 1;
             Ok(())
         };
+        for slot in 0..pool.processors() {
+            self.step(plan, pool.processor(slot), 0, &mut end)?;
+        }
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };
             let node = pool.strip_input(slot);

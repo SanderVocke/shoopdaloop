@@ -422,3 +422,7 @@ src/rust/rt_buffered/src/backend.rs,buffered_processing,excluded,Portable prepar
 src/rust/shoop_dsp/src/lib.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
 src/rust/shoop_dsp/src/midi_storage.rs,host_dsp_contract,excluded,Feature-gated module surface or inline MIDI value definitions; no execution boundary to trace.
 src/rust/shoop_dsp/src/backends.rs,host_dsp_adapter,excluded,Bounded inline DSP adapter; owning runtime and processor spans observe render execution.
+src/rust/shoop_processor_protocol/src/lib.rs,processor_contract,excluded,Portable startup validation and scalar identifiers; callers report admission outcomes.
+src/rust/shoop_rt_engine/src/processors.rs,realtime_processors,excluded,Bounded opaque processor composition and atomic applied-state publication; owning host observes outcomes.
+src/rust/shoop_host_processors/src/lib.rs,host_processor_preparation,excluded,Startup-only resource validation and DSP construction; host startup reports preparation failures.
+src/rust/shoop_rt_backend/src/processors.rs,processor_projection,excluded,Descriptor conversion from confirmed host metadata; owning backend traces connection and admission.

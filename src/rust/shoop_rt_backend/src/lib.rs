@@ -43,6 +43,7 @@ mod outgoing;
 mod persistence;
 mod prepared;
 mod preview;
+mod processors;
 mod reads;
 mod requests;
 mod session;
@@ -131,6 +132,9 @@ pub struct RtBackend<C, K> {
     clock: K,
     link: Link,
     capabilities: Capabilities,
+    processors: Option<shoop_rt_protocol::ProcessorLimits>,
+    processor_presets: Vec<shoop_rt_protocol::ProcessorPreset>,
+
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
     driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
@@ -183,6 +187,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             clock,
             link: Link::Connecting,
             capabilities: Capabilities::default(),
+            processors: None,
+            processor_presets: Vec::new(),
             limits: None,
             driver: None,
             driver_profile: None,

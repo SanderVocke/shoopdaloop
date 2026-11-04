@@ -303,6 +303,23 @@ fn engine_samples() -> Vec<EngineMessage> {
     let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
     vec![
+        EngineMessage::State(StateRecord::Processors(ProcessorLimits {
+            effective: processors::Effective {
+                fx_instances: 2,
+                synth_instances: 2,
+                fx_unavailable: None,
+                synth_unavailable: None,
+                memory_bytes: 256 << 20,
+            },
+            reserved_bytes: 4 << 20,
+            channels: 8,
+            builtin_latency_frames: 32,
+        })),
+        EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
+            bank: 128,
+            program: 42,
+            name: Name::new("Preset").unwrap(),
+        })),
         EngineMessage::Welcome {
             version: 1,
             capabilities: Capabilities::BULK_MIDI,
@@ -500,4 +517,37 @@ fn malformed_records_are_refused_without_panicking() {
     let mut record = buf[..len].to_vec();
     record[tag] = 2;
     assert_eq!(decode_client(&record), Err(CodecError::Invalid));
+}
+
+#[shoop_test]
+fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
+    let mut limits = ProcessorLimits {
+        effective: processors::Effective {
+            fx_instances: 2,
+            synth_instances: 0,
+            fx_unavailable: None,
+            synth_unavailable: Some(processors::Unavailable::Disabled),
+            memory_bytes: 256 << 20,
+        },
+        reserved_bytes: 4 << 20,
+        channels: 8,
+        builtin_latency_frames: 32,
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for invalid in 0..4 {
+        let valid = limits;
+        match invalid {
+            0 => limits.channels = 9,
+            1 => limits.reserved_bytes = limits.effective.memory_bytes + 1,
+            2 => limits.effective.fx_instances = 65,
+            _ => limits.effective.fx_unavailable = Some(processors::Unavailable::NotCompiled),
+        }
+        let len = encode_engine(
+            &EngineMessage::State(StateRecord::Processors(limits)),
+            &mut bytes,
+        )
+        .unwrap();
+        assert_eq!(decode_engine(&bytes[..len]), Err(CodecError::Invalid));
+        limits = valid;
+    }
 }

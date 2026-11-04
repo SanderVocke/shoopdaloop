@@ -8,7 +8,9 @@ description = "Native GUI for managing independent ShoopDaLoop hosts"
 workspace = true
 
 [features]
-default = ["cpal", "jack"]
+builtin-fx = ["shoop_host/builtin-fx", "shoop_rt_host_native/builtin-fx"]
+oxisynth = ["shoop_host/oxisynth", "shoop_rt_host_native/oxisynth"]
+default = ["cpal", "jack", "builtin-fx", "oxisynth"]
 jack = ["shoop_host/jack", "shoop_rt_host_native/jack"]
 cpal = ["shoop_host/cpal", "shoop_rt_host_native/cpal"]
 

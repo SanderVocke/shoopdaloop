@@ -248,16 +248,23 @@ pub fn run_with_ready(
     }
     #[cfg(not(feature = "testing"))]
     let _ = &mut native;
+    native.engine.processors = config.settings.processors;
     let started = match shoop_rt_host_native::start(&native) {
         Ok(started) => started,
-        Err(error) if !matches!(native.driver, DriverConfig::Dummy(_)) => {
+        Err(error)
+            if !matches!(native.driver, DriverConfig::Dummy(_))
+                && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
+        {
             warnings.push(format!(
                 "Could not start the configured audio driver: {error}; using dummy"
             ));
             let dummy = shoop_app_api::DummyAudioDriverConfig::default();
             shoop_rt_host_native::start(&NativeConfig {
                 driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
-                engine: engine::engine_description(&config.pools, dummy.buffer_size),
+                engine: shoop_rt_engine::EngineDescription {
+                    processors: config.settings.processors,
+                    ..engine::engine_description(&config.pools, dummy.buffer_size)
+                },
             })?
         }
         Err(error) => return Err(error.into()),

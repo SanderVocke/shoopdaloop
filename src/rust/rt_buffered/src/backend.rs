@@ -46,6 +46,20 @@ pub trait Backend: Send {
     fn parameter(&self, _parameter: u32) -> Option<f32> {
         None
     }
+    /// Apply a control at an inactive source boundary, without rendering audio.
+    fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        let _ = (parameter, value);
+        Err(Error::InvalidParameter)
+    }
+    /// One cleanup unit on an inactive owner. Return true after the final unit.
+    /// The caller supplies consecutive steps beginning at zero.
+    fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
+        if step != 0 {
+            return Err(Error::InvalidState);
+        }
+        self.reset()?;
+        Ok(true)
+    }
     fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error>;
     /// Reset only an inactive backend; implementations must bound their work.
     fn reset(&mut self) -> Result<(), Error>;
@@ -63,6 +77,12 @@ impl<B: Backend + ?Sized> Backend for Box<B> {
     }
     fn parameter(&self, parameter: u32) -> Option<f32> {
         (**self).parameter(parameter)
+    }
+    fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+        (**self).control(parameter, value)
+    }
+    fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
+        (**self).reset_step(step)
     }
     fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
         (**self).process(batch)

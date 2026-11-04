@@ -2379,7 +2379,14 @@ type CatalogScanCompletion = (
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
-        Self::new_with_engine_start(settings, args, engine_backend::start_selected)
+        Self::new_with_engine_start(settings, args, |driver, pools, transport| {
+            engine_backend::start_selected_with_processors(
+                driver,
+                pools,
+                transport,
+                args.configured_processors(settings)?,
+            )
+        })
     }
 
     fn new_with_engine_start(
@@ -3174,7 +3181,11 @@ impl Runtime {
             ));
                 true
             });
-        let controller = browser_rt_audio::BrowserRtAudio::new(midi.hub(), pools)?;
+        let controller = browser_rt_audio::BrowserRtAudio::new(
+            midi.hub(),
+            pools,
+            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        )?;
         if offline {
             set_offline_audio_permission_presentation();
             controller.refuse(
@@ -3605,6 +3616,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
+            processors: args.configured_processors(&settings)?,
             driver: args
                 .configured_audio_driver(&settings)
                 .map_err(anyhow::Error::msg)?,
@@ -4981,7 +4993,12 @@ mod tests {
         };
         let mut runtime =
             Runtime::new_with_engine_start(&settings, &args, |driver, pools, kind| {
-                engine_backend::start_selected(driver, pools, kind)
+                engine_backend::start_selected_with_processors(
+                    driver,
+                    pools,
+                    kind,
+                    Default::default(),
+                )
             })
             .unwrap();
         let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {

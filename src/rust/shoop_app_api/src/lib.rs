@@ -3808,6 +3808,7 @@ impl Default for NewEnginePools {
 pub struct HostSettings {
     pub driver: AudioDriverConfig,
     pub pools: NewEnginePools,
+    pub processors: ProcessorSettings,
     pub master_auto_connect: bool,
     pub loop_smoothing_ms: u32,
 }
@@ -3816,6 +3817,7 @@ impl Default for HostSettings {
         Self {
             driver: Default::default(),
             pools: Default::default(),
+            processors: ProcessorSettings::default(),
             master_auto_connect: true,
             loop_smoothing_ms: 3,
         }
@@ -3823,6 +3825,9 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.processors
+            .validate()
+            .map_err(|_| "invalid processor startup capacities")?;
         if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
             return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
         }
@@ -3830,7 +3835,7 @@ impl HostSettings {
             || !(2..=8).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
-            || !(1..=16).contains(&self.pools.channels)
+            || !(1..=8).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
@@ -3853,3 +3858,5 @@ impl HostSettings {
         Ok(())
     }
 }
+
+pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};

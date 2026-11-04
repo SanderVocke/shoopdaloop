@@ -76,6 +76,7 @@ pub(crate) fn worklet_config(
     };
     let defaults = EngineDescription::default();
     let engine = EngineDescription {
+        processors: Default::default(),
         buses: pools.buses as u8,
         bus_channels: pools.bus_channels as u8,
         sample_rate: setup.sample_rate,
@@ -231,6 +232,7 @@ mod platform {
         generation: u64,
         started: Option<Instant>,
         pools: NewEnginePools,
+        processors: shoop_app_api::ProcessorSettings,
         hub: BrowserMidiHub,
         graph: Option<Graph>,
         backend: Option<NewEngineBackend>,
@@ -285,12 +287,17 @@ mod platform {
     }
 
     impl BrowserRtAudio {
-        pub fn new(hub: BrowserMidiHub, pools: NewEnginePools) -> Result<Self> {
+        pub fn new(
+            hub: BrowserMidiHub,
+            pools: NewEnginePools,
+            processors: shoop_app_api::ProcessorSettings,
+        ) -> Result<Self> {
             let inner = Rc::new(RefCell::new(Inner {
                 phase: Phase::AwaitingGesture,
                 generation: 0,
                 started: None,
                 pools,
+                processors,
                 hub,
                 graph: None,
                 backend: None,
@@ -724,7 +731,8 @@ mod platform {
             midi_outputs: sinks.iter().map(|port| port.name.clone()).collect(),
         };
         let pools = inner.borrow().pools;
-        let (config, warnings) = worklet_config(&pools, &setup);
+        let (mut config, warnings) = worklet_config(&pools, &setup);
+        config.engine.processors = inner.borrow().processors;
         let record = config.encode().map_err(|error| {
             JsValue::from_str(&format!("invalid engine configuration: {error:?}"))
         })?;

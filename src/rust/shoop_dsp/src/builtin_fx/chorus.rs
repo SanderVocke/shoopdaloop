@@ -94,6 +94,16 @@ impl ChorusProcessor {
         }
     }
 
+    pub(super) fn reset_voice(&mut self, index: usize) {
+        let channel = index / VOICES;
+        self.delay_lines[channel][index % VOICES].reset();
+        self.phases[channel] = if self.stereo {
+            0.
+        } else {
+            deterministic_phase(channel)
+        };
+    }
+
     pub(super) fn process(
         &mut self,
         frames: usize,

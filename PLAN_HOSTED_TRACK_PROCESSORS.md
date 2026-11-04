@@ -264,12 +264,12 @@ Each stage includes its own verification and a commit before moving on.
 
 ### 4. Add host startup policy, prepared banks and truthful advertisement
 
-- [ ] Add independent feature forwarding and shared startup configuration, validation,
+- [x] Add independent feature forwarding and shared startup configuration, validation,
   native/Host Manager launch controls, browser configuration versioning and worklet
   feature forwarding. Show startup-only settings in existing host launch flows;
   reconcile the current settings allowance of 16 channels with the engine ceiling
   of eight so configuration, advertised limits and admission agree.
-- [ ] Prepare finite active/candidate processor banks and resources before callbacks;
+- [x] Prepare finite active/candidate processor banks and resources before callbacks;
   implement bounded claim/return/reset with generations. Wire the portable prepared
   node seam into `EngineNode`/pool composition without concrete DSP dependencies.
 - [ ] Publish effective per-type descriptors, preset metadata, instance/width/resource
@@ -282,6 +282,15 @@ Each stage includes its own verification and a commit before moving on.
   config/launch round trips and no Wasm imports or callback heap activity. Measure
   cold startup time against host readiness deadlines and memory against the complete
   declared bank budget. Commit.
+
+Startup/bank milestone: host factories, native/worklet wiring, versioned startup
+configuration and catalog transport are implemented. Slots have generation-fenced
+claim/control/start/retire operations. Retirement clears one prepared DSP unit per
+cleanup turn, with at most one turn across the whole bank per quantum. Capability
+bits remain gated until graph, service and persistence admission are complete.
+Library/configuration tests and the four build combinations pass; the linked
+worklet has no Wasm imports. Remaining Stage 4 admission and public projection
+checks run alongside Stages 5–7.
 
 ### 5. Implement dry/wet graph roles, loop modes and latency
 

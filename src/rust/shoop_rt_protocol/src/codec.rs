@@ -1063,9 +1063,98 @@ impl Wire for Telemetry {
     }
 }
 
+impl Wire for crate::processors::Unavailable {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u8(*self as u8)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Disabled,
+            1 => Self::NotCompiled,
+            2 => Self::SampleRate,
+            3 => Self::NoCapacity,
+            4 => Self::ChannelCapacity,
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for ProcessorLimits {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u16(self.effective.fx_instances)?;
+        w.u16(self.effective.synth_instances)?;
+        self.effective.fx_unavailable.put(w)?;
+        self.effective.synth_unavailable.put(w)?;
+        w.u64(self.effective.memory_bytes)?;
+        w.u64(self.reserved_bytes)?;
+        w.u8(self.channels)?;
+        w.u32(self.builtin_latency_frames)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let fx_instances = r.u16()?;
+        let synth_instances = r.u16()?;
+        let fx_unavailable = Option::get(r)?;
+        let synth_unavailable = Option::get(r)?;
+        let memory_bytes = r.u64()?;
+        let reserved_bytes = r.u64()?;
+        let channels = r.u8()?;
+        let builtin_latency_frames = r.u32()?;
+        if u32::from(fx_instances) + u32::from(synth_instances)
+            > u32::from(crate::processors::MAX_INSTANCES)
+            || reserved_bytes > memory_bytes
+            || !(1..=8).contains(&channels)
+            || builtin_latency_frames == 0
+            || (fx_instances > 0 && fx_unavailable.is_some())
+            || (synth_instances > 0 && synth_unavailable.is_some())
+        {
+            return Err(CodecError::Invalid);
+        }
+        Ok(Self {
+            effective: crate::processors::Effective {
+                fx_instances,
+                synth_instances,
+                fx_unavailable,
+                synth_unavailable,
+                memory_bytes,
+            },
+            reserved_bytes,
+            channels,
+            builtin_latency_frames,
+        })
+    }
+}
+impl Wire for ProcessorPreset {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u16(self.bank)?;
+        w.u8(self.program)?;
+        self.name.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let bank = r.u16()?;
+        let program = r.u8()?;
+        let name = Name::get(r)?;
+        if program > 127 {
+            return Err(CodecError::Invalid);
+        }
+        Ok(Self {
+            bank,
+            program,
+            name,
+        })
+    }
+}
+
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Processors(limits) => {
+                w.u8(12)?;
+                limits.put(w)
+            }
+            Self::ProcessorPreset(preset) => {
+                w.u8(13)?;
+                preset.put(w)
+            }
+
             Self::BusShape { bus, channels } => {
                 w.u8(10)?;
                 bus.put(w)?;
@@ -1135,6 +1224,9 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            12 => Self::Processors(ProcessorLimits::get(r)?),
+            13 => Self::ProcessorPreset(ProcessorPreset::get(r)?),
+
             10 => Self::BusShape {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,

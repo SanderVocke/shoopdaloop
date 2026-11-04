@@ -264,6 +264,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             )
     }
 
+    fn track_processor_catalog(
+        &mut self,
+    ) -> Result<Arc<[shoop_app_api::TrackProcessorDescriptor]>> {
+        self.ready()?;
+        Ok(self.processor_descriptors())
+    }
+
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         Ok(self.driver_runtime_state())
     }

@@ -15,7 +15,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 3;
+pub const CONFIG_VERSION: u32 = 4;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -70,6 +70,10 @@ impl WorkletConfig {
     /// The worklet's own bounds; the engine validates its description when it is
     /// prepared.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.engine
+            .processors
+            .validate()
+            .map_err(|_| ConfigError::Range)?;
         let record_lanes = MAX_RECORD_BYTES..=MAX_LANE_BYTES;
         let midi_lanes = MAX_EVENT_BYTES..=MAX_LANE_BYTES;
         if !record_lanes.contains(&self.records_in_bytes)
@@ -96,6 +100,11 @@ impl WorkletConfig {
             engine.sample_rate as usize,
             engine.max_frames,
             engine.quantum,
+            engine.processors.builtin_fx as usize,
+            engine.processors.oxisynth as usize,
+            engine.processors.fx_instances as usize,
+            engine.processors.synth_instances as usize,
+            engine.processors.memory_mb as usize,
             engine.strip_channels.into(),
             engine.master_channels.into(),
             engine.buses.into(),
@@ -158,6 +167,20 @@ impl WorkletConfig {
         let sample_rate = r.u32()?;
         let max_frames = r.usize()?;
         let quantum = r.usize()?;
+        let policy = |value: u32| match value {
+            0 => Ok(shoop_rt_protocol::ProcessorPolicy::Auto),
+            1 => Ok(shoop_rt_protocol::ProcessorPolicy::On),
+            2 => Ok(shoop_rt_protocol::ProcessorPolicy::Off),
+            _ => Err(ConfigError::Range),
+        };
+        let processors = shoop_rt_protocol::ProcessorSettings {
+            builtin_fx: policy(r.u32()?)?,
+            oxisynth: policy(r.u32()?)?,
+            fx_instances: r.narrow()?,
+            synth_instances: r.narrow()?,
+            memory_mb: r.u32()?,
+        };
+        processors.validate().map_err(|_| ConfigError::Range)?;
         let strip_channels = r.narrow()?;
         let master_channels = r.narrow()?;
         let buses = r.narrow()?;
@@ -204,6 +227,7 @@ impl WorkletConfig {
         }
         Ok(Self {
             engine: EngineDescription {
+                processors,
                 sample_rate,
                 max_frames,
                 quantum,

@@ -9,10 +9,11 @@ browser-feature = "wasm-test-browser"
 
 [features]
 default = []
-serde = ["dep:serde", "shoop_port_graph/serde"]
+serde = ["dep:serde", "shoop_port_graph/serde", "shoop_processor_protocol/serde"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_processor_protocol = { path = "../shoop_processor_protocol" }
 shoop_port_graph = { path = "../shoop_port_graph" }
 serde = { workspace = true, features = ["derive", "rc"], optional = true }
 shoop_latency = { path = "../shoop_latency" }

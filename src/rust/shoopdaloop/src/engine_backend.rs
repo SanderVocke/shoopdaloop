@@ -64,26 +64,25 @@ impl Drop for EngineHost {
 /// Starts the new engine backend on the configured driver. A device driver that fails to
 /// start is replaced by the dummy driver with a warning; if the engine cannot start even
 /// then, this fails.
-pub(crate) fn start(driver: &AudioDriverConfig, pools: &NewEnginePools) -> Result<NewEngine> {
-    start_with(driver, pools, &inventory(driver))
-}
-
-pub(crate) fn start_selected(
+pub(crate) fn start_selected_with_processors(
     driver: &AudioDriverConfig,
     pools: &NewEnginePools,
     transport: shoop_egui::EngineTransportKind,
+    processors: shoop_app_api::ProcessorSettings,
 ) -> Result<NewEngine> {
     anyhow::ensure!(transport == shoop_egui::EngineTransportKind::InProcess,
         "external sessions must be launched as independent host/UI roles or attached with --host-profile");
-    start(driver, pools)
+    start_with(driver, pools, &inventory(driver), processors)
 }
 
 fn start_with(
     driver: &AudioDriverConfig,
     pools: &NewEnginePools,
     inventory: &Discovery,
+    processors: shoop_app_api::ProcessorSettings,
 ) -> Result<NewEngine> {
     shoop_egui::HostSettings {
+        processors,
         driver: driver.clone(),
         pools: *pools,
         ..Default::default()
@@ -91,17 +90,24 @@ fn start_with(
     .validate()
     .map_err(anyhow::Error::msg)?;
     let _span = tracing::info_span!("frontend.new_engine.start").entered();
-    let (config, mut warnings) = native_config(driver, pools, inventory);
+    let (mut config, mut warnings) = native_config(driver, pools, inventory);
+    config.engine.processors = processors;
     let started = match shoop_rt_host_native::start(&config) {
         Ok(started) => started,
-        Err(error) if !matches!(config.driver, DriverConfig::Dummy(_)) => {
+        Err(error)
+            if !matches!(config.driver, DriverConfig::Dummy(_))
+                && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
+        {
             warnings.push(format!(
                 "Could not start the configured driver of the new engine backend: {error}; using the dummy driver"
             ));
             let dummy = DummyAudioDriverConfig::default();
             let fallback = NativeConfig {
                 driver: DriverConfig::Dummy(dummy_config(&dummy)),
-                engine: engine_description(pools, dummy.buffer_size),
+                engine: shoop_rt_engine::EngineDescription {
+                    processors,
+                    ..engine_description(pools, dummy.buffer_size)
+                },
             };
             shoop_rt_host_native::start(&fallback).map_err(start_failure)?
         }
@@ -384,7 +390,8 @@ pub(crate) mod tests {
             midi_outputs: vec!["none".to_owned()],
             ..CpalAudioDriverConfig::default()
         });
-        let started = start_with(&driver, &pools(), &Discovery::default()).unwrap();
+        let started =
+            start_with(&driver, &pools(), &Discovery::default(), Default::default()).unwrap();
         assert!(
             started
                 .warnings
@@ -430,7 +437,8 @@ pub(crate) mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn stopping_the_host_before_the_backend_is_reported() {
         let driver = AudioDriverConfig::Dummy(DummyAudioDriverConfig::default());
-        let started = start_with(&driver, &pools(), &Discovery::default()).unwrap();
+        let started =
+            start_with(&driver, &pools(), &Discovery::default(), Default::default()).unwrap();
         let problems = started.host.stop();
         assert!(
             problems
@@ -450,7 +458,7 @@ pub(crate) mod tests {
             channels: 9,
             ..pools()
         };
-        let error = start_with(&driver, &invalid, &Discovery::default())
+        let error = start_with(&driver, &invalid, &Discovery::default(), Default::default())
             .err()
             .unwrap()
             .to_string();

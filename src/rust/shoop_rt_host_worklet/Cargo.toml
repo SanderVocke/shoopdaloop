@@ -15,13 +15,16 @@ workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["exports"]
+builtin-fx = ["shoop_host_processors/builtin-fx"]
+oxisynth = ["shoop_host_processors/oxisynth"]
+default = ["exports", "builtin-fx", "oxisynth"]
 # The module's exported functions. Without them the crate only provides the
 # configuration, framing and MIDI lane formats, for the main-thread half.
 exports = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_host_processors = { path = "../shoop_host_processors" }
 shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 # For the audio and MIDI buffer types of the render owner's callback.

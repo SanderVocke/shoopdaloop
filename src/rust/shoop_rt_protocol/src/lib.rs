@@ -21,7 +21,7 @@ pub use replacement::{ReplacementEdit, StripPreset};
 pub use schema::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.
@@ -38,3 +38,9 @@ pub const BULK_CHUNK_SAMPLES: usize = 256;
 pub const BULK_CHUNK_BYTES: usize = 1024;
 /// Largest encoded record.
 pub use shoop_transport::MAX_RECORD_BYTES;
+
+pub use shoop_processor_protocol::{
+    Kind as ProcessorKind, Policy as ProcessorPolicy, Settings as ProcessorSettings,
+};
+
+pub use shoop_processor_protocol as processors;

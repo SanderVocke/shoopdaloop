@@ -48,6 +48,7 @@ mod model;
 mod node;
 mod pool;
 mod preview;
+mod processors;
 mod queue;
 mod render;
 mod replacement;
@@ -63,6 +64,10 @@ pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::ControlEndpoint;
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
+pub use processors::{
+    HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
+    ProcessorPreset, ProcessorState,
+};
 pub use render::{Phase, Render, Report, Stopped};
 
 use crate::cells::{Cells, Observer};
@@ -178,12 +183,14 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
     let ports = strips * (7 * channels + 5)
         + loops * (4 * channels + 2)
         + 3 * buses * master_channels
-        + counts.iter().sum::<usize>();
+        + counts.iter().sum::<usize>()
+        + pool.processors() * (2 * channels + 3);
     let edges = strips
         * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
         + loops * (3 * channels + 2)
         + (channels + 1) * (strips + loops)
-        + 2 * buses * master_channels * audio_out;
+        + 2 * buses * master_channels * audio_out
+        + pool.processors() * (3 * channels + 3);
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
     Config {
@@ -278,8 +285,101 @@ pub fn prepare_with_shared(
     driver: DriverStatus,
     shared_settings: shoop_loops::runtime::SharedSettings,
 ) -> Result<Engine, PrepareError> {
+    let mut processors = PreparedProcessors::default();
+    processors.effective = description
+        .processors
+        .resolve(
+            shoop_rt_protocol::processors::Support::default(),
+            description.sample_rate,
+        )
+        .map_err(|_| rt_runtime::Error::InvalidConfig)?;
+    prepare_with_shared_and_processors(description, driver, shared_settings, processors)
+}
+
+pub fn prepare_with_processors(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    processors: PreparedProcessors,
+) -> Result<Engine, PrepareError> {
+    prepare_with_shared_and_processors(description, driver, Default::default(), processors)
+}
+
+pub fn prepare_with_shared_and_processors(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+    processors: PreparedProcessors,
+) -> Result<Engine, PrepareError> {
     description.validate()?;
-    let pool = Pool::new(&description.segments, description.buses as usize);
+    let policy = description.processors;
+    let effective = processors.effective;
+    if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)
+        || effective.fx_instances > policy.fx_instances
+        || effective.synth_instances > policy.synth_instances
+        || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::Off
+            && effective.fx_instances != 0)
+        || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::Off
+            && effective.synth_instances != 0)
+        || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::On
+            && effective.fx_instances != policy.fx_instances)
+        || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::On
+            && effective.synth_instances != policy.synth_instances)
+        || (effective.fx_instances == 0) != effective.fx_unavailable.is_some()
+        || (effective.synth_instances == 0) != effective.synth_unavailable.is_some()
+        || (effective.synth_instances == 0 && !processors.presets.is_empty())
+        || processors.presets.len() > 512
+        || processors
+            .presets
+            .windows(2)
+            .any(|p| (p[0].bank, p[0].program) >= (p[1].bank, p[1].program))
+        || (!processors.instances.is_empty() && processors.reserved_bytes == 0)
+    {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
+    for instance in &processors.instances {
+        let expected = match instance.kind {
+            shoop_rt_protocol::ProcessorKind::BuiltInFx => description.strip_channels as usize,
+            shoop_rt_protocol::ProcessorKind::OxiSynth => 2,
+            shoop_rt_protocol::ProcessorKind::External => {
+                return Err(rt_runtime::Error::InvalidConfig.into())
+            }
+        };
+        let ports = instance.backend.ports();
+        if ports.audio_inputs != expected
+            || ports.audio_outputs != expected
+            || ports.midi_inputs != 1
+            || ports.midi_outputs != 0
+            || expected > description.strip_channels as usize
+        {
+            return Err(rt_runtime::Error::InvalidShape.into());
+        }
+    }
+    if processors.instances.len() != processors.effective.slots()
+        || processors.reserved_bytes > processors.effective.memory_bytes
+        || processors
+            .instances
+            .iter()
+            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx)
+            .count()
+            != 2 * processors.effective.fx_instances as usize
+        || processors
+            .instances
+            .iter()
+            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::OxiSynth)
+            .count()
+            != 2 * processors.effective.synth_instances as usize
+    {
+        return Err(rt_runtime::Error::InvalidConfig.into());
+    }
+    let pool = if processors.instances.is_empty() {
+        Pool::new(&description.segments, description.buses as usize)
+    } else {
+        Pool::with_processors(
+            &description.segments,
+            description.buses as usize,
+            processors.instances.len(),
+        )
+    };
     let (strips, loops) = (pool.strips(), pool.loops());
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
@@ -409,6 +509,42 @@ pub fn prepare_with_shared(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
+    let processor_cells: Box<[_]> = processors
+        .instances
+        .iter()
+        .map(|p| alloc::sync::Arc::new(processors::ProcessorCells::new(p.kind)))
+        .collect();
+    let processor_catalog = ProcessorCatalog {
+        effective: processors.effective,
+        reserved_bytes: processors.reserved_bytes,
+        kinds: processors.instances.iter().map(|p| p.kind).collect(),
+        presets: processors.presets,
+    };
+    let buffer_limits = rt_buffered::BufferLimits {
+        midi_input: rt_buffered::MidiLimits {
+            events_per_quantum: description.midi_events,
+            bytes_per_quantum: description.midi_bytes,
+        },
+        midi_output: rt_buffered::MidiLimits {
+            events_per_quantum: 0,
+            bytes_per_quantum: 0,
+        },
+        parameters_per_quantum: 64,
+    };
+    for (slot, processor) in processors.instances.into_iter().enumerate() {
+        let node = HostedProcessor::new(
+            processor.backend,
+            processor_cells[slot].clone(),
+            quantum,
+            buffer_limits,
+            slot,
+            pool.processors(),
+        )?;
+        nodes.push(PreparedNode::new(
+            pool.processor(slot),
+            EngineNode::Processor(node),
+        ));
+    }
     let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
         config,
         description.max_frames,
@@ -476,6 +612,8 @@ pub fn prepare_with_shared(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        processor_catalog,
+        processor_cells,
         control,
         loops: client,
         shape: Shape {

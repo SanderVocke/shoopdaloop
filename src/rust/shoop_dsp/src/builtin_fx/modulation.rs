@@ -109,6 +109,18 @@ impl ModulationProcessor {
         self.phaser_feedback.fill(0.0);
     }
 
+    pub(super) fn reset_channel(&mut self, channel: usize) {
+        self.phases[channel] = if self.stereo {
+            0.
+        } else {
+            deterministic_phase(channel)
+        };
+        self.flanger_delays[channel].reset();
+        self.flanger_feedback[channel] = 0.;
+        self.phaser_states[channel] = [AllpassState::default(); PHASER_STAGES];
+        self.phaser_feedback[channel] = 0.;
+    }
+
     pub(super) fn process(
         &mut self,
         modulation_type: ModulationType,

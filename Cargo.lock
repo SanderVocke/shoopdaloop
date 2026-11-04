@@ -4803,6 +4803,7 @@ dependencies = [
  "serde",
  "shoop_latency",
  "shoop_port_graph",
+ "shoop_processor_protocol",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -4945,6 +4946,7 @@ dependencies = [
  "rt_buffered",
  "rt_runtime",
  "sha2",
+ "shoop_processor_protocol",
  "shoop_tracing",
  "shoop_wasm_test_support",
  "soundfont",
@@ -5084,6 +5086,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_host_processors"
+version = "0.3.0"
+dependencies = [
+ "rt_buffered",
+ "rt_runtime",
+ "shoop_dsp",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_wasm_test_support",
+ "thiserror 2.0.20",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_jack"
 version = "0.3.0"
 dependencies = [
@@ -5160,6 +5176,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_processor_protocol"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
@@ -5203,6 +5229,7 @@ dependencies = [
  "midir",
  "rt_runtime",
  "rtrb",
+ "shoop_host_processors",
  "shoop_jack",
  "shoop_port_graph",
  "shoop_rt_engine",
@@ -5238,6 +5265,7 @@ name = "shoop_rt_host_worklet"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_host_processors",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",
@@ -5250,6 +5278,7 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "shoop_processor_protocol",
  "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

@@ -165,3 +165,41 @@ Validation on this milestone:
 
 Host configuration, graph admission and public production capabilities remain
 unimplemented at this milestone; no parity row is closed by this library evidence.
+
+### Startup and prepared-bank milestone
+
+Portable startup settings and scalar identifiers live in `shoop_processor_protocol`.
+`shoop_host_processors` prepares opaque banks and preset metadata at the actual
+host sample rate before native callbacks or worklet rendering. The core has no
+concrete DSP dependency. Product native/worklet builds default to both types;
+CLI, Host Manager and saved startup settings independently select policies,
+capacities and aggregate memory. The worklet configuration is version 4 and RT
+protocol version 8 carries effective processor limits and preset records.
+
+Slots begin clean and unclaimed. Claim advances an owner generation; stale
+controls, duplicate claims and premature reuse fail. Retirement aborts buffered
+release and clears individual prepared rack units on successive cleanup turns.
+One slot receives a cleanup turn per quantum across the entire bank, including
+when no track is assigned. Final destruction remains quiescent. This does not yet
+advertise usable dry/wet tracks: service capability bits stay gated pending the
+remaining graph/media/operation implementation.
+
+On the provisioned Linux environment, 48 kHz bank preparation measured requested
+heap sizes (excluding allocator overhead). With two FX plus two synth instances
+and the full second bank, stereo retained 84,552,968 bytes, with peak 84,561,128
+bytes against a conservative 198,649,664-byte reservation. Eight-channel FX plus
+stereo synth retained 137,255,928 bytes, peak 137,264,088 against 346,130,240 reserved
+(using a 512 MiB configured ceiling). At mono host capacity the stereo synth is
+unavailable, and the FX-only bank retained 8,793,456 bytes against 54,451,648 reserved.
+The reservation is a bound for DSP/staging/metadata and parsing peak, not a claim
+that all reserved bytes are allocated. Tests compare peak and reservation for all
+three widths. Disabled startup is heap-guarded and prepares zero instances/assets;
+over-budget startup refuses before DSP constructors.
+
+Validation: startup CLI/config round trips, portable build/policy/rate matrix,
+processor ownership/reset under allocation/free guards, native and Wasm feature
+checks for neither/FX/synth/both, native core/DSP dependency audits, warning-denying
+workspace build, tracing and test-attribute audits. The actual both-feature
+`shoop_rt_host_worklet.wasm` links and `WebAssembly.Module.imports` returns `[]`.
+Full track admission, callback deadline measurements and packaged UI acceptance
+remain outstanding; these startup checks do not substitute for those gates.

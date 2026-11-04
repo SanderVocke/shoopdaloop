@@ -99,7 +99,7 @@ pub extern "C" fn shoop_rt_worklet_prepare() -> u32 {
                 PREPARED
             }
             Err(PrepareFailure::Config(_)) => INVALID_CONFIG,
-            Err(PrepareFailure::Engine(_)) => ENGINE_REFUSED,
+            Err(PrepareFailure::Engine(_) | PrepareFailure::Processors(_)) => ENGINE_REFUSED,
         }
     })
 }

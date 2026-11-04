@@ -29,6 +29,7 @@ pub(crate) struct Pool {
     loops: usize,
     nodes: usize,
     buses: usize,
+    processors: usize,
 }
 
 fn node(slot: usize) -> NodeId {
@@ -37,6 +38,9 @@ fn node(slot: usize) -> NodeId {
 
 impl Pool {
     pub(crate) fn new(segments: &[Segment], buses: usize) -> Self {
+        Self::with_processors(segments, buses, 0)
+    }
+    pub(crate) fn with_processors(segments: &[Segment], buses: usize, processors: usize) -> Self {
         let mut layouts = Vec::with_capacity(segments.len());
         let (mut strips, mut loops, mut nodes) = (0, 0, 2);
         for segment in segments {
@@ -56,7 +60,8 @@ impl Pool {
             segments: layouts.into_boxed_slice(),
             strips,
             loops,
-            nodes: nodes + buses - 1,
+            nodes: nodes + buses - 1 + processors,
+            processors,
             buses,
         }
     }
@@ -73,8 +78,14 @@ impl Pool {
         if slot == 0 {
             node(0)
         } else {
-            node(self.nodes - self.buses + slot)
+            node(self.nodes - self.processors - self.buses + slot)
         }
+    }
+    pub(crate) fn processor(&self, slot: usize) -> NodeId {
+        node(self.nodes - self.processors + slot)
+    }
+    pub(crate) fn processors(&self) -> usize {
+        self.processors
     }
     pub(crate) fn reader(&self) -> NodeId {
         node(1)

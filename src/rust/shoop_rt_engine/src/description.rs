@@ -47,6 +47,7 @@ impl HostPorts {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
     pub sample_rate: u32,
+    pub processors: shoop_rt_protocol::ProcessorSettings,
     /// Largest callback the host will render.
     pub max_frames: usize,
     /// Fixed graph tick. Changing it requires preparing a new engine.
@@ -90,6 +91,7 @@ impl Default for EngineDescription {
     fn default() -> Self {
         Self {
             sample_rate: 48_000,
+            processors: shoop_rt_protocol::ProcessorSettings::disabled(),
             max_frames: 512,
             quantum: 32,
             host: HostPorts::numbered(2, 2, 1),
@@ -127,6 +129,9 @@ impl EngineDescription {
     }
 
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
+        self.processors
+            .validate()
+            .map_err(|_| rt_runtime::Error::InvalidConfig)?;
         use rt_runtime::Error;
         let host = &self.host;
         rt_runtime::Quantum::new(self.quantum)?;

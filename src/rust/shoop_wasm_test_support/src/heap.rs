@@ -8,24 +8,46 @@ pub struct Counts {
     pub deallocations: usize,
 }
 
+/// Requested allocation sizes in one isolated ownership scope, excluding allocator overhead.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Memory {
+    pub allocated: usize,
+    pub freed: usize,
+    pub live: usize,
+    pub peak: usize,
+}
+impl Memory {
+    fn allocate(&mut self, bytes: usize) {
+        self.allocated = self.allocated.saturating_add(bytes);
+        self.live = self.live.saturating_add(bytes);
+        self.peak = self.peak.max(self.live);
+    }
+    fn free(&mut self, bytes: usize) {
+        self.freed = self.freed.saturating_add(bytes);
+        self.live = self.live.saturating_sub(bytes);
+    }
+}
+
 #[derive(Clone, Copy)]
 struct State {
     enabled: bool,
     counts: Counts,
+    memory: Memory,
 }
 
 thread_local! {
     static STATE: Cell<State> = const { Cell::new(State {
         enabled: false,
         counts: Counts { allocations: 0, reallocations: 0, deallocations: 0 },
+        memory: Memory { allocated: 0, freed: 0, live: 0, peak: 0 },
     }) };
 }
 
-fn record(update: impl FnOnce(&mut Counts)) {
+fn record(update: impl FnOnce(&mut Counts, &mut Memory)) {
     let _ = STATE.try_with(|state| {
         let mut current = state.get();
         if current.enabled {
-            update(&mut current.counts);
+            update(&mut current.counts, &mut current.memory);
             state.set(current);
         }
     });
@@ -38,25 +60,38 @@ pub struct TrackingAllocator;
 // not inspect or change the returned memory or allocator ownership.
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        record(|counts| counts.allocations = counts.allocations.saturating_add(1));
+        record(|counts, memory| {
+            counts.allocations = counts.allocations.saturating_add(1);
+            memory.allocate(layout.size());
+        });
         // SAFETY: The caller supplies the valid allocation layout required by System.
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        record(|counts| counts.allocations = counts.allocations.saturating_add(1));
+        record(|counts, memory| {
+            counts.allocations = counts.allocations.saturating_add(1);
+            memory.allocate(layout.size());
+        });
         // SAFETY: The caller supplies the valid allocation layout required by System.
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        record(|counts| counts.deallocations = counts.deallocations.saturating_add(1));
+        record(|counts, memory| {
+            counts.deallocations = counts.deallocations.saturating_add(1);
+            memory.free(layout.size());
+        });
         // SAFETY: The pointer and original layout are forwarded unchanged to System.
         unsafe { System.dealloc(ptr, layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        record(|counts| counts.reallocations = counts.reallocations.saturating_add(1));
+        record(|counts, memory| {
+            counts.reallocations = counts.reallocations.saturating_add(1);
+            memory.free(layout.size());
+            memory.allocate(size);
+        });
         // SAFETY: The pointer, original layout and requested size come from the caller.
         unsafe { System.realloc(ptr, layout, size) }
     }
@@ -84,12 +119,18 @@ pub fn measure<R>(run: impl FnOnce() -> R) -> (R, Counts) {
         state.set(State {
             enabled: true,
             counts: Counts::default(),
+            memory: Memory::default(),
         });
     });
     let scope = Scope;
     let result = run();
     drop(scope);
     (result, STATE.with(|state| state.get().counts))
+}
+
+pub fn measure_memory<R>(run: impl FnOnce() -> R) -> (R, Memory) {
+    let (result, _) = measure(run);
+    (result, STATE.with(|state| state.get().memory))
 }
 
 pub fn assert_no_heap<R>(run: impl FnOnce() -> R) -> R {

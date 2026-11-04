@@ -231,12 +231,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     /// Reconciles known mappings without deleting engine-owned session objects.
     fn apply_resync(&mut self, records: Vec<StateRecord>) {
+        self.processors = None;
+        self.processor_presets.clear();
         let mut host_ports = Vec::new();
         let mut strips = BTreeSet::new();
         let mut links = BTreeSet::new();
         let mut routes = BTreeSet::new();
         for record in &records {
             match *record {
+                StateRecord::Processors(limits) => self.processors = Some(limits),
+                StateRecord::ProcessorPreset(preset) => self.processor_presets.push(preset),
+
                 StateRecord::BusGenerations { generation } => {
                     self.mirror.bus_slots.raise_floor(generation)
                 }

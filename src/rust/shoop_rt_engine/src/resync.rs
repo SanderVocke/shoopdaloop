@@ -100,7 +100,7 @@ impl ControlEndpoint {
                     });
                 }
                 8 => {
-                    cursor.stage = 1;
+                    cursor.stage = 9;
                     return Some(StateRecord::BusGenerations {
                         generation: self
                             .model
@@ -110,6 +110,26 @@ impl ControlEndpoint {
                             .max()
                             .unwrap_or(0),
                     });
+                }
+                9 => {
+                    cursor.stage = 10;
+                    cursor.index = 0;
+                    return Some(StateRecord::Processors(
+                        shoop_rt_protocol::ProcessorLimits {
+                            effective: self.processor_catalog.effective,
+                            reserved_bytes: self.processor_catalog.reserved_bytes,
+                            channels: self.settings.channels as u8,
+                            builtin_latency_frames: self.limits.quantum,
+                        },
+                    ));
+                }
+                10 => {
+                    if let Some(preset) = self.processor_catalog.presets.get(cursor.index) {
+                        cursor.index += 1;
+                        return Some(StateRecord::ProcessorPreset(*preset));
+                    }
+                    cursor.stage = 1;
+                    cursor.index = 0;
                 }
                 1 => {
                     if let Some(port) = self.host_ports.get(cursor.index) {

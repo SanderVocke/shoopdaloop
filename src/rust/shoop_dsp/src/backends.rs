@@ -3,15 +3,10 @@
 use rt_buffered::{Backend, Batch};
 use rt_runtime::{graph::PortCounts, Error};
 
-pub const STAGE_BASE: u32 = 0x100;
-pub const DRIVE_TYPE: u32 = 0x200;
-pub const MODULATION_TYPE: u32 = 0x201;
-pub const REVERB_TYPE: u32 = 0x202;
-pub const CC_BASE: u32 = 0x1000;
-pub const CLEAR_CC: u32 = 0x3000;
-pub const WIDTH: u32 = 0x4000;
-pub const SYNTH_PRESET: u32 = 2;
-pub const SYNTH_PANIC: u32 = 3;
+pub use shoop_processor_protocol::{
+    CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC,
+    SYNTH_PRESET, WIDTH,
+};
 
 fn integer(value: f32, min: u32, max: u32) -> bool {
     value.is_finite() && value.fract() == 0. && value >= min as f32 && value <= max as f32
@@ -220,6 +215,13 @@ mod fx {
                 None
             }
         }
+        fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+            self.validate_parameter(parameter, value)?;
+            self.change(parameter, value)
+        }
+        fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
+            Ok(self.processor.reset_for_activation_step(step))
+        }
         fn reset(&mut self) -> Result<(), Error> {
             self.processor
                 .reset_for_activation(BuiltInFxState::default())
@@ -401,6 +403,10 @@ mod synth {
                 return Err(Error::Capacity);
             }
             process(self, batch)
+        }
+        fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
+            self.validate_parameter(parameter, value)?;
+            self.change(parameter, value)
         }
         fn reset(&mut self) -> Result<(), Error> {
             self.processor.clear_midi_cc_assignments();

@@ -142,6 +142,16 @@ impl AppArgs {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    pub fn configured_processors(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<shoop_app_api::ProcessorSettings> {
+        self.audio.apply_processors(
+            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn host_target(&self) -> anyhow::Result<Option<shoop_host::remote::Target>> {
         if self.host_stdin {
             let address: String = shoop_host::launch::read_message(std::io::stdin().lock())?;

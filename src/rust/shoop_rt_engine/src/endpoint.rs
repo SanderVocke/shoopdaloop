@@ -149,6 +149,8 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) processor_catalog: crate::ProcessorCatalog,
+    pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
@@ -282,6 +284,13 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
+    pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
+        &self.processor_catalog
+    }
+    pub fn processor_state(&self, slot: usize) -> Option<crate::ProcessorState> {
+        self.processor_cells.get(slot)?.read()
+    }
+
     pub(crate) fn next_frame(&self) -> Frame {
         Frame(self.cells.next_frame.load(Ordering::Relaxed))
     }

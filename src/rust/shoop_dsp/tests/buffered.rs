@@ -249,3 +249,45 @@ fn prepared_backends_reject_unsupported_rates_and_shapes_before_preparation() {
         }
     }
 }
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn incremental_retirement_restores_a_clean_rack_without_heap_operations() {
+    use shoop_dsp::backends::{FxBackend, STAGE_BASE, WIDTH};
+    for channels in [1, 2, 8] {
+        let mut h = Harness::new(FxBackend::prepare(48000., 32, channels).unwrap(), 32);
+        h.control(STAGE_BASE + 5, 1.);
+        h.input.fill(1.);
+        for _ in 0..20 {
+            h.render();
+        }
+        h.node.abort(Frame(h.frame as u64)).unwrap();
+        let mut steps = 0;
+        assert_no_heap(|| loop {
+            let done = h
+                .node
+                .inactive_backend_mut()
+                .unwrap()
+                .reset_step(steps)
+                .unwrap();
+            steps += 1;
+            assert!(steps <= 84);
+            if done {
+                break;
+            }
+        });
+        assert!(steps > channels * 6);
+        for id in [0, 1, STAGE_BASE, STAGE_BASE + 5, WIDTH] {
+            let fresh = FxBackend::prepare(48000., 32, channels).unwrap();
+            assert_eq!(h.node.backend().parameter(id), fresh.parameter(id));
+        }
+        h.node.activate_prepared(Frame(h.frame as u64)).unwrap();
+        h.input.fill(0.);
+        assert_no_heap(|| {
+            for _ in 0..20 {
+                h.render();
+                assert!(h.output.iter().all(|sample| *sample == 0.));
+            }
+        });
+    }
+}

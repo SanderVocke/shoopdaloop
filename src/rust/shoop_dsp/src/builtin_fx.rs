@@ -1061,6 +1061,33 @@ impl BuiltInFxProcessor {
         Ok(())
     }
 
+    /// Clean one prepared unit at a time while the rack has no live owner.
+    pub fn reset_for_activation_step(&mut self, step: usize) -> bool {
+        let channels = self.inputs.len();
+        if step == 0 {
+            self.state = BuiltInFxState::default();
+            self.active_channels = channels;
+            self.chorus.set_audio_channels(channels);
+            self.modulation.set_audio_channels(channels);
+            self.midi_cc_assignments.clear();
+            for (index, parameter) in BuiltInFxParameter::ALL.into_iter().enumerate() {
+                let value = parameter.value(self.state);
+                self.smoothers[index] = ParameterSmoother::new(value);
+                self.synchronized_revision = self.runtime_state.publish(parameter, value);
+            }
+            self.compressor.reset();
+            self.drive.reset();
+            self.eq.reset();
+        } else if step <= channels * 5 {
+            self.chorus.reset_voice(step - 1);
+        } else if step <= channels * 6 {
+            self.modulation.reset_channel(step - channels * 5 - 1);
+        } else {
+            self.reverb.reset_step(step - channels * 6 - 1);
+        }
+        step == channels * 6 + self.reverb.reset_steps()
+    }
+
     pub fn midi_cc_assignments(&self) -> BuiltInFxMidiCcAssignments {
         self.midi_cc_assignments
     }

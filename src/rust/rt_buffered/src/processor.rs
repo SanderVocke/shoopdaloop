@@ -34,6 +34,19 @@ pub struct BufferLimits {
     pub midi_output: MidiLimits,
     pub parameters_per_quantum: usize,
 }
+impl BufferLimits {
+    pub fn storage_bytes_for(
+        self,
+        ports: PortCounts,
+        quantum: Quantum,
+        timing: Timing,
+    ) -> Result<usize, Error> {
+        if ports.total()? > MAX_PORTS {
+            return Err(Error::Capacity);
+        }
+        buffer_storage(ports, timing.prepare(quantum)?, self)
+    }
+}
 impl Default for BufferLimits {
     fn default() -> Self {
         Self {
@@ -278,6 +291,15 @@ impl<B: Backend> BufferedProcessor<B> {
         &self.backend
     }
 
+    /// Inactive access for bounded cleanup and controls. Active backends are
+    /// exclusively accessed through source-timed batches.
+    pub fn inactive_backend_mut(&mut self) -> Result<&mut B, Error> {
+        if self.state != Lifecycle::Suspended {
+            return Err(Error::InvalidState);
+        }
+        Ok(&mut self.backend)
+    }
+
     /// Admit only source events in the next quantum, before collecting its audio.
     pub fn schedule_parameter(
         &mut self,
@@ -336,6 +358,16 @@ impl<B: Backend> BufferedProcessor<B> {
     pub fn abort(&mut self, origin: Frame) -> Result<(), Error> {
         self.rewind(origin)?;
         self.state = Lifecycle::Suspended;
+        Ok(())
+    }
+
+    /// Begin a stream whose inactive backend has already been reset/prepared.
+    pub fn activate_prepared(&mut self, origin: Frame) -> Result<(), Error> {
+        if self.state != Lifecycle::Suspended {
+            return Err(Error::InvalidState);
+        }
+        self.rewind(origin)?;
+        self.state = Lifecycle::Running;
         Ok(())
     }
 

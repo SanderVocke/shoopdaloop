@@ -369,6 +369,10 @@ impl Capabilities {
     pub const COMPLETE_REPLACEMENT: Self = Self(1 << 4);
     /// Accept sixty-four queued upload records through thirty-two reusable buffers.
     pub const WIDE_CONTENT_UPLOAD: Self = Self(1 << 5);
+    pub const DRY_WET: Self = Self(1 << 6);
+    pub const TRACK_PROCESSORS: Self = Self(1 << 7);
+    pub const GLOBAL_FX_CONTROL: Self = Self(1 << 8);
+    pub const EXTERNAL_DRY_WET: Self = Self(1 << 9);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -447,9 +451,25 @@ pub enum Telemetry {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorPreset {
+    pub bank: u16,
+    pub program: u8,
+    pub name: Name,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorLimits {
+    pub effective: crate::processors::Effective,
+    pub reserved_bytes: u64,
+    pub channels: u8,
+    pub builtin_latency_frames: u32,
+}
+
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    Processors(ProcessorLimits),
+    ProcessorPreset(ProcessorPreset),
     BusShape {
         bus: BusId,
         channels: u8,

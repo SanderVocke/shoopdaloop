@@ -712,9 +712,82 @@ pub fn engine_transport_from_snapshot(
 
 pub use shoop_app_api::NewEnginePools;
 
+pub const PROCESSOR_FX_POLICY: SettingKey<String> = SettingKey::new("audio.processors.builtin_fx");
+pub const PROCESSOR_SYNTH_POLICY: SettingKey<String> = SettingKey::new("audio.processors.oxisynth");
+pub const PROCESSOR_FX_INSTANCES: SettingKey<u32> =
+    SettingKey::new("audio.processors.fx_instances");
+pub const PROCESSOR_SYNTH_INSTANCES: SettingKey<u32> =
+    SettingKey::new("audio.processors.synth_instances");
+pub const PROCESSOR_MEMORY_MB: SettingKey<u32> = SettingKey::new("audio.processors.memory_mb");
+
+pub fn processor_settings_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<shoop_app_api::ProcessorSettings, String> {
+    let policy = |key| -> Result<shoop_app_api::ProcessorPolicy, String> {
+        let value: String = snapshot.get(key).map_err(|error| error.to_string())?;
+        match value.as_str() {
+            "auto" => Ok(shoop_app_api::ProcessorPolicy::Auto),
+            "on" => Ok(shoop_app_api::ProcessorPolicy::On),
+            "off" => Ok(shoop_app_api::ProcessorPolicy::Off),
+            _ => Err("invalid processor startup policy".to_owned()),
+        }
+    };
+    let fx: u32 = snapshot
+        .get(PROCESSOR_FX_INSTANCES)
+        .map_err(|error| error.to_string())?;
+    let synth: u32 = snapshot
+        .get(PROCESSOR_SYNTH_INSTANCES)
+        .map_err(|error| error.to_string())?;
+    let settings = shoop_app_api::ProcessorSettings {
+        builtin_fx: policy(PROCESSOR_FX_POLICY)?,
+        oxisynth: policy(PROCESSOR_SYNTH_POLICY)?,
+        fx_instances: u16::try_from(fx).map_err(|error| error.to_string())?,
+        synth_instances: u16::try_from(synth).map_err(|error| error.to_string())?,
+        memory_mb: snapshot
+            .get(PROCESSOR_MEMORY_MB)
+            .map_err(|error| error.to_string())?,
+    };
+    settings.validate().map_err(|error| error.to_string())?;
+    Ok(settings)
+}
+
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    for (key, label, order) in [
+        (PROCESSOR_FX_POLICY, "Built-in FX", 58),
+        (PROCESSOR_SYNTH_POLICY, "Built-in Synth", 59),
+    ] {
+        builder.register(SettingDefinition::new(key,"auto".to_owned(),"Audio",label,"Availability when starting a host. Auto uses the implementations supported by that host build and audio rate.")
+            .category_order(5).setting_order(order).effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::StringChoice {choices:&[("auto","Auto"),("on","On"),("off","Off")]}))?;
+    }
+    for (key, label, default, min, max, order) in [
+        (PROCESSOR_FX_INSTANCES, "FX instances", 2, 0, 64, 60),
+        (PROCESSOR_SYNTH_INSTANCES, "Synth instances", 2, 0, 64, 61),
+        (
+            PROCESSOR_MEMORY_MB,
+            "Processor memory (MiB)",
+            256,
+            0,
+            4096,
+            62,
+        ),
+    ] {
+        builder.register(
+            SettingDefinition::new(
+                key,
+                default,
+                "Audio",
+                label,
+                "Capacity reserved when starting a host, including space for session replacement.",
+            )
+            .category_order(5)
+            .setting_order(order)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::UnsignedInteger { min, max }),
+        )?;
+    }
     let defaults = NewEnginePools::default();
     builder.register(
         SettingDefinition::new(NEW_ENGINE_QUANTUM, defaults.quantum.to_string(),

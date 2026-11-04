@@ -87,6 +87,29 @@ impl ReverbProcessor {
         }
     }
 
+    pub(super) fn reset_steps(&self) -> usize {
+        usize::from(self.stereo_units.is_some()) * 3
+            + self.mono_units.len() * 3
+            + self.tone_low.len()
+    }
+    pub(super) fn reset_step(&mut self, mut index: usize) {
+        if let Some(units) = &mut self.stereo_units {
+            if index < 3 {
+                units[index].reset();
+                return;
+            }
+            index -= 3;
+        }
+        if index < self.mono_units.len() * 3 {
+            self.mono_units[index / 3][index % 3].reset();
+        } else {
+            let channel = index - self.mono_units.len() * 3;
+            self.tone_low[channel].reset();
+            self.tone_high[channel].reset();
+            self.wet[channel].fill(0.);
+        }
+    }
+
     pub(super) fn process(
         &mut self,
         reverb_type: ReverbType,
