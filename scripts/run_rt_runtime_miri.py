@@ -27,6 +27,7 @@ CASES = [
     ("midi", [], 6),
     ("midi_restore_state", [], 2),
     ("midi_index", [], 10),
+    ("lib", ["resource::shared_midi::tests::compact_parameter_history_matches_shifted_checkpoints_and_reset_boundaries", "--", "--exact"], 1),
     ("typed_schedule", [], 7),
     ("typed_execution", [], 13),
     ("planner_admission", [], 3),

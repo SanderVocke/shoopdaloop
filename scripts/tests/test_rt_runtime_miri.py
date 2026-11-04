@@ -17,11 +17,11 @@ from scripts import run_rt_runtime_miri as runner
 
 class MiriRunnerTests(unittest.TestCase):
     def test_inventory_is_available_without_running_miri(self):
-        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 352)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases()), 353)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_engine")), 12)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_protocol")), 6)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_rt_transport")), 6)
-        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 136)
+        self.assertEqual(sum(c[3] for c in runner.selected_cases("rt_runtime")), 137)
         self.assertEqual(sum(c[3] for c in runner.selected_cases("shoop_loops")), 119)
         for target, count in [("runtime_topology", 28), ("interloop", 2)]:
             cases = [c for c in runner.selected_cases("shoop_loops") if c[1] == target]
@@ -47,7 +47,7 @@ class MiriRunnerTests(unittest.TestCase):
         )
         cases = runner.selected_cases()
         self.assertEqual(runner.STAGE8_MODELS, expected)
-        self.assertEqual(len(cases), 176)
+        self.assertEqual(len(cases), 177)
         self.assertEqual(cases[-4:], [(owner, target, [name, "--", "--exact"], 1, 0)
                                     for owner, target, name in expected])
         self.assertEqual([case for case in cases if case[1].startswith("adversarial_")], cases[-4:])
