@@ -1,0 +1,18 @@
+Local source verification
+
+Clean detached source: ea769ccc51814da43ca977d1d2060230b85a7edb
+Clean checkout status: empty
+Clean example: passed independent audio/MIDI/capture/checkpoint oracles
+Clean focused debug: 5 runtime + 10 loop tests passed
+Clean focused release: 5 runtime + 10 loop tests passed
+Native workspace: 2558 passed, 4 skipped
+WebAssembly Node: 202 runtime + 176 loop tests passed
+Native runtime and loop host replays: debug and release passed
+Portable libraries: Cortex-A32, Cortex-A64, Cortex-M, WebAssembly passed
+Browser: hosted new-engine core workflow and buses passed; reported xruns 0
+Worklet/codec artifact contract and trace transport tests: passed
+Formatting, Rust test policy, warning build, tracing and dependency boundaries: passed
+
+CI: all applicable platform, docs, CodeQL and Codecov checks passed at a63327de.
+Review closure: zero inline threads, submitted reviews or requested human reviewers.
+No human approval is claimed; see ci.json and the completed implementation plan.

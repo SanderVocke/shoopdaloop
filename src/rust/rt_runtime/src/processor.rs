@@ -2,9 +2,19 @@
 
 use crate::buffer::{AudioPorts, MidiBuffer};
 use crate::graph::PortCounts;
-use crate::planner::{ConsumerAccess, DecisionView, NoPlanner, ObservationWriter, Planner};
+use crate::planner::{
+    ConsumerAccess, DecisionSpan, DecisionView, NoPlanner, ObservationWriter, Planner,
+};
 use crate::{Error, Frame, PreparedConfig};
 use alloc::boxed::Box;
+
+/// The initial scope model has one subdividing region beneath the host callback.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Cadence {
+    #[default]
+    Interval,
+    Callback,
+}
 
 /// Construction and disposal of processors belong to non-render contexts.
 /// Implementations must preallocate and pre-touch their working storage here.
@@ -22,6 +32,7 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
     pub midi_outputs: &'a mut [MidiBuffer],
     pub resources: crate::resource::ResourceIo<'a>,
     pub decision: Option<DecisionView<'a, L::Decision>>,
+    pub spans: &'a [DecisionSpan<L::Decision>],
     pub observations: ObservationWriter<'a, L::Observation>,
 }
 
@@ -47,6 +58,10 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
+    /// Queried off-render; replacement must preserve this parent-block contract.
+    fn cadence(&self) -> Cadence {
+        Cadence::Interval
+    }
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
@@ -69,6 +84,9 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+    fn cadence(&self) -> Cadence {
+        (**self).cadence()
+    }
     fn operation(
         &mut self,
         operation: Q,

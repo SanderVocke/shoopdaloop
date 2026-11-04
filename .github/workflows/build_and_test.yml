@@ -667,6 +667,7 @@ jobs:
         shell: bash
         run: |
           cargo test --locked -p rt_runtime -p shoop_loops ${{ matrix.cargo_args }}
+          cargo run --locked -p shoop_loops ${{ matrix.cargo_args }} --example scoped_processing
           cargo test --locked --manifest-path tests/loops_host/Cargo.toml ${{ matrix.cargo_args }}
           cargo fmt --manifest-path tests/loops_host/Cargo.toml -- --check
           cargo run --locked -p rt_runtime ${{ matrix.cargo_args }} --example gain_graph

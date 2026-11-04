@@ -9,7 +9,7 @@ use rt_runtime::{
     executor::{self, Command, GraphRuntime, PreparedNode},
     graph::{Catalog, GraphDescription, PortCounts, PreparedPlan},
     planner::ConsumerAccess,
-    processor::{ProcessBlock, Processor},
+    processor::{Cadence, ProcessBlock, Processor},
     resource::{self, PoolUsage, ResourceStore},
     schedule,
     transport::{self, Lane},
@@ -30,6 +30,12 @@ pub enum TestNode<P> {
     Effect(P),
 }
 impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for TestNode<P> {
+    fn cadence(&self) -> Cadence {
+        match self {
+            Self::Loop(node) => node.cadence(),
+            Self::Effect(node) => node.cadence(),
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),

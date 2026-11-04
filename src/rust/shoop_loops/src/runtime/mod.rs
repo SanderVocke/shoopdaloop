@@ -19,6 +19,7 @@ use rt_runtime::{
     schedule::{self, ReceiptToken},
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
+pub mod callback;
 mod configuration;
 mod node_pairs;
 mod planner;

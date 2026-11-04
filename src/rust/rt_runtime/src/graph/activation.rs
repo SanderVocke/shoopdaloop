@@ -181,7 +181,7 @@ struct AccessState<'a> {
     active: &'a mut Option<PreparedPlan>,
     epoch: &'a mut Epoch,
     activation_allowed: bool,
-    check: &'a dyn Fn(&PreparedPlan) -> Result<(), Error>,
+    check: &'a dyn Fn(&PreparedPlan, Option<&PreparedPlan>) -> Result<(), Error>,
     recovery: &'a mut [crate::midi::ResetState],
 }
 /// Callback-scoped graph authority. It cannot create plans or validate untrusted descriptors.
@@ -199,7 +199,7 @@ impl<'a> GraphAccess<'a> {
         active: &'a mut Option<PreparedPlan>,
         epoch: &'a mut Epoch,
         activation_allowed: bool,
-        check: &'a dyn Fn(&PreparedPlan) -> Result<(), Error>,
+        check: &'a dyn Fn(&PreparedPlan, Option<&PreparedPlan>) -> Result<(), Error>,
         recovery: &'a mut [crate::midi::ResetState],
     ) -> Self {
         Self {
@@ -259,7 +259,10 @@ impl<'a> GraphAccess<'a> {
         if slot.validated_epoch != expected {
             return Err(Error::StaleEpoch);
         }
-        (inner.check)(slot.owner.as_ref().expect("ready owner"))?;
+        (inner.check)(
+            slot.owner.as_ref().expect("ready owner"),
+            inner.active.as_ref(),
+        )?;
         if let Some(active) = inner.active.as_ref() {
             inner.stages.accepts(active)?;
         }
@@ -339,7 +342,7 @@ mod tests {
                 &mut active,
                 &mut epoch,
                 true,
-                &|_| Ok(()),
+                &|_, _| Ok(()),
                 &mut recovery,
             );
             let permit = access.prepare_activation(id, Epoch(0)).unwrap();
@@ -353,7 +356,7 @@ mod tests {
                 &mut active,
                 &mut epoch,
                 true,
-                &|_| Ok(()),
+                &|_, _| Ok(()),
                 &mut recovery,
             );
             assert!(access.prepare_activation(id, Epoch(1)).is_err());
@@ -405,7 +408,7 @@ mod tests {
                 &mut active,
                 &mut epoch,
                 true,
-                &|_| Ok(()),
+                &|_, _| Ok(()),
                 &mut [],
             );
             let permit = access.prepare_activation(id, Epoch(0)).unwrap();
@@ -425,7 +428,7 @@ mod tests {
                 &mut active,
                 &mut epoch,
                 true,
-                &|_| Ok(()),
+                &|_, _| Ok(()),
                 &mut [],
             );
             assert_eq!(

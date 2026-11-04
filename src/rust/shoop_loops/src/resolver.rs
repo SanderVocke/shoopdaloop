@@ -236,6 +236,18 @@ impl Resolver {
     pub fn frame(&self) -> Frame {
         self.frame
     }
+    /// Set the host's absolute origin during preparation, before any requests.
+    pub fn prepare_frame_origin(&mut self, frame: Frame) -> Result<(), Error> {
+        if self.frame != Frame(0)
+            || self.preview.is_some()
+            || self.committed
+            || self.records.iter().any(Option::is_some)
+        {
+            return Err(Error::InvalidState);
+        }
+        self.frame = frame;
+        Ok(())
+    }
     pub fn epoch(&self) -> Epoch {
         self.epoch
     }

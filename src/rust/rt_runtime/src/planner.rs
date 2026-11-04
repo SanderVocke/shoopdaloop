@@ -67,6 +67,37 @@ pub struct Interval {
     pub end: Frame,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PlanningMode {
+    #[default]
+    Interleaved,
+    Callback,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DecisionSpan<D> {
+    pub interval: Interval,
+    pub value: D,
+}
+
+/// Invoked after routing, when input-dependent preparation can use actual data.
+pub struct ConsumerContext<'a, O, R> {
+    pub node: NodeId,
+    pub interval: Interval,
+    pub midi_inputs: &'a [crate::buffer::MidiBuffer],
+    pub resources: crate::resource::PlannerResourceIo<'a>,
+    pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
+}
+
+pub struct ConsumerFinishContext<'a, V, O, R> {
+    pub node: NodeId,
+    pub interval: Interval,
+    pub result: Result<(), Error>,
+    pub observations: &'a [Observation<V>],
+    pub resources: crate::resource::PlannerResourceIo<'a>,
+    pub receipts: crate::schedule::ReceiptWriter<'a, O, R>,
+}
+
 /// Authority for one boundary. Internal intervals do not renew callback-wide
 /// ingress, result recycling, validation, background-copy or recovery allowances.
 pub struct PlanContext<'a, O = (), R = ()> {
@@ -125,6 +156,34 @@ pub trait Planner: Send {
     type Observation: Copy + Default + Send + 'static;
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
+
+    /// Fixed at preparation; callback mode admits callback consumers only.
+    fn mode(&self) -> PlanningMode {
+        PlanningMode::Interleaved
+    }
+    fn spans(&self, _slot: usize) -> &[DecisionSpan<Self::Decision>] {
+        &[]
+    }
+    fn before_consumer(
+        &mut self,
+        _context: ConsumerContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+    fn after_consumer(
+        &mut self,
+        _context: ConsumerFinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+    /// Cleanup after a callback fault. Time has advanced; no frames may be replayed.
+    fn abort(
+        &mut self,
+        _context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+        _error: Error,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
 
     /// Queried only during preparation. None selects the signal-only lifecycle.
     fn spec(&self) -> Option<PlannerSpec>;

@@ -1,0 +1,8 @@
+bus: frames=17 local_intervals=5 fx_calls=[(0, 17)] verified_audio_samples=34 midi_events=6 heap_operations=0
+dry_wet: origin=0 loop_frames=4 callback_work=(1, 7) fx_calls=[(0, 17)] plan_bytes=8704 verified_output_samples=34 verified_capture_samples=20 captured_frames=10 midi_events=6 verified_capture_midi_events=4 checkpoint_note=72:91 heap_operations=0
+dry_wet: origin=0 loop_frames=4 callback_work=(4, 9) fx_calls=[(0, 3), (3, 4), (7, 1), (8, 9)] plan_bytes=8704 verified_output_samples=34 verified_capture_samples=20 captured_frames=10 midi_events=6 verified_capture_midi_events=4 checkpoint_note=72:91 heap_operations=0
+dry_wet: origin=4294967333 loop_frames=4 callback_work=(1, 7) fx_calls=[(4294967333, 17)] plan_bytes=8704 verified_output_samples=34 verified_capture_samples=20 captured_frames=10 midi_events=6 verified_capture_midi_events=4 checkpoint_note=72:91 heap_operations=0
+dry_wet: origin=0 loop_frames=1 callback_work=(1, 32) fx_calls=[(0, 32)] plan_bytes=8704 verified_output_samples=64 verified_capture_samples=20 captured_frames=10 midi_events=34 verified_capture_midi_events=11 checkpoint_note=72:91 heap_operations=0
+shared_sync: owners=2 callback_work=(1, 6) verified_output_samples=34
+plan_capacity: required_spans=32 offered_spans=31 refused_before_publication=true
+scope_actions: interior_callback_parameter=InvalidFrame effective_frame=3
