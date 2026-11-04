@@ -207,7 +207,11 @@ impl Pinned {
                 kind,
                 wav,
                 standard,
-                channels: vec![],
+                channels: if kind == IoTaskKind::ExportLoopAudio {
+                    vec![0, 1]
+                } else {
+                    vec![]
+                },
             })
             .run()
             .unwrap() else {

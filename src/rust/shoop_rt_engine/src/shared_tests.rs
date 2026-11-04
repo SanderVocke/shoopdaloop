@@ -349,6 +349,7 @@ impl Fixture {
         panic!("request pending {request:?}");
     }
     fn send(&mut self, at: u64, operation: Operation) -> Sequence {
+        self.drain_protocol();
         let command = self.engine.endpoint.loops.command(Frame(at), operation);
         assert_no_heap(|| {
             self.engine
@@ -379,6 +380,7 @@ impl Fixture {
         self.resource_result(request).unwrap()
     }
     fn resource_result(&mut self, request: ResourceRequest) -> Result<resource::Reply, Error> {
+        self.drain_protocol();
         let seq = self
             .engine
             .endpoint
@@ -408,6 +410,16 @@ impl Fixture {
             self.render(self.partition, true);
         }
         panic!("resource pending");
+    }
+    fn drain_protocol(&mut self) {
+        for _ in 0..10000 {
+            if self.engine.endpoint.pending.iter().all(Option::is_none) {
+                return;
+            }
+            self.engine.endpoint.poll(&mut self.outbox);
+            self.render(self.q, false);
+        }
+        panic!("protocol owning returns pending");
     }
     fn snapshot(&mut self, resource: rt_runtime::ResourceId) -> Snapshot {
         let resource::Reply::Snapshot(s) = self.resource(ResourceRequest::Snapshot { resource })
@@ -635,6 +647,7 @@ fn fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision() {
         let end = h.aligned_future(256);
         h.run_to(end);
         assert_eq!(h.engine.render.phase(), Phase::Running);
+        assert!(h.engine.render.diagnostics().midi_overflows > 0);
         h.midi_output = MidiBuffer::new(4096, 32768).unwrap();
         let end = h.aligned_future(256);
         h.run_to(end);
@@ -849,7 +862,7 @@ fn saturated_unread_results_do_not_interrupt_history_and_shutdown_recovers_priva
         {
             Ok(_) => admitted += 1,
             Err(error) => {
-                assert_eq!(error.error, Error::Full);
+                assert_eq!(error.error, Error::Busy);
                 break;
             }
         }
