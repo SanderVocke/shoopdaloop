@@ -25,6 +25,7 @@ Construct the store with concrete MIDI indexing capacities:
 ```rust
     let mut store = ResourceStore::with_midi_indexing(
         config(128)?,
+        rt_runtime::Quantum::new(1).unwrap(),
         MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 3,

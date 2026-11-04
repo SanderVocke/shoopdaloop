@@ -125,14 +125,14 @@ fn main() -> Result<(), Error> {
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![
             PreparedNode::new(a, Gain(0.5)),
             PreparedNode::new(b, Gain(0.25)),
         ],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
-        &[],
     )?;
     let initial_epoch = runtime.epoch();
     let mut output = [[0.0; 8]; 2];

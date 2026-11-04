@@ -57,12 +57,6 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
         },
         HostRequest::AddMidiInput(text),
         HostRequest::AddMidiOutput(text),
-        HostRequest::AddJackAudioInput(text),
-        HostRequest::AddJackAudioOutput(text),
-        HostRequest::ConnectJack {
-            source: text,
-            destination: text,
-        },
         HostRequest::Start,
         HostRequest::Status,
         HostRequest::Stop,

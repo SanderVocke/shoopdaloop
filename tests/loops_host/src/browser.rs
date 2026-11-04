@@ -864,7 +864,6 @@ mod tests {
                     capacity: crate::graph_transfer::Counts {
                         steps: 3,
                         edges: 12,
-                        bindings: 2
                     }
                 }
             );

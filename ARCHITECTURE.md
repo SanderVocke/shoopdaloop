@@ -38,9 +38,8 @@ snapshot-status paragraphs there do not describe the current tree.
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
 | `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
-| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests, benchmarks and test hosts | Not used by production crates; not part of the loop library's API |
+| `shoop_loops_test_support` | Dev-only assembly of the loop parts with independent typed DSP operations, for tests and test hosts | Not used by production crates; not part of the loop library's API |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
-| `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
 | `shoop_rt_engine` | The [new engine backend](#new-engine-backend)'s real-time composition: node enum over the loop parts and its strip/bus processors, segmented prepared pools, structural transactions, the bounded control endpoint and the render owner | Engine terms only; no application, legacy-engine or host dependency (boundary script); compiled once for every environment |
 | `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor and binary codec | No semantics; no application, engine or transport dependency |
@@ -53,8 +52,8 @@ snapshot-status paragraphs there do not describe the current tree.
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
 [task guides](src/rust/shoop_loops/README.md), DSP
-[README](src/rust/shoop_example_dsp/README.md), service
-[README](src/rust/shoop_engine_service/README.md), and host
+[README](src/rust/shoop_example_dsp/README.md), test-support
+[README](src/rust/shoop_loops_test_support/README.md), and host
 [READMEs](tests/loops_host/README.md) are the public usage paths. They remain
 separate from planning and evidence, and are not rewritten by consolidation.
 The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
@@ -71,12 +70,19 @@ The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
 
 The generic runtime owns authoritative engine frames and execution mechanics.
 One render-owned resolver owns logical loop modes, positions, synchronization,
-composite cursors and request precedence. Playback/capture processors consume
-borrowed immutable decisions and return observations; they do not discover timing
-by reading mutable peer state or running another musical clock.
+composite cursors and request precedence. Each graph iteration processes one whole
+configured quantum. The loop planner settles changes at its start, playback/capture
+processors borrow the prepared per-loop views through the render-owned domain,
+and capture completion updates that domain at its end. Processors do not run a
+separate musical clock. Host callback sizes are adapted outside graph execution;
+callback-wide work budgets are not renewed at internal tick boundaries.
+
+Every processor uses `ProcessBlock` and borrows the render-owned domain directly.
+The planner has one `begin_tick`/`finish_tick` lifecycle. `NoPlanner` supplies an
+empty domain for independent signal-only processing.
 
 Timing relations (sync, state-changing actions and composite containment), signal
-routes and generic planner/consumer bindings are distinct structures. Do not use
+routes and prepared loop-node ownership are distinct structures. Do not use
 dummy audio/MIDI edges to impose planning order. One logical loop may have separate
 playback and capture nodes with intervening effects:
 
@@ -88,7 +94,7 @@ The application owns the `GraphRuntime`, its resource store, its node type, the
 control endpoint and the lifecycle; it installs the loop library's planner and nodes
 next to its other processors. The loop planner still coordinates everything loop
 timing and media depend on, and the runtime asks it to admit generic graph commits
-and processor install/remove, so these cannot drop or replace its nodes or bindings.
+and processor install/remove, so these cannot drop or replace its nodes.
 One runtime has one planner. Independently planning domains need explicit
 composition, not installation of competing clocks or nested engines.
 
@@ -104,7 +110,7 @@ dev-only. Arbitrary downstream processors/hosts must honor the same contract.
 Keep four things distinct:
 
 - **Prepared storage/admission:** finite nodes, media/pages/indexes, operations,
-  results, observations, descriptors and retirement credits.
+  results, descriptors and retirement credits.
 - **Callback-wide optional work:** bounded ingress, upload/export, validation,
   reclamation, telemetry and recovery snapshots.
 - **Required work:** admitted rendering, indexed data access, lifecycle cuts,
@@ -113,9 +119,8 @@ Keep four things distinct:
   Semantic frames, generations, revisions and sequences use checked exhaustion.
 
 The engine owns correctness and termination; the application owns musical cost.
-An expensive valid workload may xrun. Do not impose an interaction quantum,
-mandatory block/per-hop delay, wrap/subdivision limit or propagation-wave counter
-to hide that cost. Finite storage and safe Rust do not certify arbitrary user
+An expensive valid workload may xrun. The configured quantum bounds timing resolution; host adaptation can add buffering
+latency. Do not add wrap limits or propagation-wave counters to hide musical cost. Finite storage and safe Rust do not certify arbitrary user
 planner termination, browser scheduling or callback deadlines.
 
 ### One callback envelope and borrowed authority
@@ -123,23 +128,22 @@ planner termination, browser scheduling or callback deadlines.
 `GraphRuntime<P, L, Q>` defaults to `NoPlanner` and no processor operations.
 Planner operations (`Planner::Operation`) and processor operations (the `Q` of
 `Processor<L, Q>`) are typed independently, so a DSP crate defines its own family
-and depends only on `rt_runtime`. `Planner`/`PlannerSpec`,
-`DecisionBinding`, `ConsumerAccess` and prepared associated `Copy` types give one
-planner decision storage and independently reserved producer observation slots.
-Validate generations, binding completeness/order and observation capacity before
-activation. Consumers cannot retain decision/context/resource borrows across
-planner mutation, finish or graph publication.
+and depends only on `rt_runtime`. Domain state belongs to the planner; processors
+borrow it during their whole-tick process calls. Preparation caches port signatures
+and operation payload limits. Processor admission validates actual physical identity
+and role; planner admission validates required graph membership before publication.
+Consumers cannot retain context/resource/domain borrows across mutation or finish.
 
 For one host callback: validate the block/clock; snapshot admission/recycling and
-background/recovery allowances once; deliver due actions and settle a boundary;
-select a positive interval up to the external ceiling; render the signal DAG;
-finish observations/capture and advance. Repeat internal intervals without
+background/recovery allowances once; deliver due actions and settle a tick;
+render one whole quantum of the signal DAG; commit capture and finish the tick.
+Adapt host callback partitions outside this traversal. Repeat internal ticks without
 refreshing any callback allowance or polling producers. `callback_start` remains
 the enclosing callback origin; `graph_epoch` is context-entry identity.
 
 Intervals are half-open `[F,E)`: changes at F affect sample/event F. Callback-end
 settlement belongs to the next nonempty callback. Zero callbacks do nothing.
-Finish reports observations/advances positions but does not settle the next
+Finish commits capture/advances positions but does not settle the next
 boundary. Final position may equal length with a wrap pending. Public State/Export
 cuts are post-settlement, pre-render; `AfterInterval` is conceptual, not a public
 Cut phase. Sample-rate changes require stopping and re-preparing; no implicit
@@ -354,17 +358,18 @@ before acquiring any claim. Legacy mutations that bypass the claim must refuse;
 read/snapshot access retains its lease/optional-work rules.
 
 Preparing a take reserves all version/index/initial-state/final-snapshot slots
-before success; pages remain finite interval reservations, not unlimited recording.
+before success; pages remain finite whole-quantum reservations, not unlimited recording.
 Reserved final leases are unpublished and unavailable to ordinary snapshot callers.
 Checked take/transaction identities prevent cancelled tokens retargeting a later
 reuse. Cancellation returns promises without changing old active content.
 
-Reserve a new take's **first interval before activation** (`PreparedReserved`).
+The store and runtime share one immutable quantum. Reserve a new take's
+**first tick before activation** (`PreparedReserved`).
 Validate exact frame/window, audio shape, revision arithmetic and MIDI producer
 promise (`12*events + payload_bytes`, including possible recovery) across all
 members before changing global reservations. Conservative MIDI bounds may refuse
 earlier than exact future-output knowledge; this is storage admission, not a
-musical CPU cap. Activation at F retains its interval token and installs all new
+musical CPU cap. Activation at F retains its tick token and installs all new
 zero-duration versions together.
 
 Consumers stage complete contributions once per member in prepared storage.
@@ -418,7 +423,7 @@ prepared output capacity; unlimited MIDI/recording is not promised.
 | --- | --- |
 | TopologyActivate | Delivery-time fixed IDs/kinds; changed programs already stopped; node pairs/media/routes unchanged |
 | ProgramActivate | One owning selected-program/nominal-length change at stopped/true zero; other timing/graph/node pairs fixed |
-| GraphActivate | Immediate compatible fixed node-pair route/binding change, including continued capture |
+| GraphActivate | Immediate compatible prepared node-pair route change, including continued capture |
 | TopologyGraphActivate | Paired compatible immediate timing/routes; logical owners fixed, changed programs stopped |
 | ConfigurationActivate | Already-stopped logical generation/media edits with matching topology/routes over prepared physical node pairs |
 | ProgramGraphActivate | Pending selected program/routes at actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and physical node pairs fixed |
@@ -433,7 +438,7 @@ hold a call waiting for later input or allocate owners in a MessagePort handler.
 Generic `StageGraph` makes a validated owning candidate Ready, not active or locked.
 `GraphAccess` lends an exclusive permit that rechecks scoped generation, current/
 validated/expected epochs, next epoch, actual vector capacities, retirement space,
-bindings and pending MIDI. Complete every fallible domain/capture preflight before
+domain membership and pending MIDI. Complete every fallible domain/capture preflight before
 consuming it for infallible publication. An unused permit moves no graph owner and
 is not rollback of arbitrary domain mutation. Planning-time removal of a node with
 delivered unconsumed MIDI refuses Busy so old graph consumes it once; operation-time
@@ -448,7 +453,7 @@ already-stopped configuration precondition. Successful NodePairAppend consumes s
 IDs; rejection transfers none. Node pair/source, timing/program, graph retirement and
 external exports recycle independently; old-generation exports remain valid.
 
-`prepare_with_initial_graph` installs validated routes/bindings off-render at epoch
+`prepare_with_initial_graph` installs validated routes off-render at epoch
 one/frame zero, with no warm-up callback or ingress receipt. A post-publication
 fault may leave changed state/epochs and advanced time. Never replay samples,
 fake finish or infer rollback from cleared output. Stopped extraction must retain
@@ -459,32 +464,19 @@ cleanup, not resumable Pause or device MIDI cleanup after callbacks have stopped
 
 <a id="native-engine-service-slice"></a>
 
-## Native service composition
+## Independent DSP composition coverage
 
-The service owns **one runtime and render owner** holding the loop parts and an
-independent DSP. Its node type wraps the loop's nodes and the DSP; its one ordered
-control path forwards loop requests and DSP selections into the runtime. A DSP
-selection is the processor's own typed operation, which the runtime scheduler
-delivers immediately before its requested sample; the processor reports actual
-frame/revision in the execution's `processor_result`. No magic float IDs, private
-bridges, extra runtime calls, second scheduler or mutable access to the resolver is
-involved.
+The shared test support assembles one runtime from the loop parts and independent
+DSP. Typed DSP selections share the runtime scheduler with loop operations; no
+separate service queue, scheduler or render wrapper is needed. The retained scenarios
+verify complete audio/MIDI, exact operation frames/revisions, live capture routing,
+immutable exports and startup ownership across callback partitions. The D=3 probe
+keeps physical capture markers and independent logical windows, including missing
+history/postroll, explicit. See the [test-support guide](src/rust/shoop_loops_test_support/README.md).
 
-Preset changes share the runtime's ordering with loop work at the same frame, but
-are not atomic transactions with arbitrary graph/loop changes.
-Peak-since-read atomics are independent telemetry, not a coherent cross-domain
-snapshot. Loop cuts are coherent resolver observations. Live exports retain exact
-immutable audio/MIDI prefixes while capture continues; owning reads must finish
-before release. Stop/cancel recovery must remain available with normal receipts
-full. The D=3 probe retains raw physical data and exposes absent dry history, wet
-postroll and independent logical playback windows rather than shifting media to
-fake latency parity.
-
-The independent native engine-service composition is implemented and its narrower
-consolidation is delivered. Its general browser/IPC deployment is separate from
-the production app session service described above.
-Measurement regressions and validation limits belong in [VALIDATION.md](VALIDATION.md#integration-evidence),
-not architectural claims of performance parity.
+Peak-since-read meters remain independent telemetry, and arbitrary DSP selections
+are not cross-domain atomic transactions. The production application composition
+is `shoop_rt_engine` and its application/session service described above.
 
 <a id="open-composability-decision"></a>
 
@@ -497,7 +489,7 @@ returns the planner, its playback/capture nodes and a control-side client. The
 earlier critique's guarantees remain requirements, now enforced without owning the
 runtime:
 
-1. Required playback/capture consumers, decision bindings and input tracking on every
+1. Required playback/capture membership, physical roles and input tracking on every
    graph activation: the planner validates its own activations and admits generic
    ones (`Planner::admit_graph`, `Planner::admit_processor_change`).
 2. Paired program/routing publication at the real cut after full preflight.
@@ -524,7 +516,7 @@ The boundary keeps these rules:
 - **The loop library never stores the `ResourceStore`.** Preparation and cleanup
   borrow it; stopped extraction uses `GraphRuntime::into_planner_and_resources`.
 - **`LoopClient` owns no transport.** It builds typed commands and graph descriptions,
-  including the loop's decision bindings, for the application's control endpoint, and
+  for the application's control endpoint, and
   decodes loop results.
 - **The callback contract is unchanged.** Render paths do not allocate, free, lock or
   wait, and fixed capacities stay finite and checked.
@@ -643,7 +635,7 @@ application adapter.
 ```text
 Client side                                 Session/engine side
 shoop_egui + client-local Lua
-  │ shoop_app_client: typed local delivery or authenticated app IPC
+  │ shoop_app_client: typed local delivery or compatible app IPC
 shoop_app::Service (canonical session state and admitted work)
   │ Backend trait
 shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
@@ -666,7 +658,7 @@ shoop_rt_backend (adapter: application vocabulary ⇄ protocol, state mirror)
 | Shared transport | `shoop_transport*` | Bounded record buffers, framing and socket/shared-memory delivery reused below both app and engine lifecycles |
 | Engine transport | `shoop_rt_transport*` | Engine client lifecycle, credits, typed in-process and encoded record adapters, MessagePort bindings and compatibility carrier aliases |
 | Engine hosts | `shoop_rt_host_native`, `shoop_rt_host_worklet` | Own the engine, open devices, pump audio, MIDI and messages; no app semantics |
-| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; authenticated discovery, app attachment and management |
+| Native composition | `shoop_host` | Own the app service, persistent RT adapter and native engine host; live host inspection, keyless attachment and generation-fenced app management |
 | Adapter | `shoop_rt_backend` | `Backend` in protocol terms: ID mapping, state mirror, capability descriptor, session documents |
 
 The composition root (the native binary or the browser bootstrap) chooses a host and
@@ -704,10 +696,21 @@ allocate, free, lock or wait; hosts count xruns into telemetry.
   the carrier. Carrier latency can delay immediate actions or miss a musical
   scheduling boundary. No additional lookahead or latency compensation is applied.
 
-The independent native session host authenticates loopback app data and management
-connections with protected credential references. Its registry publishes readiness,
-host/session identity, endpoints and carrier configuration. The companion lives
-beside the app (inside `Contents/MacOS` on macOS), independently of cwd and `PATH`.
+The independent native session host accepts compatible clients without keys or
+certificates. A versioned greeting distinguishes inspection from attachment before
+session admission. Bounded descriptions include process/instance identity, endpoint
+roles, transport and attachment availability. The manager joins candidate executable
+processes to their owned listening sockets through the native-only
+`shoop_host_processes` adapter (Linux procfs, macOS libproc and Windows owner-PID TCP
+tables). It uses background bounded probes and keeps discovery state in memory.
+There is no registry, reserved port range, advertisement file or saved host history.
+
+Connection profiles are optional advanced endpoint inputs/exports. Normal detached
+launch and UI attachment use bounded startup/readiness pipes and live addresses.
+The companion lives beside the app (inside `Contents/MacOS` on macOS), independently
+of cwd and `PATH`. Local forced termination revalidates OS creation identity and
+executable, using stable process handles where available. Manual remote PIDs do not
+grant local termination actions.
 Driver/capacity/transport changes apply at host startup.
 
 One controlling lease can be replaced after socket client loss. Connection
@@ -715,7 +718,7 @@ generations fence stale mutations and shutdown; attachment streams a coherent ap
 snapshot and retained operation outcomes without reconstructing the RT adapter or
 reopening devices. Shared memory supports one data attachment only. The launcher
 starts host/UI siblings and relinquishes lifetime ownership after readiness.
-UI-only exit leaves the host running; close-both uses authenticated management and
+UI-only exit leaves the host running; close-both uses management and
 confirms actual MIDI/render/device cleanup. Explicit ownerless shutdown is available
 after an abandoned data connection; it cannot evict a live lease. Host-failure
 recovery and automatic restart remain excluded. `shoop_rt_host_process` is retained
@@ -770,8 +773,8 @@ to the worklet on its own lane beside the protocol records.
 
 Driver status and host-port inventory are engine protocol data. The engine-only
 reference fixture uses its separate `host` bootstrap schema; production
-`shoop_host` consumes checked host configuration and publishes protected app
-discovery. The external UI process opens no selected IPC audio/MIDI devices.
+`shoop_host` consumes checked host configuration and accepts explicit profile-based
+app connections. The external UI process opens no selected IPC audio/MIDI devices.
 
 ### Capabilities
 
@@ -878,3 +881,7 @@ satisfied/unsatisfied/unverifiable criteria and reopen invalidated evidence rath
 than weakening goals. User-owned focus/pause/resume and exceptional approvals stay
 explicit. A new extension is only a reviewed proposal, not implemented by this
 migration; `.pi/` storage and native lifecycle remain untouched.
+
+The native entry points are `shoopdaloop`, `shoop_host`, and
+`shoop_host_manager`. The manager has an independent native crate and shares
+configuration, protocol and companion-launch libraries with the looper.

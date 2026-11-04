@@ -17,8 +17,7 @@ TOOLCHAIN = "nightly-2026-05-04"
 REPORTS = ROOT / "target/rt-runtime-miri"
 CASES = [
     ("contracts", [], 12),
-    ("planning_graph", [], 8),
-    ("planner_execution", [], 9),
+    ("planner_execution", [], 8),
     ("initial_graph", [], 3),
     ("graph_activation", [], 7),
     ("lib", ["graph::activation::tests::stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners", "--", "--exact"], 1),
@@ -36,7 +35,7 @@ CASES = [
     ("mixed_stress", [], 1),
     ("capture", [], 7),
     ("capture_groups", [], 5),
-    ("capture_group_intervals", [], 5),
+    ("capture_group_intervals", [], 6),
     ("capture_prepared_interval", [], 3),
     ("capture_group_planner", [], 1),
     ("capture_boundary", [], 1),
@@ -315,7 +314,8 @@ def selected_cases(package=None):
     cases.extend(("rt_runtime", "lifecycle", ["two_thread_stress_keeps_completion_and_state_publication_coherent"], 1, seed) for seed in (1, 2))
     cases.append(("shoop_loops", "audio", [], 8, 0))
     cases.append(("shoop_loops", "audio_ports", [], 2, 0))
-    cases.append(("shoop_loops", "lib", [], 4, 0))
+    cases.append(("shoop_loops", "lib", [], 7, 0))
+    cases.append(("shoop_loops", "graph_guards", [], 6, 0))
     cases.append(("shoop_loops", "program_boundaries", [], 3, 0))
     cases.append(("shoop_loops", "program_changes", [], 10, 0))
     cases.append(("shoop_loops", "topology_staging", [], 7, 0))

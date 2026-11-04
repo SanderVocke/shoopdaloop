@@ -42,6 +42,7 @@ fn config() -> rt_runtime::PreparedConfig {
 fn store_with(cfg: rt_runtime::PreparedConfig) -> ResourceStore {
     ResourceStore::with_capture_groups(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 16,
@@ -301,12 +302,11 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
     assert_no_heap(|| {
         let take = store.prepare_capture_take(group, &[initial]).unwrap();
         store.activate_capture_take(take, Frame(2)).unwrap();
-        let interval = store.reserve_capture_interval(take, Frame(2), 2).unwrap();
+        let interval = store.reserve_capture_tick(take, Frame(2)).unwrap();
         input.clear();
-        input.push(0, 2, &[0x80, 60, 0]).unwrap();
-        input.push(1, 2, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+        input.push(0, 1, &[0x80, 60, 0]).unwrap();
         capture
-            .process(&mut store.render_io(), &input, 2, Some((interval, 0)))
+            .process(&mut store.render_io(), &input, 1, Some((interval, 0)))
             .unwrap();
         assert!(!capture.state().channel(0).unwrap().note(60).unwrap().held());
         assert_eq!(
@@ -320,7 +320,15 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
             99
         );
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
-        store.commit_capture_interval(interval).unwrap();
+        store.commit_capture_tick(interval).unwrap();
+        let next = store.reserve_capture_tick(take, Frame(3)).unwrap();
+        input.clear();
+        input.push(0, 1, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+        capture
+            .process(&mut store.render_io(), &input, 1, Some((next, 0)))
+            .unwrap();
+        store.commit_capture_tick(next).unwrap();
+
         store
             .freeze_capture_take(take, Frame(4), None, &mut frozen)
             .unwrap();
@@ -341,10 +349,9 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
             .held());
         let mut cursor = store.render_io().midi_cursor(index).unwrap();
         let mut packet = [0; 32];
-        for event_index in 0..2 {
+        for (at, expected) in [(0, &[0x80, 60, 0][..]), (1, &[0xf0, 1, 2, 3, 0xf7][..])] {
             let event = store.render_io().midi_next(&mut cursor).unwrap().unwrap();
-            let (offset, expected) = input.get(event_index).unwrap();
-            assert_eq!(event.frame(), u64::from(offset));
+            assert_eq!(event.frame(), at);
             let count = store.render_io().midi_read(event, &mut packet).unwrap();
             assert_eq!(&packet[..count], expected);
         }
@@ -681,8 +688,13 @@ fn runtime_overflow_case(shared: bool) {
             },
         ),
     ];
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_resources(cfg, nodes, store).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_resources(
+        cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        store,
+    )
+    .unwrap();
     let edge = |from, to, kind| Connection {
         source: Endpoint {
             node: from,
@@ -813,7 +825,8 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let mut renderer = MidiRenderer::prepare(64, 2048).unwrap();
         let mut output = MidiBuffer::new(128, 512).unwrap();
         let mut actual = Vec::new();
@@ -836,7 +849,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             loop {
                 let interval = assert_no_heap(|| {
                     output.clear();
-                    let interval = resolver.preview(Frame(end), &[]).unwrap();
+                    let interval = resolver.preview_tick(&[]).unwrap();
                     let decision = resolver.decisions().unwrap()[0];
                     resolver.commit().unwrap();
                     let report = renderer
@@ -852,7 +865,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
                         )
                         .unwrap();
                     assert_eq!(report.output_error, None);
-                    resolver.finish(interval.end).unwrap();
+                    resolver.finish().unwrap();
                     interval
                 });
                 collect(&output, interval.start.0, &mut actual);

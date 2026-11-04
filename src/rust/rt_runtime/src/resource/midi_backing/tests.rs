@@ -15,6 +15,7 @@ fn setup() -> (ResourceStore, MidiStoreId, MidiBuffer) {
         }
         .prepare()
         .unwrap(),
+        crate::Quantum::new(1).unwrap(),
         MidiIndexConfig {
             versions: 8,
             checkpoints_per_version: 16,

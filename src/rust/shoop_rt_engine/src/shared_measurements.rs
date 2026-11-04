@@ -40,7 +40,10 @@ fn fixed_shared_callback_measurements() {
                 h.op(Operation::Transition {
                     target: target(slot),
                     timing: Timing::At,
-                    transition: Transition::Play { position: Some(0) },
+                    transition: Transition::Play {
+                        position: 0,
+                        retrigger: false,
+                    },
                 });
             }
             let patch = h.snapshot(sibling.midi.unwrap());

@@ -28,19 +28,8 @@ crate; `scripts/check_rt_engine_boundary.py` enforces that.
 
 ## Owners
 
-The fixed-quantum migration also exposes `fixed::prepare(..., Quantum)`, returning
-prepared engine parts with the production strip/fader/bus/reader DSP and the direct
-loop bank. Its `runtime(graph)` installs tick-aligned loop and typed-node controls
-and owning routing publication. DSP implementations and capacity calculations are
-shared with the production interval engine; fixed work buffers use Q frames.
-Tests cover record/play through the complete signal chain, exact MIDI offsets,
-meters, epoch staging, multi-tick ramps and one bulk-read allowance per callback.
-
-These parts are not selected by application/native/worklet startup yet. Logical
-slot lifecycle, sync/program behavior, atomic graph/media/owner transactions,
-bulk/export and protocol endpoint integration must reach parity before cutover.
-Direct fixed runtimes require divisible host blocks; arbitrary hosts must use the
-constant-latency `BufferedHost` adapter. Changing Q requires stop/reprepare.
+All hosts use the complete endpoint and loop-domain composition. Graph calls
+process whole prepared quanta; changing Q requires stop/reprepare.
 
 `prepare(&EngineDescription, DriverStatus)` allocates everything and returns an
 `Engine` with three owners:

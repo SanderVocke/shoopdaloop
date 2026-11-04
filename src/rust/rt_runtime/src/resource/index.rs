@@ -236,7 +236,7 @@ mod tests {
         }
         .prepare()
         .unwrap();
-        let mut store = ResourceStore::new(config).unwrap();
+        let mut store = ResourceStore::new(config, crate::Quantum::new(1).unwrap()).unwrap();
         let resource = store.create().unwrap();
         let upload = store
             .begin_upload(
@@ -272,7 +272,11 @@ mod tests {
         assert_eq!(allocate_scope(&counter), Ok(u32::MAX - 1));
         assert_eq!(allocate_scope(&counter), Err(Error::Exhausted));
         assert_eq!(allocate_scope(&counter), Err(Error::Exhausted));
-        let mut store = ResourceStore::new(crate::Config::default().prepare().unwrap()).unwrap();
+        let mut store = ResourceStore::new(
+            crate::Config::default().prepare().unwrap(),
+            crate::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         store.index_work.background_steps = usize::MAX;
         store.index_work.render_steps = usize::MAX;
         store.index_step(WorkClass::Background);

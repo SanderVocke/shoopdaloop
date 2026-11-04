@@ -6,7 +6,7 @@ use rt_runtime::{
     buffer::MidiBuffer,
     midi::{Message, ResetState},
     midi_state::MidiState,
-    resource::{CaptureIntervalId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo},
+    resource::{CaptureTickId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo},
     Error,
 };
 
@@ -259,7 +259,7 @@ impl MidiCapture {
         io: &mut RenderIo<'_>,
         input: &MidiBuffer,
         frames: usize,
-        capture: Option<(CaptureIntervalId, usize)>,
+        capture: Option<(CaptureTickId, usize)>,
     ) -> Result<(), Error> {
         if frames == 0 {
             return Ok(());

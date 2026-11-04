@@ -1,8 +1,7 @@
 //! Prepared descriptor payloads. This is not a transport/admission/result envelope.
 use rt_runtime::{
     graph::{Connection, Endpoint, NodeStep, PortType, PreparedPlan},
-    planner::{DecisionBinding, PlannerSpec, PlanningStep},
-    Epoch, Error, NodeId, PlannerId, PreparedConfig,
+    Epoch, Error, NodeId, PreparedConfig,
 };
 
 pub const RECORD_BYTES: usize = 96;
@@ -17,28 +16,13 @@ pub struct Id {
 pub struct Counts {
     pub steps: u32,
     pub edges: u32,
-    pub bindings: u32,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Payload {
-    Begin {
-        epoch: Epoch,
-        counts: Counts,
-        planned: bool,
-    },
-    Step {
-        offset: u32,
-        step: NodeStep,
-    },
-    Edge {
-        offset: u32,
-        edge: Connection,
-    },
-    Planning(PlanningStep),
-    Binding {
-        offset: u32,
-        binding: DecisionBinding,
-    },
+    Begin { epoch: Epoch, counts: Counts },
+    Step { offset: u32, step: NodeStep },
+    Edge { offset: u32, edge: Connection },
+
     Seal,
     Abort,
 }
@@ -101,23 +85,17 @@ impl Record {
             return Err(Error::InvalidId);
         }
         let mut b = [0; RECORD_BYTES];
-        b[..4].copy_from_slice(b"LGP1");
-        b[4..6].copy_from_slice(&1u16.to_le_bytes());
+        b[..4].copy_from_slice(b"LGP2");
+        b[4..6].copy_from_slice(&2u16.to_le_bytes());
         put64(&mut b, 8, self.session);
         put64(&mut b, 16, self.sequence);
         put32(&mut b, 24, self.id.slot);
         put32(&mut b, 28, self.id.generation);
         b[6] = match self.payload {
-            Payload::Begin {
-                epoch,
-                counts,
-                planned,
-            } => {
+            Payload::Begin { epoch, counts } => {
                 put64(&mut b, 32, epoch.0);
                 put32(&mut b, 40, counts.steps);
                 put32(&mut b, 44, counts.edges);
-                put32(&mut b, 48, counts.bindings);
-                b[52] = u8::from(planned);
                 1
             }
             Payload::Step { offset, step } => {
@@ -133,28 +111,7 @@ impl Record {
                 put_endpoint(&mut b, 52, edge.destination);
                 3
             }
-            Payload::Planning(step) => {
-                put32(&mut b, 32, step.planner.id.slot());
-                put32(&mut b, 36, step.planner.id.generation());
-                for (at, value) in [
-                    (40, step.planner.decision_slots),
-                    (48, step.planner.observation_capacity),
-                    (56, step.planner.operation_bytes),
-                    (64, step.before_step),
-                ] {
-                    put64(&mut b, at, value as u64);
-                }
-                4
-            }
-            Payload::Binding { offset, binding } => {
-                put32(&mut b, 32, offset);
-                put32(&mut b, 36, binding.planner.slot());
-                put32(&mut b, 40, binding.planner.generation());
-                put32(&mut b, 44, binding.consumer.slot());
-                put32(&mut b, 48, binding.consumer.generation());
-                put64(&mut b, 52, binding.decision_slot as u64);
-                5
-            }
+
             Payload::Seal => 6,
             Payload::Abort => 7,
         };
@@ -164,18 +121,16 @@ impl Record {
         if b.len() != RECORD_BYTES {
             return Err(Error::InvalidShape);
         }
-        if &b[..4] != b"LGP1" || b[4..6] != 1u16.to_le_bytes() {
+        if &b[..4] != b"LGP2" || b[4..6] != 2u16.to_le_bytes() {
             return Err(Error::InvalidConfig);
         }
         let payload = match b[6] {
-            1 if b[52] <= 1 => Payload::Begin {
+            1 => Payload::Begin {
                 epoch: Epoch(get64(b, 32)),
                 counts: Counts {
                     steps: get32(b, 40),
                     edges: get32(b, 44),
-                    bindings: get32(b, 48),
                 },
-                planned: b[52] == 1,
             },
             2 => Payload::Step {
                 offset: get32(b, 32),
@@ -189,23 +144,6 @@ impl Record {
                 edge: Connection {
                     source: endpoint(b, 36)?,
                     destination: endpoint(b, 52)?,
-                },
-            },
-            4 => Payload::Planning(PlanningStep {
-                planner: PlannerSpec {
-                    id: PlannerId::from_parts(get32(b, 32), get32(b, 36))?,
-                    decision_slots: index(b, 40)?,
-                    observation_capacity: index(b, 48)?,
-                    operation_bytes: index(b, 56)?,
-                },
-                before_step: index(b, 64)?,
-            }),
-            5 => Payload::Binding {
-                offset: get32(b, 32),
-                binding: DecisionBinding {
-                    planner: PlannerId::from_parts(get32(b, 36), get32(b, 40))?,
-                    consumer: NodeId::from_parts(get32(b, 44), get32(b, 48))?,
-                    decision_slot: index(b, 52)?,
                 },
             },
             6 => Payload::Seal,
@@ -241,7 +179,6 @@ struct Bank {
     owner: Option<PreparedPlan>,
     epoch: Epoch,
     counts: Counts,
-    planned: bool,
 }
 /// An owning handoff local to one receiver. Neither this value nor its plan goes on wire.
 pub struct Loan {
@@ -282,12 +219,7 @@ impl Receiver {
                 phase: Phase::Idle,
                 owner: owners[index].take(),
                 epoch: Epoch(0),
-                counts: Counts {
-                    steps: 0,
-                    edges: 0,
-                    bindings: 0,
-                },
-                planned: false,
+                counts: Counts { steps: 0, edges: 0 },
             }),
         })
     }
@@ -327,7 +259,6 @@ impl Receiver {
                 .connections
                 .capacity()
                 .min(limits.max_edges) as u32,
-            bindings: plan.planning().bindings.capacity().min(limits.max_nodes) as u32,
         })
     }
     pub fn last_sequence(&self) -> u64 {
@@ -344,21 +275,13 @@ impl Receiver {
         }
         let bank = self.bank(record.id)?;
         match record.payload {
-            Payload::Begin {
-                counts, planned, ..
-            } => {
+            Payload::Begin { counts, .. } => {
                 if bank.phase != Phase::Idle {
                     return Err(Error::Busy);
                 }
                 let capacity = self.capacities(record.id)?;
-                if counts.steps > capacity.steps
-                    || counts.edges > capacity.edges
-                    || counts.bindings > capacity.bindings
-                {
+                if counts.steps > capacity.steps || counts.edges > capacity.edges {
                     return Err(Error::Capacity);
-                }
-                if !planned && counts.bindings != 0 {
-                    return Err(Error::InvalidShape);
                 }
             }
             Payload::Abort => {
@@ -373,7 +296,6 @@ impl Receiver {
                 let plan = bank.owner.as_ref().ok_or(Error::InvalidState)?;
                 let steps = plan.descriptor().steps.len();
                 let edges = plan.descriptor().connections.len();
-                let bindings = plan.planning().bindings.len();
                 let complete_edges =
                     steps == bank.counts.steps as usize && edges == bank.counts.edges as usize;
                 let valid = match payload {
@@ -385,20 +307,8 @@ impl Receiver {
                             && offset as usize == edges
                             && edges < bank.counts.edges as usize
                     }
-                    Payload::Planning(_) => {
-                        complete_edges && bank.planned && plan.planning().step.is_none()
-                    }
-                    Payload::Binding { offset, .. } => {
-                        complete_edges
-                            && plan.planning().step.is_some()
-                            && offset as usize == bindings
-                            && bindings < bank.counts.bindings as usize
-                    }
-                    Payload::Seal => {
-                        complete_edges
-                            && bindings == bank.counts.bindings as usize
-                            && plan.planning().step.is_some() == bank.planned
-                    }
+
+                    Payload::Seal => complete_edges,
                     _ => false,
                 };
                 if !valid {
@@ -408,23 +318,15 @@ impl Receiver {
         }
         let bank = &mut self.banks[record.id.slot as usize];
         match record.payload {
-            Payload::Begin {
-                epoch,
-                counts,
-                planned,
-            } => {
+            Payload::Begin { epoch, counts } => {
                 bank.owner.as_mut().unwrap().begin_descriptor()?;
                 bank.epoch = epoch;
                 bank.counts = counts;
-                bank.planned = planned;
                 bank.phase = Phase::Receiving;
             }
             Payload::Step { step, .. } => bank.owner.as_mut().unwrap().push_step(step)?,
             Payload::Edge { edge, .. } => bank.owner.as_mut().unwrap().push_connection(edge)?,
-            Payload::Planning(step) => bank.owner.as_mut().unwrap().set_planning_step(Some(step)),
-            Payload::Binding { binding, .. } => {
-                bank.owner.as_mut().unwrap().push_binding(binding)?
-            }
+
             Payload::Seal => bank.phase = Phase::Sealed,
             Payload::Abort => {
                 bank.generation = bank.generation.checked_add(1).unwrap_or(0);

@@ -171,6 +171,13 @@ fn client_samples() -> Vec<ClientMessage> {
             message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
         },
         Request::ContentRelease { id: 1 },
+        Request::PreviewStart {
+            request_id: 42,
+            bus: BusId::MASTER,
+            content: 81,
+            frames: 12_000,
+        },
+        Request::PreviewStop,
         Request::CreateStrip {
             strip: strip(1),
             shape: StripShape {
@@ -332,6 +339,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             position: 7,
             peaks,
         }),
+        EngineMessage::Telemetry(Telemetry::Preview { request_id: 42 }),
         EngineMessage::Telemetry(Telemetry::Bus {
             bus: BusId::MASTER,
             peaks,
@@ -465,16 +473,12 @@ fn malformed_records_are_refused_without_panicking() {
     assert!(Peaks::new(&[0.; MAX_STRIP_CHANNELS + 1]).is_none());
     assert!(MidiMessage::new(&[]).is_none());
     assert!(BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES + 1]).is_none());
+    let bulk = engine_samples()
+        .into_iter()
+        .find(|message| matches!(message, EngineMessage::Bulk(_)))
+        .unwrap();
     assert_eq!(
-        encode_engine(
-            &EngineMessage::Bulk(BulkChunk {
-                id: 1,
-                offset: 0,
-                total: BULK_CHUNK_SAMPLES as u64,
-                payload: BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES]).unwrap()
-            }),
-            &mut [0; 64]
-        ),
+        encode_engine(&bulk, &mut [0; 64]),
         Err(CodecError::Overflow)
     );
     let connect = ClientMessage::Request {

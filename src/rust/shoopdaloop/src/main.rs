@@ -406,8 +406,6 @@ struct UnifiedApp {
     exit: recovery::ExitController,
     #[cfg(not(target_arch = "wasm32"))]
     host_panel: recovery::HostPanel,
-    #[cfg(not(target_arch = "wasm32"))]
-    host_choices: Option<Vec<(std::path::PathBuf, shoop_host::registry::HostEntry)>>,
     runtime: Runtime,
     widget: AppWidget,
     about_open: bool,
@@ -488,6 +486,8 @@ fn load_settings_manager(
 fn default_audio_driver_kind() -> AudioDriverKind {
     if cfg!(feature = "cpal") {
         AudioDriverKind::Cpal
+    } else if cfg!(feature = "jack") {
+        AudioDriverKind::Jack
     } else {
         AudioDriverKind::Dummy
     }
@@ -549,8 +549,6 @@ impl UnifiedApp {
             exit: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             host_panel: Default::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            host_choices: None,
             runtime,
             widget,
             about_open: false,
@@ -1387,7 +1385,6 @@ impl UnifiedApp {
         self.widget.reset_connection();
         self.exit = Default::default();
         self.host_panel = Default::default();
-        self.host_choices = None;
     }
     #[cfg(not(target_arch = "wasm32"))]
     fn use_connection(&mut self, runtime: Runtime, context: &egui::Context) {
@@ -1413,113 +1410,33 @@ impl UnifiedApp {
     fn show(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if self.runtime.remote_entry.is_none() {
-                ui.menu_button("Session", |ui| {
-                    if ui.button("Open remote profile…").clicked() {
-                        self.open_remote_profile(ui.ctx());
-                        ui.close();
-                    }
-                });
-            }
             if let Some(entry) = self.runtime.remote_entry.clone() {
                 self.exit.intercept_close(ui.ctx());
-                ui.horizontal(|ui| {
-                    ui.menu_button("Session", |ui| {
-                        if ui
-                            .add_enabled(
-                                !self.exit.open && !self.exit.is_pending(),
-                                egui::Button::new("Open remote profile…"),
-                            )
-                            .clicked()
-                        {
-                            self.open_remote_profile(ui.ctx());
-                            ui.close();
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.exit.open && !self.exit.is_pending(),
-                                egui::Button::new("Choose a running host…"),
-                            )
-                            .clicked()
-                        {
-                            let result =
-                                shoop_host::registry::Registry::default_path().and_then(|path| {
-                                    let registry = shoop_host::registry::Registry::open(&path)?;
-                                    registry.prune_stale()?;
-                                    registry.list()
-                                });
-                            match result {
-                                Ok(entries) => self.host_choices = Some(entries),
-                                Err(error) => self.settings.report_action_error(error.to_string()),
-                            }
-                            ui.close();
-                        }
-                        if ui.button("Connected host settings…").clicked() {
-                            self.host_panel.open = true;
-                            ui.close();
-                        }
-                        if ui.button("Close UI only (keep host running)").clicked() {
-                            self.exit.close_ui(ui.ctx());
-                        }
-                        if ui.button("Close UI and host…").clicked() {
-                            self.exit.open = true;
-                            ui.close();
-                        }
-                    });
-                    ui.label(&entry.name);
-                });
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
                 self.host_panel.show(ui.ctx(), &entry);
-                if let Some(choices) = self.host_choices.clone() {
-                    egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
-                        if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
-                        for (path, candidate) in choices {
-                            if ui.add_enabled(!self.exit.open && !self.exit.is_pending(), egui::Button::new(format!("{} — {}", candidate.name, path.display()))).clicked() {
-                                match Runtime::attach(&self.settings.active(), candidate) {
-                                    Ok(runtime) => self.use_connection(runtime, ui.ctx()),
-                                    Err(error) => self.settings.report_action_error(error.to_string()),
-                                }
-                            }
-                        }
-                        if ui.button("Cancel").clicked() { self.host_choices = None; }
-                    });
-                }
-                let status = self.runtime.handle.status();
-                match status.state {
-                    shoop_app_client::State::Ready => {}
-                    shoop_app_client::State::Lost => {
-                        ui.heading("Session connection lost");
-                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Connect again to read its current state."));
-                        if entry.transport == shoop_host::registry::AppTransport::Socket
-                            && ui
-                                .add_enabled(
-                                    !self.exit.is_pending(),
-                                    egui::Button::new("Connect to endpoint"),
-                                )
-                                .clicked()
-                        {
-                            match Runtime::attach(&self.settings.active(), entry) {
-                                Ok(runtime) => {
-                                    self.use_connection(runtime, ui.ctx());
-                                }
-                                Err(error) => self.settings.report_action_error(error.to_string()),
-                            }
-                        }
-                        ui.ctx().request_repaint_after(Duration::from_millis(100));
-                        return;
-                    }
-                    state => {
-                        ui.spinner();
-                        ui.label(match state {
-                            shoop_app_client::State::Synchronizing => {
-                                "Receiving a coherent session snapshot…"
-                            }
-                            _ => "Attaching to session host…",
-                        });
-                        ui.ctx().request_repaint_after(Duration::from_millis(50));
-                        return;
-                    }
-                }
+            }
+            let status = self.runtime.handle.status();
+            self.widget.set_host_state(recovery::host_ui_state(
+                self.runtime.remote_entry.as_ref(),
+                &status,
+                &self.exit,
+            ));
+            if self.runtime.remote_entry.is_some() && status.state != shoop_app_client::State::Ready
+            {
+                let settings_state = self.settings.view();
+                let response =
+                    self.widget
+                        .show(ui, &self.runtime.snapshot(), &settings_state, None);
+                self.about_open |= response.about_requested;
+                show_about_dialog(
+                    ui.ctx(),
+                    &mut self.about_open,
+                    BuildIdentity::CURRENT,
+                    &settings_state.storage_location,
+                );
+                self.handle_host_actions(ui.ctx(), response.host_actions);
+                ui.ctx().request_repaint_after(Duration::from_millis(50));
+                return;
             }
         }
         if let Some((source, force_url_session)) = self.startup_session.take() {
@@ -1594,16 +1511,9 @@ impl UnifiedApp {
         let script_paths = Some(self.runtime.script_paths());
         #[cfg(target_arch = "wasm32")]
         let script_paths = None;
-        #[cfg(not(target_arch = "wasm32"))]
-        let controls_enabled = !self.exit.is_pending();
-        #[cfg(target_arch = "wasm32")]
-        let controls_enabled = true;
-        let response = ui
-            .add_enabled_ui(controls_enabled, |ui| {
-                self.widget
-                    .show(ui, &snapshot, &settings_state, script_paths)
-            })
-            .inner;
+        let response = self
+            .widget
+            .show(ui, &snapshot, &settings_state, script_paths);
         self.about_open |= response.about_requested;
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
@@ -1644,7 +1554,38 @@ impl UnifiedApp {
             #[cfg(target_arch = "wasm32")]
             save_file_output(output, Rc::clone(&self.pending_file_intents), lease);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.handle_host_actions(ui.ctx(), response.host_actions);
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_host_actions(
+        &mut self,
+        context: &egui::Context,
+        actions: Vec<shoop_egui::HostAction>,
+    ) {
+        for action in actions {
+            match action {
+                shoop_egui::HostAction::OpenManager => {
+                    if let Err(error) = shoop_host::launch::launch_manager() {
+                        self.settings.report_action_error(error.to_string());
+                    }
+                }
+                shoop_egui::HostAction::ImportProfile => self.open_remote_profile(context),
+                shoop_egui::HostAction::OpenSettings => self.host_panel.open = true,
+                shoop_egui::HostAction::CloseUi => self.exit.close_ui(context),
+                shoop_egui::HostAction::CloseUiAndHost => self.exit.open = true,
+                shoop_egui::HostAction::Reconnect => {
+                    if let Some(entry) = self.runtime.remote_entry.clone() {
+                        match Runtime::attach(&self.settings.active(), entry) {
+                            Ok(runtime) => self.use_connection(runtime, context),
+                            Err(error) => self.settings.report_action_error(error.to_string()),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn handle_ui_intent(&mut self, intent: AppIntent) {
@@ -2415,6 +2356,7 @@ struct Runtime {
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
+    system_preview_request: Option<u64>,
     pending_preview: Option<application::ApplicationAudioPreview>,
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
@@ -2449,21 +2391,20 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
-        if let Some(path) = &args.remote_profile {
-            return Self::attach(settings, shoop_host::remote::RemoteProfile::read(path)?);
-        }
-        if let Some(path) = &args.host_file {
-            return Self::attach(settings, shoop_host::registry::HostEntry::read(path)?);
+        if let Some(target) = args.host_target()? {
+            return Self::attach(settings, target);
         }
         let mut startup_warnings = Vec::new();
-        let configured_driver = shoop_egui::selected_audio_driver(settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind))
-            .unwrap_or_else(|error| {
+        let configured_driver = match args.configured_audio_driver(settings) {
+            Ok(driver) => driver,
+            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error) => {
                 startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
                 ));
                 AudioDriverConfig::default()
-            });
+            }
+        };
         let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
             startup_warnings.push(format!(
                 "Could not use engine capacities: {error}; using defaults"
@@ -2505,6 +2446,9 @@ impl Runtime {
                 master_auto_connect,
                 startup_warnings,
             },
+            engine_host
+                .as_ref()
+                .and_then(|host| host.graph_controller()),
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -2523,6 +2467,7 @@ impl Runtime {
             catalog_scan_tx,
             catalog_scan_rx,
             preview_player,
+            system_preview_request: None,
             pending_preview: None,
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
@@ -2543,6 +2488,11 @@ impl Runtime {
         entry: impl Into<shoop_host::remote::Target>,
     ) -> anyhow::Result<Self> {
         let entry = entry.into();
+        let entry = if entry.process.is_none() {
+            shoop_host::connection::resolve_target(&entry, Duration::from_secs(3))?
+        } else {
+            entry
+        };
         let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
         let pending_script_paths = startup_scripts
             .iter()
@@ -2573,6 +2523,7 @@ impl Runtime {
             catalog_scan_tx,
             catalog_scan_rx,
             preview_player,
+            system_preview_request: None,
             pending_preview: None,
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
@@ -2838,11 +2789,16 @@ impl Runtime {
 
     fn process_audio_previews(&mut self) {
         let state = self.handle.snapshot();
-        if !matches!(
-            state.click_track.preview_status,
-            shoop_egui::ClickTrackPreviewStatus::Queued
-                | shoop_egui::ClickTrackPreviewStatus::Playing
-        ) {
+        if self
+            .system_preview_request
+            .is_some_and(|id| id != state.click_track.preview_request_id)
+            || state.click_track.preview_output != Some(shoop_egui::ClickTrackPreviewOutput::System)
+            || !matches!(
+                state.click_track.preview_status,
+                shoop_egui::ClickTrackPreviewStatus::Queued
+                    | shoop_egui::ClickTrackPreviewStatus::Playing
+            )
+        {
             if let Err(error) = self.preview_player.stop() {
                 tracing::warn!(%error, "frontend.preview.stop_failed");
             }
@@ -2873,7 +2829,10 @@ impl Runtime {
                 continue;
             }
             match preview.output {
-                shoop_egui::ClickTrackPreviewOutput::System => self.preview_player.play(preview),
+                shoop_egui::ClickTrackPreviewOutput::System => {
+                    self.system_preview_request = Some(request_id);
+                    self.preview_player.play(preview);
+                }
                 shoop_egui::ClickTrackPreviewOutput::MasterBus => {
                     if let Err(error) =
                         self.handle
@@ -2896,9 +2855,6 @@ impl Runtime {
     }
 
     fn audio_preview_available(&self) -> bool {
-        if self._engine_host.is_some() {
-            return false;
-        }
         if let Some((checked, available)) = self.preview_availability.get() {
             if checked.elapsed() < Duration::from_secs(1) {
                 return available;
@@ -3159,6 +3115,7 @@ struct Runtime {
     audio: browser_rt_audio::BrowserRtAudio,
     midi: browser_midi::BrowserMidiController,
     preview_player: browser_preview::BrowserPreviewPlayer,
+    system_preview_request: Option<u64>,
     catalog_scan_generation: u64,
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_audio_settings_revision: u64,
@@ -3236,6 +3193,7 @@ impl Runtime {
             audio: controller,
             midi,
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
+            system_preview_request: None,
             catalog_scan_generation: 0,
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_audio_settings_revision: settings.revision(),
@@ -3512,18 +3470,41 @@ impl Runtime {
         let Some(runtime) = self.runtime.as_mut() else {
             return;
         };
+        let state = runtime.snapshot();
+        if self
+            .system_preview_request
+            .is_some_and(|id| id != state.click_track.preview_request_id)
+            || state.click_track.preview_output != Some(shoop_egui::ClickTrackPreviewOutput::System)
+            || !matches!(
+                state.click_track.preview_status,
+                shoop_egui::ClickTrackPreviewStatus::Queued
+                    | shoop_egui::ClickTrackPreviewStatus::Playing
+            )
+        {
+            self.preview_player.stop_active();
+        }
         if let Some(intent) = self.preview_player.update() {
             let _ = runtime.dispatch(intent);
         }
         while let Some(preview) = runtime.take_audio_preview() {
             let request_id = preview.request_id;
+            let state = runtime.snapshot();
+            if state.click_track.preview_request_id != request_id
+                || state.click_track.preview_status != shoop_egui::ClickTrackPreviewStatus::Queued
+            {
+                continue;
+            }
+            self.system_preview_request = Some(request_id);
             let context = self.audio.audio_context();
-            if let Err(message) = self.preview_player.play(context, preview) {
-                let _ = runtime.dispatch(AppIntent::CompleteClickTrackPreview {
-                    request_id,
-                    success: false,
-                    message,
-                });
+            match self.preview_player.play(context, preview) {
+                Ok(()) => {}
+                Err(message) => {
+                    let _ = runtime.dispatch(AppIntent::CompleteClickTrackPreview {
+                        request_id,
+                        success: false,
+                        message,
+                    });
+                }
             }
         }
     }
@@ -3599,87 +3580,19 @@ fn create_app(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
-    use shoop_host::{
-        registry::{AppTransport, Registry},
-        serve::StartOptions,
-    };
+    use anyhow::Context;
+    use shoop_host::{config::AppTransport, serve::StartOptions};
     if args.shutdown_host {
-        let entry: shoop_host::remote::Target = match args.remote_profile.as_ref() {
-            Some(path) => shoop_host::remote::RemoteProfile::read(path)?.into(),
-            None => shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?.into(),
-        };
-        shoop_host::connection::shutdown_ownerless(&entry, Duration::from_secs(15))?;
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
         println!("Host cleanup confirmed");
         return Ok(true);
     }
-    if args.ui_only || args.host_file.is_some() || args.remote_profile.is_some() {
+    if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
         return Ok(false);
-    }
-    let registry = args
-        .host_registry
-        .clone()
-        .map(Ok)
-        .unwrap_or_else(Registry::default_path)?;
-    if args.list_hosts {
-        if !registry.exists() {
-            return Ok(true);
-        }
-        let registry = Registry::open(&registry)?;
-        registry.prune_stale()?;
-        for (path, entry) in registry.list()? {
-            println!("{}\t{}\t{}", entry.endpoint, entry.name, path.display());
-        }
-        return Ok(true);
     }
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
-    if args.host_only {
-        let mut command = std::process::Command::new(companion);
-        command
-            .arg("--config")
-            .arg(args.host_config.as_ref().unwrap())
-            .arg("--registry")
-            .arg(registry);
-        if let Some(endpoint) = args.endpoint {
-            command.arg("--endpoint").arg(endpoint.to_string());
-        }
-        if args.lan {
-            command.arg("--lan");
-        }
-        if let Some(endpoint) = args.management_endpoint {
-            command
-                .arg("--management-endpoint")
-                .arg(endpoint.to_string());
-        }
-        for (flag, value) in [
-            ("--advertise-data", &args.advertise_data),
-            ("--advertise-management", &args.advertise_management),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value);
-            }
-        }
-        if let Some(path) = &args.export_profile {
-            command.arg("--export-profile").arg(path);
-        }
-        for (flag, value) in [
-            ("--heartbeat-interval-ms", args.heartbeat_interval_ms),
-            ("--heartbeat-timeout-ms", args.heartbeat_timeout_ms),
-            ("--snapshot-hz", args.snapshot_hz.map(u64::from)),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value.to_string());
-            }
-        }
-        if let Some(credential) = &args.credential_file {
-            command.arg("--credential-file").arg(credential);
-        }
-        anyhow::ensure!(
-            command.status()?.success(),
-            "session host exited with an error"
-        );
-        return Ok(true);
-    }
     let mut builder = SettingsRegistryBuilder::default();
     register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
     register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
@@ -3692,8 +3605,8 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
-            driver: shoop_egui::selected_audio_driver(&settings)
-                .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+            driver: args
+                .configured_audio_driver(&settings)
                 .map_err(anyhow::Error::msg)?,
             pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
                 .map_err(anyhow::Error::msg)?,
@@ -3710,19 +3623,17 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         },
         ..Default::default()
     };
-    let mut options = StartOptions::new(registry)?;
+    let mut options = StartOptions::new()?;
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;
     }
-    options.credential = args.credential_file.clone();
-    let original: Vec<_> = std::env::args_os().skip(1).collect();
-    shoop_host::launch::pair(&config, options, &companion, |path| {
+    options.export_profile = args.export_profile.clone();
+    options.log_file = args.log_file.clone();
+    let original =
+        shoop_host::audio_args::AudioArgs::without_overrides(std::env::args_os().skip(1));
+    shoop_host::launch::pair(&config, options, &companion, |_target| {
         let mut command = std::process::Command::new(&executable);
-        command
-            .args(&original)
-            .arg("--ui-only")
-            .arg("--host-file")
-            .arg(path);
+        command.args(&original).arg("--ui-only").arg("--host-stdin");
         command
     })?;
     Ok(true)
@@ -4726,7 +4637,10 @@ mod tests {
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::ClickTrackInsertion, true)
         );
-        assert!(!runtime.audio_preview_available());
+        assert_eq!(
+            runtime.audio_preview_available(),
+            native_preview::is_available()
+        );
         assert_eq!(snapshot.status.sample_rate, 48_000);
         assert!(
             snapshot.notifications.is_empty(),
@@ -6016,5 +5930,103 @@ mod tests {
                 .map(|preview| preview.request_id),
             Some(request_id)
         );
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_actor_delivers_system_preview_pcm_without_using_the_host_driver() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let state = wait_for_snapshot(&app.runtime, "preview target", |s| !s.tracks.is_empty());
+        let loop_id = state.tracks[0].loops[0].id;
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: Default::default(),
+                output: shoop_egui::ClickTrackPreviewOutput::System,
+            })
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let preview = loop {
+            if let Some(preview) = app.runtime.handle.take_audio_preview() {
+                break preview;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "preview mailbox timed out: {:?}",
+                app.runtime.snapshot().notifications
+            );
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(preview.output, shoop_egui::ClickTrackPreviewOutput::System);
+        assert!(preview.samples.iter().any(|v| v.abs() > 0.));
+        app.runtime
+            .dispatch(AppIntent::StopClickTrackPreview)
+            .unwrap();
+        wait_for_snapshot(&app.runtime, "preview cancellation", |s| {
+            s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+        });
+    }
+    #[cfg(all(not(target_arch = "wasm32"), feature = "system-preview"))]
+    #[shoop_wasm_test_support::shoop_test]
+    #[ignore = "requires an isolated system audio device and external signal capture"]
+    fn native_system_preview_device_acceptance() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let state = wait_for_snapshot(&app.runtime, "preview target", |s| !s.tracks.is_empty());
+        let loop_id = state.tracks[0].loops[0].id;
+        let before = state.tracks[0].loops[0].content_revision;
+        for stop in [false, true] {
+            app.runtime
+                .dispatch(AppIntent::PreviewClickTrack {
+                    loop_id,
+                    request: shoop_egui::ClickTrackRequest {
+                        click_count: if stop { 16 } else { 2 },
+                        ..Default::default()
+                    },
+                    output: shoop_egui::ClickTrackPreviewOutput::System,
+                })
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                app.runtime.process_audio_previews();
+                let state = app.runtime.snapshot();
+                assert_ne!(
+                    state.click_track.preview_status,
+                    shoop_egui::ClickTrackPreviewStatus::Failed,
+                    "{:?}",
+                    state.click_track
+                );
+                if state.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Playing
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "preview did not start");
+                thread::sleep(Duration::from_millis(5));
+            }
+            if stop {
+                thread::sleep(Duration::from_millis(250));
+                app.runtime
+                    .dispatch(AppIntent::StopClickTrackPreview)
+                    .unwrap();
+                wait_for_snapshot(&app.runtime, "preview stop", |s| {
+                    s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+                });
+                app.runtime.process_audio_previews();
+                thread::sleep(Duration::from_millis(750));
+            } else {
+                loop {
+                    app.runtime.process_audio_previews();
+                    if app.runtime.snapshot().click_track.preview_status
+                        == shoop_egui::ClickTrackPreviewStatus::Completed
+                    {
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "preview did not finish");
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+            assert_eq!(
+                app.runtime.snapshot().tracks[0].loops[0].content_revision,
+                before
+            );
+        }
     }
 }

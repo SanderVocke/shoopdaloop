@@ -2,7 +2,7 @@
 
 [Book](../README.md) · [Reference](README.md)
 
-These rules describe generic GraphRuntime. There is one fixed execution kernel. Convenience constructors use Q=1; `prepare_fixed_with_planner_and_resources` selects an explicit Q. Buffered hosts declare a constant Q-frame stream delay. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
+These rules describe generic GraphRuntime. There is one execution kernel. Every constructor takes an explicit immutable `Quantum`; `prepare_for_host` also declares the maximum outer callback size. Buffered hosts declare a constant Q-frame stream delay. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
 
 ## Callback envelope and half-open time
 
@@ -35,7 +35,7 @@ Requested times round upward to the prepared grid. The scheduler orders by `(eff
 - Processor targets are ordered by identity. Within one target, parameter actions precede MIDI, which precedes typed processor operations; parameter/port indices form subkeys.
 - Sequence breaks otherwise equal keys. Transport recovery priority is not a different scheduler sort key.
 
-Signal graph order is separately canonical and acyclic. Decision bindings are not signal edges. Routed MIDI preserves stable source ordering; equal-offset injected packets follow the routed source contribution. Complete packet order does not imply arbitrary downstream synthesizer state is reversible.
+Signal graph order is separately canonical and acyclic. Domain state is independent of signal edges. Routed MIDI preserves stable source ordering; equal-offset injected packets follow the routed source contribution. Complete packet order does not imply arbitrary downstream synthesizer state is reversible.
 
 Operation-time graph removal precedes later processor/MIDI delivery, making an old target InvalidId. Planning-time removal after injection is Busy if it would discard unconsumed input; the old graph consumes that packet once. Submission order cannot reverse these categories, and graph changes synthesize no note/pedal cleanup.
 

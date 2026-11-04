@@ -1,0 +1,27 @@
+[package]
+name = "shoop_host_processes"
+version.workspace = true
+edition = "2021"
+description = "Native host process identity and owned socket inspection"
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+sysinfo = { version = "=0.40.1", default-features = false, features = ["system"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1.1", features = ["process"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libproc = "0.14"
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+netstat2 = "=0.11.2"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

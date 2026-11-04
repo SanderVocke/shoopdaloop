@@ -1,37 +1,51 @@
-//! Cooperative token/acknowledgment handshake; the host supplies time and entropy.
+//! Cooperative compatibility and connection-intent negotiation.
 use crate::stream::{ByteIo, IoError};
 use core::time::Duration;
 
-pub type Token = [u8; 32];
+pub const MAGIC: [u8; 8] = *b"SHOOP\0\0\x02";
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Intent {
+    Connect,
+    Inspect,
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     Timeout,
     Disconnected,
-    Credential,
+    Protocol,
 }
 
 pub struct Handshake {
-    token: Token,
-    received: Token,
+    received: [u8; 9],
     written: usize,
     read: usize,
     server: bool,
+    intent: Intent,
     remaining: Duration,
     done: bool,
     failure: Option<Error>,
 }
 impl Handshake {
-    pub fn new(token: Token, server: bool, timeout: Duration) -> Self {
+    pub fn new(server: bool, timeout: Duration) -> Self {
         Self {
-            token,
-            received: [0; 32],
+            received: [0; 9],
             written: 0,
             read: 0,
             server,
+            intent: Intent::Connect,
             remaining: timeout,
             done: false,
             failure: None,
         }
+    }
+    pub fn inspect(timeout: Duration) -> Self {
+        Self {
+            intent: Intent::Inspect,
+            ..Self::new(false, timeout)
+        }
+    }
+    pub fn intent(&self) -> Intent {
+        self.intent
     }
     pub fn remaining(&self) -> Duration {
         self.remaining
@@ -54,18 +68,21 @@ impl Handshake {
         if self.remaining.is_zero() {
             return Err(Error::Timeout);
         }
+        let receive = if self.server { 9 } else { 8 };
+        let transmit = if self.server { 8 } else { 9 };
+        let mut message = [0; 9];
+        message[..8].copy_from_slice(&MAGIC);
+        message[8] = if self.intent == Intent::Inspect { 1 } else { 0 };
         for _ in 0..4 {
             let reading = if self.server {
-                self.read < 32
+                self.read < receive
             } else {
-                self.written == 32
+                self.written == transmit
             };
             let result = if reading {
-                let end = if self.server { 32 } else { 1 };
-                io.try_read(&mut self.received[self.read..end])
+                io.try_read(&mut self.received[self.read..receive])
             } else {
-                let bytes: &[u8] = if self.server { &[1] } else { &self.token };
-                io.try_write(&bytes[self.written..])
+                io.try_write(&message[self.written..transmit])
             };
             match result {
                 Ok(0) => return Err(Error::Disconnected),
@@ -75,17 +92,17 @@ impl Handshake {
                     } else {
                         self.written += count;
                     }
-                    if self.server && self.read == 32 && self.received != self.token {
-                        return Err(Error::Credential);
+                    if self.read >= 8 && self.received[..8] != MAGIC {
+                        return Err(Error::Protocol);
                     }
-                    if !self.server && self.read == 1 && self.received[0] != 1 {
-                        return Err(Error::Credential);
+                    if self.server && self.read == 9 {
+                        self.intent = match self.received[8] {
+                            0 => Intent::Connect,
+                            1 => Intent::Inspect,
+                            _ => return Err(Error::Protocol),
+                        };
                     }
-                    self.done = if self.server {
-                        self.written == 1
-                    } else {
-                        self.read == 1
-                    };
+                    self.done = self.read == receive && self.written == transmit;
                     if self.done {
                         return Ok(true);
                     }

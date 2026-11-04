@@ -93,11 +93,11 @@ fn main() -> Result<(), Error> {
     };
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, processor)],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
-        &[],
     )?;
 
     let input = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];

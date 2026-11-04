@@ -7,7 +7,6 @@ struct BankModel {
     phase: Phase,
     epoch: Epoch,
     counts: Counts,
-    planned: bool,
     script: Vec<Payload>,
     next: usize,
     accepted: Vec<Payload>,
@@ -18,12 +17,8 @@ impl BankModel {
             generation: 1,
             phase: Phase::Idle,
             epoch: Epoch(0),
-            counts: Counts {
-                steps: 0,
-                edges: 0,
-                bindings: 0,
-            },
-            planned: false,
+            counts: Counts { steps: 0, edges: 0 },
+
             script: Vec::new(),
             next: 0,
             accepted: Vec::new(),
@@ -54,10 +49,9 @@ fn random(seed: &mut u64) -> u64 {
         .wrapping_add(1442695040888963407);
     *seed
 }
-fn script(counts: Counts, planned: bool, nonce: u64) -> Vec<Payload> {
+fn script(counts: Counts, nonce: u64) -> Vec<Payload> {
     let generation = ((nonce >> 32) as u32).max(1);
     let node = |slot| NodeId::from_parts(slot, generation).unwrap();
-    let planner = PlannerId::from_parts(0, generation).unwrap();
     let mut result = Vec::new();
     for offset in 0..counts.steps {
         result.push(Payload::Step {
@@ -74,27 +68,6 @@ fn script(counts: Counts, planned: bool, nonce: u64) -> Vec<Payload> {
             edge: Connection {
                 source: Endpoint::host(PortType::Audio, offset),
                 destination: Endpoint::node(node(0), PortType::Audio, offset),
-            },
-        });
-    }
-    if planned {
-        result.push(Payload::Planning(PlanningStep {
-            planner: PlannerSpec {
-                id: planner,
-                decision_slots: 2,
-                observation_capacity: 2,
-                operation_bytes: 64,
-            },
-            before_step: counts.steps as usize,
-        }));
-    }
-    for offset in 0..counts.bindings {
-        result.push(Payload::Binding {
-            offset,
-            binding: DecisionBinding {
-                planner,
-                consumer: node(offset),
-                decision_slot: offset as usize,
             },
         });
     }
@@ -122,23 +95,16 @@ impl Model {
             return Err(Error::InvalidId);
         }
         let kind = match request.payload {
-            Payload::Begin {
-                epoch,
-                counts,
-                planned,
-            } => {
+            Payload::Begin { epoch, counts } => {
                 if bank.phase != Phase::Idle {
                     return Err(Error::Busy);
                 }
-                if counts.steps > 4 || counts.edges > 16 || counts.bindings > 4 {
+                if counts.steps > 4 || counts.edges > 16 {
                     return Err(Error::Capacity);
                 }
-                if !planned && counts.bindings != 0 {
-                    return Err(Error::InvalidShape);
-                }
+
                 bank.epoch = epoch;
                 bank.counts = counts;
-                bank.planned = planned;
                 bank.script = proposed;
                 bank.next = 0;
                 bank.accepted.clear();
@@ -159,12 +125,8 @@ impl Model {
                 let expected = bank.script[bank.next];
                 let valid = match (payload, expected) {
                     (Payload::Step { offset: a, .. }, Payload::Step { offset: b, .. })
-                    | (Payload::Edge { offset: a, .. }, Payload::Edge { offset: b, .. })
-                    | (Payload::Binding { offset: a, .. }, Payload::Binding { offset: b, .. }) => {
-                        a == b
-                    }
-                    (Payload::Planning(_), Payload::Planning(_))
-                    | (Payload::Seal, Payload::Seal) => true,
+                    | (Payload::Edge { offset: a, .. }, Payload::Edge { offset: b, .. }) => a == b,
+                    (Payload::Seal, Payload::Seal) => true,
                     _ => false,
                 };
                 if !valid {
@@ -184,14 +146,7 @@ impl Model {
                         bank.accepted.push(payload);
                         2
                     }
-                    Payload::Planning(_) => {
-                        bank.accepted.push(payload);
-                        3
-                    }
-                    Payload::Binding { .. } => {
-                        bank.accepted.push(payload);
-                        4
-                    }
+
                     _ => unreachable!(),
                 }
             }
@@ -204,7 +159,7 @@ impl Model {
         &self,
         receiver: &Receiver,
         held: &[Option<Loan>; BANKS],
-        pointers: &[[usize; 3]; BANKS],
+        pointers: &[[usize; 2]; BANKS],
     ) {
         assert_eq!(receiver.last_sequence(), self.last);
         for slot in 0..BANKS {
@@ -214,7 +169,6 @@ impl Model {
             assert_eq!(actual.phase, model.phase);
             assert_eq!(actual.epoch, model.epoch);
             assert_eq!(actual.counts, model.counts);
-            assert_eq!(actual.planned, model.planned);
             assert_eq!(actual.owner.is_none(), model.phase == Phase::Loaned);
             assert_eq!(held[slot].is_some(), model.phase == Phase::Loaned);
             let owner = actual
@@ -238,22 +192,8 @@ impl Model {
                     _ => None,
                 })
                 .collect();
-            let bindings: Vec<_> = model
-                .accepted
-                .iter()
-                .filter_map(|payload| match payload {
-                    Payload::Binding { binding, .. } => Some(*binding),
-                    _ => None,
-                })
-                .collect();
-            let planning = model.accepted.iter().find_map(|payload| match payload {
-                Payload::Planning(step) => Some(*step),
-                _ => None,
-            });
             assert_eq!(owner.descriptor().steps, steps);
             assert_eq!(owner.descriptor().connections, edges);
-            assert_eq!(owner.planning().bindings, bindings);
-            assert_eq!(owner.planning().step, planning);
             if model.generation == 0 {
                 assert_eq!(receiver.id(slot), Err(Error::Exhausted));
             } else {
@@ -268,7 +208,6 @@ impl Model {
                         Ok(Counts {
                             steps: 4,
                             edges: 16,
-                            bindings: 4
                         })
                     );
                 }
@@ -276,11 +215,10 @@ impl Model {
         }
     }
 }
-fn storage(plan: &PreparedPlan) -> [usize; 3] {
+fn storage(plan: &PreparedPlan) -> [usize; 2] {
     [
         plan.descriptor().steps.as_ptr() as usize,
         plan.descriptor().connections.as_ptr() as usize,
-        plan.planning().bindings.as_ptr() as usize,
     ]
 }
 fn deliver(
@@ -395,21 +333,14 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
             } else if kind < 8 && bank.phase == Phase::Loaned {
                 give_back(&mut receiver, &mut model, &mut held, slot);
             } else {
-                let planned = bits & 0x100 != 0;
                 let counts = Counts {
                     steps: ((bits >> 9) % 3) as u32,
                     edges: ((bits >> 13) % 3) as u32,
-                    bindings: if planned {
-                        ((bits >> 17) % 3) as u32
-                    } else {
-                        0
-                    },
                 };
                 let normal = match bank.phase {
                     Phase::Idle => Payload::Begin {
                         epoch: Epoch(bits),
                         counts,
-                        planned,
                     },
                     Phase::Receiving => bank.script[bank.next],
                     Phase::Sealed | Phase::Loaned => Payload::Seal,
@@ -437,9 +368,7 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
                             counts: Counts {
                                 steps: u32::MAX,
                                 edges: 0,
-                                bindings: 0,
                             },
-                            planned: false,
                         }
                     }
                     14 => {
@@ -453,7 +382,7 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
                     }
                     _ => {}
                 }
-                let proposed = script(counts, planned, bits);
+                let proposed = script(counts, bits);
                 deliver(&mut receiver, &mut model, request, kind == 9, proposed);
             }
             model.check(&receiver, &held, &pointers);
@@ -475,11 +404,7 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
             model.check(&receiver, &held, &pointers);
         }
         let id = model.banks[0].id(0);
-        let counts = Counts {
-            steps: 0,
-            edges: 0,
-            bindings: 0,
-        };
+        let counts = Counts { steps: 0, edges: 0 };
         let request = Record {
             session: 7,
             sequence: model.last + 1,
@@ -487,16 +412,9 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
             payload: Payload::Begin {
                 epoch: Epoch(u64::MAX),
                 counts,
-                planned: false,
             },
         };
-        deliver(
-            &mut receiver,
-            &mut model,
-            request,
-            false,
-            script(counts, false, 0),
-        );
+        deliver(&mut receiver, &mut model, request, false, script(counts, 0));
         let last = Record {
             sequence: u64::MAX,
             payload: Payload::Abort,
@@ -517,7 +435,7 @@ fn seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after
         }
         total_returns += model.returns;
     }
-    assert_eq!(total_kinds, 0x7f);
+    assert_eq!(total_kinds, 0x67);
     assert!(total_refusals.iter().all(|count| *count > 0));
     assert!(total_returns > 0);
 }

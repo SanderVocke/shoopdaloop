@@ -808,13 +808,11 @@ impl ControlEndpoint {
                 job.fail(Refusal::Internal);
                 return true;
             };
-            if let Err(error) = self.work.builder.build(
-                &mut plan,
-                &self.next,
-                &self.pool,
-                &self.shape,
-                self.planner,
-            ) {
+            if let Err(error) =
+                self.work
+                    .builder
+                    .build(&mut plan, &self.next, &self.pool, &self.shape)
+            {
                 self.work.return_plan(plan);
                 job.fail(if error == rt_runtime::Error::Capacity {
                     Refusal::Capacity

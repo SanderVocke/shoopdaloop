@@ -17,6 +17,7 @@ fn store(pages: usize, page_bytes: usize, max_frames: usize) -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        crate::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }

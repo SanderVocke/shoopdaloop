@@ -26,7 +26,8 @@ Its callbacks have no allocator guard of their own; guarded integration tests pr
 
 `LoopPlanner::prepare` takes:
 
-- A `PreparedConfig`, compiled `PreparedTopology` and `&mut ResourceStore`.
+- A `PreparedConfig`, immutable `Quantum`, compiled `PreparedTopology` and
+  `&mut ResourceStore` prepared with the same quantum.
 - `Settings { planner, normal_requests, media_slots, export_slots }`.
 - One `Binding` per primitive, imported `media::Input` values and `Options`:
   timing staging, node-pair edit banks and an optional boundary observer.
@@ -38,26 +39,26 @@ preparation destroys its partial owners off-render. To install the parts:
 
 1. Wrap each `(NodeId, LoopNode)` from `nodes` in the application's node type.
    `LoopNode` implements `Processor<LoopPlanner>`; the wrapper delegates `ports`,
-   `planning` and `process` to it.
-2. Call `GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources,
-   &graph, &client.bindings_for(&graph))`. The runtime starts at frame zero, graph
+   `admit` and `process` to it.
+2. Call `GraphRuntime::prepare_with_initial_graph(config, quantum, nodes, planner,
+   resources, &graph)`. The runtime starts at frame zero, graph
    epoch one, without a hidden warm-up callback.
 3. Keep a control-side clone of `runtime.catalog()` for compiling later routes with
    `client.compile_graph`, and call `prepare_submissions` on the control endpoint.
 
 Each primitive requires distinct playback and capture node identities in the
-signal graph. Both receive its immutable decision. `Binding.channels` is the
+signal graph. Both borrow its prepared view through `ProcessBlock::domain`; each validates its
+actual node identity and physical role. `Binding.channels` is the
 number of audio ports on each node; `midi` adds one MIDI port. Playback has outputs,
 capture has inputs. Capture tracks connected MIDI even while not recording.
 Zero-channel/no-MIDI primitives are valid timing-only loops. Composites do not
-have media bindings. The application's other processors must declare no planner
-access; they receive ordinary signal ports, may implement `set_parameter` and may
-accept their own typed operations. Node identity, port and signal-cycle validation
+have media bindings. The application's other processors receive the same processing block and may
+ignore the domain, implement `set_parameter` or accept their own typed operations. Node identity, port and signal-cycle validation
 still applies.
 
 The planner guards the runtime's generic paths as well as its own operations.
 The initial graph and every generic `Command::Commit` must contain both nodes of
-each assigned primitive with exactly the loop's decision bindings; generic
+each assigned primitive, with unassigned template pairs absent; generic
 `Remove`/`Install` cannot replace a loop node. Refusals change nothing.
 The opt-in [publication paths](topology-activation.md) separately support timing/program changes, fixed node-pair live routing, stopped-owner configuration and paired running-program/graph changes. They operate over prepared physical templates, not unrestricted processor construction or port resizing. Configuration staging also permits unassigned templates whose pairs are absent from the initial graph. Prepare timing/source/node pair banks off-render, and opt into generic graph staging separately before the first nonempty callback.
 
@@ -65,10 +66,10 @@ Provision two capture groups per media-bearing primitive, with separate resource
 identities for their audio and MIDI members. The planner creates these resources
 and binds the groups; the supplied store must have enough free capacity. Two
 banks allow a repeated Record to reserve a replacement before freezing the old
-take. Group staging must fit maximum audio interval bytes plus the conservative
+take. Group staging must fit one quantum of audio bytes plus the conservative
 MIDI reservation. MIDI members reserve at least the runtime's 32-event/96-byte
 recovery form, independently of smaller ordinary-input bounds. MIDI indexing
-must be enabled; index rows must also fit the prepared per-interval bound.
+must be enabled; index rows must also fit the prepared per-tick bound.
 Insufficient future take/append capacity is a boundary refusal, not a reason to
 publish half a take.
 
@@ -177,9 +178,9 @@ Configuration source banks validate indexed MIDI packet headers incrementally; a
 
 At a nonempty boundary F:
 
-1. Deliver finite admitted operations and preview the resolver up to the generic
-   runtime ceiling.
-2. Reserve metadata/take/first-interval capacity for new captures and append
+1. Deliver finite admitted operations and call `preview_tick` for the next whole
+   quantum. The resolver and runtime share the same immutable quantum.
+2. Reserve metadata/take/first-tick capacity for new captures and append
    capacity for continuing ones. Initial MIDI state is the input projection
    strictly before F; events at F remain original events.
 3. On capacity/identity exhaustion, latch a new request-family refusal,
@@ -190,8 +191,8 @@ At a nonempty boundary F:
    commit once. New immutable indexes are available before sample/event F.
 5. Complete terminal requests and post-settlement queries, publish decisions,
    and execute the actual signal DAG.
-6. Validate observation producer identities/node kinds, commit every staged group,
-   then advance the resolver to the interval end. Do not settle the next boundary.
+6. Commit every completely staged group, then call `Resolver::finish()` to advance
+   exactly one quantum. Do not settle the next boundary.
 
 Zero-frame calls do nothing. A transition at the callback end belongs to the next
 nonempty callback. Playback/capture operations neither allocate nor retain host
@@ -201,7 +202,7 @@ journal before rendering; it must obey the same no-allocation/destruction,
 nonblocking/no-I/O contract as processors. Journal loss is diagnostic only.
 
 Conservative MIDI reservation can refuse earlier than the bytes actually produced.
-Failure positions may differ with interval partitioning under insufficient storage;
+Failure positions may differ with the configured quantum under insufficient storage;
 this is tested separately from sufficient-resource partition equivalence.
 Ordinary exhaustion freezes the common completed prefix and changes decisions
 before crossing F. Failed new/repeated starts preserve prior mode/content/take
@@ -324,4 +325,4 @@ The guarded integration tests compare independent complete samples, MIDI packets
 semantic journals, initial states and exported content across whole/single/irregular
 partitions and declaration orders, including journal saturation, stalled results,
 refusal/recovery and explicit full pool recovery. Their package-Wasm execution is
-not an actual loop AudioWorklet. Distinct [publication paths](topology-activation.md) have guarded regression coverage including prepared source/node pair banks, running zero cuts, stale/reused graph ownership and non-rollback cleanup. Historical reports retain their original source/platform scope. The [independent loop fixture](../../../../tests/loops_host/README.md) exercises a small record/play/FX scenario through direct, bounded-wire and two-thread drivers and actual non-isolated offline/live AudioWorklets. Its primitive-command bridge keeps admission, runtime delivery and domain outcomes distinct across independent ordinary Wasm memories. The browser checks actual downstream samples, complete MIDI/receipts and canonical semantic boundary/decision/event records, fixed memory, real processor/heap failure witnesses and successful stopped recovery. Live commands are staged before acknowledged engine-clock start; this is not yet broad dynamic live-ingress coverage. A separate prepared graph payload receiver has guarded native and public-Wasm binding coverage. An opt-in native graph command bridge and public Node/Chromium bindings stage/activate/release and recycle owners through bounded results, with complete sample/MIDI/semantic and receipt checks. Additional actual offline/live graph worklets now transfer descriptors/commands/owning returns through MessagePort and compare downstream samples, MIDI, semantic bytes and exact activation with native replay. They use one audible engine sample for Ready, then an explicitly acknowledged engine pause/resume; this is not continuous wall-clock live-edit/deadline evidence. Native capacity-one actor transport now also matches complete direct graph replay, including byte envelopes, five zero ownership counts and resource recovery; waits/joins remain outside callbacks. Immutable export/cursor/read/initial-state/release now also passes native direct/two-thread, Node/Chromium and actual offline/live hosts, retaining both capture revisions and checking complete stereo/MIDI plus all16 initial channels with full recovery. Export sessions use explicitly acknowledged128-frame steps, not continuous live-edit/deadline evidence. Resource uploads/immutable reads and prepared nested-program activation now also pass all hosts, with complete byte/media/semantic comparisons and owning cleanup. The nested programs have no sync source: explicit iteration seek and stop are admitted before their timestamps, with real1/4/4-frame calls and deliberately paused engine time between steps. Raw uploaded MIDI is read exactly but correctly refuses playable-source validation without checkpoint indexes. Binding-level execution remains distinct from downstream Web Audio. Separate dense/stall sessions now verify clocked cascades/composites and newly acknowledged playback while all transferred result buffers are withheld. Prepared-media sessions now also replace indexed stereo/MIDI imports, deliver Record at7 but apply it at9 after declared-source ticks, then expose a common40-frame incomplete capture before sample49 without interrupting live audio. Coherent state and immutable export/read/all16 MIDI initial channels/Release match full native media/semantic/receipt tables, with full recovery. Actual1/6/57 then one-frame calls and engine pauses are deliberate driver instrumentation, not a runtime quantum or continuous message-deadline proof. See the [media commands and capacity model](../../../../tests/loops_host/README.md#replace-playable-media-and-export-an-exhausted-capture). A separate real-Resolver/test-only generic Planner control now compares complete stereo/semantic output and128 plan/finish calls in actual offline/live contexts, with full8page/4version/4snapshot recovery. Error and heap canaries execute inside Planner::plan and require exact Rust origins/phase counters, fixed worklet memory and nonzero specific failures; the callback cursor advancing before a failed plan is not rendered or committed musical work. This test-only planner does not replace the loop planner's own proof. See the [planner commands and limits](../../../../tests/loops_host/README.md#planner-lifecycle-controls-and-deliberate-failures). The native loop benchmark is described in [Measuring native callbacks](performance.md). Native replay, package-Wasm tests and the generic NoPlanner fixture remain distinct evidence, not substitutes for actual loop-worklet/newer performance campaigns or hard-deadline certification.
+not an actual loop AudioWorklet. Distinct [publication paths](topology-activation.md) have guarded regression coverage including prepared source/node pair banks, running zero cuts, stale/reused graph ownership and non-rollback cleanup. Historical reports retain their original source/platform scope. The [independent loop fixture](../../../../tests/loops_host/README.md) exercises a small record/play/FX scenario through direct, bounded-wire and two-thread drivers and actual non-isolated offline/live AudioWorklets. Its primitive-command bridge keeps admission, runtime delivery and domain outcomes distinct across independent ordinary Wasm memories. The browser checks actual downstream samples, complete MIDI/receipts and canonical semantic boundary/decision/event records, fixed memory, real processor/heap failure witnesses and successful stopped recovery. Live commands are staged before acknowledged engine-clock start; this is not yet broad dynamic live-ingress coverage. A separate prepared graph payload receiver has guarded native and public-Wasm binding coverage. An opt-in native graph command bridge and public Node/Chromium bindings stage/activate/release and recycle owners through bounded results, with complete sample/MIDI/semantic and receipt checks. Additional actual offline/live graph worklets now transfer descriptors/commands/owning returns through MessagePort and compare downstream samples, MIDI, semantic bytes and exact activation with native replay. They use one audible engine sample for Ready, then an explicitly acknowledged engine pause/resume; this is not continuous wall-clock live-edit/deadline evidence. Native capacity-one actor transport now also matches complete direct graph replay, including byte envelopes, five zero ownership counts and resource recovery; waits/joins remain outside callbacks. Immutable export/cursor/read/initial-state/release now also passes native direct/two-thread, Node/Chromium and actual offline/live hosts, retaining both capture revisions and checking complete stereo/MIDI plus all16 initial channels with full recovery. Export sessions use explicitly acknowledged128-frame steps, not continuous live-edit/deadline evidence. Resource uploads/immutable reads and prepared nested-program activation now also pass all hosts, with complete byte/media/semantic comparisons and owning cleanup. The nested programs have no sync source: explicit iteration seek and stop are admitted before their timestamps, with real1/4/4-frame calls and deliberately paused engine time between steps. Raw uploaded MIDI is read exactly but correctly refuses playable-source validation without checkpoint indexes. Binding-level execution remains distinct from downstream Web Audio. Separate dense/stall sessions now verify clocked cascades/composites and newly acknowledged playback while all transferred result buffers are withheld. Prepared-media sessions now also replace indexed stereo/MIDI imports, deliver Record at7 but apply it at9 after declared-source ticks, then expose a common40-frame incomplete capture before sample49 without interrupting live audio. Coherent state and immutable export/read/all16 MIDI initial channels/Release match full native media/semantic/receipt tables, with full recovery. Actual1/6/57 then one-frame calls and engine pauses are deliberate driver instrumentation, not a runtime quantum or continuous message-deadline proof. See the [media commands and capacity model](../../../../tests/loops_host/README.md#replace-playable-media-and-export-an-exhausted-capture). A separate real-Resolver/test-only generic Planner control now compares complete stereo/semantic output and128 plan/finish calls in actual offline/live contexts, with full8page/4version/4snapshot recovery. Error and heap canaries execute inside Planner::begin_tick and require exact Rust origins/phase counters, fixed worklet memory and nonzero specific failures; the callback cursor advancing before a failed plan is not rendered or committed musical work. This test-only planner does not replace the loop planner's own proof. See the [planner commands and limits](../../../../tests/loops_host/README.md#planner-lifecycle-controls-and-deliberate-failures). Runtime bounds are described in [Timing and capacity limits](performance.md). Native replay, package-Wasm tests and the generic NoPlanner fixture remain distinct evidence, not substitutes for actual loop-worklet/newer performance campaigns or hard-deadline certification.

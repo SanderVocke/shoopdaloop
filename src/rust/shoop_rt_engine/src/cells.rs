@@ -78,6 +78,8 @@ pub(crate) struct Cells {
     #[cfg(test)]
     pub fail_reader_tick: AtomicBool,
     pub next_frame: AtomicU64,
+    pub preview_finished: AtomicU64,
+    pub preview_playing: AtomicU64,
     pub endpoint_alive: AtomicBool,
     /// Rendering faulted; the engine no longer executes control work.
     pub faulted: AtomicBool,
@@ -105,6 +107,8 @@ impl Cells {
             #[cfg(test)]
             fail_reader_tick: AtomicBool::new(false),
             next_frame: AtomicU64::new(0),
+            preview_finished: AtomicU64::new(0),
+            preview_playing: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
             strips: (0..strips).map(|_| StripCells::default()).collect(),

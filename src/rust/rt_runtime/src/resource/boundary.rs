@@ -85,33 +85,26 @@ impl CaptureBoundaryIo<'_> {
         &mut self,
         id: CaptureTakeId,
         frame: Frame,
-        frames: usize,
-    ) -> Result<CaptureIntervalId, Error> {
+    ) -> Result<CaptureTickId, Error> {
         self.check_frame(frame)?;
-        if frame.checked_add(frames)? > self.ceiling {
+        if frame.checked_add(self.store.quantum.frames())? > self.ceiling {
             return Err(Error::InvalidFrame);
         }
-        self.store
-            .reserve_prepared_capture_interval(id, frame, frames)
+        self.store.reserve_prepared_capture_tick(id, frame)
     }
-    pub fn reserve(
-        &mut self,
-        id: CaptureTakeId,
-        frame: Frame,
-        frames: usize,
-    ) -> Result<CaptureIntervalId, Error> {
+    pub fn reserve(&mut self, id: CaptureTakeId, frame: Frame) -> Result<CaptureTickId, Error> {
         self.check_frame(frame)?;
-        if frame.checked_add(frames)? > self.ceiling {
+        if frame.checked_add(self.store.quantum.frames())? > self.ceiling {
             return Err(Error::InvalidFrame);
         }
-        self.store.reserve_capture_interval(id, frame, frames)
+        self.store.reserve_capture_tick(id, frame)
     }
-    pub fn cancel_interval(&mut self, id: CaptureIntervalId) -> Result<(), Error> {
-        self.store.cancel_capture_interval(id)
+    pub fn cancel_tick(&mut self, id: CaptureTickId) -> Result<(), Error> {
+        self.store.cancel_capture_tick(id)
     }
-    pub fn commit(&mut self, id: CaptureIntervalId) -> Result<(), Error> {
-        self.check_frame(self.store.capture_interval_end(id)?)?;
-        self.store.commit_capture_interval(id)
+    pub fn commit(&mut self, id: CaptureTickId) -> Result<(), Error> {
+        self.check_frame(self.store.capture_tick_end(id)?)?;
+        self.store.commit_capture_tick(id)
     }
     fn check_frame(&self, frame: Frame) -> Result<(), Error> {
         if frame != self.frame || self.frame > self.ceiling {
@@ -123,7 +116,7 @@ impl CaptureBoundaryIo<'_> {
 impl RenderIo<'_> {
     pub fn stage_audio(
         &mut self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         member: usize,
         samples: &[f32],
     ) -> Result<(), Error> {
@@ -131,7 +124,7 @@ impl RenderIo<'_> {
     }
     pub fn stage_midi(
         &mut self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         member: usize,
         input: &MidiBuffer,
     ) -> Result<(), Error> {

@@ -135,6 +135,7 @@ fn shared_midi_session_exact_and_standard_exports_round_trip_then_reload_and_edi
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
         resource::MidiIndexConfig {
             versions: 8,
             checkpoints_per_version: 32,

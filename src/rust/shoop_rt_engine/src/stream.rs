@@ -7,7 +7,6 @@ use alloc::vec;
 
 use crate::cells::Cells;
 use crate::node::EngineOp;
-use crate::signal::SignalBlock;
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use rt_runtime::graph::PortCounts;
@@ -125,12 +124,15 @@ impl Processor<LoopPlanner, EngineOp> for BulkReader {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(&mut SignalBlock::interval(block))
+        self.render(block)
     }
 }
 
 impl BulkReader {
-    pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         #[cfg(test)]
         if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
             return Err(Error::InvalidState);
@@ -139,8 +141,8 @@ impl BulkReader {
             return Ok(());
         };
         let ring = &self.cells.bulk;
-        if block.callback.is_none() || block.callback != self.callback {
-            self.callback = block.callback;
+        if Some(block.callback_start) != self.callback {
+            self.callback = Some(block.callback_start);
             self.available = self.per_callback;
         }
         let mut budget = self.available.min(block.resources.copy_remaining());

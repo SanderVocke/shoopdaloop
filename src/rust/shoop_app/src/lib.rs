@@ -5,5 +5,7 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+mod host_graph;
 mod service;
+pub use host_graph::{HostGraphController, HostGraphError};
 pub use service::{ConnectionId, Service, ServiceOptions};

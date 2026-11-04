@@ -6,9 +6,6 @@
 
 pub mod activation;
 
-use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionBinding, PlannerSpec, PlanningDescriptor, PlanningStep,
-};
 use crate::{Error, NodeId, PreparedConfig};
 use alloc::collections::BTreeSet;
 use alloc::{vec, vec::Vec};
@@ -96,8 +93,6 @@ pub struct Connection {
 pub struct Catalog {
     config: PreparedConfig,
     slots: Vec<Option<NodeSpec>>,
-    planner: Option<PlannerSpec>,
-    consumers: Option<Vec<Option<ConsumerAccess>>>,
 }
 
 impl Catalog {
@@ -131,63 +126,7 @@ impl Catalog {
         if total > limits.max_ports {
             return Err(Error::Capacity);
         }
-        Ok(Self {
-            config,
-            slots,
-            planner: None,
-            consumers: None,
-        })
-    }
-
-    pub fn with_planner(
-        config: PreparedConfig,
-        nodes: &[NodeSpec],
-        planner: PlannerSpec,
-        consumers: &[ConsumerSpec],
-    ) -> Result<Self, Error> {
-        planner.validate()?;
-        if consumers.len() > config.limits().max_nodes
-            || config
-                .limits()
-                .max_nodes
-                .checked_mul(size_of::<Option<ConsumerAccess>>())
-                .is_none_or(|bytes| bytes > i32::MAX as usize)
-        {
-            return Err(Error::Capacity);
-        }
-        let mut catalog = Self::new(config, nodes)?;
-        let mut access = vec![None; config.limits().max_nodes];
-        for consumer in consumers {
-            catalog.node(consumer.node)?;
-            if access[consumer.node.slot() as usize].is_some() {
-                return Err(Error::InvalidGraph);
-            }
-            if consumer.access.observations > planner.observation_capacity
-                || consumer.access.operation_bytes > i32::MAX as usize
-            {
-                return Err(Error::Capacity);
-            }
-            if consumer.access.decision_required && planner.decision_slots == 0 {
-                return Err(Error::InvalidGraph);
-            }
-            access[consumer.node.slot() as usize] = Some(consumer.access);
-        }
-        catalog.planner = Some(planner);
-        catalog.consumers = Some(access);
-        Ok(catalog)
-    }
-
-    pub fn planner(&self) -> Option<PlannerSpec> {
-        self.planner
-    }
-
-    pub fn consumer(&self, node: NodeId) -> Result<ConsumerAccess, Error> {
-        self.node(node)?;
-        Ok(self
-            .consumers
-            .as_ref()
-            .and_then(|access| access[node.slot() as usize])
-            .unwrap_or_default())
+        Ok(Self { config, slots })
     }
 
     pub fn config(&self) -> PreparedConfig {
@@ -276,7 +215,6 @@ pub struct PlanDescriptor {
 /// plans must pass receiver validation against the live catalog before activation.
 pub struct PreparedPlan {
     descriptor: PlanDescriptor,
-    planning: PlanningDescriptor,
     membership: Vec<Membership>,
     membership_stamp: u64,
     config: PreparedConfig,
@@ -298,10 +236,6 @@ impl PreparedPlan {
                 size_of::<Connection>(),
             ),
             (self.membership.capacity(), size_of::<Membership>()),
-            (
-                self.planning.bindings.capacity(),
-                size_of::<DecisionBinding>(),
-            ),
         ] {
             bytes = count
                 .checked_mul(size)
@@ -320,18 +254,9 @@ impl PreparedPlan {
         config: PreparedConfig,
         descriptor: PlanDescriptor,
     ) -> Result<Self, Error> {
-        Self::from_planned_descriptor(config, descriptor, PlanningDescriptor::default())
-    }
-
-    pub fn from_planned_descriptor(
-        config: PreparedConfig,
-        descriptor: PlanDescriptor,
-        planning: PlanningDescriptor,
-    ) -> Result<Self, Error> {
         let limits = config.limits();
         if descriptor.steps.len() > limits.max_nodes
             || descriptor.connections.len() > limits.max_edges
-            || planning.bindings.len() > limits.max_nodes
         {
             return Err(Error::Capacity);
         }
@@ -349,7 +274,6 @@ impl PreparedPlan {
         }
         Ok(Self {
             descriptor,
-            planning,
             membership,
             membership_stamp: 1,
             config,
@@ -364,7 +288,6 @@ impl PreparedPlan {
             (limits.max_nodes, size_of::<NodeStep>()),
             (limits.max_edges, size_of::<Connection>()),
             (limits.max_nodes, size_of::<Membership>()),
-            (limits.max_nodes, size_of::<DecisionBinding>()),
         ] {
             if count
                 .checked_mul(size)
@@ -398,24 +321,7 @@ impl PreparedPlan {
         }
         descriptor.steps.clear();
         descriptor.connections.clear();
-        let binding = DecisionBinding {
-            planner: crate::PlannerId::from_parts(0, 1)?,
-            consumer: step.node,
-            decision_slot: 0,
-        };
-        let mut bindings = vec![binding; limits.max_nodes];
-        for value in &mut bindings {
-            *core::hint::black_box(value) = binding;
-        }
-        bindings.clear();
-        Self::from_planned_descriptor(
-            config,
-            descriptor,
-            PlanningDescriptor {
-                step: None,
-                bindings,
-            },
-        )
+        Self::from_descriptor(config, descriptor)
     }
     /// Constant-work reset. Stamped membership avoids clearing every node slot in
     /// a callback. Only invoke while exclusively owning an inactive plan.
@@ -426,8 +332,6 @@ impl PreparedPlan {
             .ok_or(Error::Exhausted)?;
         self.descriptor.steps.clear();
         self.descriptor.connections.clear();
-        self.planning.step = None;
-        self.planning.bindings.clear();
         self.membership_stamp = stamp;
         Ok(())
     }
@@ -455,24 +359,6 @@ impl PreparedPlan {
         self.descriptor.connections.push(connection);
         Ok(())
     }
-    pub fn set_planning_step(&mut self, step: Option<PlanningStep>) {
-        self.planning.step = step;
-    }
-
-    pub fn push_binding(&mut self, binding: DecisionBinding) -> Result<(), Error> {
-        if self.planning.bindings.len() == self.planning.bindings.capacity()
-            || self.planning.bindings.len() == self.config.limits().max_nodes
-        {
-            return Err(Error::Capacity);
-        }
-        self.planning.bindings.push(binding);
-        Ok(())
-    }
-
-    pub fn planning(&self) -> &PlanningDescriptor {
-        &self.planning
-    }
-
     pub fn descriptor(&self) -> &PlanDescriptor {
         &self.descriptor
     }
@@ -489,41 +375,6 @@ impl PreparedPlan {
 /// Allocating control-side compiler. Equivalent descriptions compile identically
 /// regardless of declaration order; ties break by stable node ID and source port.
 pub fn compile(catalog: &Catalog, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
-    if catalog.planner.is_none() {
-        compile_signal(catalog, graph)
-    } else {
-        compile_planned(catalog, graph, &[])
-    }
-}
-
-/// Compile explicit planning dependencies separately from signal connections.
-pub fn compile_planned(
-    catalog: &Catalog,
-    graph: &GraphDescription,
-    bindings: &[DecisionBinding],
-) -> Result<PreparedPlan, Error> {
-    if bindings.len() > catalog.config.limits().max_nodes {
-        return Err(Error::Capacity);
-    }
-    let mut plan = compile_signal(catalog, graph)?;
-    plan.planning.step = catalog.planner.map(|planner| PlanningStep {
-        planner,
-        before_step: 0,
-    });
-    plan.planning.bindings = bindings.to_vec();
-    plan.planning
-        .bindings
-        .sort_unstable_by_key(|binding| binding.consumer);
-    let mut validator = PlanValidator::new(catalog.config);
-    validator.begin();
-    match validator.advance(&plan, catalog, usize::MAX).status {
-        ValidationStatus::Valid => Ok(plan),
-        ValidationStatus::Invalid(error) => Err(error),
-        ValidationStatus::Pending => Err(Error::InvalidState),
-    }
-}
-
-fn compile_signal(catalog: &Catalog, graph: &GraphDescription) -> Result<PreparedPlan, Error> {
     let limits = catalog.config.limits();
     if graph.nodes.len() > limits.max_nodes || graph.connections.len() > limits.max_edges {
         return Err(Error::Capacity);
@@ -613,8 +464,6 @@ enum Phase {
     Node(usize),
     Inputs { node_index: usize, end: usize },
     Host,
-    Bindings(usize),
-    Required(usize),
     Done,
     Failed(Error),
 }
@@ -629,8 +478,6 @@ pub struct PlanValidator {
     phase: Phase,
     edge: usize,
     previous: Option<Connection>,
-    previous_consumer: Option<NodeId>,
-    observations: usize,
 }
 
 impl PlanValidator {
@@ -641,8 +488,6 @@ impl PlanValidator {
             phase: Phase::Idle,
             edge: 0,
             previous: None,
-            previous_consumer: None,
-            observations: 0,
         }
     }
 
@@ -650,8 +495,6 @@ impl PlanValidator {
         self.phase = Phase::Header;
         self.edge = 0;
         self.previous = None;
-        self.previous_consumer = None;
-        self.observations = 0;
     }
 
     pub fn advance(
@@ -687,18 +530,6 @@ impl PlanValidator {
                 if plan.config != self.config || catalog.config != self.config {
                     return Err(Error::InvalidConfig);
                 }
-                match (catalog.planner, plan.planning.step) {
-                    (None, None) if plan.planning.bindings.is_empty() => {}
-                    (Some(expected), Some(step)) => {
-                        if step.planner.id != expected.id {
-                            return Err(Error::InvalidId);
-                        }
-                        if step.planner != expected || step.before_step != 0 {
-                            return Err(Error::InvalidGraph);
-                        }
-                    }
-                    _ => return Err(Error::InvalidGraph),
-                }
                 self.phase = Phase::Clear(0);
             }
             Phase::Clear(index) => {
@@ -713,18 +544,6 @@ impl PlanValidator {
                 self.previous = None;
                 if let Some(step) = descriptor.steps.get(index) {
                     catalog.node(step.node)?;
-                    let access = catalog.consumer(step.node)?;
-                    self.observations = self
-                        .observations
-                        .checked_add(access.observations)
-                        .ok_or(Error::Capacity)?;
-                    if self.observations
-                        > catalog
-                            .planner
-                            .map_or(0, |planner| planner.observation_capacity)
-                    {
-                        return Err(Error::Capacity);
-                    }
                     let seen = self
                         .seen
                         .get(step.node.slot() as usize)
@@ -765,53 +584,13 @@ impl PlanValidator {
             }
             Phase::Host => {
                 if self.edge == descriptor.connections.len() {
-                    self.phase = if catalog.planner.is_some() {
-                        Phase::Bindings(0)
-                    } else {
-                        Phase::Done
-                    };
+                    self.phase = Phase::Done;
                 } else {
                     let edge = *descriptor
                         .connections
                         .get(self.edge)
                         .ok_or(Error::InvalidState)?;
                     self.validate_edge(edge, None, catalog)?;
-                }
-            }
-            Phase::Bindings(index) => {
-                if let Some(binding) = plan.planning.bindings.get(index) {
-                    let planner = catalog.planner.ok_or(Error::InvalidGraph)?;
-                    if binding.planner != planner.id {
-                        return Err(Error::InvalidId);
-                    }
-                    catalog.node(binding.consumer)?;
-                    if !plan.contains(binding.consumer) {
-                        return Err(Error::InvalidId);
-                    }
-                    if binding.decision_slot >= planner.decision_slots
-                        || self
-                            .previous_consumer
-                            .is_some_and(|previous| previous >= binding.consumer)
-                    {
-                        return Err(Error::InvalidGraph);
-                    }
-                    self.seen[binding.consumer.slot() as usize] = None;
-                    self.previous_consumer = Some(binding.consumer);
-                    self.phase = Phase::Bindings(index + 1);
-                } else {
-                    self.phase = Phase::Required(0);
-                }
-            }
-            Phase::Required(index) => {
-                if let Some(step) = descriptor.steps.get(index) {
-                    if catalog.consumer(step.node)?.decision_required
-                        && self.seen[step.node.slot() as usize].is_some()
-                    {
-                        return Err(Error::InvalidGraph);
-                    }
-                    self.phase = Phase::Required(index + 1);
-                } else {
-                    self.phase = Phase::Done;
                 }
             }
             Phase::Idle | Phase::Done | Phase::Failed(_) => return Err(Error::InvalidState),

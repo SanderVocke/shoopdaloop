@@ -4,7 +4,7 @@
 use alloc::{boxed::Box, vec};
 use rt_runtime::buffer::AudioPorts;
 use rt_runtime::resource::shared_audio::{AudioStore, ReadIndex as SharedReadIndex};
-use rt_runtime::resource::{CaptureIntervalId, Format, ReadIndex, RenderIo};
+use rt_runtime::resource::{CaptureTickId, Format, ReadIndex, RenderIo};
 use rt_runtime::Error;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -415,7 +415,7 @@ impl AudioCapture {
     pub fn stage(
         &mut self,
         io: &mut RenderIo<'_>,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         member: usize,
         inputs: &[&[f32]],
     ) -> Result<(), Error> {
@@ -426,7 +426,7 @@ impl AudioCapture {
     pub fn stage_ports(
         &mut self,
         io: &mut RenderIo<'_>,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         member: usize,
         inputs: &AudioPorts<'_>,
     ) -> Result<(), Error> {
@@ -436,7 +436,7 @@ impl AudioCapture {
     fn stage_input(
         &mut self,
         io: &mut RenderIo<'_>,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         member: usize,
         inputs: Inputs<'_, '_>,
     ) -> Result<(), Error> {

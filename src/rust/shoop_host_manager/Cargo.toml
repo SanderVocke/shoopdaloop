@@ -1,0 +1,31 @@
+[package]
+name = "shoop_host_manager"
+version.workspace = true
+edition = "2021"
+description = "Native GUI for managing independent ShoopDaLoop hosts"
+
+[lints]
+workspace = true
+
+[features]
+default = ["cpal", "jack"]
+jack = ["shoop_host/jack", "shoop_rt_host_native/jack"]
+cpal = ["shoop_host/cpal", "shoop_rt_host_native/cpal"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+anyhow = { workspace = true, features = ["std"] }
+clap = { workspace = true }
+eframe = { workspace = true }
+serde_json = { workspace = true }
+shoop_app_api = { path = "../shoop_app_api" }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_host = { path = "../shoop_host", default-features = false }
+shoop_host_processes = { path = "../shoop_host_processes" }
+shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
+rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = { workspace = true }
+shoop_app_client = { path = "../shoop_app_client" }
+shoop_host = { path = "../shoop_host", default-features = false, features = ["testing"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

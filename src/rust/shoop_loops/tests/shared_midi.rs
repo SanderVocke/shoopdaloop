@@ -205,6 +205,7 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
             }
             .prepare()
             .unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
         )
         .unwrap();
         let baseline = store.usage();
@@ -273,10 +274,8 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
-        resolver
-            .enable_fixed(rt_runtime::fixed::Quantum::new(1).unwrap())
-            .unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         for (sequence, (voice, at, transition)) in [
             (
                 0,
@@ -388,7 +387,7 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
                     .into_iter()
                     .find(|&cut| cut > now)
                     .unwrap();
-                    let interval = resolver.preview_fixed(&[]).unwrap();
+                    let interval = resolver.preview_tick(&[]).unwrap();
                     assert!(interval.end <= Frame(host_end.min(forced)));
                     let decisions = [
                         resolver.decisions().unwrap()[0],
@@ -610,6 +609,7 @@ fn failed_shared_capture_keeps_observed_state_and_requires_a_truthful_new_segmen
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap();
     let history = store

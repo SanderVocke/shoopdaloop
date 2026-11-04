@@ -62,7 +62,7 @@ packages include them, the built-ins and fonts. CPAL+midir is enabled by default
 disabling default features selects the dummy host. Choose audio settings for the
 next host launch; live switching is temporarily unavailable. Existing JACK profiles
 are mapped to CPAL with diagnostics. See the [application README](src/rust/shoopdaloop/README.md)
-for independent host/UI roles, registry selection, close choices and browser behavior.
+for independent host/UI roles, explicit profile selection, close choices and browser behavior.
 
 The [feature parity ledger](docs/native_session_recovery/feature-parity.md) records
 all temporary gaps and preserved restoration evidence. Carla/FX, session content

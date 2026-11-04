@@ -102,7 +102,7 @@ export function makeGraphHost(Host) {
             assert(this.graphResponses.length === 4 && this.graphClient.retained_graphs() === 0 && polled.retainedGraphs === 0, "owning return");
             const returned = new DataView(Uint8Array.from(this.graphResponses[3]).buffer);
             assert(returned.getUint32(28, true) === 2 && returned.getBigUint64(64, true) === BigInt(release.frame) && returned.getUint32(108, true) === 2, "release clock/generation");
-            assert([112, 116, 120].map(at => returned.getUint32(at, true)).join() === "3,12,2", "actual retired capacities");
+            assert([112, 116].map(at => returned.getUint32(at, true)).join() === "3,12", "actual retired capacities");
             assert([...this.pool, ...this.payloadPool, ...this.graphPool].every(buffer => buffer instanceof ArrayBuffer && buffer.byteLength === (this.pool.includes(buffer) ? 64 : 96)), "input buffers not recovered");
             const summary = await this.call("stop", {}, "stopped");
             assert(summary.returnedBuffers === 10 && summary.returnedGraphBuffers === 4 && summary.retainedGraphs === 0, "response buffers/graph ownership");

@@ -2,7 +2,8 @@
 
 ## Status, baseline and delivery
 
-R0 complete; R1 merged/pushed and PR #927 now targets fixed execution. R2–R5 implementation and proofs are in progress. Written using
+R0 complete; R1 is reconciled with the target cleanup at `435eb2a2`.
+R2–R7 implementation and proofs are under CI validation. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -43,6 +44,27 @@ and direct `process_fixed` loop consumers.
 The merged baseline is `8c810ef8`; fixed-base workflow filters are enabled and
 PR #927 has been retargeted. Actual validation is pending fresh CI. The experimental `shoop_loops::fixed`
 bank is not a replacement production path for this reconciliation.
+
+Target refresh on 2026-11-04 found `435eb2a2f13550b9f3f8e934e558c1f3e24b486d`,
+including the fixed-runtime cleanup and the current backend/host integration.
+The merge preserves its removal of the prototype, adaptive resolver and borrowed
+decision APIs. Shared history now uses `Planner::begin_tick`/`finish_tick` and
+`Processor::process`; all resource and resolver preparation supplies immutable
+`Quantum` explicitly. Q=1 storage/reference fixtures remain scalar fixed ticks.
+The new callback measurement is independent of the removed prototype benchmarks.
+
+Implemented milestones: prepared source histories and common completion watermark;
+paired source-fenced cuts; private audio/MIDI candidates; fair callback-wide edit
+and loaded-index import progress; complete fenced publication through the media
+ledger; ownership recovery for unread results; production Q/partition oracles;
+failure/route/upload/shutdown fixtures; codec/reload/family/configuration sequence;
+prepared capacity diagnostics and full-callback raw CI artifacts.
+
+CI on `df6922fa` passed bare-metal and native JACK production checks. Its broader
+test build exposed an outdated fixture reply pattern, fixed in `dde23efb`.
+That head's test compile exposed two fixture type/authority mistakes, fixed in
+`1d84380d`. These are partial historical results. The target advanced before fresh
+PR checks could start; final acceptance requires checks on the new merged head.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |

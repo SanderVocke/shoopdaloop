@@ -29,7 +29,7 @@ impl ProcessorOperation for Multiply {
 
 The runtime carries the processor family as its third parameter, `GraphRuntime<P, L, Q>`; it defaults to `()` for processors without operations. `Action::Planner { planner, operation }` and `Action::Processor { node, operation }` carry the two families through `Command::Schedule`, so a processor operation cannot be addressed to the planner or the other way round. An application with several kinds of processor uses an enum for `Q`, just as it does for the processor type itself.
 
-Additional payload bytes are separately bounded by preparation declarations (`PlannerSpec::operation_bytes` or `ConsumerAccess::operation_bytes`) and callback staging allowance. The enum's Rust size is not its payload-byte limit. Delivery borrows the payload; it does not transfer a long-lived reference into the planner.
+Additional payload bytes are separately bounded by preparation declarations (`Planner::operation_bytes` or `Processor::operation_bytes`) and callback staging allowance. The enum's Rust size is not its payload-byte limit. Delivery borrows the payload; it does not transfer a long-lived reference into the planner.
 
 The example's planner declares four payload bytes. Its Payload operation decodes an explicit little-endian `f32`, rejecting malformed/nonfinite values. Do not treat Copy as serialization, authentication, pointer transport, or permission to move a Box/Vec/trait object between independent Wasm instances.
 

@@ -34,15 +34,11 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        None,
-        CaptureGroupConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
             groups: 2,
             members_per_group: 1,
             staging_bytes_per_group: 128,
-        },
-    )
+        })
     .unwrap();
 
     let target = LoopId::from_parts(0, 1).unwrap();
@@ -99,33 +95,18 @@ fn main() {
         planner,
         nodes,
         client,
-    } = LoopPlanner::prepare(
-        config,
-        topology,
-        &mut resources,
-        Settings {
+    } = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 5,
             media_slots: 4,
             export_slots: 1,
-        },
-        vec![binding],
-        vec![],
-        Options::default(),
-    )
+        }, vec![binding], vec![], Options::default())
     .unwrap();
     let nodes = nodes
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &graph,
-        &client.bindings_for(&graph),
-    )
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
     .unwrap();
     control.prepare_submissions().unwrap();
     // Playback starts at 6; the seek at 9 skips position 3; stop at 12 silences the tail.

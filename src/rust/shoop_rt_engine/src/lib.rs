@@ -34,18 +34,17 @@ mod content;
 mod description;
 mod endpoint;
 mod family;
-pub mod fixed;
 mod graph;
 mod jobs;
 mod model;
 mod node;
 mod pool;
+mod preview;
 mod queue;
 mod render;
 mod replacement;
 mod resync;
 mod ring;
-mod signal;
 mod stream;
 mod topology;
 
@@ -120,7 +119,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + limits.buses as usize + 1,
+            limits.strips as usize + limits.loops as usize + limits.buses as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -289,13 +288,14 @@ pub fn prepare_with_shared(
     let credits = usize::from(description.reliable_credits);
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let quantum = rt_runtime::fixed::Quantum::new(description.quantum)?;
+    let quantum = rt_runtime::Quantum::new(description.quantum)?;
     let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        quantum,
         Some(MidiIndexConfig {
             versions: 6 * loops + 8,
             checkpoints_per_version: 64,
@@ -352,6 +352,7 @@ pub fn prepare_with_shared(
         client,
     } = LoopPlanner::prepare(
         config,
+        quantum,
         topology,
         &mut resources,
         LoopSettings {
@@ -401,7 +402,7 @@ pub fn prepare_with_shared(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
-    let (mut control, mut runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+    let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
         config,
         description.max_frames,
         quantum,
@@ -414,18 +415,14 @@ pub fn prepare_with_shared(
     }
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
-    let planner = runtime
-        .catalog()
-        .planner()
-        .ok_or(rt_runtime::Error::InvalidState)?;
-    let mut master_outputs = [0u64; shoop_rt_protocol::MAX_STRIP_CHANNELS];
+    let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
-        master_outputs[channel as usize] |= 1 << host;
+        master_outputs[channel as usize].set(host as usize, true);
     }
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();
     let work = Work {
-        builder: Builder::new(config.limits().max_edges, loops),
+        builder: Builder::new(config.limits().max_edges),
         encoder,
         image,
         payloads: (1..=RECORDS_PER_APPEND)
@@ -478,7 +475,6 @@ pub fn prepare_with_shared(
             channels,
             master_channels,
         },
-        planner,
         cells: cells.clone(),
         settings: Settings {
             ramp: description.ramp_frames,
@@ -551,6 +547,7 @@ pub fn prepare_with_shared(
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
         protocol_error: false,
+        preview: None,
         pool,
     };
     let render = Render::new(

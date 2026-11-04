@@ -80,6 +80,7 @@ pub struct Session {
     pub tracks: Vec<Track>,
     pub buses: Vec<Bus>,
     pub bus_display_order: Vec<BusId>,
+    pub preview_bus: Option<BusId>,
     pub global_ports: Vec<Port>,
     pub routes: Vec<MixerRouteState>,
     pub selected: Vec<LoopId>,

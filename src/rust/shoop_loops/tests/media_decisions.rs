@@ -36,6 +36,7 @@ fn prepare(
             },
         )
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }
@@ -63,9 +64,12 @@ fn decision(resolver: &Resolver, target: u32) -> Decision {
         .unwrap()
 }
 fn step(resolver: &mut Resolver, end: u64) {
-    resolver.preview(Frame(end), &[]).unwrap();
-    resolver.commit().unwrap();
-    resolver.finish(Frame(end)).unwrap();
+    while resolver.frame().0 < end {
+        let interval = resolver.preview_tick(&[]).unwrap();
+        assert!(interval.end <= Frame(end));
+        assert_eq!(resolver.commit().unwrap(), interval);
+        resolver.finish().unwrap();
+    }
 }
 #[shoop_test]
 fn primitive_media_flags_cover_noops_monitoring_failures_and_same_state_seeks() {
@@ -155,9 +159,7 @@ fn primitive_media_flags_cover_noops_monitoring_failures_and_same_state_seeks() 
                 let before = resolver.state(id(0)).unwrap();
                 let observations = [Observation::CaptureExhausted { target: id(0) }];
                 let observations = if frame == 9 { &observations[..] } else { &[] };
-                resolver
-                    .preview(Frame(frame as u64 + 1), observations)
-                    .unwrap();
+                resolver.preview_tick(observations).unwrap();
                 let first = decision(&resolver, 0);
                 assert_eq!(
                     first.playback_discontinuity, expected,
@@ -166,16 +168,14 @@ fn primitive_media_flags_cover_noops_monitoring_failures_and_same_state_seeks() 
                 if frame == 2 || frame == 3 {
                     assert_eq!(first.state, before);
                 }
-                resolver
-                    .preview(Frame(frame as u64 + 1), observations)
-                    .unwrap();
+                resolver.preview_tick(observations).unwrap();
                 assert_eq!(decision(&resolver, 0), first);
                 resolver.commit().unwrap();
                 assert_eq!(decision(&resolver, 0), first);
                 if frame == 2 || frame == 3 {
                     assert!(resolver.events().is_empty());
                 }
-                resolver.finish(Frame(frame as u64 + 1)).unwrap();
+                resolver.finish().unwrap();
             }
         });
     }
@@ -198,10 +198,10 @@ fn cancelled_losing_and_refused_previews_do_not_leak_discontinuities() {
             ))
             .unwrap();
         let winner = resolver.submit(request(0, 3, 1, play(0, false))).unwrap();
-        resolver.preview(Frame(2), &[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         assert!(!decision(&resolver, 0).playback_discontinuity);
         resolver.commit().unwrap();
-        resolver.finish(Frame(2)).unwrap();
+        resolver.finish().unwrap();
         assert_eq!(
             resolver.completion(loser).unwrap().unwrap().outcome,
             Outcome::Superseded { frame: Frame(1) }
@@ -222,10 +222,10 @@ fn cancelled_losing_and_refused_previews_do_not_leak_discontinuities() {
             ))
             .unwrap();
         assert_eq!(resolver.cancel(cancelled), Ok(CancelResult::Cancelled));
-        resolver.preview(Frame(3), &[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         assert!(!decision(&resolver, 0).playback_discontinuity);
         resolver.commit().unwrap();
-        resolver.finish(Frame(3)).unwrap();
+        resolver.finish().unwrap();
         let refused = resolver
             .submit(request(
                 0,
@@ -237,21 +237,18 @@ fn cancelled_losing_and_refused_previews_do_not_leak_discontinuities() {
                 },
             ))
             .unwrap();
-        resolver.preview(Frame(4), &[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         assert!(decision(&resolver, 0).playback_discontinuity);
         assert_eq!(resolver.state(id(0)).unwrap().position, 3);
         resolver
-            .preview(
-                Frame(4),
-                &[Observation::Refused {
-                    request: refused,
-                    reason: Error::Capacity,
-                }],
-            )
+            .preview_tick(&[Observation::Refused {
+                request: refused,
+                reason: Error::Capacity,
+            }])
             .unwrap();
         assert!(!decision(&resolver, 0).playback_discontinuity);
         resolver.commit().unwrap();
-        resolver.finish(Frame(4)).unwrap();
+        resolver.finish().unwrap();
         assert_eq!(
             resolver.completion(refused).unwrap().unwrap().outcome,
             Outcome::Failed {
@@ -259,7 +256,7 @@ fn cancelled_losing_and_refused_previews_do_not_leak_discontinuities() {
                 reason: Error::Capacity
             }
         );
-        resolver.preview(Frame(5), &[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         assert!(decision(&resolver, 0).playback_discontinuity);
         assert_eq!(decision(&resolver, 0).state.position, 0);
     });
@@ -282,7 +279,7 @@ fn reactive_final_modes_mask_or_restore_the_boundary_flag() {
                     skip: 0,
                 };
                 resolver.submit(stop).unwrap();
-                resolver.preview(Frame(1), &[]).unwrap();
+                resolver.preview_tick(&[]).unwrap();
                 assert!(decision(&resolver, 0).playback_discontinuity);
                 assert!(!decision(&resolver, 1).playback_discontinuity);
                 assert_eq!(decision(&resolver, 1).state.mode, Mode::Stopped);
@@ -296,7 +293,7 @@ fn reactive_final_modes_mask_or_restore_the_boundary_flag() {
                 resolver.submit(restart).unwrap();
                 step(&mut resolver, 1);
                 step(&mut resolver, 2);
-                resolver.preview(Frame(3), &[]).unwrap();
+                resolver.preview_tick(&[]).unwrap();
                 assert!(decision(&resolver, 1).playback_discontinuity);
                 assert_eq!(decision(&resolver, 1).state.mode, Mode::Playing);
                 assert_eq!(decision(&resolver, 1).state.position, 1);
@@ -359,15 +356,15 @@ fn nested_program_snapshots_emit_primitive_flags_without_a_journal() {
                 },
             ))
             .unwrap();
-        for frame in 0..2 {
-            resolver.preview(Frame(frame + 1), &[]).unwrap();
+        for _ in 0..2 {
+            resolver.preview_tick(&[]).unwrap();
             assert!(decision(&resolver, 0).playback_discontinuity);
             assert_eq!(decision(&resolver, 0).state.position, 0);
             assert!(!decision(&resolver, 1).playback_discontinuity);
             assert!(!decision(&resolver, 2).playback_discontinuity);
             resolver.commit().unwrap();
             assert!(resolver.events().is_empty());
-            resolver.finish(Frame(frame + 1)).unwrap();
+            resolver.finish().unwrap();
         }
     });
 }

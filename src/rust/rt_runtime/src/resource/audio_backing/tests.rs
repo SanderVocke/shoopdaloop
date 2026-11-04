@@ -17,6 +17,7 @@ fn resources() -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        crate::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }

@@ -23,6 +23,7 @@ fn store() -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }

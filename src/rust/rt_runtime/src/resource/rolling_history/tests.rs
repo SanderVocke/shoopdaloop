@@ -20,6 +20,7 @@ fn store(pages: usize) -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        crate::Quantum::new(1).unwrap(),
     )
     .unwrap()
 }

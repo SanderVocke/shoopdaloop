@@ -2,12 +2,11 @@
 name = "shoop_transport_socket"
 version.workspace = true
 edition = "2021"
-description = "Authenticated socket endpoints for the protocol-independent record transport"
+description = "Compatible socket endpoints for the protocol-independent record transport"
 [lints]
 workspace = true
 [dependencies]
 shoop_transport = { path = "../shoop_transport" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-getrandom = "0.4"
 socket2 = "0.6"

@@ -54,7 +54,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml --lib \
   graph_transfer::model::seeded_descriptor_bank_model_preserves_complete_tables_and_exact_owners_after_every_action -- --exact
 ```
 
-Four seeds run512 mixed actions each, comparing every descriptor/planning table,
+Four seeds run512 mixed actions each, comparing every signal descriptor table,
 sequence/epoch/generation and retained owner's storage after each action. Interleaved
 banks, partial/aborted payloads, stale/foreign/malformed/replayed records, capacity
 refusal, wrong owning returns and generation/sequence exhaustion preserve prior
@@ -144,7 +144,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml --release \
    slot/generation and `capacities(id)` reports the actual available storage.
 2. Encode `Record` values with Begin, ordered node steps/edges, explicit planning
    metadata/bindings and Seal. Pass exactly96 bytes per `Receiver::ingest` call.
-   [LGP1](WIRE.md#prepared-graph-descriptor-payload-lgp1) defines every offset,
+   [LGP2](WIRE.md#prepared-graph-descriptor-payload-lgp2) defines every offset,
    canonical zero and target-width check. Seal means complete payload, not valid graph.
 3. `take(id)` hands a local prepared owner to `LoopControl::stage_graph`. Actual
    runtime validation returns either the candidate or a Ready scoped ID. Only
@@ -188,7 +188,7 @@ cargo test --locked --manifest-path tests/loops_host/Cargo.toml --release \
 1. Prepare `Bridge::with_graphs(session)` and `graph_wire::Client::new(session)`
    off-render. This opts into two runtime graph candidates, two descriptor owners
    and two graph result credits; the default primitive bridge stays unchanged.
-2. Send the ordered `LGP1` records to `Bridge::graph_payload`, then prepare a
+2. Send the ordered `LGP2` records to `Bridge::graph_payload`, then prepare a
    `graph_wire::Operation::Stage` and pass its96-byte envelope to `graph_ingest`.
    The payload Begin epoch must match the envelope. The runtime separately checks
    its actual current epoch and complete signal/planner catalog.
@@ -321,7 +321,7 @@ it is not yet a campaign of dynamically arriving live commands.
 
 ### 3. Change routing through an audible Ready checkpoint
 
-The graph scenario uses the same Record0/Play4/Stop12 music, but transfers all20
+The graph scenario uses the same Record0/Play4/Stop12 music, but transfers all17
 compiled descriptor records and Stage before the first engine callback. It first
 rejects a reserved-byte payload and a foreign-session command, then retries their
 original sequences; neither refusal may lose the prepared owner or credit.
@@ -342,7 +342,7 @@ original sequences; neither refusal may lose the prepared owner or credit.
    MIDI packets, all semantic bytes, primitive receipts and graph publication epoch2.
 4. Release the taken graph. Its ingress acknowledgement names the current engine
    frame; the owning completion must report that same frame. Verify next bank
-   generation2 and actual retired capacities3 steps/12 edges/2 bindings, zero
+   generation2 and actual retired capacities3 steps/12 edges, zero
    command/retained counts and every input/response buffer back before stop.
 5. Offline additionally compares every sample of both complete768-frame output
    channels, including startup, pause and stopped silence. Live mute remains after
@@ -691,7 +691,7 @@ instance-local static, not a constant identity claim.
 | `planner` | 10 | 3 | 1/0 | 0/0/0 |
 | `planner-rust-heap` | 4294901761 | 4 | 128/128 | 1/5/1 |
 
-The error is injected inside `Planner::plan` after a real resolver preview and
+The error is injected inside `Planner::begin_tick` after a real resolver preview and
 before commit/consumer execution. The heap violation deliberately grows/drops a Vec
 there, then finishes the control workload; the Rust allocator guard rejects it.
 Both require specific diagnostics, nonzero runner exits, integer Rust-origin/phase

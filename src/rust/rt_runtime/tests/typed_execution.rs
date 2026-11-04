@@ -1,9 +1,7 @@
 mod support;
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired};
-use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
-};
+use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
 use rt_runtime::planner::*;
 use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::schedule::{Action, Execution, ReceiptToken};
@@ -59,20 +57,13 @@ struct Domain {
     recovery: Option<ReceiptToken>,
 }
 impl Planner for Domain {
-    type Decision = u32;
-    type Observation = ();
     type Operation = Op;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 4,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[u32] {
-        &self.value
+    fn operation_bytes(&self) -> usize {
+        4
     }
     fn recovery_safe(operation: Op) -> bool {
         matches!(
@@ -151,7 +142,7 @@ impl Planner for Domain {
             Op::BadRecovery => Ok(Disposition::Pending),
         }
     }
-    fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<(), Error> {
         if let Some(recovery) = self.recovery.take() {
             for pending in &mut self.pending {
                 if let Some((token, _, _)) = pending.take() {
@@ -175,10 +166,6 @@ impl Planner for Domain {
                 + context.callback_start.0 * 100
                 + context.frame.0) as u32;
         }
-        Ok(context.frame.checked_add(1)?.min(context.ceiling))
-    }
-    fn finish(&mut self, context: FinishContext<'_, (), Op, Reply>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
         Ok(())
     }
 }
@@ -198,12 +185,8 @@ impl Processor<Domain, NodeOp> for Gain {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 0,
-            operation_bytes: 4,
-        }
+    fn operation_bytes(&self) -> usize {
+        4
     }
     fn operation(
         &mut self,
@@ -222,7 +205,7 @@ impl Processor<Domain, NodeOp> for Gain {
         Ok(())
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, Domain>) -> Result<(), Error> {
-        let gain = *block.decision.as_ref().unwrap().value * self.factor;
+        let gain = block.domain.value[0] * self.factor;
         let (input, output) = block.audio.pair(0, 0).unwrap();
         for (input, output) in input.iter().zip(output) {
             *output = *input * gain as f32;
@@ -272,6 +255,7 @@ impl Harness {
     fn new(events: usize) -> Self {
         let (control, runtime) = GraphRuntime::prepare_with_planner(
             config(events),
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node(), Gain { factor: 1 })],
             Domain {
                 context_mode: false,
@@ -313,16 +297,8 @@ impl Harness {
         } else {
             GraphDescription::default()
         };
-        let bindings = if active {
-            vec![DecisionBinding {
-                planner: planner(),
-                consumer: node(),
-                decision_slot: 0,
-            }]
-        } else {
-            vec![]
-        };
-        let plan = compile_planned(self.runtime.catalog(), &graph, &bindings).unwrap();
+
+        let plan = compile(self.runtime.catalog(), &graph).unwrap();
         self.submit(Lane::Normal, Command::commit(self.runtime.epoch(), plan));
     }
     fn submit(

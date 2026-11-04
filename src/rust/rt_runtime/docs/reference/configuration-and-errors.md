@@ -70,11 +70,11 @@ A scheduled future action, retained Pending token or unread result occupies its 
 
 Processor audio scratch uses `(audio inputs + outputs) × max_frames × sizeof(f32)` per prepared node. Add host buffers separately. Owned MIDI arenas reserve their normal events/bytes **plus 32 reset events/96 bytes**; node MIDI inputs have routed and injected arenas. Arbitrary processor-owned buffers and downstream host reset sinks are additional.
 
-Planner decision/observation storage uses the fixed associated types and declared counts, with typed representability checks. Consumer observation reservations are per producer; another consumer cannot spend unused slots. A Copy type is neither a wire encoding nor permission to escape its borrowed lifetime.
+The planner owns prepared domain state. Processors borrow it directly; the runtime allocates no generic decision or observation rows. Planner and processor operation payload limits are cached at preparation. A Copy operation type is not a wire encoding.
 
 ### Graph owners
 
-`PreparedPlan::storage_bytes()` counts `sizeof(PreparedPlan)` plus each retained vector capacity times its native row size: steps, connections, membership and bindings. It excludes allocator overhead. Compact populated rows can coexist with oversized retained capacity; row-count validation alone is insufficient for staging admission.
+`PreparedPlan::storage_bytes()` counts `sizeof(PreparedPlan)` plus each retained vector capacity times its native row size: steps, connections and membership. It excludes allocator overhead. Compact populated rows can coexist with oversized retained capacity; row-count validation alone is insufficient for staging admission.
 
 With `k` stage slots, `GraphStages` computes a conservative per-owner allowance `B` from configured node/edge maxima and native internal row sizes, then checks `(k+1)×B + k×sizeof(internal slot)` against checked arithmetic/`i32::MAX`. Some inline metadata is counted twice deliberately. These internal sizes/formula are not exported row-construction APIs or portable measured constants.
 
@@ -116,7 +116,7 @@ Errors are compact Copy values. Representative causes follow; each operation's s
 | `Full` | Bounded transport/scheduler/result admission credit unavailable. |
 | `Disconnected` | Peer endpoint unavailable; refused submitted values remain caller-owned. |
 | `InvalidState` | Wrong lifecycle phase, absent prepared flags, duplicate terminal completion or occupied freeze output. |
-| `InvalidGraph` | Invalid descriptor, missing required binding, planning/signature/catalog mismatch. |
+| `InvalidGraph` | Invalid descriptor, missing required domain member, signature/catalog mismatch. |
 | `Cycle` | Signal graph contains a cycle. |
 | `PortType` | Incompatible route port kinds. |
 | `StaleEpoch` | Expected/validation graph epoch no longer matches. |

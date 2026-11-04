@@ -37,6 +37,7 @@ pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (LoopControl<Mix>, LoopRuntime
     .expect("dense configuration");
     let resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,

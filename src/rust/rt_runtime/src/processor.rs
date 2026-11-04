@@ -2,8 +2,8 @@
 
 use crate::buffer::{AudioPorts, MidiBuffer};
 use crate::graph::PortCounts;
-use crate::planner::{ConsumerAccess, DecisionView, NoPlanner, ObservationWriter, Planner};
-use crate::{Error, Frame, PreparedConfig};
+use crate::planner::{NoPlanner, Planner};
+use crate::{Error, Frame, NodeId, PreparedConfig};
 use alloc::boxed::Box;
 
 /// Construction and disposal of processors belong to non-render contexts.
@@ -14,23 +14,12 @@ pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
 }
 
 pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
-    pub graph_epoch: crate::Epoch,
-    pub frame: Frame,
-    pub frames: usize,
-    pub audio: AudioPorts<'a>,
-    pub midi_inputs: &'a [MidiBuffer],
-    pub midi_outputs: &'a mut [MidiBuffer],
-    pub resources: crate::resource::ResourceIo<'a>,
-    pub decision: Option<DecisionView<'a, L::Decision>>,
-    pub observations: ObservationWriter<'a, L::Observation>,
-}
-
-/// A complete fixed tick with direct access to the render-owned domain.
-pub struct FixedProcessBlock<'a, L: Planner = NoPlanner> {
+    pub node: NodeId,
     pub graph_epoch: crate::Epoch,
     pub callback_start: Frame,
     pub frame: Frame,
-    pub quantum: crate::fixed::Quantum,
+    pub frames: usize,
+    pub quantum: crate::Quantum,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
@@ -39,7 +28,7 @@ pub struct FixedProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 pub struct OperationContext<'a> {
-    pub quantum: crate::fixed::Quantum,
+    pub quantum: crate::Quantum,
     pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,
@@ -61,19 +50,18 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
-    fn supports_fixed(&self) -> bool {
-        false
+    /// Validate the actual node identity and domain before installation.
+    /// Admission may run on-render and must obey the processing contract.
+    fn admit(&self, _node: NodeId, _domain: &L) -> Result<(), Error> {
+        Ok(())
     }
-    fn process_fixed(&mut self, _block: &mut FixedProcessBlock<'_, L>) -> Result<(), Error> {
-        Err(Error::InvalidState)
+    /// Maximum additional operation payload, cached during preparation.
+    fn operation_bytes(&self) -> usize {
+        0
     }
     /// Queried during preparation, never by the render callback.
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
-    /// Queried during preparation and retained across same-signature replacement.
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess::default()
-    }
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
         &mut self,
@@ -89,11 +77,11 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
-    fn supports_fixed(&self) -> bool {
-        (**self).supports_fixed()
+    fn admit(&self, node: NodeId, domain: &L) -> Result<(), Error> {
+        (**self).admit(node, domain)
     }
-    fn process_fixed(&mut self, block: &mut FixedProcessBlock<'_, L>) -> Result<(), Error> {
-        (**self).process_fixed(block)
+    fn operation_bytes(&self) -> usize {
+        (**self).operation_bytes()
     }
     fn operation(
         &mut self,
@@ -101,9 +89,6 @@ impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L
         context: OperationContext<'_>,
     ) -> Result<Q::Result, Error> {
         (**self).operation(operation, context)
-    }
-    fn planning(&self) -> ConsumerAccess {
-        (**self).planning()
     }
     fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
         (**self).set_parameter(parameter, value)

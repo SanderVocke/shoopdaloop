@@ -959,7 +959,7 @@ impl LoopPlanner {
         graph: Epoch,
         io: &mut ResourceIo<'_>,
     ) -> Result<Reply, Failure> {
-        let q = self.fixed_quantum.ok_or(Error::InvalidState)?.frames();
+        let q = self.resolver.quantum().frames();
         match operation {
             Operation::SharedCapacity => Ok(Reply::SharedCapacity(
                 self.shared.as_ref().ok_or(Error::InvalidState)?.capacity(),
@@ -1207,7 +1207,7 @@ impl LoopPlanner {
         resources: &mut ResourceStore,
         settings: SharedSettings,
     ) -> Result<(), Error> {
-        if self.shared.is_some() || self.fixed_quantum.is_some() {
+        if self.shared.is_some() {
             return Err(Error::InvalidState);
         }
         self.shared = Some(Shared::prepare(resources, settings)?);

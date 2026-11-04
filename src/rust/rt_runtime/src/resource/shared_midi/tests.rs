@@ -16,6 +16,7 @@ fn setup(chunks: usize, horizon: u64) -> (ResourceStore, MidiStore, MidiBuffer) 
         }
         .prepare()
         .unwrap(),
+        crate::Quantum::new(1).unwrap(),
     )
     .unwrap();
     let midi = MidiStore::prepare(

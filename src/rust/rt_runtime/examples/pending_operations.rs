@@ -3,10 +3,7 @@
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode};
 use rt_runtime::graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType};
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, Disposition, FinishContext, OperationContext, PlanContext,
-    Planner, PlannerSpec,
-};
+use rt_runtime::planner::{Disposition, OperationContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::schedule::{Action, ReceiptToken};
@@ -45,20 +42,13 @@ struct Domain {
     recovery: Option<ReceiptToken>,
 }
 impl Planner for Domain {
-    type Decision = f32;
-    type Observation = ();
     type Operation = Op;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: PlannerId::from_parts(0, 1).unwrap(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 4,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(PlannerId::from_parts(0, 1).unwrap())
     }
-    fn decisions(&self) -> &[f32] {
-        &self.value
+    fn operation_bytes(&self) -> usize {
+        4
     }
     fn recovery_safe(operation: Op) -> bool {
         matches!(operation, Op::Cancel(_) | Op::Stop)
@@ -120,7 +110,7 @@ impl Planner for Domain {
             Op::Refuse => Ok(Disposition::Complete(Reply::Refused)),
         }
     }
-    fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<(), Error> {
         if let Some(recovery) = self.recovery.take() {
             if let Some((token, _, _)) = self.pending.take() {
                 context.receipts.complete(token, Ok(Reply::Cancelled))?;
@@ -138,13 +128,6 @@ impl Planner for Domain {
                 .receipts
                 .complete(token, Ok(Reply::Applied(value)))?;
         }
-        context
-            .frame
-            .checked_add(1)
-            .map(|end| end.min(context.ceiling))
-    }
-    fn finish(&mut self, context: FinishContext<'_, (), Op, Reply>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
         Ok(())
     }
 }
@@ -158,12 +141,7 @@ impl Processor<Domain, Multiply> for Gain {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            ..ConsumerAccess::default()
-        }
-    }
+
     fn operation(
         &mut self,
         Multiply(value): Multiply,
@@ -176,7 +154,7 @@ impl Processor<Domain, Multiply> for Gain {
         Ok(value)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, Domain>) -> Result<(), Error> {
-        let gain = *block.decision.as_ref().ok_or(Error::InvalidState)?.value * self.0;
+        let gain = block.domain.value[0] * self.0;
         let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
         for (input, output) in input.iter().zip(output) {
             *output = input * gain;
@@ -214,18 +192,18 @@ fn prepare() -> Result<
     }
     .prepare()?;
     let node = NodeId::from_parts(0, 1)?;
-    let id = PlannerId::from_parts(0, 1)?;
     let port = Endpoint::node(node, PortType::Audio, 0);
     let host = Endpoint::host(PortType::Audio, 0);
     GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(1.0))],
         Domain {
             value: [1.0],
             pending: None,
             recovery: None,
         },
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &GraphDescription {
             nodes: vec![node],
             connections: vec![
@@ -239,11 +217,6 @@ fn prepare() -> Result<
                 },
             ],
         },
-        &[DecisionBinding {
-            planner: id,
-            consumer: node,
-            decision_slot: 0,
-        }],
     )
 }
 
