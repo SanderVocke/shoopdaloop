@@ -373,6 +373,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Keep platform builds independent of inspection runner availability.
   build_and_test:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}

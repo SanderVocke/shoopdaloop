@@ -1,6 +1,6 @@
 # Plan: consolidate quantum processing
 
-Status: implementation and local acceptance complete; final delivery/CI corrections in progress. Baseline: `52f24c02` on
+Status: implementation and local acceptance complete; final CI in progress. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
 PR #930 (now ready for review). Continue that branch and PR rather than opening a
 parallel migration.
@@ -275,9 +275,11 @@ Report skips/failures explicitly; a local pass does not substitute for stage 7.
 - [x] Push the finished branch and update existing PR #930 against
   `feat/backend-replacement`. If the PR has already been superseded, use its successor
   rather than opening a duplicate. Describe the final implementation and validation.
-- [ ] Run the required full CI platform matrix, investigate/fix failures and repeat
-  affected gates until green. Check automated PR reviews and address feedback until
-  the reviewer approves; rerun affected validation after changes.
+- [ ] Run Linux, Windows and web CI in debug/release, investigate/fix failures and
+  repeat affected gates until green. macOS is excluded from this acceptance pass by
+  the user's explicit 2026-11-04 instruction; retain its CI definitions. Check
+  automated PR reviews and address feedback until the reviewer approves; rerun
+  affected validation after changes.
 - [ ] Present the final outcome, evidence, residual limits and architectural analysis
   for human review. Keep any merge approval as the final delivery decision; do not
   merge without authorization. Mark this plan complete only with acceptance evidence.
@@ -420,20 +422,32 @@ symbols off produced the passing 437-test run. Neither changed source assertions
 ### Remote acceptance and handoff
 
 [PR930](https://github.com/SanderVocke/shoopdaloop/pull/930) targets
-`feat/backend-replacement`, is ready and contains the pushed implementation.
+`feat/backend-replacement`, is ready and is pushed through `820fb239` (implementation
+`09a92496` followed only by plan consolidation).
 [Automated review](https://github.com/SanderVocke/shoopdaloop/pull/930#issuecomment-6636594400)
-completed with **no findings or unresolved findings** on `3ca192e1`; all its inline
-threads are resolved. Fresh review is required after the final audit and retirement fix.
-[CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41883666496)
-and [Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41883666289) pass.
-[Implementation CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41883666402)
-attempt2 obtained the macOS inspection runner after an initial hosted arm64 capacity
-cancellation. All inspections, coverage and bare-metal passed. The initial JACK
-package download took16m45s for52.7MB; canceled that remaining job to unlock the
-selective retry. Attempt2 then exposed the retirement-admission bug fixed in
-`09a92496`. The full matrix and fresh review must run on the corrected result.
-Queued/canceled gates are missing acceptance, not passes; all required platforms
-and workload assertions remain unchanged.
+completed with **no findings or unresolved findings** on this exact push.
+[Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787505), strict
+JACK including driver feature combinations, bare-metal and Windows/Linux process
+inspection pass. [Current implementation CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787503)
+and [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787410)
+are still running. The user explicitly waived macOS validation on2026-11-04
+because of hosted-runner contention. Linux, Windows and web debug/release builds,
+Windows/Linux inspection and all portable/Linux acceptance remain required.
+Removed the build matrix's unnecessary dependency on the inspection matrix, so
+queued macOS inspection cannot serialize other platform builds. All macOS jobs
+remain defined for future execution; their result is excluded from this acceptance
+pass. The required non-macOS gates still need to complete.
+
+The preceding run's macOS arm64 inspection was canceled before acquiring a runner;
+GitHub annotations explicitly identify hosted capacity constraints. Selective retry
+obtained the runner. The initial JACK package download took16m45s for52.7MB; its
+selective retry exposed the retirement-admission bug reproduced and fixed above.
+No platform was removed, no assertions/deadlines were weakened and no required
+workload was shortened to address those failures.
+
+At implementation checkpoint `820fb239`, the PR changes313 tracked files against
+`a6e2554c`, adding11,676 lines and removing12,432: **756 net lines removed**. Relative to this plan’s `52f24c02` starting point,
+that checkpoint adds4,107 lines and removes8,591: **4,484 net lines removed**.
 
 ### Architectural outcome
 
