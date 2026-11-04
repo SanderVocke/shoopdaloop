@@ -355,7 +355,6 @@ pub(crate) mod tests {
             panic!("native JACK required")
         };
         assert_eq!(config.client_name, "Looper");
-        assert_eq!(config.midi_inputs, ["midi_in_1"]);
         assert!(warnings.is_empty());
     }
 

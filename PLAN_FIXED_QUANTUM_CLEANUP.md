@@ -1,6 +1,6 @@
 # Plan: consolidate quantum processing
 
-Status: implementation and local acceptance complete; final delivery paused. Baseline: `52f24c02` on
+Status: implementation and local acceptance complete; final delivery in progress. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
 draft PR #930. Continue that branch and PR rather than opening a parallel migration.
 
@@ -535,3 +535,11 @@ requirements. Quantum processing simplifies their scheduling but does not make
 those responsibilities redundant. The retained library/application/host boundaries
 also remain useful; further crate deletion would require a separate change of
 responsibility rather than this execution-model cleanup.
+
+
+Delivery resumed (2026-11-04): the user explicitly approved proceeding with all
+remaining delivery, CI and review work. The earlier publication pause is lifted;
+merge approval remains the final human decision. Refreshed PR930 and fetched its
+base: a6e2554c removes obsolete fixed JACK startup-port configuration. Merge that
+base while retaining quantum configuration and the completed cleanup, then validate
+and push the consolidated result before investigating the current platform matrix.

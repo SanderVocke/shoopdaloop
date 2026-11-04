@@ -1133,27 +1133,41 @@ fn native_master_preview_device_acceptance() {
     verify_master_preview(Some(driver));
 }
 
-fn verify_master_preview(mut driver: Option<AudioDriverConfig>) {
+fn verify_master_preview(driver: Option<AudioDriverConfig>) {
     #[cfg(feature = "jack")]
-    let capture = if let Some(AudioDriverConfig::Jack(config)) = &mut driver {
-        let capture = JackCapture::new();
-        for (output, input) in config.audio_outputs.iter().zip(["left", "right"]) {
-            config
-                .connections
-                .push((output.clone(), format!("preview_capture:{input}")));
-        }
-        Some(capture)
-    } else {
-        None
-    };
-    #[cfg(not(feature = "jack"))]
-    let _ = &mut driver;
+    let capture = matches!(&driver, Some(AudioDriverConfig::Jack(_))).then(JackCapture::new);
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
         let mut host = host_with_driver(transport, 16, driver.clone());
         let (mut client, mut connection) = attach(&host.entry, 990);
-        let state = client.snapshot().unwrap();
+        let state = client.snapshot().unwrap().clone();
         let master = state.preview_bus.unwrap();
         let rate = state.status.sample_rate;
+        #[cfg(feature = "jack")]
+        if capture.is_some() {
+            let channels = state
+                .buses
+                .iter()
+                .find(|bus| bus.id == master)
+                .unwrap()
+                .channels
+                .clone();
+            for (channel, target) in channels.iter().zip(["left", "right"]) {
+                assert!(matches!(
+                    command(
+                        &mut client,
+                        &mut connection,
+                        Command::SetPortConnected {
+                            port: channel.output_port_id,
+                            host_port: shoop_app_api::HostPortId::new(format!(
+                                "preview_capture:{target}"
+                            )),
+                            connected: true,
+                        }
+                    ),
+                    Outcome::Confirmed { .. }
+                ));
+            }
+        }
         let content: Vec<_> = state
             .tracks
             .iter()

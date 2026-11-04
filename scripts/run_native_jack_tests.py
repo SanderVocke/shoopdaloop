@@ -25,8 +25,6 @@ def main() -> int:
     preview_config = args.output / "preview-driver.json"
     preview_config.write_text(json.dumps({"Jack": {
         "client_name": "ShoopPreviewAcceptance",
-        "audio_inputs": [], "audio_outputs": ["audio_out_1", "audio_out_2"],
-        "midi_inputs": [], "midi_outputs": [], "connections": [],
     }}))
     cargo_args = ["--release"] if args.profile == "release" else []
     env = os.environ.copy()

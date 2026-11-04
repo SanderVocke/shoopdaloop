@@ -771,14 +771,9 @@ fn device_fault_remains_terminal_and_uses_the_existing_shutdown_policy() {
 
 #[cfg(feature = "jack")]
 #[shoop_test(no_wasm = "native JACK process setup")]
-fn native_jack_process_adapter_preserves_custom_port_names_and_driver_identity() {
+fn native_jack_process_adapter_preserves_private_capacity_and_driver_identity() {
     let jack = shoop_rt_host_native::JackConfig {
         client_name: format!("jack-process-{}", std::process::id()),
-        audio_inputs: vec!["capture".into()],
-        audio_outputs: vec!["playback".into()],
-        midi_inputs: vec!["keys".into()],
-        midi_outputs: vec!["synth".into()],
-        connections: Vec::new(),
     };
     let config = NativeConfig {
         driver: DriverConfig::Jack(jack),
@@ -807,20 +802,8 @@ fn native_jack_process_adapter_preserves_custom_port_names_and_driver_identity()
         }
         assert_eq!(kind, "jack");
         assert!(started.instance_name.starts_with("jack-process-"));
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let snapshot = backend.poll().unwrap();
-            if snapshot
-                .connections
-                .host_ports
-                .values()
-                .any(|port| port.name == "jack:keys")
-            {
-                break;
-            }
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(2));
-        }
+        let snapshot = backend.poll().unwrap();
+        assert!(snapshot.connections.host_ports.is_empty());
         drop(backend);
         let report = started.supervisor.stop();
         assert!(

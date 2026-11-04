@@ -85,6 +85,44 @@ fn server() -> Option<jack::Client> {
     }
 }
 
+fn graph_operation(
+    control: &shoop_port_graph::Control,
+    operation: shoop_port_graph::Operation,
+) -> Result<shoop_port_graph::Outcome, shoop_port_graph::Error> {
+    let id = control.submit(shoop_port_graph::Request {
+        epoch: control.snapshot().epoch,
+        operation,
+    })?;
+    let mut result = None;
+    wait(|| {
+        result = control.take_result();
+        result.is_some()
+    });
+    let completion = result.unwrap();
+    assert_eq!(completion.id, id);
+    completion.result
+}
+fn publish(
+    control: &shoop_port_graph::Control,
+    key: u64,
+    name: &str,
+    data_type: shoop_port_graph::DataType,
+    direction: shoop_port_graph::Direction,
+) {
+    graph_operation(
+        control,
+        shoop_port_graph::Operation::Publish {
+            key: shoop_port_graph::LocalPortKey(key),
+            spec: shoop_port_graph::PortSpec {
+                name: name.into(),
+                data_type,
+                direction,
+            },
+        },
+    )
+    .unwrap();
+}
+
 #[shoop_test(no_wasm = "real JACK audio and MIDI")]
 fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recovers_on_stop() {
     let Some(peer) = server() else { return };
@@ -100,19 +138,10 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
     let audio_in = peer.register_port("sink", AudioIn::default()).unwrap();
     let midi_out = peer.register_port("keys", MidiOut::default()).unwrap();
     let midi_in = peer.register_port("synth", MidiIn::default()).unwrap();
-    let external = |short: &str| format!("{}:{short}", peer.name());
+    let peer_name = peer.name().to_owned();
+    let external = |short: &str| format!("{peer_name}:{short}");
     let config = JackConfig {
         client_name: client_name.clone(),
-        audio_inputs: vec!["capture".into()],
-        audio_outputs: vec!["playback".into()],
-        midi_inputs: vec!["midi_in".into()],
-        midi_outputs: vec!["midi_out".into()],
-        connections: vec![
-            (external("source"), "capture".into()),
-            ("playback".into(), external("sink")),
-            (external("keys"), "midi_in".into()),
-            ("midi_out".into(), external("synth")),
-        ],
     };
     let peer = peer
         .activate_async(
@@ -135,8 +164,29 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
     .unwrap();
     let (host, mut client) = (started.host, started.client);
     assert_eq!(host.instance_name(), client_name);
-    assert_eq!(host.layout().ports.audio_inputs[0].as_str(), "jack:capture");
-    assert_eq!(host.layout().master_connections, [(0, 0)]);
+    assert!(host.layout().master_connections.is_empty());
+    let graph = host.graph_control().unwrap();
+    wait(|| graph.snapshot().status == shoop_port_graph::Status::Ready);
+    assert!(graph.snapshot().publications.is_empty());
+    use shoop_port_graph::{DataType, Direction};
+    for (key, name, kind, direction) in [
+        (1, "capture", DataType::Audio, Direction::Input),
+        (2, "playback", DataType::Audio, Direction::Output),
+        (3, "midi_in", DataType::Midi, Direction::Input),
+        (4, "midi_out", DataType::Midi, Direction::Output),
+    ] {
+        publish(&graph, key, name, kind, direction);
+    }
+    for (source, destination) in [
+        (external("source"), format!("{client_name}:capture")),
+        (format!("{client_name}:playback"), external("sink")),
+        (external("keys"), format!("{client_name}:midi_in")),
+        (format!("{client_name}:midi_out"), external("synth")),
+    ] {
+        peer.as_client()
+            .connect_ports_by_name(&source, &destination)
+            .unwrap();
+    }
     let mut received = Received::default();
     connected(&mut client, &mut received);
     assert_eq!(host.status().driver.kind, DriverKind::Jack);
@@ -188,28 +238,67 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
 }
 
 #[shoop_test(no_wasm = "real JACK client lifecycle")]
-fn native_jack_rejects_bad_ports_and_rolls_back_failed_startup_connections() {
-    let mut config = JackConfig::default();
-    config.midi_inputs = config.audio_inputs.clone();
-    assert!(config.validate().is_err());
+fn native_jack_has_no_startup_ports_and_recovers_after_invalid_publication() {
+    for name in ["", "bad:name", "bad\0name"] {
+        assert!(JackConfig {
+            client_name: name.into()
+        }
+        .validate()
+        .is_err());
+    }
     let Some(peer) = server() else { return };
-    config = JackConfig {
-        client_name: format!("rollback-{}", peer.name()),
-        connections: vec![("missing-client:source".into(), "audio_in_1".into())],
-        ..Default::default()
+    let config = JackConfig {
+        client_name: format!("dynamic-only-{}", peer.name()),
     };
-    let result = start(&NativeConfig {
-        driver: DriverConfig::Jack(config.clone()),
+    let started = start(&NativeConfig {
+        driver: DriverConfig::Jack(config),
         engine: description(),
-    });
-    assert!(result.is_err());
+    })
+    .unwrap();
+    let graph = started.host.graph_control().unwrap();
+    wait(|| graph.snapshot().status == shoop_port_graph::Status::Ready);
+    assert!(graph.snapshot().publications.is_empty());
     assert!(peer
         .ports(
-            Some(&format!("{}:", config.client_name)),
+            Some(&format!("{}:", started.host.instance_name())),
             None,
             jack::PortFlags::empty()
         )
         .is_empty());
+    use shoop_port_graph::{DataType, Direction, LocalPortKey, Operation, PortSpec};
+    assert_eq!(
+        graph_operation(
+            &graph,
+            Operation::Publish {
+                key: LocalPortKey(1),
+                spec: PortSpec {
+                    name: "invalid:name".into(),
+                    data_type: DataType::Audio,
+                    direction: Direction::Output
+                },
+            }
+        )
+        .unwrap_err()
+        .kind,
+        shoop_port_graph::ErrorKind::Invalid
+    );
+    publish(&graph, 1, "valid", DataType::Audio, Direction::Output);
+    graph_operation(
+        &graph,
+        Operation::Unpublish {
+            key: LocalPortKey(1),
+        },
+    )
+    .unwrap();
+    assert!(peer
+        .ports(
+            Some(&format!("{}:", started.host.instance_name())),
+            None,
+            jack::PortFlags::empty()
+        )
+        .is_empty());
+    drop(started.client);
+    assert!(started.host.stop().stopped.is_ok());
 }
 
 #[shoop_test(no_wasm = "real JACK naming and buffer notifications")]
@@ -453,6 +542,13 @@ fn native_jack_implements_the_shared_port_graph_contract() {
     .unwrap();
     let mut graph = started.host.graph_control().unwrap();
     wait(|| graph.snapshot().status == Status::Ready);
+    publish(
+        &graph,
+        1,
+        "contract_output",
+        DataType::Audio,
+        Direction::Output,
+    );
     let snapshot = graph.snapshot();
     let local = snapshot
         .ports
@@ -507,6 +603,13 @@ fn native_jack_ids_survive_unrelated_hotplug_and_rename_but_detect_unobserved_re
     .unwrap();
     let control = started.host.graph_control().unwrap();
     wait(|| control.snapshot().status == Status::Ready);
+    publish(
+        &control,
+        1,
+        "incarnation_output",
+        DataType::Audio,
+        Direction::Output,
+    );
     let snapshot = control.snapshot();
     let before = snapshot.ports.iter().find(|p| p.name == name).unwrap().id;
     let local = snapshot
@@ -615,13 +718,7 @@ fn native_jack_publications_route_beyond_64_slots_and_retire_midi_safely() {
         .unwrap();
     let started = start(&NativeConfig {
         engine: description(),
-        driver: DriverConfig::Jack(JackConfig {
-            audio_inputs: Vec::new(),
-            audio_outputs: Vec::new(),
-            midi_inputs: Vec::new(),
-            midi_outputs: Vec::new(),
-            ..Default::default()
-        }),
+        driver: DriverConfig::Jack(JackConfig::default()),
     })
     .unwrap();
     let host = started.host;

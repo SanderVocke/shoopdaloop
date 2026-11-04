@@ -65,7 +65,7 @@ impl Drop for ChildOwner {
 }
 
 #[shoop_test(no_wasm = "native host executable and JACK server")]
-fn standalone_cli_starts_direct_jack_with_custom_ports_and_reports_configuration() {
+fn standalone_cli_publishes_session_ports_without_a_fixed_bank() {
     let _peer = match jack::Client::new("jack-cli-probe", jack::ClientOptions::NO_START_SERVER) {
         Ok((client, _)) => client,
         Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
@@ -80,13 +80,6 @@ fn standalone_cli_starts_direct_jack_with_custom_ports_and_reports_configuration
                 "jack",
                 "--jack-client-name",
                 "CLI-Studio",
-                "--jack-audio-inputs",
-                "capture_l,capture_r",
-                "--jack-audio-outputs",
-                "main_l,main_r",
-                "--jack-midi-inputs=",
-                "--jack-midi-outputs",
-                "events",
                 "--export-profile",
             ])
             .arg(&profile)
@@ -111,16 +104,22 @@ fn standalone_cli_starts_direct_jack_with_custom_ports_and_reports_configuration
         thread::sleep(Duration::from_millis(20));
     };
     let report = connection::host_report(&target, Duration::from_secs(2)).unwrap();
-    connection::shutdown_ownerless(&target, Duration::from_secs(5)).unwrap();
     assert_eq!(report.effective.audio_driver, AudioDriverState::Running);
     let AudioDriverConfig::Jack(jack) = &report.requested.unwrap().driver else {
         panic!("CLI did not start direct JACK");
     };
     assert_eq!(jack.client_name, "CLI-Studio");
-    assert_eq!(jack.audio_inputs, ["capture_l", "capture_r"]);
-    assert_eq!(jack.audio_outputs, ["main_l", "main_r"]);
-    assert!(jack.midi_inputs.is_empty());
-    assert_eq!(jack.midi_outputs, ["events"]);
+    let public = _peer.ports(Some("^CLI-Studio:"), None, jack::PortFlags::empty());
+    assert_eq!(
+        public.len(),
+        4,
+        "only sync and Master session ports should be registered"
+    );
+    assert!(public.iter().all(|name| !name.contains("audio_in_")
+        && !name.contains("audio_out_")
+        && !name.contains("midi_in_")
+        && !name.contains("midi_out_")));
+    connection::shutdown_ownerless(&target, Duration::from_secs(5)).unwrap();
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }
 enum Delivery {
@@ -464,12 +463,6 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
             .unwrap();
         let driver = JackAudioDriverConfig {
             client_name: format!("jack-service-{}-{independent}", std::process::id()),
-            connections: vec![
-                (format!("{}:source", peer.name()), "audio_in_1".into()),
-                ("audio_out_1".into(), format!("{}:sink", peer.name())),
-                (format!("{}:keys", peer.name()), "midi_in_1".into()),
-                ("midi_out_1".into(), format!("{}:synth", peer.name())),
-            ],
             ..Default::default()
         };
         let peer = peer
@@ -516,17 +509,32 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
         };
         let ports: Vec<_> = f.client.snapshot().unwrap().connections.application_ports.iter().filter(|port| matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track)).cloned().collect();
         for (role, name) in [
-            (PortRole::AudioInput, "jack:audio_in_1"),
-            (PortRole::MidiInput, "jack:midi_in_1"),
-            (PortRole::MidiOutput, "jack:midi_out_1"),
+            (PortRole::AudioInput, "source"),
+            (PortRole::MidiInput, "keys"),
+            (PortRole::MidiOutput, "synth"),
         ] {
             let port = ports.iter().find(|port| port.role == role).unwrap();
             f.command(protocol::Command::SetPortConnected {
                 port: port.id,
-                host_port: HostPortId::new(name),
+                host_port: HostPortId::new(format!("{}:{name}", peer.as_client().name())),
                 connected: true,
             });
         }
+        let master = f
+            .client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Master")
+            .unwrap()
+            .channels[0]
+            .output_port_id;
+        f.command(protocol::Command::SetPortConnected {
+            port: master,
+            host_port: HostPortId::new(format!("{}:sink", peer.as_client().name())),
+            connected: true,
+        });
         f.command(protocol::Command::Loop {
             track,
             loop_id: loops[0],
@@ -610,14 +618,16 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
             f.client.snapshot().unwrap().tracks[1].loops[0].mode,
             LoopMode::Stopped
         );
-        assert!(f
-            .client
-            .snapshot()
-            .unwrap()
-            .connections
-            .confirmed_links
-            .iter()
-            .any(|link| link.host_port_id.as_str() == "jack:midi_out_1"));
+        assert!(
+            f.client
+                .snapshot()
+                .unwrap()
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.host_port_id.as_str()
+                    == format!("{}:synth", peer.as_client().name()))
+        );
         assert_eq!(f.capture(3).payloads, image.payloads);
         drop(f);
         drop(peer);
@@ -707,7 +717,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 .iter()
                 .filter(|port| port.local.is_some())
                 .count(),
-            10
+            4
         );
         let owner = f
             .client
@@ -764,57 +774,6 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 .count()
                 == 4
         });
-        let mut wrong_epoch = graph_request(&f, &local("audio_in_1"), &source_name, true);
-        wrong_epoch.epoch = wrong_epoch.epoch.wrapping_add(1).max(1);
-        assert!(matches!(
-            f.outcome(protocol::Command::SetHostGraphConnected(wrong_epoch)),
-            Outcome::Refused {
-                reason: Refusal::RevisionConflict,
-                ..
-            }
-        ));
-        for (a, b) in [
-            (local("audio_in_1"), keys_name.clone()),
-            (local("audio_out_1"), source_name.clone()),
-            (source_name.clone(), sink_name.clone()),
-        ] {
-            let request = graph_request(&f, &a, &b, true);
-            assert!(matches!(
-                f.outcome(protocol::Command::SetHostGraphConnected(request)),
-                Outcome::Refused {
-                    reason: Refusal::Invalid,
-                    ..
-                }
-            ));
-        }
-        for (bank, other) in [
-            ("audio_in_1", &source_name),
-            ("audio_out_1", &sink_name),
-            ("midi_in_1", &keys_name),
-            ("midi_out_1", &synth_name),
-        ] {
-            graph_link(&mut f, &local(bank), other, true);
-            graph_link(&mut f, &local(bank), other, true);
-        }
-        assert_eq!(
-            peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
-            4
-        );
-        let master_output = f
-            .client
-            .snapshot()
-            .unwrap()
-            .buses
-            .iter()
-            .find(|bus| bus.name == "Master")
-            .unwrap()
-            .channels[0]
-            .output_port_id;
-        f.command(protocol::Command::SetPortConnected {
-            port: master_output,
-            host_port: HostPortId::new("jack:audio_out_1"),
-            connected: true,
-        });
         f.command(protocol::Command::Global(GlobalControlAction::SetSync(
             false,
         )));
@@ -832,25 +791,42 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
         else {
             panic!("track missing")
         };
-        let ports = f
-            .client
-            .snapshot()
-            .unwrap()
-            .connections
-            .application_ports
-            .clone();
-        for (role, bank) in [
-            (PortRole::AudioInput, "jack:audio_in_1"),
-            (PortRole::MidiInput, "jack:midi_in_1"),
-            (PortRole::MidiOutput, "jack:midi_out_1"),
+        let mut wrong_epoch = graph_request(&f, &local("graph_take_direct_in"), &source_name, true);
+        wrong_epoch.epoch = wrong_epoch.epoch.wrapping_add(1).max(1);
+        assert!(matches!(
+            f.outcome(protocol::Command::SetHostGraphConnected(wrong_epoch)),
+            Outcome::Refused {
+                reason: Refusal::RevisionConflict,
+                ..
+            }
+        ));
+        for (a, b) in [
+            (local("graph_take_direct_in"), keys_name.clone()),
+            (local("master_out_1"), source_name.clone()),
+            (source_name.clone(), sink_name.clone()),
         ] {
-            let port = ports.iter().find(|port| port.role == role && matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track)).unwrap();
-            f.command(protocol::Command::SetPortConnected {
-                port: port.id,
-                host_port: HostPortId::new(bank),
-                connected: true,
-            });
+            let request = graph_request(&f, &a, &b, true);
+            assert!(matches!(
+                f.outcome(protocol::Command::SetHostGraphConnected(request)),
+                Outcome::Refused {
+                    reason: Refusal::Invalid,
+                    ..
+                }
+            ));
         }
+        for (bank, other) in [
+            ("graph_take_direct_in", &source_name),
+            ("master_out_1", &sink_name),
+            ("graph_take_direct_midi_in", &keys_name),
+            ("graph_take_direct_midi_out", &synth_name),
+        ] {
+            graph_link(&mut f, &local(bank), other, true);
+            graph_link(&mut f, &local(bank), other, true);
+        }
+        assert_eq!(
+            peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
+            4
+        );
         f.command(protocol::Command::Loop {
             track,
             loop_id: loops[0],
@@ -877,8 +853,13 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
             4
         );
-        graph_link(&mut f, &local("audio_out_1"), &sink_name, false);
-        graph_link(&mut f, &local("midi_out_1"), &synth_name, false);
+        graph_link(&mut f, &local("master_out_1"), &sink_name, false);
+        graph_link(
+            &mut f,
+            &local("graph_take_direct_midi_out"),
+            &synth_name,
+            false,
+        );
         thread::sleep(Duration::from_millis(30));
         let disconnected = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
         thread::sleep(Duration::from_millis(30));
@@ -887,17 +868,17 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed))
         );
         peer.as_client()
-            .connect_ports_by_name(&local("audio_out_1"), &sink_name)
+            .connect_ports_by_name(&local("master_out_1"), &sink_name)
             .unwrap();
         peer.as_client()
-            .connect_ports_by_name(&local("midi_out_1"), &synth_name)
+            .connect_ports_by_name(&local("graph_take_direct_midi_out"), &synth_name)
             .unwrap();
         f.until(|client| peer_links(&client.snapshot().unwrap().host_graph, &peer_name) == 4);
         f.until(|_| {
             audio.load(Ordering::Relaxed) > disconnected.0 + 3
                 && midi.load(Ordering::Relaxed) > disconnected.1 + 6
         });
-        let before_rename = graph_request(&f, &local("audio_in_1"), &source_name, true);
+        let before_rename = graph_request(&f, &local("graph_take_direct_in"), &source_name, true);
         let mut renamed = peer.as_client().port_by_name(&source_name).unwrap();
         renamed.set_name("source_renamed").unwrap();
         let renamed_name = format!("{peer_name}:source_renamed");
@@ -930,7 +911,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 .any(|port| port.name == source_name)
         });
         drop(renamed);
-        let old = graph_request(&f, &local("audio_in_1"), &source_name, true);
+        let old = graph_request(&f, &local("graph_take_direct_in"), &source_name, true);
         drop(peer);
         f.until(|client| {
             let graph = &client.snapshot().unwrap().host_graph;
@@ -1012,11 +993,6 @@ fn native_jack_dynamic_tracks_buses_connections_and_session_restore() {
         let mut f = Fixture::new_on(
             AudioDriverConfig::Jack(JackAudioDriverConfig {
                 client_name: format!("full-jack-{}-{mode:?}", std::process::id()),
-                audio_inputs: Vec::new(),
-                audio_outputs: Vec::new(),
-                midi_inputs: Vec::new(),
-                midi_outputs: Vec::new(),
-                connections: Vec::new(),
             }),
             mode,
         );
@@ -1270,7 +1246,7 @@ fn native_jack_dynamic_tracks_buses_connections_and_session_restore() {
     }
 }
 
-#[shoop_test(no_wasm = "real JACK startup playback compatibility")]
+#[shoop_test(no_wasm = "real JACK dynamic Master auto-connect and session restoration")]
 fn native_jack_startup_playback_has_one_master_signal_path() {
     for mode in [
         DeliveryMode::Local,
@@ -1293,14 +1269,47 @@ fn native_jack_startup_playback_has_one_master_signal_path() {
         let mut f = Fixture::new_on(
             AudioDriverConfig::Jack(JackAudioDriverConfig {
                 client_name: format!("startup-master-route-{mode:?}"),
-                connections: vec![
-                    ("audio_out_1".into(), sinks[1].clone()),
-                    ("audio_out_2".into(), sinks[0].clone()),
-                ],
                 ..Default::default()
             }),
             mode,
         );
+        for (channel, target) in f
+            .client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|b| b.name == "Master")
+            .unwrap()
+            .channels
+            .clone()
+            .iter()
+            .zip([&sinks[1], &sinks[0]])
+        {
+            let links: Vec<_> = f
+                .client
+                .snapshot()
+                .unwrap()
+                .connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == channel.output_port_id)
+                .cloned()
+                .collect();
+            assert_eq!(links.len(), 1);
+            for link in links {
+                f.command(protocol::Command::SetPortConnected {
+                    port: channel.output_port_id,
+                    host_port: link.host_port_id,
+                    connected: false,
+                });
+            }
+            f.command(protocol::Command::SetPortConnected {
+                port: channel.output_port_id,
+                host_port: HostPortId::new(target),
+                connected: true,
+            });
+        }
         for reload in [false, true] {
             if reload {
                 let image = f.capture(1);
