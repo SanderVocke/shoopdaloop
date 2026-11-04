@@ -151,6 +151,16 @@ fixed cut for Q=1/32/128 and partial/whole host callbacks, then reclaim all owne
 Existing explicit per-source fixtures retain their preparation policy. The normal
 host constructor is still unchanged pending production MIDI/writer integration.
 
+A prepared persistent AVL index now implements the ordered-tree layer for the
+semantic MIDI representation. It copies edited paths, retains snapshot roots,
+preflights metadata, composes interval summaries and retires one node per granted
+maintenance step. Value retain/release hooks support shared immutable packet
+records. Heap-guarded scenarios check balance, every root/value reference, old
+versions through edits, logarithmic range work, pressure and complete reclamation.
+Sostenuto summaries can keep 32-byte compact record-marker tables and resolve
+only query-result markers. This tree layer still needs CI and integration into
+the complete category store, payload storage and live writer.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

@@ -85,15 +85,15 @@ pub(crate) enum SostenutoUpdate {
     Reset,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SostenutoProjection {
+pub(crate) struct SostenutoProjection<P = Point> {
     pub(crate) down: bool,
-    pub(crate) last_rising: Option<Point>,
-    pub(crate) first_clear: Option<Point>,
-    pub(crate) last_clear: Option<Point>,
+    pub(crate) last_rising: Option<P>,
+    pub(crate) first_clear: Option<P>,
+    pub(crate) last_clear: Option<P>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SostenutoSummary([SostenutoProjection; 2]);
-impl Default for SostenutoSummary {
+pub(crate) struct SostenutoSummary<P = Point>([SostenutoProjection<P>; 2]);
+impl<P: Copy> Default for SostenutoSummary<P> {
     fn default() -> Self {
         Self(core::array::from_fn(|down| SostenutoProjection {
             down: down != 0,
@@ -103,8 +103,8 @@ impl Default for SostenutoSummary {
         }))
     }
 }
-impl SostenutoSummary {
-    pub(crate) fn update(update: SostenutoUpdate, point: Point) -> Self {
+impl<P: Copy> SostenutoSummary<P> {
+    pub(crate) fn update(update: SostenutoUpdate, point: P) -> Self {
         Self(core::array::from_fn(|initial| {
             let initial = initial != 0;
             let (down, rising, clear) = match update {
@@ -120,7 +120,7 @@ impl SostenutoSummary {
             }
         }))
     }
-    pub(crate) fn apply(self, initial_down: bool) -> SostenutoProjection {
+    pub(crate) fn apply(self, initial_down: bool) -> SostenutoProjection<P> {
         self.0[usize::from(initial_down)]
     }
     pub(crate) fn then(self, later: Self) -> Self {
@@ -132,6 +132,17 @@ impl SostenutoSummary {
                 last_rising: second.last_rising.or(first.last_rising),
                 first_clear: first.first_clear.or(second.first_clear),
                 last_clear: second.last_clear.or(first.last_clear),
+            }
+        }))
+    }
+    pub(crate) fn map<Q: Copy>(self, mut convert: impl FnMut(P) -> Q) -> SostenutoSummary<Q> {
+        SostenutoSummary(core::array::from_fn(|initial| {
+            let value = self.0[initial];
+            SostenutoProjection {
+                down: value.down,
+                last_rising: value.last_rising.map(&mut convert),
+                first_clear: value.first_clear.map(&mut convert),
+                last_clear: value.last_clear.map(&mut convert),
             }
         }))
     }

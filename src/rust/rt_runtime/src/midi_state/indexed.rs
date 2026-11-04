@@ -3,6 +3,8 @@
 use super::{interval::*, ChannelState, MidiState, ParameterFamily};
 use crate::{midi::Message, Frame};
 
+mod tree;
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct Cut {
     point: Point,

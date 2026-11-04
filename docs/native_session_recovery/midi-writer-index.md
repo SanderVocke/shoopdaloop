@@ -42,6 +42,14 @@ fallible tick work succeeds. If mutation happens earlier, retain a complete
 rollback root for that in-flight tick. A failed graph tick must preserve the previous
 complete audio/MIDI cut, not merely the content before writer entry.
 
+The prepared tree layer is implemented with COW AVL paths, cached interval
+summaries and deferred node/value release. Tests check snapshots, reference
+counts, balance, pressure and range-query work. These tests still need fresh CI;
+the category/version store and packet slabs are not implemented by that layer.
+Sostenuto aggregates can store compact record IDs and map only their result
+markers to ordered points. Subtree ownership keeps those records alive without
+repeating full timestamps in every aggregate.
+
 Preparation globally bounds descriptors, payload slabs, tree/table nodes, roots,
 retirements and writer scratch. Required capture/writer credits are separate from
 ordinary exports and imports. Preflight the whole tick before mutations. Deferred
