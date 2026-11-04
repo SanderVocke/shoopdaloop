@@ -117,7 +117,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libjack-jackd2-dev jackd2 \
-            libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev
+            libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev gdb
       - name: Test direct audio and MIDI through production host paths
         run: python3 scripts/run_native_jack_tests.py
       - name: Build and test native driver feature combinations
