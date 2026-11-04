@@ -22,7 +22,9 @@
       "changed_byte_offsets": [
         64,
         65
-      ]
+      ],
+      "previous_revision": 35,
+      "current_revision": 4097
     },
     {
       "callback": 59,
@@ -30,7 +32,9 @@
       "changed_byte_offsets": [
         56,
         57
-      ]
+      ],
+      "previous_revision": 36,
+      "current_revision": 4225
     },
     {
       "callback": 60,
@@ -38,7 +42,9 @@
       "changed_byte_offsets": [
         64,
         65
-      ]
+      ],
+      "previous_revision": 36,
+      "current_revision": 4225
     },
     {
       "callback": 61,
@@ -46,7 +52,9 @@
       "changed_byte_offsets": [
         56,
         57
-      ]
+      ],
+      "previous_revision": 37,
+      "current_revision": 4353
     }
   ],
   "reason": "Capture revisions publish once per whole Q=1 tick rather than once per old variable interval. All requests, every rendered sample hash and all other response bytes are identical; MIDI and graph hashes and work counters are unchanged."

@@ -1,6 +1,6 @@
 # Plan: consolidate quantum processing
 
-Status: implementation in progress. Baseline: `52f24c02` on
+Status: implementation and local acceptance complete; final delivery paused. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
 draft PR #930. Continue that branch and PR rather than opening a parallel migration.
 
@@ -257,7 +257,7 @@ Report skips/failures explicitly; a local pass does not substitute for stage 7.
 
 ### Stage 7 — final end-to-end validation, CI and review
 
-- [ ] Once the user resumes delivery, run actual browser/AudioWorklet acceptance for
+- [x] Run actual browser/AudioWorklet acceptance locally for
   the changed generic fixtures and production application: record/play, audio/MIDI
   export, graph publication, recovery and retimed session/import-family workflows.
   Compare full media/results to native replay, including dense transitions, saturated
@@ -475,7 +475,7 @@ Logs are `work/cleanup-final-*`, `work/cleanup-full-{native,node}.log`,
 tooling, artifacts and `work/` are not committed. Before this evidence entry the
 consolidation relative to 52f24c02 changed 182 tracked files, adding 2,965 lines and
 removing 7,466 (net **4,501 removed**, excluding binary sizes and the new journal
-sidecar). This follows the preceding removal of roughly16,000 prototype/benchmark
+sidecar). This follows the preceding removal of roughly 16,000 prototype/benchmark
 lines. The largest retired component is the demonstrator; useful DSP scenarios
 remain in existing shared test support rather than a copied service implementation.
 
@@ -484,8 +484,8 @@ non-isolated loop offline/live AudioWorklets pass in debug and release, includin
 all six deliberate failure gates per profile; the generic runtime worklets and both
 failure gates also pass. The 21 production file/retiming Chromium tests pass,
 including sync-family import and Q16/Q64 scenarios. Native socket/shared-memory
-transport and >32MiB file canaries pass. The fresh generic runtime journal matches
-all2,601 historical callback inputs/sample hashes, complete MIDI/graph hashes and
+transport and >32 MiB file canaries pass. The fresh generic runtime journal matches
+all 2,601 historical callback inputs/sample hashes, complete MIDI/graph hashes and
 work counters. Only four capture revision fields differ because Q=1 publishes each
 tick (35→4097,36→4225,36→4225,37→4353). Updated the golden artifact only after that
 comparison and successful real-worklet/native replay; its sidecar records current
@@ -493,4 +493,45 @@ provenance and the exact changed response offsets. Historical reports are unchan
 Native-only replay of the updated golden artifact passes.
 
 The consolidated result remains local. Final interpreter completion, delivery/CI,
-automated review and human delivery decision are still tracked in stage7.
+automated review and human delivery decision are still tracked in stage 7.
+
+
+Final local acceptance (2026-11-04, following 24fc26c1): the full affected Wasm
+suite also passes with the CI-pinned **Node22.22.2: 434 tests**. The production
+hosted Chromium UI smoke passes record/play/save/clear/load, bus reconfiguration
+and new session with **zero reported xruns**. This is one observed smoke run, not
+a general deadline guarantee. Socket and shared-memory companions pass both the
+transport workflow and >32 MiB exact WAV/MIDI persistence round-trip, including
+socket attachment/recovery, corrupt input refusal, independent abandoned-owner
+cleanup, fresh identities after load and exact resave.
+
+Pinned **nightly-2026-05-04 Miri: 26 tests passed**, preserving the existing
+900-second per-command watchdog and original workloads:
+
+| Target | Passed |
+| --- | ---: |
+| runtime `planner_execution` | 8 |
+| runtime `planner_admission` | 3 |
+| runtime `capture_prepared_interval` | 3 |
+| runtime `capture_group_intervals::whole_tick_capture_is_atomic_and_retained_prefixes_survive_at_larger_quanta` | 1 |
+| runtime `resource_index` | 5 |
+| loops `graph_guards` | 6 |
+
+Evidence: `work/cleanup-miri/result.json` and its six command logs;
+`work/cleanup-pinned-node.log`, `work/cleanup-app-browser-smoke.log`,
+`work/cleanup-production-retiming-browser.log`, `work/cleanup-native-{probe,files}-*`,
+and the actual worklet reports under `target/{loops-host,rt-runtime-host}/reports`.
+The complete independent runtime fixture tests also pass. No remote CI or review
+has been inspected or run as part of this consolidation, and nothing has been
+pushed. The explicit stage-6 pause remains in force; permission to resume delivery
+has been requested. Do not mark this plan completely finished until the remaining
+stage-7 delivery, cross-platform/package CI and automated-review evidence exists.
+
+Architectural outcome: the removed mechanisms were compatibility APIs and a second
+composition, not the ownership foundations. Graph compilation/publication, resource
+and MIDI-index pools, coordinated capture transactions, typed receipts/credits,
+physical-node admission and explicit stopped reclamation still protect independent
+requirements. Quantum processing simplifies their scheduling but does not make
+those responsibilities redundant. The retained library/application/host boundaries
+also remain useful; further crate deletion would require a separate change of
+responsibility rather than this execution-model cleanup.
