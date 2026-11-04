@@ -1,0 +1,434 @@
+# Host-side built-in FX, OxiSynth and dry/wet track parity
+
+## Status, base and delivery
+
+Implementation started on `feat/hosted-track-processors` from `2e19210b`. Written under
+[write_plan.md](.agents/prompts/write_plan.md).
+
+- Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
+- Reference: fetched `master` at `92079fb6`, plus executable behavior retained in
+  `shoop_app_reference`, `shoop_engine`, and `reference/legacy_browser`.
+- Implementation branch: create `feat/hosted-track-processors` from the current
+  `feat/fixed-quantum-runtime`; record its actual base before implementation.
+  Open its PR against **`feat/fixed-quantum-runtime`**, not `master`. If the base
+  branch has merged, use its integration successor and record the change.
+- Follow `AGENTS.md`, `.agents/index.md`, `.agents/rules/{mandates,style}.md` and
+  `.agents/info/{build,test}.md` during execution. No merge is authorized here.
+
+## Goals and scope
+
+Restore built-in FunDSP FX and OxiSynth in the production host, using synchronous
+render-thread backends behind a production `BufferedProcessor`. Their audio and
+MIDI stay in the host's graph. Both implementations are independently optional
+at build time and host startup; the host advertises the effective capabilities.
+
+Restore the dry/wet track foundation needed to use these processors as on master:
+creation/removal, channel roles, monitoring, ordinary dry/wet capture and wet
+playback, dry-through-wet playback, dry-into-wet rerecording, default actions,
+track controls, editors/MIDI Learn, role-aware media I/O, persistence and recovery.
+Include External dry/wet tracks as the other existing topology of that foundation,
+using existing host ports rather than introducing a processor transport. Include
+the existing global FX-control MIDI input for track destinations only.
+
+Native CPAL/JACK/dummy hosts and applicable browser AudioWorklet hosts are in
+scope, including split native hosts and hosted/self-contained browser delivery.
+Browser Wasm can use `std`; OxiSynth is not restricted to native solely because it
+requires `std`. Minimal/core and actual `no_std` targets must not acquire it.
+Retain the replacement engine's existing negotiated channel capacity (currently
+at most eight audio channels per direction); increasing that ceiling is separate
+work. A maximum-width dry/wet track must support eight dry plus eight wet channels.
+
+Bus processors, bus FX editors or MIDI destinations, Carla, asynchronous DSP,
+audio/MIDI IPC to processor workers, live enable/disable of host-wide processor
+support, live batching changes, general graph latency compensation, and unrelated
+parity work remain out of scope. Already-supported track-to-bus output routing
+continues to work. Restore the latency/take bookkeeping needed for correct
+processed tracks; the general P09/P10 configuration controls remain separate.
+Documents requiring other unsupported features still refuse transactionally.
+
+## Immutable goals and acceptance criteria
+
+These goals and criteria must not change without explicit user approval.
+
+1. **Host execution and isolation.** Real FX and synth processing runs in the
+   production host's render context through `BufferedProcessor`, without an
+   audio/MIDI round trip to the UI/service or another process. Production does not
+   depend on the legacy `shoop_engine` or reference application. `rt_runtime`,
+   `rt_buffered`, `shoop_loops` and the engine core retain `no_std + alloc` and
+   their dependency boundaries. OxiSynth may use `std` in an optional host package.
+2. **Independent optionality.** Builds support neither processor, FX only, synth
+   only, or both. With both compiled, startup independently enables either,
+   neither, or both. An excluded implementation brings no normal/build dependency
+   or packaged asset into the corresponding minimal host artifact. A startup-
+   disabled implementation prepares no DSP instances or decoded resources.
+   Explicit unsupported startup requests fail clearly; normal minimal startup
+   succeeds. UI/Lua and session admission use host truth, independent of the
+   client's build. Startup settings survive the existing configuration/launch
+   round trips and take effect only for a newly started host.
+3. **Master's valid shapes.** Built-in FX supports matching mono/stereo/N dry/wet
+   audio widths with required dry MIDI; OxiSynth retains exactly two dry audio,
+   two wet audio and one dry MIDI channel, ignoring dry audio samples. External
+   tracks retain independently sized dry/wet sides and optional dry MIDI where
+   the host supports them. Advertise finite existing host channel/instance/memory
+   limits and reject invalid shapes before mutation. Dry and wet widths each use
+   their negotiated limit: do not halve it by flattening both into one bank.
+   All valid widths up to the advertised maximum work, not just stereo presets.
+4. **Complete dry/wet behavior.** Preserve master/reference routing and capture
+   semantics across monitoring, ordinary record/play/stop, dry-through-wet,
+   dry-into-wet, immediate/scheduled transitions, multiple loops and supported
+   grab/replacement interactions. Rerecording preserves dry media and replaces
+   wet media, forces monitoring off as in the reference, and respects transition
+   cancellation. Default clicks and Lua default playback follow the track's
+   chosen default; explicit Play remains regular wet playback. Direct/trigger
+   tracks keep their existing behavior.
+5. **DSP and controls.** Preserve the FX stage order, types, continuous controls,
+   smoothing, independent stage bypass and skipped disabled DSP. Preserve synth
+   presets, Panic, sends, supported MIDI filtering and attribution. Restore
+   embedded editors, per-track activation and state restore, validated
+   learn/assign/remove/clear mappings, and confirmed control state including
+   MIDI-origin changes. Capture the processor state associated with a recorded
+   wet take and restore it through the existing loop action; a failed restore
+   leaves the current processor usable. Track-only global FX control
+   keeps master's filtering, additive dual-routing and inactive-value retention;
+   it neither records control-only traffic nor wakes sleeping audio DSP.
+6. **Timing and realtime safety.** Preserve exact-Q graph processing and the
+   buffered delay `L = (batch_quanta + slack_quanta) * Q`. Ship real processors
+   initially with M=1/S=0; keep the adapter's general timing contract tested.
+   Report node and host delay separately. Correct dry/wet playback/capture and
+   take alignment account for this delay without cumulative drift or silently
+   changing an active take. Preserve MIDI offsets and equal-time order without
+   new buffering-induced event quantization. All render/operation/admission and
+   worklet control-pump paths allocate/free nothing, never block or perform I/O,
+   and have finite work/storage bounds, including cold first notes and new voice
+   peaks. Synchronous slack is not an execution-time allowance.
+7. **Lifetime, failure and capacity.** Preparation, activation, sleep/wake, reset,
+   reuse and removal cannot expose stale voices, tails, buffered MIDI/audio or
+   another track's state. Ordinary routing changes do not accidentally reset
+   processors. Bounded errors, terminal outcomes, MIDI cleanup and disposal follow
+   the existing runtime contracts. Capacity/preparation/control failures preserve
+   the old usable track/session and unrelated audio, release reservations, and
+   refuse stale generations. Default startup budgets provide replacement capacity
+   for an admitted session; no temporary overcommit or stop-and-rebuild loading.
+8. **Persistence, media and recovery.** Structure-only and media-bearing save/load
+   and New Session preserve topology, channel-role order, default mode, FX state,
+   presets/sends, mappings, connections/missing-port intent and recorded dry/wet
+   media/take metadata, including the take's recorded processor state. Role-aware
+   audio/MIDI import, replacement and export remain
+   correct. Disabled/unavailable processors, malformed state and exhausted candidate
+   capacity refuse the whole load while the old session keeps running. UI loss
+   does not stop admitted work or reset DSP; reconnect reconstructs confirmed state
+   without replay. Host replacement renegotiates capabilities and fences old IDs.
+9. **Public usability and delivery.** Actual add-track forms, controls, Connections,
+   editors, UI/Lua actions and packaged resources work through the production
+   service on native and browser paths. Tests prove audio/MIDI results, not merely
+   descriptor presence. Required regression/platform CI and automated PR review
+   are completed with evidence tied to the delivered revision. Keep P07 explicitly
+   partial for Carla and P08 open for bus FX; close other rows only against their
+   full acceptance criteria and evidence.
+
+## Design rules and implementation boundaries
+
+- **Portable seam, optional implementations.** Extract reusable DSP, MIDI mapping,
+  preset/state definitions and resources from the old engine into focused packages;
+  keep reference fixtures runnable against the extracted code. The buffered backend
+  interface belongs to `rt_buffered`; concrete FunDSP/OxiSynth implementations and
+  resource preparation belong to optional host processor packages. The engine
+  accepts prepared processors through a small portable interface/node extension;
+  it must not import concrete DSP libraries, application contracts or OS services.
+  Keep protocol/state types usable without either DSP feature. Do not weaken
+  dependency audits to admit the legacy engine into production.
+- **Production adapter.** Generalize the test-only stereo/in-place seam to validated
+  input/output shapes, including zero-port sides, consumed MIDI and asymmetric
+  external/test shapes. Backends receive prepared batch storage and bounded events,
+  never retain borrowed graph buffers, and declare additional fixed latency and
+  their capacity needs. Keep collection, source-frame/generation labels, ordered
+  completion, scheduled release and overflow policy in the adapter. There is one
+  direct/unified processing core and one real backend path; preserve the dummy as
+  a test/example. Do not invent an asynchronous transport protocol now.
+- **Controls have a source-frame contract.** Carry bounded parameter/MIDI events
+  with their batch-relative offsets and stable ordering; split DSP work where
+  required. Controls must not retroactively affect already-computed output, or be
+  applied to older collected audio merely because submission happens later.
+  Distinguish accepted, applied and projected state. State capture includes applied
+  MIDI-learned values at a coherent boundary, rather than stale UI-side mirrors.
+- **Prepared lifetime on every host.** Use host-owned finite processor slot banks
+  prepared before rendering, with explicit per-type instance limits and aggregate
+  memory budget. Rack slots support any admitted width up to their prepared maximum,
+  allocating needed stereo/non-stereo state in advance to preserve master DSP.
+  Startup-disabled types have zero slots. Reserve independent active/candidate
+  owners sufficient for transactional replacement, and account for retiring owners.
+  Claim/configure/publish slots at an acknowledged graph/domain cut; reuse only after
+  MIDI cleanup, reset and retirement complete. No construction/destruction in the
+  worklet's render-time record pump. Large reset/cleanup jobs must be split into
+  budgeted work while the slot is inactive; final destruction is quiescent/off-render.
+- **OxiSynth preparation is a prerequisite.** Pinned 0.1.0 starts its voice `Vec`
+  empty and grows it on note-on, and interpolation tables use `LazyLock`. Existing
+  allocation tests warm notes before guarding. Add an explicit deterministic
+  preparation API, using a minimal pinned upstream revision or a documented local
+  patch if needed: reserve the full configured voice pool, initialize every render-
+  reachable lazy table and pre-touch storage before activation. Audit voice creation,
+  stealing, preset selection/reset, logging and final-owner drops; reserving only
+  output buffers or warming a single note is insufficient. Preserve 256-voice
+  reference behavior by default; any lower advertised host limit is explicit.
+- **Resource accounting and configuration.** Name separate Cargo features such as
+  `builtin-fx` and `oxisynth`; do not reuse Carla's `native-fx`. Forward them through
+  host/app packaging and the separate worklet build. Shared host startup settings
+  carry independent auto/on/off policy, instance capacities and memory limits.
+  Product builds default to both available/enabled when supported; minimal builds
+  start with no accidental enable request. Explicit On for a missing implementation
+  or unsupported actual sample rate refuses with a reason. Auto may advertise it
+  unavailable. Capability resolution uses the actual negotiated sample rate and
+  resources. Count buffered storage, FX delay/reverb state, voice pools, per-instance
+  decoded SoundFonts, candidate banks and metadata; do not mistake the adapter's
+  32 MiB bound or the 5.7 MiB embedded asset for total synth/host memory cost.
+- **Dry/wet composition and protocol.** Keep logical dry/wet roles distinct from
+  physical prepared slots. Inspect `shoop_loops` playback/capture primitives before
+  extending them: dry/wet is currently absent from the production RT protocol and
+  must become an authoritative operation, not a client-only mode label. Coordinate
+  role-specific loop playback/capture and processor activation in one planner-owned
+  transition; count a logical wrap once. Use finite versioned messages, limits,
+  snapshots and replacement records throughout both app and RT protocols. Runtime
+  pointers/trait objects never cross a wire. Native host port publication distinguishes
+  external sends/returns from private hosted endpoints. Reuse ordinary wet output
+  routes to existing buses without adding processors to buses.
+- **Latency and activity.** Use the actual buffered delay plus declared backend
+  delay for processed-source alignment and persisted future-take policy; account
+  for host delay once. Keep recorded wet playback from being processed twice.
+  Specify startup silence, delayed tail handling, preroll, stop/panic, suspension
+  and reactivation with note cleanup and fresh stream origins. Do not use the current
+  quiescent-only `reset` during live processing without a safe lifecycle extension.
+  Preserve reference tail/sleep behavior and introduce no unintended mute or stale
+  release. General manual latency/timeline editing remains separately gated.
+- **Platform and recovery.** Wire startup settings through native host config,
+  Host Manager/in-process launch and browser worklet config/build scripts. The
+  import-free worklet contract and bounded `process()` pump remain intact; no new
+  imports/threads are justified merely by linking OxiSynth's `std`. Package the
+  SoundFont, presets and notices only in synth-enabled host artifacts; client editor
+  metadata comes from the host and must not embed the SoundFont. Service ownership
+  and generation-fenced recovery remain independent of any UI lifetime.
+
+## Staged implementation
+
+Stages are ordered; each consumes the verified interfaces of earlier stages.
+Each stage includes its own verification and a commit before moving on.
+
+### 1. Establish the branch and executable parity contract
+
+- [x] Create the implementation branch, record base/reference SHAs, and add a narrow
+  behavior/evidence document at `docs/native_session_recovery/track-processors.md`.
+  Record exact default pools/budgets, sample-rate support and effective feature matrix
+  there before implementing admission. Budget active and full replacement sessions.
+- [x] Turn the reference topology/routing truth tables, channel-role order, loop-mode
+  semantics, sleep/tail and recorded-take behavior into the production acceptance
+  matrix. Distinguish processor shape constraints from negotiated host limits.
+- [x] Map existing primitives and missing work in RT mode/schema, engine graph/pools,
+  backend/session adapter, service projection/admission and persistence. Identify
+  compatibility/version changes; keep unrelated unsupported features refused.
+- [ ] Verify against named reference tests listed below and master documentation;
+  establish baseline regressions. Commit the contract and plan.
+
+### 2. Promote BufferedProcessor to a reusable production node
+
+- [ ] Implement the public prepared synchronous backend contract, arbitrary validated
+  port counts, separate bounded input/output/event/control capacities, generic
+  construction and direct/unified entry points. Add live activation/deactivation,
+  drain/abort/reset and retirement operations with explicit generation/timing rules.
+- [ ] Preserve exact source-time release for M/S, MIDI cleanup and all existing
+  overflow/error semantics. Reject arithmetic/shape/storage limits before mutation.
+  Keep lifecycle work bounded and distinguish ordinary graph epochs from resets.
+- [ ] Verify Q=1/16/32/64/128, M=1/2/3, S=0/1/>M; mono/N/asymmetric/zero-port
+  shapes; Q/B boundary MIDI and control events; startup/tail; mute/bypass; sleep/wake;
+  removal/reuse; exact-fit/overflow; callback partitions and zero-length callbacks.
+  Compare direct and unified paths to independent sample/event expectations under
+  allocation/deallocation guards. Extend the existing production-strip composition
+  fixture. Run adapter/runtime boundary audits and native/Wasm tests; commit.
+
+### 3. Extract and prepare both real DSP backends
+
+- [ ] Extract FX, synth, processor-owned mapping/state and resource recipes without
+  pulling `shoop_engine` into production. Keep legacy tests/imports functional and
+  serialization/preset IDs compatible. Separate host-only assets from client metadata.
+- [ ] Implement both synchronous buffered backends and bounded sample-relative
+  controls. Preallocate FunDSP units/delay lines for every admitted rack width and
+  stage/type change. Fix OxiSynth voice allocation/lazy initialization through the
+  preparation API; document/pin any upstream or local patch and its build provenance.
+- [ ] Verify rack stage order, bypass/no-disabled-DSP calls, types/smoothing, stereo
+  and independent N-channel behavior, mapping values; synth preset differences,
+  dry-audio independence, filtered MIDI, sends and Panic. Compare to reference DSP
+  with declared buffering delay, including non-block-aligned note offsets.
+- [ ] Guard the first post-preparation note, increasing/saturated polyphony and voice
+  stealing, all presets, control changes, reset/reuse and error paths from a cold
+  process. Count frees as well as allocations; prevent third-party render logging
+  from reaching blocking sinks. Test unsupported sample rates explicitly. Verify
+  neither/FX/synth/both dependencies and Wasm compatibility; commit.
+
+### 4. Add host startup policy, prepared banks and truthful advertisement
+
+- [ ] Add independent feature forwarding and shared startup configuration, validation,
+  native/Host Manager launch controls, browser configuration versioning and worklet
+  feature forwarding. Show startup-only settings in existing host launch flows;
+  reconcile the current settings allowance of 16 channels with the engine ceiling
+  of eight so configuration, advertised limits and admission agree.
+- [ ] Prepare finite active/candidate processor banks and resources before callbacks;
+  implement bounded claim/return/reset with generations. Wire the portable prepared
+  node seam into `EngineNode`/pool composition without concrete DSP dependencies.
+- [ ] Publish effective per-type descriptors, preset metadata, instance/width/resource
+  limits and useful unavailable reasons through engine/backend/service snapshots.
+  Keep the bus processor catalog empty and BusFx disabled. Clients never infer host
+  support from their own Cargo features. Validate requests on the authoritative side.
+- [ ] Verify every build combination and all four startup combinations, explicit
+  missing-feature requests, real sample-rate resolution, at-limit and one-over-limit
+  admission, disabled startup with zero DSP preparation, client/host build mismatch,
+  config/launch round trips and no Wasm imports or callback heap activity. Measure
+  cold startup time against host readiness deadlines and memory against the complete
+  declared bank budget. Commit.
+
+### 5. Implement dry/wet graph roles, loop modes and latency
+
+- [ ] Extend RT protocol/codecs, engine model/graph/pools and adapter track/port mappings
+  for distinct dry audio/MIDI, processor input/output and wet capture/playback. Restore
+  External sends/returns and native dynamic publication; hosted endpoints stay internal.
+  Carry roles through loop creation, content reads/meters and resynchronization.
+- [ ] Implement authoritative dry-through-wet/rerecord transitions and per-role capture
+  policy over loop primitives. Preserve dry takes during wet rerecord, ordinary wet
+  playback, input gain/monitoring/mute/balance, reference prerouting and multiple-loop
+  behavior. Integrate current grab/replacement without treating them as new features.
+- [ ] Implement automatic buffered/host latency and future-take alignment needed by
+  these modes, including audio/MIDI preroll, initial silence and pending-output tails.
+  Keep active take metadata immutable and compensate each delay once. Restore
+  default-mode actions while keeping explicit Play regular.
+- [ ] Verify deterministic audio impulses and MIDI note pairs through actual FX/synth
+  nodes for every mode and reference routing case, with aligned/nonaligned transitions,
+  record-to-play, canceled scheduling, wet-only playback, looping/rerecord across wraps,
+  simultaneous loops, dry-media identity preservation, no double processing, no drift,
+  and no stuck notes. Cover External unequal widths, all admitted FX widths and synth
+  shape; prove maximum dry plus maximum wet is supported simultaneously. Exercise
+  native CPAL/JACK/dummy and worklet partitioning, plus failure rollback; commit.
+
+### 6. Restore service operations, editors and track control MIDI
+
+- [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace
+  unconditional service refusals and empty track catalogs. Restore pending/results,
+  confirmed projection and UI/Lua actions for creation/removal/default modes, track
+  controls/processor activation/state restore, FX parameters, synth presets/sends/Panic
+  and mappings. Editor visibility stays transient; unsupported external-UI/recovery/
+  process-log facets must not be advertised for the built-ins.
+- [ ] Reconnect surviving add-track/editor/Connections widgets to the production route.
+  Restore input/output metering and External port visibility; show effective startup
+  availability/limits. Keep Carla and bus FX controls unavailable.
+- [ ] Restore track MIDI Learn and the global FX-control input with reference filtering,
+  additive routing, idle-value retention and bounded saturation handling. MIDI-origin
+  values enter authoritative projection/save state; control-only traffic is not recorded.
+- [ ] Verify actual public UI and Lua default/explicit actions, each editor control class,
+  learned/removed mappings, stale/invalid controls, operation supersession/results,
+  active/inactive/global+dry MIDI routing and slow/full telemetry. Use distinct tracks
+  to detect cross-instance state leaks. Test attach/reconnect during an admitted
+  create/control/remove and prove continuing DSP and one terminal outcome; commit.
+
+### 7. Complete persistence, media and replacement/recovery
+
+- [ ] Extend persistence images/codecs, service capture/mapping and adapter replacement
+  staging for topology/port roles/default mode, processor state/mappings, dry/wet media,
+  track-only global input intent and required latency/take metadata. Keep stable
+  source-to-live ID mappings and absent-port intent; do not serialize runtime owners.
+- [ ] Capture applied processor state at the reference wet-take recording boundary,
+  retaining it independently of later edits. Restore it through
+  `LoopAction::RestoreRecordedFxState` using a preflighted atomic state change;
+  failed restoration cannot damage the live processor or recorded media.
+- [ ] Restore dry/wet audio channel import/export labels/order, exact MIDI/SMF routes,
+  content replacement and recorded-take state. Stage processor candidates in the
+  reserved bank and publish graph, state and media atomically with existing fences.
+- [ ] Verify structure-only and full save/load/save for mono/N FX, synth and unequal
+  External roles; changed presets, mapped MIDI values and recorded/rerecorded takes;
+  successful/failed recorded-state restoration, role selection/import remapping,
+  sample-rate consent and rebuilt DSP at the accepted host rate. Loaded loops remain
+  stopped under the existing contract.
+- [ ] Verify malformed/old supported state, unavailable startup types, unsupported
+  document dependencies, exhausted budgets, cancellation, failed preparation and
+  replacement at full admitted capacity. Old audio/media/state must remain usable;
+  candidate reservations must return. Cover UI loss before/after acceptance/commit,
+  repeated reconnect without replay, New Session and fresh-host capability changes.
+  No host-wide stop/restart or stale buffered output on successful replacement; commit.
+
+### 8. Final end-to-end validation, evidence and PR delivery
+
+- [ ] Exercise the packaged production application: launch hosts with both/either/
+  neither processor enabled; create mono/N FX and synth tracks through the real UI;
+  edit/learn controls; monitor/record/play dry and wet, rerecord, save/reload/export;
+  disconnect/reattach and verify continuing sound and confirmed state. Include External
+  routing on supported native hosts and ordinary wet output to existing buses.
+- [ ] Run native typed/in-process and socket/shared-memory carrier scenarios, Linux
+  dummy/CPAL/JACK integration, Windows/macOS builds/tests, and real hosted/self-contained
+  Chromium plus existing Firefox browser acceptance. Use Web MIDI fixtures/audio-output
+  assertions where hardware is unavailable; do not call a mock-only path platform proof.
+- [ ] Measure bounded callback cost at maximum admitted channel/voice/control load,
+  startup latency and memory. Report hardware/configuration, peak cost/xruns and
+  limits; synthetic stream slack is not a deadline guarantee. Add selected Miri
+  coverage for portable ownership/lifecycle logic using existing tooling; do not
+  claim that it certifies the third-party DSP implementation.
+- [ ] Run the required gates below, finish focused feature-matrix CI, record links and
+  exact revisions in `track-processors.md`, and update README/usage/startup docs and
+  the parity ledger. P06 closes only with complete scoped evidence; P07 names this
+  restoration while remaining open for Carla. P01/P02/P11 expand their supported
+  document/media subset; P08 and general P09/P10 stay open as applicable. Preserve
+  unsupported-feature diagnostics and reference provenance.
+- [ ] Commit completed milestones, push the implementation branch and create/update
+  the PR with final scope and validation evidence. Work until required CI is green;
+  inspect automated reviews, address applicable feedback and rerun affected checks
+  repeatedly until the reviewer approves. Record unavailable checks honestly; a
+  prior milestone's macOS waiver does not apply to this work. Leave the PR reviewable
+  without merging unless instructed.
+
+## Reference anchors and verification gates
+
+Use retained tests as executable contracts and add equivalent production-route tests;
+passing reference tests alone is insufficient:
+
+- `shoop_app_reference`: `application_adds_external_dry_wet_tracks_from_processor_capabilities`,
+  `dry_wet_track_default_action_is_dynamic_while_explicit_play_stays_explicit`,
+  `dry_wet_media_io_maps_and_exports_role_order_without_flattening`,
+  `builtin_fx_session_round_trip_preserves_n_channels_controls_and_assignments`,
+  `oxisynth_session_round_trip_preserves_selected_preset`,
+  `processed_track_session_round_trip_preserves_roles_state_and_recorded_take`, and
+  `failed_recorded_fx_restore_leaves_the_processed_track_usable`. The last two use
+  a Carla-shaped fake; port their generic state/transaction expectations to the
+  real built-ins without enabling Carla.
+- `shoop_engine/src/{builtin_fx,oxisynth}.rs` and `builtin_fx/`: reference DSP tests;
+  `shoop_backend` mapping/routing and descriptor tests; engine global-FX/no-allocation
+  fixtures; master `docs/source/usage.trackcontrols.rst`; retained native built-in
+  save/reload frontend canary and legacy browser acceptance.
+- Production: `rt_buffered`, `shoop_loops`, `shoop_rt_engine`, `shoop_rt_backend`,
+  `shoop_app` service/persistence tests, `shoop_host`, `shoop_rt_host_worklet`, and
+  `shoopdaloop` packaged/UI probes. Register extracted package tests with the same
+  Wasm and tracing inventories.
+
+Use the repository's selected build environment. Baseline full gates, plus the
+new native/Wasm neither/FX/synth/both feature and startup matrix:
+
+```sh
+cargo fmt --all -- --check
+RUSTFLAGS="-D warnings" cargo build --workspace
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+python3 scripts/check_rt_runtime_boundary.py
+python3 scripts/check_loops_boundary.py
+python3 scripts/check_rt_engine_boundary.py
+python3 scripts/check_feature_parity.py
+python3 scripts/check_tracing_coverage.py --require-closed
+python3 scripts/check_shoop_test_usage.py
+python3 scripts/run_wasm_tests.py --runtime node --profile dev
+```
+
+Extend dependency/feature audits to prove the new boundaries and excluded assets;
+do not rely on the workspace's unified feature build for isolation. Run real-backend
+tests without `SHOOP_ALLOW_MISSING_BACKENDS=1`. Use the existing README's native
+transport/persistence probes, browser smoke and release-packaging commands extended
+with the FX/synth scenarios. Before Rust commits run `cargo fmt --all` and the
+warning-denying build; before behavior-changing pushes run the required suites.
+
+## Execution contract
+
+- Keep this plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
