@@ -402,3 +402,15 @@ mapping and rename behavior. Native screenshots in `docs/images/profiling_graph*
 use the prescribed-time preview fixture, not a production capture. Visual checking
 also caught an unusable group popup; an explicitly identified group selector and
 pointer-input regression test fix it.
+
+
+Base integration: the profiling branch advanced to `af44ae10` during graph
+validation. Merge its disabled-activation generation invalidation and table
+layout/contrast fixes, retaining UI-qualified names. The PR cannot run CI while
+it has merge conflicts; the resolved merge is undergoing renewed validation.
+The original release comparison remains explicitly against `ac4748a4`.
+A dense 4,094-processor / 16,293-link UI fixture exposed unnecessarily fine
+curve sampling at far zoom. The adapter now selects curve detail and a six-pixel
+hover radius in screen space using the widget's supported APIs. A pointer-input
+test covers link hover/pinning across zoom transforms. Final measurements and
+CI state will be recorded after the merge gates pass.

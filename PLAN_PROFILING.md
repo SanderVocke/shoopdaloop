@@ -1,6 +1,7 @@
 # Runtime profiling implementation plan
 
-Status: recording, transport, settings and table implemented; end-to-end validation and overhead measurements in progress.
+Status: dedicated profiling window and RT/transport integration implemented;
+release measurements and final cross-platform validation in progress.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -236,11 +237,11 @@ traffic. Commit the integration milestone.
 
 Depends on Stage 4.
 
-- [ ] Provide a dedicated profiling window reached from below Host Manager in the
+- [x] Provide a dedicated profiling window reached from below Host Manager in the
   backend status LED panel, including its hover panel. Remove profiling UI from
   Settings. Connect its immediate switch to the default-off persisted preference. Expose acknowledged state and unavailable/error feedback through the
   existing settings/application flow.
-- [ ] Style the profiling window with a clear immediate switch, a copy of the
+- [x] Style the profiling window with a clear immediate switch, a copy of the
   overall DSP load bar, four aligned statistics columns, interval/sample summaries,
   and Live/Latest xrun. Add µs / % budget presentation using the fixed quantum
   duration at the current sample rate.
@@ -248,7 +249,7 @@ Depends on Stage 4.
 - [x] Clear the view on graph-reset generation changes, show pending/empty rows
   truthfully and preserve the final table while off. Display incomplete/lost-data
   and trigger attribution outside the table.
-- [ ] Test immediate switching independently of asynchronous preference saving,
+- [x] Test immediate switching independently of asynchronous preference saving,
   rapid toggle ordering, popup/window opening, both unit presentations, persistence/defaults, runtime acknowledgement, duplicate node
   labels, known table values, rebuild/reordering/slot reuse, capture selection,
   unavailable timing and late reports after reset.
@@ -409,3 +410,12 @@ The hidden preference remains in the existing persistence system. Runtime reques
 precede background preference saves; a pending local choice cannot be undone by
 an earlier save, and ordinary Settings drafts preserve the current profiling choice.
 The first five focused window/popup/persistence/formatting tests pass.
+
+Dedicated-window verification: the complete native suite passes **2,683/2,683**
+tests (6 facility-dependent skips). A running native app verifies opening from
+the LED hover panel, immediate switching, live statistics, the overall DSP bar,
+budget presentation and background preference persistence. Further review adds
+an off-state activation regression: a newly activated layout invalidates retained
+data even with recording stopped, without clock reads or heap activity. All 16
+focused recorder/runtime/window tests pass, including real pointer input for the
+switch. Final native/Wasm gates and release measurements use this correction.

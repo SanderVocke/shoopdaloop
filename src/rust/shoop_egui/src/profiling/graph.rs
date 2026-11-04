@@ -831,6 +831,12 @@ impl State {
                         }
                     })
                     .edges(ui, |ctx, ui| {
+                        let scale = ui
+                            .ctx()
+                            .layer_transform_to_global(ui.layer_id())
+                            .map_or(1., |t| t.scaling)
+                            .max(0.0001);
+                        ui.style_mut().interaction.interact_radius = 6. / scale;
                         for (i, edge) in self.edges.iter().enumerate() {
                             let mut selected = self.pinned == Some(Focus::Edge(i));
                             let value = self.edge_value(edge, &t, report);
@@ -845,6 +851,7 @@ impl State {
                                 color(value, ready_max),
                             );
                             let response = Edge::new(edge.source, edge.destination, &mut selected)
+                                .distance_per_point(2. / scale)
                                 .waypoints(
                                     self.routes
                                         .route(edge.source, edge.destination, 0)
@@ -1283,6 +1290,70 @@ mod tests {
         .clear();
         assert_eq!(state.hovered, Some(Focus::Node(1)));
         assert_eq!(state.value(3, &view.live, true), Some(3000.));
+    }
+
+    #[shoop_test]
+    fn link_hover_and_pin_keep_a_screen_space_radius_after_zoom() {
+        fn point(output: &egui::FullOutput) -> egui::Pos2 {
+            output
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Path(p) if !p.closed && p.points.len() > 5 => {
+                        Some(p.points[p.points.len() / 2])
+                    }
+                    _ => None,
+                })
+                .expect("rendered connection")
+        }
+        let context = egui::Context::default();
+        let view = fixture();
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        for zoom in [1., 0.2, 2.] {
+            state.pinned = None;
+            render(&mut state, &view, &context, vec![egui::Event::Zoom(zoom)])
+                .textures_delta
+                .clear();
+            let mut output = render(&mut state, &view, &context, vec![]);
+            output.textures_delta.clear();
+            let point = point(&output) + egui::vec2(0., 4.);
+            render(
+                &mut state,
+                &view,
+                &context,
+                vec![egui::Event::PointerMoved(point)],
+            )
+            .textures_delta
+            .clear();
+            render(&mut state, &view, &context, vec![])
+                .textures_delta
+                .clear();
+            assert!(
+                matches!(state.hovered, Some(Focus::Edge(_))),
+                "zoom {zoom}: {:?}",
+                state.hovered
+            );
+            let focus = state.hovered;
+            for pressed in [true, false] {
+                render(
+                    &mut state,
+                    &view,
+                    &context,
+                    vec![egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                )
+                .textures_delta
+                .clear();
+            }
+            assert_eq!(state.pinned, focus);
+        }
     }
 
     #[shoop_test]
