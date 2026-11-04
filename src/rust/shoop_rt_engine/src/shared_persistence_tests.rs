@@ -648,6 +648,7 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     );
     h.op(Operation::CandidateCancel { id: stale });
     let retained = h.export(0);
+    let displaced = h.audio_candidate(reedited);
     h.request(protocol::Request::ReplacementBegin { id: 1 });
     let strip = protocol::StripId(protocol::SlotId::new(0, 2));
     h.request(protocol::Request::ReplacementEdit {
@@ -685,6 +686,11 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     });
     h.request(protocol::Request::ReplacementPrepare { id: 1 });
     h.request(protocol::Request::ReplacementCommit { id: 1 });
+    assert!(matches!(
+        h.op(Operation::CandidatePublish { id: displaced }),
+        Reply::Failed(_)
+    ));
+    h.op(Operation::CandidateCancel { id: displaced });
     h.request(protocol::Request::ContentRelease { id: 1 });
     h.request(protocol::Request::ContentRelease { id: 2 });
     assert_eq!(

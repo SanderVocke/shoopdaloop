@@ -794,6 +794,40 @@ fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() 
 }
 
 #[shoop_test]
+fn active_recording_refuses_private_publication_and_preserves_old_exports() {
+    let mut h = Fixture::new(32, 7);
+    let (take, _, start) = h.grabs();
+    h.adopt(0, take);
+    let old = h.export(0);
+    let id = h.audio_candidate(take);
+    h.request(protocol::Request::LoopTransition {
+        loop_id: protocol::LoopSlotId(protocol::SlotId::new(0, 1)),
+        mode: protocol::LoopMode::Recording,
+        delay: None,
+    });
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id }),
+        failed(Error::Busy)
+    );
+    assert_eq!(
+        h.op(Operation::CandidateBegin {
+            target: target(0),
+            take
+        }),
+        failed(Error::Busy)
+    );
+    h.op(Operation::CandidateCancel { id });
+    let mut stopped = h.engine.render.into_stopped();
+    let audio = bytes(&mut stopped.resources, old.view.audio.unwrap().snapshot);
+    assert_eq!(
+        f32::from_le_bytes(audio[..4].try_into().unwrap()),
+        (start + 1) as f32
+    );
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
 fn saturated_unread_results_do_not_interrupt_history_and_shutdown_recovers_private_work() {
     let mut h = Fixture::new(32, 32);
     let (take, _, _) = h.grabs();
