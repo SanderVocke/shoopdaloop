@@ -256,6 +256,7 @@ if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.get
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
 if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
+if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getUint32(83, true) > 0)) throw new Error('captured host callbacks lost their graph-execution counts');
 let stalledRecords = 0;
 for (let index = 0; index < 512; index += 1) {
   quantum(node, 0.25);

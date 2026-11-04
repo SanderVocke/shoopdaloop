@@ -485,3 +485,10 @@ shutdown. Updated synthetic screenshots show interval wrapper statistics and
 actual whole-callback costs beside the selected-tick timeline. Dotted context
 links use a neutral stroke that remains visible at overview zoom. Chrome and
 isolated production browser runs, final measurements and CI remain pending.
+
+
+Native socket and shared-memory canaries now require complete callback entry,
+exit and between-execution statistics to reach the application snapshot with
+matching sample counts; both pass. The injected-clock worklet artifact contract
+also requires a nonzero execution count on captured host callbacks and passes.
+These checks exercise the new envelope context across the real transport paths.
