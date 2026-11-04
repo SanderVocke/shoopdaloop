@@ -1,12 +1,19 @@
 # Runtime profiling
 
-Open Settings → Developer, enable **Runtime profiling**, and save the preference.
-The control defaults to off and takes effect at the next audio callback without a
-restart. The view reports the engine's acknowledgement. Profiling is independent
+Hover over or click the backend status LED at the bottom of the application and
+choose **Profiling…**, below **Host Manager…**. The dedicated window has an
+immediate on/off switch and an overall DSP load bar showing the same reading as
+the bottom status bar. Profiling defaults to off. A switch sends its runtime
+request immediately and saves the preference in the background; no Save action
+or audio restart is needed. The window reports the engine's acknowledgement. Profiling is independent
 of developer tracing. There are no recording levels or xrun arming controls.
 
-The table contains **Node / Avg / Worst / Stddev**, in microseconds, in graph
-execution order. Names identify prepared strip, loop and bus slots and their
+The table contains **Node / Avg / Worst / Stddev** in graph execution order.
+Choose **µs** or **% budget**. Percentages use one fixed quantum's time budget:
+`100 × duration_ns / (quantum_frames × 1e9 / sample_rate)`. They represent a share
+of the available quantum period, rather than a share of the currently consumed
+DSP time. For example, at 48 kHz with Q=32, a 10 µs step uses 1.50% of the
+666.667 µs budget. Formatting changes preserve the measured data. Names identify prepared strip, loop and bus slots and their
 roles, so tracks with identical display names remain distinguishable. A node
 handling both audio and MIDI has one combined row.
 
@@ -58,6 +65,10 @@ from `performance.now()` working in the main window.
 
 ## Runtime and transport bounds
 
+Targets without 64-bit atomics report timing unavailable; the core still builds
+for bare-metal targets and never substitutes locks for those atomics. This is a
+hardware capability check, with no profiling Cargo feature or build option.
+
 The portable recorder is `no_std`, uses no unsafe code and allocates its owners
 before rendering. Off checks cached enable/reset state and performs no profiling
 clock reads, sample writes or rolling history maintenance. Toggle/reset boundaries
@@ -67,10 +78,9 @@ publication and capture ownership swaps are bounded and never wait for a reader.
 
 For a prepared pool of N nodes, each trace reserves `2*N + 24` 16-byte samples,
 bounded by 65,536. Two circular banks reserve approximately 2 MiB each including
-trace overhead (2–4,096 traces per bank), plus 64 independent live stream pages,
+trace overhead (2–4,096 traces per bank), plus 64–1,024 independent live stream pages selected from an 8 MiB byte budget,
 a callback trace and a spare page. `storage_bytes` reports prepared sample-array
-bytes; it excludes owner/header/channel metadata. `high_water` is the maximum live
-stream page occupancy out of 64. Capacity exhaustion drops live batches with a
+bytes; it excludes owner/header/channel metadata. `high_water` is the maximum ready live-stream queue occupancy. Capacity exhaustion drops live batches with a
 counter and does not borrow command, recovery or media capacity. Reserved history
 remains independent of a stalled collector. Unsupported pool sizes report timing
 unavailable rather than failing audio preparation.

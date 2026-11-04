@@ -9,8 +9,8 @@ Implementation branch: `feat/runtime-profiling`, with its PR targeting the base 
 ## Goals and scope
 
 Add optional, topology-aware real-time profiling to ShoopDaLoop. A single on/off
-setting controls continuous timestamp recording, statistics and automatic xrun
-capture. Show results in a plain UI table with graph node names and their average,
+control in a dedicated profiling window controls continuous timestamp recording, statistics and automatic xrun
+capture. Show results in a statistics table with graph node names and their average,
 worst and standard deviation over the measured interval.
 
 Retain node output-ready timestamps and out-of-graph phase boundaries for complete
@@ -21,8 +21,9 @@ outside this implementation.
 
 ## Immutable acceptance criteria
 
-1. Profiling is available through a single runtime on/off control in Settings,
-   defaults to off and changes without restarting audio. There are no profiling
+1. Profiling is available through a single immediate runtime on/off switch in its
+   own window, opened below Host Manager in the backend status LED panel. It is not
+   shown in the Settings window. It defaults to off and changes without restarting audio. There are no profiling
    build flags, recording levels or separate xrun-arming controls. Persist the
    preference through the existing settings system; display acknowledged runtime
    state rather than assuming a request succeeded.
@@ -31,8 +32,9 @@ outside this implementation.
    checks and predictable control flow. Enabling starts a fresh measured interval;
    disabling stops at a callback boundary and leaves the final report readable.
 3. The UI table has exactly `Node`, `Avg`, `Worst`, `Stddev` columns, one row per
-   active compiled graph node, in execution order, with useful names and consistent
-   microsecond units. Results cover audio and MIDI nodes. Interval bounds and
+   active compiled graph node, in execution order, with useful names and a presentation selector for microseconds or percentage of
+   one fixed quantum's time budget. Include the same overall DSP load reading as
+   the bottom status bar. Results cover audio and MIDI nodes. Interval bounds and
    incomplete/lost-data status are shown outside the table.
 4. Each live report covers all accepted samples since enable or the latest reset,
    through its stated end boundary. A node sample is one complete fixed-tick
@@ -230,20 +232,24 @@ Verification: production round trips deliver coherent reports across process and
 browser boundaries, preserve independent host lifetime and do not starve existing
 traffic. Commit the integration milestone.
 
-### Stage 5 — Add the Settings control and plain statistics table
+### Stage 5 — Add the profiling window and statistics presentation
 
 Depends on Stage 4.
 
-- [x] Register the default-off immediate preference and connect it to the runtime
-  control. Expose acknowledged state and unavailable/error feedback through the
+- [ ] Provide a dedicated profiling window reached from below Host Manager in the
+  backend status LED panel, including its hover panel. Remove profiling UI from
+  Settings. Connect its immediate switch to the default-off persisted preference. Expose acknowledged state and unavailable/error feedback through the
   existing settings/application flow.
-- [x] Add a profiling view with the four required columns, execution-order names,
-  microsecond formatting, interval metadata and a simple Live/Latest xrun selector.
+- [ ] Style the profiling window with a clear immediate switch, a copy of the
+  overall DSP load bar, four aligned statistics columns, interval/sample summaries,
+  and Live/Latest xrun. Add µs / % budget presentation using the fixed quantum
+  duration at the current sample rate.
   Do not add profiling levels or an arm action.
 - [x] Clear the view on graph-reset generation changes, show pending/empty rows
   truthfully and preserve the final table while off. Display incomplete/lost-data
   and trigger attribution outside the table.
-- [x] Test settings persistence/defaults, runtime acknowledgement, duplicate node
+- [ ] Test immediate switching independently of asynchronous preference saving,
+  rapid toggle ordering, popup/window opening, both unit presentations, persistence/defaults, runtime acknowledgement, duplicate node
   labels, known table values, rebuild/reordering/slot reuse, capture selection,
   unavailable timing and late reports after reset.
 
@@ -386,3 +392,20 @@ inventory remain clean.
 Draft delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 . No automated
 review has appeared yet. The refreshed-base merge is ready for remote CI; final
 release measurements and the complete Wasm/browser checks remain in progress.
+
+Capacity refinement: a fixed 64-page stream cannot hold an ordinary 256-frame
+Q=1 callback before collection is possible. Select 64–1,024 pages during preparation
+from an 8 MiB byte budget (the existing minimum preserves large-node trace support),
+keep history independent, and test all 256 node completions without loss before the
+reader runs. Reset draining skips a bounded 64 stale pages per call. This improves
+coverage without adding RT allocation or publication per node; actual sample-array
+storage and queue high-water remain reported.
+
+User-requested UI revision (2026-11-04): profiling belongs in its own window,
+opened below Host Manager in the backend status LED hover panel. The window has
+an immediate switch, overall DSP bar and µs / % quantum-budget presentation.
+Acceptance criteria 1 and 3 and Stage 5 above reflect this explicit user change.
+The hidden preference remains in the existing persistence system. Runtime requests
+precede background preference saves; a pending local choice cannot be undone by
+an earlier save, and ordinary Settings drafts preserve the current profiling choice.
+The first five focused window/popup/persistence/formatting tests pass.

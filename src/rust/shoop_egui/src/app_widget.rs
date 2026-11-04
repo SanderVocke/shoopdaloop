@@ -1256,6 +1256,7 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    profiling: crate::profiling::Window,
     script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
@@ -1346,6 +1347,10 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_profiling(&mut self) {
+        self.profiling.open = true;
+    }
+
     pub fn set_host_state(&mut self, state: crate::HostUiState) {
         self.host_controls.state = Some(state);
     }
@@ -1354,6 +1359,7 @@ impl AppWidget {
         let mut fresh = Self::new(self.settings.registry());
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
+        fresh.profiling = core::mem::take(&mut self.profiling);
         fresh.logo = self.logo.take();
         fresh.tracing_status = self.tracing_status;
         fresh.tracing_stopped = self.tracing_stopped.take();
@@ -1374,6 +1380,7 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            profiling: Default::default(),
             script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
@@ -1869,7 +1876,24 @@ impl AppWidget {
             &state.scripting.dialogs,
             script_paths,
         ));
-        self.settings.set_profiling(state.profiling.clone());
+        let mut open_profiling = false;
+        self.host_controls.actions.retain(|action| {
+            if *action == crate::HostAction::OpenProfiling {
+                open_profiling = true;
+                false
+            } else {
+                true
+            }
+        });
+        self.profiling.open |= open_profiling;
+        if let Some(enabled) = self.profiling.show(
+            ui.ctx(),
+            &state.profiling,
+            &state.status,
+            controls_enabled && state.connections.backend_available,
+        ) {
+            settings_actions.push(SettingsAction::SetProfiling(enabled));
+        }
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,

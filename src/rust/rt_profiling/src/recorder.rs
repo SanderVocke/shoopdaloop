@@ -3,15 +3,9 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
 use crate::{
-    Packet, Phase, Sample, Status, CALLBACK, CAPTURE_END, CHUNK_SAMPLES, DEADLINE, FAULT,
+    Clock, Packet, Phase, Sample, Status, CALLBACK, CAPTURE_END, CHUNK_SAMPLES, DEADLINE, FAULT,
     MAX_SAMPLES, PHASE, TRUNCATED,
 };
-
-#[derive(Clone, Copy)]
-pub struct Clock {
-    pub now: fn() -> u64,
-    pub resolution_ns: u64,
-}
 
 struct Shared {
     generation: AtomicU64,
@@ -232,6 +226,7 @@ struct Storage {
     trigger: u32,
     capture_sequence: u64,
     high_water: usize,
+    stream_capacity: usize,
 }
 
 impl Storage {
@@ -320,6 +315,8 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
     }
     let pages =
         (2 * 1024 * 1024 / (capacity * core::mem::size_of::<Sample>() + 512)).clamp(2, 4096);
+    let stream_capacity =
+        (8 * 1024 * 1024 / (capacity * core::mem::size_of::<Sample>() + 512)).clamp(64, 1024);
     let control = Control(Arc::new(Shared {
         generation: AtomicU64::new(1),
         requested: AtomicBool::new(false),
@@ -329,7 +326,7 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
         dropped: AtomicU64::new(0),
         skipped: AtomicU64::new(0),
         high_water: AtomicU64::new(0),
-        storage_bytes: ((2 * pages + 64) * capacity * core::mem::size_of::<Sample>()
+        storage_bytes: ((2 * pages + stream_capacity) * capacity * core::mem::size_of::<Sample>()
             + 24 * core::mem::size_of::<Sample>()) as u64,
         trigger: AtomicU32::new(0),
         host_frame: AtomicU64::new(0),
@@ -348,9 +345,9 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
         ready_input: AtomicU64::new(0),
         ready_generation: AtomicU64::new(0),
     }));
-    let (stream, receive) = RingBuffer::new(64);
-    let (mut free, spare) = RingBuffer::new(64);
-    for _ in 0..64 {
+    let (stream, receive) = RingBuffer::new(stream_capacity);
+    let (mut free, spare) = RingBuffer::new(stream_capacity);
+    for _ in 0..stream_capacity {
         let _ = free.push(Trace::new(capacity));
     }
     let (captures, receive_capture) = RingBuffer::new(1);
@@ -371,6 +368,7 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
             trigger: 0,
             capture_sequence: 0,
             high_water: 0,
+            stream_capacity,
         }),
         ..Recorder::default()
     };
@@ -626,7 +624,7 @@ impl Recorder {
             storage.spare_trace = Some(page);
             storage.control.0.dropped.fetch_add(1, Ordering::Relaxed);
         }
-        let occupied = 64 - storage.stream.slots();
+        let occupied = storage.stream_capacity - storage.stream.slots();
         if occupied > storage.high_water {
             storage.high_water = occupied;
             storage
@@ -711,24 +709,29 @@ impl Reader {
         }
     }
     fn live_packet(&mut self) -> Option<Packet> {
-        if self.current.is_none() {
-            self.current = self.stream.pop().ok();
-            self.offset = 0;
-        }
-        let trace = self.current.as_ref()?;
-        let valid = trace.header.generation == self.control.status().generation;
-        let packet = valid.then(|| trace.packet(self.offset));
-        if let Some(packet) = packet {
-            self.offset += usize::from(packet.len);
-        }
-        if !valid || self.offset == trace.len {
-            if let Some(trace) = self.current.take() {
-                if let Err(PushError::Full(trace)) = self.free.push(trace) {
-                    self.current = Some(trace);
+        for _ in 0..64 {
+            if self.current.is_none() {
+                self.current = self.stream.pop().ok();
+                self.offset = 0;
+            }
+            let trace = self.current.as_ref()?;
+            let valid = trace.header.generation == self.control.status().generation;
+            let packet = valid.then(|| trace.packet(self.offset));
+            if let Some(packet) = packet {
+                self.offset += usize::from(packet.len);
+            }
+            if !valid || self.offset == trace.len {
+                if let Some(trace) = self.current.take() {
+                    if let Err(PushError::Full(trace)) = self.free.push(trace) {
+                        self.current = Some(trace);
+                    }
                 }
             }
+            if packet.is_some() {
+                return packet;
+            }
         }
-        packet
+        None
     }
     fn capture_packet(&mut self) -> Option<Packet> {
         if self.capture.is_none() {
@@ -813,16 +816,18 @@ mod tests {
         assert_eq!(TIME.with(core::cell::Cell::get), before);
         assert!(reader.next_packet().is_none());
         control.set_enabled(true);
+        let capacity = recorder.storage.as_ref().unwrap().stream_capacity;
+        let base = capacity as u64 + 10;
         assert_no_heap(|| {
-            for i in 0..200 {
+            for i in 0..base {
                 render(&mut recorder, i);
             }
         });
         assert!(control.status().dropped > 0);
-        assert_eq!(control.status().high_water, 64);
+        assert_eq!(control.status().high_water, capacity as u64);
         control.trigger(crate::HOST_XRUN);
         assert_no_heap(|| {
-            for i in 200..204 {
+            for i in base..base + 4 {
                 render(&mut recorder, i);
             }
         });
@@ -834,14 +839,14 @@ mod tests {
         assert_ne!(first.capture, 0);
         control.trigger(crate::HOST_XRUN);
         assert_no_heap(|| {
-            for i in 204..208 {
+            for i in base + 4..base + 8 {
                 render(&mut recorder, i);
             }
         });
         assert!(control.status().skipped_captures > 0);
         let mut captured = true;
         let mut ended = false;
-        for _ in 0..1024 {
+        for _ in 0..8192 {
             if let Some(packet) = assert_no_heap(|| reader.next_packet()) {
                 assert!(packet.valid());
                 captured |= packet.capture != 0;
@@ -850,7 +855,7 @@ mod tests {
         }
         assert!(captured && ended);
         control.reset();
-        assert_no_heap(|| render(&mut recorder, 209));
+        assert_no_heap(|| render(&mut recorder, base + 9));
         let generation = control.status().generation;
         for _ in 0..128 {
             if let Some(packet) = reader.next_packet() {
@@ -859,9 +864,38 @@ mod tests {
         }
         control.set_enabled(false);
         let before = TIME.with(core::cell::Cell::get);
-        assert_no_heap(|| render(&mut recorder, 210));
+        assert_no_heap(|| render(&mut recorder, base + 10));
         assert_eq!(TIME.with(core::cell::Cell::get), before);
         assert!(!control.status().active);
+    }
+
+    #[shoop_test]
+    fn a_complete_small_quantum_callback_fits_before_the_consumer_runs() {
+        let (control, mut recorder, mut reader) = prepare(4).unwrap();
+        recorder.set_clock(Clock {
+            now,
+            resolution_ns: 10,
+        });
+        control.set_enabled(true);
+        assert_no_heap(|| {
+            recorder.begin_callback(0, 0, 256, 1_000_000);
+            for frame in 0..256 {
+                recorder.begin_tick(frame, 1);
+                recorder.graph_start(0, frame);
+                recorder.node_ready(3);
+                recorder.end_tick(true);
+            }
+            recorder.end_callback(true);
+        });
+        assert_eq!(control.status().dropped, 0);
+        let mut collector = crate::Collector::default();
+        collector.status(control.status());
+        for _ in 0..1024 {
+            if let Some(packet) = reader.next_packet() {
+                collector.receive(packet);
+            }
+        }
+        assert_eq!(collector.view().live.rows[0].samples, 256);
     }
 
     #[shoop_test]

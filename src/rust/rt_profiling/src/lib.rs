@@ -11,9 +11,19 @@ extern crate std;
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod collector;
+#[cfg(target_has_atomic = "64")]
+mod recorder;
+#[cfg(not(target_has_atomic = "64"))]
+#[path = "unsupported.rs"]
 mod recorder;
 pub use collector::{Collector, Interval, Report, Row, Statistics, View};
-pub use recorder::{prepare, Clock, Control, Reader, Recorder};
+pub use recorder::{prepare, Control, Reader, Recorder};
+
+#[derive(Clone, Copy)]
+pub struct Clock {
+    pub now: fn() -> u64,
+    pub resolution_ns: u64,
+}
 
 pub const CHUNK_SAMPLES: usize = 24;
 pub const MAX_SAMPLES: usize = 65_536;

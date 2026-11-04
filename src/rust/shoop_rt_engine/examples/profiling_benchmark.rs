@@ -68,9 +68,10 @@ fn drain(host: &mut OfflineHost, profile: &mut Profile) -> usize {
     }
     panic!("benchmark drain failed to become idle");
 }
-fn settle(host: &mut OfflineHost, profile: &mut Profile, quantum: usize) {
+fn settle(host: &mut OfflineHost, profile: &mut Profile) {
+    let frames = host.max_frames();
     for _ in 0..10_000 {
-        host.process(2 * quantum).unwrap();
+        host.process(frames).unwrap();
         drain(host, profile);
         if host.endpoint().is_idle() {
             return;
@@ -126,9 +127,27 @@ fn main() {
     let mut profile = Profile::default();
     host.connect().unwrap();
     drain(&mut host, &mut profile);
-    settle(&mut host, &mut profile, quantum);
+    settle(&mut host, &mut profile);
+    host.request(Request::ReplacementBegin { id: 1 }).unwrap();
+    drain(&mut host, &mut profile);
+    let bus = BusId(SlotId::new(0, 2));
+    let mut edit = |value| {
+        host.request(Request::ReplacementEdit { id: 1, edit: value })
+            .unwrap();
+        drain(&mut host, &mut profile);
+    };
+    edit(ReplacementEdit::Bus { bus, channels: 2 });
+    for channel in 0..2 {
+        edit(ReplacementEdit::Connect {
+            port: EnginePort::Bus(BusPort {
+                bus,
+                index: channel,
+            }),
+            host: HostPortId(2 + u32::from(channel)),
+        });
+    }
     for slot in 0..strips {
-        host.request(Request::CreateStrip {
+        edit(ReplacementEdit::Strip {
             strip: strip(slot),
             shape: StripShape {
                 audio_inputs: 2,
@@ -136,55 +155,59 @@ fn main() {
                 midi_input: true,
                 midi_output: true,
             },
-        })
-        .unwrap();
-        host.request(Request::CreateLoop {
+            controls: StripPreset {
+                input_gain: 1.,
+                input_balance: 0.,
+                monitoring: true,
+                output_gain: 1.,
+                output_balance: 0.,
+                output_mute: false,
+            },
+        });
+        edit(ReplacementEdit::Loop {
             loop_id: loop_id(slot),
             strip: strip(slot),
-        })
-        .unwrap();
-        host.request(Request::StripControl {
-            strip: strip(slot),
-            control: StripControl::Monitoring(true),
-        })
-        .unwrap();
+            sync: None,
+            frames: 0,
+            audio: None,
+            midi: None,
+            gain: 1.,
+            balance: 0.,
+        });
         for channel in 0..2 {
-            host.request(Request::Connect {
+            edit(ReplacementEdit::Connect {
                 port: EnginePort::Strip(StripPort {
                     strip: strip(slot),
                     kind: PortKind::AudioIn,
                     index: channel,
                 }),
                 host: HostPortId(u32::from(channel)),
-                connected: true,
-            })
-            .unwrap();
-            host.request(Request::Route {
+            });
+            edit(ReplacementEdit::Route {
                 port: StripPort {
                     strip: strip(slot),
                     kind: PortKind::AudioOut,
                     index: channel,
                 },
                 bus: BusPort {
-                    bus: BusId(SlotId::new(0, 1)),
+                    bus,
                     index: channel,
                 },
-                connected: true,
-            })
-            .unwrap();
+            });
         }
-        host.request(Request::Connect {
+        edit(ReplacementEdit::Connect {
             port: EnginePort::Strip(StripPort {
                 strip: strip(slot),
                 kind: PortKind::MidiIn,
                 index: 0,
             }),
             host: HostPortId(4),
-            connected: true,
-        })
-        .unwrap();
-        settle(&mut host, &mut profile, quantum);
+        });
     }
+    host.request(Request::ReplacementPrepare { id: 1 }).unwrap();
+    settle(&mut host, &mut profile);
+    host.request(Request::ReplacementCommit { id: 1 }).unwrap();
+    settle(&mut host, &mut profile);
     profile = profile_setup(&mut host, mode);
     for _ in 0..32 {
         host.process(256).unwrap();

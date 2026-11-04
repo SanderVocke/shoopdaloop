@@ -1,4 +1,4 @@
-pub use shoop_egui::{colors, ProfilingView};
+pub use shoop_egui::{colors, ProfilingView, StatusState};
 use std::time::Instant;
 #[path = "../src/profiling.rs"]
 mod profiling;
@@ -22,6 +22,8 @@ fn main() {
             row.worst_ns = 3000;
             row.stddev_ns = 500.;
         }
+        let mut window = profiling::Window::default();
+        window.open = true;
         let mut times = Vec::new();
         for frame in 0..264 {
             let started = Instant::now();
@@ -33,7 +35,19 @@ fn main() {
                     )),
                     ..Default::default()
                 },
-                |ui| profiling::show(ui, &view, &mut false),
+                |ui| {
+                    window.show(
+                        ui.ctx(),
+                        &view,
+                        &StatusState {
+                            sample_rate: 48000,
+                            quantum_frames: 32,
+                            dsp_load_percent: 23.4,
+                            ..Default::default()
+                        },
+                        true,
+                    );
+                },
             );
             output.textures_delta.clear();
             drop(output);
