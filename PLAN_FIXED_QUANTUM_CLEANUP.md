@@ -1,0 +1,286 @@
+# Plan: consolidate quantum processing
+
+Status: planned; implementation has not started. Baseline: `52f24c02` on
+`feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
+draft PR #930. Continue that branch and PR rather than opening a parallel migration.
+
+This plan follows the removal of experimental runtimes, transitional tests,
+temporary plans and benchmark tooling. It covers the four remaining substantial
+simplifications identified in the cleanup review. Repository instructions:
+[write_plan.md](.agents/prompts/write_plan.md). Current architecture:
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Goals and scope
+
+1. Give every processor and planner one quantum-based execution interface, removing
+   the old decision-slot/observation compatibility machinery throughout its callers.
+2. Make the quantum mandatory in the loop resolver and remove variable-boundary
+   execution and its optional-mode branches.
+3. Specialize coordinated recording preparation, staging and completion for one
+   whole quantum, removing arbitrary-interval bookkeeping while retaining atomicity.
+4. Remove `shoop_engine_service` after moving its useful regression coverage to
+   existing runtime, loop, DSP and production-engine test locations.
+
+Scope includes production crates, generic examples, test support, independent
+native/Wasm/worklet fixtures, graph-transfer fixture formats, documentation,
+inventories and package references needed to complete those removals. Do not leave
+an old implementation or a renamed copy of the demonstrator in a test crate.
+
+Broader feature restoration in the [parity ledger](docs/native_session_recovery/feature-parity.md),
+retiring legacy reference crates, new plugin hosting, changing the quantum policy,
+and recreating benchmark tooling are outside this work.
+
+## Immutable acceptance criteria
+
+- Exactly one processor entry point and one planner begin/finish lifecycle remain.
+  `uses_direct_domain`, the alternate processing block, generic decision-slot
+  lookup and generic observation transport are absent from executable code.
+- `PlanningDescriptor`, `PlanningStep`, `DecisionBinding` and decision/observation
+  capacities disappear. Their removal preserves graph membership, loop ownership,
+  role, generation and admission checks; invalid graph/processor changes still refuse.
+- Every resolver is prepared with a validated, immutable `Quantum`. No constructor
+  selects an adaptive mode, and execution never searches for a shorter graph interval.
+  Preserve supported quanta `1, 16, 32, 64, 128` and production default `32`.
+- Each graph iteration and coordinated capture reservation covers exactly one
+  quantum. Arbitrary host callback partitioning retains current audio/MIDI output,
+  buffering latency, zero-frame behavior and callback-wide work allowances.
+- Preserve aligned loop transitions, sync/composite/program settlement and precedence;
+  requested versus effective operation frames; cancellation and recovery; live
+  graph/configuration changes; recording/export coherence; and retiming transactions.
+- Capacity failures cannot publish a partial audio/MIDI capture or partial family
+  change, consume unrelated owners, interrupt unrelated audio, or duplicate receipts.
+  Existing stale-revision, saturation, controller-loss and stopped-cleanup behavior
+  remains covered.
+- The `shoop_engine_service` package and executable composition are removed. Every
+  useful invariant from its tests has an identified retained or migrated test;
+  duplicative and wrapper-specific assertions may be retired with a recorded reason.
+- Retained RT code remains bounded, allocation/free/lock/I/O-free during callbacks,
+  safe Rust, and portable under the existing dependency boundaries. Preserve generic
+  independent DSP and signal-only use without a Shoop dependency in `rt_runtime`.
+- Native, Wasm/Node and actual browser/worklet acceptance passes at the final stage.
+  Do not claim a pass from compilation, rebaseline unexplained media differences,
+  or delete failing behavioral tests to make acceptance green.
+
+## Design rules
+
+- Use one `ProcessBlock` carrying frame, quantum, callback origin, borrowed buffers,
+  resource access and the render-owned domain. Merge `TickProcessBlock` into it;
+  remove the processor mode flag and executor dispatch. `NoPlanner` remains the
+  inexpensive signal-only domain. DSP processors may ignore domain access.
+- Retain planner operations, receipts, graph admission and resource access. Keep
+  only begin-tick, finish-tick and one operation hook; remove adapters to `plan`,
+  `finish` and duplicate operation hooks. Derive tick end from frame plus quantum.
+  Domain-owned loop views and semantic failure inputs remain valid; removing the
+  generic observation writer does not mean removing loop failure semantics.
+- Separate graph safety from decision delivery. Validate actual graph members and
+  prepared loop-node owner/role identities against the candidate loop-node registry.
+  Retain only bounded admission metadata needed for those checks, outside the render
+  traversal. Generic processor changes must not replace protected loop consumers;
+  configuration/program/node-pair publication validates candidate ownership before
+  committing. Do not recreate decision tables under a different name.
+- Preserve operation payload bounds when removing `ConsumerAccess`/`PlannerSpec`
+  fields. Keep needed per-processor/planner payload limits in prepared signatures;
+  remove obsolete planner IDs only after their ownership/authority uses are replaced.
+- Prepare the resolver with its quantum, validate topology alignment immediately,
+  settle the tick start, preflight, commit, render and finish exactly one tick.
+  Keep transactional scratch needed for failed capture/graph preparation. Remove
+  future-boundary search and duplicate state only when its rollback role is disproven.
+- Bind capture preparation to the runtime/store quantum. Reserve a complete tick
+  before rendering; activate a prepared first take only after admission; stage all
+  members; publish lengths, indexes and revisions together after successful staging.
+  Keep take generations, reservation sequence checks, immutable leases, cancellation
+  and resource retirement. Media byte transfers and MIDI timestamps retain their
+  existing precision; they are not forced to quantum-sized chunks.
+- Preserve behavior through tests, not API compatibility aliases. Migrate useful
+  examples and fixtures to the sole interface and remove old constructors/methods
+  after their callers move. Use explicit `Q=1` for exact-frame reference scenarios;
+  also retain substantive coverage at larger quanta, especially `16/32/64`.
+- Keep the resource pools, graph compiler/publication, transport credits and
+  application/engine/host boundaries. This work changes internal execution APIs,
+  not user features or carrier semantics. Avoid production wire/schema changes;
+  update and version independent fixture encodings when their graph representation
+  changes. Historical evidence remains historical.
+- Do not add benchmarks. Verify bounded work and callback budgets with deterministic
+  tests/counters, including dense simultaneous transitions and failure/retry paths.
+  Report timing guarantees only where actual evidence exists.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+- Complete implementation and local verification before human involvement. Respect
+  the current pause on pushes and remote CI work; publication, CI investigation and
+  review belong only to the final stage after the user resumes that work.
+
+## Staged implementation
+
+Order: stage 1 establishes the behavioral floor; stages 2–4 remove the compatibility
+interfaces, adaptive resolver and arbitrary capture intervals in that order. Stage 5
+then moves demonstrator coverage onto the resulting APIs and deletes the crate.
+Stage 6 consolidates the complete local result. Stage 7 is the only delivery/CI stage.
+
+### Stage 0 — planning checkpoint
+
+- [x] Read repository planning/rules/test guidance, architecture and the parity ledger.
+- [x] Inspect processor/planner interfaces, graph admission and fixture bindings,
+  resolver settlement, capture reservations and demonstrator tests/dependencies.
+- [x] Write this plan; leave implementation for a subsequent execution request.
+
+Verification: review stage coverage, local Markdown links and `git diff --check`.
+This documentation checkpoint supplies no new runtime evidence.
+
+### Stage 1 — record callers and the regression floor
+
+- [ ] Confirm the baseline/branch and preserve unrelated work. Reuse the current
+  branch and PR; keep all commits local until stage 7 is authorized.
+- [ ] Inventory callers of both processor/planner interfaces, graph planning metadata,
+  adaptive resolver constructors/preview and variable-length capture reservations.
+  Include examples, `shoop_loops_test_support`, `shoop_example_dsp`, production engine
+  builders/configuration paths and `tests/{rt_runtime_host,loops_host}`.
+- [ ] Record a compact test-retirement/migration map in this plan. Map demonstrator
+  DSP operation ordering, partition oracles, startup imports, immutable prefix reads,
+  stalls/disconnects/faults, foreign/stale owners and latency probes to exact tests.
+- [ ] Preserve independent expected samples, MIDI, outcomes and ownership totals.
+  Distinguish fixture metadata/layout changes from observable behavior changes.
+  Add missing safety tests only where the planned removals expose a real gap.
+
+Verification: establish a local targeted native and Wasm/Node baseline for affected
+packages. Confirm negative graph admission and capture-failure coverage before
+changing representations. Record existing failures separately; defer CI work.
+
+### Stage 2 — one processor/planner interface and graph admission
+
+- [ ] Merge processing blocks and processor entry points; migrate all production
+  nodes, independent DSP, boxed delegation, examples and test adapters. Remove mode
+  flags and the executor's legacy dispatch/decision lookup.
+- [ ] Collapse planner lifecycle/operation hooks and remove associated decision and
+  observation types, generic observation buffers/writers and obsolete storage bounds.
+  Preserve operation payload capacities and callback-origin propagation.
+- [ ] Replace decision-binding validation with prepared loop-node membership/role
+  admission. Cover initial graphs, generic graph/processor changes, configuration
+  replacement, staged node pairs and program/graph activation. Then remove planning
+  descriptors, compiler/catalog tables and builder scratch that only served delivery.
+- [ ] Migrate native/Wasm graph-transfer fixtures and planner fault canaries to the
+  same API. Remove obsolete fixture fields/records and update their versions rather
+  than keeping a second graph representation. Keep error/heap origin assertions.
+
+Verification: runtime/loop/engine/DSP tests and examples pass. Exercise missing,
+wrong-role, duplicate, stale/reused and unexpected loop consumers, protected processor
+replacement and valid unrelated DSP nodes. Check mixed DSP/loop operation ordering,
+reliable results and one begin/finish pair per tick. Run affected fixture codec/model
+tests and Wasm/Node tests. Search executable sources for the retired interfaces.
+
+### Stage 3 — mandatory resolver quantum and one settlement path
+
+- [ ] Pass `Quantum` at resolver/planner preparation; eliminate `Option<Quantum>`,
+  post-construction mode selection and implicit adaptive constructors. Validate
+  topology/program/media alignment before publication, including replacement paths.
+- [ ] Keep one whole-tick preview/commit/finish path; remove variable-boundary
+  `Resolver::preview`, boundary-minimum scans and compatibility call chains.
+  Replace arbitrary finish endpoints with checked completion of the prepared tick.
+- [ ] Migrate resolver tests, examples and test-only planner canaries. Retain semantic
+  coverage of sync cascades, composite iteration/seek, same-frame precedence,
+  program changes, recording failures, retimed families and completion ordering.
+- [ ] Consolidate scratch/state copies and retry setup where demonstrably redundant;
+  retain rollback for refused capture/graph preparation and cancellation.
+
+Verification: explicit `Q=1` oracles retain exact frame/media results. At `16/32/64`
+verify aligned starts/wraps/lengths, never-early rounding, multiple changes due at
+one tick, dependency cascades, clock overflow and cancellation. Failure/retry paths
+publish once, terminate within prepared bounds and do not render a partial tick.
+
+### Stage 4 — coordinated capture in whole quanta
+
+- [ ] Bind resource/capture preparation to the same immutable quantum as the runtime;
+  refuse mismatches before processing and migrate standalone resource tests explicitly.
+- [ ] Replace frame-count reservation APIs with whole-tick reservation derived from
+  that quantum. Remove arbitrary interval sizes, redundant end/count storage and
+  partial-offset staging paths once all callers use complete ticks.
+- [ ] Unify ordinary and prepared-first-tick reservation bookkeeping where possible,
+  retaining the activation distinction and stale ownership checks. Update loop views,
+  capture nodes, planner preflight/cancellation and completion together.
+- [ ] Simplify resolver/capture retry handoff using the one-tick contract, keeping
+  all-member reservation, atomic commit, MIDI index capacity checks, immutable
+  export revisions and off-render retirement.
+
+Verification: stereo/MIDI captures, playable selections and retained prefix exports
+match samples/packets across whole, irregular and zero callbacks. Exercise page/index/
+staging exhaustion, failed first activation, cancellation, missing member writes,
+double/stale completion and reused takes. Refusals publish no partial length/revision,
+recover ownership and leave unrelated playback/recording uninterrupted. Verify
+callback quotas under many ticks and simultaneous capture/transition failures.
+
+### Stage 5 — migrate demonstrator coverage and remove the crate
+
+- [ ] Move generic mixed loop/DSP scenarios into existing loop/runtime tests using
+  `shoop_loops_test_support` and `shoop_example_dsp`. Keep typed independent DSP
+  operations and partition-invariant media assertions without the service wrapper.
+- [ ] Map service-wrapper lifecycle assertions to existing production endpoint/
+  transport tests; port missing invariants there. Remove wrapper-specific ticket or
+  queue assertions only after identifying the retained ownership/credit guarantee.
+- [ ] Preserve startup import and physical capture/latency marker tests, including
+  native-only legacy comparison where still useful. Keep exact reference oracles
+  at `Q=1` and aligned production scenarios at larger quanta. Retain useful educational
+  examples in existing crates only when they add distinct coverage or documentation.
+- [ ] Remove `src/rust/shoop_engine_service`, its manifest/lockfile entries, current
+  documentation links, tracing entries and explicit package references. Retain
+  `shoop_example_dsp` and shared test support; do not copy the old service wholesale.
+  Update configured package selections now without running remote CI.
+
+Verification: every row of the stage-1 coverage map has a retained test or a reasoned
+duplicate/wrapper-only retirement. Native and Wasm/Node replacements pass. Cargo
+metadata lists no service package/dependency, active source/configuration has no
+stale references, and production dependency boundaries remain unchanged.
+
+### Stage 6 — consolidate and complete local acceptance
+
+- [ ] Remove remaining adapters, duplicate helpers, stale examples and temporary
+  artifacts. Update maintained runtime/loop/DSP guides, architecture, tracing and
+  documentation inventories; preserve historical reports and reference behavior.
+- [ ] Audit the acceptance criteria against source searches and the coverage map.
+  Record final deletions/additions and distinguish removed mechanisms from retained
+  safety machinery. No second execution path or hidden demonstrator may remain.
+- [ ] Run formatting, warning-denying workspace build, test-attribute, tracing,
+  documentation, parity and four-target dependency-boundary checks. Run the full
+  native suite and affected Wasm/Node tests after the final code changes.
+- [ ] Commit the consolidated local result and record exact commands/results here.
+  Stop with a reviewable diff before any push, remote CI inspection or CI fixes.
+
+Verification: use [.agents/info/test.md](.agents/info/test.md) and the active build
+environment. In particular run `RUSTFLAGS="-D warnings" cargo build --workspace`
+before the full native command, not concurrently with host-process tests. Native:
+`SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`.
+Report skips/failures explicitly; a local pass does not substitute for stage 7.
+
+### Stage 7 — final end-to-end validation, CI and review
+
+- [ ] Once the user resumes delivery, run actual browser/AudioWorklet acceptance for
+  the changed generic fixtures and production application: record/play, audio/MIDI
+  export, graph publication, recovery and retimed session/import-family workflows.
+  Compare full media/results to native replay, including dense transitions, saturated
+  results, resource exhaustion and deliberate planner/processor failures.
+- [ ] Complete affected packaged native/browser and transport scenarios: typed local,
+  socket/shared-memory and MessagePort paths, arbitrary callback adaptation and
+  admitted work surviving controller loss. Run selected existing Miri ownership/
+  resource tests appropriate to the changed core paths. Require evidence at larger
+  quanta as well as exact-frame fixtures; retain heap guards and recovery assertions.
+- [ ] Resolve remaining validation failures, including previously deferred journal/
+  recovery issues, with root-cause evidence. Update fixture journals only for
+  explained representation/revision changes; preserve samples, MIDI and semantic
+  expectations. Do not replace assertions with retries or weaken them to pass.
+- [ ] Push the finished branch and update existing PR #930 against
+  `feat/backend-replacement`. If the PR has already been superseded, use its successor
+  rather than opening a duplicate. Describe the final implementation and validation.
+- [ ] Run the required full CI platform matrix, investigate/fix failures and repeat
+  affected gates until green. Check automated PR reviews and address feedback until
+  the reviewer approves; rerun affected validation after changes.
+- [ ] Present the final outcome, evidence, residual limits and architectural analysis
+  for human review. Keep any merge approval as the final delivery decision; do not
+  merge without authorization. Mark this plan complete only with acceptance evidence.
+
+Verification: link final native/browser/Miri/CI evidence and PR review outcomes here.
+Human checks or unavailable facilities must be stated explicitly, never checked off
+on the basis of a proposed command or a test in a different execution environment.
