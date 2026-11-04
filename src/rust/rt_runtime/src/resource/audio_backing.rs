@@ -282,6 +282,15 @@ impl ResourceStore {
 }
 
 impl RenderIo<'_> {
+    pub fn audio_history_discontinuity(
+        &mut self,
+        id: AudioStoreId,
+        next: Frame,
+    ) -> Result<(), Error> {
+        self.store.with_audio(id, |store, audio| {
+            audio.discontinuity(&mut store.render_io(), next)
+        })
+    }
     pub fn append_audio_history(
         &mut self,
         id: AudioStoreId,
@@ -325,6 +334,9 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
+        self.store.audio_coverage(id)
+    }
     pub fn grab_audio(
         &mut self,
         store: AudioStoreId,

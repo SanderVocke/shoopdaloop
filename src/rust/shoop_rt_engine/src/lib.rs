@@ -258,6 +258,20 @@ pub fn prepare(
     description: &EngineDescription,
     driver: DriverStatus,
 ) -> Result<Engine, PrepareError> {
+    prepare_with_shared(
+        description,
+        driver,
+        shoop_loops::runtime::SharedSettings::default(),
+    )
+}
+
+/// Prepare optional retrospective input histories and bounded private edit jobs.
+/// This does not enable application grab/replacing mode or add wire commands.
+pub fn prepare_with_shared(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+) -> Result<Engine, PrepareError> {
     description.validate()?;
     let pool = Pool::new(&description.segments, description.buses as usize);
     let (strips, loops) = (pool.strips(), pool.loops());
@@ -333,7 +347,7 @@ pub fn prepare(
         })
         .collect::<Result<Vec<_>, shoop_loops::Error>>()?;
     let LoopParts {
-        planner,
+        mut planner,
         nodes: loop_nodes,
         client,
     } = LoopPlanner::prepare(
@@ -362,6 +376,15 @@ pub fn prepare(
             observer: Some(Box::new(Observer(cells.clone()))),
         },
     )?;
+    if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {
+        if shared_settings.histories.iter().any(|h| {
+            h.source as usize >= pool.strips()
+                || h.audio.is_some_and(|a| a.channels as usize != channels)
+        }) {
+            return Err(rt_runtime::Error::InvalidConfig.into());
+        }
+        planner.prepare_shared(&mut resources, shared_settings)?;
+    }
     let settings = NodeSettings {
         cells: cells.clone(),
         channels,

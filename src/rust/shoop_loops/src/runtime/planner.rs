@@ -639,6 +639,9 @@ impl LoopPlanner {
             }
         }
         self.pending.fill(None);
+        if let Some(shared) = &mut self.shared {
+            shared.cleanup(resources)?;
+        }
         Ok(())
     }
 }
@@ -660,6 +663,10 @@ impl Planner for LoopPlanner {
         self.execute_operation(operation, context)
     }
     fn fixed_begin(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+        let mut context = context;
+        if let Some(shared) = &mut self.shared {
+            shared.progress(context.callback_start, &mut context.resources)?;
+        }
         let q = self.fixed_quantum.ok_or(Error::InvalidState)?;
         if context.frame.checked_add(q.frames())? != context.ceiling {
             return Err(Error::InvalidFrame);
@@ -675,7 +682,12 @@ impl Planner for LoopPlanner {
         context: FinishContext<'_, Observed, Operation, Reply>,
     ) -> Result<(), Error> {
         self.fixed_quantum.ok_or(Error::InvalidState)?;
-        self.finish_boundary(context)
+        let end = context.interval.end;
+        self.finish_boundary(context)?;
+        if let Some(shared) = &mut self.shared {
+            shared.finish(end);
+        }
+        Ok(())
     }
     type Decision = View;
     type Observation = Observed;
@@ -751,6 +763,30 @@ impl LoopPlanner {
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
         let result = (|| -> Result<Disposition<Reply>, Failure> {
+            if matches!(
+                operation,
+                Operation::HistoryStatus { .. }
+                    | Operation::HistoryGrab { .. }
+                    | Operation::CandidateBegin { .. }
+                    | Operation::CandidateAudio { .. }
+                    | Operation::CandidateMidi { .. }
+                    | Operation::CandidateStatus { .. }
+                    | Operation::CandidateCancel { .. }
+                    | Operation::CandidatePublish { .. }
+                    | Operation::SharedWork
+            ) {
+                if !context.payload.is_empty() {
+                    return Err(Error::InvalidShape.into());
+                }
+                return self
+                    .shared_operation(
+                        operation,
+                        context.frame,
+                        context.graph_epoch,
+                        &mut context.resources,
+                    )
+                    .map(Disposition::Complete);
+            }
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
@@ -1280,7 +1316,16 @@ impl LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::NodePairSnapshot { .. }
+                Operation::HistoryStatus { .. }
+                | Operation::HistoryGrab { .. }
+                | Operation::CandidateBegin { .. }
+                | Operation::CandidateAudio { .. }
+                | Operation::CandidateMidi { .. }
+                | Operation::CandidateStatus { .. }
+                | Operation::CandidateCancel { .. }
+                | Operation::CandidatePublish { .. }
+                | Operation::SharedWork
+                | Operation::NodePairSnapshot { .. }
                 | Operation::NodePairSourceStatus { .. }
                 | Operation::NodePairSourceValidate { .. }
                 | Operation::NodePairSourceRelease { .. }

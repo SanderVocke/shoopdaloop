@@ -335,6 +335,19 @@ impl AudioStore {
         )..self.next)
     }
 
+    /// Start a new complete input segment; retained owners keep their old roots.
+    pub fn discontinuity(&mut self, io: &mut RenderIo<'_>, next: Frame) -> Result<(), Error> {
+        self.check(io.store)?;
+        if next < self.next {
+            return Err(Error::InvalidFrame);
+        }
+        let root = self.history.take();
+        self.queue(root, self.views.len());
+        self.origin = next;
+        self.next = next;
+        Ok(())
+    }
+
     fn view(&self, handle: Handle) -> Result<View, Error> {
         if handle.scope != self.scope {
             return Err(Error::InvalidId);

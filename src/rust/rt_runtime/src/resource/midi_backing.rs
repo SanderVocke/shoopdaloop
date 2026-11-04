@@ -35,6 +35,16 @@ pub struct MidiImportId {
 }
 
 impl ResourceStore {
+    pub fn midi_coverage(&self, id: MidiStoreId) -> Result<Range<Frame>, Error> {
+        if id.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        self.midi_stores
+            .get(id.slot)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?
+            .coverage()
+    }
     pub fn midi_store_capacity(&mut self, id: MidiStoreId) -> Result<shared_midi::Capacity, Error> {
         self.with_midi(id, |_, midi| Ok(midi.capacity()))
     }
@@ -321,6 +331,12 @@ impl RenderIo<'_> {
     }
 }
 impl ResourceIo<'_> {
+    pub fn cancel_midi_edit(&mut self, id: MidiEditId) -> Result<(), Error> {
+        self.store.cancel_midi_edit(id)
+    }
+    pub fn midi_coverage(&self, id: MidiStoreId) -> Result<Range<Frame>, Error> {
+        self.store.midi_coverage(id)
+    }
     pub fn prepare_midi_import(
         &mut self,
         store: MidiStoreId,

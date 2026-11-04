@@ -165,6 +165,7 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    history_token: u64,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -266,6 +267,7 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            history_token: 1,
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -436,6 +438,11 @@ impl EngineNode {
     fn configure(&mut self, configuration: NodeConfiguration) {
         match self {
             Self::StripInput(node) => {
+                if node.inputs != configuration.inputs as usize
+                    || node.bank.target() != f32::from(configuration.bank)
+                {
+                    node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                }
                 node.reset(configuration.inputs);
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
@@ -478,6 +485,18 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         self.apply_configuration(block.graph_epoch);
         match self {
             Self::Loop(node) => node.process_fixed(block),
+            Self::StripInput(node) => {
+                node.render(&mut SignalBlock::integrated(block))?;
+                block.domain.observe_history(
+                    node.slot as u32,
+                    node.history_token,
+                    block.frame,
+                    block.quantum.frames(),
+                    &mut block.audio,
+                    block.midi_outputs.first(),
+                    &mut block.resources,
+                )
+            }
             _ => self.render_signal(&mut SignalBlock::integrated(block)),
         }
     }
@@ -605,6 +624,7 @@ impl StripInput {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
             EngineOp::Reset { inputs, .. } => {
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 self.reset(inputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
@@ -614,6 +634,7 @@ impl StripInput {
                 self.monitor.set(f32::from(u8::from(on)), self.ramp)
             }
             EngineOp::Crossfade => {
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }

@@ -277,6 +277,16 @@ impl ResourceStore {
     }
 }
 impl ResourceIo<'_> {
+    pub fn remove(&mut self, resource: ResourceId) -> Result<(), Error> {
+        self.store.remove(resource)
+    }
+    pub fn validate_writer(&self, resource: ResourceId, revision: Revision) -> Result<(), Error> {
+        let owner = self.store.check_writer(resource, None)?;
+        if owner.revision != revision {
+            return Err(Error::StaleRevision);
+        }
+        Ok(())
+    }
     /// Borrow required data access without consuming or replenishing background quotas.
     pub fn render(&mut self) -> RenderIo<'_> {
         self.store.render_io()

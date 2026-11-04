@@ -169,14 +169,33 @@ impl Resolver {
         &mut self,
         changes: impl Iterator<Item = ContentRetime> + Clone,
     ) -> Result<(), Error> {
-        if self.quiescent
-            || self.committed
-            || self
-                .topology
-                .nodes()
-                .iter()
-                .any(|node| node.kind != LoopKind::Primitive)
+        if self
+            .topology
+            .nodes()
+            .iter()
+            .any(|node| node.kind != LoopKind::Primitive)
         {
+            return Err(Error::InvalidState);
+        }
+        self.update_content(changes)
+    }
+
+    /// Publish a complete same-length primitive revision without retiming its
+    /// program or sync dependents.
+    pub fn replace_content(&mut self, change: ContentRetime) -> Result<(), Error> {
+        if change.length != change.expected_length
+            || self.topology.node(change.target)?.kind != LoopKind::Primitive
+        {
+            return Err(Error::InvalidState);
+        }
+        self.update_content(core::iter::once(change))
+    }
+
+    fn update_content(
+        &mut self,
+        changes: impl Iterator<Item = ContentRetime> + Clone,
+    ) -> Result<(), Error> {
+        if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
         let quantum = self.quantum.map_or(1, |quantum| quantum.frames() as u64);
