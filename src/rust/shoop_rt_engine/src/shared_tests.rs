@@ -18,13 +18,7 @@ use shoop_loops::{
 };
 use shoop_rt_protocol::{self as protocol, DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::carrier::{Endpoint, Outbox};
-use shoop_wasm_test_support::{
-    heap::{assert_no_heap, TrackingAllocator},
-    shoop_test,
-};
-
-#[global_allocator]
-static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "shared_measurements.rs"]
