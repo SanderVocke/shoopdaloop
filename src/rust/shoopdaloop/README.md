@@ -332,3 +332,19 @@ Screenshots from the native manager (800 × 500):
 ![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
 
 ![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)
+
+The hosted preview canary uses the real codec worker and AudioWorklet, switches
+System → Master → System, checks Master signal, Stop and natural completion, and
+requires unchanged loop media/transport. It can run with output-only permission:
+
+```sh
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending CHROME_BIN=chromium node browser_smoke.mjs
+```
+
+`PREVIEW_RESUME=reject` injects a rejected Web Audio resume after suspending the
+actual context. `pending` leaves the resume unresolved to model autoplay gating.
+Both require a visible failure without a false Playing state and a successful
+retry. `DENY_FIRST=1` additionally checks browser microphone denial and retry.
+These flags select acceptance probes; they do not alter production playback.

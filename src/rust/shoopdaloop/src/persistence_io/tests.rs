@@ -1342,3 +1342,87 @@ async fn preview_cancellation_discards_unsent_chunks_and_session_replacement_sto
     );
     assert!(f.runtime.take_audio_preview().is_none());
 }
+
+#[shoop_test]
+async fn master_preview_identity_survives_renamed_session_and_clears_when_removed() {
+    let mut f = Fixture::new();
+    let original = f.runtime.snapshot().buses[0].id;
+    f.dispatch(AppIntent::AddBus(BusSpec {
+        name: "Master".into(),
+        channel_count: 2,
+        fx: None,
+        creation_request_id: None,
+    }));
+    let state = f
+        .until(|s| {
+            s.buses.len() == 2
+                && s.buses
+                    .iter()
+                    .all(|b| b.structural_state == StructuralState::Confirmed)
+        })
+        .await;
+    f.dispatch(AppIntent::Bus {
+        bus_id: state.buses[1].id,
+        action: BusAction::MoveBefore(Some(original)),
+    });
+    f.until(|s| s.buses[0].id != original).await;
+    f.dispatch(AppIntent::RequestSaveSession);
+    let saved = f.output().await;
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: saved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    let mut bundle = shoop_session::decode_session(&saved.bytes).unwrap();
+    assert!(matches!(
+        bundle.document.preview_bus,
+        shoop_session::PreviewBusDocument::Bus(_)
+    ));
+    bundle.document.buses[0].name = "Renamed output".into();
+    let bytes = shoop_session::encode_session(&bundle, "preview").unwrap();
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "renamed.shoop".into(),
+        bytes: bytes.into(),
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::Completed)
+        })
+        .await;
+    assert!(state.click_track.master_preview_available);
+    assert_eq!(state.buses[0].name, "Master");
+    let bus_id = state
+        .buses
+        .iter()
+        .find(|b| b.name == "Renamed output")
+        .unwrap()
+        .id;
+    let loop_id = state.tracks[0].loops[0].id;
+    assert_eq!(f.service.snapshot().preview_bus, Some(bus_id));
+    f.dispatch(AppIntent::PreviewClickTrack {
+        loop_id,
+        request: Default::default(),
+        output: ClickTrackPreviewOutput::MasterBus,
+    });
+    f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Playing)
+        .await;
+    f.dispatch(AppIntent::Bus {
+        bus_id,
+        action: BusAction::Remove,
+    });
+    f.until(|s| s.buses.len() == 1 && !s.click_track.master_preview_available)
+        .await;
+    assert_eq!(f.service.snapshot().preview_bus, None);
+    assert_eq!(
+        f.service.snapshot().preview.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    f.dispatch(AppIntent::RequestNewSession);
+    f.until(|s| s.buses.len() == 1 && s.click_track.master_preview_available)
+        .await;
+    assert_eq!(
+        f.service.snapshot().preview_bus,
+        Some(f.runtime.snapshot().buses[0].id)
+    );
+}

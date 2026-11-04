@@ -11417,6 +11417,7 @@ impl ApplicationModel {
             .collect::<Result<Vec<_>, String>>()?;
         let (script_documents, scripts) = self.session_script_documents();
         let document = SessionDocument {
+            preview_bus: Default::default(),
             sample_rate: capture.sample_rate,
             connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {

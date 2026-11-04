@@ -3533,9 +3533,7 @@ impl Runtime {
             self.system_preview_request = Some(request_id);
             let context = self.audio.audio_context();
             match self.preview_player.play(context, preview) {
-                Ok(()) => {
-                    let _ = runtime.dispatch(AppIntent::ClickTrackPreviewStarted { request_id });
-                }
+                Ok(()) => {}
                 Err(message) => {
                     let _ = runtime.dispatch(AppIntent::CompleteClickTrackPreview {
                         request_id,
@@ -6002,5 +6000,69 @@ mod tests {
         wait_for_snapshot(&app.runtime, "preview cancellation", |s| {
             s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
         });
+    }
+    #[cfg(all(not(target_arch = "wasm32"), feature = "system-preview"))]
+    #[shoop_wasm_test_support::shoop_test]
+    #[ignore = "requires an isolated system audio device and external signal capture"]
+    fn native_system_preview_device_acceptance() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let state = wait_for_snapshot(&app.runtime, "preview target", |s| !s.tracks.is_empty());
+        let loop_id = state.tracks[0].loops[0].id;
+        let before = state.tracks[0].loops[0].content_revision;
+        for stop in [false, true] {
+            app.runtime
+                .dispatch(AppIntent::PreviewClickTrack {
+                    loop_id,
+                    request: shoop_egui::ClickTrackRequest {
+                        click_count: if stop { 16 } else { 2 },
+                        ..Default::default()
+                    },
+                    output: shoop_egui::ClickTrackPreviewOutput::System,
+                })
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                app.runtime.process_audio_previews();
+                let state = app.runtime.snapshot();
+                assert_ne!(
+                    state.click_track.preview_status,
+                    shoop_egui::ClickTrackPreviewStatus::Failed,
+                    "{:?}",
+                    state.click_track
+                );
+                if state.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Playing
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "preview did not start");
+                thread::sleep(Duration::from_millis(5));
+            }
+            if stop {
+                thread::sleep(Duration::from_millis(250));
+                app.runtime
+                    .dispatch(AppIntent::StopClickTrackPreview)
+                    .unwrap();
+                wait_for_snapshot(&app.runtime, "preview stop", |s| {
+                    s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+                });
+                app.runtime.process_audio_previews();
+                thread::sleep(Duration::from_millis(750));
+            } else {
+                loop {
+                    app.runtime.process_audio_previews();
+                    if app.runtime.snapshot().click_track.preview_status
+                        == shoop_egui::ClickTrackPreviewStatus::Completed
+                    {
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "preview did not finish");
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+            assert_eq!(
+                app.runtime.snapshot().tracks[0].loops[0].content_revision,
+                before
+            );
+        }
     }
 }

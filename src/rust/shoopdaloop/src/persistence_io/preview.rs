@@ -110,11 +110,8 @@ impl Preview {
                 let bus = if output == ClickTrackPreviewOutput::MasterBus {
                     Some(
                         state
-                            .buses
-                            .iter()
-                            .find(|b| b.name == "Master")
-                            .ok_or_else(|| anyhow!("Master bus is unavailable"))?
-                            .id,
+                            .preview_bus
+                            .ok_or_else(|| anyhow!("Master bus is unavailable"))?,
                     )
                 } else {
                     None
@@ -223,15 +220,28 @@ impl Preview {
         }
         if let Some(result) = self.worker.as_mut().and_then(CodecJob::poll) {
             self.worker = None;
-            let Value::Decoded(Decoded::Audio(audio)) = result.map_err(|e| anyhow!(e))? else {
+            let result = result.map_err(|e| anyhow!(e))?;
+            if let Value::Decoded(decoded) = result {
+                ensure!(
+                    decoded.audio_labels().is_some(),
+                    "click generator returned no audio"
+                );
+                self.worker = Some(self.codec.start(Work::Prepare {
+                    decoded,
+                    mapping: vec![0],
+                    update_length: true,
+                })?);
+                return Ok(());
+            }
+            let Value::Image(image) = result else {
                 bail!("click generator returned no audio");
             };
-            let samples = audio
-                .channels
-                .into_iter()
-                .next()
-                .ok_or_else(|| anyhow!("preview contains no audio"))?
-                .samples;
+            let image::Manifest::Update { sample_rate, .. } = &image.manifest else {
+                bail!("click generator returned invalid audio");
+            };
+            let Some(image::Payload::Audio(samples)) = image.payloads.first() else {
+                bail!("preview contains no audio");
+            };
             ensure!(
                 !samples.is_empty() && samples.len() <= MAX_PREVIEW_FRAMES,
                 "preview exceeds its frame budget"
@@ -240,11 +250,11 @@ impl Preview {
                 self.output = Some(ApplicationAudioPreview {
                     output: ClickTrackPreviewOutput::System,
                     request_id: self.state.preview_request_id,
-                    sample_rate: audio.sample_rate,
+                    sample_rate: *sample_rate,
                     samples: Arc::from(samples.as_slice()),
                 });
             } else {
-                self.samples = Some(Arc::new(samples));
+                self.samples = Some(Arc::clone(samples));
                 self.offset = 0;
                 self.begin = true;
                 self.play = true;

@@ -33,6 +33,7 @@ impl Service {
                 frames,
             } => {
                 if !self.backend.supports_audio_preview()
+                    || self.preview_bus != Some(bus)
                     || !self.buses.contains_key(&bus)
                     || sample_rate != self.observed.status.sample_rate
                     || frames == 0

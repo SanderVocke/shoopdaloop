@@ -89,7 +89,10 @@ impl Progress {
                     .iter()
                     .copied()
                     .collect::<BTreeSet<_>>();
-                if ids.len() != session.buses.len() || ids != order {
+                if ids.len() != session.buses.len()
+                    || ids != order
+                    || session.preview_bus.is_some_and(|id| !ids.contains(&id))
+                {
                     return Err(Refusal::Identity);
                 }
                 session.tracks.iter().flat_map(|t| &t.loops).collect()

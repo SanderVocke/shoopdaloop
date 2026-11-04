@@ -126,6 +126,7 @@ impl CommandError {
 pub struct Service {
     backend: Box<dyn Backend>,
     preview: ClickTrackState,
+    preview_bus: Option<BusId>,
     preview_stage: Option<preview::Stage>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
@@ -184,6 +185,7 @@ impl Service {
         let mut service = Self {
             backend,
             preview: ClickTrackState::default(),
+            preview_bus: None,
             preview_stage: None,
             options,
             host_settings: None,

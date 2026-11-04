@@ -34,9 +34,18 @@ fn host(transport: AppTransport) -> Host {
     host_with_loop_memory(transport, 16)
 }
 fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
+    host_with_driver(transport, loop_memory_mb, None)
+}
+fn host_with_driver(
+    transport: AppTransport,
+    loop_memory_mb: u32,
+    driver: Option<AudioDriverConfig>,
+) -> Host {
     let root = tempfile::tempdir().unwrap();
+    let real_device = driver.is_some();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
+            driver: driver.unwrap_or_default(),
             pools: NewEnginePools {
                 buses: 8,
                 bus_channels: 8,
@@ -48,13 +57,21 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
             ..Default::default()
         },
         transport,
-        test_signal: true,
+        test_signal: !real_device,
         ..Default::default()
     };
     let config_path = root.path().join("config.json");
     std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
 
     let path = root.path().join("profile.json");
+    let log_path = if real_device {
+        std::env::var_os("SHOOP_PREVIEW_LOG_DIR")
+            .map(PathBuf::from)
+            .map(|root| root.join(format!("host-{transport:?}.log")))
+            .unwrap_or_else(|| root.path().join("host.log"))
+    } else {
+        root.path().join("host.log")
+    };
 
     let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
         .env("RUST_LOG", "info")
@@ -63,13 +80,13 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
         .arg("--export-profile")
         .arg(&path)
         .arg("--log-file")
-        .arg(root.path().join("host.log"))
+        .arg(&log_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(if real_device { 30 } else { 10 });
     while !path.exists() {
         assert!(
             child.try_wait().unwrap().is_none(),
@@ -1101,16 +1118,38 @@ fn a_host_without_requested_outputs_writes_no_host_records_or_logs() {
 
 #[shoop_test]
 fn master_preview_plays_in_the_independent_host_without_creating_loop_content() {
+    verify_master_preview(None);
+}
+
+#[shoop_test]
+#[ignore = "requires an isolated native driver and external signal capture"]
+fn native_master_preview_device_acceptance() {
+    let path =
+        std::env::var("SHOOP_PREVIEW_DRIVER_CONFIG").expect("driver configuration JSON path");
+    let driver = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    verify_master_preview(Some(driver));
+}
+
+fn verify_master_preview(mut driver: Option<AudioDriverConfig>) {
+    #[cfg(feature = "jack")]
+    let capture = if let Some(AudioDriverConfig::Jack(config)) = &mut driver {
+        let capture = JackCapture::new();
+        for (output, input) in config.audio_outputs.iter().zip(["left", "right"]) {
+            config
+                .connections
+                .push((output.clone(), format!("preview_capture:{input}")));
+        }
+        Some(capture)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "jack"))]
+    let _ = &mut driver;
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
-        let mut host = host(transport);
+        let mut host = host_with_driver(transport, 16, driver.clone());
         let (mut client, mut connection) = attach(&host.entry, 990);
         let state = client.snapshot().unwrap();
-        let master = state
-            .buses
-            .iter()
-            .find(|bus| bus.name == "Master")
-            .unwrap()
-            .id;
+        let master = state.preview_bus.unwrap();
         let rate = state.status.sample_rate;
         let content: Vec<_> = state
             .tracks
@@ -1167,6 +1206,17 @@ fn master_preview_plays_in_the_independent_host_without_creating_loop_content() 
             );
             thread::sleep(Duration::from_millis(2));
         }
+        if driver.is_some() {
+            thread::sleep(Duration::from_millis(100));
+            #[cfg(feature = "jack")]
+            if let Some(capture) = &capture {
+                let peaks = capture.take_peaks();
+                assert!(
+                    peaks.iter().all(|p| (*p - 0.25).abs() < 0.001),
+                    "JACK port output: {peaks:?}"
+                );
+            }
+        }
         assert!(matches!(
             command(
                 &mut client,
@@ -1189,7 +1239,79 @@ fn master_preview_plays_in_the_independent_host_without_creating_loop_content() 
                 .collect::<Vec<_>>(),
             content
         );
+        if driver.is_some() {
+            thread::sleep(Duration::from_millis(500));
+            connection.poll(&mut client).unwrap();
+            assert_eq!(
+                client.snapshot().unwrap().status.audio_driver,
+                AudioDriverState::Running,
+                "{:?}",
+                client.snapshot().unwrap().status
+            );
+            #[cfg(feature = "jack")]
+            if let Some(capture) = &capture {
+                capture.take_peaks();
+                thread::sleep(Duration::from_millis(250));
+                let peaks = capture.take_peaks();
+                assert!(
+                    peaks.iter().all(|p| *p == 0.),
+                    "JACK output persisted after Stop: {peaks:?}"
+                );
+            }
+        }
         drop(connection);
         shutdown(&mut host, &mut client);
+    }
+}
+
+#[cfg(feature = "jack")]
+struct CaptureProcess {
+    inputs: [jack::Port<jack::AudioIn>; 2],
+    peaks: std::sync::Arc<[std::sync::atomic::AtomicU32; 2]>,
+}
+#[cfg(feature = "jack")]
+impl jack::ProcessHandler for CaptureProcess {
+    fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        for (input, peak) in self.inputs.iter().zip(self.peaks.iter()) {
+            let value = input
+                .as_slice(scope)
+                .iter()
+                .fold(0.0_f32, |a, b| a.max(b.abs()));
+            peak.fetch_max(value.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+        jack::Control::Continue
+    }
+}
+#[cfg(feature = "jack")]
+struct JackCapture {
+    _client: jack::AsyncClient<(), CaptureProcess>,
+    peaks: std::sync::Arc<[std::sync::atomic::AtomicU32; 2]>,
+}
+#[cfg(feature = "jack")]
+impl JackCapture {
+    fn new() -> Self {
+        let (client, _) =
+            jack::Client::new("preview_capture", jack::ClientOptions::NO_START_SERVER).unwrap();
+        let inputs = ["left", "right"].map(|name| {
+            client
+                .register_port(name, jack::AudioIn::default())
+                .unwrap()
+        });
+        let peaks = std::sync::Arc::new(core::array::from_fn(|_| {
+            std::sync::atomic::AtomicU32::new(0)
+        }));
+        let handler = CaptureProcess {
+            inputs,
+            peaks: std::sync::Arc::clone(&peaks),
+        };
+        Self {
+            _client: client.activate_async((), handler).unwrap(),
+            peaks,
+        }
+    }
+    fn take_peaks(&self) -> [f32; 2] {
+        core::array::from_fn(|i| {
+            f32::from_bits(self.peaks[i].swap(0, std::sync::atomic::Ordering::Relaxed))
+        })
     }
 }
