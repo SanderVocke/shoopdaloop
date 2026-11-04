@@ -168,6 +168,7 @@ pub(crate) struct Loop {
     pub meter: Meter,
     /// Changes whenever the recorded content may have changed.
     pub content: u64,
+    pub rt_content_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

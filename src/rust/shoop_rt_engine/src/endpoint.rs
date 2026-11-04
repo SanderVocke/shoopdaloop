@@ -191,6 +191,7 @@ pub struct ControlEndpoint {
     pub(crate) bulk: Bulk,
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
+    pub(crate) family: crate::family::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -411,9 +412,21 @@ impl ControlEndpoint {
                 }
                 _ => {}
             },
-            Command::Schedule { payload, .. } => {
+            Command::Schedule {
+                payload, action, ..
+            } => {
                 if !payload.is_empty() {
-                    self.work.return_payload(payload);
+                    if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::SelectFamily { .. },
+                            ..
+                        }
+                    ) {
+                        self.family.payload = Some(payload);
+                    } else {
+                        self.work.return_payload(payload);
+                    }
                 }
             }
             Command::StageGraph {
@@ -456,6 +469,9 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        if self.family.id.is_some() && !self.family.committing {
+            self.family.cancel_requested = true;
+        }
         self.bulk.disconnect();
         self.uploads.disconnect();
     }
@@ -733,6 +749,15 @@ impl ControlEndpoint {
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::ContentFamilyBegin { .. }
+            | Request::ContentFamilyEdit { .. }
+            | Request::ContentFamilyCommit { .. }
+            | Request::ContentFamilyCancel { .. } => {
+                if self.job.is_some() {
+                    return Err(());
+                }
+                self.family_request(correlation, request)
+            }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -1071,6 +1096,11 @@ impl ControlEndpoint {
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            content_revision: if current {
+                cells.content_revision.load(Ordering::Relaxed)
+            } else {
+                0
+            },
             length: if current {
                 cells.length.load(Ordering::Relaxed)
             } else {

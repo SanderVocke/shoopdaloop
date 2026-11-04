@@ -1,4 +1,8 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_loops/src/resolver/retime.rs,portable_loop_library,excluded,Fixed-storage atomic timing publication exposes frame-tagged events and typed failures without callback tracing.
+src/rust/shoop_loops/src/media/playback.rs,portable_loop_library,excluded,Prepared playback ownership preflight has no tracing dependency and retains explicit resource ownership accounting.
+src/rust/shoop_loops/src/runtime/family.rs,portable_loop_library,excluded,Prepared family publication exposes typed preflight and execution outcomes without callback tracing.
+src/rust/shoop_rt_engine/src/family.rs,realtime_engine,excluded,Bounded family staging may execute on an audio thread; host and adapter trace request and outcome boundaries.
 src/rust/rt_runtime/src/buffer.rs,generic_realtime_library,excluded,Independent bounded runtime; no application tracing dependency. Hosts can observe Copy diagnostics outside rendering.
 src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent capacity validation; no application tracing dependency.
 src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.

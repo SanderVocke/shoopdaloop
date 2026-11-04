@@ -191,6 +191,21 @@ replacement. A configured fixed planner now permits replacement at any fixed tic
 including when host callbacks are smaller than Q. The component test checks
 mid-callback tick publication, retained old exports and MIDI cleanup together.
 
+Atomic runtime milestone: the bounded family transaction now stages media without
+changing playback, then publishes periods, audio, MIDI and mapped playheads at one
+fixed tick. RT protocol version 6 carries family staging and authoritative content
+revisions, including changes that keep the same length. Core and engine tests
+cover Q=16/32/64, callbacks smaller than Q, stale revisions, unrelated recording
+and gain changes, cancellation, resource reclamation and disconnects before and
+after admitted commits. The backend/service/import coordinator still needs to
+drive this transaction; stage 4 remains open until that integration is complete.
+
+Atomic runtime validation: 2,621 native tests pass, with four host-facility skips;
+all three engine family tests also pass in Node/Wasm. The warning-denying workspace
+build, formatting, test-attribute and tracing inventory checks pass. Logs:
+`work/retiming-family-native.log`, `work/retiming-family-node.log` and
+`work/retiming-family-workspace-build.log`.
+
 Timing field classification: loop lengths, channel offsets, combined playback
 origin, capture alignment, preplay, raw audio/MIDI extents and event frames follow
 the musical map. Track/processor manual latency and port history capacities follow

@@ -37,6 +37,7 @@ pub(crate) struct Job {
     session: bool,
     validation: VecDeque<Validation>,
     pub prepared: BTreeMap<u64, Prepared>,
+    pub revisions: BTreeMap<shoop_rt_protocol::LoopSlotId, u64>,
     canonical_bytes: u64,
     rendered_bytes: u64,
     canonical_limit: u64,
@@ -70,6 +71,7 @@ impl Job {
             session,
             validation,
             prepared: BTreeMap::new(),
+            revisions: BTreeMap::new(),
             canonical_bytes: 0,
             rendered_bytes: 0,
             canonical_limit,
@@ -143,6 +145,14 @@ impl Job {
             return;
         };
         self.active.swap_remove(index);
+        if matches!(request, Request::ContentApply { .. }) && outcome == Outcome::Done {
+            self.fail("engine omitted the applied content revision".to_owned());
+        }
+        if let (Request::ContentApply { loop_id, .. }, Outcome::ContentApplied { revision }) =
+            (request, outcome)
+        {
+            self.revisions.insert(loop_id, revision);
+        }
         if self.retries < 1024
             && !matches!(request, Request::ContentWrite { .. })
             && (outcome == Outcome::Refused(Refusal::Overloaded)
@@ -303,6 +313,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let content = replacement.content.remove(&id).expect("prepared content");
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;
+                    entry.rt_content_revision = replacement.job.revisions[&entry.slot];
                     entry.view.length = u64::from(content.length);
                 }
                 self.prepared_content

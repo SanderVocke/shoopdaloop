@@ -102,6 +102,7 @@ impl ControlEndpoint {
                 | Request::ReplacementPrepare { .. }
                 | Request::ReplacementCommit { .. }
                 | Request::ReplacementCancel { .. }
+                | Request::ContentFamilyCancel { .. }
         ) {
             return self.start(correlation, request).is_ok();
         }
@@ -136,7 +137,12 @@ impl ControlEndpoint {
         }
         if matches!(
             request,
-            Request::LoopClear { .. } | Request::SetSmoothing { .. } | Request::ContentApply { .. }
+            Request::LoopClear { .. }
+                | Request::SetSmoothing { .. }
+                | Request::ContentApply { .. }
+                | Request::ContentFamilyBegin { .. }
+                | Request::ContentFamilyEdit { .. }
+                | Request::ContentFamilyCommit { .. }
         ) {
             if !*open || self.batch_len > 0 {
                 return false;
@@ -180,6 +186,9 @@ impl ControlEndpoint {
                 || self.touched_buses.get(slot).is_some_and(|t| *t >= level)
         };
         match request {
+            Request::ContentFamilyBegin { root, .. } => loop_(root.0.index, SOFT),
+            Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
+            Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
             Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
             Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
@@ -249,6 +258,20 @@ impl ControlEndpoint {
             }
         };
         match request {
+            Request::ContentFamilyBegin { root, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(root.0.index as usize) {
+                    *blocked = true;
+                }
+            }
+            Request::ContentFamilyEdit { edit, .. } => {
+                if let Some(blocked) = self.blocked_loops.get_mut(edit.loop_id.0.index as usize) {
+                    *blocked = true;
+                }
+                for id in [edit.audio, edit.midi].into_iter().flatten() {
+                    self.uploads.block(id);
+                }
+            }
+            Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
             Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }

@@ -20,6 +20,8 @@ use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
+mod family;
+pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
 mod node_pairs;
 mod planner;
 mod processor;
@@ -102,6 +104,10 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    SelectFamily {
+        root: LoopId,
+        topology_epoch: Epoch,
+    },
     NodePairSnapshot {
         resource: rt_runtime::ResourceId,
     },
@@ -351,6 +357,7 @@ pub enum Reply {
     Done,
     Adopted {
         media: media::MediaId,
+        revision: Revision,
     },
     Failed(Failure),
     Transition(crate::Completion),
@@ -486,6 +493,7 @@ pub struct LoopPlanner {
     views: Box<[View]>,
     pending: Box<[Option<Pending>]>,
     failures: Vec<crate::Observation>,
+    family: Vec<family::Selection>,
 }
 
 /// Preparation choices beyond the loops themselves; the default enables none.
@@ -551,7 +559,7 @@ impl LoopClient {
     ) -> Command<P, LoopPlanner, Q> {
         self.command_with_payload(at, operation, Box::new([]))
     }
-    /// Build payloads off-render. Only topology header/chunk operations accept them.
+    /// Build topology and content-family payloads off-render.
     pub fn command_with_payload<P, Q: ProcessorOperation>(
         &self,
         at: Frame,
@@ -598,6 +606,7 @@ impl LoopPlanner {
                 size_of::<Row>()
                     + size_of::<MidiState>()
                     + size_of::<View>()
+                    + size_of::<family::Selection>()
                     + 2 * size_of::<rt_runtime::planner::Observation<Observed>>(),
             )
             .and_then(|n| {
@@ -837,6 +846,7 @@ impl LoopPlanner {
             views,
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
+            family: family::prepare(slots, dummy),
         };
         Ok(Prepared {
             planner,

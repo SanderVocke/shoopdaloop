@@ -50,7 +50,7 @@ impl LoopPlanner {
         self.graph_epoch = permit.commit();
         Ok((self.graph_epoch, self.resolver.epoch()))
     }
-    fn row(&self, target: LoopId) -> Result<Row, Error> {
+    pub(super) fn row(&self, target: LoopId) -> Result<Row, Error> {
         self.rows
             .get(target.slot() as usize)
             .and_then(|r| *r)
@@ -686,7 +686,10 @@ impl Planner for LoopPlanner {
             id: self.settings.planner,
             decision_slots: self.views.len(),
             observation_capacity: self.rows.iter().flatten().count() * 2,
-            operation_bytes: self.topologies.operation_bytes(),
+            operation_bytes: self
+                .topologies
+                .operation_bytes()
+                .max(self.rows.len() * CONTENT_FAMILY_RECORD_BYTES),
         })
     }
     fn decisions(&self) -> &[View] {
@@ -751,12 +754,26 @@ impl LoopPlanner {
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
-                    Operation::TopologyBegin { .. } | Operation::TopologyAppend { .. }
+                    Operation::TopologyBegin { .. }
+                        | Operation::TopologyAppend { .. }
+                        | Operation::SelectFamily { .. }
                 )
             {
                 return Err(Error::InvalidShape.into());
             }
             let topology_status = match operation {
+                Operation::SelectFamily {
+                    root,
+                    topology_epoch,
+                } => {
+                    self.select_family(
+                        root,
+                        topology_epoch,
+                        context.payload,
+                        &mut context.resources,
+                    )?;
+                    return Ok(Disposition::Complete(Reply::Done));
+                }
                 Operation::NodePairSnapshot { resource } => {
                     let (id, snapshot) = self.node_pairs.snapshot(
                         resource,
@@ -1168,7 +1185,7 @@ impl LoopPlanner {
                         &mut self.ledger,
                         &mut context.resources,
                     )?;
-                    Ok(Disposition::Complete(Reply::Adopted { media }))
+                    Ok(Disposition::Complete(Reply::Adopted { media, revision }))
                 }
                 Operation::MidiInitial { export, channel } => {
                     if channel >= 16 {
@@ -1273,6 +1290,7 @@ impl LoopPlanner {
                 | Operation::NodePairCancel { .. }
                 | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
+                | Operation::SelectFamily { .. }
                 | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
                 | Operation::GraphActivate { .. }
