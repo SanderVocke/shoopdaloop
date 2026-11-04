@@ -127,37 +127,41 @@ pub trait Planner: Send {
     type Result: Copy + Send + 'static;
 
     fn enable_fixed(&mut self, _quantum: crate::fixed::Quantum) -> Result<(), Error> {
-        Err(Error::InvalidConfig)
+        Ok(())
     }
     fn fixed_operation(
         &mut self,
-        _operation: Self::Operation,
-        _context: OperationContext<'_, Self::Operation, Self::Result>,
+        operation: Self::Operation,
+        context: OperationContext<'_, Self::Operation, Self::Result>,
     ) -> Result<Disposition<Self::Result>, Error> {
-        Err(Error::InvalidState)
+        self.operation(operation, context)
     }
     fn fixed_begin(
         &mut self,
-        _context: PlanContext<'_, Self::Operation, Self::Result>,
+        context: PlanContext<'_, Self::Operation, Self::Result>,
     ) -> Result<(), Error> {
-        Err(Error::InvalidState)
+        let end = context.ceiling;
+        if self.plan(context)? != end {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(())
     }
     fn fixed_finish(
         &mut self,
-        _context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+        context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
     ) -> Result<(), Error> {
-        Err(Error::InvalidState)
+        self.finish(context)
     }
 
     /// Queried only during preparation. None selects the signal-only lifecycle.
     fn spec(&self) -> Option<PlannerSpec>;
     fn decisions(&self) -> &[Self::Decision];
-    /// Settle the current boundary and return frame < end <= ceiling.
+    /// Compatibility hook: settle a whole tick and return its supplied ceiling.
     fn plan(
         &mut self,
         context: PlanContext<'_, Self::Operation, Self::Result>,
     ) -> Result<Frame, Error>;
-    /// Consume this interval's observations without settling its end boundary.
+    /// Consume this tick's compatibility observations without settling its end.
     fn finish(
         &mut self,
         context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,

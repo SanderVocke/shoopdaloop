@@ -715,14 +715,16 @@ fn running_capture_exhaustion_preserves_independently_predicted_common_prefix_an
         let mut prefix = 0usize;
         let mut failed = false;
         for frames in partition {
-            if !failed {
-                let used_audio = prefix.div_ceil(8);
-                let new_audio = (prefix + frames).div_ceil(8) - used_audio;
-                let used_midi = usize::from(prefix > 0);
-                if used_audio + used_midi + new_audio + 128 > 136 {
-                    failed = true;
-                } else {
-                    prefix += frames;
+            for _ in 0..frames {
+                if !failed {
+                    let used_audio = prefix.div_ceil(8);
+                    let new_audio = (prefix + 1).div_ceil(8) - used_audio;
+                    let used_midi = usize::from(prefix > 0);
+                    if used_audio + used_midi + new_audio + 128 > 136 {
+                        failed = true;
+                    } else {
+                        prefix += 1;
+                    }
                 }
             }
             let at = engine.next_frame().0;
@@ -952,7 +954,7 @@ fn stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owner
             host.input[0][..3].copy_from_slice(&[2., 4., 6.]);
             host.input[1][..3].copy_from_slice(&[20., 40., 60.]);
             host.midi_in[0].push(0, 3, &[0x90, 60, 100]).unwrap();
-            host.midi_in[0].push(2, 3, &[0x80, 60, 45]).unwrap();
+            host.midi_in[0].push(0, 3, &[0x80, 60, 45]).unwrap();
             let [left, right] = &mut host.output;
             assert_eq!(
                 assert_no_heap(|| engine.process(

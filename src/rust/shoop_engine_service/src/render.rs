@@ -31,6 +31,12 @@ impl Render {
             phase: Phase::Running,
         })
     }
+    pub fn quantum(&self) -> rt_runtime::fixed::Quantum {
+        self.engine.quantum()
+    }
+    pub fn buffering_latency(&self) -> usize {
+        self.engine.buffering_latency()
+    }
     pub fn next_frame(&self) -> Frame {
         self.engine.next_frame()
     }
@@ -133,6 +139,7 @@ impl Render {
         let result = processing.and(outcomes).and(recovery);
         if let Err(error) = result {
             self.phase = Phase::Faulted(error);
+            self.recovery.clear();
             self.reset.request();
             let aborted = self.ingress.abort(frame, error);
             for output in audio.outputs.iter_mut() {

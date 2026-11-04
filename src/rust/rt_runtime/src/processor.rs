@@ -39,6 +39,7 @@ pub struct FixedProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 pub struct OperationContext<'a> {
+    pub quantum: crate::fixed::Quantum,
     pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,

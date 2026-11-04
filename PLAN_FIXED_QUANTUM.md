@@ -49,25 +49,25 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
   tick counts, MIDI ordering, errors, heap guards and callback-scoped maintenance.
 - [x] Implement direct and arbitrary-partition host adapters. Verify constant
   latency, clocks, audio/MIDI correspondence, zero blocks and partition invariance.
-- [ ] Implement direct tick-based loop playback, transitions, sync/programs,
+- [x] Implement direct tick-based loop playback, transitions, sync/programs,
   recording and media ownership. Verify against independent reference models,
   aligned legacy cases, capacity failures and resource reclamation.
   - [x] Primitive audio/MIDI playback, aligned seeks, gain, stop and state queries.
   - [x] Grouped whole-tick recording, coherent publication, monitored previous
     content, explicit exhaustion and failed-start preservation.
-  - [ ] Sync/program compilation and domain precedence/request-family semantics.
-  - [ ] Live media/graph publication and complete shutdown/export transport.
+  - [x] Sync/program compilation and domain precedence/request-family semantics.
+  - [x] Live media/graph publication and complete shutdown/export transport.
     - [x] Prepared fixed-catalog routing publication, tick-aligned epochs,
       processor state retention and control-side retirement with heap guards.
     - [x] Quiescent command settlement and recording cleanup after normal stop
       or a partial-tick fault, preserving unread results under saturation.
-- [ ] Integrate engine, protocol/host configuration, settings, persistence and
+- [x] Integrate engine, protocol/host configuration, settings, persistence and
   recovery. Verify native and browser production routes and capability parity.
   - [x] Share production strip/fader/bus/reader DSP with fixed-core execution,
     including ramps, meters, MIDI monitoring and callback-scoped bulk reads.
   - [x] Prepare production engine parts with independent host capacity/Q and
     typed node operations, including inactive slots and shared ingress budgeting.
-  - [ ] Integrate the full protocol endpoint and logical slot lifecycle; carry Q
+  - [x] Integrate the full protocol endpoint and logical slot lifecycle; carry Q
     through startup/configuration/settings/persistence and select the fixed host.
 - [ ] Re-run whole-callback performance experiments for regular, two-transition,
   simultaneous-burst, recording, MIDI and graph/media workloads; include plugin
@@ -117,6 +117,28 @@ preflight remains necessary for coherent capacity failures and request families.
 
 ## Progress and evidence
 
+Single-kernel continuation: adaptive graph execution is removed. Generic capture
+start/stop/snapshot and graph publication wait for an eligible tick, including when
+host input for an earlier tick was already collected. MIDI recovery suppresses later
+same-callback packets after resetting consumers, and terminal fault output contains
+one device reset. The configurable headless service uses direct loop/DSP nodes and
+accepts correctly rounded DSP controls while still refusing actual late selections.
+
+Validation: 66 selected core/domain/engine/service/worklet cases pass in both Node
+and Chromium; production application/worklet Wasm builds and codec/AudioWorklet
+artifact contracts pass. Runtime/engine dependency boundaries pass on all four
+supported targets; warning-denying workspace build, formatting, test attributes,
+tracing inventory (369 modules) and book checks pass. All runnable runtime/loop
+examples were exercised; the bounded generic example now declares Q=32 and checks
+capture revisions per tick. These debug smoke timings are not performance evidence.
+Final full native run passes all 2,598 tests, with four host-facility skips.
+
+An initial final-suite attempt raced a default workspace build against tests, which
+replaced the test-enabled host executable. The corrected run separates compilation
+from test execution. An isolated recovery repeat also observed a timing-sensitive
+Stopped-versus-Recording snapshot; no assertions or waits were weakened.
+
+
 Production cutover continuation: engine preparation uses whole fixed ticks and
 direct loop consumers through the full existing protocol/ownership endpoint.
 Q reaches persisted host settings, native/process startup and worklet records;
@@ -125,7 +147,10 @@ fixed mode preserves exact-sample behavioral fixtures without an interval fallba
 Additional Q=16/32/64/128 tests exercise arbitrary host partitions, real audio/MIDI
 record/play/export and slot reuse, MIDI overflow recovery, delayed synchronized
 recording and live program replacement with exact journals. The generic executor's
-adaptive compatibility path and library example migration are still pending.
+adaptive callback/graph-range execution has since been removed. Older processor
+interfaces have whole-tick adapters; production and headless service nodes use
+direct domain access. Standalone resolver interval analysis remains a library API,
+not a selectable graph backend. Runnable examples pass under that contract. Final CI/device and integrated performance gates remain open.
 
 
 Initial branch: `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2`.
@@ -151,16 +176,15 @@ separate. Repeated-take tests alternate banks 32 times and recover every page.
 Quiescent shutdown retains unread results and disconnects pending/unadmitted
 requests exactly once while holding both endpoints. It also reclaims a take
 after a fault during partial-tick staging without replaying that tick.
-Sync/program arbitration and production integration remain incomplete. The
-production application still selects the existing interval path.
+Sync/program arbitration and production integration remain incomplete. At this earlier milestone the production application still selected the interval path.
 
 Production-composition continuation: `shoop_rt_engine::fixed` prepares the real
 engine processors next to the direct loop bank and reuses capacity calculations.
 Typed operations bind targets off-render, execute before same-tick route changes,
 and share normal callback ingress capacity with loop commands. Engine DSP render
 bodies are shared between both paths. Fixed bulk streaming retains one allowance
-across all ticks. Host/protocol startup still selects the interval composition;
-the fixed parts do not yet implement complete logical slot/endpoint lifecycle.
+across all ticks. At this earlier milestone host/protocol startup still selected the interval composition;
+complete logical slot/endpoint lifecycle was added by the production cutover.
 
 Validation completed:
 

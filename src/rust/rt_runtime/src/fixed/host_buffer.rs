@@ -18,12 +18,12 @@ pub(crate) struct HostBuffer {
     overflows: usize,
 }
 impl HostBuffer {
-    pub fn prepare(config: PreparedConfig) -> Result<Self, Error> {
+    pub fn prepare(config: PreparedConfig, quantum: super::Quantum) -> Result<Self, Error> {
         let c = config.limits();
         if c.audio_inputs > PORTS || c.audio_outputs > PORTS {
             return Err(Error::InvalidConfig);
         }
-        let q = c.max_frames;
+        let q = quantum.frames();
         let midi = |n| {
             (0..n)
                 .map(|_| MidiBuffer::new(c.midi_events_per_port, c.midi_bytes_per_port))

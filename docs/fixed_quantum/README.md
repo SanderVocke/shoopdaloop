@@ -16,11 +16,18 @@ partitions, including callbacks shorter than Q, have the same Q-frame delay.
 Q=1 is also a fixed sample-accurate mode for offline/reference fixtures; it has no
 host buffer delay. The default and UI choices remain the larger quanta.
 
-The generic executor's adaptive compatibility path is still being retired.
-Library examples and lower-level fixtures still use that API; their migration is
-separate from the production engine cutover. Full parity and refreshed integrated
-performance evidence remain acceptance gates. A clean checkout at `6de0b7a1`
-provides the external comparison implementation.
+The generic executor now has one fixed render kernel; its adaptive callback and
+graph-range loops are removed. Older processor and planner interfaces use whole
+tick adapters, with the convenience constructors choosing Q=1. Production loop
+nodes bypass those adapters. The headless engine service also prepares explicit Q
+(default 32), shares the direct loop consumers and fixed DSP, and reports buffering
+latency. The standalone timing resolver retains its interval-analysis API for
+library callers; that API does not select graph execution.
+
+The complete native suite, supported production workflows and larger-Q focused
+tests are the parity gates. Final CI/device acceptance and refreshed integrated
+performance evidence remain pending. A clean checkout at `6de0b7a1` provides the
+external comparison implementation.
 
 Measured source: `4d8d608be184541c98af2f3254e1cb80fd4c6b6e`. The initial sweep measured
 `2443a6aab76931a4b516514f1d4609ca8d06af8e` before the quiescent-shutdown addition. Both sweeps

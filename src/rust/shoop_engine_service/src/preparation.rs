@@ -44,11 +44,12 @@ fn prepare_inner(
     if config.max_frames == 0 || config.max_frames > 64 || config.export_slots == 0 {
         return Err(Error::InvalidConfig.into());
     }
+    let quantum = rt_runtime::fixed::Quantum::new(config.quantum)?;
     let mut dsp_config = config.dsp;
-    dsp_config.max_frames = config.max_frames;
+    dsp_config.max_frames = quantum.frames();
     let prepared_dsp = dsp::prepare(dsp_config, presets, initial)?;
     let runtime = rt_runtime::Config {
-        max_frames: config.max_frames,
+        max_frames: quantum.frames(),
         audio_inputs: 2,
         audio_outputs: 2,
         midi_inputs: 1,
@@ -151,14 +152,18 @@ fn prepare_inner(
             ServiceNode::Dsp(prepared_dsp.processor),
         )])
         .collect();
-    let (mut control, mut engine) = GraphRuntime::prepare_with_initial_graph(
+    let (mut control, mut engine) = GraphRuntime::prepare_fixed_with_planner_and_resources(
         runtime,
+        config.max_frames,
+        quantum,
         nodes,
         planner,
         resources,
-        &initial_graph,
-        &client.bindings_for(&initial_graph),
     )?;
+    engine.prepare_initial_graph(&initial_graph, &client.bindings_for(&initial_graph))?;
+    if quantum.frames() > 1 {
+        engine.prepare_host_buffering()?;
+    }
     control.prepare_submissions()?;
     engine.prepare_graph_staging(1)?;
     let candidate = client.compile_graph(

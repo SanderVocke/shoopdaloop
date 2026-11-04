@@ -67,6 +67,7 @@ fn setup_with_exports(export_slots: usize) -> (Client, Host, PreparedRoute, Loop
         target,
     } = prepare(
         Config {
+            quantum: 1,
             max_frames: 8,
             resource_pages: 128,
             export_slots,

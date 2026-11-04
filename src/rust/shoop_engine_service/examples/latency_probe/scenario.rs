@@ -290,6 +290,7 @@ pub fn run(signal: Signal, capture: Capture, partition: Partition) -> Evidence {
     let preset = dsp::PresetId::from_parts(0, 1).unwrap();
     let prepared = shoop_engine_service::prepare(
         Config {
+            quantum: 1,
             capture: CaptureTap::DryWet,
             resource_pages: 128,
             ..Config::default()

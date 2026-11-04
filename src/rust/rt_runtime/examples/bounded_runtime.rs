@@ -244,6 +244,10 @@ impl Fixture {
             },
             ..Config::default()
         };
+        let config = Config {
+            max_frames: 32,
+            ..config
+        };
         let prepared = config.prepare().unwrap();
         let mut store = ResourceStore::new(prepared).unwrap();
         let resource = if matches!(case, Case::Capture | Case::Transfer) {
@@ -267,8 +271,15 @@ impl Fixture {
                 )
             })
             .collect();
-        let (mut control, runtime) =
-            GraphRuntime::prepare_with_resources(prepared, processors, store).unwrap();
+        let (mut control, runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+            prepared,
+            FRAMES,
+            rt_runtime::fixed::Quantum::new(32).unwrap(),
+            processors,
+            rt_runtime::planner::NoPlanner,
+            store,
+        )
+        .unwrap();
         control.prepare_submissions().unwrap();
         let mut midi_in = Vec::new();
         let mut midi_out = Vec::new();
@@ -344,7 +355,7 @@ impl Fixture {
                 panic!("capture")
             };
             fixture.capture = Some(id);
-            fixture.revision = Revision(2);
+            fixture.revision = Revision(1 + FRAMES as u64 / 32);
         }
         fixture
     }
@@ -458,7 +469,12 @@ impl Fixture {
         self.pending = false;
         self.metrics.completed += 1;
         if completion.outcome != Outcome::Applied {
-            assert!(self.case == Case::Transfer && matches!(self.transfer, Transfer::Begin));
+            assert!(
+                self.case == Case::Transfer && matches!(self.transfer, Transfer::Begin),
+                "case={} outcome={:?}",
+                self.case.name(),
+                completion.outcome
+            );
             assert_eq!(completion.outcome, Outcome::Rejected(Error::Capacity));
             self.metrics.refusals += 1;
             return;
@@ -538,7 +554,8 @@ impl Fixture {
     }
     fn observe(&mut self) {
         if self.case == Case::Capture {
-            self.revision = Revision(self.revision.0 + 1);
+            self.revision =
+                Revision(self.revision.0 + (FRAMES / self.runtime.quantum().frames()) as u64);
         }
         self.metrics.owners = self.metrics.owners.max(self.control.outstanding());
         while let Some(completion) = self.control.try_completion() {
@@ -565,8 +582,8 @@ impl Fixture {
         assert!(
             d.transfer_bytes <= 2048
                 && d.validation_steps <= 128
-                && d.nodes_processed <= 64
-                && d.connections_processed <= 256
+                && d.nodes_processed <= 64 * FRAMES
+                && d.connections_processed <= 256 * FRAMES
         );
         self.metrics.copy = self.metrics.copy.max(d.transfer_bytes);
         self.metrics.steps = self.metrics.steps.max(d.validation_steps);
@@ -862,8 +879,8 @@ fn main() {
         times.sort_unstable();
         let percentile = |n: usize| times[(iterations - 1) * n / 1000];
         let m = &fixture.metrics;
-        println!("{{\"case\":\"{}\",\"callbacks\":{},\"sample_rate\":{},\"frames_per_callback\":{},\"nodes\":{},\"edges_max\":{},\"mean_ns\":{},\"p50_ns\":{},\"p99_ns\":{},\"p999_ns\":{},\"max_ns\":{},\"deadline_ns\":{},\"deadline_misses\":{},\"copy_bytes_max\":{},\"validation_steps_max\":{},\"core_copy_bytes\":{},\"control_copy_bytes\":{},\"copy_mib_per_measured_callback_second\":{},\"copy_mib_per_simulated_second\":{},\"commands_completed\":{},\"refusals\":{},\"graph_activations\":{},\"outstanding_owners_max\":{},\"prepared_resource_bytes\":{},\"resource_used_pages_at_callback_boundary_max\":{},\"process_peak_rss_kib\":{},\"scheduler_counters\":{},\"rust_heap_operations\":0}}",
-            case.name(), iterations, RATE, FRAMES, m.nodes, m.edges, total as f64 / iterations as f64, percentile(500), percentile(990), percentile(999), times[iterations - 1], DEADLINE_NS, misses,
+        println!("{{\"case\":\"{}\",\"callbacks\":{},\"sample_rate\":{},\"frames_per_callback\":{},\"quantum\":{},\"graph_nodes\":{},\"nodes\":{},\"edges_max\":{},\"mean_ns\":{},\"p50_ns\":{},\"p99_ns\":{},\"p999_ns\":{},\"max_ns\":{},\"deadline_ns\":{},\"deadline_misses\":{},\"copy_bytes_max\":{},\"validation_steps_max\":{},\"core_copy_bytes\":{},\"control_copy_bytes\":{},\"copy_mib_per_measured_callback_second\":{},\"copy_mib_per_simulated_second\":{},\"commands_completed\":{},\"refusals\":{},\"graph_activations\":{},\"outstanding_owners_max\":{},\"prepared_resource_bytes\":{},\"resource_used_pages_at_callback_boundary_max\":{},\"process_peak_rss_kib\":{},\"scheduler_counters\":{},\"rust_heap_operations\":0}}",
+            case.name(), iterations, RATE, FRAMES, fixture.runtime.quantum().frames(), case.nodes(), m.nodes, m.edges, total as f64 / iterations as f64, percentile(500), percentile(990), percentile(999), times[iterations - 1], DEADLINE_NS, misses,
             m.copy, m.steps, m.total_copy, m.control_bytes, m.control_bytes as f64 * 1e9 / total as f64 / 1048576., m.control_bytes as f64 * RATE as f64 / (iterations * FRAMES) as f64 / 1048576.,
             m.completed, m.refusals, m.activations, m.owners, fixture.config.resource_pages * fixture.config.page_bytes, m.pages, peak_rss(), system_delta(system_before, system_after));
         fixture.shutdown();

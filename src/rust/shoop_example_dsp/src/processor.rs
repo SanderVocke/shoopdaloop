@@ -59,7 +59,7 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
         }: Operation,
         context: OperationContext<'_>,
     ) -> Result<Result<Receipt, Refusal>, Error> {
-        if context.frame != context.requested_frame {
+        if context.frame != context.quantum.ceil(context.requested_frame)? {
             return Ok(Err(Refusal::Late {
                 requested: context.requested_frame,
                 decision_frame: context.frame,
@@ -97,33 +97,59 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
             preset,
         }))
     }
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut rt_runtime::processor::FixedProcessBlock<'_, L>,
+    ) -> Result<(), Error> {
+        self.render(
+            block.quantum.frames(),
+            &mut block.audio,
+            block.midi_inputs,
+            block.midi_outputs,
+        )
+    }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
-        if block.frames == 0 {
+        self.render(
+            block.frames,
+            &mut block.audio,
+            block.midi_inputs,
+            block.midi_outputs,
+        )
+    }
+}
+impl Dsp {
+    fn render(
+        &mut self,
+        frames: usize,
+        audio: &mut rt_runtime::buffer::AudioPorts<'_>,
+        midi_inputs: &[rt_runtime::buffer::MidiBuffer],
+        midi_outputs: &mut [rt_runtime::buffer::MidiBuffer],
+    ) -> Result<(), Error> {
+        if frames == 0 {
             return Ok(());
         }
-        if block.frames > self.config.max_frames
-            || block.midi_inputs.len() != 2
-            || block.midi_outputs.len() != 1
-        {
+        if frames > self.config.max_frames || midi_inputs.len() != 2 || midi_outputs.len() != 1 {
             return Err(Error::InvalidShape);
         }
-        if block
-            .midi_inputs
+        if midi_inputs
             .iter()
             .any(|input| input.len() > self.config.midi_events_per_input)
         {
             return Err(Error::Capacity);
         }
         let mut peaks = [0f32; 2];
-        for offset in 0..block.frames {
+        for offset in 0..frames {
             for channel in 0..2 {
                 let source = if self.active.swap_channels {
                     1 - channel
                 } else {
                     channel
                 };
-                let live = block.audio.input(source).ok_or(Error::InvalidShape)?[offset];
-                let playback = block.audio.input(source + 2).ok_or(Error::InvalidShape)?[offset];
+                let live = audio.input(source).ok_or(Error::InvalidShape)?[offset];
+                let playback = audio.input(source + 2).ok_or(Error::InvalidShape)?[offset];
                 self.delay[self.cursor][channel] = live * self.active.live_gain[channel]
                     + playback * self.active.playback_gain[channel];
             }
@@ -131,7 +157,7 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
                 (self.cursor + self.delay.len() - self.active.delay_frames) % self.delay.len();
             for (channel, peak) in peaks.iter_mut().enumerate() {
                 let sample = self.delay[source][channel];
-                block.audio.output(channel).ok_or(Error::InvalidShape)?[offset] = sample;
+                audio.output(channel).ok_or(Error::InvalidShape)?[offset] = sample;
                 if !sample.is_nan() {
                     *peak = peak.max(sample.abs().min(f32::MAX));
                 }
@@ -145,19 +171,19 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
         let mut positions = [0; 2];
         while let Some((offset, port)) = (0..2)
             .filter_map(|port| {
-                block.midi_inputs[port]
+                midi_inputs[port]
                     .get(positions[port])
                     .map(|(offset, _)| (offset, port))
             })
             .min()
         {
-            let (_, packet) = block.midi_inputs[port]
+            let (_, packet) = midi_inputs[port]
                 .get(positions[port])
                 .ok_or(Error::InvalidState)?;
             if packet.len() > self.config.packet_bytes {
                 return Err(Error::Capacity);
             }
-            block.midi_outputs[0].push(offset, block.frames, packet)?;
+            midi_outputs[0].push(offset, frames, packet)?;
             positions[port] += 1;
         }
         Ok(())

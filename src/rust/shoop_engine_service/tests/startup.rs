@@ -48,6 +48,7 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
     let p = preset();
     let prepared = prepare_with_content(
         Config {
+            quantum: 1,
             resource_pages: 128,
             ..Config::default()
         },
@@ -175,6 +176,7 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
 #[shoop_test]
 fn startup_preparation_checks_shapes_packet_capacity_and_multi_page_serialization() {
     let cfg = Config {
+        quantum: 1,
         resource_pages: 128,
         ..Config::default()
     };
