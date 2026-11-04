@@ -38,6 +38,10 @@ pub struct NodeConfiguration {
 pub enum EngineOp {
     /// Retain values for the next graph epoch without changing the active processor.
     Configure(NodeConfiguration),
+    InputSource {
+        epoch: rt_runtime::Epoch,
+        changed: bool,
+    },
     DiscardConfiguration {
         token: u64,
     },
@@ -170,6 +174,9 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
+    pending_history: Option<(rt_runtime::Epoch, bool)>,
+    history_token: u64,
+    midi_history_token: u64,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -274,6 +281,9 @@ impl StripInput {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
         Self {
+            history_token: 1,
+            midi_history_token: 1,
+            pending_history: None,
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -447,6 +457,9 @@ impl EngineNode {
     fn configure(&mut self, configuration: NodeConfiguration) {
         match self {
             Self::StripInput(node) => {
+                node.pending_history = None;
+                node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
                 node.reset(configuration.inputs);
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
@@ -507,6 +520,19 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         self.apply_configuration(block.graph_epoch);
         match self {
             Self::Loop(node) => node.process(block),
+            Self::StripInput(node) => {
+                node.render(block)?;
+                block.domain.observe_history(
+                    node.slot as u32,
+                    node.history_token,
+                    node.midi_history_token,
+                    block.frame,
+                    block.quantum.frames(),
+                    &mut block.audio,
+                    block.midi_outputs.first(),
+                    &mut block.resources,
+                )
+            }
             _ => self.render_signal(block),
         }
     }
@@ -607,6 +633,9 @@ impl StripInput {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
             EngineOp::Reset { inputs, .. } => {
+                self.pending_history = None;
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
+                self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
                 self.reset(inputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
@@ -616,6 +645,7 @@ impl StripInput {
                 self.monitor.set(f32::from(u8::from(on)), self.ramp)
             }
             EngineOp::Crossfade => {
+                self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 let target = 1. - self.bank.target();
                 self.bank.set(target, self.ramp);
             }
@@ -628,6 +658,7 @@ impl StripInput {
                 *slot = Some(message);
             }
             EngineOp::Mute(_)
+            | EngineOp::InputSource { .. }
             | EngineOp::Configure(_)
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Presence(_)
@@ -708,6 +739,7 @@ impl StripOutput {
                 self.bank.set(target, self.ramp);
             }
             EngineOp::Monitor(_)
+            | EngineOp::InputSource { .. }
             | EngineOp::Configure(_)
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Inject(_)
@@ -904,6 +936,16 @@ impl EngineNode {
         operation: EngineOp,
         graph_epoch: rt_runtime::Epoch,
     ) -> Result<(), Error> {
+        if let EngineOp::InputSource { epoch, changed } = operation {
+            if graph_epoch.checked_next()? != epoch {
+                return Err(Error::StaleEpoch);
+            }
+            let Self::StripInput(node) = self else {
+                return Err(Error::InvalidParameter);
+            };
+            node.pending_history = Some((epoch, changed));
+            return Ok(());
+        }
         if let EngineOp::DiscardConfiguration { token } = operation {
             let pending = self.configuration().ok_or(Error::InvalidParameter)?;
             if pending.is_some_and(|configuration| configuration.token != token) {
@@ -952,6 +994,17 @@ impl EngineNode {
             .and_then(|pending| pending.take_if(|configuration| configuration.epoch == graph_epoch))
         {
             self.configure(configuration);
+        }
+        if let Self::StripInput(node) = self {
+            if let Some((_, changed)) = node
+                .pending_history
+                .take_if(|(epoch, _)| *epoch == graph_epoch)
+            {
+                if changed {
+                    node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                    node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
+                }
+            }
         }
     }
     fn render_signal(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {

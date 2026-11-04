@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*", "feat/fixed-quantum-runtime"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -43,6 +43,53 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  shared_foundation:
+    name: Fixed shared media foundation
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    runs-on: ubuntu-24.04
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: shared-foundation
+      - name: Test fixed runtime, loop, engine and codec contracts
+        run: cargo test --locked -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_persistence_codec
+      - name: Check formatting, tracing, attributes and parity
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
+          python3 scripts/check_feature_parity.py
+
+      - name: Measure production fixed shared media callbacks
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
+          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
+          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
+          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
+          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
+          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
+
+      - name: Upload production shared media callback measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
   host_process_inspection:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Host process inspection (${{ matrix.os }})
@@ -864,6 +911,23 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
+
+      - name: Install pinned Chrome for library browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        uses: browser-actions/setup-chrome@v2
+        id: library_chrome
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Run runtime, loop, engine and codec browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
+        run: >-
+          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
+          --package rt_runtime --package shoop_loops --package shoop_rt_engine --package shoop_persistence_codec
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
