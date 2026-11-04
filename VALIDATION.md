@@ -37,8 +37,17 @@ build container. Native execution uses the documented missing-backend setting;
 physical devices and remote processors are outside this development milestone.
 These are correctness and bounded-rendering checks, not performance evidence.
 Local raw logs and structured Wasm reports remain in `work/` and
-`target/wasm-tests/dev/reports/`. Remote CI and automated review remain the final
-delivery gates.
+`target/wasm-tests/dev/reports/`.
+
+At `e51fe082`, [CI run 41868336475](https://github.com/SanderVocke/shoopdaloop/actions/runs/41868336475)
+passes both Linux and Windows profiles, both web profiles, coverage, JACK and
+bare-metal checks; documentation and CodeQL also pass. The complete Linux suite
+confirms 2641 passed and four intentional canary skips. The user explicitly
+waived macOS validation after repeated hosted ARM64 runner acquisition failures;
+those unavailable runs are not passing evidence. No automated code review or
+inline threads were posted; approval is not claimed. Final closeout changes only
+delivery documents, with current non-macOS results available on
+[PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937).
 
 ## Native session recovery checkpoint
 

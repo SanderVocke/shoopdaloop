@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Implementation is complete at `9cee6c15`; final delivery is waiting for GitHub
-Actions recovery and a green final-head matrix. The work starts from
+Implementation and delivery are complete. Code is unchanged since `9cee6c15`;
+all non-macOS checks passed at `e51fe082`. The user waived macOS validation
+because hosted ARM64 runners could not be acquired. The work starts from
 `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
@@ -58,7 +59,9 @@ These criteria must not change without explicit user approval.
   MIDI is never silently truncated or selectively dropped.
 - **A8 — delivery.** Focused tests, existing required regression/portability
   gates, documentation, green PR CI, and review handling are completed with
-  evidence tied to the implementation revision.
+  evidence tied to the implementation revision. At the user's direction,
+  contended macOS CI is waived for this delivery; unavailable macOS execution
+  is not counted as a passing test.
 
 ## Design rules and code ownership
 
@@ -211,7 +214,8 @@ preceding stage. Keep fixes and verification within their owning milestone.
 - [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
   behavior.
-- [ ] Ensure required CI is green on the final head.
+- [x] Ensure required non-macOS CI is green on the final head. The user explicitly
+  waived macOS validation after repeated hosted ARM64 runner acquisition failures.
 - [x] Check for automated review. Repeatedly assess and address incoming feedback,
   rerun affected checks, and continue until the reviewer approves. If no automated
   reviewer responds, record that fact; do not claim approval. Leave the PR ready
@@ -264,6 +268,22 @@ builds or implementation tests.
   that led to the implementation.
 
 ## Progress and evidence
+
+- Delivery checkpoint: [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937)
+  targets `feat/fixed-quantum-runtime`. At `e51fe082`,
+  [CI run 41868336475](https://github.com/SanderVocke/shoopdaloop/actions/runs/41868336475)
+  passes Linux debug/release, Windows debug/release, both web profiles, coverage,
+  JACK acceptance and bare-metal gates; documentation and CodeQL also pass.
+  The Linux workspace run confirms 2641 passed and four intentional canary skips,
+  including every renamed processor and engine-composition test.
+- macOS validation is waived by explicit user instruction after repeated jobs
+  could not acquire hosted ARM64 runners. The pending targeted retry was
+  cancelled; no macOS pass is claimed. The workflow's normal macOS matrix remains
+  available for future runs. Closeout changes only this plan and validation notes;
+  final non-macOS checks are available through the PR checks page.
+- Final review check found no submitted reviews or inline threads. No automated
+  code reviewer responded, and approval is not claimed. The implementation is
+  ready for user review; merging remains outside this plan.
 
 - Planning: inspected the fixed runtime interfaces, production fixed hook, MIDI
   validation/storage/recovery, engine composition, portable test runner, and
