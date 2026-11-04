@@ -45,6 +45,8 @@ struct Fixture {
     completions: Vec<Completion>,
     executions: Vec<Executed>,
     stimulus: Option<u64>,
+    burst: Option<u64>,
+    last_execution: Option<Executed>,
 }
 fn target(slot: u32) -> LoopId {
     LoopId::from_parts(slot, 1).unwrap()
@@ -140,6 +142,8 @@ impl Fixture {
             completions: Vec::new(),
             executions: Vec::new(),
             stimulus: None,
+            burst: None,
+            last_execution: None,
         };
         h.engine.endpoint.deliver(
             protocol::message::ClientMessage::Hello {
@@ -200,6 +204,13 @@ impl Fixture {
             if enabled {
                 for packet in packets(frame, self.q) {
                     self.midi_input.push(i as u32, frames, &packet).unwrap();
+                }
+                if self.burst == Some(frame) {
+                    for value in 0..65 {
+                        self.midi_input
+                            .push(i as u32, frames, &[0xbf, 7, value])
+                            .unwrap();
+                    }
                 }
             }
         }
@@ -282,6 +293,7 @@ impl Fixture {
             if let Some(i) = self.executions.iter().position(|e| e.sequence == sequence) {
                 let e = self.executions.remove(i);
                 assert_eq!(e.result, Ok(()));
+                self.last_execution = Some(e);
                 return e.operation_result.unwrap();
             }
             self.render(self.partition, true);
@@ -293,6 +305,9 @@ impl Fixture {
         self.result(seq)
     }
     fn resource(&mut self, request: ResourceRequest) -> resource::Reply {
+        self.resource_result(request).unwrap()
+    }
+    fn resource_result(&mut self, request: ResourceRequest) -> Result<resource::Reply, Error> {
         let seq = self
             .engine
             .endpoint
@@ -306,11 +321,14 @@ impl Fixture {
         for _ in 0..10000 {
             if let Some(i) = self.completions.iter().position(|c| c.sequence == seq) {
                 let c = self.completions.remove(i);
+                if let rt_runtime::transport::Outcome::Rejected(error) = c.outcome {
+                    return Err(error);
+                }
                 assert_eq!(c.outcome, rt_runtime::transport::Outcome::Applied);
                 let Command::Resource(command) = c.request else {
                     panic!("resource completion")
                 };
-                return command.reply().unwrap();
+                return Ok(command.reply().unwrap());
             }
             self.render(self.partition, true);
         }
@@ -435,6 +453,281 @@ fn midi_events(data: &[u8]) -> Vec<(u64, Vec<u8>)> {
         at += 12 + n;
     }
     events
+}
+
+#[shoop_test]
+fn partial_host_input_never_becomes_a_retroactive_history_cut() {
+    let mut h = Fixture::new(32, 1);
+    let Reply::History(before) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    h.render(1, true);
+    assert_eq!(h.engine.render.diagnostics().subranges, 0);
+    let requested = h.now();
+    let effective = requested.div_ceil(32) * 32;
+    let seq = h.send(
+        requested,
+        Operation::HistoryGrab {
+            source: before.id,
+            start: Frame(effective - 32),
+            end: Frame(effective),
+        },
+    );
+    let Reply::Grabbed(take) = h.result(seq) else {
+        panic!("eligible grab")
+    };
+    let result = h.last_execution.unwrap();
+    assert_eq!(result.requested_frame, Frame(requested));
+    assert_eq!(result.delivered_frame, Some(Frame(effective)));
+    assert_eq!(h.now(), effective + 32);
+    let snap = h.snapshot(take.audio.unwrap());
+    for resource in [take.audio, take.midi].into_iter().flatten() {
+        h.resource(ResourceRequest::Remove { resource });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    let original = bytes(&mut stopped.resources, snap);
+    assert_eq!(
+        f32::from_le_bytes(original[..4].try_into().unwrap()),
+        (effective - 32 + 1) as f32
+    );
+    stopped.resources.release_snapshot(snap.id).unwrap();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
+fn midi_storage_refusal_keeps_observation_and_recovers_a_truthful_segment() {
+    let mut h = Fixture::new(32, 1);
+    let (old, sibling, start) = h.grabs();
+    let retained = h.snapshot(old.midi.unwrap());
+    let at = h.aligned_future(128);
+    h.burst = Some(at);
+    let failed = h.send(at + 32, Operation::HistoryStatus { source: 0 });
+    let Reply::History(gap) = h.result(failed) else {
+        panic!("gap status")
+    };
+    assert_eq!(gap.failure, Some(Error::Capacity));
+    assert_eq!(gap.end, Frame(at));
+    let Reply::History(recovered) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("recovery")
+    };
+    assert_eq!(recovered.failure, None);
+    assert_ne!(recovered.id, gap.id);
+    assert!(recovered.start >= Frame(at + 32));
+    let stale = h.op(Operation::HistoryGrab {
+        source: gap.id,
+        start: Frame(at - 32),
+        end: Frame(at),
+    });
+    assert_eq!(
+        stale,
+        Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::InvalidId))
+    );
+    let next = h.aligned_future(128);
+    let seq = h.send(
+        next,
+        Operation::HistoryGrab {
+            source: recovered.id,
+            start: Frame(next - 32),
+            end: Frame(next),
+        },
+    );
+    let Reply::Grabbed(fresh) = h.result(seq) else {
+        panic!("recovered grab")
+    };
+    let current = h.snapshot(fresh.midi.unwrap());
+    for take in [old, sibling, fresh] {
+        for resource in [take.audio, take.midi].into_iter().flatten() {
+            h.resource(ResourceRequest::Remove { resource });
+        }
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    assert_eq!(
+        midi_events(&bytes(&mut stopped.resources, retained)),
+        expected_midi(start, 128, 32)
+    );
+    let index = stopped.resources.read_index(current.id).unwrap();
+    assert_eq!(
+        stopped
+            .resources
+            .render_io()
+            .midi_seek(index, 0)
+            .unwrap()
+            .state
+            .channel(15)
+            .unwrap()
+            .controller(7),
+        Some(64)
+    );
+    stopped.resources.release_snapshot(retained.id).unwrap();
+    stopped.resources.release_snapshot(current.id).unwrap();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
+fn paired_grab_refusal_releases_the_first_private_owner_and_reroutes_invalidate_source_ids() {
+    let mut h = Fixture::new(32, 7);
+    let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    let mut empty = Vec::new();
+    loop {
+        match h.resource_result(ResourceRequest::Create) {
+            Ok(resource::Reply::Created(id)) => empty.push(id),
+            Err(Error::Capacity) => break,
+            other => panic!("{other:?}"),
+        }
+    }
+    let released = empty.pop().unwrap();
+    h.resource(ResourceRequest::Remove { resource: released });
+    let versions = h.engine.render.resource_usage().free_versions;
+    let at = h.aligned_future(128);
+    let seq = h.send(
+        at,
+        Operation::HistoryGrab {
+            source: status.id,
+            start: Frame(at - 32),
+            end: Frame(at),
+        },
+    );
+    assert_eq!(
+        h.result(seq),
+        Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::Capacity))
+    );
+    for resource in empty {
+        h.resource(ResourceRequest::Remove { resource });
+    }
+    assert!(h.engine.render.resource_usage().free_versions >= versions);
+    let strip = protocol::StripId(protocol::SlotId::new(0, 1));
+    h.request(protocol::Request::Connect {
+        port: protocol::EnginePort::Strip(protocol::StripPort {
+            strip,
+            kind: protocol::PortKind::MidiIn,
+            index: 0,
+        }),
+        host: protocol::HostPortId(4),
+        connected: false,
+    });
+    let Reply::History(next) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("new source")
+    };
+    assert_ne!(next.id, status.id);
+    assert_eq!(
+        h.op(Operation::HistoryGrab {
+            source: status.id,
+            start: Frame(at - 32),
+            end: Frame(at)
+        }),
+        Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::StaleEpoch))
+    );
+    let mut stopped = h.engine.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
+fn candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_the_id() {
+    let mut h = Fixture::new(32, 128);
+    let (first, second, _) = h.grabs();
+    h.adopt(0, first);
+    h.adopt(1, second);
+    let Reply::Candidate { id: a, .. } = h.op(Operation::CandidateBegin {
+        target: target(0),
+        take: first,
+    }) else {
+        panic!("candidate a")
+    };
+    let Reply::Candidate { id: b, .. } = h.op(Operation::CandidateBegin {
+        target: target(1),
+        take: second,
+    }) else {
+        panic!("candidate b")
+    };
+    let patch = h.snapshot(first.midi.unwrap());
+    let start = h.now().div_ceil(128) * 128;
+    h.run_to(start);
+    let at = start + 128;
+    let aa = h.send(
+        at,
+        Operation::CandidateMidi {
+            id: a,
+            position: 0,
+            input: patch.id,
+        },
+    );
+    let bb = h.send(
+        at,
+        Operation::CandidateMidi {
+            id: b,
+            position: 0,
+            input: patch.id,
+        },
+    );
+    let ac = h.send(at + 32, Operation::CandidateStatus { id: a });
+    let bc = h.send(at + 32, Operation::CandidateStatus { id: b });
+    let w1 = h.send(at + 32, Operation::SharedWork);
+    let w2 = h.send(at + 96, Operation::SharedWork);
+    h.run_to(at + 128);
+    assert!(matches!(
+        h.result(aa),
+        Reply::Candidate {
+            status: CandidateStatus::Building,
+            ..
+        }
+    ));
+    assert!(matches!(
+        h.result(bb),
+        Reply::Candidate {
+            status: CandidateStatus::Building,
+            ..
+        }
+    ));
+    let Reply::Candidate { steps: as_, .. } = h.result(ac) else {
+        panic!("progress a")
+    };
+    let Reply::Candidate { steps: bs_, .. } = h.result(bc) else {
+        panic!("progress b")
+    };
+    assert_eq!((as_, bs_), (4, 4));
+    let Reply::SharedWork(work1) = h.result(w1) else {
+        panic!("work")
+    };
+    let Reply::SharedWork(work2) = h.result(w2) else {
+        panic!("work")
+    };
+    assert_eq!(work1.edit_steps, 8);
+    assert_eq!(work2.edit_steps, 8);
+    assert!(work2.jobs_scanned <= 16);
+    assert_eq!(h.op(Operation::CandidateCancel { id: a }), Reply::Done);
+    assert_eq!(
+        h.op(Operation::CandidateStatus { id: a }),
+        Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::InvalidId))
+    );
+    let mut ready = false;
+    for _ in 0..16 {
+        if matches!(
+            h.op(Operation::CandidateStatus { id: b }),
+            Reply::Candidate {
+                status: CandidateStatus::Ready,
+                ..
+            }
+        ) {
+            ready = true;
+            break;
+        }
+    }
+    assert!(ready);
+    assert_eq!(h.op(Operation::CandidateCancel { id: b }), Reply::Done);
+    h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+    for take in [first, second] {
+        for resource in [take.audio, take.midi].into_iter().flatten() {
+            h.resource(ResourceRequest::Remove { resource });
+        }
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
 }
 
 #[shoop_test]

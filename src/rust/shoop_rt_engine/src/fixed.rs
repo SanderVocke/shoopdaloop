@@ -500,6 +500,7 @@ mod tests {
                         target,
                         EngineOp::Configure(crate::NodeConfiguration {
                             token: 1,
+                            midi_inputs: 0,
                             epoch: Epoch(1),
                             inputs: 2,
                             outputs: 2,

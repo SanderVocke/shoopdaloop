@@ -19,6 +19,7 @@ pub struct SharedSettings {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HistoryId {
     scope: u32,
+    graph: Epoch,
     source: u32,
     generation: u64,
 }
@@ -59,6 +60,7 @@ pub struct SharedWork {
     pub jobs_scanned: usize,
 }
 struct History {
+    committed_graph: Option<Epoch>,
     settings: HistorySettings,
     audio: Option<AudioStoreId>,
     midi: Option<MidiStoreId>,
@@ -84,6 +86,8 @@ pub(super) struct Fence {
 }
 #[derive(Clone, Copy)]
 pub(super) struct Candidate {
+    pub steps: usize,
+    pub dirty: bool,
     pub fence: Fence,
     pub original: SharedTake,
     pub original_audio: Option<Revision>,
@@ -100,6 +104,8 @@ struct Job {
 pub(super) struct Shared {
     scope: u32,
     histories: Vec<History>,
+    lookup: Box<[Option<usize>]>,
+    max_frames: usize,
     jobs: Box<[Job]>,
     turn: usize,
     callback: Option<Frame>,
@@ -121,15 +127,28 @@ impl Shared {
         {
             return Err(Error::InvalidConfig);
         }
+        settings
+            .candidates
+            .checked_mul(size_of::<Job>())
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)?;
+        c.max_nodes
+            .checked_mul(size_of::<Option<usize>>())
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)?;
         let scope = NEXT_SCOPE
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| Error::Exhausted)?;
         let mut histories = Vec::with_capacity(settings.histories.len());
+        let mut lookup = vec![None; c.max_nodes].into_boxed_slice();
         let mut channels = 0;
         let mut events = 1;
         let mut bytes = 3;
         let mut packet = 3;
         for setting in settings.histories {
+            if setting.source as usize >= lookup.len() {
+                return Err(Error::InvalidConfig);
+            }
             if histories
                 .iter()
                 .any(|h: &History| h.settings.source == setting.source)
@@ -155,8 +174,8 @@ impl Shared {
                     packet = packet.max(m.max_packet);
                     midi::MidiCapture::prepare(
                         c.max_frames,
-                        m.max_events,
-                        m.max_packet.max(m.max_bytes),
+                        c.midi_events_per_port,
+                        c.midi_bytes_per_port,
                     )
                 })
                 .transpose()?;
@@ -164,7 +183,9 @@ impl Shared {
                 .checked_mul(c.max_frames)
                 .filter(|&n| n <= i32::MAX as usize / 4)
                 .ok_or(Error::Capacity)?;
+            lookup[setting.source as usize] = Some(histories.len());
             histories.push(History {
+                committed_graph: None,
                 settings: setting,
                 audio,
                 midi,
@@ -188,6 +209,8 @@ impl Shared {
         let mut result = Self {
             scope,
             histories,
+            lookup,
+            max_frames: c.max_frames,
             jobs: (0..settings.candidates)
                 .map(|_| Job {
                     generation: 1,
@@ -224,17 +247,26 @@ impl Shared {
         if self.closed {
             return Err(Error::InvalidState);
         }
-        self.histories
-            .iter()
-            .find(|h| h.settings.source == key)
-            .ok_or(Error::InvalidId)
+        let slot = self
+            .lookup
+            .get(key as usize)
+            .copied()
+            .flatten()
+            .ok_or(Error::InvalidId)?;
+        Ok(&self.histories[slot])
     }
     pub fn stores(&self, key: u32) -> Result<(Option<AudioStoreId>, Option<MidiStoreId>), Error> {
         let h = self.source(key)?;
         Ok((h.audio, h.midi))
     }
-    pub fn status(&self, key: u32, io: &ResourceIo<'_>) -> Result<HistoryStatus, Error> {
+    pub fn status(
+        &self,
+        key: u32,
+        graph: Epoch,
+        io: &ResourceIo<'_>,
+    ) -> Result<HistoryStatus, Error> {
         let h = self.source(key)?;
+        let eligible = h.committed_graph == Some(graph);
         let mut start = h.completed;
         let mut any = false;
         for range in [
@@ -254,12 +286,19 @@ impl Shared {
         Ok(HistoryStatus {
             id: HistoryId {
                 scope: self.scope,
+                graph,
                 source: key,
                 generation: h.generation,
             },
-            start: start.min(h.completed),
+            start: if eligible {
+                start.min(h.completed)
+            } else {
+                h.completed
+            },
             end: h.completed,
-            failure: h.failure,
+            failure: h
+                .failure
+                .or(if eligible { None } else { Some(Error::Busy) }),
         })
     }
     pub fn observe(
@@ -275,13 +314,16 @@ impl Shared {
         if self.closed {
             return Err(Error::InvalidState);
         }
-        let Some(h) = self
-            .histories
-            .iter_mut()
-            .find(|h| h.settings.source == source)
-        else {
+        let Some(slot) = self.lookup.get(source as usize).copied().flatten() else {
             return Ok(());
         };
+        if q == 0 {
+            return Ok(());
+        }
+        if q > self.max_frames {
+            return Err(Error::InvalidFrame);
+        }
+        let h = &mut self.histories[slot];
         if token == 0 {
             return Err(Error::Exhausted);
         }
@@ -352,10 +394,11 @@ impl Shared {
         }
         Ok(())
     }
-    pub fn finish(&mut self, end: Frame) {
+    pub fn finish(&mut self, end: Frame, graph: Epoch) {
         for h in &mut self.histories {
             if h.staged.take() == Some(end) {
                 h.completed = end;
+                h.committed_graph = Some(graph);
             }
         }
     }
@@ -367,7 +410,7 @@ impl Shared {
         q: usize,
         io: &mut ResourceIo<'_>,
     ) -> Result<SharedTake, Error> {
-        let status = self.status(id.source, io)?;
+        let status = self.status(id.source, id.graph, io)?;
         if status.id != id {
             return Err(Error::InvalidId);
         }
@@ -493,6 +536,8 @@ impl Shared {
             }
         };
         self.jobs[slot].value = Some(Candidate {
+            steps: 0,
+            dirty: false,
             fence,
             original: source,
             original_audio,
@@ -576,6 +621,13 @@ impl Shared {
             position,
             &self.audio_patch[..count],
         )?;
+        if frames > 0 {
+            self.jobs[id.slot as usize]
+                .value
+                .as_mut()
+                .expect("candidate")
+                .dirty = true;
+        }
         Ok(())
     }
     pub fn midi(
@@ -594,6 +646,9 @@ impl Shared {
         let snap = io.render().snapshot(index)?;
         if snap.description.format != Format::Midi {
             return Err(Error::InvalidShape);
+        }
+        if snap.description.frames == 0 {
+            return Ok(());
         }
         let initial = io.render().midi_seek(index, 0)?;
         let mut cursor = initial.cursor;
@@ -621,6 +676,7 @@ impl Shared {
             &self.midi_patch,
             &initial.state,
         )?);
+        job.dirty = true;
         self.jobs[id.slot as usize].value = Some(job);
         Ok(())
     }
@@ -650,6 +706,7 @@ impl Shared {
             self.remaining -= 1;
             self.work.edit_steps += 1;
             let mut job = self.jobs[slot].value.expect("selected job");
+            job.steps = job.steps.saturating_add(1);
             let edit = job.midi_edit.expect("building edit");
             match io.render().progress_midi_edit(edit, 1) {
                 Ok(shared_midi::EditStatus::Building) => {}
@@ -752,9 +809,12 @@ impl LoopPlanner {
                 self.shared
                     .as_ref()
                     .ok_or(Error::InvalidState)?
-                    .status(source, io)?,
+                    .status(source, graph, io)?,
             )),
             Operation::HistoryGrab { source, start, end } => {
+                if source.graph != graph {
+                    return Err(Error::StaleEpoch.into());
+                }
                 if end > frame {
                     return Err(Error::InvalidFrame.into());
                 }
@@ -812,6 +872,7 @@ impl LoopPlanner {
                 Ok(Reply::Candidate {
                     id,
                     status: CandidateStatus::Ready,
+                    steps: 0,
                 })
             }
             Operation::CandidateAudio {
@@ -826,6 +887,7 @@ impl LoopPlanner {
                 Ok(Reply::Candidate {
                     id,
                     status: shared.candidate_status(id)?,
+                    steps: shared.candidate(id)?.steps,
                 })
             }
             Operation::CandidateMidi {
@@ -838,10 +900,17 @@ impl LoopPlanner {
                 Ok(Reply::Candidate {
                     id,
                     status: shared.candidate_status(id)?,
+                    steps: shared.candidate(id)?.steps,
                 })
             }
             Operation::CandidateStatus { id } => Ok(Reply::Candidate {
                 id,
+                steps: self
+                    .shared
+                    .as_ref()
+                    .ok_or(Error::InvalidState)?
+                    .candidate(id)?
+                    .steps,
                 status: self
                     .shared
                     .as_ref()
@@ -871,6 +940,9 @@ impl LoopPlanner {
             return Err(Error::Busy.into());
         }
         let job = shared.candidate(id)?;
+        if !job.dirty {
+            return Err(Error::InvalidState.into());
+        }
         let row = self.row(job.fence.target)?;
         let state = self.resolver.state(job.fence.target)?;
         if graph != job.fence.graph || self.resolver.epoch() != job.fence.topology {

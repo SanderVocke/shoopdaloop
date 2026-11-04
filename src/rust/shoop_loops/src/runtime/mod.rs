@@ -334,6 +334,7 @@ pub enum Reply {
     Candidate {
         id: CandidateId,
         status: CandidateStatus,
+        steps: usize,
     },
     CandidatePublished {
         id: CandidateId,

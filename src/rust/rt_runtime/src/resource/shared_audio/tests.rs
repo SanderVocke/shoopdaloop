@@ -48,6 +48,61 @@ fn cleanup(media: &mut AudioStore, store: &mut ResourceStore) {
 }
 
 #[shoop_test]
+fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
+    let mut store = store(80, 16, 8);
+    let mut media = AudioStore::prepare(
+        &mut store,
+        Config {
+            channels: 1,
+            history_frames: 8,
+            views: 4,
+            pages: 64,
+        },
+        Frame(0),
+    )
+    .unwrap();
+    assert_no_heap(|| {
+        media
+            .append(&mut store.render_io(), Frame(0), &[1., 2., 3., 4.])
+            .unwrap();
+        let take = media.grab(Frame(0)..Frame(4)).unwrap();
+        let old = media.export(take).unwrap();
+        media
+            .discontinuity(&mut store.render_io(), Frame(8))
+            .unwrap();
+        assert_eq!(media.coverage(), Ok(Frame(8)..Frame(8)));
+        assert_eq!(
+            media.append(&mut store.render_io(), Frame(4), &[5., 6.]),
+            Err(Error::InvalidFrame)
+        );
+        media
+            .append(&mut store.render_io(), Frame(8), &[9., 10., 11., 12.])
+            .unwrap();
+        assert_eq!(media.coverage(), Ok(Frame(8)..Frame(12)));
+        assert_eq!(media.grab(Frame(4)..Frame(12)), Err(Error::InvalidFrame));
+        assert_eq!(
+            values::<4>(&media, &mut store, media.export_index(old).unwrap()),
+            [1., 2., 3., 4.]
+        );
+        assert_eq!(
+            media.discontinuity(&mut store.render_io(), Frame(11)),
+            Err(Error::InvalidFrame)
+        );
+        let fresh = media.grab(Frame(8)..Frame(12)).unwrap();
+        assert_eq!(
+            values::<4>(&media, &mut store, media.take_index(fresh).unwrap()),
+            [9., 10., 11., 12.]
+        );
+        media.release_take(fresh).unwrap();
+        media.release_take(take).unwrap();
+        media.release_export(old).unwrap();
+        assert_eq!(media.export_index(old), Err(Error::InvalidId));
+    });
+    cleanup(&mut media, &mut store);
+    assert_eq!(store.usage().free_pages, 80);
+}
+
+#[shoop_test]
 fn partial_stereo_history_forks_and_cross_boundary_edits_preserve_exports() {
     let mut store = store(80, 24, 32);
     let baseline = store.usage();

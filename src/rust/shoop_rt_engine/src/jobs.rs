@@ -242,6 +242,7 @@ impl ControlEndpoint {
         };
         let base = crate::NodeConfiguration {
             token: self.replacement.id.expect("live replacement"),
+            midi_inputs: 0,
             epoch,
             inputs: 0,
             outputs: 0,
@@ -262,6 +263,7 @@ impl ControlEndpoint {
                 self.pool.strip_input(slot),
                 crate::NodeConfiguration {
                     inputs: strip.shape.audio_inputs,
+                    midi_inputs: strip.midi_inputs,
                     bank: strip.inputs.active as u8,
                     gain: controls.input_gain,
                     balance: controls.input_balance,
@@ -1050,6 +1052,21 @@ impl ControlEndpoint {
                     Frame(activation),
                     self.pool.strip_input(slot),
                     EngineOp::Crossfade,
+                );
+            }
+            if job.graph.is_some() {
+                let Ok(epoch) = self.graph_epoch.checked_next() else {
+                    job.fail(Refusal::Capacity);
+                    return true;
+                };
+                self.submit_job_op(
+                    job,
+                    Frame(activation),
+                    self.pool.strip_input(slot),
+                    EngineOp::InputSource {
+                        epoch,
+                        midi_inputs: strip.midi_inputs,
+                    },
                 );
             }
             if strip.outputs.swapped {

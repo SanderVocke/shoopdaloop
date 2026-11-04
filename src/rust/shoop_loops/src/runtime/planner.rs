@@ -685,7 +685,7 @@ impl Planner for LoopPlanner {
         let end = context.interval.end;
         self.finish_boundary(context)?;
         if let Some(shared) = &mut self.shared {
-            shared.finish(end);
+            shared.finish(end, self.graph_epoch);
         }
         Ok(())
     }
