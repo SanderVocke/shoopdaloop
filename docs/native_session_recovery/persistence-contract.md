@@ -147,7 +147,7 @@ engine's single tick publication. Audio, MIDI, periods and mapped dependent
 playheads change together. Current gains, names and routes are preserved.
 Affected active/prepared captures or stale preparation refuse the entire cut.
 Cancelled preparation releases staged owners; an admitted commit remains engine
-owned across controller loss. Application protocol version 19 carries resolved
+owned across controller loss. Application protocol version 20 carries resolved
 sync links and target format, and RT protocol version 7 carries bounded family
 staging and authoritative content revisions. Typed local and encoded transports
 use the same operations.

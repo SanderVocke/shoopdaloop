@@ -371,6 +371,15 @@ fn ui_peer() {
             action: LoopAction::RecordClicked,
         },
     );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while client.snapshot().unwrap().tracks[1].loops[0].mode != LoopMode::Recording {
+        connection.poll(&mut client).unwrap();
+        assert!(
+            Instant::now() < deadline,
+            "recording did not start before UI readiness"
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
     std::fs::write(
         std::env::var_os("SHOOP_TEST_READY").unwrap(),
         format!("{} {}", track.raw(), loops[0].raw()),

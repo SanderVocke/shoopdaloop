@@ -543,3 +543,25 @@ merge approval remains the final human decision. Refreshed PR930 and fetched its
 base: a6e2554c removes obsolete fixed JACK startup-port configuration. Merge that
 base while retaining quantum configuration and the completed cleanup, then validate
 and push the consolidated result before investigating the current platform matrix.
+
+
+Delivery integration checkpoint (2026-11-04): merged a6e2554c in e8dc16d5,
+retaining the quantum setting and upstream dynamic JACK ports. Both histories used
+application protocol19 for incompatible layouts; the combined protocol is20, with
+an explicit version19 rejection and updated independent canonical byte tables.
+Host setup is6 because its combined layout includes the quantum field as well as
+the upstream removals; engine/worklet versions remain7/3. Maintained usage guides
+reflect those versions; historical checkpoints retain their original numbers.
+
+Resolved the deferred recovery readiness race: the test child now polls until its
+snapshot confirms Recording before publishing its readiness file. Admission of
+Record alone did not prove RT activation. The parent's recording-survival assertion
+and original workload remain unchanged. This is readiness synchronization rather
+than retrying a failed survival assertion.
+
+After integration and these fixes, the warning-denying workspace build, full
+native suite (**2,661 passed, six skips**), **117 affected Node22 tests**, all
+**21 production file/retiming Chromium tests**, and **133 Python tooling tests**
+pass. The first protocol check correctly exposed two stale byte tables after the
+version bump; the corrected final full suite above passes. Logs:
+`work/cleanup-delivery-{build,native-final,node,retiming-browser,python}.log`.
