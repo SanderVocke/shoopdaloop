@@ -23,7 +23,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 shoop_processor_protocol = { path = "../shoop_processor_protocol" }
 thiserror = { workspace = true, features = ["std"] }
 anyhow = { workspace = true, features = ["std"], optional = true }
-fundsp = { workspace = true, optional = true }
+fundsp = { workspace = true, optional = true, features = ["realtime-reset"] }
 oxisynth = { workspace = true, optional = true, features = ["realtime"] }
 rt_buffered = { path = "../rt_buffered", optional = true }
 rt_runtime = { path = "../rt_runtime", optional = true }

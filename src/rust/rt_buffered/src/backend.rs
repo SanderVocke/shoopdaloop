@@ -51,6 +51,11 @@ pub trait Backend: Send {
         let _ = (parameter, value);
         Err(Error::InvalidParameter)
     }
+    /// Clear stream-local history while retaining applied settings and mappings.
+    /// Called only after buffered output has been aborted on an inactive owner.
+    fn suspend(&mut self) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
     /// One cleanup unit on an inactive owner. Return true after the final unit.
     /// The caller supplies consecutive steps beginning at zero.
     fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
@@ -80,6 +85,9 @@ impl<B: Backend + ?Sized> Backend for Box<B> {
     }
     fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
         (**self).control(parameter, value)
+    }
+    fn suspend(&mut self) -> Result<(), Error> {
+        (**self).suspend()
     }
     fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
         (**self).reset_step(step)

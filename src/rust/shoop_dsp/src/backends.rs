@@ -219,6 +219,10 @@ mod fx {
             self.validate_parameter(parameter, value)?;
             self.change(parameter, value)
         }
+        fn suspend(&mut self) -> Result<(), Error> {
+            self.processor.reset();
+            Ok(())
+        }
         fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
             Ok(self.processor.reset_for_activation_step(step))
         }
@@ -407,6 +411,10 @@ mod synth {
         fn control(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
             self.validate_parameter(parameter, value)?;
             self.change(parameter, value)
+        }
+        fn suspend(&mut self) -> Result<(), Error> {
+            self.processor.reset_for_activation();
+            Ok(())
         }
         fn reset(&mut self) -> Result<(), Error> {
             self.processor.clear_midi_cc_assignments();

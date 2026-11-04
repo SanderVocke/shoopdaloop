@@ -232,3 +232,29 @@ rerun is still required. Portable runtime tests cover reserved-snapshot saturati
 and stale reservation generations. Runtime and loop dependency audits pass for
 Linux, Windows, macOS and Wasm. Production processor routing, latency alignment,
 public operations and persistence remain to be connected and validated.
+
+### Immediate sleep/wake reset prerequisite
+
+FX delay lines now invalidate history with a valid-write count. A documented,
+pinned FunDSP 0.23.0 patch enables the same behavior for its fixed and tapped
+delays under `realtime-reset`; the host DSP package opts in. Scalar and block
+processing retain zero-history semantics, including zero-delay and fractional
+taps. Preparation touches delay storage before activation. The patch also clears
+the plate reverb's prediffusers, omitted by its upstream reset. Ordinary FunDSP
+builds retain their original reset path. Licenses and archive provenance are in
+`third_party/fundsp`.
+
+`Backend::suspend` clears stream history while retaining applied settings and
+mappings. Hosted owners can suspend and immediately restart under the same owner
+generation; retirement still clears defaults incrementally before reuse. Tests
+compare resumed FX and synth output exactly with fresh instances using the same
+controls, count allocations/frees, and reject stale generations. Synth comparison
+uses its fresh-instance quiet output, including the reference reverb's tiny DC
+noise floor when sends are enabled.
+
+Native tests verify independent impulse expectations for fixed/cubic/linear
+fractional delays, scalar/block processing across resets and wraps, all three
+reverbs at 8/48/384 kHz, immediate wake, retained controls, and cleared voices and
+queued output. The DSP Wasm Node suite passed 47 tests; the linked both-feature
+worklet still had zero imports. These Wasm checks preceded the final setup-only
+storage-touch addition; the final full gates must include that revision.

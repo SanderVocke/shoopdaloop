@@ -74,6 +74,7 @@ inherits = "release"
 debug = true
 
 [patch.crates-io]
+fundsp = { path = "third_party/fundsp" }
 oxisynth = { path = "third_party/oxisynth" }
 oxisynth-reverb = { path = "third_party/oxisynth-reverb" }
 oxisynth-chorus = { path = "third_party/oxisynth-chorus" }

@@ -291,3 +291,208 @@ fn incremental_retirement_restores_a_clean_rack_without_heap_operations() {
         });
     }
 }
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn reset_delay_lines_match_zero_history_for_scalar_and_block_processing() {
+    use fundsp::prelude32::{delay, tap, tap_linear, AudioUnit, BufferVec};
+    for rate in [8000., 48000., 384000.] {
+        for kind in 0..5 {
+            let make = || -> Box<dyn AudioUnit> {
+                let mut unit: Box<dyn AudioUnit> = match kind {
+                    0 => Box::new(delay(0.)),
+                    1 => Box::new(delay(9. / rate)),
+                    2 => Box::new(tap(1. / rate, 16. / rate)),
+                    3 => Box::new(tap_linear(0., 16. / rate)),
+                    _ => Box::new(tap_linear(0., 1.)),
+                };
+                unit.set_sample_rate(rate as f64);
+                unit.allocate();
+                unit.reset();
+                unit
+            };
+            let mut dirty = make();
+            let mut fresh = make();
+            let mut output = [0.; 1];
+            for _ in 0..1000 {
+                dirty.tick(&[1., 3.5 / rate][..dirty.inputs()], &mut output);
+            }
+            assert_no_heap(|| dirty.reset());
+            let mut input = BufferVec::new(dirty.inputs());
+            let mut actual = BufferVec::new(1);
+            let mut expected = BufferVec::new(1);
+            for cycle in 0..3 {
+                assert_no_heap(|| {
+                    for block in 0..40 {
+                        let size = [1, 7, 16, 32, 64][block % 5];
+                        for frame in 0..size {
+                            input.channel_f32_mut(0)[frame] =
+                                ((frame + block * 64) as f32 * 0.01).sin();
+                            if dirty.inputs() > 1 {
+                                input.channel_f32_mut(1)[frame] =
+                                    (1. + ((frame + block) % 15) as f32 * 0.91) / rate;
+                            }
+                        }
+                        dirty.process(size, &input.buffer_ref(), &mut actual.buffer_mut());
+                        fresh.process(size, &input.buffer_ref(), &mut expected.buffer_mut());
+                        for frame in 0..size {
+                            assert_eq!(
+                                actual.channel_f32_mut(0)[frame],
+                                expected.channel_f32_mut(0)[frame],
+                                "kind={kind} rate={rate} cycle={cycle} block={block} frame={frame}"
+                            );
+                        }
+                    }
+                    dirty.reset();
+                    fresh.reset();
+                });
+            }
+        }
+    }
+    for (mut unit, control, expected) in [
+        (
+            Box::new(delay(0.)) as Box<dyn AudioUnit>,
+            0.,
+            [1., 0., 0., 0.],
+        ),
+        (
+            Box::new(delay(1. / 48000.)) as Box<dyn AudioUnit>,
+            0.,
+            [0., 1., 0., 0.],
+        ),
+        (
+            Box::new(tap_linear(0., 1.)) as Box<dyn AudioUnit>,
+            1.5 / 48000.,
+            [0., 0.5, 0.5, 0.],
+        ),
+        (
+            Box::new(tap(1. / 48000., 1.)) as Box<dyn AudioUnit>,
+            1.5 / 48000.,
+            [-0.0625, 0.5625, 0.5625, -0.0625],
+        ),
+    ] {
+        unit.set_sample_rate(48000.);
+        unit.allocate();
+        for reset in 0..2 {
+            assert_no_heap(|| {
+                unit.reset();
+                for (index, expected) in expected.into_iter().enumerate() {
+                    let mut output = [0.; 1];
+                    unit.tick(
+                        &[f32::from(u8::from(index == 0)), control][..unit.inputs()],
+                        &mut output,
+                    );
+                    assert!(
+                        (output[0] - expected).abs() < 1e-6,
+                        "reset={reset} sample={index}"
+                    );
+                }
+            });
+        }
+    }
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn resetting_every_prepared_reverb_erases_diffusers_and_feedback_history() {
+    use fundsp::prelude32::{lowpole_hz, reverb2_stereo, reverb3_stereo, reverb_stereo, AudioUnit};
+    for rate in [8000., 48000., 384000.] {
+        for mut unit in [
+            Box::new(reverb_stereo(10., 2.5, 0.5)) as Box<dyn AudioUnit>,
+            Box::new(reverb2_stereo(20., 4., 0.8, 0.4, lowpole_hz(8000.))) as Box<dyn AudioUnit>,
+            Box::new(reverb3_stereo(2.5, 0.8, lowpole_hz(10000.))) as Box<dyn AudioUnit>,
+        ] {
+            unit.set_sample_rate(rate);
+            unit.allocate();
+            unit.reset();
+            let mut output = [0.; 2];
+            // Dirty even the longest prepared prediffuser before invalidating it.
+            for _ in 0..(rate as usize / 4) {
+                unit.tick(&[0.5, -0.25], &mut output);
+            }
+            assert_no_heap(|| {
+                unit.reset();
+                for _ in 0..(rate as usize / 4) {
+                    unit.tick(&[0., 0.], &mut output);
+                    assert_eq!(output, [0., 0.]);
+                }
+            });
+        }
+    }
+}
+
+#[shoop_test]
+fn immediate_sleep_wake_preserves_controls_and_discards_audio_midi_and_voices() {
+    use shoop_processor_protocol::{Kind, CC_BASE};
+    let mut backends: Vec<(Kind, Box<dyn Backend>)> = Vec::new();
+    #[cfg(feature = "builtin-fx")]
+    backends.push((
+        Kind::BuiltInFx,
+        Box::new(shoop_dsp::backends::FxBackend::prepare(48000., 32, 8).unwrap()),
+    ));
+    #[cfg(feature = "oxisynth")]
+    backends.push((
+        Kind::OxiSynth,
+        Box::new(shoop_dsp::backends::SynthBackend::prepare(48000., 32).unwrap()),
+    ));
+    for (kind, backend) in backends {
+        let mut h = Harness::new(backend, 32);
+        if kind == Kind::BuiltInFx {
+            h.control(shoop_dsp::backends::STAGE_BASE + 5, 1.);
+            h.control(CC_BASE + 5, 13.);
+            h.input.fill(0.5);
+        } else {
+            h.control(0, 0.8);
+            h.control(1, 0.8);
+            h.control(shoop_dsp::backends::SYNTH_PRESET, 40.);
+            h.control(CC_BASE, 13.);
+            h.midi.push(3, 32, &[0x90, 60, 120]).unwrap();
+        }
+        for _ in 0..40 {
+            h.render();
+        }
+        let before: [f32; 64] = core::array::from_fn(|index| {
+            kind.scalar_id(index)
+                .and_then(|id| h.node.backend().parameter(id))
+                .unwrap_or(0.)
+        });
+        let baseline_backend: Box<dyn Backend> = match kind {
+            #[cfg(feature = "builtin-fx")]
+            Kind::BuiltInFx => {
+                Box::new(shoop_dsp::backends::FxBackend::prepare(48000., 32, 8).unwrap())
+            }
+            #[cfg(feature = "oxisynth")]
+            Kind::OxiSynth => {
+                Box::new(shoop_dsp::backends::SynthBackend::prepare(48000., 32).unwrap())
+            }
+            _ => unreachable!(),
+        };
+        let mut baseline = Harness::new(baseline_backend, 32);
+        for (index, value) in before.iter().enumerate().take(kind.scalar_count()) {
+            baseline.control(kind.scalar_id(index).unwrap(), *value);
+        }
+        baseline.control(CC_BASE, -1.);
+        h.input.fill(0.);
+        assert_no_heap(|| {
+            h.node.abort(Frame(h.frame as u64)).unwrap();
+            h.node.inactive_backend_mut().unwrap().suspend().unwrap();
+            for (index, value) in before.iter().enumerate().take(kind.scalar_count()) {
+                assert_eq!(
+                    h.node.backend().parameter(kind.scalar_id(index).unwrap()),
+                    Some(*value)
+                );
+            }
+            h.node
+                .inactive_backend_mut()
+                .unwrap()
+                .control(CC_BASE, -1.)
+                .unwrap();
+            h.node.activate_prepared(Frame(h.frame as u64)).unwrap();
+            for tick in 0..100 {
+                h.render();
+                baseline.render();
+                assert_eq!(h.output, baseline.output, "kind={kind:?} tick={tick}");
+            }
+        });
+    }
+}

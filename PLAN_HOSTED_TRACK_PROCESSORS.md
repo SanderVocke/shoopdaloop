@@ -314,6 +314,12 @@ checks run alongside Stages 5–7.
   shape; prove maximum dry plus maximum wet is supported simultaneously. Exercise
   native CPAL/JACK/dummy and worklet partitioning, plus failure rollback; commit.
 
+Immediate-wake prerequisite: FX delay invalidation and a pinned opt-in FunDSP
+reset patch eliminate delay-length scans on sleep/wake. Opaque backends now have a
+settings-preserving suspend operation. Retirement remains incremental; a clean
+same-owner wake preserves controls and cannot release old voices or buffered data.
+Native and Wasm DSP checks pass; production routing/activity is still pending.
+
 Loop/media foundation milestone: prepared bindings now have independent primary
 and auxiliary audio widths. One resolver owns dry-through-wet and wet-rerecord
 modes, including one wrap clock, scheduling and cancellation. Wet rerecord forks

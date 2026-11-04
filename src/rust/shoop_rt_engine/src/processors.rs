@@ -229,6 +229,21 @@ impl HostedProcessor {
             Ok(())
         }
     }
+    pub(crate) fn suspend(&mut self, frame: Frame, generation: u32) -> Result<(), Error> {
+        self.check(generation)?;
+        if self.phase == ProcessorPhase::Owned {
+            return Ok(());
+        }
+        self.buffered.abort(frame)?;
+        if let Err(error) = self.buffered.inactive_backend_mut()?.suspend() {
+            self.phase = ProcessorPhase::Faulted;
+            self.publish(frame);
+            return Err(error);
+        }
+        self.phase = ProcessorPhase::Owned;
+        self.publish(frame);
+        Ok(())
+    }
     pub(crate) fn retire(&mut self, frame: Frame, generation: u32) -> Result<(), Error> {
         self.check(generation)?;
         self.buffered.abort(frame)?;
@@ -312,6 +327,9 @@ mod tests {
         fn process(&mut self, _: &mut Batch<'_>) -> Result<(), Error> {
             Ok(())
         }
+        fn suspend(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
         fn reset(&mut self) -> Result<(), Error> {
             self.value = 0.;
             Ok(())
@@ -368,6 +386,12 @@ mod tests {
             node.start(Frame(80), 2).unwrap();
             assert_eq!(node.start(Frame(80), 2), Err(Error::InvalidState));
             assert_eq!(cells.read().unwrap().generation, 2);
+            node.suspend(Frame(96), 2).unwrap();
+            assert_eq!(cells.read().unwrap().phase, ProcessorPhase::Owned);
+            assert_eq!(cells.read().unwrap().values[0], 0.25);
+            node.parameter(Frame(96), 2, 0, 0.5).unwrap();
+            node.start(Frame(96), 2).unwrap();
+            assert_eq!(cells.read().unwrap().values[0], 0.5);
         });
     }
 }

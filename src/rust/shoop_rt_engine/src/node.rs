@@ -42,6 +42,9 @@ pub enum EngineOp {
     ProcessorStart {
         generation: u32,
     },
+    ProcessorSuspend {
+        generation: u32,
+    },
     ProcessorRetire {
         generation: u32,
     },
@@ -534,6 +537,9 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             return match operation {
                 EngineOp::ProcessorClaim { generation } => node.claim(context.frame, generation),
                 EngineOp::ProcessorStart { generation } => node.start(context.frame, generation),
+                EngineOp::ProcessorSuspend { generation } => {
+                    node.suspend(context.frame, generation)
+                }
                 EngineOp::ProcessorRetire { generation } => node.retire(context.frame, generation),
                 EngineOp::ProcessorParameter {
                     generation,
@@ -697,6 +703,7 @@ impl StripInput {
             | EngineOp::PreviewStop
             | EngineOp::ProcessorClaim { .. }
             | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
             | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
         }
@@ -782,6 +789,7 @@ impl StripOutput {
             | EngineOp::PreviewStop
             | EngineOp::ProcessorClaim { .. }
             | EngineOp::ProcessorStart { .. }
+            | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
             | EngineOp::ProcessorParameter { .. } => return Err(Error::InvalidParameter),
         }

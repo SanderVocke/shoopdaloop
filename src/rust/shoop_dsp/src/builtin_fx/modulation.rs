@@ -10,18 +10,24 @@ const PHASER_MAX_HZ: f32 = 3_000.0;
 struct DelayLine {
     samples: Vec<f32>,
     write: usize,
+    valid: usize,
 }
 
 impl DelayLine {
     fn new(length: usize) -> Self {
+        let mut samples = vec![0.0; length.max(2)];
+        for sample in &mut samples {
+            *core::hint::black_box(sample) = 0.;
+        }
         Self {
-            samples: vec![0.0; length.max(2)],
+            samples,
             write: 0,
+            valid: 0,
         }
     }
 
     fn reset(&mut self) {
-        self.samples.fill(0.0);
+        self.valid = 0;
         self.write = 0;
     }
 
@@ -31,13 +37,22 @@ impl DelayLine {
         let lower = position.floor() as usize % self.samples.len();
         let upper = (lower + 1) % self.samples.len();
         let fraction = position - lower as f32;
-        let delayed = self.samples[lower] + (self.samples[upper] - self.samples[lower]) * fraction;
+        let lower = self.sample(lower);
+        let delayed = lower + (self.sample(upper) - lower) * fraction;
         self.samples[self.write] = sample;
+        self.valid = (self.valid + 1).min(self.samples.len());
         self.write += 1;
         if self.write == self.samples.len() {
             self.write = 0;
         }
         delayed
+    }
+    fn sample(&self, index: usize) -> f32 {
+        if (self.write + self.samples.len() - index - 1) % self.samples.len() < self.valid {
+            self.samples[index]
+        } else {
+            0.
+        }
     }
 }
 
