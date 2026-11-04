@@ -141,8 +141,7 @@ fn fixed_shared_callback_measurements() {
                 raw,
             )
             .unwrap();
-            stopped.cleanup().unwrap();
-            assert_eq!(stopped.resource_usage().free_pages, 12288);
+            recover_all(&mut stopped, 12288);
             fs::write(directory.join("summary.txt"), &summary).unwrap();
         }
     }

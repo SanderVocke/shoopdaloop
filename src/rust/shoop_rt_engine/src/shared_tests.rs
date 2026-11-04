@@ -542,6 +542,33 @@ impl Fixture {
 fn failed(error: Error) -> Reply {
     Reply::Failed(shoop_loops::runtime::Failure::Runtime(error))
 }
+fn recover_all(stopped: &mut Stopped, pages: usize) {
+    let midi = stopped
+        .planner
+        .shared_stores(0)
+        .ok()
+        .and_then(|(_, midi)| midi);
+    let slots = stopped.resources.config().limits().resource_slots;
+    stopped.cleanup().unwrap();
+    let usage = stopped.resource_usage();
+    assert_eq!(usage.free_pages, pages);
+    assert_eq!(usage.reserved_pages, 0);
+    assert_eq!(usage.free_versions, slots);
+    assert_eq!(usage.free_snapshots, slots);
+    assert_eq!((usage.retired_versions, usage.retired_pages), (0, 0));
+    let groups = stopped.capture_group_usage();
+    assert_eq!(groups.free_groups, groups.groups);
+    let indexes = stopped.resources.midi_index_usage();
+    assert_eq!(indexes.free_versions, indexes.versions);
+    assert_eq!(stopped.media_usage().references, 0);
+    if let Some(midi) = midi {
+        let usage = stopped.resources.midi_store_usage(midi).unwrap();
+        assert_eq!(
+            (usage.owners, usage.retiring, usage.reserved_pages),
+            (0, 0, 0)
+        );
+    }
+}
 
 #[shoop_test]
 fn buffered_production_preparation_accepts_dynamic_host_banks_beyond_sixty_four_ports() {
@@ -584,8 +611,7 @@ fn stopped_sources_support_audio_only_and_midi_only_completed_grabs() {
             (audio, midi)
         );
         let mut stopped = h.engine.render.into_stopped();
-        stopped.cleanup().unwrap();
-        assert_eq!(stopped.resource_usage().free_pages, 12288);
+        recover_all(&mut stopped, 12288);
     }
 }
 
@@ -666,8 +692,7 @@ fn fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision() {
             expected_midi(start, take.frames, 32)
         );
         let mut stopped = h.engine.render.into_stopped();
-        stopped.cleanup().unwrap();
-        assert_eq!(stopped.resource_usage().free_pages, 12288);
+        recover_all(&mut stopped, 12288);
     }
 }
 
@@ -764,8 +789,7 @@ fn candidate_fences_preserve_controls_and_refuse_superseded_content_and_writers(
         bytes(&mut stopped.resources, live.view.audio.unwrap().snapshot),
         data
     );
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -791,8 +815,7 @@ fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() 
         h.render(32, false);
     }
     let mut stopped = h.engine.render.into_stopped();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
     assert_eq!(
         stopped.resources.cancel_upload(upload),
         Err(Error::InvalidId)
@@ -842,8 +865,7 @@ fn active_recording_refuses_private_publication_and_preserves_old_exports() {
         f32::from_le_bytes(audio[..4].try_into().unwrap()),
         (start + 1) as f32
     );
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -893,8 +915,7 @@ fn saturated_unread_results_do_not_interrupt_history_and_shutdown_recovers_priva
         returned += 1;
     }
     assert!(returned > 1);
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -930,8 +951,7 @@ fn late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick() {
         retained.description.bytes
     );
     stopped.resources.release_snapshot(retained.id).unwrap();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 fn bytes(resources: &mut ResourceStore, snapshot: Snapshot) -> Vec<u8> {
     let mut output = vec![0; snapshot.description.bytes];
@@ -1065,8 +1085,7 @@ fn partial_host_input_never_becomes_a_retroactive_history_cut() {
         (effective - 32 + 1) as f32
     );
     stopped.resources.release_snapshot(snap.id).unwrap();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -1135,8 +1154,7 @@ fn midi_storage_refusal_keeps_observation_and_recovers_a_truthful_segment() {
     );
     stopped.resources.release_snapshot(retained.id).unwrap();
     stopped.resources.release_snapshot(current.id).unwrap();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -1199,8 +1217,7 @@ fn audio_rerouting_preserves_the_unchanged_midi_sources_pre_cut_projection() {
     for snapshot in [retained, midi, audio] {
         stopped.resources.release_snapshot(snapshot.id).unwrap();
     }
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -1260,8 +1277,7 @@ fn paired_grab_refusal_releases_the_first_private_owner_and_reroutes_invalidate_
         Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::StaleEpoch))
     );
     let mut stopped = h.engine.render.into_stopped();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -1365,8 +1381,7 @@ fn candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_t
         }
     }
     let mut stopped = h.engine.render.into_stopped();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -1585,8 +1600,7 @@ fn shared_grabs_private_wrapping_edits_and_fixed_playback_preserve_old_owners() 
                 )),
                 events
             );
-            stopped.cleanup().unwrap();
-            assert_eq!(stopped.resource_usage().free_pages, 12288);
+            recover_all(&mut stopped, 12288);
         }
     }
 }
@@ -1687,8 +1701,7 @@ fn host_partitions_agree_at_identical_history_playback_and_replacement_cuts() {
                 baseline = Some((audio, midi));
             }
             let mut stopped = h.engine.render.into_stopped();
-            stopped.cleanup().unwrap();
-            assert_eq!(stopped.resource_usage().free_pages, 12288);
+            recover_all(&mut stopped, 12288);
         }
     }
 }

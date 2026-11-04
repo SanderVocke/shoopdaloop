@@ -512,8 +512,7 @@ fn loaded_media_longer_than_live_history_uses_bounded_candidate_import_and_keeps
         h.resource(ResourceRequest::Remove { resource });
     }
     let mut stopped = h.engine.render.into_stopped();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
 
 #[shoop_test]
@@ -717,6 +716,5 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
         h.resource(ResourceRequest::Remove { resource });
     }
     let mut stopped = h.engine.render.into_stopped();
-    stopped.cleanup().unwrap();
-    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    recover_all(&mut stopped, 12288);
 }
