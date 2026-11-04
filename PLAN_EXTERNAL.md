@@ -165,29 +165,29 @@ preceding stage. Keep fixes and verification within their owning milestone.
 
 ### 4. Both runtime interfaces and development composition
 
-- [ ] Implement thin direct `fixed::Processor` and production `process_fixed`
+- [x] Implement thin direct `fixed::Processor` and production `process_fixed`
   wrappers around the same core. Keep the required older trait entry point a
   whole-tick adapter; reject invalid shape and do not introduce another algorithm.
-- [ ] Add one shared integration group comparing both interfaces against an
+- [x] Add one shared integration group comparing both interfaces against an
   independent sample/event reference. Run direct whole-Q callbacks and buffered
   host partitions of 1, 7, Q, and a larger multi-Q callback, plus zero-length
   callbacks. Assert exact timestamps with node latency L and host latency H
   separately; flush enough zero input to observe the final delayed output.
-- [ ] Add one engine-composition test in `shoop_rt_engine` using a dev-only
+- [x] Add one engine-composition test in `shoop_rt_engine` using a dev-only
   `rt_external` dependency and a test node enum combining existing prepared
   engine nodes with External. Route audio and MIDI through the processor and a
   downstream consumer. No application catalog, protocol, or production graph
   changes are required to select the dummy.
-- [ ] Add a small runnable `rt_external` example with Q/M/S settings and checked
+- [x] Add a small runnable `rt_external` example with Q/M/S settings and checked
   audio/MIDI output, defaulting to the reference case above. Document preparation,
   latency, capacities, reset, and the inline/worker timing distinction. Commit.
 
 ### 5. Real-time and error-path verification
 
-- [ ] Add one heap-guard group using the existing tracking allocator: startup,
+- [x] Add one heap-guard group using the existing tracking allocator: startup,
   block completion, steady playback, maximum admitted MIDI, and slot reuse all
   render without allocation or deallocation. Allocate fixtures outside guards.
-- [ ] Add one fault-path integration group showing deliberate capacity exhaustion
+- [x] Add one fault-path integration group showing deliberate capacity exhaustion
   follows the existing runtime's silent terminal audio fault and MIDI recovery
   behavior, including an already emitted rotated-channel note. Verify recovery
   packets rather than adding node-specific panic/drop behavior.
@@ -283,3 +283,12 @@ builds or implementation tests.
   The runtime exposes generic remaining MIDI capacities for atomic preflight;
   External returns `Capacity` on exhaustion, since the integrated runtime treats
   `Full` as recoverable MIDI overflow. No runtime scheduling policy was changed.
+
+- Stage 4: all eleven focused native tests and the crate documentation example
+  pass. Direct/integrated runtimes agree across direct and buffered callback
+  partitions. The engine fixture combines External with prepared strip DSP and
+  typed half-gain control under a heap guard. The executable passes Q/M/S cases
+  16/2/1, 32/3/7, and 1/1/0, including zero-input tail flushing.
+- The warning-denying full workspace build passes. Full native regression,
+  Node/Chromium tests, and dependency/format gates are now running. Validation
+  disables debug information to bound build storage; this is not a benchmark.

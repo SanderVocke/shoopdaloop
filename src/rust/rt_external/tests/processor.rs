@@ -175,6 +175,10 @@ fn external_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
     assert_eq!(h.render(16), Err(Error::Capacity));
     assert!(h.midi_output.is_empty());
     assert_eq!(h.node.next_frame(), Frame(16));
+    h.midi_output = MidiBuffer::new(2, 5).unwrap();
+    assert_eq!(h.render(16), Err(Error::Capacity));
+    assert!(h.midi_output.is_empty());
+    assert_eq!(h.node.next_frame(), Frame(16));
     h.midi_output = MidiBuffer::new(2, 6).unwrap();
     h.render(16).unwrap();
     assert_eq!(h.output, vec![2.; 32]);
@@ -214,6 +218,9 @@ fn external_reset_and_discontinuity_refusal_preserve_stream_identity() {
     assert_eq!(h.render(32), Err(Error::InvalidFrame));
     assert_eq!(h.render(0), Err(Error::InvalidFrame));
     assert_eq!(h.node.next_frame(), Frame(16));
+    h.render(16).unwrap();
+    h.render(32).unwrap();
+    assert_eq!(h.node.completed_blocks(), 1);
     let generation = h.node.generation();
     assert_eq!(h.node.reset(Frame(1)), Err(Error::InvalidFrame));
     assert_eq!(h.node.reset(Frame(u64::MAX - 15)), Err(Error::Exhausted));
@@ -229,6 +236,19 @@ fn external_reset_and_discontinuity_refusal_preserve_stream_identity() {
         assert_eq!(h.output, vec![0.; 32]);
         assert!(h.midi_output.is_empty());
     }
+    let mut audio = AudioPorts::new(&h.input, &mut h.output, 16, 0, 16).unwrap();
+    assert_eq!(
+        h.node.process_tick(
+            Tick {
+                frame: Frame(320),
+                quantum: Quantum::new(32).unwrap()
+            },
+            &mut audio,
+            &h.midi_input,
+            &mut h.midi_output
+        ),
+        Err(Error::InvalidFrame)
+    );
     let mut malformed = AudioPorts::new(&h.input, &mut h.output, 16, 0, 8).unwrap();
     assert_eq!(
         h.node.process_tick(
@@ -260,5 +280,9 @@ fn external_rendering_has_no_heap_work_with_maximum_admitted_midi() {
     for tick in 0..80 {
         h.midi_output.clear();
         assert_no_heap(|| h.render(tick * 16)).unwrap();
+        assert_eq!(h.midi_output.len(), if tick < 10 { 0 } else { 4 });
+        if tick >= 10 {
+            assert_eq!(h.midi_output.get(3), Some((3, &[0x91, 63, 100][..])));
+        }
     }
 }

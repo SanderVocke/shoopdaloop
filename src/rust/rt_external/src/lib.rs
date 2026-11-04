@@ -1,4 +1,4 @@
-//! Fixed-quantum audio/MIDI nodes with internal block processing and stream delay.
+#![doc = include_str!("../README.md")]
 #![no_std]
 #![forbid(unsafe_code)]
 
