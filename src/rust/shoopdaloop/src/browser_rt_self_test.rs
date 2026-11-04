@@ -195,9 +195,12 @@ impl NewEngineSelfTest {
                         STEP_TIMEOUT
                     } => {}
             Ok(None) => self.fail(format!(
-                "timed out; file task: {:?}; profiling requested={} generation={} epoch={} topology={:?} groups={:?}",
-                snapshot.io_task,
+                "timed out; pending operations: {}; profiling requested/active/available: {}/{}/{}; file task: {:?}; generation={} epoch={} topology={:?} groups={:?}",
+                runtime.session_operations_pending(),
                 snapshot.profiling.requested,
+                snapshot.profiling.active,
+                snapshot.profiling.available,
+                snapshot.io_task,
                 snapshot.profiling.generation,
                 snapshot.profiling.live.epoch,
                 snapshot.profiling.topology.as_ref().map(|t| (t.generation, t.epoch, t.nodes.iter().filter(|n| n.group == 1).count())),
@@ -238,6 +241,7 @@ impl NewEngineSelfTest {
         let running = runtime.audio_running();
         let signal = runtime.new_engine_microphone();
         let pending = runtime.session_operations_pending();
+        let profiling_preferences_ready = runtime.applied_profiling_preference.is_some();
         let mut send = |intent: AppIntent| {
             runtime
                 .dispatch(intent)
@@ -247,9 +251,11 @@ impl NewEngineSelfTest {
         let next = match self.step {
             Step::Disabled | Step::Passed | Step::Failed => return Ok(None),
             Step::Startup => {
-                if !(running
-                    && snapshot.connections.backend_available
-                    && snapshot.tracks.len() == 1)
+                if pending
+                    || !profiling_preferences_ready
+                    || !(running
+                        && snapshot.connections.backend_available
+                        && snapshot.tracks.len() == 1)
                 {
                     return Ok(None);
                 }

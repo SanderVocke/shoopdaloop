@@ -10,22 +10,21 @@ At Q=32, complete-callback medians use a 5,333.333 µs budget (256 frames at 48 
 
 | Nodes | Baseline µs | Off µs | On µs | Off Δ budget pp | On Δ budget pp | Collector % audio budget, on | Encoded MB/s, on |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 12 | 53.656 | 53.961 | 62.609 | +0.006 | +0.168 | 0.192 | 1.03 |
-| 102 | 530.999 | 528.946 | 567.508 | -0.038 | +0.685 | 0.743 | 4.45 |
-| 502 | 2,978.919 | 2,893.266 | 3,008.664 | -1.606 | +0.558 | 3.261 | 17.30 |
+| 12 | 53.070 | 54.081 | 62.428 | +0.019 | +0.175 | 0.174 | 1.03 |
+| 102 | 524.338 | 523.888 | 588.189 | -0.008 | +1.197 | 0.770 | 4.45 |
+| 502 | 2,977.296 | 2,940.431 | 3,042.014 | -0.691 | +1.213 | 3.153 | 16.82 |
 
-Across steady cases, off medians range from -4.74% to +6.78% relative
-to baseline, and on from +0.99% to +17.27%. VM variation makes these
+Across steady cases, off medians range from -3.77% to +4.39% relative
+to baseline, and on from +1.24% to +17.76%. VM variation makes these
 observed ranges, not universal overhead estimates. Full tails and deadline misses
 are retained in the [comparison table](table.md).
 
 A follow-up pairs baseline/off at 502 nodes, Q=128: nine adjacent pairs,
 alternating which binary runs first, 512 callbacks per run and one pinned virtual
 CPU, with other heavy work stopped.
-The median of run medians is 978.751 µs baseline versus 956.317 µs off:
-**-2.29% relative DSP time, or -0.421 callback-budget percentage points**.
-The negative delta illustrates timing variation; it does not establish that the
-instrumented binary is faster or that off has a universal zero cost. The original
+The median of run medians is 1,023.491 µs baseline versus 1,025.689 µs off:
+**+0.21% relative DSP time, or +0.041 callback-budget percentage points**.
+This small delta does not establish a universal zero cost. The original
 matrix is retained alongside [the paired raw data](paired-disabled.jsonl).
 
 Ordinary draining loses no live batches across the measured workloads. Steady
@@ -38,22 +37,22 @@ continues and loss counters identify missing data. Large pools also fill during
 the stalled Q=64 case; Q=128 fits this 128-callback stall.
 
 Q=1 at 102 or 502 nodes already misses every deadline in the baseline.
-Enabled collection uses about 29% or 112% of rendered audio time on its separate
+Enabled collection uses about 29% or 109% of rendered audio time on its separate
 thread, and encoded output reaches 210 or 725 MB/s. These workloads demonstrate
 scaling limits, not usable real-time configurations. Near-budget large-graph
 workloads can develop additional misses while recording. Use the complete DSP
 bar and the tail/miss table when assessing a target graph.
 
-The native primed clock costs a median 26.42 ns/read, with a 20 ns observed
-minimum positive step. The Node proxy costs a median 54.03 ns for a direct JS
-clock call, 9.48 ns for a constant Wasm call and 61.51 ns for the Wasm clock import.
+The native primed clock costs a median 27.13 ns/read, with a 20 ns observed
+minimum positive step. The Node proxy costs a median 57.84 ns for a direct JS
+clock call, 6.67 ns for a constant Wasm call and 68.43 ns for the Wasm clock import.
 Actual AudioWorklet clock timing remains unavailable on the tested Chrome build.
-The final profiling window uses median 0.092 / 0.519 / 2.559 ms per CPU frame for
-12 / 102 / 502 rows; P99 is 0.191 / 0.780 / 3.608 ms. GPU work is excluded.
+The final profiling window uses median 0.092 / 0.525 / 2.689 ms per CPU frame for
+12 / 102 / 502 rows; P99 is 0.156 / 0.763 / 5.330 ms. GPU work is excluded.
 
 ## Method
 
-The uninstrumented baseline is `df4683527dbde0ec7483c3e522fc3873e39a81c8`
+The uninstrumented baseline is `2e19210bdbb5e32510322f8b8344715ce7cbefe5`
 on `feat/fixed-quantum-runtime`. Both binaries use the same release benchmark
 workload in `shoop_rt_engine/examples/profiling_benchmark.rs`. The baseline copy
 only removes profiling setup and message collection; graph construction,
@@ -93,8 +92,8 @@ period and deadline result. Collector CPU is divided by rendered audio duration,
 not by callback processing time. Wire rate counts encoded engine record sizes,
 including live and captured records, before carrier-specific framing.
 Storage counts sample arrays, excluding owner/channel/header metadata.
-The native render measurements precede the separate browser MessagePort credit
-window; that browser-only backpressure does not run in `OfflineHost::process`.
+The browser MessagePort credit window is included in the measured source revision;
+that browser-only backpressure does not run in `OfflineHost::process`.
 
 Negative deltas and extreme tails can arise from VM scheduling, cache/code layout
 and frequency variation. Off is a control-flow contract (no profiling clock reads
@@ -115,9 +114,10 @@ Already overloaded baselines cannot establish safe target-device operation.
 - [Profiling-window CPU frames](ui-frames.jsonl): 256 frames at each node count,
   after eight warm-up frames, with production egui layout and text formatting.
 - [Environment and source identities](environment.json).
-- [Chromium verification](chrome-validation.json): 11 packages, 610 passing tests.
-- [Node verification](node-validation.json): 34 packages, 2,211 passing tests,
-  combining the complete suite with affected-package reruns after fixes.
+- [Chromium verification](chrome-validation.json): 14 packages, 898 passing tests,
+  including an isolated buffered-package retry after a harness-load timeout.
+- [Node verification](node-validation.json): 35 packages, 2,280 passing tests
+  in the complete suite after the final base reconciliation.
 
 Chrome for Testing 147.0.7727.117 has no `performance` object in the actual
 AudioWorklet realm. Its elapsed-time profiling capability is unavailable, so an

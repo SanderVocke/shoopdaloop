@@ -1,23 +1,26 @@
 {
-  "method": "Complete Node suite plus affected-package reruns after MIDI base reconciliation, application/UI fixes and browser flow control",
+  "method": "Complete Node/Wasm suite after shared-media and buffered-processor reconciliation, plus the application rerun after its browser startup guard",
+  "source_commit": "f84338c9b5b4f46dcf286b501a7580016540afa2",
   "packages": {
+    "rt_buffered": {
+      "exit": 0,
+      "tests": 11,
+      "failures": 0
+    },
     "rt_profiling": {
       "exit": 0,
       "tests": 11,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "failures": 0
     },
     "rt_runtime": {
       "exit": 0,
-      "tests": 198,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "tests": 229,
+      "failures": 0
     },
     "shoop_app": {
       "exit": 0,
       "tests": 35,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "failures": 0
     },
     "shoop_app_api": {
       "exit": 0,
@@ -27,8 +30,7 @@
     "shoop_app_client": {
       "exit": 0,
       "tests": 11,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "failures": 0
     },
     "shoop_app_protocol": {
       "exit": 0,
@@ -58,8 +60,7 @@
     "shoop_egui": {
       "exit": 0,
       "tests": 234,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "failures": 0
     },
     "shoop_engine": {
       "exit": 0,
@@ -78,9 +79,8 @@
     },
     "shoop_loops": {
       "exit": 0,
-      "tests": 175,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "tests": 181,
+      "failures": 0
     },
     "shoop_loops_test_support": {
       "exit": 0,
@@ -89,7 +89,7 @@
     },
     "shoop_persistence_codec": {
       "exit": 0,
-      "tests": 15,
+      "tests": 17,
       "failures": 0
     },
     "shoop_plugin_protocol": {
@@ -105,20 +105,17 @@
     "shoop_rt_backend": {
       "exit": 0,
       "tests": 39,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "failures": 0
     },
     "shoop_rt_engine": {
       "exit": 0,
-      "tests": 48,
-      "failures": 0,
-      "source_commit": "eedbc09f"
+      "tests": 67,
+      "failures": 0
     },
     "shoop_rt_host_worklet": {
       "exit": 0,
       "tests": 17,
-      "failures": 0,
-      "source": "final browser credit window"
+      "failures": 0
     },
     "shoop_rt_protocol": {
       "exit": 0,
@@ -128,14 +125,12 @@
     "shoop_rt_transport": {
       "exit": 0,
       "tests": 6,
-      "failures": 0,
-      "source": "final browser credit window"
+      "failures": 0
     },
     "shoop_rt_transport_message_port": {
       "exit": 0,
       "tests": 7,
-      "failures": 0,
-      "source": "final browser credit window"
+      "failures": 0
     },
     "shoop_script_resources": {
       "exit": 0,
@@ -181,7 +176,7 @@
       "exit": 0,
       "tests": 45,
       "failures": 0,
-      "source": "final browser credit window"
+      "source_commit": "9183b9b593e730572f2aa7730e22f5cb0c3de464"
     }
   }
 }

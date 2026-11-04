@@ -1,7 +1,7 @@
 # Runtime profiling implementation plan
 
-Status: implementation and local acceptance gates passed at `30bc167f`;
-reconciling newly merged shared-media/buffered-processor code so remote CI can run.
+Status: implementation and all local acceptance gates pass; completing remote
+CI/review gates.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -322,8 +322,9 @@ The implementation branch began at `cb79706e95350539638368bcca9f50b1601795ae`.
 The target subsequently advanced; merge `3ca192e10552afe9ca9dfe6f4482c8b5081602bc`
 and preserve its graph API, wide host ports, previews, host manager and wire tags.
 A further clean merge includes the final MIDI recovery fixes at
-`df4683527dbde0ec7483c3e522fc3873e39a81c8`, now the matching uninstrumented
-measurement baseline. Both release binaries use those fixes.
+`df4683527dbde0ec7483c3e522fc3873e39a81c8`. The final matching uninstrumented
+measurement baseline is `2e19210bdbb5e32510322f8b8344715ce7cbefe5`, including
+shared-media and buffered-processor support. Both release binaries use that base.
 Production profiling instruments `GraphRuntime::{process,run_tick,run_graph}`.
 Engine/app protocol versions are 8/21; SDM2 adds independent profiling admission.
 
@@ -351,24 +352,24 @@ clock and final-window CPU timings. The baseline/current workload source matches
 exactly after removing profiling setup and collection. Ordinary collection has no
 live-batch drops; stalled readers demonstrate bounded loss without blocking audio.
 Small-quantum/large-graph workloads already exceed deadlines on the baseline and
-have explicit throughput/collection limits. The refreshed paired disabled check is −2.29%
-relative DSP time (−0.421 callback-budget percentage points) on this VM. Negative
-deltas demonstrate variation, not acceleration. These observations provide no
+have explicit throughput/collection limits. The refreshed paired disabled check is +0.21%
+relative DSP time (+0.041 callback-budget percentage points) on this VM. The full
+matrix also has negative deltas, demonstrating variation rather than acceleration.
+These observations provide no
 universal zero-cost or target-device guarantee.
 
 Validation completed:
 
-- Warning-denying workspace build and full native suite: **2,689 passed**, six
-  skipped tests. One legacy-engine output-peak timeout passed in isolation and
-  the complete rerun passed all tests. The 16 focused recorder/runtime/window tests include
+- Warning-denying workspace build and full native suite: **2,757 passed**, seven
+  skipped tests. The coverage job later hit a legacy meter assertion; that test
+  passes in isolation, and the non-coverage Linux/Windows suites pass remotely. The 16 focused recorder/runtime/window tests include
   no-heap saturation/reset/fault paths, independent prescribed node work and all
   five quanta with arbitrary host partitions and unchanged audio/MIDI.
 - Packaged socket and shared-memory probes: default off, enable, current names and
   statistics, recording/playback, media reads, reconnect, disable/re-enable and
   graceful shutdown pass.
-- Node/Wasm: **34 packages, 2,211 tests passed**. The complete suite passed its 33
-  library packages; an application test-only import gate was corrected, then affected packages
-  rerun after the MIDI recovery merge and browser flow control; all pass. [Results](docs/runtime_profiling/node-validation.json).
+- Node/Wasm: **35 packages, 2,280 tests passed** in the complete suite on the
+  reconciled base. [Results](docs/runtime_profiling/node-validation.json).
 - Optimized Trunk browser bundle builds. The hosted production browser workflow
   passes audio/MIDI recording/playback, waveforms/details, controls, cancellation,
   save/reload/resave, restored playback, bus removal/recreation, generation resets
@@ -380,11 +381,12 @@ Validation completed:
   timing unavailable with no lock fallback or user-facing build option. Both
   standalone host-fixture lockfiles include the new dependency, preserve existing
   versions, and pass locked resolution/build checks.
-- Formatting, test-attribute policy, 396-module tracing inventory, four-target
+- Formatting, test-attribute policy, 423-module tracing inventory, four-target
   runtime/engine dependency boundaries and the new crate's Wasm test dependency
-  audit pass. Chromium verification passes **610 tests across eleven packages**, including
-  the new MessagePort credit tests in a real browser. The optimized regular and
-  large-media workflows both pass after the final merge and acknowledgement guard.
+  audit pass. Chromium verification passes **898 tests across fourteen packages**, including
+  the MessagePort credit tests and the new buffered-processor/engine contracts.
+  One Wasm harness-load timeout passes on the isolated buffered-package retry.
+  [Results](docs/runtime_profiling/chrome-validation.json).
 
 Platform limits: this environment has no physical audio/MIDI devices. Native
 integration uses the dummy host, prescribed/injected xruns and observed dummy-host
@@ -397,7 +399,8 @@ clock. These limits are anticipated by acceptance criterion 8.
 
 Delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 targets
 `feat/fixed-quantum-runtime`. Implementation and release evidence are pushed;
-all local validation passes; remote CI and applicable automated review remain in progress.
+all local validation passes; remote CI and applicable automated-review checks
+remain in progress.
 The release CI large-media workflow exposed a startup race; the self-test now
 waits for queued and accepted operation acknowledgements before requesting a new
 session, including after profiling acknowledgement and bus recreation.
@@ -416,5 +419,14 @@ and caused conflicts before CI could start on `30bc167f`. Preserve both changes:
 shared-media stores and input epochs, buffered-processor support, both crate
 lockfile entries, both tracing inventories, and both Wasm dependency audits.
 The warning-denying merged workspace build and 423-module inventory pass.
-Refresh native/affected Wasm/browser checks and the matching benchmark comparison
-before final delivery. The preceding counts describe the validated checkpoint.
+The full native and Node suites, fourteen affected Chromium packages, all bare-metal
+builds and the matching benchmark comparison pass on this base. Consolidating the
+engine test allocator resolves the two upstream test modules each declaring a global
+allocator. Browser startup now waits for the initial persisted profiling preference
+and pending operations before the self-test enables profiling; this prevents the
+initial default from reversing its first runtime toggle. The final optimized
+regular and large-media workflows pass in isolation with zero reported xruns. An
+earlier large-load acknowledgement timed out during concurrent testing; it passes
+in isolation and both hosted/single-file workflows pass remotely. The remote
+coverage job hit a legacy peak-poll assertion that passes in isolation; retry it
+once the workflow completes. No automated review or inline thread is available.
