@@ -7,7 +7,8 @@
 The implementation and focused coverage are tracked in
 [PLAN_BUFFERED.md](PLAN_BUFFERED.md); the public timing and MIDI contract is in
 [the crate documentation](src/rust/rt_buffered/README.md). Source revision
-`1dcf26f9` includes the updated fixed-quantum base `cb79706e`.
+`1dcf26f9` includes the updated fixed-quantum base `cb79706e`; `41f0dc56`
+renames the abstraction and crate to `BufferedProcessor` and `rt_buffered`.
 
 Local validation passes: warning-denying workspace build; 2641 native tests with
 four intentionally ignored failure canaries; eleven focused processor/engine
@@ -16,6 +17,19 @@ check; paired client-codec/AudioWorklet artifact contracts; bare-metal library
 build; four-target runtime/engine dependency audits; Wasm test dependency
 isolation; formatting, tracing inventory and shared test attributes; 28 Python
 report/boundary tests; and executable Q/M/S examples 16/2/1 and 32/3/7.
+
+After the rename, the warning-denying workspace build, focused native tests,
+API doctest, examples, portable audits and bare-metal build pass again. Eleven
+focused Wasm cases plus the API doctest pass in both Node and Chromium.
+At `9cee6c15`, fresh real-worklet evidence replaces four obsolete capture
+revision fields in the independent host recording; all inputs and callback
+audio hashes are unchanged. Exact debug/release native replays, both loop-host
+profiles, both worklet failure canaries and 44 selected Python policy tests pass.
+See [recording provenance](docs/rt_runtime/evidence/hosts-fixed-quantum.json).
+A subsequent local full-suite repeat observed one existing legacy Built-in FX
+track-creation race (2640 passed, one failed; 8/10 isolated reproductions). The
+complete Linux CI workspace suite passes on the same pushed revision. No
+legacy implementation or assertions were changed for that local failure.
 
 Checks use Rust 1.99.1, cargo-nextest 0.9.116, Node 22.22.2, wasm-pack 0.15.0,
 wasm-bindgen 0.2.127 and Chrome/ChromeDriver 147.0.7727.117 in an isolated Debian

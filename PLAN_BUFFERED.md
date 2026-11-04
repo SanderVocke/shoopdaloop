@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Implementation authorized by the user; execute the stages below. Base the work
-on `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
+Implementation is complete at `9cee6c15`; final delivery is waiting for GitHub
+Actions recovery and a green final-head matrix. The work starts from
+`feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
 
@@ -211,7 +212,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
   behavior.
 - [ ] Ensure required CI is green on the final head.
-- [ ] Check for automated review. Repeatedly assess and address incoming feedback,
+- [x] Check for automated review. Repeatedly assess and address incoming feedback,
   rerun affected checks, and continue until the reviewer approves. If no automated
   reviewer responds, record that fact; do not claim approval. Leave the PR ready
   for user review; merging is outside this plan.
@@ -337,8 +338,10 @@ builds or implementation tests.
   device, remote DSP and performance acceptance are not claimed.
 
 - Delivery: [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937) is open
-  against feat/fixed-quantum-runtime at head 31ddc295. Remote build/test run
-  41851455852 is in progress; documentation and bare-metal checks already pass.
+  against feat/fixed-quantum-runtime. The initial CI at 31ddc295 identified
+  the historical host-journal mismatch described below; final validation runs
+  against the renamed implementation and refreshed recording at 9cee6c15.
+  Remote build/test run 41860172019 is in progress.
   No automated review or inline review threads have been posted so far.
 
 - User-approved naming revision: the reusable wrapper is `BufferedProcessor`,
@@ -364,3 +367,31 @@ builds or implementation tests.
   The refreshed recording passes native-only debug and release replay; the
   separate loop host also passes debug and release. All 44 selected host-runner,
   loop-host, dependency-boundary and Wasm-report policy tests pass.
+
+- Renamed-package portability: eleven focused Wasm cases plus the API doctest
+  pass in both Node and Chromium at 41f0dc56 (the recording-only follow-up
+  9cee6c15 does not change these packages). The final-head CI matrix is running;
+  bare-metal and JACK acceptance are already green.
+
+- Post-rename local regression repeat: 2640 passed and one existing legacy
+  Built-in FX track-creation test failed with a pending-loop observation. The
+  unchanged legacy test failed 8/10 isolated repetitions; an experimental
+  acknowledgment wait also exposed driver-progress timeouts and was removed.
+  No legacy implementation or assertion changes are included. CI on the same
+  pushed 9cee6c15 revision passes the complete Linux workspace suite and both
+  Linux independent-host steps. Raw local diagnostics remain in work/.
+
+- External CI delay: GitHub reports an active Actions/Pages incident
+  (https://stspg.io/pjgptg3cfc6n). Several jobs have all steps completed
+  successfully but remain in progress, and macOS runners remain queued. Windows
+  debug hit an existing persistence-probe companion-exit timeout; GitHub rejects
+  its job retry while the run is active. The CI gate remains open until recovery
+  and successful retries; step success is not substituted for final job status.
+
+- Review checkpoint: repeatedly checked PR reviews, inline threads and issue
+  comments through the pushed 9cee6c15 implementation. No automated code
+  reviewer has responded and no review threads exist; approval is not claimed.
+  The only comment is Codecov coverage reporting (91.40271% patch coverage;
+  project/patch checks pass, with an informational missing-base report). The
+  focused boundary/lifecycle/audio/MIDI tests are retained without coverage-only
+  assertion duplication. Recheck for new review feedback before final delivery.
