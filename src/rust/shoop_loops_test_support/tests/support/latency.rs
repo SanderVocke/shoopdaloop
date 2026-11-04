@@ -1,3 +1,4 @@
+use super::mixed::{self, assemble, Control, Runtime, Tap};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     midi_state::MidiState,
@@ -5,10 +6,10 @@ use rt_runtime::{
     transport::Outcome,
     Frame,
 };
-use shoop_engine_service::{
-    dsp, CaptureTap, Client, Config, EngineCommand, ExecutionStatus, LoopOperation as Op,
-    LoopReply as Reply, Render, RequestId,
-};
+use rt_runtime::{executor::Command as EngineCommand, transport::Lane, Sequence as RequestId};
+use shoop_example_dsp as dsp;
+use shoop_loops::runtime::{Operation as Op, Reply};
+
 use shoop_latency::{
     wet_recording_offset, CaptureFrameMapping, ProcessorRenderAdvance, RecordingOffset,
     RetentionWindow,
@@ -158,8 +159,8 @@ impl Evidence {
     }
 }
 struct Host {
-    client: Client,
-    render: Render,
+    control: Control,
+    runtime: Runtime,
     target: shoop_loops::LoopId,
     input: [MidiBuffer; 1],
     output: [MidiBuffer; 1],
@@ -172,15 +173,21 @@ struct Host {
 }
 impl Host {
     fn ask(&mut self, at: u64, operation: Op) -> RequestId {
-        heap::assert_no_heap(|| self.client.loop_at(Frame(at), operation).unwrap().id())
+        heap::assert_no_heap(|| {
+            self.control
+                .submit(Lane::Normal, Frame(at), operation)
+                .map_err(|e| e.error)
+                .unwrap()
+                .sequence()
+        })
     }
     fn pump(&mut self) {
-        while let Some(delivery) = self.client.try_delivery() {
+        while let Some(delivery) = self.control.try_completion() {
             assert!(!matches!(
                 delivery.outcome,
                 Outcome::Rejected(_) | Outcome::Cancelled
             ));
-            if let Some(EngineCommand::Resource(command)) = delivery.command {
+            if let EngineCommand::Resource(command) = delivery.request {
                 let Some(ReadReply::Read { written, eof }) = command.reply() else {
                     panic!("read receipt");
                 };
@@ -189,13 +196,12 @@ impl Host {
                     panic!("owning buffer");
                 };
                 assert_eq!(cursor.position(), written);
-                self.reads.push((delivery.id, bytes[..written].to_vec()));
+                self.reads
+                    .push((delivery.sequence, bytes[..written].to_vec()));
             }
         }
-        while let Some(execution) = self.client.try_execution() {
-            let ExecutionStatus::Executed(raw) = execution.status else {
-                panic!("actual execution");
-            };
+        while let Some(execution) = self.control.try_execution() {
+            let raw = execution;
             assert_eq!(raw.result, Ok(()));
             assert_eq!(raw.late_by(), 0);
             let reply = raw.operation_result.unwrap();
@@ -205,13 +211,13 @@ impl Host {
                     shoop_loops::Outcome::Applied { .. }
                 ));
             } else {
-                self.replies.push((execution.id.unwrap(), reply));
+                self.replies.push((raw.sequence, reply));
             }
         }
     }
     fn advance(&mut self, end: u64, partition: Partition) {
-        while self.render.next_frame().0 < end {
-            let frame = self.render.next_frame().0;
+        while self.runtime.next_frame().0 < end {
+            let frame = self.runtime.next_frame().0;
             let remaining = (end - frame) as usize;
             let n = match partition {
                 Partition::Whole => remaining,
@@ -232,8 +238,7 @@ impl Host {
                     }
                 }
                 let input: [f32; 64] = std::array::from_fn(|i| dry(self.signal, frame + i as u64));
-                let report = self
-                    .render
+                self.runtime
                     .process(
                         AudioBlock {
                             frame: Frame(frame),
@@ -247,11 +252,11 @@ impl Host {
                         },
                     )
                     .unwrap();
-                assert_eq!(report.next_frame, Frame(frame + n as u64));
+                assert_eq!(self.runtime.next_frame(), Frame(frame + n as u64));
                 if n == 0 {
-                    assert_eq!(report.work, shoop_engine_service::Work::default());
+                    assert_eq!(self.runtime.next_frame(), Frame(frame));
                 }
-                assert!(self.render.midi_recovery().is_empty());
+                assert!(!self.runtime.midi_recovery_pending(0).unwrap());
             });
             for i in 0..n {
                 let expected = wet(self.signal, frame + i as u64);
@@ -259,10 +264,12 @@ impl Host {
                 assert_eq!(right[i], expected);
             }
             self.physical_wet.extend_from_slice(&right[..n]);
-            for i in 0..self.output[0].len() {
-                let (at, bytes) = self.output[0].get(i).unwrap();
-                self.output_markers
-                    .push((frame + at as u64, bytes.to_vec()));
+            if n != 0 {
+                for i in 0..self.output[0].len() {
+                    let (at, bytes) = self.output[0].get(i).unwrap();
+                    self.output_markers
+                        .push((frame + at as u64, bytes.to_vec()));
+                }
             }
             self.pump();
         }
@@ -279,7 +286,13 @@ impl Host {
     }
     fn read(&mut self, cursor: Cursor) -> RequestId {
         let bytes = vec![0; 256].into_boxed_slice();
-        heap::assert_no_heap(|| self.client.read(cursor, bytes).unwrap().id())
+        heap::assert_no_heap(|| {
+            self.control
+                .read(cursor, bytes)
+                .map_err(|e| e.error)
+                .unwrap()
+                .sequence()
+        })
     }
     fn bytes(&mut self, id: RequestId) -> Vec<u8> {
         let index = self.reads.iter().position(|(key, _)| *key == id).unwrap();
@@ -288,13 +301,9 @@ impl Host {
 }
 pub fn run(signal: Signal, capture: Capture, partition: Partition) -> Evidence {
     let preset = dsp::PresetId::from_parts(0, 1).unwrap();
-    let prepared = shoop_engine_service::prepare(
-        Config {
-            quantum: 1,
-            capture: CaptureTap::DryWet,
-            resource_pages: 128,
-            ..Config::default()
-        },
+    let prepared = assemble(
+        128,
+        Tap::DryWet,
         vec![dsp::Preset {
             id: preset,
             live_gain: [1.; 2],
@@ -303,11 +312,12 @@ pub fn run(signal: Signal, capture: Capture, partition: Partition) -> Evidence {
             delay_frames: 3,
         }],
         preset,
+        None,
     )
     .unwrap();
     let mut host = Host {
-        client: prepared.client,
-        render: prepared.render,
+        control: prepared.control,
+        runtime: prepared.runtime,
         target: prepared.target,
         input: [MidiBuffer::new(32, 128).unwrap()],
         output: [MidiBuffer::new(128, 512).unwrap()],
@@ -440,8 +450,8 @@ pub fn run(signal: Signal, capture: Capture, partition: Partition) -> Evidence {
     );
     assert!(host.replies.is_empty());
     assert!(host.reads.is_empty());
-    assert_eq!(host.client.outstanding(), 0);
-    assert_eq!(host.render.diagnostics().midi_overflows, 0);
+    assert_eq!(host.control.outstanding(), 0);
+    assert_eq!(host.runtime.diagnostics().midi_overflows, 0);
     let evidence = Evidence {
         signal,
         capture,
@@ -452,13 +462,13 @@ pub fn run(signal: Signal, capture: Capture, partition: Partition) -> Evidence {
     };
     assert_eq!(evidence.physical_wet.len(), 19);
     evidence.verify_windows();
-    drop(host.client);
-    let mut stopped = host.render.into_stopped();
-    stopped.cleanup().unwrap();
+    drop(host.control);
+    let mut stopped = host.runtime.into_stopped();
+    mixed::cleanup(&mut stopped);
     assert_eq!(stopped.resource_usage().free_pages, 128);
     assert_eq!(stopped.resource_usage().free_versions, 32);
     assert_eq!(stopped.resource_usage().free_snapshots, 32);
-    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    assert_eq!(stopped.resources().midi_index_usage().free_versions, 8);
     let usage = stopped.media_usage();
     assert_eq!(
         (

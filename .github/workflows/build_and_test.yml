@@ -808,7 +808,7 @@ jobs:
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
-            --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
+            --package shoop_loops_test_support --package shoop_example_dsp --package shoop_latency \
             --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
             --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_rt_transport \
             --package shoop_rt_transport_message_port --package shoop_scripting \

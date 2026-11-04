@@ -1,55 +1,59 @@
-use crate::{
-    control, dsp, CaptureTap, Config, InitialContent, Prepared, PreparedRoute, Render, ServiceNode,
-};
 use rt_runtime::{
-    executor::{GraphRuntime, PreparedNode},
-    graph::{Connection, Endpoint, GraphDescription, PortType},
+    graph::{Connection, Endpoint, GraphDescription, PortType, PreparedPlan},
+    midi_state::MidiState,
     resource::{
         encode_midi_record, CaptureGroupConfig, Description, Format, MidiIndexConfig,
         ResourceStore, UploadId,
     },
-    Budgets, Error, Frame, NodeId, PlannerId, Revision,
+    Budgets, Error, Frame, NodeId, PlannerId, Quantum, Revision,
 };
+use shoop_example_dsp as dsp;
 use shoop_loops::{
     audio::Smoothing,
     compile,
-    runtime::{Binding, Failure, LoopPlanner, Options, Prepared as LoopParts, Settings},
+    runtime::{Binding, Failure, Settings},
     Limits, LoopId, LoopKind, LoopSpec, TopologyDescription,
 };
+use shoop_loops_test_support::{LoopControl, LoopRuntime};
 
-pub fn prepare(
-    config: Config,
-    presets: Vec<dsp::Preset>,
-    initial: dsp::PresetId,
-) -> Result<Prepared, Failure> {
-    prepare_inner(config, presets, initial, None)
+pub type Control = LoopControl<dsp::Dsp, dsp::Operation>;
+pub type Runtime = LoopRuntime<dsp::Dsp, dsp::Operation>;
+#[derive(Clone, Copy, PartialEq)]
+pub enum Tap {
+    PostDsp,
+    Live,
+    DryWet,
+}
+pub struct MidiPacket {
+    pub frame: u64,
+    pub bytes: Vec<u8>,
+}
+pub struct Content {
+    pub audio: [Vec<f32>; 2],
+    pub midi_initial: MidiState,
+    pub midi: Vec<MidiPacket>,
+}
+pub struct Setup {
+    pub control: Control,
+    pub runtime: Runtime,
+    pub route: PreparedPlan,
+    pub target: LoopId,
+    pub meters: dsp::Meters,
+}
+pub fn effect() -> NodeId {
+    NodeId::from_parts(2, 1).unwrap()
 }
 
-/// Construct initial immutable stereo/indexed-MIDI media entirely off-render.
-pub fn prepare_with_content(
-    config: Config,
+pub fn assemble(
+    pages: usize,
+    tap: Tap,
     presets: Vec<dsp::Preset>,
     initial: dsp::PresetId,
-    content: InitialContent,
-) -> Result<Prepared, Failure> {
-    prepare_inner(config, presets, initial, Some(content))
-}
-
-fn prepare_inner(
-    config: Config,
-    presets: Vec<dsp::Preset>,
-    initial: dsp::PresetId,
-    content: Option<InitialContent>,
-) -> Result<Prepared, Failure> {
-    if config.max_frames == 0 || config.max_frames > 64 || config.export_slots == 0 {
-        return Err(Error::InvalidConfig.into());
-    }
-    let quantum = rt_runtime::Quantum::new(config.quantum)?;
-    let mut dsp_config = config.dsp;
-    dsp_config.max_frames = quantum.frames();
-    let prepared_dsp = dsp::prepare(dsp_config, presets, initial)?;
-    let runtime = rt_runtime::Config {
-        max_frames: quantum.frames(),
+    content: Option<Content>,
+) -> Result<Setup, Failure> {
+    let quantum = Quantum::new(1)?;
+    let config = rt_runtime::Config {
+        max_frames: 64,
         audio_inputs: 2,
         audio_outputs: 2,
         midi_inputs: 1,
@@ -57,15 +61,15 @@ fn prepare_inner(
         max_nodes: 4,
         max_ports: 24,
         max_edges: 16,
-        command_slots: crate::NORMAL_SLOTS,
+        command_slots: 32,
         scheduled_events: 32,
         midi_events_per_port: 2048,
         midi_bytes_per_port: 8192,
         resource_slots: 32,
-        resource_pages: config.resource_pages,
+        resource_pages: pages,
         page_bytes: 256,
         budgets: Budgets {
-            commands: crate::NORMAL_SLOTS,
+            commands: 32,
             events: 32,
             subranges: 0,
             validation_steps: 128,
@@ -75,8 +79,9 @@ fn prepare_inner(
         ..rt_runtime::Config::default()
     }
     .prepare()?;
+    let prepared = dsp::prepare(dsp::Config::default(), presets, initial)?;
     let mut resources = ResourceStore::with_capture_groups(
-        runtime,
+        config,
         quantum,
         Some(MidiIndexConfig {
             versions: 8,
@@ -92,12 +97,11 @@ fn prepare_inner(
     let target = LoopId::from_parts(0, 1)?;
     let playback = NodeId::from_parts(0, 1)?;
     let capture = NodeId::from_parts(1, 1)?;
-    let effect = NodeId::from_parts(2, 1)?;
-    let imports = content
-        .map(|content| import(&mut resources, target, content))
+    let imports: Vec<_> = content
+        .map(|c| import(&mut resources, target, c))
         .transpose()?
         .into_iter()
-        .collect::<Vec<_>>();
+        .collect();
     let length = imports.first().map_or(0, |input| input.description.frames);
     let topology = compile(
         Limits {
@@ -115,21 +119,15 @@ fn prepare_inner(
             ..TopologyDescription::default()
         },
     )?;
-    let initial_graph = graph(config.capture, playback, effect, capture);
-    let LoopParts {
-        planner,
-        nodes,
-        client,
-    } = LoopPlanner::prepare(
-        runtime,
-        quantum,
+    let (control, mut runtime) = LoopRuntime::prepare(
+        config,
         topology,
-        &mut resources,
+        resources,
         Settings {
             planner: PlannerId::from_parts(0, 1)?,
             normal_requests: 8,
             media_slots: 8,
-            export_slots: config.export_slots,
+            export_slots: 4,
         },
         vec![Binding {
             target,
@@ -144,52 +142,24 @@ fn prepare_inner(
             packet_bytes: 512,
         }],
         imports,
-        Options::default(),
+        vec![(effect(), prepared.processor)],
+        graph(tap, playback, effect(), capture),
     )?;
-    let nodes = nodes
-        .into_iter()
-        .map(|(id, node)| PreparedNode::new(id, ServiceNode::Loop(node)))
-        .chain([PreparedNode::new(
-            effect,
-            ServiceNode::Dsp(prepared_dsp.processor),
-        )])
-        .collect();
-    let (mut control, mut engine) = GraphRuntime::prepare_for_host(
+    runtime.prepare_graph_staging(1)?;
+    let route = control.compile_graph(&graph(Tap::Live, playback, effect(), capture))?;
+    Ok(Setup {
+        control,
         runtime,
-        config.max_frames,
-        quantum,
-        nodes,
-        planner,
-        resources,
-    )?;
-    engine.prepare_initial_graph(&initial_graph)?;
-    if quantum.frames() > 1 {
-        engine.prepare_host_buffering()?;
-    }
-    control.prepare_submissions()?;
-    engine.prepare_graph_staging(1)?;
-    let candidate = client.compile_graph(
-        engine.catalog(),
-        &graph(CaptureTap::Live, playback, effect, capture),
-    )?;
-    let (client, ingress) = control::channel(control, client, target, effect, prepared_dsp.meters);
-    let route = PreparedRoute {
-        plan: candidate,
-        identity: client.identity(),
-    };
-    let render = Render::new(config, engine, ingress)?;
-    Ok(Prepared {
-        client,
-        render,
         route,
         target,
+        meters: prepared.meters,
     })
 }
 
 fn import(
     resources: &mut ResourceStore,
     target: LoopId,
-    content: InitialContent,
+    content: Content,
 ) -> Result<shoop_loops::media::Input, Error> {
     use shoop_loops::media;
     let frames = content.audio[0].len();
@@ -284,7 +254,7 @@ fn write_initial(
     resources.finish_upload(upload)
 }
 
-fn graph(tap: CaptureTap, playback: NodeId, effect: NodeId, capture: NodeId) -> GraphDescription {
+pub fn graph(tap: Tap, playback: NodeId, effect: NodeId, capture: NodeId) -> GraphDescription {
     let mut graph = GraphDescription {
         nodes: vec![playback, effect, capture],
         connections: Vec::new(),
@@ -293,10 +263,10 @@ fn graph(tap: CaptureTap, playback: NodeId, effect: NodeId, capture: NodeId) -> 
         let processed = Endpoint::node(effect, PortType::Audio, channel);
         let live = Endpoint::host(PortType::Audio, channel);
         let captured = match tap {
-            CaptureTap::PostDsp => processed,
-            CaptureTap::Live => live,
-            CaptureTap::DryWet if channel == 0 => live,
-            CaptureTap::DryWet => processed,
+            Tap::PostDsp => processed,
+            Tap::Live => live,
+            Tap::DryWet if channel == 0 => live,
+            Tap::DryWet => processed,
         };
         graph.connections.extend([
             Connection {
@@ -333,13 +303,18 @@ fn graph(tap: CaptureTap, playback: NodeId, effect: NodeId, capture: NodeId) -> 
             destination: Endpoint::host(PortType::Midi, 0),
         },
         Connection {
-            source: if tap == CaptureTap::Live {
-                live
-            } else {
-                processed
-            },
+            source: if tap == Tap::Live { live } else { processed },
             destination: Endpoint::node(capture, PortType::Midi, 0),
         },
     ]);
     graph
+}
+
+pub fn cleanup(stopped: &mut shoop_loops_test_support::StoppedLoops) {
+    stopped.cleanup().unwrap();
+    let limits = stopped.resources().config().limits();
+    for _ in 0..limits.resource_pages + limits.resource_slots {
+        stopped.resources().begin_callback();
+        stopped.resources().reclaim();
+    }
 }

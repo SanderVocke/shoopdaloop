@@ -1,6 +1,6 @@
 //! Dev-only assembly of the loop library into one runtime with optional effects.
 //!
-//! Tests, benchmarks and test hosts use this to drive the loop parts the way an
+//! Tests and test hosts use this to drive the loop parts the way an
 //! application would. Production crates assemble their own runtime and node type.
 #![forbid(unsafe_code)]
 
@@ -8,7 +8,7 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{self, Command, GraphRuntime, PreparedNode},
     graph::{Catalog, GraphDescription, PortCounts, PreparedPlan},
-    processor::{ProcessBlock, Processor},
+    processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation},
     resource::{self, PoolUsage, ResourceStore},
     schedule,
     transport::{self, Lane},
@@ -23,12 +23,14 @@ use shoop_loops::{
     PreparedTopology,
 };
 
-/// A loop node or an effect without planner access.
+/// A loop node or an independently controlled processor.
 pub enum TestNode<P> {
     Loop(LoopNode),
     Effect(P),
 }
-impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for TestNode<P> {
+impl<P: Processor<LoopPlanner, Q>, Q: ProcessorOperation> Processor<LoopPlanner, Q>
+    for TestNode<P>
+{
     fn admit(&self, id: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
             Self::Loop(node) => node.admit(id, domain),
@@ -36,6 +38,22 @@ impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for TestNode<P> {
         }
     }
 
+    fn operation_bytes(&self) -> usize {
+        match self {
+            Self::Loop(_) => 0,
+            Self::Effect(node) => node.operation_bytes(),
+        }
+    }
+    fn operation(
+        &mut self,
+        operation: Q,
+        context: OperationContext<'_>,
+    ) -> Result<Q::Result, Error> {
+        match self {
+            Self::Loop(_) => Err(Error::InvalidEvent),
+            Self::Effect(node) => node.operation(operation, context),
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
@@ -56,16 +74,17 @@ impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for TestNode<P> {
     }
 }
 
-pub type TestCommand<P> = Command<TestNode<P>, LoopPlanner>;
-pub type TestSubmit<P> = Result<transport::Ticket, transport::SubmitError<TestCommand<P>>>;
+pub type TestCommand<P, Q = ()> = Command<TestNode<P>, LoopPlanner, Q>;
+pub type TestSubmit<P, Q = ()> =
+    Result<transport::Ticket, transport::SubmitError<TestCommand<P, Q>>>;
 
 /// The render-side owner of one assembled runtime.
-pub struct LoopRuntime<P: Processor<LoopPlanner>> {
-    runtime: GraphRuntime<TestNode<P>, LoopPlanner>,
+pub struct LoopRuntime<P: Processor<LoopPlanner, Q>, Q: ProcessorOperation = ()> {
+    runtime: GraphRuntime<TestNode<P>, LoopPlanner, Q>,
 }
 /// The control side of an assembled runtime.
-pub struct LoopControl<P: Processor<LoopPlanner>> {
-    control: executor::Control<TestNode<P>, LoopPlanner>,
+pub struct LoopControl<P: Processor<LoopPlanner, Q>, Q: ProcessorOperation = ()> {
+    control: executor::Control<TestNode<P>, LoopPlanner, Q>,
     client: LoopClient,
     catalog: Catalog,
 }
@@ -75,9 +94,9 @@ pub struct StoppedLoops {
     resources: ResourceStore,
 }
 
-impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
-    /// Every primitive requires both node consumers in `graph`; effects must
-    /// declare no planner access.
+impl<P: Processor<LoopPlanner, Q>, Q: ProcessorOperation> LoopRuntime<P, Q> {
+    /// Every primitive requires playback and capture nodes in `graph`.
+    /// Effect processors retain their own typed operations.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare(
         config: PreparedConfig,
@@ -88,7 +107,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         imports: Vec<media::Input>,
         effects: Vec<(NodeId, P)>,
         graph: GraphDescription,
-    ) -> Result<(LoopControl<P>, Self), Failure> {
+    ) -> Result<(LoopControl<P, Q>, Self), Failure> {
         Self::prepare_with_options(
             config,
             topology,
@@ -112,7 +131,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         effects: Vec<(NodeId, P)>,
         graph: GraphDescription,
         observer: Box<dyn BoundaryObserver>,
-    ) -> Result<(LoopControl<P>, Self), Failure> {
+    ) -> Result<(LoopControl<P, Q>, Self), Failure> {
         Self::prepare_with_staging(
             config,
             topology,
@@ -138,7 +157,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         graph: GraphDescription,
         staging: TopologySettings,
         observer: Option<Box<dyn BoundaryObserver>>,
-    ) -> Result<(LoopControl<P>, Self), Failure> {
+    ) -> Result<(LoopControl<P, Q>, Self), Failure> {
         Self::prepare_with_configuration_staging(
             config,
             topology,
@@ -167,7 +186,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         staging: TopologySettings,
         node_pairs: NodePairSettings,
         observer: Option<Box<dyn BoundaryObserver>>,
-    ) -> Result<(LoopControl<P>, Self), Failure> {
+    ) -> Result<(LoopControl<P, Q>, Self), Failure> {
         Self::prepare_with_options(
             config,
             topology,
@@ -195,7 +214,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         effects: Vec<(NodeId, P)>,
         graph: GraphDescription,
         options: Options,
-    ) -> Result<(LoopControl<P>, Self), Failure> {
+    ) -> Result<(LoopControl<P, Q>, Self), Failure> {
         for binding in &bindings {
             let assigned = topology.node(binding.target).is_ok();
             if graph.nodes.contains(&binding.playback) != assigned
@@ -205,13 +224,14 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
             }
         }
         let templates = options.node_pairs.candidates;
+        let quantum = resources.quantum();
         let Prepared {
             planner,
             nodes: loop_nodes,
             client,
         } = LoopPlanner::prepare(
             config,
-            rt_runtime::Quantum::new(1).unwrap(),
+            quantum,
             topology,
             &mut resources,
             settings,
@@ -233,12 +253,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
             return Err(Error::InvalidShape.into());
         }
         let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
-            config,
-            rt_runtime::Quantum::new(1).unwrap(),
-            nodes,
-            planner,
-            resources,
-            &graph,
+            config, quantum, nodes, planner, resources, &graph,
         )?;
         control.prepare_submissions()?;
         let catalog = runtime.catalog().clone();
@@ -289,7 +304,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
     }
 }
 
-impl<P: Processor<LoopPlanner>> LoopControl<P> {
+impl<P: Processor<LoopPlanner, Q>, Q: ProcessorOperation> LoopControl<P, Q> {
     pub fn client(&self) -> &LoopClient {
         &self.client
     }
@@ -308,17 +323,17 @@ impl<P: Processor<LoopPlanner>> LoopControl<P> {
         slot: usize,
         expected_epoch: Epoch,
         plan: PreparedPlan,
-    ) -> TestSubmit<P> {
+    ) -> TestSubmit<P, Q> {
         self.control.submit_prepared(
             Lane::Normal,
             Command::stage_graph(slot, expected_epoch, plan),
         )
     }
-    pub fn release_graph(&mut self, id: shoop_loops::runtime::GraphStageId) -> TestSubmit<P> {
+    pub fn release_graph(&mut self, id: shoop_loops::runtime::GraphStageId) -> TestSubmit<P, Q> {
         self.control
             .submit_prepared(Lane::Normal, Command::ReleaseGraph { id })
     }
-    pub fn submit(&mut self, lane: Lane, at: Frame, operation: Operation) -> TestSubmit<P> {
+    pub fn submit(&mut self, lane: Lane, at: Frame, operation: Operation) -> TestSubmit<P, Q> {
         self.control
             .submit_prepared(lane, self.client.command(at, operation))
     }
@@ -328,21 +343,21 @@ impl<P: Processor<LoopPlanner>> LoopControl<P> {
         at: Frame,
         operation: Operation,
         payload: Box<[u8]>,
-    ) -> TestSubmit<P> {
+    ) -> TestSubmit<P, Q> {
         self.control.submit_prepared(
             lane,
             self.client.command_with_payload(at, operation, payload),
         )
     }
     /// Submit a generic runtime command, bypassing the loop vocabulary.
-    pub fn submit_command(&mut self, lane: Lane, command: TestCommand<P>) -> TestSubmit<P> {
+    pub fn submit_command(&mut self, lane: Lane, command: TestCommand<P, Q>) -> TestSubmit<P, Q> {
         self.control.submit_prepared(lane, command)
     }
-    pub fn resource(&mut self, lane: Lane, request: resource::Request) -> TestSubmit<P> {
+    pub fn resource(&mut self, lane: Lane, request: resource::Request) -> TestSubmit<P, Q> {
         self.control
             .submit_prepared(lane, Command::resource(request))
     }
-    pub fn read(&mut self, cursor: resource::Cursor, bytes: Box<[u8]>) -> TestSubmit<P> {
+    pub fn read(&mut self, cursor: resource::Cursor, bytes: Box<[u8]>) -> TestSubmit<P, Q> {
         self.control.submit_prepared(
             Lane::Normal,
             Command::resource(resource::Request::Read { cursor, bytes }),
@@ -354,7 +369,7 @@ impl<P: Processor<LoopPlanner>> LoopControl<P> {
         node: NodeId,
         parameter: u32,
         value: f32,
-    ) -> TestSubmit<P> {
+    ) -> TestSubmit<P, Q> {
         self.control.submit_prepared(
             Lane::Normal,
             Command::Schedule {
@@ -370,11 +385,14 @@ impl<P: Processor<LoopPlanner>> LoopControl<P> {
     }
     pub fn try_completion(
         &mut self,
-    ) -> Option<transport::Completion<TestCommand<P>, executor::Retired<TestNode<P>>>> {
+    ) -> Option<transport::Completion<TestCommand<P, Q>, executor::Retired<TestNode<P>>>> {
         self.control.try_completion()
     }
-    pub fn try_execution(&mut self) -> Option<schedule::Execution<Operation, Reply>> {
+    pub fn try_execution(&mut self) -> Option<schedule::Execution<Operation, Reply, Q, Q::Result>> {
         self.control.try_execution()
+    }
+    pub fn outstanding(&self) -> usize {
+        self.control.outstanding()
     }
     pub fn connected(&self) -> bool {
         self.control.connected()

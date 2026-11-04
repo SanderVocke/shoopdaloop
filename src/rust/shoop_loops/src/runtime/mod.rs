@@ -572,7 +572,6 @@ impl LoopPlanner {
         let (topologies, topology) = topology::Topologies::prepare(topology, options.staging)?;
         let observer = options.observer.unwrap_or_else(|| Box::new(NoObserver));
         let limits = topology.limits();
-        let cfg = config.limits();
         if settings.normal_requests == 0 || settings.normal_requests >= limits.pending_requests {
             return Err(Error::InvalidConfig.into());
         }
@@ -678,11 +677,11 @@ impl LoopPlanner {
             }
             nodes.push((
                 binding.playback,
-                LoopNode::Playback(PlaybackNode::prepare(binding, cfg.max_frames)?),
+                LoopNode::Playback(PlaybackNode::prepare(binding, quantum.frames())?),
             ));
             nodes.push((
                 binding.capture,
-                LoopNode::Capture(CaptureNode::prepare(binding, cfg.max_frames)?),
+                LoopNode::Capture(CaptureNode::prepare(binding, quantum.frames())?),
             ));
 
             rows[slot] = Some(row);

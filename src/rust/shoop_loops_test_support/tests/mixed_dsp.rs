@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
-#[path = "../examples/one_track/scenario.rs"]
+#[path = "support/mixed.rs"]
+pub mod mixed;
+#[path = "support/one_track.rs"]
 mod scenario;
 use scenario::{run, Partition};
 use shoop_wasm_test_support::{heap, shoop_test};

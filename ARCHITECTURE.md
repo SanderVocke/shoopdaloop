@@ -38,9 +38,8 @@ snapshot-status paragraphs there do not describe the current tree.
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
 | `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
-| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests and test hosts | Not used by production crates; not part of the loop library's API |
+| `shoop_loops_test_support` | Dev-only assembly of the loop parts with independent typed DSP operations, for tests and test hosts | Not used by production crates; not part of the loop library's API |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
-| `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
 | `shoop_rt_engine` | The [new engine backend](#new-engine-backend)'s real-time composition: node enum over the loop parts and its strip/bus processors, segmented prepared pools, structural transactions, the bounded control endpoint and the render owner | Engine terms only; no application, legacy-engine or host dependency (boundary script); compiled once for every environment |
 | `shoop_rt_protocol` | Versioned plain-data schema, capability/limit descriptor and binary codec | No semantics; no application, engine or transport dependency |
@@ -53,8 +52,8 @@ snapshot-status paragraphs there do not describe the current tree.
 
 The runtime [book/reference](src/rust/rt_runtime/docs/README.md), loop
 [task guides](src/rust/shoop_loops/README.md), DSP
-[README](src/rust/shoop_example_dsp/README.md), service
-[README](src/rust/shoop_engine_service/README.md), and host
+[README](src/rust/shoop_example_dsp/README.md), test-support
+[README](src/rust/shoop_loops_test_support/README.md), and host
 [READMEs](tests/loops_host/README.md) are the public usage paths. They remain
 separate from planning and evidence, and are not rewritten by consolidation.
 The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
@@ -467,32 +466,19 @@ cleanup, not resumable Pause or device MIDI cleanup after callbacks have stopped
 
 <a id="native-engine-service-slice"></a>
 
-## Native service composition
+## Independent DSP composition coverage
 
-The service owns **one runtime and render owner** holding the loop parts and an
-independent DSP. Its node type wraps the loop's nodes and the DSP; its one ordered
-control path forwards loop requests and DSP selections into the runtime. A DSP
-selection is the processor's own typed operation, which the runtime scheduler
-delivers immediately before its requested sample; the processor reports actual
-frame/revision in the execution's `processor_result`. No magic float IDs, private
-bridges, extra runtime calls, second scheduler or mutable access to the resolver is
-involved.
+The shared test support assembles one runtime from the loop parts and independent
+DSP. Typed DSP selections share the runtime scheduler with loop operations; no
+separate service queue, scheduler or render wrapper is needed. The retained scenarios
+verify complete audio/MIDI, exact operation frames/revisions, live capture routing,
+immutable exports and startup ownership across callback partitions. The D=3 probe
+keeps physical capture markers and independent logical windows, including missing
+history/postroll, explicit. See the [test-support guide](src/rust/shoop_loops_test_support/README.md).
 
-Preset changes share the runtime's ordering with loop work at the same frame, but
-are not atomic transactions with arbitrary graph/loop changes.
-Peak-since-read atomics are independent telemetry, not a coherent cross-domain
-snapshot. Loop cuts are coherent resolver observations. Live exports retain exact
-immutable audio/MIDI prefixes while capture continues; owning reads must finish
-before release. Stop/cancel recovery must remain available with normal receipts
-full. The D=3 probe retains raw physical data and exposes absent dry history, wet
-postroll and independent logical playback windows rather than shifting media to
-fake latency parity.
-
-The independent native engine-service composition is implemented and its narrower
-consolidation is delivered. Its general browser/IPC deployment is separate from
-the production app session service described above.
-Measurement regressions and validation limits belong in [VALIDATION.md](VALIDATION.md#integration-evidence),
-not architectural claims of performance parity.
+Peak-since-read meters remain independent telemetry, and arbitrary DSP selections
+are not cross-domain atomic transactions. The production application composition
+is `shoop_rt_engine` and its application/session service described above.
 
 <a id="open-composability-decision"></a>
 

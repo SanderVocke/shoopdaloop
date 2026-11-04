@@ -215,17 +215,17 @@ callback quotas under many ticks and simultaneous capture/transition failures.
 
 ### Stage 5 — migrate demonstrator coverage and remove the crate
 
-- [ ] Move generic mixed loop/DSP scenarios into existing loop/runtime tests using
+- [x] Move generic mixed loop/DSP scenarios into existing loop/runtime tests using
   `shoop_loops_test_support` and `shoop_example_dsp`. Keep typed independent DSP
   operations and partition-invariant media assertions without the service wrapper.
-- [ ] Map service-wrapper lifecycle assertions to existing production endpoint/
+- [x] Map service-wrapper lifecycle assertions to existing production endpoint/
   transport tests; port missing invariants there. Remove wrapper-specific ticket or
   queue assertions only after identifying the retained ownership/credit guarantee.
-- [ ] Preserve startup import and physical capture/latency marker tests, including
+- [x] Preserve startup import and physical capture/latency marker tests, including
   native-only legacy comparison where still useful. Keep exact reference oracles
   at `Q=1` and aligned production scenarios at larger quanta. Retain useful educational
   examples in existing crates only when they add distinct coverage or documentation.
-- [ ] Remove `src/rust/shoop_engine_service`, its manifest/lockfile entries, current
+- [x] Remove `src/rust/shoop_engine_service`, its manifest/lockfile entries, current
   documentation links, tracing entries and explicit package references. Retain
   `shoop_example_dsp` and shared test support; do not copy the old service wholesale.
   Update configured package selections now without running remote CI.
@@ -386,3 +386,54 @@ resource model likewise reserves one complete tick. Existing preflight retries
 remain bounded and transactional. Formatting/test-attribute/tracing checks passed;
 warning-denying workspace build passed. Updated Miri inventory removes the retired
 metadata tests and includes the new tick capture case. Logs: `work/cleanup-capture-*`.
+
+### Demonstrator retirement map (stage 5)
+
+The six native startup/physical-latency/full-oracle tests move to
+`shoop_loops_test_support/tests/{startup,latency_probe,mixed_dsp}.rs`. Their support
+assembles the existing `LoopRuntime` directly; no old service control/render code,
+queues, tickets or worker lifecycle is copied. Shared test support now forwards
+independently typed processor operations. Original 42-frame / 487-packet / 378-byte
+and physical-window oracles are unchanged. Nonempty outputs are consumed according
+to the generic runtime contract; zero-frame callbacks do not replay retained buffers.
+Retirement reclamation is explicit off-render in the test teardown.
+
+Below, runtime tests are in `rt_runtime/tests`, DSP tests in
+`shoop_example_dsp/tests/dsp.rs`, and loop scenarios in
+`shoop_loops/tests/support/runtime_scenarios.rs` unless another location is named.
+
+| Removed `shoop_engine_service` test | Exact retained coverage / retirement reason |
+| --- | --- |
+| `actual_loop_and_component_control_match_full_partition_oracles_without_warmup` | New `mixed_dsp::public_scenario_matches_complete_oracles_across_all_partitions`; DSP `complete_scalar_and_packet_oracles_match_across_callback_partitions`; runtime `typed_execution::typed_processor_and_planner_actions_share_exact_frame_ordering_with_parameters`. |
+| `disconnected_stop_keeps_recovery_available_when_ui_holds_all_prior_results` | Runtime `typed_execution::recovery_stop_cancels_pending_work_with_every_normal_receipt_reserved` and `unread_normal_results_do_not_block_recovery_or_automatic_intervals`; engine `control::dropping_the_endpoint_silences_output_and_stopped_cleanup_recovers_pools`. The removed wrapper's disconnect-to-Stop policy is not a production UI-loss policy. |
+| `processor_fault_keeps_actual_component_and_loop_receipts_without_replay` | DSP `faulted_callbacks_preserve_actual_preset_publication_without_replay`; engine `control::a_render_fault_silences_output_and_ends_the_connection`; loop `stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owners`. |
+| `zero_and_callback_end_requests_wait_for_a_real_callback` | Runtime `planner_execution::callback_end_and_zero_length_do_not_settle_or_reexecute_boundaries`; DSP `frame_zero_and_callback_end_activation_have_exact_nonempty_semantics`; migrated mixed scenarios. |
+| `prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes` | Migrated `mixed_dsp` scenario retains the real graph cut, simultaneous recording, old/current exports and complete byte/media comparisons. |
+| `refusals_cancellation_and_late_delivery_preserve_requested_and_actual_phases` | DSP `refusal_details_preserve_requested_frames_and_do_not_change_state`; runtime `typed_execution::payload_limits_malformed_operations_and_domain_refusal_return_distinct_outcomes` and `transport_cancellation_precedes_delivery_and_stale_planner_ids_are_rejected`. |
+| `retained_terminal_tickets_do_not_silently_recycle_cancellation_flags` | Runtime `lifecycle::cancellation_flag_model_has_a_single_observation_cut`, `full_return_queue_retains_credits_and_recovery_has_reserved_admission` and `typed_schedule::pending_receipts_keep_credits_and_distinguish_delivery_from_completion`. The extra service cancellation-flag pool/API is removed, not reproduced. |
+| `state_queries_and_meter_read_frequency_leave_complete_streams_unchanged` | Migrated `mixed_dsp::alternate_valid_query_declaration_order_preserves_the_public_scenario`; DSP `meter_read_frequency_changes_neither_samples_nor_packets`. |
+| `foreign_tickets_and_routes_refuse_without_consuming_recovery_or_owner_credits` | Runtime `typed_schedule::foreign_tokens_payload_overflow_and_future_recovery_are_explicit`; `graph_activation::refused_permits_stale_catalog_epochs_and_stage_generations_preserve_both_owners`. Service-specific identities/queue counts are obsolete. |
+| `all_normal_credits_and_both_return_streams_can_stall_while_wraps_and_stop_progress` | Runtime `typed_execution::unread_normal_results_do_not_block_recovery_or_automatic_intervals`; loop `recovery_and_cancellation_do_not_require_normal_domain_or_runtime_result_credits`; loop-host `browser::native_dense::tests::dense_wire_and_capacity_one_actors_preserve_music_with_all_results_stalled`. |
+| `cancel_recovery_executes_with_all_normal_credits_held_then_disconnect_reclaims_future_work` | Runtime `typed_execution::recovery_can_cancel_a_future_queued_typed_operation_without_delivering_it`; `typed_schedule::disconnected_results_retain_pending_and_completed_receipts_without_reexecution`. |
+| `saturated_exports_invalid_presets_and_route_rejection_preserve_capture_across_repeated_lifecycles` | Loop `capture_preflight_and_optional_export_refusals_do_not_publish_partial_takes` and `media::mixed_media_node_pairs_and_saturated_exports_share_leases_and_recover_exactly_once`; DSP refusal test above; migrated mixed graph/export lifecycle. |
+| `separate_control_thread_observes_exact_execution_while_render_never_waits` | Runtime `lifecycle::two_thread_stress_keeps_completion_and_state_publication_coherent`; loop-host `browser::native_graph::tests::bounded_two_thread_graph_transport_matches_complete_native_reference`. |
+| `disconnect_during_recording_retains_full_returns_and_pending_preset_until_stopped_cleanup` | Loop `runtime_topology::pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner`; DSP `disconnected_future_work_has_no_render_side_destruction`; runtime `lifecycle::control_disconnect_retains_payloads_until_non_render_shutdown`. Wrapper stop/mute phase bookkeeping is retired. |
+| `fixed_service_preparation_buffers_hosts_and_applies_rounded_dsp_controls` | Runtime `integrated` tests and engine `production::full_endpoint_recording_export_and_slot_reuse_are_partition_invariant` retain larger-Q buffering, operation timing and exact media; DSP frame/receipt tests retain selection behavior. Constructor policies specific to the removed service are obsolete. |
+
+Stage 5: the demonstrator package, service/control/render implementation, manifest,
+lockfile entry, examples and wrapper-only tests are removed. The six substantive
+scenario/startup/latency tests now use the existing shared loop runtime; five are
+portable and one is a native reference comparison. Test support gained generic
+processor operations and forwards the existing runtime's command-credit query.
+Loop playback/capture scratch is prepared for Q rather than the outer callback.
+Current architecture/docs/package selections point at shared test support; archived
+validation records retain their original source/package names. The retirement map
+above records all fourteen wrapper tests and the service-preparation test.
+
+Verification: warning-denying workspace build and all-target check passed;
+**439 affected native tests** passed, including all six migrated tests. All **five
+portable migrated tests passed under Wasm/Node**. Cargo metadata contains neither
+the removed package nor a dependency on it. Test-attribute, closed 390-module
+tracing inventory and Wasm dependency-isolation checks passed. Full independent
+media oracles and complete resource-recovery assertions remain intact. Logs:
+`work/cleanup-retired-service-*` and `work/cleanup-migrated-dsp-*`.

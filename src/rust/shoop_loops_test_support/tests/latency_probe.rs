@@ -1,8 +1,10 @@
 #![forbid(unsafe_code)]
 #[cfg(not(target_arch = "wasm32"))]
-#[path = "../examples/latency_probe/current.rs"]
+#[path = "support/latency_reference.rs"]
 mod current;
-#[path = "../examples/latency_probe/scenario.rs"]
+#[path = "support/mixed.rs"]
+pub mod mixed;
+#[path = "support/latency.rs"]
 mod scenario;
 use scenario::{run, Capture, Partition, Signal};
 use shoop_wasm_test_support::{heap, shoop_test};

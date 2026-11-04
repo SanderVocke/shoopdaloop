@@ -1,13 +1,15 @@
-#![forbid(unsafe_code)]
+#[path = "support/mixed.rs"]
+pub mod mixed;
+use mixed::{assemble, Content as InitialContent, MidiPacket as InitialMidi, Tap};
+use rt_runtime::transport::Lane;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     midi_state::MidiState,
     Error, Frame,
 };
-use shoop_engine_service::{
-    dsp, prepare_with_content, Config, ExecutionStatus, InitialContent, InitialMidi, LoopOperation,
-    LoopReply,
-};
+use shoop_example_dsp as dsp;
+use shoop_loops::runtime::{Operation as Op, Reply};
+
 use shoop_loops::{runtime::Failure, Mode, Timing, Transition};
 use shoop_wasm_test_support::{heap, shoop_test};
 
@@ -46,27 +48,19 @@ fn content() -> InitialContent {
 fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_resource_handle_leaks()
 {
     let p = preset();
-    let prepared = prepare_with_content(
-        Config {
-            quantum: 1,
-            resource_pages: 128,
-            ..Config::default()
-        },
-        vec![p],
-        p.id,
-        content(),
-    )
-    .unwrap();
-    let mut client = prepared.client;
-    let mut render = prepared.render;
+    let prepared = assemble(128, Tap::PostDsp, vec![p], p.id, Some(content())).unwrap();
+    let mut control = prepared.control;
+    let mut runtime = prepared.runtime;
     let target = prepared.target;
-    client
-        .loop_at(Frame(0), LoopOperation::State { target })
+    control
+        .submit(Lane::Normal, Frame(0), Op::State { target })
+        .map_err(|e| e.error)
         .unwrap();
-    client
-        .loop_at(
+    control
+        .submit(
+            Lane::Normal,
             Frame(0),
-            LoopOperation::Transition {
+            Op::Transition {
                 target,
                 timing: Timing::At,
                 transition: Transition::Play {
@@ -75,13 +69,14 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
                 },
             },
         )
+        .map_err(|e| e.error)
         .unwrap();
     let input = [MidiBuffer::new(1, 3).unwrap()];
     let mut output = [MidiBuffer::new(256, 1024).unwrap()];
     let mut left = [0.; 2];
     let mut right = [0.; 2];
     heap::assert_no_heap(|| {
-        render.process(
+        runtime.process(
             AudioBlock {
                 frame: Frame(0),
                 frames: 2,
@@ -120,14 +115,12 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
         })
         .collect::<Vec<_>>();
     assert_eq!(actual, expected);
-    while client.try_delivery().is_some() {}
+    while control.try_completion().is_some() {}
     let mut queried = false;
-    while let Some(execution) = client.try_execution() {
-        let ExecutionStatus::Executed(raw) = execution.status else {
-            panic!("real outcome");
-        };
+    while let Some(execution) = control.try_execution() {
+        let raw = execution;
         assert_eq!(raw.result, Ok(()));
-        if let Some(LoopReply::State(cut)) = raw.operation_result {
+        if let Some(Reply::State(cut)) = raw.operation_result {
             assert_eq!(cut.state.mode, Mode::Playing);
             assert_eq!(cut.state.content_length, 2);
             assert_eq!(cut.state.content_revision, rt_runtime::Revision(0));
@@ -136,11 +129,22 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
         }
     }
     assert!(queried);
-    client.stop().unwrap();
+    control
+        .submit(
+            Lane::Recovery,
+            runtime.next_frame(),
+            Op::Transition {
+                target,
+                timing: Timing::At,
+                transition: Transition::Stop,
+            },
+        )
+        .map_err(|e| e.error)
+        .unwrap();
     let mut stopped_left = [0.];
     let mut stopped_right = [0.];
     heap::assert_no_heap(|| {
-        render.process(
+        runtime.process(
             AudioBlock {
                 frame: Frame(2),
                 frames: 1,
@@ -157,15 +161,15 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
     assert_eq!(stopped_left, [3.]);
     assert_eq!(output[0].len(), 1);
     assert_eq!(output[0].get(0).unwrap(), (0, &[0x80, 62, 0][..]));
-    drop(client);
-    let mut stopped = render.into_stopped();
-    stopped.cleanup().unwrap();
-    stopped.cleanup().unwrap();
+    drop(control);
+    let mut stopped = runtime.into_stopped();
+    mixed::cleanup(&mut stopped);
+    mixed::cleanup(&mut stopped);
     let usage = stopped.resource_usage();
     assert_eq!(usage.free_pages, 128);
     assert_eq!(usage.free_versions, 32);
     assert_eq!(usage.free_snapshots, 32);
-    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    assert_eq!(stopped.resources().midi_index_usage().free_versions, 8);
     let usage = stopped.media_usage();
     assert_eq!(usage.free_media, 8);
     assert_eq!(usage.free_exports, 4);
@@ -175,22 +179,22 @@ fn startup_import_is_real_stereo_and_indexed_midi_before_frame_zero_without_reso
 
 #[shoop_test]
 fn startup_preparation_checks_shapes_packet_capacity_and_multi_page_serialization() {
-    let cfg = Config {
-        quantum: 1,
-        resource_pages: 128,
-        ..Config::default()
-    };
+    let cfg = 128;
     let p = preset();
     let mut bad = content();
     bad.audio[1].pop();
     assert_eq!(
-        prepare_with_content(cfg, vec![p], p.id, bad).err().unwrap(),
+        assemble(cfg, Tap::PostDsp, vec![p], p.id, Some(bad))
+            .err()
+            .unwrap(),
         Failure::Runtime(Error::InvalidShape)
     );
     let mut bad = content();
     bad.midi[0].bytes = vec![0; 513];
     assert_eq!(
-        prepare_with_content(cfg, vec![p], p.id, bad).err().unwrap(),
+        assemble(cfg, Tap::PostDsp, vec![p], p.id, Some(bad))
+            .err()
+            .unwrap(),
         Failure::Runtime(Error::Capacity)
     );
     let content = InitialContent {
@@ -206,13 +210,13 @@ fn startup_preparation_checks_shapes_packet_capacity_and_multi_page_serializatio
             })
             .collect(),
     };
-    let prepared = prepare_with_content(cfg, vec![p], p.id, content).unwrap();
-    drop(prepared.client);
-    let mut stopped = prepared.render.into_stopped();
-    stopped.cleanup().unwrap();
+    let prepared = assemble(cfg, Tap::PostDsp, vec![p], p.id, Some(content)).unwrap();
+    drop(prepared.control);
+    let mut stopped = prepared.runtime.into_stopped();
+    mixed::cleanup(&mut stopped);
     assert_eq!(stopped.resource_usage().free_pages, 128);
     assert_eq!(stopped.resource_usage().free_versions, 32);
     assert_eq!(stopped.resource_usage().free_snapshots, 32);
-    assert_eq!(stopped.midi_index_usage().free_versions, 8);
+    assert_eq!(stopped.resources().midi_index_usage().free_versions, 8);
     assert_eq!(stopped.media_usage().references, 0);
 }
