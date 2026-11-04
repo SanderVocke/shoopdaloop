@@ -66,6 +66,20 @@ That head's test compile exposed two fixture type/authority mistakes, fixed in
 `1d84380d`. These are partial historical results. The target advanced before fresh
 PR checks could start; final acceptance requires checks on the new merged head.
 
+The `435eb2a2` merge is `b1d8dc84`. Its new integrated CI found the expanded
+1024-port host mask (source fencing now compares all words) and the target's
+remaining 64-port host-buffer admission limit. The latter prevented dynamic JACK
+engine preparation; buffered audio now admits the engine's 1024-port maximum,
+with finite stack reference arrays. A dedicated foundation CI job runs the four
+affected library suites and repository policies independently of host-matrix
+startup; it supplements the complete required matrix.
+
+Source review additionally found that ordinary writer claims alone do not exclude
+pending uploads. Publication now scans the finite prepared version table, counts
+that render validation and refuses uploads/capture writers. Stopped shared cleanup
+cancels unfinished uploads on its returned owners before removing them. The
+unread-terminal-result fixture retains such an upload and checks full recovery.
+
 | Criteria | Implementation/proof owner |
 | --- | --- |
 | 1 | R1/R2/R5: production fixed hooks; fixed shared-media integration fixture |

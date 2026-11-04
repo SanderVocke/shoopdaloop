@@ -43,6 +43,30 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  shared_foundation:
+    name: Fixed shared media foundation
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    runs-on: ubuntu-24.04
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: shared-foundation
+      - name: Test fixed runtime, loop, engine and codec contracts
+        run: cargo test --locked -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_persistence_codec
+      - name: Check formatting, tracing, attributes and parity
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
+          python3 scripts/check_feature_parity.py
+
   host_process_inspection:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Host process inspection (${{ matrix.os }})
