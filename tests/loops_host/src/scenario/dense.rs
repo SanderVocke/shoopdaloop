@@ -26,7 +26,6 @@ pub(crate) fn prepare(witness: Arc<AtomicU32>) -> (LoopControl<Mix>, LoopRuntime
         budgets: Budgets {
             commands: 8,
             events: 8,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 8,

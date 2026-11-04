@@ -108,7 +108,6 @@ fn demonstrate(partition: &[usize], reverse: bool) -> Result<(), Error> {
         page_bytes: 64,
         budgets: Budgets {
             events: 1,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()

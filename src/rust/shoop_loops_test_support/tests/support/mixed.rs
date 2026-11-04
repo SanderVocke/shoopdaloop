@@ -71,7 +71,6 @@ pub fn assemble(
         budgets: Budgets {
             commands: 32,
             events: 32,
-            subranges: 0,
             validation_steps: 128,
             transfer_bytes: 1024,
             publications: 16,

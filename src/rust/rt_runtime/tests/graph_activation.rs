@@ -53,7 +53,6 @@ fn config(steps: usize) -> rt_runtime::PreparedConfig {
             publications: 16,
             validation_steps: steps,
             transfer_bytes: 64,
-            subranges: 0,
         },
         ..Config::default()
     }

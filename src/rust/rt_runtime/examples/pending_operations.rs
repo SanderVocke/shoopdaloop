@@ -185,7 +185,6 @@ fn prepare() -> Result<
         scheduled_events: 1,
         budgets: Budgets {
             events: 1,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()

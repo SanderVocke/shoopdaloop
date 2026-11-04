@@ -655,6 +655,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             self.diagnostics.render_error = Some(error);
         }
         if self.diagnostics.midi_overflows > 0 {
+            if let Some(buffer) = &mut self.host_buffer {
+                buffer.defer_midi_recovery();
+            }
             for recovery in &mut self.recovery {
                 recovery.request();
             }
@@ -786,6 +789,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                     }
                 }
                 Command::ResetMidi => {
+                    if let Some(buffer) = &mut self.host_buffer {
+                        buffer.defer_midi_recovery();
+                    }
                     for reset in &mut self.recovery {
                         reset.request();
                     }
@@ -984,6 +990,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     /// Host recovery sink, separate from ordinary MIDI output. Reserve sink space
     /// for resets and call at most once per output per callback. Full sinks retain
     /// the exact next reset packet; ordinary output stays suppressed meanwhile.
+    /// A partially collected tick finishes before reset acknowledgment, preserving
+    /// recording input and due actions while discarding their ordinary output.
     pub fn drain_midi_recovery(
         &mut self,
         port: usize,
@@ -999,6 +1007,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             .recovery_remaining
             .get_mut(port)
             .ok_or(Error::InvalidId)?;
+        if self.fault.is_none()
+            && self
+                .host_buffer
+                .as_ref()
+                .is_some_and(|buffer| !buffer.midi_recovery_ready())
+        {
+            return Ok(0);
+        }
         let mut emitted = 0;
         for _ in 0..*remaining {
             let Some(packet) = reset.peek() else {

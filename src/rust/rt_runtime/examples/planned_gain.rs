@@ -90,7 +90,6 @@ fn main() -> Result<(), Error> {
         page_bytes: 64,
         budgets: Budgets {
             events: 1,
-            subranges: 0,
             validation_steps: 128,
             ..Budgets::default()
         },

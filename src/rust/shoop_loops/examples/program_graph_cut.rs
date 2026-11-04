@@ -301,7 +301,6 @@ fn run(parts: &[usize]) {
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 8,
-            subranges: 0,
         },
         ..Config::default()
     }

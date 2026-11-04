@@ -15,7 +15,7 @@ For each valid nonempty callback:
 3. Deliver actions due at the next fixed tick, settle its domain, process the whole prepared quantum, then finish capture/state publication.
 4. Repeat whole ticks while inside the host block (or as buffering completes each tick); reclaim with remaining validation work and publish bounded diagnostics.
 
-Ticks are `[frame,frame+Q)`. An action at host callback end is settled by the next nonempty callback, not by the preceding finish. `callback_start` remains the host origin while `frame` advances internally. `graph_epoch` is the context-entry identity; after activation use the returned next epoch. Neither more intervals nor newly read results refresh callback ingress/recycle/validation/optional-copy/recovery/publication allowances. `budgets.subranges` is ignored.
+Ticks are `[frame,frame+Q)`. An action at host callback end is settled by the next nonempty callback, not by the preceding finish. `callback_start` remains the host origin while `frame` advances internally. `graph_epoch` is the context-entry identity; after activation use the returned next epoch. Neither more intervals nor newly read results refresh callback ingress/recycle/validation/optional-copy/recovery/publication allowances. Internal graph ticks have no quota.
 
 The domain must establish finite same-tick settlement. A compatibility `Planner::plan` implementation must return the supplied tick end exactly; it cannot subdivide execution. Required reads/capture have independent work counters and physical/shape/time checks, not optional quotas.
 
