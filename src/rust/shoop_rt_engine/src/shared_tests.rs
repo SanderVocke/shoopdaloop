@@ -1520,3 +1520,105 @@ fn shared_grabs_private_wrapping_edits_and_fixed_playback_preserve_old_owners() 
         }
     }
 }
+
+#[shoop_test]
+fn host_partitions_agree_at_identical_history_playback_and_replacement_cuts() {
+    for q in [1, 16, 32, 64, 128] {
+        let mut baseline = None;
+        for partition in [1, 7, 31, 128] {
+            let mut h = Fixture::new(q, partition);
+            let cut = (h.stimulus.unwrap() + 4096).div_ceil(128) * 128;
+            let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+                panic!("history")
+            };
+            let first = h.send(
+                cut,
+                Operation::HistoryGrab {
+                    source: history.id,
+                    start: Frame(cut - 4 * q as u64),
+                    end: Frame(cut),
+                },
+            );
+            let second = h.send(
+                cut,
+                Operation::HistoryGrab {
+                    source: history.id,
+                    start: Frame(cut - 5 * q as u64),
+                    end: Frame(cut - q as u64),
+                },
+            );
+            let Reply::Grabbed(take) = h.result(first) else {
+                panic!("take")
+            };
+            let Reply::Grabbed(sibling) = h.result(second) else {
+                panic!("sibling")
+            };
+            h.adopt(0, take);
+            h.adopt(1, sibling);
+            let play = cut + 8192;
+            assert!(h.now() < play);
+            let started = h.send(
+                play,
+                Operation::Transition {
+                    target: target(0),
+                    timing: Timing::At,
+                    transition: Transition::Play {
+                        position: 0,
+                        retrigger: false,
+                    },
+                },
+            );
+            assert!(matches!(h.result(started), Reply::Transition(_)));
+            assert_eq!(h.last_execution.unwrap().delivered_frame, Some(Frame(play)));
+            let id = h.audio_candidate(take);
+            let patch = h.snapshot(sibling.midi.unwrap());
+            h.op(Operation::CandidateMidi {
+                id,
+                position: take.frames - 1,
+                input: patch.id,
+            });
+            h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+            let mut ready = false;
+            for _ in 0..128 {
+                if matches!(
+                    h.op(Operation::CandidateStatus { id }),
+                    Reply::Candidate {
+                        status: CandidateStatus::Ready,
+                        ..
+                    }
+                ) {
+                    ready = true;
+                    break;
+                }
+            }
+            assert!(ready);
+            let publish = play + 8192;
+            assert!(h.now() < publish);
+            let selected = h.send(publish, Operation::CandidatePublish { id });
+            assert!(
+                matches!(h.result(selected), Reply::CandidatePublished { frame, .. } if frame == Frame(publish))
+            );
+            let latency = if q == 1 { 0 } else { q as u64 };
+            let end = publish + 3 * take.frames + latency;
+            h.run_to(end);
+            let audio = [
+                h.samples[0][(play + latency) as usize..end as usize].to_vec(),
+                h.samples[1][(play + latency) as usize..end as usize].to_vec(),
+            ];
+            let midi: Vec<_> = h
+                .packets
+                .iter()
+                .filter(|(frame, _)| *frame >= play + latency && *frame < end)
+                .cloned()
+                .collect();
+            if let Some(expected) = &baseline {
+                assert_eq!(&(audio, midi), expected, "Q={q}, host={partition}");
+            } else {
+                baseline = Some((audio, midi));
+            }
+            let mut stopped = h.engine.render.into_stopped();
+            stopped.cleanup().unwrap();
+            assert_eq!(stopped.resource_usage().free_pages, 12288);
+        }
+    }
+}
