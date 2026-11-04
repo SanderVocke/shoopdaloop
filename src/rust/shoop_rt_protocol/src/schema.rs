@@ -450,6 +450,7 @@ pub enum Telemetry {
         next_mode: Option<LoopMode>,
         next_delay: Option<u32>,
         content_revision: u64,
+        recording_armed: bool,
         timing_revision: u64,
         length: u64,
         position: u64,

@@ -749,3 +749,60 @@ fn timing_windows_preserve_raw_audio_midi_proofs_and_preplay_through_replacement
     assert_eq!(cleared.tracks[0].loops[0].audio[0].start_offset, 0);
     assert!(cleared.tracks[0].loops[0].audio[0].samples.is_empty());
 }
+
+#[shoop_test]
+fn a_recording_behind_an_earlier_stop_blocks_length_and_capture_without_blocking_offsets() {
+    let mut backend = stack(&description());
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "Armed".into(),
+            audio_channels: 1,
+            midi: true,
+            initial_loops: 2,
+        })
+        .unwrap();
+    backend.wait_idle();
+    let source = track.loops[0];
+    let target = track.loops[1];
+    backend.set_loop_length(source, 10000).unwrap();
+    backend.wait_idle();
+    backend.set_loop_sync_source(target, Some(source)).unwrap();
+    backend
+        .transition_loop(source, BackendLoopMode::Playing, None)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_loop(target, BackendLoopMode::Stopped, Some(1))
+        .unwrap();
+    backend
+        .transition_loop(target, BackendLoopMode::Recording, Some(3))
+        .unwrap();
+    backend.wait_idle();
+    let before = backend.poll().unwrap().loops[&target].clone();
+    assert_eq!(before.next_mode, Some(BackendLoopMode::Stopped));
+    assert!(before.recording_armed);
+    assert!(backend
+        .capture_session()
+        .unwrap_err()
+        .to_string()
+        .contains("recording"));
+    backend
+        .set_loop_timing(target, Some(5), Some(7), Some(16))
+        .unwrap();
+    backend.wait_idle();
+    assert!(!backend.poll().unwrap().mutation_failures.is_empty());
+    let unchanged = backend.poll().unwrap().loops[&target].clone();
+    assert_eq!(unchanged.channel_timings, before.channel_timings);
+    assert_eq!(unchanged.timing_revision, before.timing_revision);
+    backend
+        .set_loop_timing(target, Some(5), Some(7), None)
+        .unwrap();
+    backend.wait_idle();
+    let changed = backend.poll().unwrap().loops[&target].clone();
+    assert!(changed.recording_armed);
+    assert_eq!(changed.next_mode, before.next_mode);
+    assert!(changed
+        .channel_timings
+        .iter()
+        .all(|channel| channel.start_offset == 5 && channel.preplay == 7));
+}

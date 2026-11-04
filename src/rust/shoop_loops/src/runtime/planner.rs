@@ -786,6 +786,15 @@ impl LoopPlanner {
                     if frames % self.resolver.quantum().frames() as u64 != 0 {
                         return Err(Error::InvalidFrame.into());
                     }
+                    let source = self.node_pairs.source(id)?;
+                    if source.snapshot.description.format == Format::Midi {
+                        validate_midi_window(
+                            &mut context.resources,
+                            source.index,
+                            windows.midi,
+                            source.snapshot.description.frames,
+                        )?;
+                    }
                     self.node_pairs.set_windows(id, frames, windows)?;
                     return Ok(Disposition::Complete(Reply::Done));
                 }
@@ -1101,26 +1110,12 @@ impl LoopPlanner {
                         edit.length.unwrap_or(state.content_length),
                     )?;
                     if let Some(source) = media.and_then(|view| view.midi) {
-                        for position in [
-                            windows.midi.origin(),
-                            windows.midi.origin() - i64::from(windows.midi.preplay),
-                        ] {
-                            let position = position.max(0) as u64;
-                            if position < midi_frames {
-                                let seek = context
-                                    .resources
-                                    .render()
-                                    .midi_seek(source.index, position)?;
-                                if (0..16).any(|channel| {
-                                    seek.state
-                                        .channel(channel)
-                                        .expect("MIDI channel")
-                                        .parameter_history_untracked()
-                                }) {
-                                    return Err(Error::InvalidParameter.into());
-                                }
-                            }
-                        }
+                        validate_midi_window(
+                            &mut context.resources,
+                            source.index,
+                            windows.midi,
+                            midi_frames,
+                        )?;
                     }
                     let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
                     if let Some(length) = edit.length {
@@ -1530,4 +1525,24 @@ impl LoopPlanner {
         }
         Ok(())
     }
+}
+
+fn validate_midi_window(
+    resources: &mut rt_runtime::resource::ResourceIo<'_>,
+    index: ReadIndex,
+    window: crate::windows::ChannelWindow,
+    frames: u64,
+) -> Result<(), Error> {
+    for position in [window.origin(), window.origin() - i64::from(window.preplay)] {
+        let position = position.max(0) as u64;
+        if position < frames {
+            if resources
+                .render()
+                .midi_parameter_history_untracked(index, position)?
+            {
+                return Err(Error::InvalidParameter);
+            }
+        }
+    }
+    Ok(())
 }

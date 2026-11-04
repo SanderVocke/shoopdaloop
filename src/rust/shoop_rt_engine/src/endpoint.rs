@@ -1156,6 +1156,10 @@ impl ControlEndpoint {
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            recording_armed: self.planned[slot]
+                .iter()
+                .flatten()
+                .any(|planned| planned.mode == LoopMode::Recording),
             timing_revision: if current { timing_revision } else { 0 },
             content_revision: if current {
                 cells.content_revision.load(Ordering::SeqCst)

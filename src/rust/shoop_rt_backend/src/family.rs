@@ -64,7 +64,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 bail!("family content or dependency changed during preparation");
             }
             if let Some(image) = &member.content {
-                if entry.view.mode == LoopMode::Recording
+                if entry.view.recording_armed
+                    || entry.view.mode == LoopMode::Recording
                     || entry.view.next_mode == Some(LoopMode::Recording)
                 {
                     bail!("stop affected recording before replacing family content");

@@ -203,6 +203,18 @@ Goals and these criteria require explicit user approval to change.
   replay and bare-metal builds pass. Three selected Miri timing cases pass. Both
   packaged transports pass live edits; final browser/full-suite/CI gates remain open.
 
+- Deployment/RT checkpoint: hosted Chromium and isolated self-contained HTML
+  both pass timing edits, stopped audible pre-play and save/load/save with zero
+  xruns. Actual JACK samples/MIDI pass through local and independent hosts, live
+  edits, socket recovery and persistence. Validation-only MIDI queries now avoid
+  full channel-state copies on callback stacks; a 512 KiB stack regression passes.
+- All armed recording is now explicit telemetry, including Record behind an earlier
+  Stop. Capture/replacement and length edits refuse that state; offsets still work.
+- The existing two-thread transport stress watchdog used render-iteration count,
+  which reproduced one failure in twelve isolated runs under contention. It now
+  uses a 30-second elapsed-time watchdog, retaining the same 10,000 operations,
+  sequence/publication assertions and callback allocation guard.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -271,7 +283,7 @@ Each stage's verification must pass before its dependent stage is closed.
   progress/alignment fixed; refuse length-containing transactions in those states.
 - [x] Integrate capture start/restart/finalization and clear with timing generations;
   prevent a completing take or stale queued edit from restoring old metadata.
-- [ ] Verify: stopped/playing/recording/armed matrix; position inside/outside new
+- [x] Verify: stopped/playing/recording/armed matrix; position inside/outside new
   length; zero length; multiple pending transitions; source/follower sync; coincident
   Stop/Record/clear; unrelated-loop continuity; refusal with no partial changes.
   Retain existing proportional import/family-retiming regression results.
@@ -282,13 +294,13 @@ Each stage's verification must pass before its dependent stage is closed.
   views, preserving logical Stopped state and emitting no early pulse/cycle. Render
   available raw lead-in, silence outside retained audio and start exactly at the
   published effective boundary; do not fabricate missing capture history.
-- [ ] Handle edits during lead-in, different channel pre-play values, source
+- [x] Handle edits during lead-in, different channel pre-play values, source
   stop/length/sync changes, replaced starts, cancellation, mute and explicit Stop.
   Preserve continuity into playback and cleanup when prediction becomes invalid.
-- [ ] Extend bounded MIDI window/seek state handling as needed for note, sustain,
+- [x] Extend bounded MIDI window/seek state handling as needed for note, sustain,
   controller/program/pitch state and ordered packet playback. Preserve pickup
   notes across start and release audible state on cancellation/removal/disconnect.
-- [ ] Verify: port `audio_preplay`, `midi_preplay` and pickup-note corner cases to
+- [x] Verify: port `audio_preplay`, `midi_preplay` and pickup-note corner cases to
   independent production-loop oracles. Test onset within a whole quantum,
   callback partitions/zero callbacks, long lead-in, no new lead-in on wraps/seeks/
   retriggers, cancellation after output, supersession and exhausted resource/MIDI
@@ -305,7 +317,7 @@ Each stage's verification must pass before its dependent stage is closed.
 - [x] Reconcile pending results and snapshots by confirmed revisions. Keep all
   admitted work owned by the service after UI loss; abandon unadmitted preparation
   safely. Stop/clear/removal/session replacement fence stale work and raw reads.
-- [ ] Verify: typed and encoded production client/service/adapter/engine tests for
+- [x] Verify: typed and encoded production client/service/adapter/engine tests for
   success, RT refusal, backpressure, lost acknowledgment, duplicate operation IDs,
   stale generations, slot reuse and disconnect before/after admission. Socket
   reattach must recover state/results without double edits or replayed pickup notes;
@@ -321,7 +333,7 @@ Each stage's verification must pass before its dependent stage is closed.
   against capture/import/load, retain fresh live IDs and stopped loops on load.
   Preserve existing sample-rate consent, resampling, exact/raw exports and logical
   WAV/SMF window rules, including lead-in metadata in formats that represent it.
-- [ ] Verify: save/load/save with independent channel timing, signed/aligned offsets,
+- [x] Verify: save/load/save with independent channel timing, signed/aligned offsets,
   nonzero pre-play and shortened/re-expanded raw takes; rendered output after load;
   audio/MIDI import preserving opposite media/timing; sample-rate conversion;
   malformed/out-of-range data, capacity/cancellation and stale commit refusal.
@@ -338,9 +350,9 @@ Each stage's verification must pass before its dependent stage is closed.
   single/all scope, relative starts, shared length, grid/snap anchoring and preview.
   Preview valid quantum-aligned periods and show actual refusals/pending outcomes;
   never present an unconfirmed edit as authoritative or silently quantize an API call.
-- [ ] Enable `LoopTimingEdits` consistently in engine/backend, service projection
+- [x] Enable `LoopTimingEdits` consistently in engine/backend, service projection
   and client/UI only after Stages 1–6 pass. Keep unrelated capabilities disabled.
-- [ ] Verify: real production UI events reach service commands, change output and
+- [x] Verify: real production UI events reach service commands, change output and
   refresh confirmed markers/lengths. Cover mixed audio/MIDI lanes, active recording,
   armed-length refusal, stale data/refusal restoration and unavailable backends.
   Verify existing Lua length getters/change events and scheduling use confirmed

@@ -375,6 +375,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             next_mode: Some(LoopMode::Stopped),
             next_delay: Some(1),
             content_revision: 9,
+            recording_armed: true,
             timing_revision: 0,
             length: 48,
             position: 7,

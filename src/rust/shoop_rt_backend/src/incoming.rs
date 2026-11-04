@@ -171,6 +171,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 next_mode,
                 next_delay,
                 content_revision,
+                recording_armed,
                 timing_revision,
                 length,
                 position,
@@ -214,6 +215,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.timing.raw_midi_frames = if track.midi { length } else { 0 };
                     }
                     entry.view = LoopView {
+                        recording_armed,
                         mode,
                         next_mode,
                         next_delay,

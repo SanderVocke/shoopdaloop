@@ -83,6 +83,7 @@ impl Service {
             }
             if member.content.is_some()
                 && (state.mode == BackendLoopMode::Recording
+                    || state.recording_armed
                     || state.next_mode == Some(BackendLoopMode::Recording))
             {
                 return Err(anyhow!("stop affected recording before importing"));

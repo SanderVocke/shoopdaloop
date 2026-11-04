@@ -699,6 +699,7 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub recording_armed: bool,
     pub timing_revision: u64,
     pub channel_timings: Vec<BackendChannelTimingState>,
     pub content_revision: u64,

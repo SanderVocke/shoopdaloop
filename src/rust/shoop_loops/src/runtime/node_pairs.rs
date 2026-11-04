@@ -276,7 +276,10 @@ impl NodePairs {
             index: io.read_index(snapshot.id).expect("new snapshot"),
         };
         let cursor = if snapshot.description.format == Format::Midi {
-            if let Err(error) = io.render().midi_seek(source.index, 0) {
+            if let Err(error) = io
+                .render()
+                .midi_parameter_history_untracked(source.index, 0)
+            {
                 io.release_snapshot(snapshot.id)
                     .expect("new owned snapshot");
                 return Err(error);

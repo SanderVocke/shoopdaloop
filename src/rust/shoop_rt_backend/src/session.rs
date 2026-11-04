@@ -175,7 +175,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Err(anyhow!("session exceeds the one-million-event MIDI budget"));
         }
         if self.mirror.loops.values().any(|entry| {
-            entry.view.mode == shoop_rt_protocol::LoopMode::Recording
+            entry.view.recording_armed
+                || entry.view.mode == shoop_rt_protocol::LoopMode::Recording
                 || entry.view.next_mode == Some(shoop_rt_protocol::LoopMode::Recording)
         }) {
             return Err(anyhow!(

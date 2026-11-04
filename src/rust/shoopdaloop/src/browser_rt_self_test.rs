@@ -54,6 +54,7 @@ enum Step {
     ImmediateStop,
     TimingScalar,
     TimingChannels,
+    TimingSynced,
     TimingPickup,
     TimingPlaying,
     CancelSaving,
@@ -680,6 +681,14 @@ impl NewEngineSelfTest {
                     return Ok(None);
                 }
                 send(AppIntent::Global(GlobalControlAction::SetSync(true)))?;
+                Step::TimingSynced
+            }
+            Step::TimingSynced => {
+                if waiting < Duration::from_millis(200)
+                    || first_loop(snapshot, ids.sync)?.position > 0.1
+                {
+                    return Ok(None);
+                }
                 send(loop_intent(ids.audio, LoopAction::PlayClicked)?)?;
                 Step::TimingPickup
             }

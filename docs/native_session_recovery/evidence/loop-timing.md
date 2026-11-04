@@ -76,3 +76,28 @@ validation proofs across window-only edits of the same immutable buffers.
 
 The capability is enabled for integration acceptance. Full-suite, final browser
 acceptance and final-head CI are still required before P12 can close.
+
+## Completed deployment checks
+
+Hosted Chromium and an isolated self-contained HTML directory both pass the
+production intent/AudioWorklet timing and persistence workflow with zero xruns.
+The browser host checks a quiet stopped loop, arms synced playback near the start
+of a source cycle, then observes audible stopped pre-play and confirmed playback.
+`file://` navigation is blocked by this browser's organization policy; the isolated
+HTML was served by itself over localhost, as supported by the existing smoke.
+
+The JACK loopback regression runs without the missing-backend allowance. Exact
+0.25 PCM and captured CC packets reach an independent JACK peer through both local
+and independent application hosts. Live recording offsets/pre-play, playing period
+edits, socket reattachment, retained raw reads and save/load remain verified.
+
+Native JACK exposed excessive validation-only MIDI state copies on its callback
+stack. Indexed parameter-history queries now reuse checkpoint metadata and bounded
+prefix replay without copying the whole state. Their independent prefix-state
+oracle and a heap-guarded 512 KiB callback-stack test pass. Ten selected MIDI index
+Miri tests pass in addition to the four timing/lead-in/cancellation cases.
+
+All nine affected Wasm/Node packages pass (588 executions at that checkpoint).
+The final source additionally covers a Record queued behind a Stop: authoritative
+armed-state telemetry blocks length/capture/replacement while permitting offset
+and pre-play changes. Final-head gates and CI are recorded below when complete.

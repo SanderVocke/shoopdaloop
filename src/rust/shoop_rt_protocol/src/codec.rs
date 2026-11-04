@@ -1146,6 +1146,7 @@ impl Wire for Telemetry {
                 next_mode,
                 next_delay,
                 content_revision,
+                recording_armed,
                 timing_revision,
                 length,
                 position,
@@ -1157,6 +1158,7 @@ impl Wire for Telemetry {
                 next_mode.put(w)?;
                 next_delay.put(w)?;
                 w.u64(*content_revision)?;
+                w.bool(*recording_armed)?;
                 w.u64(*timing_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
@@ -1196,6 +1198,7 @@ impl Wire for Telemetry {
                 next_mode: Option::get(r)?,
                 next_delay: Option::get(r)?,
                 content_revision: r.u64()?,
+                recording_armed: r.bool()?,
                 timing_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,

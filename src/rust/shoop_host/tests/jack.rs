@@ -543,6 +543,12 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
         });
         f.until(|client| client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Recording);
         thread::sleep(Duration::from_millis(80));
+        f.command(protocol::Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: Some(1),
+            preplay_samples: Some(17),
+            loop_length: None,
+        });
         f.command(protocol::Command::Loop {
             track,
             loop_id: loops[0],
@@ -550,6 +556,17 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
         });
         f.until(|client| client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Playing);
         f.until(|_| audio.load(Ordering::Relaxed) > 3 && midi.load(Ordering::Relaxed) > 6);
+        let raw_length = f.client.snapshot().unwrap().tracks[1].loops[0].length_frames;
+        f.command(protocol::Command::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: None,
+            preplay_samples: None,
+            loop_length: Some(raw_length / 2),
+        });
+        assert!(f.client.snapshot().unwrap().tracks[1].loops[0]
+            .channel_timings
+            .iter()
+            .all(|channel| channel.start_offset == 1 && channel.preplay_samples == 17));
         let before = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
         f.reconnect();
         assert_eq!(f.client.snapshot().unwrap().tracks[1].loops[0].id, loops[0]);
@@ -575,6 +592,8 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
         f.send(read);
         f.until(|client| client.media().is_some());
         let media = f.client.media().unwrap().as_ref().unwrap();
+        assert!(media.audio[0].samples.len() as u64 >= raw_length);
+        assert!(f.client.snapshot().unwrap().tracks[1].loops[0].length_frames < raw_length);
         assert!(media.audio[0].samples.iter().any(|sample| *sample == 0.25));
         assert!(media.midi[0]
             .events
@@ -629,6 +648,12 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
                 .any(|link| link.host_port_id.as_str()
                     == format!("{}:synth", peer.as_client().name()))
         );
+        let state = &f.client.snapshot().unwrap().tracks[1].loops[0];
+        assert_eq!(state.length_frames, raw_length / 2);
+        assert!(state
+            .channel_timings
+            .iter()
+            .all(|channel| channel.start_offset == 1 && channel.preplay_samples == 17));
         assert_eq!(f.capture(3).payloads, image.payloads);
         drop(f);
         drop(peer);

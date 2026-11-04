@@ -447,7 +447,7 @@ fn retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups() {
         });
         let mut saw_stopped_audio = false;
         for _ in 0..32 {
-            h.run(quantum, quantum);
+            h.run(quantum, (quantum / 3).max(1));
             let (_, Telemetry::Loop { mode, .. }) = h.last_loop(target).unwrap() else {
                 panic!()
             };
@@ -490,7 +490,7 @@ fn retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups() {
             },
             quantum,
         );
-        h.run(2 * quantum, quantum);
+        h.run(2 * quantum, (quantum / 3).max(1));
         assert!(
             h.midi.iter().any(|(_, packet)| packet == &[0x80, 60, 0]),
             "missing pickup cleanup Q={quantum}: {:?}",

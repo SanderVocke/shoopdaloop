@@ -138,6 +138,7 @@ impl Track {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoopView {
+    pub recording_armed: bool,
     pub mode: LoopMode,
     pub next_mode: Option<LoopMode>,
     pub next_delay: Option<u32>,
@@ -148,6 +149,7 @@ pub(crate) struct LoopView {
 impl Default for LoopView {
     fn default() -> Self {
         Self {
+            recording_armed: false,
             mode: LoopMode::Stopped,
             next_mode: None,
             next_delay: None,
@@ -601,6 +603,7 @@ impl Mirror {
             }))
             .collect();
         BackendLoopState {
+            recording_armed: view.recording_armed,
             timing_revision: timing.revision,
             channel_timings,
             capture_alignment_frames: if channels > 0 {

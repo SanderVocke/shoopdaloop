@@ -63,7 +63,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         if self.mirror.loops.iter().any(|(id, entry)| {
             only.is_none_or(|target| target == *id)
-                && (entry.view.mode == LoopMode::Recording
+                && (entry.view.recording_armed
+                    || entry.view.mode == LoopMode::Recording
                     || entry.view.next_mode == Some(LoopMode::Recording))
         }) {
             bail!("stop recording and settle pending recording transitions before saving or exporting");

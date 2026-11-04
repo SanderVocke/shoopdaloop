@@ -417,3 +417,43 @@ fn cancelled_superseded_and_invalidated_pickups_release_notes_without_starting()
         assert_eq!(&host.output[0][..4], &[0.; 4]);
     }
 }
+
+#[shoop_test(no_wasm = "native callback stack regression")]
+fn indexed_window_validation_fits_a_native_callback_stack() {
+    let (mut control, engine, _) = setup_with(
+        32,
+        false,
+        Options {
+            imports: true,
+            ..Default::default()
+        },
+    );
+    let request = edit(
+        &mut control,
+        0,
+        0,
+        Edit {
+            start_offset: Some(1),
+            preplay: Some(1),
+            ..Default::default()
+        },
+    );
+    let engine = std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            let mut engine = engine;
+            let mut host = Host::new();
+            host.early = false;
+            host.step(&mut engine, 1);
+            engine
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    let mut replies = Vec::new();
+    drain(&mut control, &mut replies);
+    assert!(replies
+        .iter()
+        .any(|(sequence, reply)| *sequence == request && matches!(reply, Reply::Timing(_))));
+    drop(engine);
+}
