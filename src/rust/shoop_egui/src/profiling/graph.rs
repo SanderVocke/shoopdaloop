@@ -225,13 +225,23 @@ impl State {
                 .map(|r| self.metric.value(r, ready))
         }
     }
+    fn host_baseline(&self) -> Option<f64> {
+        (self.callback == 0
+            || self.tick != 0
+                && self.page.as_ref().is_some_and(|page| {
+                    page.phases
+                        .iter()
+                        .any(|p| p.phase == profiling::Phase::GraphStart as u64)
+                }))
+        .then_some(0.)
+    }
     fn edge_value(&self, edge: &VisualEdge, topology: &Topology, report: &Report) -> Option<f64> {
         let mut result = None;
         for &i in &edge.members {
             let e = topology.edges[i];
             let value = match e.source.node {
                 Some(key) => self.value(key, report, true),
-                None if e.destination.node.is_some() => Some(0.),
+                None if e.destination.node.is_some() => self.host_baseline(),
                 _ => None,
             }?;
             result = Some(result.map_or(value, |r: f64| r.max(value)));
@@ -402,7 +412,11 @@ impl State {
                     ui.label("Readiness unavailable");
                 }
             } else if destination.node.is_some() {
-                ui.label("0: host input available at graph-start baseline");
+                ui.label(if self.host_baseline().is_some() {
+                    "0: host input available at graph-start baseline"
+                } else {
+                    "Graph-start baseline unavailable for this selection"
+                });
             } else {
                 ui.label("Host bypass readiness unavailable");
             }
@@ -1360,6 +1374,36 @@ mod tests {
             }
             assert_eq!(state.pinned, focus);
         }
+    }
+
+    #[shoop_test]
+    fn a_callback_without_a_graph_start_has_no_host_link_readiness() {
+        let context = egui::Context::default();
+        let view = fixture();
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        let topology = view.topology.as_ref().unwrap();
+        let edge = state
+            .edges
+            .iter()
+            .find(|e| topology.edges[e.members[0]].source.node.is_none())
+            .unwrap();
+        assert_eq!(state.edge_value(edge, topology, &view.live), Some(0.));
+        state.callback = 99;
+        assert_eq!(state.edge_value(edge, topology, &view.live), None);
+        state.tick = 1;
+        assert_eq!(state.edge_value(edge, topology, &view.live), None);
+        state.page = Some(Arc::new(CapturePage {
+            phases: vec![profiling::Boundary {
+                phase: profiling::Phase::GraphStart as u64,
+                at: 42,
+            }],
+            ..CapturePage::default()
+        }));
+        assert_eq!(state.edge_value(edge, topology, &view.live), Some(0.));
+        assert_eq!(state.value(1, &view.live, false), None);
     }
 
     #[shoop_test]
