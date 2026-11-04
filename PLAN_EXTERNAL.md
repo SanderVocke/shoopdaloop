@@ -197,19 +197,20 @@ preceding stage. Keep fixes and verification within their owning milestone.
 
 ### 6. Final end-to-end validation and delivery
 
-- [ ] Run the example and engine graph scenario end-to-end: distinguishable stereo
+- [x] Run the example and engine graph scenario end-to-end: distinguishable stereo
   audio plus timestamped MIDI note pairs, channel wrap, equal-time events and
   SysEx; verify exact output against the independent reference, including startup,
   slack, delayed tail, reset, and a fresh instance. Record the tested revision.
-- [ ] Run the complete native regression gate once the focused checks pass; run
+- [x] Run the complete native regression gate once the focused checks pass; run
   portable External tests in Node and Chromium and the existing application/
   worklet build gates. Keep environment failures or unavailable facilities visible;
   do not count skips as passes or weaken existing assertions.
-- [ ] Update this plan, crate documentation and relevant architecture/validation
+- [x] Update this plan, crate documentation and relevant architecture/validation
   notes with results and limitations. Commit each final meaningful fix.
 - [ ] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
-  behavior. Ensure required CI is green on the final head.
+  behavior.
+- [ ] Ensure required CI is green on the final head.
 - [ ] Check for automated review. Repeatedly assess and address incoming feedback,
   rerun affected checks, and continue until the reviewer approves. If no automated
   reviewer responds, record that fact; do not claim approval. Leave the PR ready
@@ -265,8 +266,7 @@ builds or implementation tests.
 
 - Planning: inspected the fixed runtime interfaces, production fixed hook, MIDI
   validation/storage/recovery, engine composition, portable test runner, and
-  dependency audits on `3ed8ff11`. No implementation or implementation checks
-  have been performed. All implementation stages remain unchecked.
+  dependency audits on `3ed8ff11`. This was the planning snapshot; execution results follow below.
 
 - Implementation started on `feat/external-inline-processor` from `3ed8ff11`.
   The managed Debian workspace has no Rust toolchain; validation uses a Docker
@@ -303,7 +303,7 @@ builds or implementation tests.
   workflows now include `feat/fixed-quantum-runtime`.
 
 - Regression investigation: the initial complete native run passed 2605 tests
-  and failed four existing live session recovery tests (four host-facility skips).
+  and failed four existing live session recovery tests (four ignored failure canaries).
   All four failures repeated in isolation at Q=1 with the small recording pools.
   Changing only live recovery fixture quanta to production Q=32 makes all four
   pass with their recovery/media/shutdown assertions unchanged. Runtime/reference
@@ -325,3 +325,13 @@ builds or implementation tests.
   snapshot repeat was interrupted after additional existing legacy-driver/LAN
   fixture failures; its partial results are retained and are not a passing gate.
   Final regression uses the merged source and a fresh isolated build container.
+
+- Final local validation at 1dcf26f9 (merged base cb79706e): warning-denying
+  workspace build, all 2641 native tests (four intentionally ignored failure
+  canaries), eleven focused Wasm cases plus the API doctest in both Node and
+  Chromium, Wasm application check, paired codec/worklet artifact contracts,
+  bare-metal External library build, four-target dependency audits, Wasm test
+  dependency isolation, formatting, tracing inventory, test attributes, 28 Python
+  report/boundary tests, and both executable timing examples pass. Hardware
+  availability was handled with the documented missing-backend setting; physical
+  device, remote DSP and performance acceptance are not claimed.

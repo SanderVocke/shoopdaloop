@@ -2,6 +2,30 @@
 
 [Workstreams, acceptance and remaining checks](PLAN.md) · [Architecture](ARCHITECTURE.md) · [Historical records](docs/history/README.md)
 
+## External block processor
+
+The implementation and focused coverage are tracked in
+[PLAN_EXTERNAL.md](PLAN_EXTERNAL.md); the public timing and MIDI contract is in
+[the crate documentation](src/rust/rt_external/README.md). Source revision
+`1dcf26f9` includes the updated fixed-quantum base `cb79706e`.
+
+Local validation passes: warning-denying workspace build; 2641 native tests with
+four intentionally ignored failure canaries; eleven focused processor/engine
+Wasm cases and the API doctest in both Node and Chromium; the Wasm application
+check; paired client-codec/AudioWorklet artifact contracts; bare-metal library
+build; four-target runtime/engine dependency audits; Wasm test dependency
+isolation; formatting, tracing inventory and shared test attributes; 28 Python
+report/boundary tests; and executable Q/M/S examples 16/2/1 and 32/3/7.
+
+Checks use Rust 1.99.1, cargo-nextest 0.9.116, Node 22.22.2, wasm-pack 0.15.0,
+wasm-bindgen 0.2.127 and Chrome/ChromeDriver 147.0.7727.117 in an isolated Debian
+build container. Native execution uses the documented missing-backend setting;
+physical devices and remote processors are outside this development milestone.
+These are correctness and bounded-rendering checks, not performance evidence.
+Local raw logs and structured Wasm reports remain in `work/` and
+`target/wasm-tests/dev/reports/`. Remote CI and automated review remain the final
+delivery gates.
+
 ## Native session recovery checkpoint
 
 The current session-service milestone is tracked by
