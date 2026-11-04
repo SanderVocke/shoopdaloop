@@ -29,8 +29,11 @@ This plan supersedes the execution and delivery direction in
 [PLAN_SHARED_MIDI.md](PLAN_SHARED_MIDI.md). Preserve its storage semantics and the
 [audio](src/rust/rt_runtime/docs/reference/shared-audio.md) and
 [MIDI](src/rust/rt_runtime/docs/reference/shared-midi.md) ownership contracts.
-Adopt the functional contracts of the target's `PLAN_FIXED_QUANTUM.md` and
-`PLAN_MEDIA_FORMAT_CONVERSION.md`; those files arrive with the target merge.
+The target has consolidated its fixed execution and conversion contracts into
+[PLAN_FIXED_QUANTUM_CLEANUP.md](PLAN_FIXED_QUANTUM_CLEANUP.md), the runtime guides
+and [core persistence contract](docs/native_session_recovery/persistence-contract.md).
+Its original fixed/conversion plan files were retired during cleanup; their
+functional requirements and this plan's acceptance criteria remain in force.
 
 ## Execution record and acceptance coverage
 
@@ -94,6 +97,24 @@ shared same-length replacement helper and added a regression fixture. Ready/priv
 writers also validate a checked preparation scan bound. CI remains the sole test
 execution route. No completed reconciliation behavior or timing result is claimed
 until the consolidated foundation/full suites run successfully.
+
+CI [6207](https://github.com/SanderVocke/shoopdaloop/actions/runs/41886008906)
+at `10d57c09` passed native JACK acceptance and bare-metal preparation. The four
+foundation packages compile and their storage/reference/codec suites pass. The
+engine unit binary passed 19 tests, including the Q/partition oracles, identical
+admitted-cut comparison, independent audio/MIDI routing projection, faults,
+recording conflicts, saturated receipts and loaded bases beyond the history
+horizon. The persistence sequence reached family publication, where its fixture
+incorrectly reused consumed upload source tokens. It now provides distinct sources
+for each family member and configuration replacement; final validation is pending.
+
+The pending final proofs also assert every version/snapshot/index/capture credit,
+shared reservation and queued retirement after shutdown. An additional production
+fixture exhausts control and reader background-copy credits before required
+capture/playback, private MIDI progress and ready publication in later ticks of
+the same callback. `SharedWork` exposes remaining background credits for that
+assertion. Release measurement artifacts retain per-callback MIDI overflow counts,
+configuration source hashes and their complete timing/pool/work observations.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |
