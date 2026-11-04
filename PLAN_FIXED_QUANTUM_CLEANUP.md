@@ -1,6 +1,6 @@
 # Plan: consolidate quantum processing
 
-Status: planned; implementation has not started. Baseline: `52f24c02` on
+Status: implementation in progress. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
 draft PR #930. Continue that branch and PR rather than opening a parallel migration.
 
@@ -134,16 +134,16 @@ This documentation checkpoint supplies no new runtime evidence.
 
 ### Stage 1 — record callers and the regression floor
 
-- [ ] Confirm the baseline/branch and preserve unrelated work. Reuse the current
+- [x] Confirm the baseline/branch and preserve unrelated work. Reuse the current
   branch and PR; keep all commits local until stage 7 is authorized.
-- [ ] Inventory callers of both processor/planner interfaces, graph planning metadata,
+- [x] Inventory callers of both processor/planner interfaces, graph planning metadata,
   adaptive resolver constructors/preview and variable-length capture reservations.
   Include examples, `shoop_loops_test_support`, `shoop_example_dsp`, production engine
   builders/configuration paths and `tests/{rt_runtime_host,loops_host}`.
-- [ ] Record a compact test-retirement/migration map in this plan. Map demonstrator
+- [x] Record a compact test-retirement/migration map in this plan. Map demonstrator
   DSP operation ordering, partition oracles, startup imports, immutable prefix reads,
   stalls/disconnects/faults, foreign/stale owners and latency probes to exact tests.
-- [ ] Preserve independent expected samples, MIDI, outcomes and ownership totals.
+- [x] Preserve independent expected samples, MIDI, outcomes and ownership totals.
   Distinguish fixture metadata/layout changes from observable behavior changes.
   Add missing safety tests only where the planned removals expose a real gap.
 
@@ -284,3 +284,38 @@ Report skips/failures explicitly; a local pass does not substitute for stage 7.
 Verification: link final native/browser/Miri/CI evidence and PR review outcomes here.
 Human checks or unavailable facilities must be stated explicitly, never checked off
 on the basis of a proposed command or a test in a different execution environment.
+
+## Execution evidence and coverage map
+
+Stage 1 (2026-11-04): current branch/PR retained; only generated `work/` existed
+outside committed sources. Native baseline command: `cargo nextest run -p rt_runtime
+-p shoop_loops -p shoop_rt_engine -p shoop_example_dsp -p shoop_engine_service
+--profile ci`: **459 passed**. Wasm/Node unit baseline: `cargo test --target
+wasm32-unknown-unknown --lib` for those packages plus `shoop_persistence_codec`:
+**34 passed** (the service has no unit tests). Logs are local under `work/cleanup-baseline-*`.
+The prior consolidated full workspace baseline was 2,681 native passes, six skips.
+
+Caller inventory: 40 Rust files reference the compatibility API, across runtime,
+loop parts, engine, independent DSP, demonstrator, test support, examples and loop
+host fixtures. Generic observation consumers exist only in loop compatibility
+processors and dedicated planner examples/tests. Loop graph safety currently uses
+binding counts as well as required membership; both protections must survive.
+Capture interval callers and resolver-only scenarios also occur outside these files.
+
+| Demonstrator coverage | Retained/migration destination and required invariant |
+| --- | --- |
+| `actual_loop_and_component_control_match_full_partition_oracles_without_warmup`; `public_scenario_matches_complete_oracles_across_all_partitions`; alternate query order | Mixed loop/DSP runtime fixture, retaining independent full stereo/MIDI/media oracles, typed DSP operations and callback partitions. |
+| Both `startup.rs` tests | Loop import and production engine initialization coverage: indexed MIDI/initial state, multi-page PCM, bad shape/capacity and no startup owner leaks. |
+| `prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes`; saturated exports/route rejection | Loop topology/configuration and production content/export tests: uninterrupted capture, retained prefixes, refused changes and exact recovery. |
+| `physical_capture_markers_and_missing_windows_agree_across_partitions`; native `current_engine_retains_history_postroll_and_independent_logical_windows` | Existing loop/DSP test fixture plus native reference test: preserve physical marker/window oracles and independent latency policy evidence. |
+| Stop/disconnect, held results, cancellation, processor faults, repeated lifecycles and separate-control-thread tests in `service.rs` | Runtime typed execution/ownership tests and production endpoint/transport tests; retain credits, exactly-once outcomes, recovery progress and stopped cleanup. Record individual mappings before retiring tests. |
+| `foreign_tickets_and_routes_refuse_without_consuming_recovery_or_owner_credits`; retained tickets; requested/actual phases | Existing transport identity/cancellation and runtime receipt tests; retire only service-specific wrapper identities/queue counts after matching underlying invariants. |
+| State/meter read frequency, zero/callback-end requests and service preparation | DSP meter tests, runtime callback-envelope tests and production partition invariance at larger Q. |
+
+Design clarification for stage 2: use `Processor::admit(node_id, domain)` to validate
+actual prepared loop processor identities against the loop-node registry at initial
+preparation/install. Graph admission checks both presence of assigned node pairs and
+absence of unassigned loop consumers. Keep generic processor mutation protection.
+This removes decision bindings without introducing another graph delivery table.
+Planner ID remains only where needed to address typed operations; payload bounds
+are cached in prepared runtime/node signatures.
