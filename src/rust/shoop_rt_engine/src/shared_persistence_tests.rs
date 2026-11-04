@@ -317,13 +317,6 @@ impl Pinned {
                     bytes: data.len() as u64,
                 },
             ));
-            for (chunk, bytes) in data.chunks(256).enumerate() {
-                h.request(protocol::Request::ContentWrite {
-                    id,
-                    offset: (chunk * 256) as u64,
-                    data: protocol::ContentChunk::new(bytes).unwrap(),
-                });
-            }
             if midi {
                 for packet in &self.packets {
                     h.request(protocol::Request::ContentInitial {
@@ -331,6 +324,13 @@ impl Pinned {
                         message: protocol::MidiMessage::new(packet).unwrap(),
                     });
                 }
+            }
+            for (chunk, bytes) in data.chunks(256).enumerate() {
+                h.request(protocol::Request::ContentWrite {
+                    id,
+                    offset: (chunk * 256) as u64,
+                    data: protocol::ContentChunk::new(bytes).unwrap(),
+                });
             }
             h.request(protocol::Request::ContentFinish { id });
         }
@@ -521,6 +521,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     });
     h.request(protocol::Request::ReplacementPrepare { id: 1 });
     h.request(protocol::Request::ReplacementCommit { id: 1 });
+    h.request(protocol::Request::ContentRelease { id: 1 });
+    h.request(protocol::Request::ContentRelease { id: 2 });
     assert_eq!(
         h.read(retained.view.audio.unwrap().snapshot),
         final_data.audio
