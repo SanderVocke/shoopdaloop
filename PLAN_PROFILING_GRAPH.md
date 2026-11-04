@@ -414,3 +414,12 @@ curve sampling at far zoom. The adapter now selects curve detail and a six-pixel
 hover radius in screen space using the widget's supported APIs. A pointer-input
 test covers link hover/pinning across zoom transforms. Final measurements and
 CI state will be recorded after the merge gates pass.
+
+
+A subsequent base update, `30bc167f`, includes runtime recovery/publication fixes
+and a 256-record browser profiling credit window. Preserve those changes while
+returning credits for topology tag 11 as well as status/data/name tags 8–10.
+The MessagePort consumption test now exercises graph records explicitly, and
+the worklet artifact's normal and stalled credit accounting includes topology.
+The earlier native merge passed 2,703 tests; the refreshed full native, affected
+Wasm/browser and release comparisons are being rerun against this base.

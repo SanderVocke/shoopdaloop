@@ -1,7 +1,7 @@
 # Runtime profiling implementation plan
 
 Status: dedicated profiling window and RT/transport integration implemented;
-release measurements and final cross-platform validation in progress.
+all local acceptance gates pass; remote CI and automated-review checks in progress.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -225,7 +225,7 @@ Depends on Stages 1–3.
   Reassemble reports atomically and reject stale/reset-generation data at each hop.
 - [x] Implement the worklet elapsed-time import and bounded forwarding; drain and
   aggregate outside the audio realm. Report missing or coarse clocks honestly.
-- [ ] Verify runtime toggle outcomes, reconnect/resync and host replacement,
+- [x] Verify runtime toggle outcomes, reconnect/resync and host replacement,
   incompatible peers, malformed/oversized chunks and transport saturation alongside
   commands, recovery, meters and media transfers.
 
@@ -261,25 +261,25 @@ control and report paths with the required table. Commit the UI milestone.
 
 Depends on Stages 2–5.
 
-- [ ] Compare the same release workloads on the recorded pre-feature baseline,
+- [x] Compare the same release workloads on the recorded pre-feature baseline,
   profiling off, profiling on, and on with a stalled UI/collector or xrun trigger.
   Cover graph sizes, Q=1/16/32/64/128, host partitions, routing-heavy audio/MIDI,
   recording, transitions and graph rebuilds. Measure native clock costs and
   worklet clock-import costs separately.
-- [ ] Report whole-callback median/tails/maxima/misses, RT budget percentage-point
+- [x] Report whole-callback median/tails/maxima/misses, RT budget percentage-point
   cost, relative DSP slowdown, collector/UI CPU, bytes per second, storage high-water
   and losses. Keep profiling's own records out of benchmark timing methodology.
   Fix unexplained disabled overhead, unbounded work and deadline regressions;
   publish observed limits without presenting VM results as target-device acceptance.
-- [ ] Exercise enable, record/play, live statistics, graph recompile/reset, injected
+- [x] Exercise enable, record/play, live statistics, graph recompile/reset, injected
   and real host xruns where available, latest-capture statistics, disable/re-enable,
   disconnect/reconnect, host replacement and shutdown in native and browser UI flows.
   Verify unchanged audio/MIDI and no old-generation rows returning after resets.
-- [ ] Run affected package suites, no-heap/lock and dependency-boundary gates,
+- [x] Run affected package suites, no-heap/lock and dependency-boundary gates,
   formatting, warning-denying workspace build, test-attribute and tracing inventory
   checks, the complete native suite and applicable Node/Chromium/Wasm/app smokes
   from current repository guidance. Record genuinely unavailable device facilities.
-- [ ] Update user/developer documentation with duration/interval semantics, reset
+- [x] Update user/developer documentation with duration/interval semantics, reset
   behavior, on/off costs, xrun attribution limits and measured platform results.
 
 Verification: all immutable acceptance criteria have recorded evidence. Use
@@ -292,7 +292,7 @@ Commit the validation/documentation milestone.
 
 Depends on Stage 6.
 
-- [ ] Push the implementation branch and open a PR targeting
+- [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing behavior, reset semantics and measured
   overhead with links to validation evidence.
 - [ ] Work through CI failures until required checks are green. Check for automated
@@ -318,104 +318,95 @@ automated-review feedback is resolved through approval where a reviewer exists.
 
 ## Progress and evidence
 
-Stage 0: implementation branch created from the investigated baseline. The prepared
-environment is activated with `source /workspace/.setup/activate.sh`; it supplies
-Rust 1.99.1, cargo-nextest 0.9.116 and native dependencies. Production profiling
-will use the fixed execution kernel, with collection in the application backend
-so worklet endpoint pumping performs only bounded forwarding.
+The implementation branch began at `cb79706e95350539638368bcca9f50b1601795ae`.
+The target subsequently advanced; merge `3ca192e10552afe9ca9dfe6f4482c8b5081602bc`
+and preserve its graph API, wide host ports, previews, host manager and wire tags.
+A further clean merge includes the final MIDI recovery fixes at
+`df4683527dbde0ec7483c3e522fc3873e39a81c8`, now the matching uninstrumented
+measurement baseline. Both release binaries use those fixes.
+Production profiling instruments `GraphRuntime::{process,run_tick,run_graph}`.
+Engine/app protocol versions are 8/21; SDM2 adds independent profiling admission.
 
-Core/native milestone: added the portable recorder/collector, production fixed-kernel
-node and phase boundaries, current-generation node metadata, bounded raw transport,
-settings control and plain statistics table. Engine protocol is version 7, app
-protocol is version 15 and shared-memory descriptors are SDM2 with an independent
-profiling queue. Six focused native tests pass, including production round trips
-at Q=1/16/32/64/128, exact average/worst/stddev, no disabled clock reads and automatic
-xrun capture/reset. Runtime and engine dependency audits pass on all four targets.
-The first warning-denying workspace build passed. Full native/browser verification
-is ongoing; full-suite debug linking exhausted the environment disk, so subsequent
-validation disables debug symbols and incremental artifacts through the task environment.
+Implemented contracts: prepared no-std recorder, elapsed-time host clocks, raw
+callback/tick/phase/node-ready records, bounded live streaming and independent
+pre/post-xrun history, non-RT Welford statistics, coherent generation-fenced
+transport and application views. Failed/identical recompiles, activation, re-enable
+and engine replacement invalidate all prior data. Activation while off also clears
+the retained report, with no clock reads or heap activity. Partial faults exclude
+unfinished steps. Host deadlines cover complete driver callbacks, including split
+engine calls; external AudioContext and engine stream frames remain distinct.
 
-Production integration evidence: both packaged socket and shared-memory probes pass
-runtime enable/disable/re-enable, live names/statistics, recording/playback,
-UI reconnect, media reads and graceful shutdown. Settings persistence/default-off
-and retry-on-full dispatch pass. The worklet artifact contract passes with a real
-stereo/MIDI graph, exact clock-call checks, successful request completion,
-completion timestamps, automatic xrun capture and no Wasm memory growth.
+The dedicated window opens below Host Manager in the backend LED hover/click panel.
+It has an immediate switch, the overall DSP bar, responsive aligned table, Live/
+Latest xrun and microsecond/quantum-budget presentation. It has no Settings-window
+UI. Runtime requests precede background preference writes; stale in-flight saves
+and unrelated settings drafts preserve the latest runtime choice. Actual pointer
+input, persistence/retry/rapid-order tests and native visual inspection pass.
+[Screenshots and usage](docs/runtime_profiling.md).
 
-Browser capability finding: Chrome 147's actual AudioWorklet realm has no
-`performance` object. The implementation acknowledges the requested setting and
-reports timing unavailable there. It does not substitute logical audio time or
-wall-clock time. Production imports are exercised separately with a monotonic
-clock in the artifact contract; this is a platform capability limit anticipated
-by acceptance criterion 8. No production profiling build flags were introduced.
+Release evidence: [measurement report](docs/runtime_profiling/README.md), 288
+randomized runs, all raw callback durations/periods and summaries, nine balanced
+baseline/off pairs for the largest initial outlier, separate native/JS/Wasm-import
+clock and final-window CPU timings. The baseline/current workload source matches
+exactly after removing profiling setup and collection. Ordinary collection has no
+live-batch drops; stalled readers demonstrate bounded loss without blocking audio.
+Small-quantum/large-graph workloads already exceed deadlines on the baseline and
+have explicit throughput/collection limits. The refreshed paired disabled check is −2.29%
+relative DSP time (−0.421 callback-budget percentage points) on this VM. Negative
+deltas demonstrate variation, not acceleration. These observations provide no
+universal zero-cost or target-device guarantee.
 
-Validation exposed a native shutdown reporting race: reset confirmation was read
-before joining the driver, missing a reset completed by the final callback during
-that join. The result is now read after ownership returns. Slow debug Q=1 callbacks
-under competing builds made this visible; isolated shutdown tests pass. Native,
-Node and Chromium suites and browser persistence smoke are being completed with
-resource contention controlled. CI PR filters now include the requested base branch.
+Validation completed:
 
-Native milestone: the complete CI-profile suite passes **2,645/2,645** tests
-(4 facility-dependent skips) in 143 seconds. The latest focused recorder/runtime/UI/
-backend run passes 13/13, including independent prescribed node work, rejection of
-inconsistent chunk headers and oversized keys on 32-bit Wasm, capture selection,
-clock-unavailable presentation and zero-heap saturation/reset/fault paths.
-Warning-denying workspace builds, formatting, test attributes, tracing inventory
-and four-target runtime/engine dependency audits pass. The profiling request now
-returns its explicit successful completion; actual active state remains separately
-acknowledged at the callback boundary.
+- Warning-denying workspace build and full native suite: **2,689 passed**, six
+  skipped tests. One legacy-engine output-peak timeout passed in isolation and
+  the complete rerun passed all tests. The 16 focused recorder/runtime/window tests include
+  no-heap saturation/reset/fault paths, independent prescribed node work and all
+  five quanta with arbitrary host partitions and unchanged audio/MIDI.
+- Packaged socket and shared-memory probes: default off, enable, current names and
+  statistics, recording/playback, media reads, reconnect, disable/re-enable and
+  graceful shutdown pass.
+- Node/Wasm: **34 packages, 2,211 tests passed**. The complete suite passed its 33
+  library packages; an application test-only import gate was corrected, then affected packages
+  rerun after the MIDI recovery merge and browser flow control; all pass. [Results](docs/runtime_profiling/node-validation.json).
+- Optimized Trunk browser bundle builds. The hosted production browser workflow
+  passes audio/MIDI recording/playback, waveforms/details, controls, cancellation,
+  save/reload/resave, restored playback, bus removal/recreation, generation resets
+  and profiling off/re-enable/off. Browser reports zero xruns in this run.
+- Fresh production worklet/codec artifact contract passes real stereo/MIDI graph
+  execution, successful control completion, node timestamps, off clock-call checks,
+  automatic capture and stable Wasm memory.
+- All three bare-metal target builds pass; targets without 64-bit atomics report
+  timing unavailable with no lock fallback or user-facing build option. Both
+  standalone host-fixture lockfiles include the new dependency, preserve existing
+  versions, and pass locked resolution/build checks.
+- Formatting, test-attribute policy, 396-module tracing inventory, four-target
+  runtime/engine dependency boundaries and the new crate's Wasm test dependency
+  audit pass. Chromium verification passes **610 tests across eleven packages**, including
+  the new MessagePort credit tests in a real browser. The optimized regular and
+  large-media workflows both pass after the final merge and acknowledgement guard.
 
-Delivery ordering refinement: the implementation milestone can be committed and a
-draft PR opened while the larger cross-platform CI matrix and automated review run;
-benchmark evidence and final browser validation follow in a separate validation
-milestone before marking delivery complete. This overlaps independent verification
-without changing any goals or acceptance criteria.
+Platform limits: this environment has no physical audio/MIDI devices. Native
+integration uses the dummy host, prescribed/injected xruns and observed dummy-host
+lateness; remote JACK acceptance supplies an independent native device-server gate.
+Chrome for Testing 147.0.7727.117 has no `performance` object in its actual
+AudioWorklet realm. The requested preference is acknowledged but elapsed timing
+is explicitly unavailable; logical audio time and `Date.now()` are never used as
+substitutes. The raw artifact contract separately exercises an injected monotonic
+clock. These limits are anticipated by acceptance criterion 8.
 
-Base reconciliation: while this task ran, the target advanced to
-`3ca192e10552afe9ca9dfe6f4482c8b5081602bc`, including quantum API cleanup, wide host
-I/O, host graph control and previews. Merge both sets of functionality, preserve
-its new wire tags, append profiling request tag 35, and fence engine/app protocols
-as versions 8/21. The matching uninstrumented benchmark baseline is now that
-refreshed base; the earlier 2,645-test result describes the initial baseline and
-will be superseded by fresh validation. The target also independently fixed the
-same final-callback shutdown acknowledgement race.
-
-Refreshed-base acceptance: warning-denying workspace build and all **2,682/2,682**
-native tests pass (6 facility-dependent skips), in 155 seconds. All 15 profiling
-integration tests and the production worklet artifact contract pass after the
-protocol/API reconciliation. An additional recorder regression verifies that split
-engine callbacks cannot create fictitious device deadlines: native/worklet hosts
-use the complete outer callback budget; standalone offline callbacks retain their
-own complete budget. Four-target dependency audits and the 395-module tracing
-inventory remain clean.
-
-Draft delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 . No automated
-review has appeared yet. The refreshed-base merge is ready for remote CI; final
-release measurements and the complete Wasm/browser checks remain in progress.
-
-Capacity refinement: a fixed 64-page stream cannot hold an ordinary 256-frame
-Q=1 callback before collection is possible. Select 64–1,024 pages during preparation
-from an 8 MiB byte budget (the existing minimum preserves large-node trace support),
-keep history independent, and test all 256 node completions without loss before the
-reader runs. Reset draining skips a bounded 64 stale pages per call. This improves
-coverage without adding RT allocation or publication per node; actual sample-array
-storage and queue high-water remain reported.
-
-User-requested UI revision (2026-11-04): profiling belongs in its own window,
-opened below Host Manager in the backend status LED hover panel. The window has
-an immediate switch, overall DSP bar and µs / % quantum-budget presentation.
-Acceptance criteria 1 and 3 and Stage 5 above reflect this explicit user change.
-The hidden preference remains in the existing persistence system. Runtime requests
-precede background preference saves; a pending local choice cannot be undone by
-an earlier save, and ordinary Settings drafts preserve the current profiling choice.
-The first five focused window/popup/persistence/formatting tests pass.
-
-Dedicated-window verification: the complete native suite passes **2,683/2,683**
-tests (6 facility-dependent skips). A running native app verifies opening from
-the LED hover panel, immediate switching, live statistics, the overall DSP bar,
-budget presentation and background preference persistence. Further review adds
-an off-state activation regression: a newly activated layout invalidates retained
-data even with recording stopped, without clock reads or heap activity. All 16
-focused recorder/runtime/window tests pass, including real pointer input for the
-switch. Final native/Wasm gates and release measurements use this correction.
+Delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 targets
+`feat/fixed-quantum-runtime`. Implementation and release evidence are pushed;
+all local validation passes; remote CI and applicable automated review remain in progress.
+The release CI large-media workflow exposed a startup race; the self-test now
+waits for queued and accepted operation acknowledgements before requesting a new
+session, including after profiling acknowledgement and bus recreation.
+The browser MessagePort has a separate 256-record consumption-credit window,
+including status, names and data. Credits return after client decoding and are
+coalesced into one main-thread microtask. Saturation blocks only profiling
+publication, preserves bounded RT history/stream ownership and permits reliable
+controls. Native flow/saturation tests pass. The final artifact verifies 512 callbacks
+without returned credits stay within the 256-record window and that reliable
+disable still succeeds. No Wasm memory growth occurs. Regular and large-media
+workflows both pass with zero reported xruns.
+The PR remains unmerged. No automated review has appeared at the latest check.

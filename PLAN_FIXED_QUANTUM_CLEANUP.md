@@ -1,6 +1,6 @@
 # Plan: consolidate quantum processing
 
-Status: implementation and local acceptance complete; final delivery in progress. Baseline: `52f24c02` on
+Status: implementation and local acceptance complete; final CI in progress. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
 PR #930 (now ready for review). Continue that branch and PR rather than opening a
 parallel migration.
@@ -272,12 +272,14 @@ Report skips/failures explicitly; a local pass does not substitute for stage 7.
   recovery issues, with root-cause evidence. Update fixture journals only for
   explained representation/revision changes; preserve samples, MIDI and semantic
   expectations. Do not replace assertions with retries or weaken them to pass.
-- [ ] Push the finished branch and update existing PR #930 against
+- [x] Push the finished branch and update existing PR #930 against
   `feat/backend-replacement`. If the PR has already been superseded, use its successor
   rather than opening a duplicate. Describe the final implementation and validation.
-- [ ] Run the required full CI platform matrix, investigate/fix failures and repeat
-  affected gates until green. Check automated PR reviews and address feedback until
-  the reviewer approves; rerun affected validation after changes.
+- [ ] Run Linux, Windows and web CI in debug/release, investigate/fix failures and
+  repeat affected gates until green. macOS is excluded from this acceptance pass by
+  the user's explicit 2026-11-04 instruction; retain its CI definitions. Check
+  automated PR reviews and address feedback until the reviewer approves; rerun
+  affected validation after changes.
 - [ ] Present the final outcome, evidence, residual limits and architectural analysis
   for human review. Keep any merge approval as the final delivery decision; do not
   merge without authorization. Mark this plan complete only with acceptance evidence.
@@ -288,105 +290,34 @@ on the basis of a proposed command or a test in a different execution environmen
 
 ## Execution evidence and coverage map
 
-Stage 1 (2026-11-04): current branch/PR retained; only generated `work/` existed
-outside committed sources. Native baseline command: `cargo nextest run -p rt_runtime
--p shoop_loops -p shoop_rt_engine -p shoop_example_dsp -p shoop_engine_service
---profile ci`: **459 passed**. Wasm/Node unit baseline: `cargo test --target
-wasm32-unknown-unknown --lib` for those packages plus `shoop_persistence_codec`:
-**34 passed** (the service has no unit tests). Logs are local under `work/cleanup-baseline-*`.
-The prior consolidated full workspace baseline was 2,681 native passes, six skips.
+Implementation stages 0–6 are complete. The user authorized the remaining delivery,
+CI and review work on 2026-11-04. The current implementation is committed through `09a92496`; final CI, renewed
+automated review and handoff remain.
 
-Caller inventory: 40 Rust files reference the compatibility API, across runtime,
-loop parts, engine, independent DSP, demonstrator, test support, examples and loop
-host fixtures. Generic observation consumers exist only in loop compatibility
-processors and dedicated planner examples/tests. Loop graph safety currently uses
-binding counts as well as required membership; both protections must survive.
-Capture interval callers and resolver-only scenarios also occur outside these files.
+| Milestone | Commit | Result |
+| --- | --- | --- |
+| Plan and regression floor | `816e88b5`, `de30e43e` | Recorded callers and 459 affected native baseline tests; preserved independent media oracles. |
+| Sole processor/planner interface | `aa63718e` | Direct borrowed domain; signal-only graph metadata; physical owner/role/membership admission. |
+| Mandatory resolver quantum | `bf363eb8` | Immutable validated Q; one preview/commit/finish path; no adaptive constructor or boundary search. |
+| Whole-tick coordinated capture | `ab25eddf` | `CaptureTickId`; Q-sized scratch; atomic all-member publication and retained prefix leases. |
+| Demonstrator retirement | `bcebee10` | Removed `shoop_engine_service`; six useful startup/DSP/latency tests moved to existing test support. |
+| Consolidation and local acceptance | `24fc26c1`, `3f5acc59` | Maintained guides/examples, versioned independent fixtures, actual worklets and selected Miri. |
+| Delivery integration and review fixes | `e8dc16d5`, `435eb2a2`, `d43871fb`, `3ca192e1` | Current base, incompatible-peer fences, real JACK acceptance and recovery corrections below. |
+| Final source audit and CI regression | `8fa62d6d`, `09a92496` | Removed the ignored interval budget; retirement admission cannot discard physical port ownership. |
 
-| Demonstrator coverage | Retained/migration destination and required invariant |
-| --- | --- |
-| `actual_loop_and_component_control_match_full_partition_oracles_without_warmup`; `public_scenario_matches_complete_oracles_across_all_partitions`; alternate query order | Mixed loop/DSP runtime fixture, retaining independent full stereo/MIDI/media oracles, typed DSP operations and callback partitions. |
-| Both `startup.rs` tests | Loop import and production engine initialization coverage: indexed MIDI/initial state, multi-page PCM, bad shape/capacity and no startup owner leaks. |
-| `prepared_route_cut_keeps_capture_live_and_returns_immutable_prefix_bytes`; saturated exports/route rejection | Loop topology/configuration and production content/export tests: uninterrupted capture, retained prefixes, refused changes and exact recovery. |
-| `physical_capture_markers_and_missing_windows_agree_across_partitions`; native `current_engine_retains_history_postroll_and_independent_logical_windows` | Existing loop/DSP test fixture plus native reference test: preserve physical marker/window oracles and independent latency policy evidence. |
-| Stop/disconnect, held results, cancellation, processor faults, repeated lifecycles and separate-control-thread tests in `service.rs` | Runtime typed execution/ownership tests and production endpoint/transport tests; retain credits, exactly-once outcomes, recovery progress and stopped cleanup. Record individual mappings before retiring tests. |
-| `foreign_tickets_and_routes_refuse_without_consuming_recovery_or_owner_credits`; retained tickets; requested/actual phases | Existing transport identity/cancellation and runtime receipt tests; retire only service-specific wrapper identities/queue counts after matching underlying invariants. |
-| State/meter read frequency, zero/callback-end requests and service preparation | DSP meter tests, runtime callback-envelope tests and production partition invariance at larger Q. |
+The final audit also removes the ignored `Budgets::subranges` field, its settings
+and compatibility documentation. Diagnostic tick counts and dense callback-envelope
+assertions remain. No production wire format changes are needed for this removal. All2666 native
+tests, 437 core Node tests, 35 application-service Node tests, 60 independent fixture
+tests, all17 inventoried examples, workspace all-target checks and strict JACK
+acceptance pass after the final corrections. The regression reproduces the exact
+physical-name reuse on the original implementation and passes with the fix:
+`work/cleanup-publication-{before-exact,after}.log`.
 
-Design clarification for stage 2: use `Processor::admit(node_id, domain)` to validate
-actual prepared loop processor identities against the loop-node registry at initial
-preparation/install. Graph admission checks both presence of assigned node pairs and
-absence of unassigned loop consumers. Keep generic processor mutation protection.
-This removes decision bindings without introducing another graph delivery table.
-Planner ID remains only where needed to address typed operations; payload bounds
-are cached in prepared runtime/node signatures.
-
-Stage 2: one `ProcessBlock`/`Processor::process` and planner begin/finish/operation
-lifecycle now serve all production, generic, example and independent fixture callers.
-Decision/observation metadata and storage are removed from graph compilation,
-validation, builders and runtime traversal. Payload bounds remain in prepared node
-signatures and cached planner authority. Loop admission validates actual node roles
-and owners, assigned membership and absence of unassigned consumers; new negative
-coverage exercises crossed roles/owners and stale physical IDs. The engine's
-`signal` module is removed because the common block needs no projection wrapper.
-
-Verification: warning-denying workspace build and all-target check passed; 450
-affected native tests passed, followed by all five graph-admission tests including
-the new identity case. All 60 independent loop-host fixture tests passed. All 18
-runtime book examples executed successfully. Node/Wasm planner execution (8),
-graph activation (7), DSP (15), graph guards (5) and engine production (3) passed:
-38 total. Test-attribute policy passed. Logs: `work/cleanup-unified-*`,
-`work/cleanup-admission-tests.log`, `work/cleanup-loop-fixture-tests.log`.
-
-Retired tests: `rt_runtime/tests/planning_graph.rs` (eight metadata-only tests) and
-`stale_planner_candidate_keeps_previous_graph_and_bindings_active` exercise fields
-that no longer exist. Canonical/incremental graph validation, stale epochs, descriptor
-capacity/membership reuse and actual domain admission remain covered by `graph.rs`,
-`graph_activation.rs`, `planner_admission.rs` and loop `graph_guards.rs`. Observation
-quota/view-size assertions were replaced with domain-owned completion accounting;
-full sample/MIDI and callback-budget assertions remain. Invalid planning-header
-fixture cases now corrupt signal descriptors and verify exact returned ownership.
-Fixture descriptor and graph-command wire formats are version 2; production wire
-versions are unchanged. Documentation prose migration is reserved for stage 6.
-
-Stage 3: `Resolver::prepare` and loop/runtime preparation now require an explicit
-quantum. The resolver validates alignment immediately, exposes no setter or adaptive
-preview, and completes only its committed tick without a caller-supplied endpoint.
-`LoopPlanner` uses the resolver's quantum rather than retaining optional duplicate
-mode state; runtime admission rejects mismatched quanta. Arbitrary-callback
-preparation is named `prepare_for_host`; it is not an alternate execution mode.
-Transactional scratch remains because resource/graph refusals require rollback;
-removed boundary search/mode branches had no such role.
-
-Verification: warning-denying workspace build passed; **453 affected native tests**,
-**60 loop-host fixture tests**, and **26 Wasm/Node loop tests** passed. The latter
-include resolver units, larger-Q sync/program behavior, graph admission and program
-changes. Added runtime/domain-quantum mismatch coverage and an internal exhausted-
-clock test for every supported Q, including final valid Q=1 completion. The old
-public jump-to-u64::MAX test is replaced by that internal clock test; late-delivery
-and invalid lifecycle assertions remain public. Direct resolver helpers now drive
-complete ticks to their observation frames, keeping scalar/media oracles intact.
-Logs: `work/cleanup-quantum-{build,core-tests,fixture-tests,wasm}.log`.
-
-Stage 4: resource stores are prepared with an immutable quantum, checked against
-both runtime and loop-domain preparation. Coordinated reservations expose no frame
-count and use `CaptureTickId`; group state no longer stores interval length.
-Audio staging, MIDI timestamp bounds and atomic completion derive size from the
-store quantum. First unpublished and running ticks share the same reservation
-implementation while preserving activation and cancellation phases. Group audio
-scratch is sized to Q rather than the maximum outer callback. Raw media transfers
-and per-event MIDI timestamps retain frame/byte precision.
-
-Verification: **454 affected native tests**, **60 loop-host fixture tests** and
-**36 Wasm/Node tests** passed, including the new heap-guarded 16/32/64-frame capture
-matrix for wrong-grid admission, stale cancellation, incomplete all-member commit,
-immutable old prefixes, exact audio/MIDI and full resource recovery. Standalone
-variable-size capture fixtures now preserve their physical media through whole
-Q=1 ticks; capture revisions count those actual publications. The independent
-resource model likewise reserves one complete tick. Existing preflight retries
-remain bounded and transactional. Formatting/test-attribute/tracing checks passed;
-warning-denying workspace build passed. Updated Miri inventory removes the retired
-metadata tests and includes the new tick capture case. Logs: `work/cleanup-capture-*`.
+The removed metadata-only tests exercised planning fields that no longer exist.
+Canonical/incremental validation, stale epochs, descriptor capacity/reuse and domain
+admission remain in runtime `graph`, `graph_activation`, `planner_admission` and
+loop `graph_guards`. All sample, MIDI, receipt and callback-budget oracles remain.
 
 ### Demonstrator retirement map (stage 5)
 
@@ -421,225 +352,141 @@ Below, runtime tests are in `rt_runtime/tests`, DSP tests in
 | `disconnect_during_recording_retains_full_returns_and_pending_preset_until_stopped_cleanup` | Loop `runtime_topology::pending_program_cancellation_disconnect_and_fault_extraction_return_every_bank_owner`; DSP `disconnected_future_work_has_no_render_side_destruction`; runtime `lifecycle::control_disconnect_retains_payloads_until_non_render_shutdown`. Wrapper stop/mute phase bookkeeping is retired. |
 | `fixed_service_preparation_buffers_hosts_and_applies_rounded_dsp_controls` | Runtime `integrated` tests and engine `production::full_endpoint_recording_export_and_slot_reuse_are_partition_invariant` retain larger-Q buffering, operation timing and exact media; DSP frame/receipt tests retain selection behavior. Constructor policies specific to the removed service are obsolete. |
 
-Stage 5: the demonstrator package, service/control/render implementation, manifest,
-lockfile entry, examples and wrapper-only tests are removed. The six substantive
-scenario/startup/latency tests now use the existing shared loop runtime; five are
-portable and one is a native reference comparison. Test support gained generic
-processor operations and forwards the existing runtime's command-credit query.
-Loop playback/capture scratch is prepared for Q rather than the outer callback.
-Current architecture/docs/package selections point at shared test support; archived
-validation records retain their original source/package names. The retirement map
-above records all fourteen wrapper tests and the service-preparation test.
 
-Verification: warning-denying workspace build and all-target check passed;
-**439 affected native tests** passed, including all six migrated tests. All **five
-portable migrated tests passed under Wasm/Node**. Cargo metadata contains neither
-the removed package nor a dependency on it. Test-attribute, closed 390-module
-tracing inventory and Wasm dependency-isolation checks passed. Full independent
-media oracles and complete resource-recovery assertions remain intact. Logs:
-`work/cleanup-retired-service-*` and `work/cleanup-migrated-dsp-*`.
+### Integration and validation corrections
 
+Merged target `a6e2554c` while retaining quantum configuration and upstream dynamic
+JACK ports. Both histories used app protocol19 for incompatible layouts. The
+combined app/engine/host-setup/worklet versions are **20/7/6/3**; old app19 refuses
+explicitly. Host setup6 fences the combined quantum field and startup-port removals.
+This necessary incompatibility fence is the documented exception to avoiding
+production schema changes. Canonical byte tables and maintained guides agree.
 
-Stage 6 (2026-11-04): the maintained architecture, runtime book/reference and loop
-guides now describe the sole processing/domain interface, immutable preparation
-quantum, physical node admission and whole-tick capture. Executable excerpts match
-all current examples. Removed ignored adaptive-comparison flags, a duplicate example
-run and the demonstrator's dead command-line oracle-corruption switches. No service
-package, second processor entry point, graph decision metadata, adaptive resolver
-constructor or arbitrary-frame coordinated reservation remains. Domain failure
-observations, receipt authority, transactional rollback scratch and capture/lease
-generations remain because they implement behavior and ownership safety.
+Independent graph fixtures use **LGP2/version2** and graph command/result version2;
+retired planning opcodes4/5 refuse. Updated JavaScript emitters, Python tables and
+graph reports change only those records; complete media and semantic results match.
+The generic runtime golden journal preserves all **2,601** callback requests/sample
+hashes, complete MIDI/graph hashes and work counters. Only four capture revisions
+change from arbitrary intervals to Q1 publications: **35→4097, 36→4225 twice,
+37→4353**. Updated it only after actual worklet/native replay agreement. Its sidecar
+records changed offsets/provenance; SHA256 is
+`873203b4be670722b02fdca740157f7342b8b74e0eeb6cc20c6faff0b68c4e47`.
+Historical reports remain unchanged; native-only golden replay passes.
 
-Fresh browser execution found stale JavaScript graph-payload emitters and Python
-reference tables. Migrated these to LGP2/version2 and the two signal capacity fields;
-retired opcodes4/5 refuse. The regenerated graph report changes only descriptor and
-graph-command/result records: complete samples, MIDI, semantic records, primitive
-receipts and recovery remain identical. Miri selections include all seven loop unit
-cases and the six physical-membership/quantum-admission cases; the explicit selected
-inventory now declares 342 executions in 172 commands. This count is an inventory,
-not a claim those interpreter executions have all run locally.
+| Observed issue | Correction and regression evidence |
+| --- | --- |
+| Recovery fixture announced readiness before recording activated | Child waits for a confirmed Recording snapshot before publishing readiness. Parent survival/media assertions are unchanged. |
+| Buffering rejected default JACK's 96 outputs at an artificial 64-port limit | Private borrowed audio views feed the same graph kernel without reference arrays or a port cap. Heap-guarded 96/1,025-port oracle checks every reversed channel/sample across whole, irregular and zero callbacks; native, Node and Miri pass. |
+| Stop and structural activation rounded onto one tick, refusing playing-strip removal | Align base/ramp end; activate one complete tick after Stop settlement. Fail-first Q16/32/64 tests cover ramps4 and Q+3, exact unrelated audio and reused slots. |
+| Coverage/Windows UI shutdown reported MIDI reset unconfirmed | Perfetto inspection plus a constrained reproduction identified the error. Dummy owner now completes its final reset callback; confirmation is read after driver join. Deterministic zero-grace regression and 10 contention/tracing trials × 2 original UI tests pass; deadlines/grace unchanged. |
+| Delayed MIDI note survived an acknowledged reset | Pending recovery clears current and delayed output per port. Fail-first heap-guarded Q16/32/64 tests cover explicit reset, output overflow, immediate/one-packet sinks, exact 32-packet order, continuous audio and fresh-note latency. Input/recording history is preserved. |
+| Reset acknowledged before a partial input tick rendered | Retain input for recording and defer acknowledgment until the unfinished whole tick completes, with stale output suppressed. One adapter flag arms only on actual reset/overflow requests; fresh traffic cannot starve recovery. Fail-first Q16/32/64 tests cover received and scheduled MIDI (including empty external input), immediate/one-packet sinks, repeated reset during unfinished recovery, exact input-history timestamps/counts, continuous audio and every fresh packet at exact Q latency. Expanded Miri case passes in29.50s. |
+| Session restore collided with an existing JACK port name | Refused unpublish admission could retain an old ready flag, discard ownership bookkeeping, then reuse a live name. Transient Unavailable now defers; hard errors clear readiness and retain ownership until successful retirement. A fail-first captured-session regression reproduces the exact physical-name collision, then passes transient/hard errors over typed/encoded delivery without sleeps or weakened assertions. |
+| CodeQL mistook a synthetic `nonce` for cryptography | Renamed the deterministic node-generation argument to `seed`. Maximum epoch/sequence tests remain. Fresh CodeQL has no new alerts and automatically resolved its thread; no rule was disabled. |
 
-Final local gates:
+### Local acceptance
 
-- `cargo fmt --all -- --check`, independent fixture formatting and `git diff --check` passed.
-- `RUSTFLAGS="-D warnings" cargo build --workspace` passed before the full suite.
-- Full documented nextest command: **2,661 passed, six existing skips**, zero failures.
-- All affected package tests on Wasm/Node: **434 passed**. Independent loop fixture:
-  **60 passed**, preserving full native media/model/ownership oracles.
-- Test-attribute policy, closed **390-module** tracing inventory, feature-parity
-  coverage, runtime book links/excerpts, all **18 runnable examples**, all three
-  dependency-boundary scripts across their four targets, and **133 Python tooling
-  tests** passed.
+| Gate | Evidence |
+| --- | --- |
+| Warning-denying workspace build; full native suite | **2,667 passed, six existing skips** on final implementation; `work/cleanup-pending-tick-build.log`, `work/cleanup-pending-tick-native.log`. |
+| Complete affected Wasm suite, pinned Node22.22.2 | **473 passed**: 438 core plus all35 application-service tests; `work/cleanup-pending-tick-node.log`. |
+| Independent loop fixture | **60 native tests passed**; final seeded descriptor model also passes in `work/cleanup-final-graph-model.log`. |
+| Actual non-isolated loop AudioWorklets | Fresh final-code **debug and release**, offline/live, all six deliberate failure gates per profile; `work/cleanup-pending-tick-browser-{debug,release}.log`. |
+| Generic runtime worklets | Offline/live media/replay agreement and both deliberate failure gates; `target/rt-runtime-host/reports`. |
+| Production browser workflows | **21 Chromium file/retiming tests**, including sync families and Q16/Q64; hosted UI record/play/save/clear/load, bus changes and new session; `work/cleanup-delivery-retiming-browser.log`, `work/cleanup-app-browser-smoke.log`. Zero reported xruns in that smoke is not a deadline guarantee. |
+| Native transports and persistence | Socket/shared-memory/TCP workflows, >32 MiB exact WAV/MIDI round trips, corrupt refusal, abandoned-owner cleanup and fresh load identities; `work/cleanup-native-{probe,files}-*`. |
+| Strict JACK acceptance | All seven commands pass, including five session scenarios, Master preview, companion and UI startup; `work/cleanup-pending-tick-jack-final.log`, `work/cleanup-pending-tick-jack-final`. |
+| Miri, nightly-2026-05-04 | **29 selected tests across this cleanup**, original workloads and 900s watchdog retained; breakdown below. |
+| Structural checks | Formatting, test policy, closed **390-module** tracing inventory, book/excerpts, **17 inventoried runnable examples**, parity ledger, dependency boundaries and **133 Python tooling tests** pass; `work/cleanup-final-*`, `work/cleanup-python-tests.log`. |
 
-Logs are `work/cleanup-final-*`, `work/cleanup-full-{native,node}.log`,
-`work/cleanup-python-tests.log` and `work/cleanup-*-boundary.log`; generated logs,
-tooling, artifacts and `work/` are not committed. Before this evidence entry the
-consolidation relative to 52f24c02 changed 182 tracked files, adding 2,965 lines and
-removing 7,466 (net **4,501 removed**, excluding binary sizes and the new journal
-sidecar). This follows the preceding removal of roughly 16,000 prototype/benchmark
-lines. The largest retired component is the demonstrator; useful DSP scenarios
-remain in existing shared test support rather than a copied service implementation.
-
-Additional local end-to-end evidence is available for the final stage: actual
-non-isolated loop offline/live AudioWorklets pass in debug and release, including
-all six deliberate failure gates per profile; the generic runtime worklets and both
-failure gates also pass. The 21 production file/retiming Chromium tests pass,
-including sync-family import and Q16/Q64 scenarios. Native socket/shared-memory
-transport and >32 MiB file canaries pass. The fresh generic runtime journal matches
-all 2,601 historical callback inputs/sample hashes, complete MIDI/graph hashes and
-work counters. Only four capture revision fields differ because Q=1 publishes each
-tick (35→4097,36→4225,36→4225,37→4353). Updated the golden artifact only after that
-comparison and successful real-worklet/native replay; its sidecar records current
-provenance and the exact changed response offsets. Historical reports are unchanged.
-Native-only replay of the updated golden artifact passes.
-
-The consolidated result remains local. Final interpreter completion, delivery/CI,
-automated review and human delivery decision are still tracked in stage 7.
-
-
-Final local acceptance (2026-11-04, following 24fc26c1): the full affected Wasm
-suite also passes with the CI-pinned **Node22.22.2: 434 tests**. The production
-hosted Chromium UI smoke passes record/play/save/clear/load, bus reconfiguration
-and new session with **zero reported xruns**. This is one observed smoke run, not
-a general deadline guarantee. Socket and shared-memory companions pass both the
-transport workflow and >32 MiB exact WAV/MIDI persistence round-trip, including
-socket attachment/recovery, corrupt input refusal, independent abandoned-owner
-cleanup, fresh identities after load and exact resave.
-
-Pinned **nightly-2026-05-04 Miri: 26 tests passed**, preserving the existing
-900-second per-command watchdog and original workloads:
-
-| Target | Passed |
+| Selected Miri target | Passed |
 | --- | ---: |
 | runtime `planner_execution` | 8 |
 | runtime `planner_admission` | 3 |
 | runtime `capture_prepared_interval` | 3 |
-| runtime `capture_group_intervals::whole_tick_capture_is_atomic_and_retained_prefixes_survive_at_larger_quanta` | 1 |
+| larger-Q atomic capture/retained prefixes | 1 |
 | runtime `resource_index` | 5 |
 | loops `graph_guards` | 6 |
+| wide-port buffered-audio oracle | 1 |
+| delayed MIDI-output recovery oracle | 1 |
+| pending MIDI-input recovery/history oracle | 1 |
 
-Evidence: `work/cleanup-miri/result.json` and its six command logs;
-`work/cleanup-pinned-node.log`, `work/cleanup-app-browser-smoke.log`,
-`work/cleanup-production-retiming-browser.log`, `work/cleanup-native-{probe,files}-*`,
-and the actual worklet reports under `target/{loops-host,rt-runtime-host}/reports`.
-The complete independent runtime fixture tests also pass. No remote CI or review
-has been inspected or run as part of this consolidation, and nothing has been
-pushed. The explicit stage-6 pause remains in force; permission to resume delivery
-has been requested. Do not mark this plan completely finished until the remaining
-stage-7 delivery, cross-platform/package CI and automated-review evidence exists.
+Miri logs: `work/cleanup-miri/result.json`, `work/cleanup-review-buffer-miri.log`
+(583.94s) and `work/cleanup-midi-miri.log` (20.13s). After removing the ignored budget,
+reran all eight planner-execution cases and the MIDI recovery case unchanged;
+`work/cleanup-quota-miri-{planner_execution,integrated}.log` pass. The global selected inventory
+of342 executions in172 commands is not a claim that all ran locally. Generated
+logs/artifacts/tooling stay untracked. The first final native launch lacked socket
+permission; its unchanged rerun with socket/shared-memory permissions passes.
+A Wasm link exhausted workspace disk; rebuilding generated artifacts with debug
+symbols off produced the passing 437-test run. Neither changed source assertions.
 
-Architectural outcome: the removed mechanisms were compatibility APIs and a second
-composition, not the ownership foundations. Graph compilation/publication, resource
-and MIDI-index pools, coordinated capture transactions, typed receipts/credits,
-physical-node admission and explicit stopped reclamation still protect independent
-requirements. Quantum processing simplifies their scheduling but does not make
-those responsibilities redundant. The retained library/application/host boundaries
-also remain useful; further crate deletion would require a separate change of
-responsibility rather than this execution-model cleanup.
+### Remote acceptance and handoff
 
+[PR930](https://github.com/SanderVocke/shoopdaloop/pull/930) targets
+`feat/backend-replacement`, is ready and is pushed through `820fb239` (implementation
+`09a92496` followed only by plan consolidation).
+[Automated review](https://github.com/SanderVocke/shoopdaloop/pull/930#issuecomment-6636594400)
+completed clean on `820fb239`. Review of the subsequent CI/plan update found the
+pending-input reset case above; address it and obtain fresh review on the fix.
+[Docs](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787505), strict
+JACK including driver feature combinations, bare-metal and Windows/Linux process
+inspection pass. [Current implementation CI](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787503)
+and [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890787410)
+are still running. The user explicitly waived macOS validation on2026-11-04
+because of hosted-runner contention. Linux, Windows and web debug/release builds,
+Windows/Linux inspection and all portable/Linux acceptance remain required.
+Removed the build matrix's unnecessary dependency on the inspection matrix, so
+queued macOS inspection cannot serialize other platform builds. All macOS jobs
+remain defined for future execution; their result is excluded from this acceptance
+pass. The required non-macOS gates still need to complete.
 
-Delivery resumed (2026-11-04): the user explicitly approved proceeding with all
-remaining delivery, CI and review work. The earlier publication pause is lifted;
-merge approval remains the final human decision. Refreshed PR930 and fetched its
-base: a6e2554c removes obsolete fixed JACK startup-port configuration. Merge that
-base while retaining quantum configuration and the completed cleanup, then validate
-and push the consolidated result before investigating the current platform matrix.
+The preceding run's macOS arm64 inspection was canceled before acquiring a runner;
+GitHub annotations explicitly identify hosted capacity constraints. Selective retry
+obtained the runner. The initial JACK package download took16m45s for52.7MB; its
+selective retry exposed the retirement-admission bug reproduced and fixed above.
+No platform was removed, no assertions/deadlines were weakened and no required
+workload was shortened to address those failures.
 
+At implementation checkpoint `820fb239`, the PR changes313 tracked files against
+`a6e2554c`, adding11,676 lines and removing12,432: **756 net lines removed**. Relative to this plan’s `52f24c02` starting point,
+that checkpoint adds4,107 lines and removes8,591: **4,484 net lines removed**.
 
-Delivery integration checkpoint (2026-11-04): merged a6e2554c in e8dc16d5,
-retaining the quantum setting and upstream dynamic JACK ports. Both histories used
-application protocol19 for incompatible layouts; the combined protocol is20, with
-an explicit version19 rejection and updated independent canonical byte tables.
-Host setup is6 because its combined layout includes the quantum field as well as
-the upstream removals; engine/worklet versions remain7/3. Maintained usage guides
-reflect those versions; historical checkpoints retain their original numbers.
+### Architectural outcome
 
-Resolved the deferred recovery readiness race: the test child now polls until its
-snapshot confirms Recording before publishing its readiness file. Admission of
-Record alone did not prove RT activation. The parent's recording-survival assertion
-and original workload remain unchanged. This is readiness synchronization rather
-than retrying a failed survival assertion.
+Removed the compatibility mechanisms and the second demonstrator composition.
+Graph compilation/publication, resource and MIDI-index pools, coordinated capture
+transactions, physical-node admission, typed receipts/credits and explicit stopped
+reclamation still enforce independent lifetime and recovery requirements. The
+library/application/host boundaries still separate useful responsibilities.
+Further major crate removal is not justified by quantum processing alone. Broader
+feature restoration in the parity ledger remains outside this cleanup.
 
-After integration and these fixes, the warning-denying workspace build, full
-native suite (**2,661 passed, six skips**), **117 affected Node22 tests**, all
-**21 production file/retiming Chromium tests**, and **133 Python tooling tests**
-pass. The first protocol check correctly exposed two stale byte tables after the
-version bump; the corrected final full suite above passes. Logs:
-`work/cleanup-delivery-{build,native-final,node,retiming-browser,python}.log`.
+Latest review follow-up: added the pending-input recovery guard and permanent
+regression, preserving all input for recording while suppressing stale output.
+Final local build/full native passes **2,667 tests, six existing skips**; all
+**473 Node tests** pass. New Miri evidence: `work/cleanup-input-reset-miri.log`
+(14.77s), bringing selected cleanup cases to29. The preceding push’s Linux debug,
+Windows debug and web release gates passed; rerun required gates after this fix.
 
+Fresh strict JACK acceptance and actual debug/release offline/live worklets with
+all six deliberate failure gates pass after the pending-input guard; logs are
+`work/cleanup-input-reset-jack.log` and
+`work/cleanup-pending-tick-browser-{debug,release}.log`.
 
-Review/CI corrections after 435eb2a2 (2026-11-04): Codex review identified the
-HostBuffer 64-port restriction. Default JACK preparation reserves 96 audio outputs;
-the generic runtime must honor prepared counts. Removed that limit and per-tick
-slice-reference arrays. A private borrowed audio interface lends either host slices
-or the contiguous prepared buffers to the same graph traversal. It adds no public
-processor entry point or alternate planner lifecycle. A heap-guarded independent
-128-frame stream oracle verifies all 96/1,025 ports across whole/irregular/zero
-callbacks, exact channel reversal and one-quantum latency. Native, Node and Miri
-pass; the unchanged Miri workload completed in 583.94s, below the existing 900s limit.
+Follow-up self-review extends the same guard to the entire partially collected
+tick: due MIDI injections with empty external input otherwise reproduce the same
+stale acknowledgment. The fail-first expansion is
+`work/cleanup-pending-tick-{before,after}.log`. The guard is now an O(1) fill check,
+using the same single bit; no additional state or graph processing mode. Complete
+native2667/Node473 suites, expanded Miri29.50s, and actual debug/release worklets
+with all failure gates pass on the strengthened code.
 
-Strict local JACK acceptance then reproduced a structural timing error: Stop and
-activation separated by one requested frame could round onto the same tick, making
-removal of playing strips Busy. Structural bases and ramp ends now align, with
-activation one complete quantum after Stop settlement. A new Q16/Q32/Q64 test with
-ramps 4 and Q+3 fails before the fix and passes afterward, retaining every unrelated
-output sample and reusing the removed strip/loop slots. All 13 production/structural
-tests, including Q1 scalar oracles, pass.
-
-Coverage and Windows debug both exposed a UI shutdown failure. Inspected the two
-uploaded Perfetto traces using the pinned repository wrapper/checksum, with its
-cache relocated in an uncommitted workspace copy. Original traces show continued
-UI/client work but do not record the remote host's completion/error; no timing-only
-cause was inferred from them. Improved shutdown assertion diagnostics and reproduced
-ShutdownFailed/MIDI-reset-not-confirmed on the first 2-CPU contention trial with
-detailed tracing. The dummy owner could exit without its final reset callback when
-an in-flight callback exceeded the existing grace period; reset confirmation was
-also read before joining the driver. The dummy now completes that final callback
-on its render owner, and confirmation is sampled after join. A deterministic
-zero-grace/no-sleep regression proves reset completion during join and stopped
-cleanup. Both original UI assertions pass in **10 constrained/traced trials × 2
-cases** after the fix. The grace period and UI deadlines are unchanged.
-
-Fresh strict JACK acceptance passes all seven commands, including all five session
-scenarios through local/socket/shared-memory/TCP, native Master preview, companion
-and UI startup. The portable affected core suite passes **436 Node tests**; the
-wide-port Miri case brings local selected interpreter evidence to **27 tests**.
-Detailed logs: `work/cleanup-review-*`, `work/cleanup-final-review-*`,
-`work/cleanup-ui-stress-final.log` and `work/cleanup-native-jack-final`.
-
-First remote run 41871899675: Linux debug/release, all three platform process
-inspections and bare-metal gates pass. JACK and coverage/Windows shutdown failures
-are addressed above. Both macOS build jobs were canceled without acquiring a runner;
-GitHub annotations explicitly report hosted macOS arm64 capacity constraints. These
-are unfulfilled platform gates, not passes. Restart the full matrix with the fixes
-and obtain fresh automated review before completing stage 7.
-
-
-Final review-fix local gate: warning-denying workspace build and full native suite
-pass (**2,664 passed, six existing skips**). Fresh actual non-isolated loop worklets
-pass in offline/live debug contexts with all six deliberate failure gates. Formatting,
-test policy, tracing, parity/book checks and all 133 Python tooling tests pass.
-
-Automated review follow-up: recovery suppression must clear the delayed MIDI
-output as well as the current callback's packets. Otherwise a short callback can
-acknowledge all resets and then emit an older queued note in the next callback.
-The heap-guarded regression first fails on that exact sequence, then passes for
-explicit reset and host-output overflow, Q16/Q32/Q64, immediate and one-packet
-reset sinks, exact reset ordering, uninterrupted audio and fresh post-reset MIDI.
-Native and Node pass; Miri passes the identical test in 20.13s (28 selected cases
-across this cleanup). Logs: `work/cleanup-midi-{before,after,node,miri}.log`.
-The central pending-port hook invalidates buffered output for every runtime
-recovery source, including scoped graph activation and render errors, without
-altering collected input or recording history.
-
-The CodeQL nonce report points to a deterministic descriptor-model argument used
-only to generate node generations. Renamed that argument to `seed`; retained the
-maximum-epoch/sequence boundary and seeded ownership model unchanged. The model
-passes. The code-scanning alert API is unavailable to the integration (403), so
-resolution is verified through the next CodeQL run and its PR thread rather than
-claiming an administrative dismissal.
-
-Full local validation of the MIDI review fix: warning-denying workspace build and
-**2,665 native tests passed, six existing skips**, with required local-socket and
-shared-memory permissions (`work/cleanup-midi-native-network.log`). The first
-full-suite launch lacked socket permission and is not acceptance evidence.
+The final strict JACK rerun passes all seven commands. Its first local attempt
+failed before the nested server-loss fixture started: JACK reported too many
+active servers. Inspection with the same shared-memory namespace found no live
+JACK server and seven dead fixture registrations left by repeated intentional
+SIGKILL tests. Backed up the registry, verified dead PIDs and current ownership,
+and cleared only those28 dead test objects and their registry. The unchanged
+suite then passed (`work/cleanup-pending-tick-jack-final.log`); failure assertions
+and deadlines remain intact.

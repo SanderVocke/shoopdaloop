@@ -11,7 +11,7 @@ use shoop_rt_engine::{ControlEndpoint, HostStatus, PrepareError, Render, MAX_HOS
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::buffer::{Batch, Stream};
 use shoop_rt_transport::carrier::RecordServer;
-use shoop_rt_transport_message_port::server::{RecordLanes, Records};
+use shoop_rt_transport_message_port::server::{RecordLanes, Records, PROFILING_CREDITS};
 
 /// Lanes the main thread posts into.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -126,6 +126,7 @@ impl WorkletHost {
             inbox: Stream::new(config.records_in_bytes),
             outbox: Batch::new(config.records_out_bytes),
             framing_errors: 0,
+            profiling_credits: PROFILING_CREDITS,
         })));
         Ok(Self {
             server: RecordServer::new(engine.endpoint, records.clone(), outbox),
@@ -154,6 +155,9 @@ impl WorkletHost {
     }
     pub fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
         self.status.profiling()
+    }
+    pub fn grant_profiling(&self, count: u32) {
+        self.records.grant_profiling(count);
     }
     pub fn engine_frame(&self) -> u64 {
         self.render.next_frame().0

@@ -63,6 +63,8 @@ pub trait RecordPort {
     fn post_on_lane(&mut self, record: &[u8], _lane: Lane) -> Result<(), CarrierError> {
         self.post(record)
     }
+    /// A decoded record was consumed by the client.
+    fn consumed(&mut self, _lane: Lane) {}
     /// Terminal carrier failure, distinct from an idle receive.
     fn failure(&mut self) -> Option<CarrierError> {
         None

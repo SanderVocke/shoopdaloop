@@ -1,7 +1,7 @@
 //! Browser bindings for the main-thread half; excluded from the worklet artifact.
 use crate::RecordBatches;
 use js_sys::{Array, Object, Reflect, Uint8Array};
-use shoop_rt_protocol::DisconnectReason;
+use shoop_rt_protocol::{DisconnectReason, Lane};
 use shoop_rt_transport::carrier::{CarrierError, RecordPort};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::JsValue;
@@ -55,7 +55,7 @@ impl Port {
         spawn_local(async move { port.flush() });
     }
     fn flush(&self) {
-        let (target, records, sideband) = {
+        let (target, records, sideband, credits) = {
             let mut outgoing = self.0.borrow_mut();
             outgoing.scheduled = false;
             let sideband = outgoing
@@ -66,6 +66,7 @@ impl Port {
                 outgoing.target.clone(),
                 outgoing.records.take_outgoing(),
                 sideband,
+                outgoing.records.take_profiling_credits(),
             )
         };
         for batch in [records.map(|bytes| ("records", bytes)), sideband]
@@ -77,9 +78,24 @@ impl Port {
                 break;
             }
         }
+        if credits != 0 {
+            let message = Object::new();
+            let result = Reflect::set(&message, &"kind".into(), &"profiling-credit".into())
+                .and_then(|_| Reflect::set(&message, &"count".into(), &credits.into()))
+                .and_then(|_| target.post_message(&message));
+            if result.is_err() {
+                self.close(DisconnectReason::Fault);
+            }
+        }
     }
 }
 impl RecordPort for Port {
+    fn consumed(&mut self, lane: Lane) {
+        if lane == Lane::Profiling {
+            self.0.borrow_mut().records.consumed(lane);
+            self.request_flush();
+        }
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         self.0.borrow_mut().records.post(record)?;
         self.request_flush();

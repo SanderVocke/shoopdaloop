@@ -141,7 +141,6 @@ fn limits() -> Config {
         budgets: Budgets {
             commands: 4,
             events: 4,
-            subranges: 5,
             validation_steps: 256,
             ..Budgets::default()
         },
@@ -353,7 +352,6 @@ fn ingress_and_recycled_results_wait_until_the_next_callback_not_next_interval()
     };
     let mut config = limits();
     config.budgets.events = 1;
-    config.budgets.subranges = 0;
     let (mut control, mut runtime) = GraphRuntime::prepare_with_planner(
         config.prepare().unwrap(),
         rt_runtime::Quantum::new(1).unwrap(),
@@ -410,10 +408,9 @@ fn ingress_and_recycled_results_wait_until_the_next_callback_not_next_interval()
 }
 
 #[shoop_test]
-fn dense_planning_uses_one_callback_envelope_without_subrange_quota() {
+fn dense_planning_uses_one_callback_envelope() {
     let mut config = limits();
     config.budgets.events = 1;
-    config.budgets.subranges = 0;
     let mut harness = Harness::new(Fault::None, false, config);
     harness.step(128).unwrap();
     assert_eq!(harness.runtime.epoch(), Epoch(1));

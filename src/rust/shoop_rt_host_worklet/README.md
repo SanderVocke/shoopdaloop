@@ -53,7 +53,7 @@ after preparation, runtime profiling clocks/timestamps/xrun capture, stop and re
 
    `wasmModule` is the compiled `WebAssembly.Module`; `config` is the
    configuration record as an `ArrayBuffer` or typed array.
-2. The processor instantiates the module with an empty import object, writes the
+2. The processor instantiates the module with its host-clock import, writes the
    record into module memory and prepares the engine in its constructor, before
    the first render quantum. Preparation allocates every buffer and pool; nothing
    allocates afterwards.
@@ -195,6 +195,14 @@ Wasm-bindgen component tests use this crate without raw exports because their
 runner does not supply the raw ABI import. Native ABI tests and the production
 artifact contract cover the exports and import together. This does not change the
 production artifact or introduce a profiling feature flag.
+
+Profiling publication has a separate 256-record credit window, covering status,
+names and samples. After decoding a profiling record, the main-thread port returns
+one credit in a coalesced `profiling-credit` message. The processor passes its
+count to `shoop_rt_worklet_profiling_credit(count)`. Custom ABI clients must also
+return consumed credits. Without them, publication pauses within prepared queue
+bounds while rendering and reliable controls continue; live-stream drops remain
+reported and reserved history remains independent.
 
 ## Main thread
 

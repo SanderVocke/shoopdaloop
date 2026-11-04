@@ -186,7 +186,6 @@ fn setup_with_pages(
         budgets: Budgets {
             commands: 64,
             events: 64,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 64,

@@ -28,7 +28,7 @@ Defaults are from `Config::default()`; capacities are element counts unless a un
 | `command_slots` | 64 | Normal transport admission/completion owners. GraphRuntime adds one independent recovery slot. |
 | `budgets` | below | Work allowances for one enclosing host callback, not every internal interval. |
 
-Config requires the capacities/work fields to be positive except host port counts, resource-I/O headroom and ignored `subranges`. Each positive capacity/work value is at most `i32::MAX`; checked products must also fit the storage ceiling. Each host port count must fit `max_ports`; catalog preparation additionally checks the complete host/prepared-node port sum and identities/signatures.
+Config requires the capacities/work fields to be positive except host port counts and resource-I/O headroom. Each positive capacity/work value is at most `i32::MAX`; checked products must also fit the storage ceiling. Each host port count must fit `max_ports`; catalog preparation additionally checks the complete host/prepared-node port sum and identities/signatures.
 
 Transfer bytes must be at least one page. `resource_io_bytes <= transfer_bytes âˆ’ page_bytes`; `resource_io_steps < validation_steps`. Thus legacy headroom cannot consume the last page of unreserved copy or the last unreserved validation step. Headroom is **inside**, not in addition to, the totals. Required `RenderIo` access is not throttled by these discretionary allowances.
 
@@ -40,7 +40,6 @@ Transfer bytes must be at least one page. `resource_io_bytes <= transfer_bytes â
 |---|---:|---|
 | `commands` | 8 | Transport operations per callback, including recovery/cancelled work. |
 | `events` | 64 | Normal action/result capacity and delivery bound; a planned runtime adds one independent recovery delivery. |
-| `subranges` | 65 | Compatibility field, ignored. Zero is valid; internal intervals have no quota. |
 | `transfer_bytes` | 4096 | Optional callback copy allowance; also caps prepared scheduled payload stride. |
 | `validation_steps` | 32 | Shared graph validation, optional resource validation and reclamation allowance. |
 | `publications` | 8 | Per-cycle terminal-return allowance and a separate optional telemetry allowance. Telemetry cannot steal a terminal publication's reservation. |

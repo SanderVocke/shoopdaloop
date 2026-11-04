@@ -206,10 +206,10 @@ impl<P: RecordPort> Carrier for RecordClient<P> {
                 return Some(EngineMessage::Disconnected(reason));
             }
         };
-        Some(
-            codec::decode_engine(&self.buf[..len])
-                .unwrap_or(EngineMessage::Disconnected(DisconnectReason::ProtocolError)),
-        )
+        let message = codec::decode_engine(&self.buf[..len])
+            .unwrap_or(EngineMessage::Disconnected(DisconnectReason::ProtocolError));
+        self.port.consumed(message.lane());
+        Some(message)
     }
 }
 

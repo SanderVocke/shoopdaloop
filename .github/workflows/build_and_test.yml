@@ -326,8 +326,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Keep platform builds independent of inspection runner availability.
   build_and_test:
-    needs: host_process_inspection
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
@@ -803,7 +803,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
+            --package rt_profiling --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
             --package shoop_app_protocol --package shoop_app_client --package shoop_port_graph \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \

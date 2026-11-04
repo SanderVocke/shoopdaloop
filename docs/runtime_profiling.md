@@ -8,6 +8,12 @@ request immediately and saves the preference in the background; no Save action
 or audio restart is needed. The window reports the engine's acknowledgement. Profiling is independent
 of developer tracing. There are no recording levels or xrun arming controls.
 
+![Profiling window using quantum-budget units](runtime_profiling/window-budget.png)
+
+The screenshot uses the native dummy driver in a debug build; its live readings
+illustrate the interface. [Microsecond presentation](runtime_profiling/window-us.png).
+Release performance measurements are linked below.
+
 The window offers **Graph** and **Table** tabs with shared controls. The table
 contains **Node / Avg / Worst / Stddev** in graph execution order.
 Choose **µs** or **% budget**. Percentages use one fixed quantum's time budget:
@@ -161,6 +167,11 @@ The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
 bulk, metering and profiling rotate fairly. Engine protocol version 9, application
 protocol version 23, and SDM2 shared-memory descriptors reject incompatible peers.
+The browser MessagePort additionally allows at most 256 unconsumed profiling
+records. The main thread returns credits after decoding consumption, coalesced
+into one asynchronous flush. Status, names, topology and timestamp chunks share that
+profiling-only window. When it fills, existing bounded queues absorb the backlog
+and live recording eventually reports drops; reliable controls still progress.
 The application backend collects and computes Welford statistics outside rendering;
 live reports refresh at most five times per second. The worklet endpoint performs
 bounded forwarding on the audio thread, including the existing record encoding

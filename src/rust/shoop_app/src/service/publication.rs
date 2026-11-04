@@ -174,10 +174,15 @@ impl Service {
                             entry.removing = true;
                             entry.ready = false;
                         }
-                        Err(error) if error.kind == graph::ErrorKind::Busy => {}
+                        Err(error)
+                            if matches!(
+                                error.kind,
+                                graph::ErrorKind::Busy | graph::ErrorKind::Unavailable
+                            ) => {}
                         Err(error) => {
                             entry.error = Some(error.message);
                             entry.removing = true;
+                            entry.ready = false;
                         }
                     }
                 }

@@ -1,5 +1,5 @@
 //! Main-thread record batches exchanged through a MessagePort.
-use shoop_rt_protocol::{codec, DisconnectReason, EngineMessage};
+use shoop_rt_protocol::{codec, DisconnectReason, EngineMessage, Lane};
 use shoop_rt_transport::carrier::{CarrierError, RecordPort};
 use shoop_rt_transport::framing::{self, FramingError};
 
@@ -15,11 +15,16 @@ pub struct RecordBatches {
     read: usize,
     closed: Option<DisconnectReason>,
     close_delivered: bool,
+    profiling_consumed: u32,
 }
 
 impl RecordBatches {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn take_profiling_credits(&mut self) -> u32 {
+        std::mem::take(&mut self.profiling_consumed)
     }
 
     /// The records posted since the last call, as one batch.
@@ -63,6 +68,11 @@ impl RecordBatches {
 }
 
 impl RecordPort for RecordBatches {
+    fn consumed(&mut self, lane: Lane) {
+        if lane == Lane::Profiling {
+            self.profiling_consumed = self.profiling_consumed.saturating_add(1);
+        }
+    }
     fn post(&mut self, record: &[u8]) -> Result<(), CarrierError> {
         if self.closed.is_some() {
             return Err(CarrierError::Disconnected);
@@ -107,6 +117,33 @@ mod tests {
         let mut buf = [0; MAX_RECORD_BYTES];
         let len = codec::encode_engine(&message, &mut buf).unwrap();
         buf[..len].to_vec()
+    }
+
+    #[shoop_test]
+    fn profiling_credit_returns_only_after_a_record_is_consumed() {
+        for message in [
+            EngineMessage::ProfilingStatus(Default::default()),
+            EngineMessage::ProfilingGraph {
+                generation: 1,
+                epoch: 2,
+                record: shoop_rt_protocol::profiling::GraphRecord::End,
+            },
+        ] {
+            let mut client = RecordClient::new(RecordBatches::new());
+            let record = engine_record(message);
+            client.port_mut().receive(&record);
+            assert_eq!(client.port_mut().take_profiling_credits(), 0);
+            assert_eq!(client.receive(), Some(message));
+            assert_eq!(client.port_mut().take_profiling_credits(), 1);
+            assert_eq!(client.port_mut().take_profiling_credits(), 0);
+            client.port_mut().receive(&record);
+            client
+                .port_mut()
+                .receive(&engine_record(EngineMessage::Rejected { version: 99 }));
+            assert!(client.receive().is_some());
+            assert!(client.receive().is_some());
+            assert_eq!(client.port_mut().take_profiling_credits(), 1);
+        }
     }
 
     #[shoop_test]

@@ -17,7 +17,6 @@ fn config() -> rt_runtime::PreparedConfig {
         budgets: Budgets {
             events: 2,
             transfer_bytes: 64,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()

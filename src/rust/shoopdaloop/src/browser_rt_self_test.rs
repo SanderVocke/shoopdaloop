@@ -229,6 +229,7 @@ impl NewEngineSelfTest {
         }
         let running = runtime.audio_running();
         let signal = runtime.new_engine_microphone();
+        let pending = runtime.session_operations_pending();
         let mut send = |intent: AppIntent| {
             runtime
                 .dispatch(intent)
@@ -249,7 +250,7 @@ impl NewEngineSelfTest {
             }
             Step::ProfilingStarted => {
                 let profile = &snapshot.profiling;
-                if !profile.requested || (profile.available && !profile.active) {
+                if pending || !profile.requested || (profile.available && !profile.active) {
                     return Ok(None);
                 }
                 let Some(topology) = &profile.topology else {
@@ -949,10 +950,12 @@ impl NewEngineSelfTest {
                 Step::BusZeroSaving
             }
             Step::BusZeroSaving => {
-                if !snapshot.io_task.as_ref().is_some_and(|t| {
-                    t.kind == shoop_egui::IoTaskKind::SaveSession
-                        && t.status == IoTaskStatus::Completed
-                }) {
+                if pending
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::SaveSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
                     return Ok(None);
                 }
                 let Some(bundle) = &self.saved_bundle else {
@@ -1000,7 +1003,8 @@ impl NewEngineSelfTest {
                 Step::BusAddedAgain
             }
             Step::BusAddedAgain => {
-                if snapshot.buses.len() != 1
+                if pending
+                    || snapshot.buses.len() != 1
                     || snapshot.buses[0].name != "After zero"
                     || snapshot.buses[0].structural_state != StructuralState::Confirmed
                 {

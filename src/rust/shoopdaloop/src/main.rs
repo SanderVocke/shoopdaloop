@@ -3617,6 +3617,11 @@ impl Runtime {
     fn audio_running(&self) -> bool {
         self.audio.running() && self.runtime.is_some()
     }
+    fn session_operations_pending(&self) -> bool {
+        self.runtime
+            .as_ref()
+            .is_none_or(CooperativeApplicationRuntime::has_pending_operations)
+    }
 }
 
 const SMALL_SCREEN_MAX_SHORT_SIDE: f32 = 800.0;

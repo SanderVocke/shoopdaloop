@@ -325,6 +325,7 @@ fn show_inner(
                                     egui::vec2(96., 20.),
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
+                                        ui.set_min_width(96.);
                                         ui.strong(title);
                                     },
                                 );
@@ -337,6 +338,7 @@ fn show_inner(
                                     egui::vec2(name_width, 20.),
                                     egui::Layout::left_to_right(egui::Align::Center),
                                     |ui| {
+                                        ui.set_min_width(name_width);
                                         ui.add(
                                             egui::Label::new(
                                                 egui::RichText::new(name).color(colors::FOREGROUND),
@@ -356,6 +358,7 @@ fn show_inner(
                                         egui::vec2(96., 20.),
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
+                                            ui.set_min_width(96.);
                                             ui.label(
                                                 egui::RichText::new(text)
                                                     .monospace()
