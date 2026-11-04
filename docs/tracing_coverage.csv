@@ -5,6 +5,7 @@ src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error
 src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independent bounded renderer; no application tracing dependency. Hosts can observe Copy work and fault diagnostics outside rendering.
 src/rust/rt_runtime/src/fixed/graph.rs,generic_realtime_library,excluded,Prepared fixed-tick execution; hosts observe Copy tick and route counts and terminal fault diagnostics outside rendering.
 src/rust/rt_runtime/src/fixed/host.rs,generic_realtime_library,excluded,Partition adaptation exposes core and host clocks and constant latency without callback tracing.
+src/rust/rt_runtime/src/fixed/host_buffer.rs,generic_realtime_library,excluded,Prepared tick staging exposes declared latency and bounded MIDI overflow counters through its owning runtime.
 src/rust/rt_runtime/src/fixed/mod.rs,generic_realtime_library,excluded,Portable fixed-core module declarations; no execution boundary to instrument.
 src/rust/rt_runtime/src/fixed/operation.rs,generic_realtime_library,excluded,Typed node operations and terminal receipts; direct bound targets without host tracing dependencies.
 src/rust/rt_runtime/src/fixed/publication.rs,generic_realtime_library,excluded,Owning route publication exposes terminal timing and epoch receipts; retirement stays off-render without application tracing.

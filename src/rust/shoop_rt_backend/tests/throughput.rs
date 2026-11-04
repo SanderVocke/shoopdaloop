@@ -23,6 +23,7 @@ const MAX_ROUNDS: usize = 125;
 #[shoop_test]
 fn a_ten_second_stereo_loop_is_read_within_two_seconds_of_polling() {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: SAMPLE_RATE,
         max_frames: CALLBACK,
         host: HostPorts::numbered(2, 2, 1),

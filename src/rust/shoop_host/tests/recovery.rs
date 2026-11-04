@@ -37,6 +37,7 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,
@@ -499,6 +500,7 @@ fn launcher_peer() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,
@@ -836,6 +838,7 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
+                quantum: 1,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 8,

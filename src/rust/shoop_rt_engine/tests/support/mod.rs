@@ -11,6 +11,7 @@ pub fn description() -> EngineDescription {
     EngineDescription {
         sample_rate: 1000,
         max_frames: 16,
+        quantum: 1,
         host: HostPorts::numbered(2, 2, 1),
         segments: vec![
             Segment {

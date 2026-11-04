@@ -6,6 +6,7 @@
 
 mod graph;
 mod host;
+pub(crate) mod host_buffer;
 mod operation;
 mod publication;
 mod queue;

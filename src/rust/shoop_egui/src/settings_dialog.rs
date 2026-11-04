@@ -2200,9 +2200,9 @@ mod tests {
         assert_eq!(
             cards,
             if cfg!(target_arch = "wasm32") {
-                [8, 8]
-            } else {
                 [9, 9]
+            } else {
+                [10, 10]
             }
         );
     }

@@ -272,6 +272,89 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
 }
 
 #[shoop_test]
+fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
+    for q in [16, 32, 64, 128] {
+        let scaled = |new| {
+            let mut d = description(new, false);
+            for node in &mut d.loops {
+                node.length *= q;
+            }
+            for program in &mut d.programs {
+                program.nominal_unit_frames *= q;
+            }
+            prepared(&d, 1024)
+        };
+        let mut r = Resolver::prepare(scaled(false)).unwrap();
+        r.enable_fixed(rt_runtime::fixed::Quantum::new(q as usize).unwrap())
+            .unwrap();
+        start(&mut r);
+        let candidate = scaled(true);
+        let change =
+            assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
+                .unwrap();
+        for tick in 0..20 {
+            let interval = assert_no_heap(|| r.preview_fixed(&[])).unwrap();
+            assert_eq!(interval.end, Frame((tick + 1) * q));
+            for d in r.decisions().unwrap() {
+                let s = d.state;
+                let (mode, position, cycles) = match s.id.slot() {
+                    0 => (Mode::Playing, tick % 2 * q, tick / 2),
+                    1 => (Mode::Playing, tick % 5 * q, tick / 5),
+                    2 if (2..6).contains(&tick) => (Mode::Playing, (tick - 2) * q, 0),
+                    3 if tick >= 6 => (Mode::Playing, (tick - 6) % 3 * q, (tick - 6) / 3),
+                    5 => (Mode::Playing, 0, 0),
+                    _ => (Mode::Stopped, 0, 0),
+                };
+                assert_eq!(
+                    (s.mode, if s.plays() { s.position } else { 0 }, s.cycles),
+                    (mode, position, cycles)
+                );
+                if s.id == id(5) {
+                    assert_eq!(
+                        s.composite.unwrap(),
+                        CompositeState {
+                            iteration: if tick < 6 {
+                                (tick / 2) % 3
+                            } else {
+                                ((tick - 6) / 2) % 2
+                            },
+                            passes: if tick < 6 { 0 } else { 1 + (tick - 6) / 4 },
+                            entered_at: Some(Frame(tick / 2 * 2 * q)),
+                        }
+                    );
+                }
+            }
+            assert_no_heap(|| r.commit()).unwrap();
+            let mut events = expected_events(tick);
+            for event in &mut events {
+                event.frame.0 *= q;
+            }
+            assert_eq!(r.events(), events, "Q={q}, tick={tick}");
+            assert_eq!(r.epoch(), Epoch(u64::from(tick >= 6)));
+            assert_no_heap(|| r.finish(interval.end)).unwrap();
+        }
+        assert_eq!(
+            r.completion(change).unwrap().unwrap(),
+            Completion {
+                id: change,
+                sequence: Sequence(3),
+                requested: Frame(1),
+                effective: Frame(q),
+                outcome: Outcome::Applied {
+                    frame: Frame(6 * q)
+                },
+            }
+        );
+        let returned = assert_no_heap(|| r.take_program_change(change))
+            .unwrap()
+            .unwrap();
+        assert_eq!(returned.activated_epoch, Some(Epoch(1)));
+        assert_eq!(returned.topology.program(id(5)).unwrap().iterations, 3);
+        drop(returned);
+    }
+}
+
+#[shoop_test]
 fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_without_revision_gaps(
 ) {
     let mut r = Resolver::prepare(prepared(&description(false, false), 1024)).unwrap();

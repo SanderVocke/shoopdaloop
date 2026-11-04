@@ -9,7 +9,8 @@ execution. Complete production native/browser integration and retire the old
 execution path only after parity and end-to-end validation.
 
 - Every core graph call processes exactly the prepared quantum (16/32/64/128,
-  default 32), independently of host callback size.
+  default 32), independently of host callback size. Q=1 also provides fixed,
+  sample-accurate reference/offline execution.
 - Loop lengths, seeks and transitions align to that grid. Requested/effective
   times and same-tick ordering are deterministic. MIDI retains intra-tick offsets.
 - Arbitrary host partitions preserve the global clock and report buffering latency.
@@ -84,6 +85,28 @@ Each stage depends on its used interfaces, but independent work may move earlier
 Partial milestones remain explicitly partial; do not switch production to a path
 that lacks currently supported functionality.
 
+## Production replacement continuation
+
+The user approved replacing the backend on this branch. A separate checkout at
+`6de0b7a1` is the comparison reference; production transports carry a quantum
+setting, without backend selectors. Shared command vocabulary, resource ownership,
+topology compilation and transaction staging are retained. Execution bypasses adaptive graph intervals, borrowed
+decision lookup and consumer observation acknowledgements. Transactional musical
+preflight remains necessary for coherent capacity failures and request families.
+
+- [x] Add fixed execution hooks to the integrated runtime and loop domain so the
+  complete existing control vocabulary can target fixed ticks. Enforce the grid
+  for topology, media durations, seeks and future deliveries.
+- [x] Replace engine execution, including direct and buffered host
+  processing, preserving endpoint transactions, exports, telemetry and recovery.
+- [x] Carry quantum through native/process/worklet setup, protocol,
+  application settings and persisted configuration; report Q and stream latency.
+- [ ] Run parity scenarios against the separate reference checkout, including sync,
+  program families, slot generations, media replacement, cancellation, shutdown,
+  persistence and reconnect/recovery. Keep component tests as additional evidence.
+- [ ] Remove superseded execution, obtain green native/browser CI, and update
+  measurements for the integrated implementation.
+
 ## Execution contract
 
 - Keep this plan updated as work progresses and check off completed items.
@@ -93,6 +116,17 @@ that lacks currently supported functionality.
 - Goals and acceptance criteria must not be changed without explicit user approval.
 
 ## Progress and evidence
+
+Production cutover continuation: engine preparation uses whole fixed ticks and
+direct loop consumers through the full existing protocol/ownership endpoint.
+Q reaches persisted host settings, native/process startup and worklet records;
+protocol capacities report Q and the constant host stream delay. A one-frame
+fixed mode preserves exact-sample behavioral fixtures without an interval fallback.
+Additional Q=16/32/64/128 tests exercise arbitrary host partitions, real audio/MIDI
+record/play/export and slot reuse, MIDI overflow recovery, delayed synchronized
+recording and live program replacement with exact journals. The generic executor's
+adaptive compatibility path and library example migration are still pending.
+
 
 Initial branch: `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2`.
 The earlier experiments are in `/workspace/work/fixed-quantum`; no experimental

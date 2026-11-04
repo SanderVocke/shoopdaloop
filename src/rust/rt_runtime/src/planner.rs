@@ -126,6 +126,29 @@ pub trait Planner: Send {
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
 
+    fn enable_fixed(&mut self, _quantum: crate::fixed::Quantum) -> Result<(), Error> {
+        Err(Error::InvalidConfig)
+    }
+    fn fixed_operation(
+        &mut self,
+        _operation: Self::Operation,
+        _context: OperationContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<Disposition<Self::Result>, Error> {
+        Err(Error::InvalidState)
+    }
+    fn fixed_begin(
+        &mut self,
+        _context: PlanContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
+    fn fixed_finish(
+        &mut self,
+        _context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
+
     /// Queried only during preparation. None selects the signal-only lifecycle.
     fn spec(&self) -> Option<PlannerSpec>;
     fn decisions(&self) -> &[Self::Decision];
@@ -170,6 +193,15 @@ impl Planner for NoPlanner {
     type Observation = ();
     type Operation = ();
     type Result = ();
+    fn enable_fixed(&mut self, _: crate::fixed::Quantum) -> Result<(), Error> {
+        Ok(())
+    }
+    fn fixed_begin(&mut self, _: PlanContext<'_>) -> Result<(), Error> {
+        Ok(())
+    }
+    fn fixed_finish(&mut self, _: FinishContext<'_, ()>) -> Result<(), Error> {
+        Ok(())
+    }
     fn spec(&self) -> Option<PlannerSpec> {
         None
     }

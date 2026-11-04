@@ -468,6 +468,19 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut rt_runtime::processor::FixedProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        self.apply_configuration(block.graph_epoch);
+        match self {
+            Self::Loop(node) => node.process_fixed(block),
+            _ => self.render_signal(&mut SignalBlock::integrated(block)),
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
@@ -935,6 +948,7 @@ mod tests {
     #[shoop_test]
     fn configuration_for_an_unpublished_epoch_leaves_live_monitoring_untouched() {
         let mut host = OfflineHost::new(&EngineDescription {
+            quantum: 1,
             sample_rate: 1000,
             max_frames: 16,
             ramp_frames: 4,

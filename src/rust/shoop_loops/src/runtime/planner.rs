@@ -643,6 +643,43 @@ impl LoopPlanner {
     }
 }
 impl Planner for LoopPlanner {
+    fn enable_fixed(&mut self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
+        if self.fixed_quantum.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.resolver.enable_fixed(quantum).map_err(runtime_error)?;
+        self.fixed_quantum = Some(quantum);
+        Ok(())
+    }
+    fn fixed_operation(
+        &mut self,
+        operation: Operation,
+        context: OperationContext<'_, Operation, Reply>,
+    ) -> Result<Disposition<Reply>, Error> {
+        self.fixed_quantum.ok_or(Error::InvalidState)?;
+        self.execute_operation(operation, context)
+    }
+    fn fixed_begin(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+        let q = self.fixed_quantum.ok_or(Error::InvalidState)?;
+        if context.frame.checked_add(q.frames())? != context.ceiling {
+            return Err(Error::InvalidFrame);
+        }
+        let end = context.ceiling;
+        if self.settle_boundary(context, true)? != end {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(())
+    }
+    fn fixed_finish(
+        &mut self,
+        context: FinishContext<'_, Observed, Operation, Reply>,
+    ) -> Result<(), Error> {
+        self.fixed_quantum.ok_or(Error::InvalidState)?;
+        if !context.observations.is_empty() {
+            return Err(Error::InvalidState);
+        }
+        self.finish_boundary(context, false)
+    }
     type Decision = View;
     type Observation = Observed;
     type Operation = Operation;
@@ -685,6 +722,31 @@ impl Planner for LoopPlanner {
         )
     }
     fn operation(
+        &mut self,
+        operation: Operation,
+        context: OperationContext<'_, Operation, Reply>,
+    ) -> Result<Disposition<Reply>, Error> {
+        self.execute_operation(operation, context)
+    }
+    fn plan(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<Frame, Error> {
+        if self.fixed_quantum.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.settle_boundary(context, false)
+    }
+    fn finish(
+        &mut self,
+        context: FinishContext<'_, Observed, Operation, Reply>,
+    ) -> Result<(), Error> {
+        if self.fixed_quantum.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.finish_boundary(context, true)
+    }
+}
+
+impl LoopPlanner {
+    fn execute_operation(
         &mut self,
         operation: Operation,
         mut context: OperationContext<'_, Operation, Reply>,
@@ -1082,6 +1144,12 @@ impl Planner for LoopPlanner {
                     audio,
                     midi,
                 } => {
+                    if self
+                        .fixed_quantum
+                        .is_some_and(|q| frames % q.frames() as u64 != 0)
+                    {
+                        return Err(Error::InvalidFrame.into());
+                    }
                     let row = self.row(target)?;
                     let state = self.resolver.state(target)?;
                     if state.mode == crate::Mode::Recording {
@@ -1226,7 +1294,11 @@ impl Planner for LoopPlanner {
         })();
         Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))))
     }
-    fn plan(&mut self, mut context: PlanContext<'_, Operation, Reply>) -> Result<Frame, Error> {
+    fn settle_boundary(
+        &mut self,
+        mut context: PlanContext<'_, Operation, Reply>,
+        fixed: bool,
+    ) -> Result<Frame, Error> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         if context.frame != self.resolver.frame() {
@@ -1263,10 +1335,12 @@ impl Planner for LoopPlanner {
         }
         loop {
             self.cancel_intervals(&mut context.resources)?;
-            let interval = self
-                .resolver
-                .preview(context.ceiling, &self.failures)
-                .map_err(runtime_error)?;
+            let interval = if fixed {
+                self.resolver.preview_fixed(&self.failures)
+            } else {
+                self.resolver.preview(context.ceiling, &self.failures)
+            }
+            .map_err(runtime_error)?;
             for decision in self.resolver.decisions().map_err(runtime_error)? {
                 self.views[decision.state.id.slot() as usize].decision = *decision;
             }
@@ -1320,16 +1394,19 @@ impl Planner for LoopPlanner {
                 self.resolver.events(),
                 self.resolver.dropped_events(),
             );
-            for row in self.rows.iter_mut().flatten() {
-                row.seen_playback = false;
-                row.seen_capture = false;
+            if !fixed {
+                for row in self.rows.iter_mut().flatten() {
+                    row.seen_playback = false;
+                    row.seen_capture = false;
+                }
             }
             return Ok(interval.end);
         }
     }
-    fn finish(
+    fn finish_boundary(
         &mut self,
         mut context: FinishContext<'_, Observed, Operation, Reply>,
+        acknowledged: bool,
     ) -> Result<(), Error> {
         for observation in context.observations {
             let (target, capture) = match &observation.value {
@@ -1381,7 +1458,7 @@ impl Planner for LoopPlanner {
             }
         }
         for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
-            if !row.seen_playback || !row.seen_capture {
+            if acknowledged && (!row.seen_playback || !row.seen_capture) {
                 return Err(Error::InvalidState);
             }
             if let Some(interval) = row.interval {

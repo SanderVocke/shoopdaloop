@@ -130,7 +130,11 @@ fn alignment_is_checked_and_never_executes_early() {
             Err(Error::InvalidFrame)
         );
     }
-    for q in [0, 1, 15, 33, 256] {
+    assert_eq!(
+        Quantum::new(1).unwrap().ceil(Frame(u64::MAX)),
+        Ok(Frame(u64::MAX))
+    );
+    for q in [0, 15, 33, 256] {
         assert_eq!(Quantum::new(q), Err(Error::InvalidConfig));
     }
 }

@@ -80,6 +80,7 @@ pub(crate) fn worklet_config(
         bus_channels: pools.bus_channels as u8,
         sample_rate: setup.sample_rate,
         max_frames: WORKLET_MAX_FRAMES,
+        quantum: pools.quantum as usize,
         host,
         segments: vec![Segment {
             strips: pools.tracks,
@@ -1182,6 +1183,7 @@ mod tests {
     #[shoop_test]
     fn capacity_settings_and_the_audio_setup_prepare_the_worklet() {
         let pools = NewEnginePools {
+            quantum: 32,
             buses: 8,
             bus_channels: 8,
             tracks: 5,

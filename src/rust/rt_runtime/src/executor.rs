@@ -11,7 +11,7 @@ use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
     Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
 };
-use crate::processor::{ProcessBlock, Processor, ProcessorOperation};
+use crate::processor::{FixedProcessBlock, ProcessBlock, Processor, ProcessorOperation};
 use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
@@ -251,6 +251,9 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    quantum: Option<crate::fixed::Quantum>,
+    host_buffer: Option<crate::fixed::host_buffer::HostBuffer>,
+    fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
     slots: Vec<Option<Slot<P>>>,
@@ -410,6 +413,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                quantum: None,
+                host_buffer: None,
+                fault: None,
                 clock: RenderRuntime::new(config),
                 catalog,
                 slots,
@@ -467,6 +473,49 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }
+    pub fn quantum(&self) -> Option<crate::fixed::Quantum> {
+        self.quantum
+    }
+    pub fn buffering_latency(&self) -> usize {
+        self.host_buffer
+            .as_ref()
+            .map_or(0, |_| self.quantum.expect("fixed").frames())
+    }
+    pub fn prepare_host_buffering(&mut self) -> Result<(), Error> {
+        if self.next_frame() != Frame(0) || self.quantum.is_none() || self.host_buffer.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.host_buffer = Some(crate::fixed::host_buffer::HostBuffer::prepare(
+            self.resources.config(),
+        )?);
+        Ok(())
+    }
+    pub fn prepare_fixed_with_planner_and_resources(
+        config: PreparedConfig,
+        max_host_frames: usize,
+        quantum: crate::fixed::Quantum,
+        nodes: Vec<PreparedNode<P, L, Q>>,
+        mut domain: L,
+        resources: ResourceStore,
+    ) -> Result<(Control<P, L, Q>, Self), Error> {
+        if config.limits().max_frames != quantum.frames()
+            || max_host_frames == 0
+            || nodes.iter().any(|n| !n.processor.supports_fixed())
+        {
+            return Err(Error::InvalidConfig);
+        }
+        domain.enable_fixed(quantum)?;
+        let mut host = config.limits();
+        host.max_frames = max_host_frames;
+        let host = host.prepare()?;
+        let (control, mut runtime) =
+            Self::prepare_with_planner_and_resources(config, nodes, domain, resources)?;
+        runtime.clock = RenderRuntime::new(host);
+        runtime.quantum = Some(quantum);
+        runtime.scheduler.set_quantum(quantum);
+        runtime.observations = Observations::new(0)?;
+        Ok((control, runtime))
+    }
     pub fn diagnostics(&self) -> Diagnostics {
         self.diagnostics
     }
@@ -490,10 +539,20 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if audio.frames == 0 {
             return Ok(());
         }
+        if self.host_buffer.is_none()
+            && self
+                .quantum
+                .is_some_and(|q| audio.frames % q.frames() != 0 || !q.aligned(audio.frame))
+        {
+            return Err(Error::InvalidFrame);
+        }
         let limits = self.clock.config().limits();
         audio.clear_bounded(limits.audio_outputs, audio.frames.min(limits.max_frames));
         for output in midi.outputs.iter_mut().take(limits.midi_outputs) {
             output.clear();
+        }
+        if let Some(error) = self.fault {
+            return Err(error);
         }
         if midi.inputs.len() != limits.midi_inputs || midi.outputs.len() != limits.midi_outputs {
             return Err(Error::InvalidShape);
@@ -531,10 +590,20 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.apply_commands();
         self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
-        let result = self.run_scheduled(&mut audio, &mut midi);
+        let result = if let Some(quantum) = self.quantum {
+            self.run_fixed(&mut audio, &mut midi, quantum)
+        } else {
+            self.run_scheduled(&mut audio, &mut midi)
+        };
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
+            if self.quantum.is_some() {
+                self.fault = Some(error);
+                for recovery in &mut self.recovery {
+                    recovery.request();
+                }
+            }
             audio.clear_bounded(limits.audio_outputs, frames);
             for port in midi.outputs.iter_mut() {
                 port.clear();
@@ -857,6 +926,275 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         Ok(emitted)
     }
 
+    fn deliver_actions(
+        &mut self,
+        at: Frame,
+        callback_start: Frame,
+        remaining_events: &mut usize,
+    ) -> Result<(), Error> {
+        for _ in 0..*remaining_events {
+            let Some(mut event) = self.scheduler.deliver(at) else {
+                break;
+            };
+            *remaining_events -= 1;
+            match event.action {
+                Action::Planner { planner, operation } => {
+                    let result = if self.catalog.planner().is_none_or(|spec| spec.id != planner) {
+                        Err(Error::InvalidId)
+                    } else {
+                        let compatible = |candidate: &PreparedPlan| {
+                            activation_compatible(&self.slots, candidate)
+                        };
+                        let context = OperationContext {
+                            graph_epoch: self.epoch,
+                            graphs: GraphAccess::new(
+                                &mut self.graph_stages,
+                                &mut self.active,
+                                &mut self.epoch,
+                                event.lane == Lane::Normal,
+                                &compatible,
+                                &mut self.recovery,
+                            ),
+                            callback_start,
+                            token: event.token,
+                            frame: at,
+                            requested_frame: event.requested_frame,
+                            recovery: event.lane == Lane::Recovery,
+                            payload: event.payload,
+                            resources: self.resources.planner_io(at, at),
+                            receipts: event.receipts.planner(),
+                        };
+                        if self.quantum.is_some() {
+                            self.planner.fixed_operation(operation, context)
+                        } else {
+                            self.planner.operation(operation, context)
+                        }
+                    };
+                    match result {
+                        Ok(Disposition::Complete(value)) => {
+                            event.receipts.complete(event.token, Ok(value))?
+                        }
+                        Ok(Disposition::Pending) => {}
+                        Err(error) => event.receipts.complete(event.token, Err(error))?,
+                    }
+                }
+                action => {
+                    let node = action.node().ok_or(Error::InvalidId)?;
+                    let result = self
+                        .slots
+                        .get_mut(node.slot() as usize)
+                        .and_then(Option::as_mut)
+                        .filter(|slot| slot.id == node && slot.processor.is_some())
+                        .ok_or(Error::InvalidId)
+                        .and_then(|slot| match action {
+                            Action::Parameter {
+                                parameter, value, ..
+                            } => slot
+                                .processor
+                                .as_mut()
+                                .ok_or(Error::InvalidId)?
+                                .set_parameter(parameter, value)
+                                .map(|()| None),
+                            Action::Midi { port, .. } => {
+                                if !self.active.as_ref().is_some_and(|plan| plan.contains(node)) {
+                                    return Err(Error::InvalidId);
+                                }
+                                let input = slot
+                                    .buffers
+                                    .injected
+                                    .get_mut(port as usize)
+                                    .ok_or(Error::InvalidGraph)?;
+                                let result = input.push(0, 1, event.payload);
+                                if result == Err(Error::Full) {
+                                    input.force_reset(0);
+                                }
+                                result.map(|()| None)
+                            }
+                            Action::Processor { operation, .. } => slot
+                                .processor
+                                .as_mut()
+                                .ok_or(Error::InvalidId)?
+                                .operation(
+                                    operation,
+                                    crate::processor::OperationContext {
+                                        graph_epoch: self.epoch,
+                                        frame: at,
+                                        requested_frame: event.requested_frame,
+                                        sequence: event.token.sequence(),
+                                        payload: event.payload,
+                                        resources: self.resources.io(),
+                                    },
+                                )
+                                .map(Some),
+                            Action::Planner { .. } => Err(Error::InvalidState),
+                        });
+                    if matches!(action, Action::Processor { .. }) {
+                        event.receipts.complete_processor(
+                            event.token,
+                            result.and_then(|value| value.ok_or(Error::InvalidState)),
+                        )?;
+                    } else {
+                        if matches!(result, Err(Error::Full)) {
+                            increment(
+                                &mut self.diagnostics.midi_overflows,
+                                &mut self.diagnostics.counter_overflow,
+                            );
+                        }
+                        event.receipts.ordinary(event.token, result.map(|_| ()))?;
+                    }
+                }
+            }
+            increment(
+                &mut self.diagnostics.scheduled_events,
+                &mut self.diagnostics.counter_overflow,
+            );
+        }
+        Ok(())
+    }
+    fn run_fixed(
+        &mut self,
+        audio: &mut AudioBlock<'_, '_>,
+        midi: &mut MidiBlock<'_>,
+        quantum: crate::fixed::Quantum,
+    ) -> Result<(), Error> {
+        let mut remaining = self.scheduler.delivery_limit();
+        let callback_start = audio.frame;
+        if let Some(mut buffer) = self.host_buffer.take() {
+            let result = buffer.process(audio, midi, |a, m| {
+                self.run_fixed_tick(a, m, 0, callback_start, quantum, &mut remaining)
+            });
+            for _ in 0..buffer.overflows() {
+                increment(
+                    &mut self.diagnostics.midi_overflows,
+                    &mut self.diagnostics.counter_overflow,
+                );
+            }
+            self.host_buffer = Some(buffer);
+            return result;
+        }
+        for start in (0..audio.frames).step_by(quantum.frames()) {
+            self.run_fixed_tick(audio, midi, start, callback_start, quantum, &mut remaining)?;
+        }
+        Ok(())
+    }
+    fn run_fixed_tick(
+        &mut self,
+        audio: &mut AudioBlock<'_, '_>,
+        midi: &mut MidiBlock<'_>,
+        start: usize,
+        callback_start: Frame,
+        quantum: crate::fixed::Quantum,
+        remaining: &mut usize,
+    ) -> Result<(), Error> {
+        let frame = audio.frame.checked_add(start)?;
+        let end = frame.checked_add(quantum.frames())?;
+        self.deliver_actions(frame, callback_start, remaining)?;
+        self.planner.fixed_begin(PlanContext {
+            graph_epoch: self.epoch,
+            graphs: GraphAccess::new(
+                &mut self.graph_stages,
+                &mut self.active,
+                &mut self.epoch,
+                true,
+                &|candidate| activation_compatible(&self.slots, candidate),
+                &mut self.recovery,
+            ),
+            callback_start,
+            frame,
+            ceiling: end,
+            resources: self.resources.planner_io(frame, end),
+            receipts: self.scheduler.receipts(frame),
+        })?;
+        self.run_fixed_graph(audio, midi, start, callback_start, quantum)?;
+        self.planner.fixed_finish(FinishContext {
+            interval: Interval { start: frame, end },
+            observations: &[],
+            resources: self.resources.planner_io(end, end),
+            receipts: self.scheduler.receipts(end),
+        })?;
+        increment(
+            &mut self.diagnostics.subranges,
+            &mut self.diagnostics.counter_overflow,
+        );
+        Ok(())
+    }
+    fn run_fixed_graph(
+        &mut self,
+        audio: &mut AudioBlock<'_, '_>,
+        midi: &mut MidiBlock<'_>,
+        start: usize,
+        callback_start: Frame,
+        quantum: crate::fixed::Quantum,
+    ) -> Result<(), Error> {
+        let Some(plan) = &self.active else {
+            return Ok(());
+        };
+        let q = quantum.frames();
+        let frame = audio.frame.checked_add(start)?;
+        let mut first = 0;
+        for step in &plan.descriptor().steps {
+            self.slots[step.node.slot() as usize]
+                .as_mut()
+                .ok_or(Error::InvalidId)?
+                .buffers
+                .clear(q, 0, q);
+            for edge in &plan.descriptor().connections[first..step.input_end] {
+                record_midi_overflow(
+                    route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),
+                    &mut self.diagnostics,
+                )?;
+                increment(
+                    &mut self.diagnostics.connections_processed,
+                    &mut self.diagnostics.counter_overflow,
+                );
+            }
+            let slot = self.slots[step.node.slot() as usize]
+                .as_mut()
+                .ok_or(Error::InvalidId)?;
+            let buffers = &mut slot.buffers;
+            for (input, injected) in buffers.midi_input.iter_mut().zip(&mut buffers.injected) {
+                record_midi_overflow(input.merge(injected, q), &mut self.diagnostics)?;
+                injected.clear();
+            }
+            let result = slot
+                .processor
+                .as_mut()
+                .ok_or(Error::InvalidId)?
+                .process_fixed(&mut FixedProcessBlock {
+                    graph_epoch: self.epoch,
+                    callback_start,
+                    frame,
+                    quantum,
+                    audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
+                    midi_inputs: &buffers.midi_input,
+                    midi_outputs: &mut buffers.midi_output,
+                    resources: self.resources.io(),
+                    domain: &mut self.planner,
+                });
+            if result == Err(Error::Full) {
+                for out in &mut buffers.midi_output {
+                    out.force_reset(0);
+                }
+            }
+            record_midi_overflow(result, &mut self.diagnostics)?;
+            increment(
+                &mut self.diagnostics.nodes_processed,
+                &mut self.diagnostics.counter_overflow,
+            );
+            first = step.input_end;
+        }
+        for edge in &plan.descriptor().connections[first..] {
+            record_midi_overflow(
+                route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),
+                &mut self.diagnostics,
+            )?;
+            increment(
+                &mut self.diagnostics.connections_processed,
+                &mut self.diagnostics.counter_overflow,
+            );
+        }
+        Ok(())
+    }
     fn run_scheduled(
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
@@ -866,120 +1204,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let mut remaining_events = self.scheduler.delivery_limit();
         while start < audio.frames {
             let at = audio.frame.checked_add(start)?;
-            for _ in 0..remaining_events {
-                let Some(mut event) = self.scheduler.deliver(at) else {
-                    break;
-                };
-                remaining_events -= 1;
-                match event.action {
-                    Action::Planner { planner, operation } => {
-                        let result = if self.catalog.planner().is_none_or(|spec| spec.id != planner)
-                        {
-                            Err(Error::InvalidId)
-                        } else {
-                            self.planner.operation(
-                                operation,
-                                OperationContext {
-                                    graph_epoch: self.epoch,
-                                    graphs: GraphAccess::new(
-                                        &mut self.graph_stages,
-                                        &mut self.active,
-                                        &mut self.epoch,
-                                        event.lane == Lane::Normal,
-                                        &|candidate| activation_compatible(&self.slots, candidate),
-                                        &mut self.recovery,
-                                    ),
-                                    callback_start: audio.frame,
-                                    token: event.token,
-                                    frame: at,
-                                    requested_frame: event.requested_frame,
-                                    recovery: event.lane == Lane::Recovery,
-                                    payload: event.payload,
-                                    resources: self.resources.planner_io(at, at),
-                                    receipts: event.receipts.planner(),
-                                },
-                            )
-                        };
-                        match result {
-                            Ok(Disposition::Complete(value)) => {
-                                event.receipts.complete(event.token, Ok(value))?
-                            }
-                            Ok(Disposition::Pending) => {}
-                            Err(error) => event.receipts.complete(event.token, Err(error))?,
-                        }
-                    }
-                    action => {
-                        let node = action.node().ok_or(Error::InvalidId)?;
-                        let result = self
-                            .slots
-                            .get_mut(node.slot() as usize)
-                            .and_then(Option::as_mut)
-                            .filter(|slot| slot.id == node && slot.processor.is_some())
-                            .ok_or(Error::InvalidId)
-                            .and_then(|slot| match action {
-                                Action::Parameter {
-                                    parameter, value, ..
-                                } => slot
-                                    .processor
-                                    .as_mut()
-                                    .ok_or(Error::InvalidId)?
-                                    .set_parameter(parameter, value)
-                                    .map(|()| None),
-                                Action::Midi { port, .. } => {
-                                    if !self.active.as_ref().is_some_and(|plan| plan.contains(node))
-                                    {
-                                        return Err(Error::InvalidId);
-                                    }
-                                    let input = slot
-                                        .buffers
-                                        .injected
-                                        .get_mut(port as usize)
-                                        .ok_or(Error::InvalidGraph)?;
-                                    let result = input.push(0, 1, event.payload);
-                                    if result == Err(Error::Full) {
-                                        input.force_reset(0);
-                                    }
-                                    result.map(|()| None)
-                                }
-                                Action::Processor { operation, .. } => slot
-                                    .processor
-                                    .as_mut()
-                                    .ok_or(Error::InvalidId)?
-                                    .operation(
-                                        operation,
-                                        crate::processor::OperationContext {
-                                            graph_epoch: self.epoch,
-                                            frame: at,
-                                            requested_frame: event.requested_frame,
-                                            sequence: event.token.sequence(),
-                                            payload: event.payload,
-                                            resources: self.resources.io(),
-                                        },
-                                    )
-                                    .map(Some),
-                                Action::Planner { .. } => Err(Error::InvalidState),
-                            });
-                        if matches!(action, Action::Processor { .. }) {
-                            event.receipts.complete_processor(
-                                event.token,
-                                result.and_then(|value| value.ok_or(Error::InvalidState)),
-                            )?;
-                        } else {
-                            if matches!(result, Err(Error::Full)) {
-                                increment(
-                                    &mut self.diagnostics.midi_overflows,
-                                    &mut self.diagnostics.counter_overflow,
-                                );
-                            }
-                            event.receipts.ordinary(event.token, result.map(|_| ()))?;
-                        }
-                    }
-                }
-                increment(
-                    &mut self.diagnostics.scheduled_events,
-                    &mut self.diagnostics.counter_overflow,
-                );
-            }
+            self.deliver_actions(at, audio.frame, &mut remaining_events)?;
             let end = self.scheduler.next_frame().map_or(audio.frames, |frame| {
                 frame
                     .0
@@ -1243,6 +1468,18 @@ fn route<P>(
     start: usize,
     frames: usize,
 ) -> Result<(), Error> {
+    route_offset(slots, edge, audio, midi, stride, start, frames, start)
+}
+fn route_offset<P>(
+    slots: &mut [Option<Slot<P>>],
+    edge: Connection,
+    audio: &mut AudioBlock<'_, '_>,
+    midi: &mut MidiBlock<'_>,
+    stride: usize,
+    start: usize,
+    frames: usize,
+    buffer_start: usize,
+) -> Result<(), Error> {
     match (edge.source.node, edge.destination.node) {
         (Some(source), Some(target)) => {
             let source = source.slot() as usize;
@@ -1261,8 +1498,14 @@ fn route<P>(
             let target = &mut target.ok_or(Error::InvalidId)?.buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    channel(&source.output, edge.source, stride, start, frames),
-                    channel_mut(&mut target.input, edge.destination, stride, start, frames),
+                    channel(&source.output, edge.source, stride, buffer_start, frames),
+                    channel_mut(
+                        &mut target.input,
+                        edge.destination,
+                        stride,
+                        buffer_start,
+                        frames,
+                    ),
                 ),
                 PortType::Midi => target.midi_input[edge.destination.port as usize]
                     .merge(&source.midi_output[edge.source.port as usize], frames)?,
@@ -1276,7 +1519,13 @@ fn route<P>(
             match edge.source.kind {
                 PortType::Audio => mix(
                     &audio.inputs[edge.source.port as usize][start..start + frames],
-                    channel_mut(&mut target.input, edge.destination, stride, start, frames),
+                    channel_mut(
+                        &mut target.input,
+                        edge.destination,
+                        stride,
+                        buffer_start,
+                        frames,
+                    ),
                 ),
                 PortType::Midi => target.midi_input[edge.destination.port as usize].merge_window(
                     &midi.inputs[edge.source.port as usize],
@@ -1294,7 +1543,7 @@ fn route<P>(
                 .buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    channel(&source.output, edge.source, stride, start, frames),
+                    channel(&source.output, edge.source, stride, buffer_start, frames),
                     &mut audio.outputs[edge.destination.port as usize][start..start + frames],
                 ),
                 PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(

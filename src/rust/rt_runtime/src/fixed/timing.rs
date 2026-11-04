@@ -12,7 +12,7 @@ impl Default for Quantum {
 impl Quantum {
     pub fn new(frames: usize) -> Result<Self, Error> {
         match frames {
-            16 | 32 | 64 | 128 => Ok(Self(frames as u16)),
+            1 | 16 | 32 | 64 | 128 => Ok(Self(frames as u16)),
             _ => Err(Error::InvalidConfig),
         }
     }

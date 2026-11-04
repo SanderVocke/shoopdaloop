@@ -114,6 +114,7 @@ pub fn engine_description(pools: &NewEnginePools, max_frames: u32) -> EngineDesc
         buses: pools.buses as u8,
         bus_channels: pools.bus_channels as u8,
         max_frames: max_frames.max(1) as usize,
+        quantum: pools.quantum as usize,
         segments: vec![Segment {
             strips: pools.tracks,
             loops: pools.loops,

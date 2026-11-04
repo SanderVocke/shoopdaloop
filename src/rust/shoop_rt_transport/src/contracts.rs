@@ -21,6 +21,8 @@ const LIMITS: Limits = Limits {
     host_midi_inputs: 1,
     host_midi_outputs: 1,
     max_frames: 256,
+    quantum: 32,
+    processing_latency_frames: 32,
     smoothing_limit_frames: 4800,
     reliable_credits: 2,
     bulk_credits: 1,

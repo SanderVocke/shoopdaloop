@@ -12,6 +12,18 @@ pub(crate) struct SignalBlock<'a, 'b> {
     pub resources: &'a mut ResourceIo<'b>,
 }
 impl<'a, 'b> SignalBlock<'a, 'b> {
+    pub fn integrated<L: Planner>(
+        b: &'a mut rt_runtime::processor::FixedProcessBlock<'b, L>,
+    ) -> Self {
+        Self {
+            frames: b.quantum.frames(),
+            callback: Some(b.callback_start),
+            audio: &mut b.audio,
+            midi_inputs: b.midi_inputs,
+            midi_outputs: b.midi_outputs,
+            resources: &mut b.resources,
+        }
+    }
     pub fn interval<L: Planner>(b: &'a mut ProcessBlock<'b, L>) -> Self {
         Self {
             frames: b.frames,

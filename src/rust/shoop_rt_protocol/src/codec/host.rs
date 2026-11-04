@@ -50,6 +50,7 @@ impl Wire for DeviceSelection {
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
         w.u32(self.strip_channels)?;
         w.u32(self.master_channels)?;
         w.u32(self.buses)?;
@@ -71,6 +72,7 @@ impl Wire for EngineSettings {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
             max_frames: r.u32()?,
+            quantum: r.u32()?,
             strip_channels: r.u32()?,
             master_channels: r.u32()?,
             buses: r.u32()?,

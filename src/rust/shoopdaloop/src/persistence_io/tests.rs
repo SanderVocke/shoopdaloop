@@ -586,6 +586,7 @@ async fn platform_output_reports_its_real_completion_after_the_backend_connectio
 impl Fixture {
     fn new() -> Self {
         let (render, client) = OfflineRender::new(&EngineDescription {
+            quantum: 1,
             sample_rate: 1000,
             max_frames: 16,
             host: HostPorts::numbered(2, 2, 1),

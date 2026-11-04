@@ -838,6 +838,8 @@ impl Wire for Limits {
         w.u16(self.host_midi_inputs)?;
         w.u16(self.host_midi_outputs)?;
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
+        w.u32(self.processing_latency_frames)?;
         w.u32(self.smoothing_limit_frames)?;
         w.u16(self.reliable_credits)?;
         w.u16(self.bulk_credits)
@@ -856,6 +858,8 @@ impl Wire for Limits {
             host_midi_inputs: r.u16()?,
             host_midi_outputs: r.u16()?,
             max_frames: r.u32()?,
+            quantum: r.u32()?,
+            processing_latency_frames: r.u32()?,
             smoothing_limit_frames: r.u32()?,
             reliable_credits: r.u16()?,
             bulk_credits: r.u16()?,

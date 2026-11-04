@@ -387,6 +387,7 @@ impl<O: Copy, R: Copy, Q: Copy, S: Copy> Receipts<'_, O, R, Q, S> {
 }
 
 pub struct Scheduler<O = (), R = (), Q = (), S = ()> {
+    quantum: Option<crate::fixed::Quantum>,
     normal_capacity: usize,
     recovery_available: bool,
     store: Store<O, R, Q, S>,
@@ -464,6 +465,7 @@ pub fn typed_scheduler<O: Copy, R: Copy, Q: Copy, S: Copy>(
             pending_release: None,
         },
         Scheduler {
+            quantum: None,
             normal_capacity: capacity,
             recovery_available: recovery,
             store: Store {
@@ -486,6 +488,9 @@ pub fn typed_scheduler<O: Copy, R: Copy, Q: Copy, S: Copy>(
 }
 
 impl<O: Copy, R: Copy, Q: Copy, S: Copy> Scheduler<O, R, Q, S> {
+    pub(crate) fn set_quantum(&mut self, quantum: crate::fixed::Quantum) {
+        self.quantum = Some(quantum);
+    }
     pub fn capacity(&self) -> usize {
         self.normal_capacity
     }
@@ -601,7 +606,10 @@ impl<O: Copy, R: Copy, Q: Copy, S: Copy> Scheduler<O, R, Q, S> {
             }
             _ => {}
         }
-        let effective_frame = requested_frame.max(now);
+        let effective_frame = match self.quantum {
+            Some(q) => q.ceil(requested_frame.max(now))?,
+            None => requested_frame.max(now),
+        };
         let event = Event {
             sequence,
             lane,

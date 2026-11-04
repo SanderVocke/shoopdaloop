@@ -1,9 +1,26 @@
 # Fixed-quantum redesign: implementation and measurements
 
-The fixed core now executes a prepared graph at configurable Q=16/32/64/128
-(default 32), with direct primitive-loop playback and whole-tick recording.
-It is not selected by the production application. Sync/program parity and live
-graph/media publication are still required before engine and application cutover.
+Production engine preparation now selects fixed graph ticks at configurable
+Q=16/32/64/128 (default 32). Native, process and AudioWorklet hosts use that same
+engine; there are no backend selectors in the transports. Settings and persisted
+host profiles carry Q, and protocol v5 reports Q and the constant one-tick host
+buffering latency. Host-configuration version 4 and worklet-config version 3
+carry the setting. Changing Q requires stop/reprepare.
+
+The complete loop domain runs transactional boundary settlement, whole-tick
+playback/capture and direct consumer state access. It retains sync/program,
+slot-generation, graph/media transaction, export and ownership semantics. Loop
+lengths and seek positions must align; unaligned uploads are refused before
+ownership transfer. MIDI retains sample offsets inside each tick. Arbitrary host
+partitions, including callbacks shorter than Q, have the same Q-frame delay.
+Q=1 is also a fixed sample-accurate mode for offline/reference fixtures; it has no
+host buffer delay. The default and UI choices remain the larger quanta.
+
+The generic executor's adaptive compatibility path is still being retired.
+Library examples and lower-level fixtures still use that API; their migration is
+separate from the production engine cutover. Full parity and refreshed integrated
+performance evidence remain acceptance gates. A clean checkout at `6de0b7a1`
+provides the external comparison implementation.
 
 Measured source: `4d8d608be184541c98af2f3254e1cb80fd4c6b6e`. The initial sweep measured
 `2443a6aab76931a4b516514f1d4609ca8d06af8e` before the quiescent-shutdown addition. Both sweeps
@@ -12,7 +29,7 @@ are retained, including every missed deadline.
 Later integration commits add live routing, typed node operations and a fixed
 composition of the production engine DSP. The tables below measure the stated
 earlier source revisions; they are not performance measurements of the complete
-production composition or its unfinished protocol/host integration.
+production composition, domain settlement or host buffering.
 
 ## Method
 

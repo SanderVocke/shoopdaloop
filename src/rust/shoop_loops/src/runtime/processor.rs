@@ -1,5 +1,8 @@
 use super::*;
-use rt_runtime::{graph::PortCounts, processor::ProcessBlock};
+use rt_runtime::{
+    graph::PortCounts,
+    processor::{FixedProcessBlock, ProcessBlock},
+};
 
 /// A loop's playback or capture node, for wrapping in an application's node type.
 pub enum LoopNode {
@@ -79,6 +82,18 @@ const CONSUMER: ConsumerAccess = ConsumerAccess {
     operation_bytes: 0,
 };
 impl Processor<LoopPlanner> for LoopNode {
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut FixedProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        match self {
+            Self::Playback(node) => node.process_fixed(block),
+            Self::Capture(node) => node.process_fixed(block),
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Playback(node) => node.ports(),
@@ -96,6 +111,54 @@ impl Processor<LoopPlanner> for LoopNode {
     }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut FixedProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        let slot = self.binding.target.slot() as usize;
+        let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
+        if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        if let Some(audio) = &mut self.audio {
+            audio.set_smoothing(view.smoothing);
+            audio.render_ports(
+                &mut block.resources.render(),
+                audio::Playback {
+                    source: view.audio,
+                    position: view.decision.state.position,
+                    gain: view.gain,
+                    balance: view.balance,
+                    discontinuity: view.decision.playback_discontinuity,
+                },
+                &mut block.audio,
+            )?;
+        }
+        let error = if let Some(midi) = &mut self.midi {
+            midi.render(
+                &mut block.resources.render(),
+                midi::Playback {
+                    source: view.midi,
+                    position: view.decision.state.position,
+                    discontinuity: view.decision.playback_discontinuity,
+                },
+                block.quantum.frames(),
+                block.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
+            )?
+            .output_error
+        } else {
+            None
+        };
+        if error.is_some() {
+            let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
+            row.overflows = row.overflows.saturating_add(1);
+        }
+        error.map_or(Ok(()), Err)
+    }
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_outputs: self.binding.channels,
@@ -151,6 +214,37 @@ impl Processor<LoopPlanner> for PlaybackNode {
     }
 }
 impl Processor<LoopPlanner> for CaptureNode {
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut FixedProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        let slot = self.binding.target.slot() as usize;
+        let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
+        if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture
+        {
+            return Err(Error::InvalidId);
+        }
+        if let (Some(audio), Some(interval)) = (&mut self.audio, view.capture) {
+            audio.stage_ports(&mut block.resources.render(), interval, 0, &block.audio)?;
+        }
+        if let Some(midi) = &mut self.midi {
+            if view.reset_input {
+                midi.reset();
+            }
+            midi.process(
+                &mut block.resources.render(),
+                block.midi_inputs.first().ok_or(Error::InvalidShape)?,
+                block.quantum.frames(),
+                view.capture
+                    .map(|interval| (interval, usize::from(self.binding.channels > 0))),
+            )?;
+            block.domain.inputs[slot] = *midi.state();
+        }
+        Ok(())
+    }
     fn ports(&self) -> PortCounts {
         PortCounts {
             audio_inputs: self.binding.channels,

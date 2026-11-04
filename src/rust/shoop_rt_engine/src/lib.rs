@@ -274,7 +274,8 @@ pub fn prepare(
     let credits = usize::from(description.reliable_credits);
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let config = runtime_capacities(description, &pool, description.max_frames).prepare()?;
+    let quantum = rt_runtime::fixed::Quantum::new(description.quantum)?;
+    let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
@@ -288,7 +289,7 @@ pub fn prepare(
         CaptureGroupConfig {
             groups: (2 * loops).max(1),
             members_per_group: 2,
-            staging_bytes_per_group: description.max_frames * channels * 4
+            staging_bytes_per_group: quantum.frames() * channels * 4
                 + 12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
@@ -364,7 +365,7 @@ pub fn prepare(
         cells: cells.clone(),
         channels,
         master_channels,
-        frames: description.max_frames,
+        frames: quantum.frames(),
         ramp: description.ramp_frames,
     };
     let mut nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>> = loop_nodes
@@ -376,8 +377,17 @@ pub fn prepare(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
+    let (mut control, mut runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+        config,
+        description.max_frames,
+        quantum,
+        nodes,
+        planner,
+        resources,
+    )?;
+    if quantum.frames() > 1 {
+        runtime.prepare_host_buffering()?;
+    }
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
     let planner = runtime
@@ -431,6 +441,8 @@ pub fn prepare(
         host_midi_inputs: midi_in as u16,
         host_midi_outputs: midi_out as u16,
         max_frames: description.max_frames as u32,
+        quantum: quantum.frames() as u32,
+        processing_latency_frames: runtime.buffering_latency() as u32,
         smoothing_limit_frames: description.smoothing_limit_frames,
         reliable_credits: description.reliable_credits,
         bulk_credits: description.bulk_credits,

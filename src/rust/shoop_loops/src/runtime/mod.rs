@@ -473,6 +473,7 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
+    fixed_quantum: Option<rt_runtime::fixed::Quantum>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -823,6 +824,7 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
+            fixed_quantum: None,
             observer,
             settings,
             resolver,

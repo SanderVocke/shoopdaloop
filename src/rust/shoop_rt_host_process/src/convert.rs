@@ -166,6 +166,10 @@ fn ramp(port: usize, frame: u64) -> f32 {
 
 pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
     Ok(EngineSettings {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("quantum exceeds wire capacity"))?,
         buses: value.buses.into(),
         bus_channels: value.bus_channels.into(),
         max_frames: value
@@ -232,6 +236,10 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid quantum"))?,
         buses: value
             .buses
             .try_into()

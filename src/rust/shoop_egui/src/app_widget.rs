@@ -131,6 +131,7 @@ pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mid
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const NEW_ENGINE_QUANTUM: SettingKey<String> = SettingKey::new("audio.new_engine.quantum");
 pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
 pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
     SettingKey::new("audio.new_engine.bus_channels");
@@ -731,6 +732,17 @@ pub fn register_audio_backend_settings(
 ) -> Result<(), SettingsRegistryError> {
     let defaults = NewEnginePools::default();
     builder.register(
+        SettingDefinition::new(NEW_ENGINE_QUANTUM, defaults.quantum.to_string(),
+            "Audio", "Processing quantum",
+            "Loop lengths and state changes align to this many frames. Stream buffering adds one quantum of latency.")
+            .category_order(5).setting_order(57)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::StringChoice { choices: &[
+                ("16", "16 frames"), ("32", "32 frames"),
+                ("64", "64 frames"), ("128", "128 frames"),
+            ] }),
+    )?;
+    builder.register(
         SettingDefinition::new(
             ENGINE_TRANSPORT, EngineTransportKind::InProcess.id().to_owned(),
             "Audio", "Session delivery",
@@ -800,6 +812,11 @@ pub fn new_engine_pools_from_snapshot(
 ) -> Result<NewEnginePools, String> {
     let get = |key| snapshot.get(key).map_err(|error| error.to_string());
     Ok(NewEnginePools {
+        quantum: snapshot
+            .get(NEW_ENGINE_QUANTUM)
+            .map_err(|error| error.to_string())?
+            .parse::<u32>()
+            .map_err(|error| error.to_string())?,
         buses: get(NEW_ENGINE_BUSES)?,
         bus_channels: get(NEW_ENGINE_BUS_CHANNELS)?,
         tracks: get(NEW_ENGINE_TRACKS)?,
@@ -3952,6 +3969,7 @@ mod tests {
         );
         for key in [
             ENGINE_TRANSPORT.id(),
+            NEW_ENGINE_QUANTUM.id(),
             NEW_ENGINE_TRACKS.id(),
             NEW_ENGINE_LOOPS.id(),
             NEW_ENGINE_CHANNELS.id(),
@@ -3994,6 +4012,7 @@ mod tests {
         assert_eq!(
             new_engine_pools_from_snapshot(&resolved).unwrap(),
             NewEnginePools {
+                quantum: 32,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 4,
@@ -4003,6 +4022,11 @@ mod tests {
             }
         );
 
+        draft.set(NEW_ENGINE_QUANTUM, "64".to_owned());
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
+        assert!(registry.validate_draft(&draft).is_err());
+        draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
         draft.set(NEW_ENGINE_CHANNELS, 9);
         assert!(registry.validate_draft(&draft).is_err());
         for kind in [AudioBackendKind::NewEngine] {

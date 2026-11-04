@@ -3792,6 +3792,8 @@ impl ControlOperation {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct NewEnginePools {
+    /// Graph tick in frames; immutable during a running session.
+    pub quantum: u32,
     pub buses: u32,
     pub bus_channels: u32,
     /// Tracks, including the sync track.
@@ -3806,6 +3808,7 @@ pub struct NewEnginePools {
 impl Default for NewEnginePools {
     fn default() -> Self {
         Self {
+            quantum: 32,
             buses: 8,
             bus_channels: 8,
             tracks: 16,
@@ -3838,6 +3841,9 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
+        if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
+            return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
+        }
         if !(1..=8).contains(&self.pools.buses)
             || !(2..=8).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)

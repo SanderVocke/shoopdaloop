@@ -171,6 +171,7 @@ pub(crate) mod tests {
 
     fn pools() -> NewEnginePools {
         NewEnginePools {
+            quantum: 1,
             buses: 8,
             bus_channels: 8,
             tracks: 3,

@@ -105,6 +105,7 @@ impl ProgramBoundary {
 }
 
 pub struct Resolver {
+    quantum: Option<rt_runtime::fixed::Quantum>,
     topology: PreparedTopology,
     epoch: Epoch,
     frame: Frame,
@@ -151,6 +152,18 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
 }
 
 impl Resolver {
+    pub fn enable_fixed(&mut self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
+        if self.frame != Frame(0)
+            || self.committed
+            || self.preview.is_some()
+            || self.quantum.is_some()
+        {
+            return Err(Error::InvalidState);
+        }
+        self.topology.validate_quantum(quantum)?;
+        self.quantum = Some(quantum);
+        Ok(())
+    }
     /// Preparation may allocate; all execution storage is fixed afterwards.
     pub fn prepare(topology: PreparedTopology) -> Result<Self, Error> {
         let limits = topology.limits().validate()?;
@@ -182,6 +195,7 @@ impl Resolver {
             loop_generations[node.id.slot() as usize] = node.id.generation();
         }
         Ok(Self {
+            quantum: None,
             topology,
             epoch: Epoch(0),
             frame: Frame(0),
@@ -301,6 +315,18 @@ impl Resolver {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
+        if let Some(q) = self.quantum {
+            let aligned = match request.transition {
+                Transition::Play { position, .. } | Transition::Seek { position, .. } => {
+                    position % q.frames() as u64 == 0
+                }
+                Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
+                _ => true,
+            };
+            if !aligned {
+                return Err(Error::InvalidFrame);
+            }
+        }
         let target = self.topology.node(request.target)?;
         if let Timing::AfterTicks { source, .. } = request.timing {
             self.topology.node(source)?;
@@ -326,7 +352,12 @@ impl Resolver {
         self.records[slot] = Some(Record {
             id,
             request,
-            effective: request.at.max(self.frame),
+            effective: match self.quantum {
+                Some(q) => q
+                    .effective(request.at, self.frame)
+                    .map_err(|_| Error::InvalidFrame)?,
+                None => request.at.max(self.frame),
+            },
             remaining: match request.timing {
                 Timing::At => 0,
                 Timing::AfterTicks { skip, .. } => skip,
@@ -506,6 +537,9 @@ impl Resolver {
         ceiling: Frame,
         observations: &[Observation],
     ) -> Result<Interval, Error> {
+        if self.quantum.is_some() {
+            return Err(Error::InvalidState);
+        }
         self.begin_preview(ceiling, observations)?;
         let replacement = self.select_program(ceiling, observations)?;
         let replaced = replacement.map(|change| {
@@ -567,6 +601,69 @@ impl Resolver {
         let interval = Interval {
             start: self.frame,
             end: Frame(end),
+        };
+        self.preview = Some(interval);
+        Ok(interval)
+    }
+
+    /// Whole-tick transactional settlement. No future boundary search is performed.
+    pub fn preview_fixed(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
+        let quantum = self.quantum.ok_or(Error::InvalidState)?;
+        let end = self
+            .frame
+            .checked_add(quantum.frames())
+            .map_err(|_| Error::Exhausted)?;
+        self.begin_preview(end, observations)?;
+        let replacement = self.select_program(end, observations)?;
+        let replaced =
+            replacement.map(|c| self.topology.program(c.target).expect("validated program"));
+        let topology = if replacement.is_some() {
+            &self
+                .program_change
+                .as_ref()
+                .expect("selected owner")
+                .candidate
+        } else {
+            &self.topology
+        };
+        let mut boundary = Boundary {
+            topology,
+            replacement,
+            replaced,
+            scratch: &mut self.scratch,
+            frame: self.frame,
+            observations,
+        };
+        boundary.settle(None)?;
+        let q = quantum.frames() as u64;
+        for node in topology.nodes() {
+            let slot = node.id.slot() as usize;
+            let state = boundary.scratch.states[slot].ok_or(Error::InvalidState)?;
+            if state.content_length % q != 0
+                || state.position % q != 0
+                || state.capture_frames % q != 0
+                || (state.plays()
+                    && state
+                        .position
+                        .checked_add(q)
+                        .is_none_or(|p| p > state.content_length))
+            {
+                return Err(Error::InvalidFrame);
+            }
+            state
+                .capture_frames
+                .checked_add(if state.mode == Mode::Recording { q } else { 0 })
+                .ok_or(Error::Exhausted)?;
+            boundary.scratch.decisions.push(Decision {
+                state,
+                playback_discontinuity: state.plays()
+                    && boundary.scratch.playback_discontinuities[slot],
+                origin: boundary.scratch.origins[slot],
+            });
+        }
+        let interval = Interval {
+            start: self.frame,
+            end,
         };
         self.preview = Some(interval);
         Ok(interval)
@@ -639,6 +736,9 @@ impl Resolver {
         stop_playback: bool,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
+            if let Some(q) = self.quantum {
+                candidate.validate_quantum(q)?;
+            }
             if self.quiescent || self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
             }

@@ -28,6 +28,7 @@ const START: u64 = 48_000;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: QUANTUM,
         host: HostPorts::numbered(2, 2, 1),
@@ -527,6 +528,7 @@ fn delivers_a_bounded_number_of_records_per_quantum() {
         records_in_bytes: MAX_RECORD_BYTES,
         records_per_quantum: 2,
         ..WorkletConfig::new(EngineDescription {
+            quantum: 1,
             reliable_credits: 64,
             ..description()
         })

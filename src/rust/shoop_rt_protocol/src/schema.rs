@@ -368,6 +368,10 @@ pub struct Limits {
     pub host_midi_inputs: u16,
     pub host_midi_outputs: u16,
     pub max_frames: u32,
+    /// Prepared graph tick, independent of host capacity.
+    pub quantum: u32,
+    /// Constant host stream delay introduced by tick buffering.
+    pub processing_latency_frames: u32,
     /// Largest loop boundary smoothing a client may set.
     pub smoothing_limit_frames: u32,
     /// Unanswered reliable requests a client may have.
