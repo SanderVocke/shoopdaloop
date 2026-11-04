@@ -48,6 +48,11 @@ fn app_control(control: StripControl) -> BackendTrackControl {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ProfilingGraph {
+                generation,
+                epoch,
+                record,
+            } => self.profiling.graph(generation, epoch, record),
             EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
             EngineMessage::Profiling(packet) => self.profiling.receive(packet),
             EngineMessage::ProfilingNode {

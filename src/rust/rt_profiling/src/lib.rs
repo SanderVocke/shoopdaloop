@@ -10,13 +10,22 @@ extern crate std;
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+mod capture;
 mod collector;
+mod graph;
 #[cfg(target_has_atomic = "64")]
 mod recorder;
 #[cfg(not(target_has_atomic = "64"))]
 #[path = "unsupported.rs"]
 mod recorder;
+pub use capture::{
+    Boundary, CapturePage, CaptureRequest, NodeTiming, TraceSummary, DETAIL_NODES,
+    MAX_CAPTURE_TRACES,
+};
 pub use collector::{Collector, Interval, Report, Row, Statistics, View};
+pub use graph::{
+    GraphEdge, GraphNode, GraphRecord, Port, Topology, MAX_GRAPH_EDGES, MAX_GRAPH_NODES,
+};
 pub use recorder::{prepare, Control, Reader, Recorder};
 
 #[derive(Clone, Copy)]
@@ -83,6 +92,7 @@ pub struct Packet {
     pub frames: u32,
     pub start_ns: u64,
     pub end_ns: u64,
+    pub budget_ns: u64,
     pub index: u32,
     pub total: u32,
     pub len: u8,

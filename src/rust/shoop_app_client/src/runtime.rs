@@ -966,6 +966,7 @@ impl Runtime {
                 connected,
             },
             AppIntent::SetProfiling(value) => Command::SetProfiling(value),
+            AppIntent::InspectProfiling(request) => Command::InspectProfiling(request),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,

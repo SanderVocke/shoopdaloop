@@ -820,6 +820,15 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.persistence_progress()
     }
 
+    fn inspect_profiling(
+        &mut self,
+        request: shoop_app_api::profiling_data::CaptureRequest,
+    ) -> Result<()> {
+        self.ready()?;
+        self.profiling.select(request);
+        Ok(())
+    }
+
     fn set_profiling(&mut self, enabled: bool) -> Result<()> {
         self.ready()?;
         if !self

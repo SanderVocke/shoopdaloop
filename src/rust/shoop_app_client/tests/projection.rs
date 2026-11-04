@@ -30,6 +30,16 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     row.avg_ns = 1250.;
     row.worst_ns = 3000;
     row.stddev_ns = 500.;
+    row.ready_avg_ns = 3250.;
+    row.ready_worst_ns = 6000;
+    row.ready_stddev_ns = 750.;
+    profiling.topology = Some(Arc::new(shoop_app_api::profiling_data::Topology {
+        generation: revision,
+        sample_rate: 48000,
+        quantum: 32,
+        nodes: vec![shoop_app_api::profiling_data::GraphNode::default()],
+        ..Default::default()
+    }));
     Arc::new(SessionSnapshot {
         profiling,
         sync_sources: Vec::new(),

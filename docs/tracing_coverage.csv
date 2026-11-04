@@ -395,3 +395,6 @@ src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,in
 src/rust/rt_runtime/src/quantum.rs,generic_realtime_library,excluded,Validated processing quantum and checked frame alignment have no execution boundary.
 src/rust/rt_runtime/src/host_buffer.rs,generic_realtime_library,excluded,Prepared quantum buffering and bounded MIDI recovery must not trace during rendering.
 src/rust/rt_profiling/src/unsupported.rs,generic_realtime_library,excluded,Targets without lock-free 64-bit atomics preserve the portable API and report profiling unavailable.
+src/rust/rt_profiling/src/graph.rs,portable_profiling,excluded,Bounded metadata assembly and pure topology validation outside rendering; profiling data is its own observability channel.
+src/rust/rt_profiling/src/capture.rs,portable_profiling,excluded,Pure capture value types and clock-domain containment with no side effects or tracing dependency.
+src/rust/shoop_egui/src/profiling/graph.rs,egui_ui,excluded,Frame-rate graph drawing and hover rendering use profiling data directly; avoid per-frame tracing overhead.

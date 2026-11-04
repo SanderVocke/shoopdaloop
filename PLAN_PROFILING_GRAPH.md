@@ -2,7 +2,7 @@
 
 Status: implementation in progress; core collection/transport and graph UI implemented, final validation pending.
 
-Target branch: `feat/runtime-profiling` (existing profiling PR #938).
+Target branch: `feat/runtime-profiling-graph`, based on `feat/runtime-profiling` (profiling PR #938).
 Investigated baseline: `ac4748a4` (2026-11-04).
 
 ## Goals and scope
@@ -169,8 +169,8 @@ while keeping profiling identities, metrics and group membership in our model.
 ### Stage 0 — Reconcile branch and finalize bounded contracts
 
 - [x] Fetch the current profiling branch and existing PR state; preserve unrelated
-  work and remaining profiling validation. Continue on `feat/runtime-profiling`;
-  create it locally from the remote if absent, without forking a second feature.
+  work and remaining profiling validation. Continue on `feat/runtime-profiling-graph` from the profiling branch;
+  the user explicitly requested a separate branch and stacked PR.
 - [x] Re-read repository build/test/style guidance and reconcile the anchors above.
   Inventory descriptor activation, reset paths, host callback matching and app
   detail-request patterns. Record exact topology/detail limits and publication
@@ -313,9 +313,9 @@ Depends on Stages 1–5; this is the final implementation/validation stage.
   misses, publication bytes, collector memory/CPU, capture detail latency, layout
   time and steady UI frame cost. Resolve unexplained RT regressions and verify
   fixed bounds under dense topology, capture saturation and slow clients.
-- [ ] Commit meaningful milestones, push `feat/runtime-profiling` and update its
-  existing PR #938 title/description with final graph scope and evidence. If no PR
-  remains, create one against the profiling branch's intended base. Do not merge.
+- [ ] Commit meaningful milestones, push `feat/runtime-profiling-graph` and update its
+  dedicated PR against `feat/runtime-profiling` with final graph scope and evidence.
+  Keep the underlying profiling PR #938 separate. Do not merge.
 - [ ] Work through CI failures until required checks are green. Check for automated
   review as it arrives and repeatedly address applicable feedback through reviewer
   approval; explicitly record an unavailable reviewer. Re-run affected checks after
@@ -367,3 +367,10 @@ anti-correlated spikes, atomic topology assembly and original callback budgets.
 Production backend round trips pass across Q=1/16/32/64/128 with typed topology,
 readiness, automatic capture selection and rebuild invalidation. Final broad
 native/Wasm/browser, visual, saturation and performance evidence remains pending.
+
+Delivery refinement (user request): publish the current implementation to a new
+`feat/runtime-profiling-graph` branch and draft PR against `feat/runtime-profiling`,
+then continue implementation/validation there. The initial broad native run found
+two protocol golden fixtures needing the intended 21-to-22 version update (fixed)
+and a legacy graph playback test failure still under investigation. These are not
+passing evidence; the draft remains incomplete until validation finishes.

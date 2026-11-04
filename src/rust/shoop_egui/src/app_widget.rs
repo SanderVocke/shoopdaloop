@@ -1894,6 +1894,9 @@ impl AppWidget {
         ) {
             settings_actions.push(SettingsAction::SetProfiling(enabled));
         }
+        if let Some(request) = self.profiling.take_request() {
+            actions.push(AppAction::InspectProfiling(request));
+        }
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,

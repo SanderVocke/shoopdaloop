@@ -1164,6 +1164,14 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn inspect_profiling(
+        &mut self,
+        _request: shoop_app_api::profiling_data::CaptureRequest,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Profiling captures are unavailable on this backend"
+        ))
+    }
     fn set_profiling(&mut self, enabled: bool) -> Result<()> {
         if enabled {
             Err(anyhow!("Runtime profiling is unavailable on this backend"))

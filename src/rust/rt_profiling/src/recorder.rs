@@ -30,6 +30,7 @@ struct Shared {
     ready_frame: AtomicU64,
     ready_callback_frame: AtomicU64,
     ready_frames: AtomicU32,
+    ready_budget: AtomicU64,
     ready_start: AtomicU64,
     ready_input: AtomicU64,
     ready_generation: AtomicU64,
@@ -104,6 +105,7 @@ impl Control {
             self.0.host_generation.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
+        self.0.ready_budget.store(budget_ns, Ordering::Relaxed);
         self.0.host_end.store(at, Ordering::Release);
     }
 
@@ -341,6 +343,7 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
         ready_frame: AtomicU64::new(0),
         ready_callback_frame: AtomicU64::new(0),
         ready_frames: AtomicU32::new(0),
+        ready_budget: AtomicU64::new(0),
         ready_start: AtomicU64::new(0),
         ready_input: AtomicU64::new(0),
         ready_generation: AtomicU64::new(0),
@@ -410,6 +413,11 @@ impl Recorder {
         self.sequence = self.sequence.wrapping_add(1);
         Packet {
             generation: self.generation,
+            budget_ns: if flags & CALLBACK != 0 {
+                self.budget
+            } else {
+                0
+            },
             sequence: self.sequence,
             callback: self.callback,
             callback_frame: self.callback_frame,
@@ -483,6 +491,7 @@ impl Recorder {
                     epoch: self.epoch,
                     start_ns: start,
                     end_ns: end,
+                    budget_ns: shared.ready_budget.load(Ordering::Relaxed),
                     flags: CALLBACK | crate::HOST,
                     ..Packet::default()
                 });

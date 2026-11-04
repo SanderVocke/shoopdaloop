@@ -1,3 +1,6 @@
+#[path = "profiling/graph.rs"]
+mod graph;
+
 use crate::{colors, ProfilingView, StatusState};
 
 #[derive(Clone, Copy, Default, PartialEq)]
@@ -22,8 +25,13 @@ pub(crate) struct Window {
     pub open: bool,
     capture: bool,
     units: Units,
+    graph: graph::State,
+    table: bool,
 }
 impl Window {
+    pub fn take_request(&mut self) -> Option<shoop_app_api::profiling_data::CaptureRequest> {
+        self.graph.request.take()
+    }
     pub fn show(
         &mut self,
         context: &egui::Context,
@@ -35,17 +43,19 @@ impl Window {
         let mut changed = None;
         egui::Window::new("Runtime profiling")
             .open(&mut open)
-            .default_size([720., 540.])
+            .default_size([960., 700.])
             .min_size([510., 300.])
             .collapsible(false)
             .show(context, |ui| {
-                changed = show(
+                changed = show_inner(
                     ui,
                     view,
                     status,
                     &mut self.capture,
                     &mut self.units,
                     enabled,
+                    Some(&mut self.graph),
+                    &mut self.table,
                 );
             });
         self.open = open;
@@ -89,6 +99,7 @@ fn switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+#[cfg(test)]
 pub(crate) fn show(
     ui: &mut egui::Ui,
     view: &ProfilingView,
@@ -97,8 +108,42 @@ pub(crate) fn show(
     units: &mut Units,
     controls_enabled: bool,
 ) -> Option<bool> {
-    let budget = (status.sample_rate > 0 && status.quantum_frames > 0)
-        .then(|| f64::from(status.quantum_frames) * 1e9 / f64::from(status.sample_rate));
+    show_inner(
+        ui,
+        view,
+        status,
+        capture,
+        units,
+        controls_enabled,
+        None,
+        &mut true,
+    )
+}
+
+fn show_inner(
+    ui: &mut egui::Ui,
+    view: &ProfilingView,
+    status: &StatusState,
+    capture: &mut bool,
+    units: &mut Units,
+    controls_enabled: bool,
+    graph: Option<&mut graph::State>,
+    table: &mut bool,
+) -> Option<bool> {
+    let (sample_rate, quantum_frames) = view
+        .topology
+        .as_ref()
+        .map_or((status.sample_rate, status.quantum_frames), |t| {
+            (t.sample_rate, t.quantum)
+        });
+    let budget = view
+        .topology
+        .as_ref()
+        .and_then(|t| t.budget_ns())
+        .or_else(|| {
+            (status.sample_rate > 0 && status.quantum_frames > 0)
+                .then(|| f64::from(status.quantum_frames) * 1e9 / f64::from(status.sample_rate))
+        });
     let mut changed = None;
     ui.horizontal(|ui| {
         let mut requested = view.requested;
@@ -150,14 +195,17 @@ pub(crate) fn show(
             if let Some(budget) = budget {
                 ui.small(format!(
                     "{} frames @ {} Hz · {:.3} µs per quantum",
-                    status.quantum_frames,
-                    status.sample_rate,
+                    quantum_frames,
+                    sample_rate,
                     budget / 1000.
                 ));
             }
         });
     ui.add_space(10.);
     ui.horizontal(|ui| {
+        ui.selectable_value(table, false, "Graph");
+        ui.selectable_value(table, true, "Table");
+        ui.separator();
         ui.selectable_value(capture, false, "Live");
         ui.add_enabled_ui(view.capture.is_some(), |ui| {
             ui.selectable_value(capture, true, "Latest xrun");
@@ -177,7 +225,7 @@ pub(crate) fn show(
     if !view.available {
         ui.weak("This host has no elapsed-time profiling clock.");
     }
-    if report.rows.is_empty() {
+    if report.rows.is_empty() && (*table || graph.is_none() || view.topology.is_none()) {
         ui.add_space(28.);
         ui.vertical_centered(|ui| {
             ui.strong("No measured graph node samples");
@@ -247,6 +295,12 @@ pub(crate) fn show(
         ));
     }
     ui.add_space(8.);
+    if !*table {
+        if let Some(graph) = graph {
+            graph.show(ui, view, report, *capture, *units);
+            return changed;
+        }
+    }
     ui.weak(match units { Units::Microseconds => "Node durations in µs", Units::Budget => "Node durations as % of one quantum's DSP time budget" })
         .on_hover_text("Includes input preparation, routing, processing and output recovery. Elapsed time includes preemption. The overall DSP bar measures complete callbacks.");
     egui::Frame::group(ui.style())
