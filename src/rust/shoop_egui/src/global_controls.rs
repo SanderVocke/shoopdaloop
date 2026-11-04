@@ -80,6 +80,20 @@ impl GlobalControls {
         ui: &mut egui::Ui,
         state: &GlobalControlState,
     ) -> Vec<GlobalControlAction> {
+        self.show_with_host(
+            ui,
+            state,
+            &mut crate::host_controls::HostControls::default(),
+        )
+    }
+
+    pub(crate) fn show_with_host(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &GlobalControlState,
+        host: &mut crate::host_controls::HostControls,
+    ) -> Vec<GlobalControlAction> {
+        let controls_enabled = host.session_controls_enabled();
         self.connections_requested = false;
         self.new_session_requested = false;
         self.save_session_requested = false;
@@ -92,55 +106,58 @@ impl GlobalControls {
             ui.spacing_mut().button_padding = egui::vec2(4.0, 1.0);
             let response = ui
                 .menu_button(ICON_MENU.rich_text().size(20.0), |ui| {
-                    let connections = ui.button("Connections");
-                    self.record_rect(TestGlobalControl::Connections, &connections);
-                    if connections.clicked() {
-                        self.connections_requested = true;
-                        ui.close();
-                    }
-                    ui.separator();
-                    let new_session = ui.button("New session");
-                    self.record_rect(TestGlobalControl::NewSession, &new_session);
-                    if new_session.clicked() {
-                        self.new_session_requested = true;
-                        ui.close();
-                    }
-                    let save_session = add_with_capability(
-                        ui,
-                        BackendCapability::SessionCapture,
-                        egui::Button::new("Save session…"),
-                    );
-                    self.record_rect(TestGlobalControl::SaveSession, &save_session);
-                    if save_session.clicked() {
-                        self.save_session_requested = true;
-                        ui.close();
-                    }
-                    let load_session = add_with_capability(
-                        ui,
-                        BackendCapability::SessionContentLoad,
-                        egui::Button::new("Load session…"),
-                    );
-                    self.record_rect(TestGlobalControl::LoadSession, &load_session);
-                    if load_session.clicked() {
-                        self.load_session_requested = true;
-                        ui.close();
-                    }
-                    let load_session_url = add_with_capability(
-                        ui,
-                        BackendCapability::SessionContentLoad,
-                        egui::Button::new("Load session from URL…"),
-                    );
-                    self.record_rect(TestGlobalControl::LoadSessionUrl, &load_session_url);
-                    if load_session_url.clicked() {
-                        self.load_session_url_requested = true;
-                        ui.close();
-                    }
-                    let settings = ui.button("Settings");
-                    self.record_rect(TestGlobalControl::Settings, &settings);
-                    if settings.clicked() {
-                        self.settings_requested = true;
-                        ui.close();
-                    }
+                    ui.add_enabled_ui(controls_enabled, |ui| {
+                        let connections = ui.button("Connections");
+                        self.record_rect(TestGlobalControl::Connections, &connections);
+                        if connections.clicked() {
+                            self.connections_requested = true;
+                            ui.close();
+                        }
+                        ui.separator();
+                        let new_session = ui.button("New session");
+                        self.record_rect(TestGlobalControl::NewSession, &new_session);
+                        if new_session.clicked() {
+                            self.new_session_requested = true;
+                            ui.close();
+                        }
+                        let save_session = add_with_capability(
+                            ui,
+                            BackendCapability::SessionCapture,
+                            egui::Button::new("Save session…"),
+                        );
+                        self.record_rect(TestGlobalControl::SaveSession, &save_session);
+                        if save_session.clicked() {
+                            self.save_session_requested = true;
+                            ui.close();
+                        }
+                        let load_session = add_with_capability(
+                            ui,
+                            BackendCapability::SessionContentLoad,
+                            egui::Button::new("Load session…"),
+                        );
+                        self.record_rect(TestGlobalControl::LoadSession, &load_session);
+                        if load_session.clicked() {
+                            self.load_session_requested = true;
+                            ui.close();
+                        }
+                        let load_session_url = add_with_capability(
+                            ui,
+                            BackendCapability::SessionContentLoad,
+                            egui::Button::new("Load session from URL…"),
+                        );
+                        self.record_rect(TestGlobalControl::LoadSessionUrl, &load_session_url);
+                        if load_session_url.clicked() {
+                            self.load_session_url_requested = true;
+                            ui.close();
+                        }
+                        let settings = ui.button("Settings");
+                        self.record_rect(TestGlobalControl::Settings, &settings);
+                        if settings.clicked() {
+                            self.settings_requested = true;
+                            ui.close();
+                        }
+                    });
+                    host.show_menu(ui);
                     ui.separator();
                     let about = ui.button("About ShoopDaLoop");
                     self.record_rect(TestGlobalControl::About, &about);
@@ -148,10 +165,14 @@ impl GlobalControls {
                         self.about_requested = true;
                         ui.close();
                     }
+                    host.show_exit_menu(ui);
                 })
                 .response
                 .on_hover_text("Main menu");
             self.record_rect(TestGlobalControl::MainMenu, &response);
+            if !controls_enabled {
+                ui.disable();
+            }
             ui.separator();
 
             let response = icon_button(ui, ICON_STOP, "Stop all loops");
@@ -589,17 +610,35 @@ mod tests {
         state: &GlobalControlState,
         events: Vec<egui::Event>,
     ) -> Vec<GlobalControlAction> {
+        host_frame(
+            context,
+            controls,
+            state,
+            &mut crate::host_controls::HostControls::default(),
+            events,
+        )
+    }
+
+    fn host_frame(
+        context: &egui::Context,
+        controls: &mut GlobalControls,
+        state: &GlobalControlState,
+        host: &mut crate::host_controls::HostControls,
+        events: Vec<egui::Event>,
+    ) -> Vec<GlobalControlAction> {
+        host.actions.clear();
+        host.action_rects.clear();
         let mut actions = Vec::new();
         let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1000.0, 200.0),
+                    egui::vec2(1000.0, 700.0),
                 )),
                 events,
                 ..Default::default()
             },
-            |ui| actions = controls.show(ui, state),
+            |ui| actions = controls.show_with_host(ui, state, host),
         );
         ignored_output_0.textures_delta.clear();
         actions
@@ -641,6 +680,128 @@ mod tests {
                 },
             ],
         )
+    }
+
+    fn host_click(
+        context: &egui::Context,
+        controls: &mut GlobalControls,
+        host: &mut crate::host_controls::HostControls,
+        position: egui::Pos2,
+    ) {
+        for pressed in [true, false] {
+            let actions = host_frame(
+                context,
+                controls,
+                &GlobalControlState::default(),
+                host,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            assert!(actions.is_empty());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn host_commands_use_the_main_menu_even_when_session_controls_are_unavailable() {
+        use crate::{HostAction, HostConnectionState, HostLocation, HostUiState};
+        for (connection, pending) in [
+            (HostConnectionState::Ready, false),
+            (HostConnectionState::Lost, false),
+            (HostConnectionState::Ready, true),
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let mut controls = GlobalControls::default();
+            let mut host = crate::host_controls::HostControls {
+                state: Some(HostUiState {
+                    name: "Stage host".into(),
+                    endpoint: None,
+                    location: HostLocation::LocalSocket,
+                    connection,
+                    error: None,
+                    shutdown_pending: pending,
+                    import_enabled: !pending,
+                }),
+                ..Default::default()
+            };
+            host_frame(
+                &context,
+                &mut controls,
+                &GlobalControlState::default(),
+                &mut host,
+                Vec::new(),
+            );
+            let menu = controls
+                .test_rect(TestGlobalControl::MainMenu)
+                .unwrap()
+                .center();
+            host_click(&context, &mut controls, &mut host, menu);
+            host_frame(
+                &context,
+                &mut controls,
+                &GlobalControlState::default(),
+                &mut host,
+                Vec::new(),
+            );
+            if connection != HostConnectionState::Ready || pending {
+                let new = controls
+                    .test_rect(TestGlobalControl::NewSession)
+                    .unwrap()
+                    .center();
+                host_click(&context, &mut controls, &mut host, new);
+                assert!(!controls.take_new_session_requested());
+                host_click(&context, &mut controls, &mut host, menu);
+                host_frame(
+                    &context,
+                    &mut controls,
+                    &GlobalControlState::default(),
+                    &mut host,
+                    Vec::new(),
+                );
+            }
+            let stop = host
+                .action_rects
+                .iter()
+                .find(|(action, _)| *action == HostAction::CloseUiAndHost)
+                .unwrap()
+                .1
+                .center();
+            host_click(&context, &mut controls, &mut host, stop);
+            assert_eq!(
+                host.actions,
+                if pending {
+                    vec![]
+                } else {
+                    vec![HostAction::CloseUiAndHost]
+                }
+            );
+            host_click(&context, &mut controls, &mut host, menu);
+            let submenu = host.menu_rect.unwrap().center();
+            host_click(&context, &mut controls, &mut host, submenu);
+            host_frame(
+                &context,
+                &mut controls,
+                &GlobalControlState::default(),
+                &mut host,
+                Vec::new(),
+            );
+            let manager = host
+                .action_rects
+                .iter()
+                .find(|(action, _)| *action == HostAction::OpenManager)
+                .unwrap()
+                .1
+                .center();
+            host_click(&context, &mut controls, &mut host, manager);
+            assert_eq!(host.actions, [HostAction::OpenManager]);
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

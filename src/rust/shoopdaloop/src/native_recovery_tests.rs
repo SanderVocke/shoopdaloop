@@ -205,7 +205,7 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
         if index != 3 {
             let mut output = context.run_ui(Default::default(), |ui| {
                 app.show(ui);
-                app.exit.close_ui(ui.ctx());
+                app.handle_host_actions(ui.ctx(), vec![shoop_egui::HostAction::CloseUi]);
             });
             assert!(output.viewport_output[&egui::ViewportId::ROOT]
                 .commands
@@ -240,7 +240,10 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
             .samples
             .iter()
             .any(|sample| *sample == 0.25));
-        app.exit.open = true;
+        app.handle_host_actions(&context, vec![shoop_egui::HostAction::CloseUiAndHost]);
+        assert!(app.exit.open);
+        assert!(!app.exit.is_pending());
+        assert!(host.0.try_wait().unwrap().is_none());
         app.exit
             .start(HostEntry::read(&path).unwrap(), app.runtime.handle.clone());
         let deadline = Instant::now() + Duration::from_secs(15);
@@ -293,7 +296,8 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
     assert!(app.runtime.remote_entry.as_ref().unwrap().network.is_some());
     let context = egui::Context::default();
     shoop_egui::initialize(&context);
-    app.host_panel.open = true;
+    app.handle_host_actions(&context, vec![shoop_egui::HostAction::OpenSettings]);
+    assert!(app.host_panel.open);
     let deadline = Instant::now() + Duration::from_secs(15);
     while app.host_panel.report.is_none() {
         let mut output = context.run_ui(Default::default(), |ui| app.show(ui));

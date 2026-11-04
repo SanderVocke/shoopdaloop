@@ -644,7 +644,7 @@ mod native {
     }
 }
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{ApplicationHandle, ApplicationRuntime};
+pub use native::{ApplicationHandle, ApplicationRuntime, ConnectionStatus};
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 mod browser_tests {

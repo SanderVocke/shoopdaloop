@@ -7,6 +7,36 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub fn host_ui_state(
+    entry: Option<&HostEntry>,
+    status: &crate::application::ConnectionStatus,
+    exit: &ExitController,
+) -> shoop_egui::HostUiState {
+    use shoop_egui::{HostConnectionState, HostLocation, HostUiState};
+    let connection = match status.state {
+        shoop_app_client::State::Ready => HostConnectionState::Ready,
+        shoop_app_client::State::Lost => HostConnectionState::Lost,
+        shoop_app_client::State::Synchronizing => HostConnectionState::Synchronizing,
+        _ => HostConnectionState::Connecting,
+    };
+    HostUiState {
+        name: entry.map_or_else(|| "ShoopDaLoop".to_owned(), |entry| entry.name.clone()),
+        endpoint: entry.map(|entry| entry.endpoint.clone()),
+        location: match entry {
+            None => HostLocation::InProcess,
+            Some(entry) if entry.transport == shoop_host::config::AppTransport::SharedMemory => {
+                HostLocation::SharedMemory
+            }
+            Some(entry) if entry.network.is_some() => HostLocation::RemoteSocket,
+            Some(_) => HostLocation::LocalSocket,
+        },
+        connection,
+        error: status.error.clone(),
+        shutdown_pending: exit.is_pending(),
+        import_enabled: !exit.open && !exit.is_pending(),
+    }
+}
+
 enum Event {
     Reserved(ClientMessage),
     Finished {
@@ -101,16 +131,16 @@ impl ExitController {
                         ui.label("Waiting for host reset and cleanup…");
                     });
                 }
-                if ui.button("Close UI only (keep host running)").clicked() {
+                if ui.button("Close UI — keep host running").clicked() {
                     self.close_ui(context);
                 }
                 if ui
                     .add_enabled(
                         self.receiver.is_none(),
                         egui::Button::new(if self.error.is_some() {
-                            "Retry closing UI and host"
+                            "Retry closing UI and stopping host"
                         } else {
-                            "Close UI and host"
+                            "Close UI and stop host"
                         }),
                     )
                     .clicked()
@@ -270,7 +300,7 @@ impl HostPanel {
             }
         }
         let mut open = self.open;
-        egui::Window::new("Connected host").open(&mut open).show(context, |ui| {
+        egui::Window::new("Connected host settings").open(&mut open).show(context, |ui| {
             ui.label(format!("Endpoint: {}", entry.endpoint));
             ui.label("Last queried host state. Refresh to query the endpoint again.");
             if let Some(report) = &self.report {

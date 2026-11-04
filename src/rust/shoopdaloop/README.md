@@ -55,19 +55,27 @@ checks, controller generations and exclusive control still apply. A second contr
 is refused while the current owner remains healthy.
 
 Every connection obtains a fresh snapshot of the endpoint's current state. The
-**Connect to endpoint** action uses the same flow after loss or host restart.
+**Reconnect to host** action uses the same flow after loss or host restart.
 Previous pending requests are discarded and commands are not replayed. Configured
 scripts remain visible but disabled; start them explicitly in Scripts. Connection
 does not apply local preferences or initialize the host's session.
 
-The Session menu's **Connected host settings…** panel queries the host's startup
+The main menu's **Host → Connected host settings…** panel queries the host's startup
 settings, effective audio status and diagnostics. Local preference saves change
 future local launch defaults, independently of the connected host.
 
-For an external host, the Session menu and window/platform close offer:
+The backend status LED in the bottom bar shows audio health. Hover for host name,
+location, connection state, audio driver and what happens when the UI closes. Click
+to keep these details open and access Host Manager or connected host settings.
+After connection loss, the indicator reports unknown audio state; the host may
+still be playing and recording. The main menu and status popover stay available
+while session controls are disabled. Socket hosts offer **Reconnect to host**;
+shared-memory hosts cannot reattach.
 
-- **Close UI only (keep host running)** releases control and exits this UI.
-- **Close UI and host** waits for MIDI reset, render stop and cleanup.
+For an external host, the main menu and window/platform close offer:
+
+- **Close UI — keep host running** releases control and exits this UI.
+- **Close UI and stop host…** waits for MIDI reset, render stop and cleanup.
 - **Cancel** keeps the UI open.
 
 After data loss, shutdown uses a separate management connection with
@@ -273,7 +281,7 @@ Forced process termination cannot finalize an in-process trace.
 
 ## Host Manager
 
-Run `shoop_host_manager`, or choose **Session → Host Manager…** in the
+Run `shoop_host_manager`, or choose **main menu → Host → Host Manager…** in the
 native looper UI. The three native entry points are `shoopdaloop` (looper),
 `shoop_host` (headless host), and `shoop_host_manager` (management GUI).
 The manager runs in its own process without starting audio
