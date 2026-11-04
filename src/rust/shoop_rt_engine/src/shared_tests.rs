@@ -527,6 +527,36 @@ fn failed(error: Error) -> Reply {
 }
 
 #[shoop_test]
+fn buffered_production_preparation_accepts_dynamic_host_banks_beyond_sixty_four_ports() {
+    let description = EngineDescription {
+        quantum: 32,
+        max_frames: 128,
+        host: HostPorts::numbered(128, 128, 1),
+        segments: vec![Segment {
+            strips: 1,
+            loops: 1,
+        }],
+        ..EngineDescription::default()
+    };
+    let engine = crate::prepare(
+        &description,
+        DriverStatus {
+            kind: DriverKind::Dummy,
+            state: DriverRunState::Running,
+            sample_rate: description.sample_rate,
+            buffer_frames: 128,
+        },
+    )
+    .unwrap();
+    let mut stopped = engine.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(
+        stopped.resource_usage().free_pages,
+        description.resource_pages
+    );
+}
+
+#[shoop_test]
 fn stopped_sources_support_audio_only_and_midi_only_completed_grabs() {
     for (audio, midi) in [(true, false), (false, true)] {
         let mut h = Fixture::new_shapes(32, 7, 1000, audio, midi);

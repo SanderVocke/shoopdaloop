@@ -4,7 +4,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
-const PORTS: usize = 64;
+const PORTS: usize = 1024;
 
 /// One-tick stream delay, independent of callback partitioning.
 pub(crate) struct HostBuffer {
