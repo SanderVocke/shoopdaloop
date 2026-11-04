@@ -262,6 +262,76 @@ impl Pinned {
             assert_eq!(new.frame, old.frame * 2);
             assert_eq!(new.data, old.data);
         }
+        let root = api::LoopId::from_raw(1);
+        let child = api::LoopId::from_raw(2);
+        let mut dependent = session.tracks[0].loops[0].clone();
+        dependent.id = child;
+        dependent.frames *= 2;
+        let base = Arc::new(image::Image {
+            manifest: image::Manifest::FamilyUpdate {
+                format: ConversionTarget {
+                    sample_rate: 1000,
+                    quantum_frames: (self.frames * 2) as u32,
+                },
+                root,
+                members: vec![
+                    image::FamilyMember {
+                        loop_id: root,
+                        sync_source: None,
+                        expected_revision: 1,
+                        expected_frames: self.frames,
+                        fence_content: true,
+                        restart: true,
+                        content: Some(session.tracks[0].loops[0].clone()),
+                    },
+                    image::FamilyMember {
+                        loop_id: child,
+                        sync_source: Some(root),
+                        expected_revision: 1,
+                        expected_frames: self.frames * 2,
+                        fence_content: true,
+                        restart: false,
+                        content: Some(dependent),
+                    },
+                ],
+            },
+            payloads: original.payloads.clone(),
+        });
+        let Value::Image(family) = (Work::ConvertFamily {
+            decoded: Decoded::Midi(self.exact()),
+            base,
+        })
+        .run()
+        .unwrap() else {
+            panic!("shared family conversion")
+        };
+        let image::Manifest::FamilyUpdate { members, .. } = &family.manifest else {
+            panic!("family manifest")
+        };
+        assert_eq!(members[0].content.as_ref().unwrap().frames, self.frames * 2);
+        assert_eq!(members[1].content.as_ref().unwrap().frames, self.frames * 4);
+        for member in members {
+            let content = member.content.as_ref().unwrap();
+            assert_eq!(content.midi[0].initial, self.packets);
+            for channel in &content.audio {
+                let image::Payload::Audio(samples) =
+                    &family.payloads[channel.object.unwrap() as usize - 1]
+                else {
+                    panic!("family audio")
+                };
+                assert_eq!(samples.len(), self.frames as usize * 2);
+                assert!(samples.iter().all(|sample| sample.is_finite()));
+            }
+            let image::Payload::Midi(events) =
+                &family.payloads[content.midi[0].channel.object.unwrap() as usize - 1]
+            else {
+                panic!("family MIDI")
+            };
+            for (new, (old_frame, packet)) in events.iter().zip(midi_events(&self.midi)) {
+                assert_eq!(u64::from(new.frame), old_frame * 2);
+                assert_eq!(new.data.as_ref(), packet);
+            }
+        }
     }
     fn loaded(&self, h: &mut Fixture, stores: SharedTake) -> SharedTake {
         let mut upload = |format, data: &[u8]| {
