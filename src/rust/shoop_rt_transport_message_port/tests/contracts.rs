@@ -51,6 +51,7 @@ fn message_port_uses_the_shared_lifecycle_credit_and_bulk_contract() {
         inbox: Stream::new(16384),
         outbox: Batch::new(16384),
         framing_errors: 0,
+        profiling_credits: shoop_rt_transport_message_port::server::PROFILING_CREDITS,
     })));
     lifecycle(Bridge {
         client: RecordClient::new(RecordBatches::new()),

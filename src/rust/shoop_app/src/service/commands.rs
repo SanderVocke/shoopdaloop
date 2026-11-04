@@ -13,6 +13,24 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::SetProfiling(enabled) => {
+                self.backend.set_profiling(enabled)?;
+                Ok(Effect::None)
+            }
+            Command::SetHostGraphConnected(request) => {
+                let controller =
+                    self.host_graph_controller
+                        .as_mut()
+                        .ok_or_else(|| CommandError {
+                            reason: Refusal::Unsupported,
+                            message: "the active host does not support graph control".into(),
+                        })?;
+                controller
+                    .submit(request.into())
+                    .map(Effect::HostGraph)
+                    .map_err(CommandError::graph)
+            }
+            Command::Preview(command) => self.preview_command(command),
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {
@@ -45,24 +63,36 @@ impl Service {
                 loop_id,
                 action,
             } => self.loop_action(track, loop_id, action),
-            Command::Bus { bus, action } => {
-                if bus != BusId::from_raw(1) {
-                    return Err(CommandError::invalid("unknown bus"));
+            Command::Bus { bus, action } => self.bus_action(bus, action),
+            Command::AddBus(spec) => {
+                if spec.fx.is_some() {
+                    return Err(CommandError::unsupported(BackendCapability::BusFx));
                 }
-                let control = match action {
-                    BusAction::GainChanged(value) => BackendBusControl::GainDb(value),
-                    BusAction::BalanceChanged(value) => BackendBusControl::Balance(value),
-                    BusAction::MuteChanged(value) => BackendBusControl::Mute(value),
-                    BusAction::Remove => {
-                        return Err(CommandError::invalid("the Master bus cannot be removed"))
-                    }
-                    BusAction::MoveBefore(_) => return Ok(Effect::None),
-                    _ => return Err(CommandError::unsupported(BackendCapability::BusFx)),
-                };
-                self.backend.set_bus_control(MASTER_BUS_ID, control)?;
-                Ok(Effect::None)
+                let request = BackendBusRequest {
+                    name: spec.name,
+                    channel_count: spec.channel_count,
+                    fx: None,
+                }
+                .normalized()?;
+                let limits = self.backend.bus_limits();
+                if self.buses.len() >= limits.buses as usize
+                    || request.channel_count > limits.channels
+                {
+                    return Err(CommandError::invalid("prepared bus capacity exceeded"));
+                }
+                self.next_bus
+                    .checked_add(1)
+                    .ok_or_else(|| CommandError::invalid("bus identity exhausted"))?;
+                self.next_channel
+                    .checked_add(u64::from(request.channel_count))
+                    .ok_or_else(|| CommandError::invalid("channel identity exhausted"))?;
+                self.next_port
+                    .checked_add(u64::from(request.channel_count))
+                    .ok_or_else(|| CommandError::invalid("port identity exhausted"))?;
+                let created = self.backend.create_bus(request.clone())?;
+                let id = self.insert_bus(created, request.name, StructuralState::Creating)?;
+                Ok(Effect::BusCreated(id))
             }
-            Command::AddBus(_) => Err(CommandError::unsupported(BackendCapability::BusManagement)),
             Command::Global(action) => {
                 self.global_action(action)?;
                 Ok(Effect::None)
@@ -76,8 +106,33 @@ impl Service {
                 host_port,
                 connected,
             } => {
+                if self.dynamic_ports()
+                    && !self
+                        .observed
+                        .connections
+                        .host_ports
+                        .contains_key(host_port.as_str())
+                    && self.graph_host(host_port.as_str()).is_none()
+                {
+                    return Err(CommandError {
+                        reason: Refusal::NotReady,
+                        message: "the external port is unavailable".into(),
+                    });
+                }
                 self.connect_port(port, host_port.as_str(), connected)?;
-                Ok(Effect::None)
+                Ok(
+                    if self.dynamic_ports()
+                        && !self
+                            .observed
+                            .connections
+                            .host_ports
+                            .contains_key(host_port.as_str())
+                    {
+                        Effect::Connection(port, host_port.as_str().to_owned())
+                    } else {
+                        Effect::None
+                    },
+                )
             }
             Command::SetMixerRoute {
                 source,
@@ -88,6 +143,9 @@ impl Service {
                 Ok(Effect::None)
             }
             Command::SetMasterAutoConnect(value) => {
+                if !value {
+                    self.master_graph_auto_done = false;
+                }
                 if value && !self.options.master_auto_connect {
                     self.connect_master()?;
                 }
@@ -170,6 +228,54 @@ impl Service {
         }
     }
 
+    fn bus_action(&mut self, id: BusId, action: BusAction) -> CommandResult {
+        let bus = self
+            .buses
+            .get(&id)
+            .filter(|b| b.view.structural_state != StructuralState::Removing)
+            .ok_or_else(|| CommandError::invalid("stale or unknown bus"))?;
+        let backend = bus.backend;
+        match action {
+            BusAction::Remove => {
+                self.backend.remove_bus(backend)?;
+                self.buses
+                    .get_mut(&id)
+                    .expect("validated bus")
+                    .view
+                    .structural_state = StructuralState::Removing;
+                Ok(Effect::BusRemoved(id))
+            }
+            BusAction::MoveBefore(target) => {
+                if target.is_some_and(|t| !self.buses.contains_key(&t)) {
+                    return Err(CommandError::invalid("unknown bus order target"));
+                }
+                if target != Some(id) {
+                    self.bus_order.retain(|b| *b != id);
+                    let index = target
+                        .and_then(|t| self.bus_order.iter().position(|b| *b == t))
+                        .unwrap_or(self.bus_order.len());
+                    self.bus_order.insert(index, id);
+                }
+                Ok(Effect::None)
+            }
+            action => {
+                let control = match action {
+                    BusAction::GainChanged(v) => BackendBusControl::GainDb(v),
+                    BusAction::BalanceChanged(v) => BackendBusControl::Balance(v),
+                    BusAction::MuteChanged(v) => BackendBusControl::Mute(v),
+                    _ => return Err(CommandError::unsupported(BackendCapability::BusFx)),
+                };
+                self.backend.set_bus_control(backend, control)?;
+                self.buses
+                    .get_mut(&id)
+                    .expect("validated bus")
+                    .view
+                    .control_error = None;
+                Ok(Effect::BusControl(id))
+            }
+        }
+    }
+
     fn track(&self, id: TrackId) -> core::result::Result<&Track, CommandError> {
         self.tracks
             .get(&id)
@@ -214,13 +320,6 @@ impl Service {
                 BackendCapability::LatencyCompensation,
             ));
         }
-        if spec
-            .initial_output_bus_names
-            .iter()
-            .any(|name| name != "Master")
-        {
-            return Err(CommandError::invalid("unknown initial output bus"));
-        }
         let slot_count = self
             .tracks
             .values()
@@ -241,8 +340,31 @@ impl Service {
         self.next_port
             .checked_add(u64::from(audio_channels) * 2 + u64::from(midi) * 2)
             .ok_or_else(|| CommandError::invalid("session identity space exhausted"))?;
+        let mut base: String = spec
+            .name
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if base.is_empty() {
+            base = "track".into();
+        }
+        if self
+            .ports
+            .values()
+            .any(|port| port.view.name.starts_with(&format!("{base}_direct_")))
+        {
+            base = format!("{base}_{}", self.next_track);
+        }
         let created = self.backend.create_direct_track(DirectTrackRequest {
-            port_name_base: format!("track_{}", self.next_track),
+            port_name_base: base,
             audio_channels,
             midi,
             initial_loops: slot_count,
@@ -257,8 +379,8 @@ impl Service {
             }
         }
         self.connect_track_inputs(id)?;
-        if !spec.initial_output_bus_names.is_empty() {
-            self.route_track_to_master(id)?;
+        for name in &spec.initial_output_bus_names {
+            self.route_track_to_bus(id, name)?;
         }
         Ok(Effect::TrackCreated(id, loops))
     }
@@ -752,10 +874,28 @@ impl Service {
             .ports
             .get(&id)
             .ok_or_else(|| CommandError::invalid("stale or unknown port"))?;
+        if self.dynamic_ports() && matches!(port.view.owner, ApplicationPortOwner::GlobalFxControl)
+        {
+            return Err(CommandError {
+                reason: Refusal::Unsupported,
+                message: "the active backend does not provide global FX control MIDI".into(),
+            });
+        }
         if self.connection_intent.len() == MAX_BUS_HOST_LINKS
             && !self.connection_intent.contains_key(&(id, host.to_owned()))
         {
             return Err(CommandError::invalid("connection intent limit reached"));
+        }
+        if self.dynamic_ports() && !self.observed.connections.host_ports.contains_key(host) {
+            self.connection_intent.insert(
+                (id, host.to_owned()),
+                Intent {
+                    connected,
+                    pending: None,
+                    error: None,
+                },
+            );
+            return Ok(());
         }
         let before = self.backend.mutation_cursor();
         self.backend
@@ -808,6 +948,34 @@ impl Service {
         Ok(())
     }
     pub(super) fn connect_master(&mut self) -> Result<()> {
+        if self.dynamic_ports() {
+            let outputs: Vec<_> = self.ports.iter().filter_map(|(id, port)| matches!(port.view.owner, ApplicationPortOwner::Bus { bus_id } if self.buses.get(&bus_id).is_some_and(|bus| bus.backend == MASTER_BUS_ID)).then_some(*id)).collect();
+            let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for port in self.host_graph.ports.iter().filter(|port| {
+                port.physical
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Input
+            }) {
+                if let Some(locator) = &port.locator {
+                    groups
+                        .entry(port.name.split(':').next().unwrap_or("").to_owned())
+                        .or_default()
+                        .push(locator.clone());
+                }
+            }
+            if let Some(mut sinks) = groups
+                .into_values()
+                .find(|ports| ports.len() >= outputs.len())
+            {
+                self.master_graph_auto_done = true;
+                sinks.sort_by_key(|port| host_port_order(port));
+                for (port, sink) in outputs.into_iter().zip(sinks) {
+                    self.connect_port(port, &sink, true)
+                        .map_err(|error| anyhow!(error.message))?;
+                }
+            }
+            return Ok(());
+        }
         let mut sinks: Vec<_> = self
             .observed
             .connections
@@ -825,15 +993,17 @@ impl Service {
             .ports
             .iter()
             .filter_map(|(id, entry)| {
-                (matches!(entry.view.owner, ApplicationPortOwner::Bus { .. })
+                (matches!(entry.view.owner, ApplicationPortOwner::Bus { bus_id } if self.buses.get(&bus_id).is_some_and(|bus| bus.backend == MASTER_BUS_ID))
                     && entry.view.data_type == PortDataType::Audio
                     && entry.view.direction == PortDirection::Output)
                     .then_some(*id)
             })
             .collect();
-        for (port, sink) in outputs.into_iter().zip(sinks) {
-            self.connect_port(port, &sink.id, true)
-                .map_err(|error| anyhow!(error.message))?;
+        for (index, port) in outputs.into_iter().enumerate() {
+            if let Some(sink) = sinks.get(index).or_else(|| sinks.last()) {
+                self.connect_port(port, &sink.id, true)
+                    .map_err(|error| anyhow!(error.message))?;
+            }
         }
         Ok(())
     }
@@ -849,6 +1019,31 @@ impl Service {
             .collect();
         let mut audio_index = 0;
         for (port, kind) in inputs {
+            if self.dynamic_ports() {
+                let mut candidates: Vec<_> = self
+                    .host_graph
+                    .ports
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.physical
+                            && candidate.data_type == kind
+                            && candidate.direction == PortDirection::Output
+                    })
+                    .filter_map(|port| port.locator.clone())
+                    .collect();
+                candidates.sort_by_key(|id| host_port_order(id));
+                let index = if kind == PortDataType::Audio {
+                    let index = audio_index;
+                    audio_index += 1;
+                    index
+                } else {
+                    0
+                };
+                if let Some(host) = candidates.get(index) {
+                    self.connect_port(port, host, true)?;
+                }
+                continue;
+            }
             let mut candidates: Vec<_> = self
                 .observed
                 .connections
@@ -875,7 +1070,11 @@ impl Service {
         }
         Ok(())
     }
-    fn route_track_to_master(&mut self, track: TrackId) -> core::result::Result<(), CommandError> {
+    fn route_track_to_bus(
+        &mut self,
+        track: TrackId,
+        name: &str,
+    ) -> core::result::Result<(), CommandError> {
         let outputs: Vec<_> = self.tracks[&track]
             .view
             .port_ids
@@ -886,10 +1085,26 @@ impl Service {
             })
             .copied()
             .collect();
-        let channels: Vec<_> = self.channels.keys().copied().collect();
-        for (index, port) in outputs.into_iter().enumerate() {
-            if let Some(channel) = channels.get(index % channels.len().max(1)) {
-                self.route(port, *channel, true)?;
+        let Some(bus) = self
+            .bus_order
+            .iter()
+            .filter_map(|id| self.buses.get(id))
+            .find(|b| {
+                b.view.structural_state != StructuralState::Removing
+                    && b.view.name == name
+                    && (outputs.len() == b.view.channels.len() || outputs.len() == 1)
+            })
+        else {
+            return Ok(());
+        };
+        let channels = bus.view.channels.iter().map(|c| c.id).collect::<Vec<_>>();
+        if outputs.len() == 1 {
+            for channel in channels {
+                self.route(outputs[0], channel, true)?;
+            }
+        } else {
+            for (port, channel) in outputs.into_iter().zip(channels) {
+                self.route(port, channel, true)?;
             }
         }
         Ok(())
@@ -898,7 +1113,7 @@ impl Service {
 
 use super::projection::data_type;
 
-fn host_port_order(id: &str) -> (String, u64) {
+pub(super) fn host_port_order(id: &str) -> (String, u64) {
     let suffix = id.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
     (id[..suffix].to_owned(), id[suffix..].parse().unwrap_or(0))
 }

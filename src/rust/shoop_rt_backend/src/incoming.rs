@@ -9,11 +9,11 @@ use alloc::vec::Vec;
 use shoop_backend::{
     BackendBusControl, BackendConfirmedLink, BackendConnectionFailure, BackendMixerFailure,
     BackendMixerLink, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
-    BackendTrackControl, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_ID,
+    BackendTrackControl, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
 };
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode,
-    Outcome, Refusal, StateRecord, StripControl, Telemetry,
+    BusControl, BusPort, DisconnectReason, EngineMessage, EnginePort, Limits, LoopMode, Outcome,
+    Refusal, StateRecord, StripControl, Telemetry,
 };
 use shoop_rt_transport::carrier::Carrier;
 
@@ -48,6 +48,13 @@ fn app_control(control: StripControl) -> BackendTrackControl {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
+            EngineMessage::Profiling(packet) => self.profiling.receive(packet),
+            EngineMessage::ProfilingNode {
+                generation,
+                key,
+                name,
+            } => self.profiling.name(generation, key, name.as_str()),
             EngineMessage::Welcome {
                 capabilities,
                 limits,
@@ -66,6 +73,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ));
                     return;
                 }
+                self.profiling = Default::default();
                 self.capabilities = capabilities;
                 self.set_limits(limits);
                 self.driver = Some(driver);
@@ -113,6 +121,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn set_limits(&mut self, limits: Limits) {
+        self.mirror.bus_slots.resize(limits.buses as usize);
         self.mirror.strip_slots.resize(limits.strips as usize);
         self.mirror.loop_slots.resize(limits.loops as usize);
         self.reads.set_loop_channels(limits.strip_audio_channels);
@@ -121,6 +130,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {
                 frame,
                 callbacks,
@@ -168,6 +178,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 mode,
                 next_mode,
                 next_delay,
+                content_revision,
                 length,
                 position,
                 peaks,
@@ -177,8 +188,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 };
                 if let Some(entry) = self.mirror.loops.get_mut(id) {
                     let previous = entry.view;
+                    if content_revision < entry.rt_content_revision {
+                        return;
+                    }
                     if (mode == LoopMode::Recording && previous.mode != LoopMode::Recording)
                         || length != previous.length
+                        || content_revision != entry.rt_content_revision
                     {
                         entry.content += 1;
                         self.canonical_content.remove(id);
@@ -192,13 +207,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         length,
                         position,
                     };
+                    entry.rt_content_revision = content_revision;
                     entry.meter.record(peaks.as_slice());
                 }
             }
-            Telemetry::Bus {
-                bus: BusId::Master,
-                peaks,
-            } => self.mirror.master.meter.record(peaks.as_slice()),
+            Telemetry::Bus { bus, peaks } => {
+                if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
+                    entry.meter.record(peaks.as_slice());
+                }
+            }
         }
     }
 
@@ -228,6 +245,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut routes = BTreeSet::new();
         for record in &records {
             match *record {
+                StateRecord::BusGenerations { generation } => {
+                    self.mirror.bus_slots.raise_floor(generation)
+                }
+                StateRecord::BusShape { bus, .. } => self.mirror.bus_slots.adopt(bus.0),
                 StateRecord::HostPort(port) => host_ports.push(port),
                 StateRecord::Strip { strip, .. } => {
                     self.mirror.strip_slots.adopt(strip.0);
@@ -240,6 +261,33 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 _ => {}
             }
+        }
+        let buses = records
+            .iter()
+            .filter_map(|r| {
+                if let StateRecord::BusShape { bus, .. } = r {
+                    Some(*bus)
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeSet<_>>();
+        if buses
+            .iter()
+            .any(|id| !self.mirror.buses.values().any(|b| b.slot == *id))
+        {
+            self.lose("engine buses belong to another service".to_owned());
+            return;
+        }
+        let vanished = self
+            .mirror
+            .buses
+            .iter()
+            .filter(|(_, b)| b.confirmed && !buses.contains(&b.slot))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        for id in vanished {
+            self.mirror.drop_bus(id);
         }
         self.mirror.host_ports = host_ports;
         if strips
@@ -299,15 +347,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 StateRecord::Route {
                     port,
-                    bus:
-                        BusPort {
-                            bus: BusId::Master,
-                            index,
-                        },
+                    bus: BusPort { bus, index },
                 } => {
                     let (Some(source_port_id), Some(destination_channel_id)) = (
                         self.mirror.port_of(EnginePort::Strip(port)),
-                        MASTER_BUS_CHANNEL_IDS.get(usize::from(index)).copied(),
+                        self.mirror.channel(BusPort { bus, index }),
                     ) else {
                         continue;
                     };
@@ -316,14 +360,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         destination_channel_id,
                     });
                 }
-                StateRecord::Bus {
-                    bus: BusId::Master,
-                    control,
-                } => match control {
-                    BusControl::Gain(value) => self.mirror.master.gain_db = amplitude_db(value),
-                    BusControl::Balance(value) => self.mirror.master.balance = value,
-                    BusControl::Mute(value) => self.mirror.master.muted = value,
-                },
+                StateRecord::Bus { bus, control } => {
+                    if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
+                        entry.apply(match control {
+                            BusControl::Gain(v) => BackendBusControl::GainDb(amplitude_db(v)),
+                            BusControl::Balance(v) => BackendBusControl::Balance(v),
+                            BusControl::Mute(v) => BackendBusControl::Mute(v),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -364,6 +409,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if pending.purpose == Purpose::CancelReads {
             return;
         }
+        if pending.purpose == Purpose::Preview {
+            if let Some(preview) = &mut self.preview {
+                preview
+                    .job
+                    .answered(pending.request, outcome, self.status.callbacks);
+            }
+            return;
+        }
         if pending.purpose == Purpose::Persistence {
             if let Some(replacement) = &mut self.replacement {
                 replacement
@@ -380,14 +433,56 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 sequence,
                 result: match outcome {
                     Outcome::Done => Ok(()),
+                    Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                        Err("unexpected content revision outcome".to_owned())
+                    }
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
                 },
             });
         let refusal = match outcome {
             Outcome::Done => None,
+            Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                Some(Refusal::Internal)
+            }
             Outcome::Refused(refusal) => Some(refusal),
         };
         match (purpose, refusal) {
+            (Purpose::CreateBus(id), None) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.confirmed = true;
+                    self.mirror.mixer_revision += 1;
+                    self.mirror.connection_revision += 1;
+                }
+            }
+            (Purpose::CreateBus(id), Some(refusal)) => {
+                if let Some(bus) = self.mirror.buses.get(&id) {
+                    self.mirror.bus_slots.release(bus.slot.0);
+                }
+                self.mirror.drop_bus(id);
+                self.failure(
+                    BackendMutationKind::BusStructure,
+                    Some(id.raw()),
+                    Some(BackendMutationDetail::BusCreation),
+                    format!("bus creation refused: {}", refusal_text(refusal)),
+                );
+            }
+            (Purpose::RemoveBus(id), None) => {
+                if let Some(bus) = self.mirror.buses.get(&id) {
+                    self.mirror.bus_slots.release(bus.slot.0);
+                }
+                self.mirror.drop_bus(id);
+            }
+            (Purpose::RemoveBus(id), Some(refusal)) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.removing = false;
+                }
+                self.failure(
+                    BackendMutationKind::BusStructure,
+                    Some(id.raw()),
+                    Some(BackendMutationDetail::BusRemoval),
+                    format!("bus removal refused: {}", refusal_text(refusal)),
+                );
+            }
             (Purpose::CreateStrip(id), None) => {
                 if let Some(track) = self.mirror.tracks.get_mut(&id) {
                     track.confirmed = true;
@@ -589,8 +684,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         }
                     }
                     Some(refusal) => {
-                        let message =
-                            format!("a route to Master was refused: {}", refusal_text(refusal));
+                        let message = format!("a bus route was refused: {}", refusal_text(refusal));
                         tracing::warn!(message = %message, "backend.rt.route_refused");
                         self.mixer_failures.push(BackendMixerFailure {
                             link,
@@ -601,19 +695,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 self.mirror.mixer_revision += 1;
             }
-            (Purpose::BusControl(control), None) => {
-                match control {
-                    BackendBusControl::GainDb(value) => self.mirror.master.gain_db = value,
-                    BackendBusControl::Balance(value) => self.mirror.master.balance = value,
-                    BackendBusControl::Mute(value) => self.mirror.master.muted = value,
+            (Purpose::BusControl(id, control), None) => {
+                if let Some(bus) = self.mirror.buses.get_mut(&id) {
+                    bus.apply(control);
                 }
                 self.mirror.mixer_revision += 1;
             }
-            (Purpose::BusControl(control), Some(refusal)) => self.failure(
+            (Purpose::BusControl(id, control), Some(refusal)) => self.failure(
                 BackendMutationKind::BusControl,
-                Some(MASTER_BUS_ID.raw()),
+                Some(id.raw()),
                 Some(BackendMutationDetail::BusControl(control)),
-                format!("a Master control was refused: {}", refusal_text(refusal)),
+                format!("bus control refused: {}", refusal_text(refusal)),
             ),
             (Purpose::InjectMidi(id), Some(refusal)) => {
                 if self.mirror.tracks.contains_key(&id) {
@@ -625,6 +717,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
+            (Purpose::Profiling, Some(refusal)) => self.failure(
+                shoop_backend::BackendMutationKind::AudioProcessing,
+                None,
+                None,
+                format!("could not change profiling: {}", refusal_text(refusal)),
+            ),
             (Purpose::Smoothing(milliseconds), Some(refusal)) => self.failure(
                 BackendMutationKind::LoopControl,
                 None,
@@ -636,7 +734,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             ),
             (
                 Purpose::InjectMidi(_)
+                | Purpose::Profiling
                 | Purpose::Smoothing(_)
+                | Purpose::Preview
                 | Purpose::Persistence
                 | Purpose::CancelReads,
                 _,

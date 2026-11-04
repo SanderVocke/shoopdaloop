@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/zynq-network-deployment"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*", "feat/fixed-quantum-runtime", "feat/zynq-network-deployment"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -43,6 +43,126 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  shared_foundation:
+    name: Fixed shared media foundation
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    runs-on: ubuntu-24.04
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: shared-foundation
+      - name: Test fixed runtime, loop, engine and codec contracts
+        run: cargo test --locked -p rt_runtime -p shoop_loops -p shoop_rt_engine -p shoop_persistence_codec
+      - name: Check formatting, tracing, attributes and parity
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
+          python3 scripts/check_feature_parity.py
+
+      - name: Measure production fixed shared media callbacks
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
+          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
+          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
+          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
+          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
+          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
+
+      - name: Upload production shared media callback measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
+  host_process_inspection:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    name: Host process inspection (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # A PR may explicitly waive unavailable macOS runners with this label.
+        os: ${{ fromJSON(contains(github.event.pull_request.labels.*.name, 'ci:skip-macos') && '["ubuntu-24.04","windows-2025"]' || '["ubuntu-24.04","macos-15","windows-2025"]') }}
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: host-process-inspection-${{ matrix.os }}
+      - name: Configure MSVC C++ compilation for Perfetto
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = (Get-Command clang-cl.exe -ErrorAction Stop).Source
+          "CXX=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CXXFLAGS=-DNOMINMAX -D_WINSOCKAPI_ -D_CRT_SECURE_NO_WARNINGS -D_CRT_DECLARE_NONSTDC_NAMES=1" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Inspect real child processes and their listening sockets
+        run: cargo test --locked -p shoop_host_processes --tests
+      - name: Inspect optimized Windows process lifetimes
+        if: runner.os == 'Windows'
+        run: cargo test --locked --release -p shoop_host_processes --tests
+
+  native_jack:
+    name: Native JACK audio and MIDI acceptance
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: "-D warnings"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-jack-acceptance
+      - name: Install native JACK and application build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libjack-jackd2-dev jackd2 \
+            libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev
+      - name: Test direct audio and MIDI through production host paths
+        run: python3 scripts/run_native_jack_tests.py
+      - name: Build and test native driver feature combinations
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: "1"
+        run: |
+          for features in jack cpal jack,cpal; do
+            cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features --features "$features"
+            cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features --features "$features"
+          done
+          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features
+          cargo check --locked -p shoopdaloop --no-default-features --features system-preview
+          cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features
+      - name: Upload JACK acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-jack-acceptance-${{ github.run_id }}
+          path: target/native-jack/*.log
+          if-no-files-found: error
+
   no_std_core:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Bare-metal runtime and session service
@@ -59,7 +179,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p rt_buffered -p shoop_loops -p shoop_port_graph --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -75,6 +195,10 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -99,7 +223,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes \
             build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
-            libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
+            libgtk2.0-dev libjack-jackd2-dev jackd2 liblo-dev libmagic-dev libpulse-dev \
             libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
@@ -107,16 +231,29 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
             protobuf-compiler
 
+      - name: Reserve disk space for instrumented workspace binaries
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
       - name: Generate Rust coverage
         env:
           SHOOP_ALLOW_MISSING_BACKENDS: 1
           SHOOP_TEST_TRACE: failure
           SHOOP_TEST_TRACE_DIR: ${{ runner.temp }}/perfetto-nextest-rust-coverage
+          # Recovery tests kill child hosts; avoid partially initialized merge pools.
+          LLVM_PROFILE_FILE_NAME: shoopdaloop-%p.profraw
         run: |
           mkdir -p "$SHOOP_TEST_TRACE_DIR"
-          cargo llvm-cov nextest --locked --workspace \
-            --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci \
-            --lcov --output-path lcov.info
+          export CARGO_TARGET_DIR="$PWD/target/llvm-cov-target"
+          eval "$(cargo llvm-cov show-env --sh)"
+          cargo llvm-cov clean --workspace
+          cargo nextest run --locked --workspace \
+            --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+          python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
+          # SIGKILL recovery tests can leave truncated child profiles; retain the valid profiles.
+          cargo llvm-cov report --failure-mode all --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
         if: github.event.pull_request.user.login != 'dependabot[bot]'
@@ -136,6 +273,14 @@ jobs:
           path: ${{ runner.temp }}/perfetto-nextest-rust-coverage/*.pftrace
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload native JACK coverage acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-jack-coverage-${{ github.run_id }}
+          path: target/native-jack-coverage/*.log
+          if-no-files-found: ignore
 
   without_cpal:
     name: Nightly without CPAL (${{ matrix.flavor }})
@@ -187,10 +332,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests
       - name: Build without CPAL or Rodio
         if: matrix.flavor != 'macos-intel-10.15'
-        run: cargo build --locked -p shoopdaloop -p shoop_host --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
       - name: Build Intel release targeting Catalina
         if: matrix.flavor == 'macos-intel-10.15'
-        run: cargo build --locked --release -p shoopdaloop -p shoop_host --no-default-features --target x86_64-apple-darwin
+        run: cargo build --locked --release -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target x86_64-apple-darwin
       - name: Package portable Catalina distribution
         if: matrix.flavor == 'macos-intel-10.15'
         run: |
@@ -229,6 +374,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Keep platform builds independent of inspection runner availability.
   build_and_test:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
@@ -236,72 +382,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: ""
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-debug.tar.gz
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: ""
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-release.tar.gz
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/debug/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-debug.zip
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/release/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-release.zip
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: debug
-            cargo_args: ""
-            rust_targets: aarch64-apple-darwin
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-debug.tar.gz
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: release
-            cargo_args: --release
-            rust_targets: aarch64-apple-darwin
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-release.tar.gz
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: debug
-            cargo_args: --no-default-features
-            trunk_args: ""
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-debug.zip
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: release
-            cargo_args: --release --no-default-features
-            trunk_args: --release
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-release.zip
-            html_artifact: shoopdaloop-web-wasm32-release.html
+        # Keep the complete matrix unless this PR explicitly waives macOS.
+        include: >-
+          ${{ fromJSON(format('[{0}{1},{2}]',
+            '{"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-debug.tar.gz"},
+            {"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-release.tar.gz"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"x86_64-pc-windows-msvc","binary":"target/debug/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-debug.zip"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"x86_64-pc-windows-msvc","binary":"target/release/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-release.zip"}',
+            !contains(github.event.pull_request.labels.*.name, 'ci:skip-macos')
+              && ',{"target":"macos","os":"macos-15","arch":"arm64","profile":"debug","cargo_args":"","rust_targets":"aarch64-apple-darwin","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-macos-arm64-debug.tar.gz"},
+            {"target":"macos","os":"macos-15","arch":"arm64","profile":"release","cargo_args":"--release","rust_targets":"aarch64-apple-darwin","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-macos-arm64-release.tar.gz"}' || '',
+            '{"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"debug","cargo_args":"--no-default-features","trunk_args":"","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-debug.zip"},
+            {"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"release","cargo_args":"--release --no-default-features","trunk_args":"--release","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-release.zip","html_artifact":"shoopdaloop-web-wasm32-release.html"}'
+          )) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -330,11 +423,26 @@ jobs:
         with:
           tool: wasm-pack@0.15.0
 
+      - name: Bound Linux debug symbol storage
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        shell: bash
+        run: |
+          printf '%s\n' \
+            'CARGO_PROFILE_DEV_DEBUG=line-tables-only' \
+            'CARGO_PROFILE_TEST_DEBUG=line-tables-only' \
+            'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
+
+      - name: Reclaim unused Linux runner SDKs
+        if: (matrix.target == 'web' || (matrix.target == 'linux' && matrix.profile == 'debug')) && env.ACT != 'true'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h .
+
       - name: Cache Rust builds
         if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: app-v1
+          prefix-key: ${{ matrix.target == 'linux' && matrix.profile == 'debug' && 'app-v2-line-tables' || 'app-v1' }}
           shared-key: ${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}
           cache-targets: "true"
           cache-all-crates: "true"
@@ -400,7 +508,7 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked -p shoopdaloop -p shoop_host ${{ matrix.cargo_args }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager ${{ matrix.cargo_args }}
 
       - name: Build web application
         if: matrix.target == 'web'
@@ -515,6 +623,8 @@ jobs:
             -p shoop_deployment_protocol \
             -p shoop_app_client \
             -p shoop_host \
+            -p shoop_host_processes \
+            -p shoop_host_manager \
             -p shoop_app_reference \
             -p shoop_scripting \
             -p shoop_transport \
@@ -566,38 +676,13 @@ jobs:
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
 
-      - name: Measure guarded rt_runtime release workloads
-        if: matrix.target == 'linux' && matrix.profile == 'release'
-        env:
-          RUSTFLAGS: -D warnings
-        run: python3 scripts/benchmark_rt_runtime.py --iterations 4096 --trials 1
-
-      - name: Measure guarded loop release workloads
-        if: matrix.target == 'linux' && matrix.profile == 'release'
-        env:
-          RUSTFLAGS: -D warnings
-          RUSTDOCFLAGS: -D warnings
-        run: |
-          python3 scripts/benchmark_loops.py --iterations 1024 --trials 3 \
-            --report-dir '${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}'
-
-      - name: Upload guarded loop measurement evidence
-        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
-        uses: actions/upload-artifact@v7
-        with:
-          name: loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload rt_runtime native and benchmark evidence
+      - name: Upload rt_runtime native evidence
         if: always() && matrix.target != 'web'
         uses: actions/upload-artifact@v7
         with:
           name: rt-runtime-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
           path: |
             target/rt-runtime-host/reports
-            target/rt-runtime-bench
           if-no-files-found: warn
           retention-days: 14
 
@@ -615,7 +700,7 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: |
-          cargo check --locked -p shoopdaloop -p shoop_host --no-default-features
+          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest discover -s scripts/tests
 
@@ -671,7 +756,7 @@ jobs:
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
           python3 scripts/check_feature_parity.py
-          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -714,12 +799,12 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
-            --package shoop_deployment_protocol --package shoop_app_protocol --package shoop_app_client \
+            --package rt_profiling --package rt_runtime --package rt_buffered --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
+            --package shoop_deployment_protocol --package shoop_app_protocol --package shoop_app_client --package shoop_port_graph \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \
-            --package shoop_engine_service --package shoop_example_dsp --package shoop_latency \
+            --package shoop_loops_test_support --package shoop_example_dsp --package shoop_latency \
             --package shoop_plugin_protocol --package shoop_rt_backend --package shoop_rt_engine \
             --package shoop_rt_host_worklet --package shoop_rt_protocol --package shoop_rt_transport \
             --package shoop_rt_transport_message_port --package shoop_scripting \
@@ -776,6 +861,23 @@ jobs:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
 
+      - name: Install pinned Chrome for library browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        uses: browser-actions/setup-chrome@v2
+        id: library_chrome
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Run runtime, loop, engine and codec browser suites
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
+        run: >-
+          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
+          --package rt_runtime --package shoop_loops --package shoop_rt_engine --package shoop_persistence_codec
+
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
@@ -824,6 +926,7 @@ jobs:
           NEW_ENGINE: '1'
         run: |
           node --experimental-websocket browser_smoke.mjs
+          PREVIEW_ONLY=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
           if [ '${{ matrix.profile }}' = release ]; then
             SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
               node --experimental-websocket browser_smoke.mjs
@@ -832,6 +935,8 @@ jobs:
               node --experimental-websocket browser_smoke.mjs
           else
             DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
+            PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject node --experimental-websocket browser_smoke.mjs
+            PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending node --experimental-websocket browser_smoke.mjs
           fi
 
       - name: Install Firefox browser

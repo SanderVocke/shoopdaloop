@@ -10,11 +10,15 @@ const LIMITS: Limits = Limits {
     loops: 16,
     strip_audio_channels: 2,
     master_channels: 2,
+    buses: 8,
+    bus_channels: 8,
     host_audio_inputs: 2,
     host_audio_outputs: 2,
     host_midi_inputs: 1,
     host_midi_outputs: 1,
     max_frames: 256,
+    quantum: 32,
+    processing_latency_frames: 32,
     smoothing_limit_frames: 4800,
     reliable_credits: 2,
     bulk_credits: 1,
@@ -36,6 +40,20 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CreateBus {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        },
+        Request::RemoveBus {
+            bus: BusId(SlotId::new(7, 42)),
+        },
+        Request::ReplacementEdit {
+            id: 2,
+            edit: ReplacementEdit::Bus {
+                bus: BusId(SlotId::new(7, 42)),
+                channels: 8,
+            },
+        },
         Request::CancelBulk,
         Request::ReplacementBegin { id: 1 },
         Request::ReplacementEdit {
@@ -91,14 +109,17 @@ fn client_samples() -> Vec<ClientMessage> {
                     index: 1,
                 },
                 bus: BusPort {
-                    bus: BusId::Master,
+                    bus: BusId::MASTER,
                     index: 1,
                 },
             },
         },
         Request::ReplacementEdit {
             id: 1,
-            edit: ReplacementEdit::Master(BusControl::Mute(true)),
+            edit: ReplacementEdit::BusControl {
+                bus: BusId::MASTER,
+                control: BusControl::Mute(true),
+            },
         },
         Request::ReplacementPrepare { id: 1 },
         Request::ReplacementCommit { id: 1 },
@@ -115,6 +136,30 @@ fn client_samples() -> Vec<ClientMessage> {
             data: ContentChunk::new(&[42; 1024]).unwrap(),
         },
         Request::ContentFinish { id: 1 },
+        Request::ContentFamilyBegin {
+            id: 9,
+            root: loop_id(0),
+            count: 2,
+            sample_rate: 48_000,
+            quantum: 32,
+        },
+        Request::ContentFamilyEdit {
+            id: 9,
+            edit: ContentFamilyEdit {
+                loop_id: loop_id(1),
+                sync_source: loop_id(0),
+                expected_revision: 7,
+                expected_frames: 96,
+                frames: 128,
+                audio: Some(1),
+                midi: Some(2),
+                replace: true,
+                restart: false,
+                fence_content: true,
+            },
+        },
+        Request::ContentFamilyCommit { id: 9 },
+        Request::ContentFamilyCancel { id: 9 },
         Request::ContentApply {
             loop_id: loop_id(0),
             frames: 4,
@@ -126,6 +171,13 @@ fn client_samples() -> Vec<ClientMessage> {
             message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
         },
         Request::ContentRelease { id: 1 },
+        Request::PreviewStart {
+            request_id: 42,
+            bus: BusId::MASTER,
+            content: 81,
+            frames: 12_000,
+        },
+        Request::PreviewStop,
         Request::CreateStrip {
             strip: strip(1),
             shape: StripShape {
@@ -186,7 +238,7 @@ fn client_samples() -> Vec<ClientMessage> {
         },
         Request::Connect {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             }),
             host: HostPortId(2),
@@ -199,13 +251,13 @@ fn client_samples() -> Vec<ClientMessage> {
                 index: 1,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             },
             connected: false,
         },
         Request::BusControl {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Mute(true),
         },
         Request::InjectMidi {
@@ -259,6 +311,14 @@ fn engine_samples() -> Vec<EngineMessage> {
         },
         EngineMessage::Rejected { version: 3 },
         EngineMessage::Result {
+            correlation: 9,
+            outcome: Outcome::ContentPrepared { revision: 8 },
+        },
+        EngineMessage::Result {
+            correlation: 8,
+            outcome: Outcome::ContentApplied { revision: 9 },
+        },
+        EngineMessage::Result {
             correlation: u64::MAX,
             outcome: Outcome::Refused(Refusal::Capacity),
         },
@@ -274,12 +334,14 @@ fn engine_samples() -> Vec<EngineMessage> {
             mode: LoopMode::Playing,
             next_mode: Some(LoopMode::Stopped),
             next_delay: Some(1),
+            content_revision: 9,
             length: 48,
             position: 7,
             peaks,
         }),
+        EngineMessage::Telemetry(Telemetry::Preview { request_id: 42 }),
         EngineMessage::Telemetry(Telemetry::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             peaks,
         }),
         EngineMessage::State(StateRecord::HostPort(HostPort {
@@ -306,7 +368,7 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::State(StateRecord::Connection {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             }),
             host: HostPortId(3),
@@ -318,12 +380,12 @@ fn engine_samples() -> Vec<EngineMessage> {
                 index: 0,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             },
         }),
         EngineMessage::State(StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Gain(0.5),
         }),
         EngineMessage::Bulk(BulkChunk {
@@ -346,6 +408,11 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::LimitsChanged(LIMITS),
         EngineMessage::Disconnected(DisconnectReason::Fault),
+        EngineMessage::State(StateRecord::BusShape {
+            bus: BusId(SlotId::new(7, 42)),
+            channels: 8,
+        }),
+        EngineMessage::State(StateRecord::BusGenerations { generation: 42 }),
         EngineMessage::State(StateRecord::Generations {
             strips: u32::MAX,
             loops: 7,
@@ -406,15 +473,19 @@ fn malformed_records_are_refused_without_panicking() {
     assert!(Peaks::new(&[0.; MAX_STRIP_CHANNELS + 1]).is_none());
     assert!(MidiMessage::new(&[]).is_none());
     assert!(BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES + 1]).is_none());
+    let bulk = engine_samples()
+        .into_iter()
+        .find(|message| matches!(message, EngineMessage::Bulk(_)))
+        .unwrap();
     assert_eq!(
-        encode_engine(&engine_samples()[12], &mut [0; 64]),
+        encode_engine(&bulk, &mut [0; 64]),
         Err(CodecError::Overflow)
     );
     let connect = ClientMessage::Request {
         correlation: 1,
         request: Request::Connect {
             port: EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 7,
             }),
             host: HostPortId(2),
@@ -423,8 +494,8 @@ fn malformed_records_are_refused_without_panicking() {
     };
     let len = encode_client(&connect, &mut buf).unwrap();
     let tag = buf[..len]
-        .windows(3)
-        .position(|bytes| bytes == [1, 0, 7])
+        .windows(10)
+        .position(|bytes| bytes == [1, 0, 0, 0, 0, 1, 0, 0, 0, 7])
         .unwrap();
     let mut record = buf[..len].to_vec();
     record[tag] = 2;

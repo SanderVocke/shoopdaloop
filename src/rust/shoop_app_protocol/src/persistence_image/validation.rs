@@ -67,12 +67,69 @@ impl Progress {
             Ok(())
         };
         let loops: Vec<&Loop> = match &image.manifest {
+            Manifest::FamilyUpdate {
+                format,
+                root,
+                members,
+            } => {
+                let ids = members
+                    .iter()
+                    .map(|member| member.loop_id)
+                    .collect::<BTreeSet<_>>();
+                if !format.is_valid()
+                    || !root.is_valid()
+                    || members.is_empty()
+                    || members.len() > 256
+                    || ids.len() != members.len()
+                    || !members
+                        .iter()
+                        .any(|member| member.loop_id == *root && member.content.is_some())
+                    || members.iter().any(|member| {
+                        !member.loop_id.is_valid()
+                            || member.sync_source.is_some_and(|source| !source.is_valid())
+                            || member.expected_frames > u32::MAX as u64
+                            || (member.restart && member.content.is_none())
+                            || member.content.as_ref().is_some_and(|content| {
+                                !member.fence_content
+                                    || content.id != member.loop_id
+                                    || content.frames % u64::from(format.quantum_frames) != 0
+                            })
+                    })
+                {
+                    return Err(Refusal::Invalid);
+                }
+                members
+                    .iter()
+                    .filter_map(|member| member.content.as_ref())
+                    .collect()
+            }
             Manifest::Session(session) => {
                 if session.sample_rate == 0
                     || session.tracks.len() > 64
                     || session.tracks.iter().map(|t| t.loops.len()).sum::<usize>() > 256
                 {
                     return Err(Refusal::Invalid);
+                }
+                if session.buses.len() > 8
+                    || session
+                        .buses
+                        .iter()
+                        .any(|bus| bus.channels.is_empty() || bus.channels.len() > 8)
+                    || session.bus_display_order.len() != session.buses.len()
+                {
+                    return Err(Refusal::Invalid);
+                }
+                let ids = session.buses.iter().map(|b| b.id).collect::<BTreeSet<_>>();
+                let order = session
+                    .bus_display_order
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
+                if ids.len() != session.buses.len()
+                    || ids != order
+                    || session.preview_bus.is_some_and(|id| !ids.contains(&id))
+                {
+                    return Err(Refusal::Identity);
                 }
                 session.tracks.iter().flat_map(|t| &t.loops).collect()
             }

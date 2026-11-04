@@ -809,6 +809,7 @@ impl RemoteWorkletBackend {
                 self.snapshot.loops.insert(
                     *loop_id,
                     BackendLoopState {
+                        sync_source: None,
                         content_revision: 0,
                         mode: BackendLoopMode::Stopped,
                         length: source_loop.length,
@@ -1293,6 +1294,7 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        sync_source: None,
                         content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),
                         length: loop_.length,

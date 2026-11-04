@@ -16,6 +16,7 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 48_000,
         max_frames: 64,
         host: HostPorts::numbered(0, 0, 0),
@@ -25,6 +26,8 @@ pub fn description() -> EngineDescription {
         }],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: Vec::new(),
         smoothing_frames: 0,
         smoothing_limit_frames: 8,

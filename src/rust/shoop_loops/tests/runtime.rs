@@ -125,7 +125,6 @@ fn config() -> PreparedConfig {
         budgets: Budgets {
             commands: 32,
             events: 32,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 32,
@@ -186,6 +185,7 @@ fn setup_with(
     let config = cfg.prepare().unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: if options.one_sample { 2 } else { 8 },
             checkpoints_per_version: if options.one_sample {
@@ -391,10 +391,14 @@ fn transition(control: &mut LoopControl<Fx>, at: u64, transition: Transition) ->
 }
 fn drain(control: &mut LoopControl<Fx>, replies: &mut Vec<(Sequence, Reply)>) {
     while let Some(completion) = control.try_completion() {
-        assert!(matches!(
-            completion.outcome,
-            RuntimeOutcome::Scheduled { late_by: 0, .. }
-        ));
+        assert!(
+            matches!(
+                completion.outcome,
+                RuntimeOutcome::Scheduled { late_by: 0, .. }
+            ),
+            "{:?}",
+            completion.outcome
+        );
     }
     while let Some(execution) = control.try_execution() {
         assert_eq!(execution.result, Ok(()));

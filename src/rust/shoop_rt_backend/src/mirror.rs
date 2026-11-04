@@ -8,8 +8,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use shoop_backend::{
-    BackendBusChannelState, BackendBusState, BackendConfirmedLink, BackendHostPortDescriptor,
-    BackendLoopId, BackendLoopMode, BackendLoopState, BackendMixerLink, BackendPortDataType,
+    BackendBusChannelId, BackendBusChannelState, BackendBusControl, BackendBusCreation,
+    BackendBusId, BackendBusState, BackendConfirmedLink, BackendHostPortDescriptor, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMixerLink, BackendPortDataType,
     BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendTrackControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
     GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS, MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID,
@@ -167,6 +168,7 @@ pub(crate) struct Loop {
     pub meter: Meter,
     /// Changes whenever the recorded content may have changed.
     pub content: u64,
+    pub rt_content_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,7 +178,7 @@ pub(crate) enum PortTarget {
         kind: PortKind,
         index: u8,
     },
-    Master(u8),
+    Bus(BackendBusId, u8),
     GlobalFx,
 }
 
@@ -185,20 +187,24 @@ pub(crate) struct Port {
     pub target: PortTarget,
 }
 
-pub(crate) struct Master {
+pub(crate) struct Bus {
+    pub slot: BusId,
+    pub name: String,
+    pub channels: Vec<BackendBusChannelState>,
+    pub confirmed: bool,
+    pub removing: bool,
     pub gain_db: f32,
     pub balance: f32,
     pub muted: bool,
     pub meter: Meter,
 }
 
-impl Default for Master {
-    fn default() -> Self {
-        Self {
-            gain_db: 0.0,
-            balance: 0.0,
-            muted: false,
-            meter: Meter::default(),
+impl Bus {
+    pub fn apply(&mut self, control: BackendBusControl) {
+        match control {
+            BackendBusControl::GainDb(v) => self.gain_db = v,
+            BackendBusControl::Balance(v) => self.balance = v,
+            BackendBusControl::Mute(v) => self.muted = v,
         }
     }
 }
@@ -280,7 +286,10 @@ pub(crate) struct Mirror {
     pub links: BTreeSet<BackendConfirmedLink>,
     pub desired_links: BTreeSet<BackendConfirmedLink>,
     pub routes: BTreeSet<BackendMixerLink>,
-    pub master: Master,
+    pub buses: BTreeMap<BackendBusId, Bus>,
+    pub bus_slots: Slots,
+    next_bus: u64,
+    next_channel: u64,
     pub host_ports: Vec<HostPort>,
     pub host_aliases: BTreeMap<shoop_rt_protocol::HostPortId, crate::HostPortAlias>,
     pub strip_slots: Slots,
@@ -295,6 +304,12 @@ pub(crate) struct Mirror {
 impl Mirror {
     pub fn replacement_image(&self) -> Self {
         let mut image = Self::new();
+        image.buses.clear();
+        image.ports.retain(|_, p| p.target == PortTarget::GlobalFx);
+        image.bus_slots = self.bus_slots.clone();
+        image.bus_slots.used.fill(false);
+        image.next_bus = self.next_bus;
+        image.next_channel = self.next_channel;
         image.strip_slots = self.strip_slots.clone();
         image.loop_slots = self.loop_slots.clone();
         image.strip_slots.used.fill(false);
@@ -310,6 +325,7 @@ impl Mirror {
     }
     pub fn reserve_image_identities(&mut self, image: &Self) {
         for (old, next) in [
+            (&mut self.bus_slots, &image.bus_slots),
             (&mut self.strip_slots, &image.strip_slots),
             (&mut self.loop_slots, &image.loop_slots),
         ] {
@@ -317,6 +333,8 @@ impl Mirror {
                 *old = (*old).max(*next);
             }
         }
+        self.next_bus = self.next_bus.max(image.next_bus);
+        self.next_channel = self.next_channel.max(image.next_channel);
         self.next_track = self.next_track.max(image.next_track);
         self.next_loop = self.next_loop.max(image.next_loop);
         self.next_port = self.next_port.max(image.next_port);
@@ -349,7 +367,7 @@ impl Mirror {
                         direction: BackendPortDirection::Output,
                         role: BackendPortRole::AudioOutput,
                     },
-                    target: PortTarget::Master(index as u8),
+                    target: PortTarget::Bus(MASTER_BUS_ID, index as u8),
                 },
             );
         }
@@ -362,7 +380,38 @@ impl Mirror {
             links: BTreeSet::new(),
             desired_links: BTreeSet::new(),
             routes: BTreeSet::new(),
-            master: Master::default(),
+            buses: [(
+                MASTER_BUS_ID,
+                Bus {
+                    slot: BusId::MASTER,
+                    name: MASTER_BUS_NAME.to_owned(),
+                    channels: MASTER_BUS_CHANNEL_IDS
+                        .iter()
+                        .zip(MASTER_BUS_CHANNEL_LABELS)
+                        .zip(MASTER_BUS_OUTPUT_PORT_IDS)
+                        .map(|((id, label), port)| BackendBusChannelState {
+                            id: *id,
+                            label: label.to_owned(),
+                            output_port_id: port,
+                        })
+                        .collect(),
+                    confirmed: true,
+                    removing: false,
+                    gain_db: 0.,
+                    balance: 0.,
+                    muted: false,
+                    meter: Meter::default(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            bus_slots: {
+                let mut slots = Slots::default();
+                slots.adopt(BusId::MASTER.0);
+                slots
+            },
+            next_bus: 2,
+            next_channel: 3,
             host_ports: Vec::new(),
             host_aliases: BTreeMap::new(),
             strip_slots: Slots::default(),
@@ -409,7 +458,8 @@ impl Mirror {
     pub fn live_port(&self, id: BackendPortId) -> Option<&Port> {
         self.ports.get(&id).filter(|port| match port.target {
             PortTarget::Strip { track, .. } => self.live_track(track).is_some(),
-            PortTarget::Master(_) | PortTarget::GlobalFx => true,
+            PortTarget::Bus(id, _) => self.buses.get(&id).is_some_and(|bus| !bus.removing),
+            PortTarget::GlobalFx => true,
         })
     }
 
@@ -419,8 +469,8 @@ impl Mirror {
                 let strip = self.tracks.get(&track)?.strip;
                 Some(EnginePort::Strip(StripPort { strip, kind, index }))
             }
-            PortTarget::Master(index) => Some(EnginePort::Bus(BusPort {
-                bus: BusId::Master,
+            PortTarget::Bus(id, index) => Some(EnginePort::Bus(BusPort {
+                bus: self.buses.get(&id)?.slot,
                 index,
             })),
             PortTarget::GlobalFx => None,
@@ -436,10 +486,13 @@ impl Mirror {
                     .port_index(port.kind, port.index)
                     .and_then(|index| track.ports.get(index).copied())
             }
-            EnginePort::Bus(BusPort {
-                bus: BusId::Master,
-                index,
-            }) => MASTER_BUS_OUTPUT_PORT_IDS.get(usize::from(index)).copied(),
+            EnginePort::Bus(BusPort { bus, index }) => self
+                .buses
+                .values()
+                .find(|b| b.slot == bus)?
+                .channels
+                .get(index as usize)
+                .map(|c| c.output_port_id),
         }
     }
 
@@ -538,6 +591,7 @@ impl Mirror {
         let view = entry.view;
         BackendLoopState {
             content_revision: entry.content,
+            sync_source: entry.sync,
             mode: app_mode(view.mode),
             length: u32::try_from(view.length).unwrap_or(u32::MAX),
             position: u32::try_from(view.position).unwrap_or(u32::MAX),
@@ -551,29 +605,127 @@ impl Mirror {
         }
     }
 
-    pub fn master_state(&mut self) -> BackendBusState {
-        BackendBusState {
-            id: MASTER_BUS_ID,
-            name: MASTER_BUS_NAME.to_owned(),
-            channels: MASTER_BUS_CHANNEL_IDS
+    pub fn bus_states(&mut self) -> BTreeMap<BackendBusId, BackendBusState> {
+        self.buses
+            .iter_mut()
+            .filter(|(_, b)| b.confirmed)
+            .map(|(id, bus)| {
+                (
+                    *id,
+                    BackendBusState {
+                        id: *id,
+                        name: bus.name.clone(),
+                        channels: bus.channels.clone(),
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                        output_peaks_db: bus.meter.take_db(bus.channels.len()),
+                        fx: None,
+                    },
+                )
+            })
+            .collect()
+    }
+    pub fn channel(&self, target: BusPort) -> Option<BackendBusChannelId> {
+        self.buses
+            .values()
+            .find(|bus| bus.slot == target.bus)?
+            .channels
+            .get(target.index as usize)
+            .map(|c| c.id)
+    }
+    pub fn bus_for_channel(&self, id: BackendBusChannelId) -> Option<BusPort> {
+        self.buses.values().filter(|b| !b.removing).find_map(|bus| {
+            bus.channels
                 .iter()
-                .zip(MASTER_BUS_CHANNEL_LABELS)
-                .zip(MASTER_BUS_OUTPUT_PORT_IDS)
-                .map(|((id, label), output_port_id)| BackendBusChannelState {
-                    id: *id,
-                    label: label.to_owned(),
-                    output_port_id,
+                .position(|c| c.id == id)
+                .map(|index| BusPort {
+                    bus: bus.slot,
+                    index: index as u8,
                 })
-                .collect(),
-            gain_db: self.master.gain_db,
-            balance: self.master.balance,
-            muted: self.master.muted,
-            output_peaks_db: self.master.meter.take_db(MASTER_BUS_CHANNEL_IDS.len()),
-            fx: None,
+        })
+    }
+    pub fn create_bus(&mut self, name: String, channels: u8) -> Option<BackendBusCreation> {
+        self.next_bus.checked_add(1)?;
+        self.next_channel.checked_add(u64::from(channels))?;
+        self.next_port.checked_add(u64::from(channels))?;
+        let slot = BusId(self.bus_slots.reserve()?);
+        let id = BackendBusId::from_raw(self.next_bus);
+        self.next_bus = self.next_bus.checked_add(1)?;
+        let mut outputs = Vec::new();
+        for (index, label) in shoop_backend::default_bus_channel_labels(channels as usize)
+            .ok()?
+            .into_iter()
+            .enumerate()
+        {
+            let channel = BackendBusChannelId::from_raw(self.next_channel);
+            self.next_channel = self.next_channel.checked_add(1)?;
+            let port = self.next_port_id();
+            self.ports.insert(
+                port,
+                Port {
+                    descriptor: BackendPortDescriptor {
+                        id: port,
+                        owner: BackendPortOwner::Bus(id),
+                        name: format!("bus_{}_out_{}", id.raw(), index + 1),
+                        data_type: BackendPortDataType::Audio,
+                        direction: BackendPortDirection::Output,
+                        role: BackendPortRole::AudioOutput,
+                    },
+                    target: PortTarget::Bus(id, index as u8),
+                },
+            );
+            outputs.push(BackendBusChannelState {
+                id: channel,
+                label,
+                output_port_id: port,
+            });
+        }
+        self.buses.insert(
+            id,
+            Bus {
+                slot,
+                name,
+                channels: outputs.clone(),
+                confirmed: false,
+                removing: false,
+                gain_db: 0.,
+                balance: 0.,
+                muted: false,
+                meter: Meter::default(),
+            },
+        );
+        Some(BackendBusCreation {
+            bus_id: id,
+            channels: outputs,
+        })
+    }
+    pub fn drop_bus(&mut self, id: BackendBusId) {
+        if let Some(bus) = self.buses.remove(&id) {
+            for channel in &bus.channels {
+                self.ports.remove(&channel.output_port_id);
+            }
+            self.links.retain(|l| {
+                !bus.channels
+                    .iter()
+                    .any(|c| c.output_port_id == l.application_port_id)
+            });
+            self.desired_links.retain(|l| {
+                !bus.channels
+                    .iter()
+                    .any(|c| c.output_port_id == l.application_port_id)
+            });
+            self.routes.retain(|r| {
+                !bus.channels
+                    .iter()
+                    .any(|c| c.id == r.destination_channel_id)
+            });
+            self.connection_revision += 1;
+            self.mixer_revision += 1;
         }
     }
 
-    /// Application ports of confirmed tracks, the Master outputs and the global FX port.
+    /// Application ports of confirmed tracks, buses and the global FX port.
     pub fn application_ports(&self) -> BTreeMap<BackendPortId, BackendPortDescriptor> {
         self.ports
             .iter()
@@ -581,7 +733,8 @@ impl Mirror {
                 PortTarget::Strip { track, .. } => {
                     self.tracks.get(&track).is_some_and(|track| track.confirmed)
                 }
-                PortTarget::Master(_) | PortTarget::GlobalFx => true,
+                PortTarget::Bus(id, _) => self.buses.get(&id).is_some_and(|bus| bus.confirmed),
+                PortTarget::GlobalFx => true,
             })
             .map(|(id, port)| (*id, port.descriptor.clone()))
             .collect()
@@ -590,6 +743,12 @@ impl Mirror {
     pub fn host_descriptors(&self) -> BTreeMap<String, BackendHostPortDescriptor> {
         self.host_ports
             .iter()
+            .filter(|port| {
+                !port
+                    .name
+                    .as_str()
+                    .starts_with(shoop_rt_protocol::HOST_IO_PREFIX)
+            })
             .filter_map(|port| {
                 let id = self.host_key(port).to_owned();
                 if id.is_empty() {

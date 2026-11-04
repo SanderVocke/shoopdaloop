@@ -89,9 +89,9 @@ fn start(r: &mut Resolver) {
 }
 fn advance(r: &mut Resolver, end: u64) {
     while r.frame() < Frame(end) {
-        let interval = assert_no_heap(|| r.preview(Frame(end), &[])).unwrap();
+        assert_no_heap(|| r.preview_tick(&[])).unwrap();
         assert_no_heap(|| r.commit()).unwrap();
-        assert_no_heap(|| r.finish(interval.end)).unwrap();
+        assert_no_heap(|| r.finish()).unwrap();
     }
 }
 fn event(out: &mut Vec<Event>, f: u64, target: u32, kind: EventKind) {
@@ -172,7 +172,11 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
             old.loops.reverse();
             new.loops.reverse();
         }
-        let mut r = Resolver::prepare(prepared(&old, journal)).unwrap();
+        let mut r = Resolver::prepare(
+            prepared(&old, journal),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         start(&mut r);
         let candidate = prepared(&new, journal);
         let change =
@@ -185,7 +189,7 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
                 let f = r.frame().0;
                 let before = r.state(id(5)).unwrap();
                 let epoch = r.epoch();
-                let interval = assert_no_heap(|| r.preview(end, &[])).unwrap();
+                let interval = assert_no_heap(|| r.preview_tick(&[])).unwrap();
                 assert_eq!(r.state(id(5)).unwrap(), before);
                 assert_eq!(r.epoch(), epoch);
                 if f <= 6 {
@@ -243,7 +247,7 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
                 );
                 dropped += expected.len().saturating_sub(journal) as u64;
                 assert_eq!(r.dropped_events(), dropped);
-                assert_no_heap(|| r.finish(interval.end)).unwrap();
+                assert_no_heap(|| r.finish()).unwrap();
             }
         }
         assert_eq!(
@@ -272,9 +276,96 @@ fn running_change_activates_at_zero_with_continuity_removed_target_cleanup_and_e
 }
 
 #[shoop_test]
+fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
+    for q in [16, 32, 64, 128] {
+        let scaled = |new| {
+            let mut d = description(new, false);
+            for node in &mut d.loops {
+                node.length *= q;
+            }
+            for program in &mut d.programs {
+                program.nominal_unit_frames *= q;
+            }
+            prepared(&d, 1024)
+        };
+        let mut r = Resolver::prepare(scaled(false), rt_runtime::Quantum::new(q as usize).unwrap())
+            .unwrap();
+
+        start(&mut r);
+        let candidate = scaled(true);
+        let change =
+            assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
+                .unwrap();
+        for tick in 0..20 {
+            let interval = assert_no_heap(|| r.preview_tick(&[])).unwrap();
+            assert_eq!(interval.end, Frame((tick + 1) * q));
+            for d in r.decisions().unwrap() {
+                let s = d.state;
+                let (mode, position, cycles) = match s.id.slot() {
+                    0 => (Mode::Playing, tick % 2 * q, tick / 2),
+                    1 => (Mode::Playing, tick % 5 * q, tick / 5),
+                    2 if (2..6).contains(&tick) => (Mode::Playing, (tick - 2) * q, 0),
+                    3 if tick >= 6 => (Mode::Playing, (tick - 6) % 3 * q, (tick - 6) / 3),
+                    5 => (Mode::Playing, 0, 0),
+                    _ => (Mode::Stopped, 0, 0),
+                };
+                assert_eq!(
+                    (s.mode, if s.plays() { s.position } else { 0 }, s.cycles),
+                    (mode, position, cycles)
+                );
+                if s.id == id(5) {
+                    assert_eq!(
+                        s.composite.unwrap(),
+                        CompositeState {
+                            iteration: if tick < 6 {
+                                (tick / 2) % 3
+                            } else {
+                                ((tick - 6) / 2) % 2
+                            },
+                            passes: if tick < 6 { 0 } else { 1 + (tick - 6) / 4 },
+                            entered_at: Some(Frame(tick / 2 * 2 * q)),
+                        }
+                    );
+                }
+            }
+            assert_no_heap(|| r.commit()).unwrap();
+            let mut events = expected_events(tick);
+            for event in &mut events {
+                event.frame.0 *= q;
+            }
+            assert_eq!(r.events(), events, "Q={q}, tick={tick}");
+            assert_eq!(r.epoch(), Epoch(u64::from(tick >= 6)));
+            assert_no_heap(|| r.finish()).unwrap();
+        }
+        assert_eq!(
+            r.completion(change).unwrap().unwrap(),
+            Completion {
+                id: change,
+                sequence: Sequence(3),
+                requested: Frame(1),
+                effective: Frame(q),
+                outcome: Outcome::Applied {
+                    frame: Frame(6 * q)
+                },
+            }
+        );
+        let returned = assert_no_heap(|| r.take_program_change(change))
+            .unwrap()
+            .unwrap();
+        assert_eq!(returned.activated_epoch, Some(Epoch(1)));
+        assert_eq!(returned.topology.program(id(5)).unwrap().iterations, 3);
+        drop(returned);
+    }
+}
+
+#[shoop_test]
 fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_without_revision_gaps(
 ) {
-    let mut r = Resolver::prepare(prepared(&description(false, false), 1024)).unwrap();
+    let mut r = Resolver::prepare(
+        prepared(&description(false, false), 1024),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     start(&mut r);
     let candidate = prepared(&description(true, true), 1024);
     let change =
@@ -282,7 +373,7 @@ fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_w
             .unwrap();
     advance(&mut r, 6);
     let previous = r.state(id(3)).unwrap();
-    assert_no_heap(|| r.preview(Frame(7), &[])).unwrap();
+    assert_no_heap(|| r.preview_tick(&[])).unwrap();
     let decision = r
         .decisions()
         .unwrap()
@@ -294,14 +385,11 @@ fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_w
     assert_eq!(decision.state.capture_revision, Revision(1));
     assert_eq!(r.state(id(3)).unwrap(), previous);
     assert_eq!(r.epoch(), Epoch(0));
-    let interval = assert_no_heap(|| {
-        r.preview(
-            Frame(7),
-            &[Observation::Refused {
-                request: change,
-                reason: Error::Capacity,
-            }],
-        )
+    assert_no_heap(|| {
+        r.preview_tick(&[Observation::Refused {
+            request: change,
+            reason: Error::Capacity,
+        }])
     })
     .unwrap();
     assert_no_heap(|| r.commit()).unwrap();
@@ -311,7 +399,7 @@ fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_w
         .events()
         .iter()
         .any(|e| e.kind == EventKind::Transition(Transition::Program)));
-    assert_no_heap(|| r.finish(interval.end)).unwrap();
+    assert_no_heap(|| r.finish()).unwrap();
     let rejected = assert_no_heap(|| r.take_program_change(change))
         .unwrap()
         .unwrap();
@@ -345,7 +433,11 @@ fn candidate_capture_preflight_failure_preserves_old_configuration_and_retries_w
 #[shoop_test]
 fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early_or_block_music() {
     for case in 0..4 {
-        let mut r = Resolver::prepare(prepared(&description(false, false), 1)).unwrap();
+        let mut r = Resolver::prepare(
+            prepared(&description(false, false), 1),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         start(&mut r);
         let candidate = prepared(&description(true, false), 1);
         let change =
@@ -416,7 +508,11 @@ fn idle_clock_cancellation_staleness_and_owner_backpressure_do_not_publish_early
 #[shoop_test]
 fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut() {
     for case in 0..8 {
-        let mut r = Resolver::prepare(prepared(&description(false, false), 1024)).unwrap();
+        let mut r = Resolver::prepare(
+            prepared(&description(false, false), 1024),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         start(&mut r);
         let candidate = prepared(&description(true, false), 1024);
         let change = assert_no_heap(|| {
@@ -452,14 +548,14 @@ fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut
         } else {
             vec![]
         };
-        let mut interval = assert_no_heap(|| r.preview(Frame(5), &observations)).unwrap();
+        assert_no_heap(|| r.preview_tick(&observations)).unwrap();
         if case == 7 {
             assert_no_heap(|| r.cancel(change)).unwrap();
             assert_eq!(assert_no_heap(|| r.commit()), Err(Error::InvalidState));
-            interval = assert_no_heap(|| r.preview(Frame(5), &observations)).unwrap();
+            assert_no_heap(|| r.preview_tick(&observations)).unwrap();
         }
         assert_no_heap(|| r.commit()).unwrap();
-        assert_no_heap(|| r.finish(interval.end)).unwrap();
+        assert_no_heap(|| r.finish()).unwrap();
         advance(&mut r, 10);
         let expected = match case {
             3 | 7 => Outcome::Cancelled { frame: Frame(4) },
@@ -496,7 +592,8 @@ fn stopped_empty_and_explicit_end_changes_do_not_manufacture_playback_or_clock_e
         let mut new = old.clone();
         new.programs[0].sections.clear();
         new.loops[5].length = 42;
-        let mut r = Resolver::prepare(prepared(&old, 1024)).unwrap();
+        let mut r =
+            Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
         if play_request {
             submit(&mut r, 5, 1, 0, play(false));
         }
@@ -522,7 +619,11 @@ fn stopped_empty_and_explicit_end_changes_do_not_manufacture_playback_or_clock_e
         drop(owner);
     }
     for play_request in [false, true] {
-        let mut r = Resolver::prepare(prepared(&description(false, false), 0)).unwrap();
+        let mut r = Resolver::prepare(
+            prepared(&description(false, false), 0),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         if play_request {
             submit(&mut r, 5, 1, 0, play(false));
         }
@@ -549,7 +650,8 @@ fn stopped_empty_and_explicit_end_changes_do_not_manufacture_playback_or_clock_e
     for entry in &mut old.programs[0].sections[0].entries {
         entry.mode = Some(Mode::Playing);
     }
-    let mut r = Resolver::prepare(prepared(&old, 1024)).unwrap();
+    let mut r =
+        Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     start(&mut r);
     let candidate = prepared(&description(true, false), 1024);
     let change =
@@ -576,7 +678,8 @@ fn stopped_empty_and_explicit_end_changes_do_not_manufacture_playback_or_clock_e
         .unwrap()
         .unwrap();
     drop(owner);
-    let mut r = Resolver::prepare(prepared(&old, 1024)).unwrap();
+    let mut r =
+        Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     start(&mut r);
     let candidate = prepared(&description(true, false), 1024);
     let change =
@@ -614,7 +717,8 @@ fn removed_nested_program_stops_descendants_before_new_graph_order_unless_direct
         });
         let mut new = old.clone();
         new.programs[0].sections[0].entries = vec![entry(3, 0, 2, None)];
-        let mut r = Resolver::prepare(prepared(&old, 1024)).unwrap();
+        let mut r =
+            Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
         start(&mut r);
         let candidate = prepared(&new, 1024);
         let change =
@@ -626,7 +730,7 @@ fn removed_nested_program_stops_descendants_before_new_graph_order_unless_direct
         advance(&mut r, 6);
         assert_eq!(r.state(id(4)).unwrap().mode, Mode::Playing);
         assert_eq!(r.state(id(2)).unwrap().mode, Mode::Playing);
-        let interval = assert_no_heap(|| r.preview(Frame(7), &[])).unwrap();
+        assert_no_heap(|| r.preview_tick(&[])).unwrap();
         let expected = if override_stop {
             Mode::Playing
         } else {
@@ -651,7 +755,7 @@ fn removed_nested_program_stops_descendants_before_new_graph_order_unless_direct
             r.state(id(4)).unwrap().last_pulse,
             Some(Frame(if override_stop { 6 } else { 4 }))
         );
-        assert_no_heap(|| r.finish(interval.end)).unwrap();
+        assert_no_heap(|| r.finish()).unwrap();
         let owner = assert_no_heap(|| r.take_program_change(change))
             .unwrap()
             .unwrap();
@@ -677,7 +781,8 @@ fn invalid_candidate_shapes_epochs_and_raw_program_tags_return_owners_without_mu
             4 => candidate_limits.pending_requests += 1,
             _ => {}
         }
-        let mut r = Resolver::prepare(prepared(&old, 0)).unwrap();
+        let mut r =
+            Resolver::prepare(prepared(&old, 0), rt_runtime::Quantum::new(1).unwrap()).unwrap();
         start(&mut r);
         advance(&mut r, 2);
         let before = r.state(id(5)).unwrap();
@@ -730,14 +835,18 @@ fn retained_change_and_full_request_slots_allow_all_128_one_sample_boundaries() 
         new.loops[0].length = 1;
         let mut bounds = limits(journal);
         bounds.pending_requests = 3;
-        let mut r = Resolver::prepare(compile(bounds, &old).unwrap()).unwrap();
+        let mut r = Resolver::prepare(
+            compile(bounds, &old).unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         start(&mut r);
         let candidate = compile(bounds, &new).unwrap();
         let change =
             assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
                 .unwrap();
         for f in 0..128 {
-            let interval = assert_no_heap(|| r.preview(Frame(128), &[])).unwrap();
+            let interval = assert_no_heap(|| r.preview_tick(&[])).unwrap();
             assert_eq!(
                 interval,
                 Interval {
@@ -763,7 +872,7 @@ fn retained_change_and_full_request_slots_allow_all_128_one_sample_boundaries() 
                 assert_eq!(r.state(id(3)).unwrap().position, (f - 3) % 3);
             }
             assert_eq!(r.retained_requests(), 3);
-            assert_no_heap(|| r.finish(interval.end)).unwrap();
+            assert_no_heap(|| r.finish()).unwrap();
         }
         assert_eq!(
             r.completion(change).unwrap().unwrap().outcome,
@@ -789,7 +898,8 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
         });
         let mut new = old.clone();
         new.programs[0].sections[0].entries = vec![entry(3, 0, 2, Some(Mode::Recording))];
-        let mut r = Resolver::prepare(prepared(&old, 1024)).unwrap();
+        let mut r =
+            Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
         start(&mut r);
         let candidate = prepared(&new, 1024);
         let change =
@@ -799,7 +909,7 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
         assert_eq!(r.state(id(1)).unwrap().mode, Mode::Stopped);
         assert_eq!(r.state(id(2)).unwrap().capture_revision, Revision(1));
         assert_eq!(r.state(id(2)).unwrap().capture_frames, 3);
-        let mut interval = assert_no_heap(|| r.preview(Frame(4), &[])).unwrap();
+        assert_no_heap(|| r.preview_tick(&[])).unwrap();
         let decisions = r.decisions().unwrap();
         let old_target = decisions.iter().find(|d| d.state.id == id(2)).unwrap();
         assert_eq!(old_target.state.capture_revision, Revision(1));
@@ -808,14 +918,11 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
         assert_eq!(new_target.state.capture_revision, Revision(1));
         assert_eq!(new_target.origin, Some(change));
         if refuse {
-            interval = assert_no_heap(|| {
-                r.preview(
-                    Frame(4),
-                    &[Observation::Refused {
-                        request: change,
-                        reason: Error::Capacity,
-                    }],
-                )
+            assert_no_heap(|| {
+                r.preview_tick(&[Observation::Refused {
+                    request: change,
+                    reason: Error::Capacity,
+                }])
             })
             .unwrap();
         }
@@ -839,7 +946,7 @@ fn old_zero_actions_never_start_a_capture_in_the_candidate_preview_or_double_app
                 .any(|e| e.target == id(1) && e.kind == EventKind::Pulse),
             refuse
         );
-        assert_no_heap(|| r.finish(interval.end)).unwrap();
+        assert_no_heap(|| r.finish()).unwrap();
         assert_eq!(
             r.state(id(2)).unwrap().capture_frames,
             if refuse { 1 } else { 4 }
@@ -856,7 +963,11 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
     for phase in 0..5 {
         let old = prepared(&description(false, false), 1024);
         let new = prepared(&description(true, false), 1024);
-        let mut r = Resolver::prepare(prepared(&description(false, false), 1024)).unwrap();
+        let mut r = Resolver::prepare(
+            prepared(&description(false, false), 1024),
+            rt_runtime::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         if phase == 3 {
             start(&mut r);
         }
@@ -872,12 +983,12 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
         })
         .unwrap();
         if phase > 0 {
-            assert_no_heap(|| r.preview(Frame(1), &[])).unwrap();
+            assert_no_heap(|| r.preview_tick(&[])).unwrap();
             if phase > 1 {
                 assert_no_heap(|| r.commit()).unwrap();
             }
             if phase == 4 {
-                assert_no_heap(|| r.finish(Frame(1))).unwrap();
+                assert_no_heap(|| r.finish()).unwrap();
             }
         }
         let state = r.state(id(5)).unwrap();
@@ -894,7 +1005,7 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
             (frame, epoch, state)
         );
         assert_eq!(
-            assert_no_heap(|| r.preview(Frame(10), &[])),
+            assert_no_heap(|| r.preview_tick(&[])),
             Err(Error::InvalidState)
         );
         assert_eq!(
@@ -902,10 +1013,7 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
             Err(Error::InvalidState)
         );
         assert_eq!(assert_no_heap(|| r.commit()), Err(Error::InvalidState));
-        assert_eq!(
-            assert_no_heap(|| r.finish(Frame(1))),
-            Err(Error::InvalidState)
-        );
+        assert_eq!(assert_no_heap(|| r.finish()), Err(Error::InvalidState));
         assert_eq!(
             assert_no_heap(|| r.submit(Request {
                 target: id(5),

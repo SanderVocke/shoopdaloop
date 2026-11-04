@@ -12,6 +12,9 @@ pub(in crate::service) struct Candidate {
     loops: BTreeMap<LoopId, Loop>,
     ports: BTreeMap<PortId, Port>,
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
+    buses: BTreeMap<BusId, Bus>,
+    bus_order: Vec<BusId>,
+    preview_bus: Option<BusId>,
     connections: BTreeMap<(PortId, String), Intent>,
     routes: BTreeMap<MixerRouteState, Intent>,
     global: GlobalControlState,
@@ -84,7 +87,10 @@ fn midi_events(
     }
 }
 
-fn backend_loop(image: &image::Image, content: &image::Loop) -> Result<BackendLoopContent> {
+pub(super) fn backend_loop(
+    image: &image::Image,
+    content: &image::Loop,
+) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
         source_id: content.id.raw(),
         length: content.frames as u32,
@@ -156,6 +162,7 @@ impl Candidate {
         identities.insert(source.state.id, id);
         let mut view = source.state.clone();
         view.id = id;
+        view.publication = None;
         view.owner = owner;
         self.ports.insert(
             id,
@@ -165,11 +172,12 @@ impl Candidate {
             },
         );
         for external in &source.external_connections {
-            let error = (!service
-                .observed
-                .connections
-                .host_ports
-                .contains_key(external))
+            let error = (!service.dynamic_ports()
+                && !service
+                    .observed
+                    .connections
+                    .host_ports
+                    .contains_key(external))
             .then(|| {
                 format!("external port {external} is unavailable; connection intent retained")
             });
@@ -196,15 +204,10 @@ impl Candidate {
                 "session requires a different sample rate or unsupported recording policy"
             ));
         }
-        if session.master.name != MASTER_BUS_NAME
-            || !session.master.id.is_valid()
-            || !session.master.gain_db.is_finite()
-            || !(-1.0..=1.0).contains(&session.master.balance)
-            || session.master.channels.len() != 2
-            || session.global_ports.len() != 1
-        {
+        let limits = service.backend.bus_limits();
+        if session.buses.len() > limits.buses as usize || session.global_ports.len() != 1 {
             return Err(anyhow!(
-                "session requires unsupported buses or global ports"
+                "session exceeds bus capacity or has invalid global ports"
             ));
         }
         let mut candidate = Self {
@@ -213,6 +216,9 @@ impl Candidate {
             loops: BTreeMap::new(),
             ports: BTreeMap::new(),
             channels: BTreeMap::new(),
+            buses: BTreeMap::new(),
+            bus_order: Vec::new(),
+            preview_bus: None,
             connections: BTreeMap::new(),
             routes: BTreeMap::new(),
             global: session.global.clone(),
@@ -410,42 +416,121 @@ impl Candidate {
                 .view
                 .targeted = true;
         }
-        let mut channels = Vec::new();
+        let mut buses = Vec::new();
+        let mut bus_ids = BTreeMap::new();
         let mut channel_ids = BTreeMap::new();
-        for (index, channel) in session.master.channels.iter().enumerate() {
-            if !channel.id.is_valid()
-                || channel.port.state.owner
-                    != (ApplicationPortOwner::Bus {
-                        bus_id: session.master.id,
-                    })
-                || channel.label != MASTER_BUS_CHANNEL_LABELS[index]
-                || channel_ids
-                    .insert(channel.id, BusChannelId::from_raw(index as u64 + 1))
-                    .is_some()
-            {
-                return Err(anyhow!("invalid Master channel"));
+        for bus in &session.buses {
+            BackendBusRequest {
+                name: bus.name.clone(),
+                channel_count: bus.channels.len() as u32,
+                fx: None,
             }
-            candidate.port(
-                service,
-                &channel.port,
-                ApplicationPortOwner::Bus {
-                    bus_id: BusId::from_raw(1),
-                },
-                &mut port_ids,
-            )?;
-            let id = BusChannelId::from_raw(index as u64 + 1);
-            candidate
-                .channels
-                .insert(id, BackendBusChannelId::from_raw(channel.id.raw()));
-            channels.push(BackendSessionBusChannel {
-                source_id: channel.id.raw(),
-                label: channel.label.clone(),
-                output_port: backend_port(
+            .normalized()?;
+            if !bus.id.is_valid()
+                || !bus.gain_db.is_finite()
+                || !(-1.0..=1.0).contains(&bus.balance)
+                || (bus.channels.len() != 2 && bus.balance != 0.)
+                || bus.channels.len() > limits.channels as usize
+            {
+                return Err(anyhow!("invalid bus or unsupported channel capacity"));
+            }
+            let id = BusId::from_raw(next(&mut service.next_bus)?);
+            if bus_ids.insert(bus.id, id).is_some() {
+                return Err(anyhow!("duplicate bus identity"));
+            }
+            let mut channels = Vec::new();
+            let mut view_channels = Vec::new();
+            for channel in &bus.channels {
+                let channel_id = BusChannelId::from_raw(next(&mut service.next_channel)?);
+                if !channel.id.is_valid()
+                    || channel.port.state.owner != (ApplicationPortOwner::Bus { bus_id: bus.id })
+                    || channel.label.is_empty()
+                    || channel.label.len() > 128
+                    || channel_ids.insert(channel.id, channel_id).is_some()
+                {
+                    return Err(anyhow!("invalid bus channel"));
+                }
+                let port = candidate.port(
+                    service,
                     &channel.port,
-                    BackendPortOwner::Bus(BackendBusId::from_raw(session.master.id.raw())),
-                )?,
+                    ApplicationPortOwner::Bus { bus_id: id },
+                    &mut port_ids,
+                )?;
+                candidate
+                    .channels
+                    .insert(channel_id, BackendBusChannelId::from_raw(channel.id.raw()));
+                view_channels.push(BusChannelState {
+                    id: channel_id,
+                    label: channel.label.clone(),
+                    output_port_id: port,
+                });
+                channels.push(BackendSessionBusChannel {
+                    source_id: channel.id.raw(),
+                    label: channel.label.clone(),
+                    output_port: backend_port(
+                        &channel.port,
+                        BackendPortOwner::Bus(BackendBusId::from_raw(bus.id.raw())),
+                    )?,
+                });
+            }
+            candidate.buses.insert(
+                id,
+                Bus {
+                    backend: BackendBusId::from_raw(bus.id.raw()),
+                    view: BusState {
+                        id,
+                        name: bus.name.clone(),
+                        structural_state: StructuralState::Confirmed,
+                        structural_error: None,
+                        output_peaks_db: vec![-200.; view_channels.len()].into(),
+                        channels: view_channels.into(),
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                        control_pending: false,
+                        control_error: None,
+                        fx: None,
+                    },
+                },
+            );
+            buses.push(BackendSessionBus {
+                source_id: bus.id.raw(),
+                name: bus.name.clone(),
+                channels,
+                gain_db: bus.gain_db,
+                balance: bus.balance,
+                muted: bus.muted,
+                processor_type: None,
+                processor_state: None,
+                builtin_fx_midi_cc_assignments: Vec::new(),
             });
         }
+        if session.bus_display_order.len() != bus_ids.len()
+            || session
+                .bus_display_order
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != bus_ids.len()
+        {
+            return Err(anyhow!("invalid bus display order"));
+        }
+        for id in &session.bus_display_order {
+            candidate.bus_order.push(
+                *bus_ids
+                    .get(id)
+                    .ok_or_else(|| anyhow!("unknown bus order identity"))?,
+            );
+        }
+        candidate.preview_bus = session
+            .preview_bus
+            .map(|id| {
+                bus_ids
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| anyhow!("unknown preview bus identity"))
+            })
+            .transpose()?;
         let mut global_ports = Vec::new();
         for port in &session.global_ports {
             if port.state.owner != ApplicationPortOwner::GlobalFxControl {
@@ -495,22 +580,27 @@ impl Candidate {
         } else {
             BTreeMap::new()
         };
+        if service.dynamic_ports() {
+            for port in tracks
+                .iter_mut()
+                .flat_map(|track| track.ports.iter_mut())
+                .chain(buses.iter_mut().flat_map(|bus| {
+                    bus.channels
+                        .iter_mut()
+                        .map(|channel| &mut channel.output_port)
+                }))
+                .chain(global_ports.iter_mut())
+            {
+                port.external_connections
+                    .retain(|host| service.observed.connections.host_ports.contains_key(host));
+            }
+        }
         Ok((
             candidate,
             BackendSessionData {
                 sample_rate: session.sample_rate,
                 tracks,
-                buses: vec![BackendSessionBus {
-                    source_id: session.master.id.raw(),
-                    name: session.master.name.clone(),
-                    channels,
-                    gain_db: session.master.gain_db,
-                    balance: session.master.balance,
-                    muted: session.master.muted,
-                    processor_type: None,
-                    processor_state: None,
-                    builtin_fx_midi_cc_assignments: Vec::new(),
-                }],
+                buses,
                 mixer_routes: session
                     .routes
                     .iter()
@@ -558,8 +648,17 @@ impl Candidate {
             *channel = *mapping
                 .bus_channels
                 .get(&channel.raw())
-                .ok_or_else(|| anyhow!("backend omitted Master mapping"))?;
+                .ok_or_else(|| anyhow!("backend omitted bus channel mapping"))?;
         }
+        for bus in self.buses.values_mut() {
+            bus.backend = *mapping
+                .buses
+                .get(&bus.backend.raw())
+                .ok_or_else(|| anyhow!("backend omitted bus mapping"))?;
+        }
+        service.buses = self.buses;
+        service.bus_order = self.bus_order;
+        service.preview_bus = self.preview_bus;
         service.tracks = self.tracks;
         service.track_order = self.order;
         service.loops = self.loops;

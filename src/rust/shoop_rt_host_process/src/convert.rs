@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use shoop_rt_engine::EngineDescription;
 use shoop_rt_host_native::{DriverConfig, DummyConfig, DummyMode, NativeConfig};
 use shoop_rt_protocol::{host::*, DriverKind};
-fn text(value: &str) -> Result<Text> {
+pub(crate) fn text(value: &str) -> Result<Text> {
     Text::new(value).ok_or_else(|| anyhow::anyhow!("host name exceeds 256 UTF-8 bytes"))
 }
 #[cfg(feature = "cpal")]
@@ -15,6 +15,24 @@ fn selection(value: &shoop_rt_host_native::DeviceSelection) -> Result<DeviceSele
 }
 pub fn driver(config: &NativeConfig) -> Result<DriverSettings> {
     Ok(match &config.driver {
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(jack) => {
+            jack.validate()?;
+            DriverSettings {
+                kind: DriverKind::Jack,
+                host: Text::default(),
+                input: DeviceSelection::None,
+                output: DeviceSelection::None,
+                sample_rate: 0,
+                buffer_frames: 0,
+                audio_inputs: 0,
+                audio_outputs: 0,
+                midi_inputs: 0,
+                midi_outputs: 0,
+                client_name: text(&jack.client_name)?,
+                dummy_input_ramp: false,
+            }
+        }
         DriverConfig::Dummy(dummy) => {
             if dummy.mode != DummyMode::Automatic {
                 bail!("controlled dummy timing is local to a test host");
@@ -70,6 +88,25 @@ pub fn native_driver(
     outputs: Vec<String>,
 ) -> Result<DriverConfig> {
     Ok(match settings.kind {
+        #[cfg(feature = "jack")]
+        DriverKind::Jack => {
+            if [
+                settings.audio_inputs,
+                settings.audio_outputs,
+                settings.midi_inputs,
+                settings.midi_outputs,
+            ] != [0; 4]
+                || !inputs.is_empty()
+                || !outputs.is_empty()
+            {
+                bail!("JACK ports are published dynamically by the session");
+            }
+            let config = shoop_rt_host_native::JackConfig {
+                client_name: settings.client_name.as_str().into(),
+            };
+            config.validate()?;
+            DriverConfig::Jack(config)
+        }
         DriverKind::Dummy => DriverConfig::Dummy(DummyConfig {
             sample_rate: settings.sample_rate,
             buffer_frames: settings.buffer_frames,
@@ -110,6 +147,12 @@ fn ramp(port: usize, frame: u64) -> f32 {
 
 pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
     Ok(EngineSettings {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("quantum exceeds wire capacity"))?,
+        buses: value.buses.into(),
+        bus_channels: value.bus_channels.into(),
         max_frames: value
             .max_frames
             .try_into()
@@ -174,6 +217,18 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid quantum"))?,
+        buses: value
+            .buses
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid buses"))?,
+        bus_channels: value
+            .bus_channels
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid bus_channels"))?,
         max_frames: value
             .max_frames
             .try_into()

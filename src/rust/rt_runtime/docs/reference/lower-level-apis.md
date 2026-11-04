@@ -18,13 +18,13 @@ Eligible recovery can park the held normal owner inline; after recovery, that he
 
 ## Descriptor construction is not certification
 
-`compile`/`compile_planned` are off-render convenience compilers against a catalog. A catalog describes prepared physical identities, signatures and optional planning access; a plan separately describes active signal order and bindings.
+`compile` is the off-render convenience compiler against a catalog. A catalog describes prepared physical identities and signal signatures; a plan describes active signal order and connections.
 
-`PreparedPlan::from_descriptor`/`from_planned_descriptor` allocate/check storage envelopes. They do not certify an arbitrary incoming descriptor for execution. A compact wrapper may have no spare row capacity for future pushes.
+`PreparedPlan::from_descriptor` allocate/check storage envelopes. They do not certify an arbitrary incoming descriptor for execution. A compact wrapper may have no spare row capacity for future pushes.
 
-`PreparedPlan::with_capacity(config)` prepares reusable inactive storage. Exclusively owned inactive plans support `begin_descriptor`, bounded `push_step`, `push_connection`, `push_binding` and `set_planning_step`. Capacity refusal leaves the owner available for correction/recycling; these operations do not resize vectors. Stamped membership avoids clearing every slot on each begin; exhaustion does not wrap.
+`PreparedPlan::with_capacity(config)` prepares reusable inactive storage. Exclusively owned inactive plans support `begin_descriptor`, bounded `push_step` and `push_connection`. Capacity refusal leaves the owner available for correction/recycling; these operations do not resize vectors. Stamped membership avoids clearing every slot on each begin; exhaustion does not wrap.
 
-For manual validation, call `PlanValidator::begin()` for a new candidate, then `advance(candidate, catalog, allowance)` incrementally. Charge its reported steps against the enclosing callback allowance; do not restart it every callback or refresh the allowance per interval. Preserve candidate/catalog/epoch while it is Pending and inspect terminal Valid/Invalid. A bad input range, stale generation, cycle or binding must never execute merely because its sender called it prepared.
+For manual validation, call `PlanValidator::begin()` for a new candidate, then `advance(candidate, catalog, allowance)` incrementally. Charge its reported steps against the enclosing callback allowance; do not restart it every callback or refresh the allowance per interval. Preserve candidate/catalog/epoch while it is Pending and inspect terminal Valid/Invalid. A bad input range, stale generation, cycle or domain membership must never execute merely because its sender called it prepared.
 
 Actual retained capacities matter separately from validation. `storage_bytes` includes spare vector capacity; staged admission and displaced-owner retirement have additional checks. A borrowed metadata view is not an inactive owner or permission to mutate it. Runtime staging is opt-in once before the first nonempty callback; disabled standalone graph access cannot create runtime authority.
 
@@ -42,9 +42,9 @@ A standalone ResourceStore owner calls `begin_callback()` once per real host cal
 
 `ResourceIo` lends resource metadata, lease and legacy optional access. `render()` lends required data operations with independent counters; it cannot replenish budgets, reclaim or manufacture structural authority. Opaque indexes/cursors/events validate store scope and lease lifetime; raw IDs still require same-store discipline.
 
-`PlannerResourceIo::capture()` adds frame/ceiling-stamped group lifecycle authority. Positive reservation must fit that planning window; activation/freeze match the current stamp and commit matches the reserved end. Ordinary consumers can stage complete data but cannot reserve/publish the shared group. Direct `store.planner_io(frame, ceiling)` hosts own those stamp/time guarantees; copying arbitrary numbers into a prototype context does not make it a runtime callback.
+`PlannerResourceIo::capture()` adds frame/ceiling-stamped group lifecycle authority. A whole-tick reservation uses the immutable store quantum and must fit that planning window; activation/freeze match the current stamp and commit matches the reserved end. Ordinary consumers can stage complete data but cannot reserve/publish the shared group. Direct `store.planner_io(frame, ceiling)` hosts own those stamp/time guarantees; copying arbitrary numbers into a prototype context does not make it a runtime callback.
 
-`GraphAccess::disabled()` similarly supports standalone prototypes without runtime publication rights. Borrowed graph/resource/decision/observation views cannot escape their permitted scope or survive the mutation they constrain.
+`GraphAccess::disabled()` similarly supports standalone prototypes without runtime publication rights. Borrowed graph/resource/domain views cannot escape their permitted scope or survive the mutation they constrain.
 
 `GraphActivation::commit_with_midi_reset` adds a runtime output-recovery request
 to an otherwise identical validated graph commit. It neither transfers domain

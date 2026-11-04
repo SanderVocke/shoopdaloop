@@ -22,11 +22,15 @@ pub fn management(
 ) -> Result<protocol::Reply> {
     profile.validate_deployment()?;
     let target: crate::remote::Target = profile.clone().into();
-    let token = target.deployment_token()?;
     let deadline = Instant::now()
         .checked_add(timeout)
         .context("invalid deployment timeout")?;
-    let mut port = crate::connection::open(&target, &target.management, &token, deadline)?;
+    let mut port = crate::connection::open(
+        &target,
+        &target.management,
+        deadline,
+        crate::connection::Endpoint::Management,
+    )?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let mut greeting = false;
     loop {
@@ -369,7 +373,7 @@ pub fn deploy(
             !current.busy,
             "host has a live controller or shutdown owner"
         );
-        let operation = crate::registry::identity()?;
+        let operation = crate::remote::identity()?;
         let journal = Journal {
             version: 1,
             management: profile.management.clone(),

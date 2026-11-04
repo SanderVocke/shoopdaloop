@@ -4,9 +4,7 @@ use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::executor::{GraphRuntime, PreparedNode};
 use rt_runtime::graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType};
 use rt_runtime::midi_state::MidiState;
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
-};
+use rt_runtime::planner::{FinishContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::*;
 use rt_runtime::{Budgets, Config, Error, Frame, NodeId, PlannerId, ResourceId, Revision};
@@ -28,7 +26,7 @@ fn initial() -> MidiState {
 }
 #[derive(Clone, Copy, Default)]
 struct Decision {
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     members: [usize; 2],
     failed: bool,
 }
@@ -39,7 +37,7 @@ struct Clock {
     old: [Snapshot; 2],
     extra: [Option<Snapshot>; 4],
     frozen: [Option<Snapshot>; 2],
-    last: Option<CaptureIntervalId>,
+    last: Option<CaptureTickId>,
     done: bool,
 }
 impl Clock {
@@ -78,22 +76,12 @@ impl Clock {
     }
 }
 impl Planner for Clock {
-    type Decision = Decision;
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[Decision] {
-        &self.decisions
-    }
-    fn plan(&mut self, mut context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_>) -> Result<(), Error> {
         if context.frame == context.callback_start {
             for _ in 0..2 {
                 let mut cursor = context.resources.cursor(self.old[0].id)?;
@@ -111,12 +99,12 @@ impl Planner for Clock {
                 context
                     .resources
                     .capture()
-                    .reserve_prepared(self.take, context.frame, 1)
+                    .reserve_prepared(self.take, context.frame)
             } else {
                 context
                     .resources
                     .capture()
-                    .reserve(self.take, context.frame, 1)
+                    .reserve(self.take, context.frame)
             };
             match reservation {
                 Ok(interval) => {
@@ -155,7 +143,7 @@ impl Planner for Clock {
                             .activate(self.take, context.frame)?;
                         let info = context.resources.capture().info(self.group)?;
                         assert_eq!(info.phase, CapturePhase::Reserved);
-                        assert_eq!(info.interval_sequence, 2);
+                        assert_eq!(info.tick_sequence, 2);
                     }
                     if let Some(previous) = self.last {
                         assert_ne!(previous, interval);
@@ -188,10 +176,9 @@ impl Planner for Clock {
                 Err(error) => return Err(error),
             }
         }
-        Ok(context.frame.checked_add(1)?.min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, mut context: FinishContext<'_, ()>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
+    fn finish_tick(&mut self, mut context: FinishContext<'_>) -> Result<(), Error> {
         if let Some(interval) = self.decisions[0].interval.take() {
             context.resources.capture().commit(interval)?;
             assert_eq!(
@@ -221,16 +208,10 @@ impl Processor<Clock> for Capture {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 0,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
         assert_eq!(block.frames, 1);
-        let decision = *block.decision.as_ref().ok_or(Error::InvalidState)?.value;
+        let decision = block.domain.decisions[0];
         let sample = {
             let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
             output[0] = input[0] * if decision.failed { 2.0 } else { 1.0 };
@@ -397,7 +378,6 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
         budgets: Budgets {
             transfer_bytes: 16,
             validation_steps: 128,
-            subranges: 0,
             ..Budgets::default()
         },
         ..Config::default()
@@ -405,6 +385,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     .prepare()?;
     let mut store = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
@@ -439,7 +420,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
             store
                 .planner_io(Frame(0), Frame(1))
                 .capture()
-                .reserve_prepared(cancelled, Frame(0), 1),
+                .reserve_prepared(cancelled, Frame(0)),
             Err(Error::Capacity)
         );
         assert_eq!(
@@ -470,13 +451,13 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     let interval = store
         .planner_io(Frame(0), Frame(1))
         .capture()
-        .reserve_prepared(cancelled, Frame(0), 1)?;
+        .reserve_prepared(cancelled, Frame(0))?;
     assert_eq!(store.usage().reserved_pages, 3);
     assert_eq!(
         store.cancel_capture_take(cancelled),
         Err(Error::InvalidState)
     );
-    store.cancel_capture_interval(interval)?;
+    store.cancel_capture_tick(interval)?;
     assert_eq!(
         store.capture_group_info(group)?.phase,
         CapturePhase::Prepared
@@ -488,7 +469,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     let take = store.prepare_capture_take(group, &[initial()])?;
     assert_ne!(take, cancelled);
     assert_eq!(
-        store.reserve_prepared_capture_interval(cancelled, Frame(0), 1),
+        store.reserve_prepared_capture_tick(cancelled, Frame(0)),
         Err(Error::InvalidId)
     );
     for snapshot in old {
@@ -540,15 +521,11 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     };
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(), capture)],
         clock,
         store,
         &graph,
-        &[DecisionBinding {
-            planner: planner(),
-            consumer: node(),
-            decision_slot: 0,
-        }],
     )?;
     let prefix = if pages == 6 { 2 } else { 8 };
     for &frames in partition {

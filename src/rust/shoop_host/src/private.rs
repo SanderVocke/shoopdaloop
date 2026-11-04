@@ -5,24 +5,6 @@ use std::{
     path::Path,
 };
 
-pub fn directory(path: &Path) -> Result<()> {
-    if !path.exists() {
-        let mut builder = fs::DirBuilder::new();
-        builder.recursive(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
-        builder
-            .create(path)
-            .context("create protected session registry")?;
-        #[cfg(windows)]
-        acl(path, true)?;
-    }
-    check(path, true)
-}
-
 pub fn check(path: &Path, directory: bool) -> Result<()> {
     let metadata = fs::symlink_metadata(path).context("inspect protected session path")?;
     ensure!(

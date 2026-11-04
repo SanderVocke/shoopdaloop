@@ -138,6 +138,8 @@ The next callback retries the exact next packet. Repeated input overflow during 
 
 `Command::ResetMidi` can request host-output resets through independently admitted recovery work when normal commands are full. It does not reset arbitrary processor state or waive recovery admission/processing limits.
 
+With host buffering, recovery can return zero until a partially collected tick completes. Its input still reaches processors for recording and its due actions execute once; ordinary output from that tick is suppressed before reset acknowledgment. This also covers due MIDI injections with empty external input. Fresh input does not extend this wait unless another reset is requested. A faulted runtime can drain recovery immediately because it cannot produce further ordinary output.
+
 ## Graph changes do not perform note cleanup
 
 At one frame, planner operations precede processor-target actions. Within a processor target, parameter/MIDI/typed operations have a defined order; there is no global “all parameters before all MIDI” ordering across nodes. Submission order alone cannot reverse these categories.

@@ -9,8 +9,10 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
-default = ["cpal"]
-cpal = ["dep:rodio", "shoop_rt_host_native/cpal", "shoop_host/cpal"]
+default = ["cpal", "jack", "system-preview"]
+system-preview = ["dep:rodio"]
+jack = ["shoop_rt_host_native/jack", "shoop_host/jack", "shoop_host_manager/jack"]
+cpal = [ "shoop_rt_host_native/cpal", "shoop_host/cpal", "shoop_host_manager/cpal"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
@@ -36,6 +38,7 @@ ehttp = { workspace = true, features = ["streaming"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_host = { path = "../shoop_host", default-features = false }
+shoop_host_manager = { path = "../shoop_host_manager", default-features = false }
 shoop_common = { path = "../shoop_common" }
 tempfile = { workspace = true }
 shoop_rt_backend = { path = "../shoop_rt_backend" }

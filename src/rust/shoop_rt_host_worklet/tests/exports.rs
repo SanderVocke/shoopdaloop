@@ -13,6 +13,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 fn config() -> WorkletConfig {
     WorkletConfig::new(EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, 2, 1),

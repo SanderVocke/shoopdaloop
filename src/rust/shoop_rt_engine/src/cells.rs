@@ -52,6 +52,7 @@ pub(crate) struct LoopCells {
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,
+    pub content_revision: AtomicU64,
     pub position: AtomicU64,
     /// Clock edges this loop emitted, counted at settled boundaries.
     pub pulses: AtomicU64,
@@ -74,13 +75,18 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 }
 
 pub(crate) struct Cells {
+    pub profiling: Option<rt_runtime::profiling::Control>,
+    #[cfg(test)]
+    pub fail_reader_tick: AtomicBool,
     pub next_frame: AtomicU64,
+    pub preview_finished: AtomicU64,
+    pub preview_playing: AtomicU64,
     pub endpoint_alive: AtomicBool,
     /// Rendering faulted; the engine no longer executes control work.
     pub faulted: AtomicBool,
     pub strips: Box<[StripCells]>,
     pub loops: Box<[LoopCells]>,
-    pub master: Peak,
+    pub buses: Box<[Peak]>,
     /// Callbacks rendered, and the peak of every host input (0) and output (1).
     pub callbacks: AtomicU64,
     pub host_peaks: Peak,
@@ -94,16 +100,22 @@ impl Cells {
     pub(crate) fn new(
         strips: usize,
         loops: usize,
+        buses: usize,
         bulk_bytes: usize,
         driver: DriverStatus,
     ) -> Arc<Self> {
         let cells = Self {
+            profiling: None,
+            #[cfg(test)]
+            fail_reader_tick: AtomicBool::new(false),
             next_frame: AtomicU64::new(0),
+            preview_finished: AtomicU64::new(0),
+            preview_playing: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
             strips: (0..strips).map(|_| StripCells::default()).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
-            master: Peak::default(),
+            buses: (0..buses).map(|_| Peak::default()).collect(),
             callbacks: AtomicU64::new(0),
             host_peaks: Peak::default(),
             bulk: ByteRing::new(bulk_bytes),
@@ -119,6 +131,7 @@ impl Cells {
             DriverKind::Dummy => 0,
             DriverKind::Cpal => 1,
             DriverKind::WebAudio => 2,
+            DriverKind::Jack => 3,
         };
         let state = match driver.state {
             DriverRunState::Starting => 0,
@@ -141,6 +154,7 @@ impl Cells {
             kind: match kind {
                 1 => DriverKind::Cpal,
                 2 => DriverKind::WebAudio,
+                3 => DriverKind::Jack,
                 _ => DriverKind::Dummy,
             },
             state: match state {
@@ -167,11 +181,19 @@ impl Cells {
 pub struct HostStatus(pub(crate) Arc<Cells>);
 
 impl HostStatus {
+    pub fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
+        self.0.profiling.as_ref()
+    }
     pub fn set_driver(&self, driver: DriverStatus) {
         self.0.set_driver(driver);
     }
     pub fn add_xruns(&self, count: u32) {
         self.0.xruns.fetch_add(count, Ordering::Relaxed);
+        if count != 0 {
+            if let Some(control) = &self.0.profiling {
+                control.trigger(rt_runtime::profiling::HOST_XRUN);
+            }
+        }
     }
     /// Callback time as a share of the callback period.
     pub fn set_load(&self, load: f32) {
@@ -204,6 +226,9 @@ impl BoundaryObserver for Observer {
                 state.content_length
             };
             cells.length.store(length, Ordering::Relaxed);
+            cells
+                .content_revision
+                .store(state.content_revision.0, Ordering::Relaxed);
             cells.position.store(state.position, Ordering::Relaxed);
         }
     }

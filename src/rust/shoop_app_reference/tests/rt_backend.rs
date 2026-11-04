@@ -46,6 +46,7 @@ impl EngineClock for OfflineClock {
 
 fn start() -> CooperativeApplicationRuntime {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, 2, 1),
@@ -164,6 +165,7 @@ fn core_workflow_runs_on_the_new_engine_backend() {
             .with(BackendCapability::SessionCapture, true)
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
+            .with(BackendCapability::BusManagement, true)
     );
 
     runtime.dispatch(AppIntent::RequestNewSession).unwrap();
@@ -431,7 +433,9 @@ fn unsupported_actions_are_refused_visibly_on_the_new_engine_backend() {
         .dispatch(AppIntent::AddBus(BusSpec {
             name: "Cue".to_owned(),
             channel_count: 2,
-            fx: None,
+            fx: Some(shoop_app_api::BusFxSpec {
+                processor_type: shoop_app_api::TrackProcessorTypeId::new("builtin_fx"),
+            }),
             creation_request_id: None,
         }))
         .unwrap();
@@ -443,6 +447,6 @@ fn unsupported_actions_are_refused_visibly_on_the_new_engine_backend() {
         .iter()
         .any(|notification| notification
             .message
-            .contains(BackendCapability::BusManagement.unavailable_reason())));
+            .contains(BackendCapability::BusFx.unavailable_reason())));
     assert_eq!(snapshot.buses.len(), 1);
 }

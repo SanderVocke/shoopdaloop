@@ -1661,6 +1661,7 @@ mod tests {
         policy: ConnectionPolicy,
     ) -> ApplicationPortState {
         ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(id),
             owner: ApplicationPortOwner::Track {
                 track_id,
@@ -1804,6 +1805,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(14),
             owner: ApplicationPortOwner::Bus {
                 bus_id: BusId::from_raw(1),
@@ -2131,6 +2133,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(99),
             owner: ApplicationPortOwner::LuaControl {
                 script_id,
@@ -2143,6 +2146,7 @@ mod tests {
             connection_policy: ConnectionPolicy::OwnerManaged,
         });
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(100),
             owner: ApplicationPortOwner::GlobalFxControl,
             name: "Global FX Control MIDI In".to_owned(),
@@ -2205,6 +2209,7 @@ mod tests {
         let connections = Arc::make_mut(&mut state.connections);
         let mut ports = connections.application_ports.to_vec();
         ports.push(ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(100),
             owner: ApplicationPortOwner::GlobalFxControl,
             name: "Global FX Control MIDI In".to_owned(),
@@ -2256,6 +2261,7 @@ mod tests {
         state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
             configured: crate::AudioDriverConfig::Jack(crate::JackAudioDriverConfig {
                 client_name: "ShoopDaLoop".to_owned(),
+                ..Default::default()
             }),
             sample_rate: 48_000,
             buffer_size: 128,

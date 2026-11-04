@@ -1,5 +1,5 @@
 use crate::{
-    registry::AppTransport,
+    config::AppTransport,
     remote::{remaining, ConnectionTarget, Target as HostTarget},
 };
 use anyhow::{anyhow, Context, Result};
@@ -51,12 +51,25 @@ impl RecordPort for Port {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum Endpoint {
+    Data,
+    Management,
+}
+pub(crate) fn admission_header(endpoint: Endpoint) -> [u8; 3] {
+    let version = shoop_app_protocol::VERSION.to_le_bytes();
+    [version[0], version[1], endpoint as u8]
+}
 pub(crate) fn open(
     entry: &HostTarget,
     address: &str,
-    token: &[u8; 32],
     deadline: Instant,
+    endpoint: Endpoint,
 ) -> Result<shoop_transport_socket::Port> {
+    if entry.credential.is_some() {
+        return open_authenticated(entry, address, deadline);
+    }
     let addresses = crate::remote::resolve(address, deadline)?;
     let mut last = None;
     for (index, address) in addresses.iter().enumerate() {
@@ -71,18 +84,68 @@ pub(crate) fn open(
             Default::default()
         };
         let result = if entry.network.is_some() {
-            shoop_transport_socket::setup::connect_lan(*address, token, config, budget)
+            shoop_transport_socket::setup::connect_lan(*address, config, budget)
         } else {
-            shoop_transport_socket::setup::connect(*address, token, config, budget)
+            shoop_transport_socket::setup::connect(*address, config, budget)
         };
         match result {
-            Ok(port) => return Ok(port),
+            Ok(port) => {
+                use std::io::Write;
+                let header = admission_header(endpoint);
+                let mut written = 0;
+                let mut stream = port.stream();
+                while written < header.len() {
+                    match stream.write(&header[written..]) {
+                        Ok(0) => return Err(anyhow!("Host closed during endpoint negotiation")),
+                        Ok(count) => written += count,
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                            ) => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                    remaining(deadline)?;
+                    if written < header.len() {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                }
+                return Ok(port);
+            }
             Err(error) => last = Some(error),
         }
     }
     Err(last
         .map(anyhow::Error::from)
         .unwrap_or_else(|| anyhow!("no usable endpoint")))
+}
+fn open_authenticated(
+    entry: &HostTarget,
+    address: &str,
+    deadline: Instant,
+) -> Result<shoop_transport_socket::Port> {
+    let token = entry.deployment_token()?;
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / (addresses.len() - index) as u32;
+        let result = shoop_transport_socket::setup::connect_authenticated(
+            *address,
+            &token,
+            shoop_transport_socket::Config {
+                reliable: 8,
+                telemetry: 1,
+                bulk: 8,
+            },
+            budget,
+        )
+        .map_err(anyhow::Error::from);
+        match result {
+            Ok(port) => return Ok(port),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("no usable embedded endpoint")))
 }
 fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -95,9 +158,7 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
                 WireMessage::Rejected(reason) => {
                     Err(anyhow!("session endpoint refused: {reason:?}"))
                 }
-                _ => Err(anyhow!(
-                    "session endpoint identity differs from its profile"
-                )),
+                _ => Err(anyhow!("unexpected session endpoint greeting")),
             };
         }
         if port.failure().is_some() {
@@ -107,12 +168,33 @@ fn greeting(port: &mut impl RecordPort, deadline: Instant) -> Result<()> {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
-pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
+fn prepare(entry: &impl ConnectionTarget, deadline: Instant) -> Result<HostTarget> {
     let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
+    entry.profile().validate()?;
+    if entry.credential.is_some() {
+        entry.validate()?;
+        return Ok(entry);
+    }
+    let target = if entry.instance == 0 {
+        let mut target = describe(&entry.management, remaining(deadline)?)?;
+        target.endpoint = entry.endpoint;
+        target.management = entry.management;
+        target.network = entry.network;
+        target
+    } else {
+        entry
+    };
+    target.validate()?;
+    Ok(target)
+}
+pub fn resolve_target(entry: &impl ConnectionTarget, timeout: Duration) -> Result<HostTarget> {
+    prepare(entry, Instant::now() + timeout)
+}
+pub fn connect(entry: &impl ConnectionTarget, timeout: Duration) -> Result<Connection> {
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.endpoint, &token, deadline)
-        .context("authenticate session data connection")?;
+    let entry = prepare(entry, deadline)?;
+    let mut port = open(&entry, &entry.endpoint, deadline, Endpoint::Data)
+        .context("connect to session data connection")?;
     greeting(&mut port, deadline)?;
     let port = match entry.transport {
         AppTransport::Socket => Port::Socket(port),
@@ -160,7 +242,7 @@ fn client_error(error: shoop_app_connection::Error) -> ClientError {
 }
 impl Connection {
     pub fn with_heartbeat(mut self, config: shoop_app_connection::HeartbeatConfig) -> Result<Self> {
-        let seed = (crate::registry::identity()? as u64).max(1);
+        let seed = (crate::remote::identity()? as u64).max(1);
         self.heartbeat = Some(
             shoop_app_connection::Heartbeat::new(config, seed)
                 .map_err(|_| anyhow!("invalid heartbeat configuration"))?,
@@ -221,11 +303,10 @@ pub fn management(
     request: ManagementRequest,
     timeout: Duration,
 ) -> Result<ManagementReply> {
-    let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.management, &token, deadline)
-        .context("authenticate session management connection")?;
+    let entry = prepare(entry, deadline)?;
+    let mut port = open(&entry, &entry.management, deadline, Endpoint::Management)
+        .context("connect to session management connection")?;
     greeting(&mut port, deadline)?;
     let mut bytes = [0; MAX_RECORD_BYTES];
     let length = codec::encode(&WireMessage::ManagementRequest(request), &mut bytes)
@@ -256,7 +337,7 @@ pub fn shutdown_ownerless(entry: &impl ConnectionTarget, timeout: Duration) -> R
     let entry = entry.target();
     use shoop_app_protocol::{ClientId, OperationId, Outcome, VERSION};
     let operation = OperationId {
-        client: ClientId(crate::registry::identity()?),
+        client: ClientId(crate::remote::identity()?),
         sequence: 1,
     };
     let mut request = ManagementRequest::ClaimShutdown {
@@ -299,10 +380,9 @@ pub fn host_report(
     entry: &impl ConnectionTarget,
     timeout: Duration,
 ) -> Result<shoop_app_protocol::HostReport> {
-    let entry = entry.target();
-    let token = entry.token().context("validate session credential")?;
     let deadline = Instant::now() + timeout;
-    let mut port = open(&entry, &entry.management, &token, deadline)?;
+    let entry = prepare(entry, deadline)?;
+    let mut port = open(&entry, &entry.management, deadline, Endpoint::Management)?;
     greeting(&mut port, deadline)?;
     let mut record = [0; MAX_RECORD_BYTES];
     let n = codec::encode(
@@ -350,4 +430,41 @@ pub fn host_report(
         remaining(deadline)?;
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+/// Inspect a host-owned socket without admitting a data or management session.
+pub fn describe(address: &str, timeout: Duration) -> Result<HostTarget> {
+    let deadline = Instant::now() + timeout;
+    let addresses = crate::remote::resolve(address, deadline)?;
+    let mut last = None;
+    for (index, address) in addresses.iter().enumerate() {
+        let budget = remaining(deadline)? / (addresses.len() - index) as u32;
+        let result = (|| -> Result<HostTarget> {
+            let stream = shoop_transport_socket::setup::inspect(*address, budget)?;
+            stream.set_nonblocking(false)?;
+            stream.set_read_timeout(Some(remaining(deadline)?))?;
+            let mut target: HostTarget = crate::launch::read_message(stream)?;
+            if !address.ip().is_loopback() {
+                for endpoint in [&mut target.endpoint, &mut target.management] {
+                    if let Ok(mut socket) = endpoint.parse::<std::net::SocketAddr>() {
+                        if socket.ip().is_loopback() {
+                            socket.set_ip(address.ip());
+                            *endpoint = socket.to_string();
+                        }
+                    }
+                }
+            }
+            target.validate()?;
+            anyhow::ensure!(
+                target.process.is_some() && target.instance != 0,
+                "Host description lacks process identity"
+            );
+            Ok(target)
+        })();
+        match result {
+            Ok(target) => return Ok(target),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow!("No usable host endpoint")))
 }

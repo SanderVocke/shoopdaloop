@@ -21,7 +21,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         update: &BackendLoopContentUpdate,
     ) -> Result<BackendAsyncResult<()>> {
         if let Some(replacement) = &self.replacement {
-            if replacement.loop_target != Some(loop_id) && !replacement.job.finished {
+            if replacement.job.family.is_some()
+                || (replacement.loop_target != Some(loop_id) && !replacement.job.finished)
+            {
                 bail!("another persistence operation is active");
             }
             return self.persistence_progress().map(|result| match result {

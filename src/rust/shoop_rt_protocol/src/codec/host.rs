@@ -50,8 +50,11 @@ impl Wire for DeviceSelection {
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
         w.u32(self.strip_channels)?;
         w.u32(self.master_channels)?;
+        w.u32(self.buses)?;
+        w.u32(self.bus_channels)?;
         w.u32(self.smoothing_frames)?;
         w.u32(self.smoothing_limit_frames)?;
         w.u32(self.ramp_frames)?;
@@ -69,8 +72,11 @@ impl Wire for EngineSettings {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
             max_frames: r.u32()?,
+            quantum: r.u32()?,
             strip_channels: r.u32()?,
             master_channels: r.u32()?,
+            buses: r.u32()?,
+            bus_channels: r.u32()?,
             smoothing_frames: r.u32()?,
             smoothing_limit_frames: r.u32()?,
             ramp_frames: r.u32()?,
@@ -214,6 +220,10 @@ impl Wire for HostReply {
                 w.u32(*max_buffer)
             }
             Self::End => w.u8(3),
+            Self::InstanceName(name) => {
+                w.u8(9)?;
+                name.put(w)
+            }
             Self::Ready(driver) => {
                 w.u8(4)?;
                 driver.put(w)
@@ -256,6 +266,7 @@ impl Wire for HostReply {
             },
             3 => Self::End,
             4 => Self::Ready(DriverStatus::get(r)?),
+            9 => Self::InstanceName(Text::get(r)?),
             5 => Self::Warning(Text::get(r)?),
             6 => Self::Error(Text::get(r)?),
             7 => Self::Stopped {

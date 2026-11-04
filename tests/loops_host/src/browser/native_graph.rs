@@ -173,9 +173,8 @@ fn run(partitions: &[usize], threaded: bool) -> GraphReport {
             bank.id.generation,
             bank.capacity.steps,
             bank.capacity.edges,
-            bank.capacity.bindings
         ),
-        (0, 2, 3, 12, 2)
+        (0, 2, 3, 12)
     );
     let [outstanding, retained, exports] = bridge.counts();
     assert_eq!(exports, 0);

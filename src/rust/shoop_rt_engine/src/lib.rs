@@ -4,7 +4,7 @@
 //! capture nodes next to the engine's own processors: a per-strip input stage
 //! (gain, balance, monitoring feed, meters), a per-strip output stage (the sum
 //! of its loops and monitored input; gain, balance, mute, meters), a fader per
-//! loop and the Master bus. Strip and loop slots are prepared in pool segments;
+//! loop and output buses. Strip and loop slots are prepared in pool segments;
 //! only occupied slots are in the active graph and loop topology.
 //!
 //! [`prepare`] returns three owners: the [`ControlEndpoint`], which implements
@@ -28,16 +28,27 @@ use alloc::vec::Vec;
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+#[cfg(test)]
+#[global_allocator]
+static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
+    shoop_wasm_test_support::heap::TrackingAllocator;
+
+#[cfg(test)]
+mod buffered_tests;
+
 mod bulk;
 mod cells;
 mod content;
 mod description;
 mod endpoint;
+mod family;
 mod graph;
 mod jobs;
 mod model;
 mod node;
 mod pool;
+mod preview;
+mod profiling;
 mod queue;
 mod render;
 mod replacement;
@@ -59,7 +70,7 @@ use crate::cells::{Cells, Observer};
 use crate::endpoint::{Settings, Work, PLANNED};
 use crate::graph::{Builder, Shape};
 use crate::model::Model;
-use crate::node::{LoopFader, MasterBus, NodeSettings, StripInput, StripOutput};
+use crate::node::{BusMixer, LoopFader, NodeSettings, StripInput, StripOutput};
 use crate::pool::Pool;
 use crate::ring::Ring;
 use crate::topology::{Encoder, RECORD_BYTES};
@@ -117,7 +128,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + 2,
+            limits.strips as usize + limits.loops as usize + limits.buses as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -150,42 +161,35 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-/// Prepare an engine for `description`. Allocation happens here only.
-pub fn prepare(
-    description: &EngineDescription,
-    driver: DriverStatus,
-) -> Result<Engine, PrepareError> {
-    description.validate()?;
-    let pool = Pool::new(&description.segments);
+fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames: usize) -> Config {
     let (strips, loops) = (pool.strips(), pool.loops());
     let channels = description.strip_channels as usize;
-    let master_channels = description.master_channels as usize;
-    let host = &description.host;
+    let master_channels = description.bus_channels as usize;
+    let buses = description.buses as usize;
     let counts = [
-        host.audio_inputs.len(),
-        host.audio_outputs.len(),
-        host.midi_inputs.len(),
-        host.midi_outputs.len(),
+        description.host.audio_inputs.len(),
+        description.host.audio_outputs.len(),
+        description.host.midi_inputs.len(),
+        description.host.midi_outputs.len(),
     ];
     let [audio_in, audio_out, midi_in, midi_out] = counts;
     let credits = usize::from(description.reliable_credits);
-    let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let slots = pending + 2 * credits + loops * (PLANNED + 3) + 64;
+    let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
     let ports = strips * (7 * channels + 5)
         + loops * (4 * channels + 2)
-        + 3 * master_channels
+        + 3 * buses * master_channels
         + counts.iter().sum::<usize>();
     let edges = strips
-        * (2 * channels * (audio_in + audio_out + master_channels) + midi_in + midi_out)
+        * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
         + loops * (3 * channels + 2)
         + (channels + 1) * (strips + loops)
-        + 2 * master_channels * audio_out;
+        + 2 * buses * master_channels * audio_out;
     let page_bytes = description.page_bytes;
-    let payload = RECORDS_PER_APPEND * RECORD_BYTES;
-    let config = Config {
+    let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
+    Config {
         sample_rate: description.sample_rate,
-        max_frames: description.max_frames,
+        max_frames: graph_frames,
         audio_inputs: audio_in,
         audio_outputs: audio_out,
         midi_inputs: midi_in,
@@ -205,7 +209,6 @@ pub fn prepare(
         budgets: Budgets {
             commands: slots,
             events: slots,
-            subranges: 0,
             transfer_bytes: payload
                 + (2 + stream::READ_PAGES) * page_bytes
                 + content::RUNTIME_UPLOAD_BUFFERS
@@ -215,11 +218,92 @@ pub fn prepare(
             publications: slots,
         },
     }
-    .prepare()?;
+}
+
+fn signal_nodes(
+    description: &EngineDescription,
+    pool: &Pool,
+    settings: &NodeSettings,
+) -> Vec<(rt_runtime::NodeId, EngineNode)> {
+    let (strips, loops) = (pool.strips(), pool.loops());
+    let buses = description.buses as usize;
+    let mut nodes = Vec::with_capacity(2 * strips + loops + buses + 1);
+    for slot in 0..buses {
+        nodes.push((
+            pool.bus(slot),
+            EngineNode::Bus(BusMixer::new(slot, settings)),
+        ));
+    }
+    nodes.push((
+        pool.reader(),
+        EngineNode::Reader(stream::BulkReader::new(
+            settings.cells.clone(),
+            description.page_bytes,
+        )),
+    ));
+    for slot in 0..strips {
+        nodes.push((
+            pool.strip_input(slot),
+            EngineNode::StripInput(StripInput::new(slot, settings)),
+        ));
+        nodes.push((
+            pool.strip_output(slot),
+            EngineNode::StripOutput(StripOutput::new(slot, settings)),
+        ));
+    }
+    for slot in 0..loops {
+        nodes.push((
+            pool.fader(slot),
+            EngineNode::Fader(LoopFader::new(slot, settings)),
+        ));
+    }
+    nodes
+}
+
+/// Prepare an engine for `description`. Allocation happens here only.
+pub fn prepare(
+    description: &EngineDescription,
+    driver: DriverStatus,
+) -> Result<Engine, PrepareError> {
+    prepare_with_shared(
+        description,
+        driver,
+        shoop_loops::runtime::SharedSettings::default(),
+    )
+}
+
+/// Prepare optional retrospective input histories and bounded private edit jobs.
+/// This does not enable application grab/replacing mode or add wire commands.
+pub fn prepare_with_shared(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+) -> Result<Engine, PrepareError> {
+    description.validate()?;
+    let pool = Pool::new(&description.segments, description.buses as usize);
+    let (strips, loops) = (pool.strips(), pool.loops());
+    let channels = description.strip_channels as usize;
+    let master_channels = description.bus_channels as usize;
+    let buses = description.buses as usize;
+    let host = &description.host;
+    let counts = [
+        host.audio_inputs.len(),
+        host.audio_outputs.len(),
+        host.midi_inputs.len(),
+        host.midi_outputs.len(),
+    ];
+    let [audio_in, audio_out, midi_in, midi_out] = counts;
+    let credits = usize::from(description.reliable_credits);
+    let bulk_credits = usize::from(description.bulk_credits);
+    let pending = description.pending_transitions;
+    let quantum = rt_runtime::Quantum::new(description.quantum)?;
+    let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
+    let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        quantum,
         Some(MidiIndexConfig {
             versions: 6 * loops + 8,
             checkpoints_per_version: 64,
@@ -228,7 +312,7 @@ pub fn prepare(
         CaptureGroupConfig {
             groups: (2 * loops).max(1),
             members_per_group: 2,
-            staging_bytes_per_group: description.max_frames * channels * 4
+            staging_bytes_per_group: quantum.frames() * channels * 4
                 + 12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
@@ -242,12 +326,21 @@ pub fn prepare(
         journal_events: 0,
     };
     let topology = compile(loop_limits, &TopologyDescription::default())?;
-    let cells = Cells::new(
+    let profile = rt_runtime::profiling::prepare(pool.nodes());
+    let (profile_control, profile_recorder, profile_reader) = match profile {
+        Some((control, recorder, reader)) => (Some(control), Some(recorder), Some(reader)),
+        None => (None, None, None),
+    };
+    let mut cells = Cells::new(
         strips,
         loops,
+        buses,
         stream::RING_PAGES * description.page_bytes,
         driver,
     );
+    if let Some(cells) = alloc::sync::Arc::get_mut(&mut cells) {
+        cells.profiling = profile_control;
+    }
     let smoothing = match description.smoothing_frames {
         0 => Smoothing::None,
         frames => Smoothing::LinearRestart { frames },
@@ -270,11 +363,12 @@ pub fn prepare(
         })
         .collect::<Result<Vec<_>, shoop_loops::Error>>()?;
     let LoopParts {
-        planner,
+        mut planner,
         nodes: loop_nodes,
         client,
     } = LoopPlanner::prepare(
         config,
+        quantum,
         topology,
         &mut resources,
         LoopSettings {
@@ -299,57 +393,55 @@ pub fn prepare(
             observer: Some(Box::new(Observer(cells.clone()))),
         },
     )?;
+    if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {
+        if shared_settings.histories.iter().any(|h| {
+            h.source as usize >= pool.strips()
+                || h.audio.is_some_and(|a| a.channels as usize != channels)
+        }) {
+            return Err(rt_runtime::Error::InvalidConfig.into());
+        }
+        planner.prepare_shared(&mut resources, shared_settings)?;
+    }
     let settings = NodeSettings {
         cells: cells.clone(),
         channels,
         master_channels,
-        frames: description.max_frames,
+        frames: quantum.frames(),
         ramp: description.ramp_frames,
     };
     let mut nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>> = loop_nodes
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, EngineNode::Loop(node)))
         .collect();
-    nodes.push(PreparedNode::new(
-        pool.master(),
-        EngineNode::Master(MasterBus::new(&settings)),
-    ));
-    nodes.push(PreparedNode::new(
-        pool.reader(),
-        EngineNode::Reader(stream::BulkReader::new(cells.clone(), page_bytes)),
-    ));
-    for slot in 0..strips {
-        nodes.push(PreparedNode::new(
-            pool.strip_input(slot),
-            EngineNode::StripInput(StripInput::new(slot, &settings)),
-        ));
-        nodes.push(PreparedNode::new(
-            pool.strip_output(slot),
-            EngineNode::StripOutput(StripOutput::new(slot, &settings)),
-        ));
+    nodes.extend(
+        signal_nodes(description, &pool, &settings)
+            .into_iter()
+            .map(|(id, node)| PreparedNode::new(id, node)),
+    );
+    let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
+        config,
+        description.max_frames,
+        quantum,
+        nodes,
+        planner,
+        resources,
+    )?;
+    if let Some(recorder) = profile_recorder {
+        runtime.set_profiling(recorder);
     }
-    for slot in 0..loops {
-        nodes.push(PreparedNode::new(
-            pool.fader(slot),
-            EngineNode::Fader(LoopFader::new(slot, &settings)),
-        ));
+    if quantum.frames() > 1 {
+        runtime.prepare_host_buffering()?;
     }
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
-    let planner = runtime
-        .catalog()
-        .planner()
-        .ok_or(rt_runtime::Error::InvalidState)?;
-    let mut master_outputs = [0u64; shoop_rt_protocol::MAX_STRIP_CHANNELS];
+    let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
-        master_outputs[channel as usize] |= 1 << host;
+        master_outputs[channel as usize].set(host as usize, true);
     }
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();
     let work = Work {
-        builder: Builder::new(config.limits().max_edges, loops),
+        builder: Builder::new(config.limits().max_edges),
         encoder,
         image,
         payloads: (1..=RECORDS_PER_APPEND)
@@ -382,23 +474,31 @@ pub fn prepare(
         loops: loops as u32,
         strip_audio_channels: description.strip_channels,
         master_channels: description.master_channels,
+        buses: description.buses,
+        bus_channels: description.bus_channels,
         host_audio_inputs: audio_in as u16,
         host_audio_outputs: audio_out as u16,
         host_midi_inputs: midi_in as u16,
         host_midi_outputs: midi_out as u16,
         max_frames: description.max_frames as u32,
+        quantum: quantum.frames() as u32,
+        processing_latency_frames: runtime.buffering_latency() as u32,
         smoothing_limit_frames: description.smoothing_limit_frames,
         reliable_credits: description.reliable_credits,
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        profiling: profile_reader,
+        profile_named: vec![false; pool.nodes()].into_boxed_slice(),
+        profile_names: pool.profiling_names(),
+        profile_generation: 0,
+        profile_status: None,
         control,
         loops: client,
         shape: Shape {
             channels,
             master_channels,
         },
-        planner,
         cells: cells.clone(),
         settings: Settings {
             ramp: description.ramp_frames,
@@ -416,8 +516,20 @@ pub fn prepare(
             max_bulk: description.bulk_credits,
         },
         host_ports: host_ports(description),
-        model: Model::new(strips, loops, master_outputs),
-        next: Model::new(strips, loops, master_outputs),
+        model: Model::new(
+            strips,
+            loops,
+            buses,
+            description.master_channels,
+            master_outputs,
+        ),
+        next: Model::new(
+            strips,
+            loops,
+            buses,
+            description.master_channels,
+            master_outputs,
+        ),
         limits,
         connected: false,
         queue: Ring::new(credits),
@@ -439,13 +551,13 @@ pub fn prepare(
         batch_len: 0,
         touched_strips: vec![0; strips].into_boxed_slice(),
         touched_loops: vec![0; loops].into_boxed_slice(),
-        touched_master: 0,
+        touched_buses: vec![0; buses].into_boxed_slice(),
         blocked_strips: vec![false; strips].into_boxed_slice(),
         blocked_loops: vec![false; loops].into_boxed_slice(),
-        blocked_master: false,
+        blocked_buses: vec![false; buses].into_boxed_slice(),
         blocked_all: false,
         retired: Ring::new(loops.max(1)),
-        fades: vec![pool.master(); strips + loops].into_boxed_slice(),
+        fades: vec![pool.bus(0); strips + loops + buses].into_boxed_slice(),
         work,
         graph_epoch: runtime.epoch(),
         topology_epoch: Epoch(0),
@@ -453,11 +565,13 @@ pub fn prepare(
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
-        replacement: replacement::Replacement::new(strips, loops),
+        replacement: replacement::Replacement::new(strips, loops, buses),
+        family: family::Stage::new(loops),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
         protocol_error: false,
+        preview: None,
         pool,
     };
     let render = Render::new(

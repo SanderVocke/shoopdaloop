@@ -156,11 +156,96 @@ fn track(audio_channels: u32, midi: bool, initial_loops: usize) -> DirectTrackRe
 }
 
 #[shoop_test]
+fn bus_pool_limits_reuse_and_fx_refusals_preserve_confirmed_state() {
+    let mut backend = stack(&description());
+    let limits = backend.bus_limits();
+    assert_eq!(limits.channels, 8);
+    assert!(!backend.capabilities().supports(BackendCapability::BusFx));
+    let mut created = Vec::new();
+    for index in 1..limits.buses {
+        created.push(
+            backend
+                .create_bus(BackendBusRequest {
+                    name: format!("Bus {index}"),
+                    channel_count: limits.channels,
+                    fx: None,
+                })
+                .unwrap(),
+        );
+    }
+    assert!(backend
+        .create_bus(BackendBusRequest {
+            name: "Overflow".into(),
+            channel_count: 1,
+            fx: None
+        })
+        .is_err());
+    backend.wait_idle();
+    assert_eq!(
+        backend.poll().unwrap().mixer.buses.len(),
+        limits.buses as usize
+    );
+    let removed = created.remove(0);
+    backend.remove_bus(removed.bus_id).unwrap();
+    backend.wait_idle();
+    assert!(backend
+        .set_bus_control(removed.bus_id, shoop_backend::BackendBusControl::Mute(true))
+        .is_err());
+    let next = backend
+        .create_bus(BackendBusRequest {
+            name: "Reused slot".into(),
+            channel_count: 1,
+            fx: None,
+        })
+        .unwrap();
+    assert_ne!(removed.bus_id, next.bus_id);
+    assert!(next.channels.iter().all(|c| removed
+        .channels
+        .iter()
+        .all(|old| c.id != old.id && c.output_port_id != old.output_port_id)));
+    assert!(backend
+        .create_bus(BackendBusRequest {
+            name: "Too wide".into(),
+            channel_count: 9,
+            fx: None
+        })
+        .is_err());
+    assert!(backend
+        .create_bus(BackendBusRequest {
+            name: "FX".into(),
+            channel_count: 1,
+            fx: Some(shoop_backend::BackendBusFxRequest {
+                processor_type: "builtin_fx".into(),
+                audio_channels: 1
+            })
+        })
+        .unwrap_err()
+        .to_string()
+        .contains("bus FX"));
+    backend.wait_idle();
+    let ids = backend
+        .poll()
+        .unwrap()
+        .mixer
+        .buses
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
+    for id in ids {
+        backend.remove_bus(id).unwrap();
+    }
+    backend.wait_idle();
+    assert!(backend.capture_session().unwrap().buses.is_empty());
+    assert!(backend.poll().unwrap().mixer.buses.is_empty());
+}
+
+#[shoop_test]
 fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_their_reason() {
     let mut backend = stack(&description());
     assert_eq!(
         backend.capabilities(),
         BackendCapabilities::NONE
+            .with(BackendCapability::BusManagement, true)
             .with(BackendCapability::MidiInjection, true)
             .with(BackendCapability::SessionCapture, true)
             .with(BackendCapability::SessionContentLoad, true)
@@ -169,16 +254,6 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
     let created = backend.create_direct_track(track(1, false, 1)).unwrap();
     let loop_id = created.loops[0];
     let refusals = [
-        (
-            BackendCapability::BusManagement,
-            backend
-                .create_bus(BackendBusRequest {
-                    name: "Cue".to_owned(),
-                    channel_count: 2,
-                    fx: None,
-                })
-                .err(),
-        ),
         (
             BackendCapability::ReplacingMode,
             backend

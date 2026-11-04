@@ -75,7 +75,7 @@ fn configured() -> (Harness, StripId, LoopSlotId) {
     harness.done(route(track, 0, 0, true));
     harness.done(route(track, 1, 1, true));
     harness.done(Request::BusControl {
-        bus: BusId::Master,
+        bus: BusId::MASTER,
         control: BusControl::Gain(0.5),
     });
     harness.done(Request::CreateLoop {
@@ -87,6 +87,40 @@ fn configured() -> (Harness, StripId, LoopSlotId) {
         gain: 0.5,
     });
     (harness, track, looped)
+}
+
+#[shoop_test]
+fn jack_buffer_changes_keep_controls_one_server_period_ahead() {
+    let (mut harness, track, _) = configured();
+    harness.done(Request::Connect {
+        port: port(track, PortKind::AudioOut, 0),
+        host: audio_out(0),
+        connected: false,
+    });
+    harness.run(1, 1);
+    let mut previous = 0.25;
+    for (buffer_frames, gain) in [(16, 0.25), (64, 1.), (8, 0.5)] {
+        harness.host.host.set_driver(DriverStatus {
+            kind: DriverKind::Jack,
+            state: DriverRunState::Running,
+            sample_rate: 1000,
+            buffer_frames,
+        });
+        let origin = harness.outputs[0].len();
+        let request = harness.send(Request::BusControl {
+            bus: BusId::MASTER,
+            control: BusControl::Gain(gain),
+        });
+        harness.run(buffer_frames as usize, 16);
+        assert!(harness.outputs[0][origin..]
+            .iter()
+            .all(|sample| *sample == previous));
+        assert!(!harness.results.contains_key(&request));
+        harness.run(4, 1);
+        previous = gain * 0.5;
+        assert_eq!(*harness.outputs[0].last().unwrap(), previous);
+        assert_eq!(harness.results[&request], Outcome::Done);
+    }
 }
 
 #[shoop_test]
@@ -325,7 +359,7 @@ fn resync_streams_the_confirmed_state() {
                 index: 0,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 0,
             },
         },
@@ -336,7 +370,7 @@ fn resync_streams_the_confirmed_state() {
                 index: 1,
             },
             bus: BusPort {
-                bus: BusId::Master,
+                bus: BusId::MASTER,
                 index: 1,
             },
         },
@@ -371,11 +405,11 @@ fn resync_streams_the_confirmed_state() {
             balance: 0.,
         },
         StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Gain(0.5),
         },
         StateRecord::Bus {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             control: BusControl::Mute(false),
         },
     ];

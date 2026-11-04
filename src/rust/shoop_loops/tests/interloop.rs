@@ -186,7 +186,6 @@ fn setup_with_pages(
         budgets: Budgets {
             commands: 64,
             events: 64,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 64,
@@ -197,6 +196,7 @@ fn setup_with_pages(
     .unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 8,
             checkpoints_per_version: 8,

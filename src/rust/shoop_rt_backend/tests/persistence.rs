@@ -123,6 +123,18 @@ fn recording_export_budget_and_full_pool_preserve_previously_settled_content() {
         .to_string()
         .contains("budget"));
 }
+
+#[shoop_test]
+fn prepared_engine_quantum_is_reported_independently_of_host_buffer_size() {
+    for quantum in [1, 16, 32, 64, 128] {
+        let mut description = description();
+        description.quantum = quantum;
+        let mut backend = stack(&description);
+        let status = backend.poll().unwrap().status;
+        assert_eq!(status.quantum_frames, quantum as u32);
+        assert_eq!(status.sample_rate, description.sample_rate);
+    }
+}
 #[shoop_test]
 fn private_session_image_publishes_fresh_mappings_and_lossless_canonical_media() {
     let (mut backend, old, mut session) = fixture();

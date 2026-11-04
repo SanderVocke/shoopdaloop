@@ -1,6 +1,9 @@
 #![no_std]
 extern crate alloc;
 
+mod host_graph;
+pub use host_graph::*;
+
 #[cfg(test)]
 extern crate std;
 
@@ -736,6 +739,7 @@ impl Default for DummyAudioDriverConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
 }
@@ -745,6 +749,20 @@ impl Default for JackAudioDriverConfig {
         Self {
             client_name: "ShoopDaLoop".to_owned(),
         }
+    }
+}
+
+impl JackAudioDriverConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.client_name.trim().is_empty()
+            || self.client_name.len() > 63
+            || self.client_name.contains([':', '\0'])
+        {
+            return Err(
+                "JACK client name must contain 1 to 63 bytes without a colon or NUL".to_owned(),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -865,6 +883,19 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConversionTarget {
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+impl ConversionTarget {
+    pub fn is_valid(self) -> bool {
+        self.sample_rate > 0 && matches!(self.quantum_frames, 1 | 16 | 32 | 64 | 128)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
@@ -873,6 +904,7 @@ pub struct StatusState {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub audio_driver: AudioDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -887,6 +919,14 @@ pub struct StatusState {
 }
 
 impl StatusState {
+    pub fn conversion_target(&self) -> Option<ConversionTarget> {
+        let target = ConversionTarget {
+            sample_rate: self.sample_rate,
+            quantum_frames: self.quantum_frames,
+        };
+        target.is_valid().then_some(target)
+    }
+
     pub fn latency_ms(&self) -> Option<f32> {
         (self.sample_rate > 0).then(|| self.buffer_size as f32 * 1000.0 / self.sample_rate as f32)
     }
@@ -1040,20 +1080,6 @@ impl Default for LoopState {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDataType {
-    Audio,
-    Midi,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDirection {
-    Input,
-    Output,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1122,6 +1148,8 @@ pub enum ConnectionPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub publication: Option<HostGraphLocalKey>,
     pub id: PortId,
     pub owner: ApplicationPortOwner,
     pub name: String,
@@ -1143,6 +1171,23 @@ pub struct HostPortState {
 
 pub const MASTER_BUS_NAME: &str = "Master";
 pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BusLimits {
+    pub buses: u32,
+    pub channels: u32,
+    pub total_channels: u32,
+}
+impl Default for BusLimits {
+    fn default() -> Self {
+        Self {
+            buses: MAX_BUSES as u32,
+            channels: MAX_BUS_CHANNELS as u32,
+            total_channels: MAX_TOTAL_BUS_CHANNELS as u32,
+        }
+    }
+}
 
 pub const MAX_BUS_NAME_BYTES: usize = 128;
 pub const MAX_BUSES: usize = 64;
@@ -1442,7 +1487,7 @@ pub enum IoTaskKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IoTaskStatus {
     Running,
-    AwaitingSampleRateConfirmation,
+    AwaitingFormatConversionConfirmation,
     AwaitingChannelMapping,
     AwaitingChannelSelection,
     Completed,
@@ -1458,7 +1503,7 @@ pub enum FileOutputOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SampleRateWarning {
+pub struct FormatConversionWarning {
     pub source_rate: u32,
     pub target_rate: u32,
     pub affected_media: String,
@@ -1484,7 +1529,7 @@ pub struct IoTaskState {
     pub status: IoTaskStatus,
     pub progress: f32,
     pub message: String,
-    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub format_conversion_warning: Option<FormatConversionWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
@@ -1722,12 +1767,14 @@ impl Default for ScriptingState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewOutput {
     System,
     MasterBus,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewStatus {
     Cancelled,
     #[default]
@@ -1739,12 +1786,14 @@ pub enum ClickTrackPreviewStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickSoundDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackState {
     pub preview_output: Option<ClickTrackPreviewOutput>,
     pub master_preview_available: bool,
@@ -1956,8 +2005,12 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use rt_profiling::View as ProfilingView;
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub profiling: ProfilingView,
+    pub bus_limits: BusLimits,
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
@@ -1972,6 +2025,7 @@ pub struct AppSnapshot {
     pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
@@ -2164,6 +2218,7 @@ pub enum LoopAudioExportFormat {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackKind {
     #[default]
     Audio,
@@ -2171,6 +2226,7 @@ pub enum ClickTrackKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackRequest {
     pub kind: ClickTrackKind,
     pub primary_sound_id: String,
@@ -2362,6 +2418,7 @@ pub struct ChannelTimelineUpdate {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    SetProfiling(bool),
     SetLoopSmoothingMs(u32),
     SetMasterAutoConnect(bool),
     SetLoopTimeline {
@@ -2498,6 +2555,7 @@ pub enum AppIntent {
         dialog_id: ScriptDialogId,
         button_id: ScriptDialogButtonId,
     },
+    SetHostGraphConnected(HostGraphRequest),
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -2547,7 +2605,7 @@ pub enum AppIntent {
         task_id: TaskId,
         outcome: FileOutputOutcome,
     },
-    ConfirmSampleRateConversion {
+    ConfirmFormatConversion {
         task_id: TaskId,
         accept: bool,
     },
@@ -2753,6 +2811,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetProfiling(_) => "developer.profiling",
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
@@ -2789,6 +2848,7 @@ impl AppIntent {
             Self::ConvertScriptKind { .. } => "scripting.convert_kind",
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
+            Self::SetHostGraphConnected(_) => "host_graph.set",
             Self::SetPortConnected { .. } => "connection.set",
             Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
@@ -2804,7 +2864,7 @@ impl AppIntent {
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
-            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmFormatConversion { .. } => "io.confirm_format_conversion",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
             Self::CompleteIoInput { .. } => "io.input_complete",
             Self::RequestLoadSessionSource { .. } => "session.load_source",
@@ -3443,6 +3503,7 @@ mod tests {
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
         let port = ApplicationPortState {
+            publication: None,
             id: port_id,
             owner: ApplicationPortOwner::Track {
                 track_id,
@@ -3748,7 +3809,12 @@ impl HostResourceLimits {
 /// Capacities the new engine backend prepares at startup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct NewEnginePools {
+    /// Graph tick in frames; immutable during a running session.
+    pub quantum: u32,
+    pub buses: u32,
+    pub bus_channels: u32,
     /// Tracks, including the sync track.
     pub tracks: u32,
     /// Loop slots shared by all tracks.
@@ -3761,6 +3827,9 @@ pub struct NewEnginePools {
 impl Default for NewEnginePools {
     fn default() -> Self {
         Self {
+            quantum: 32,
+            buses: 8,
+            bus_channels: 8,
             tracks: 16,
             loops: 128,
             channels: 2,
@@ -3791,12 +3860,22 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if !(1..=64).contains(&self.pools.tracks)
+        if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
+            return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
+        }
+        if !(1..=8).contains(&self.pools.buses)
+            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
             || !(1..=16).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
+        }
+        if let AudioDriverConfig::Jack(config) = &self.driver {
+            config
+                .validate()
+                .map_err(|_| "invalid JACK driver configuration")?;
         }
         if self.loop_smoothing_ms > 100 {
             return Err("loop smoothing exceeds 100 ms");

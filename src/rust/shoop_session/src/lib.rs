@@ -3,6 +3,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod archive;
 mod click_track;
+mod conversion;
 mod document;
 mod limits;
 mod media;
@@ -19,6 +20,10 @@ pub use click_track::{
     ClickTrackTimingSpec, MidiClickTrackSpec, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
     MAX_CLICK_TRACK_MIDI_EVENTS,
 };
+pub use conversion::{
+    convert_audio, convert_midi, convert_midi_with_cancel, AudioConversion, ConversionPlan,
+    FrameScale, LoopConversion, LoopTiming, MediaTiming, SessionFormatPlan,
+};
 pub use document::*;
 pub use media::{
     decode_exact_midi, decode_exact_midi_bounded, decode_loop_audio, decode_loop_audio_bounded,
@@ -30,6 +35,7 @@ pub use resample::{
     resample_exact_midi, resample_loop_audio, resample_session, scale_duration, scale_nearest,
     scale_signed_nearest,
 };
+pub use shoop_app_api::ConversionTarget;
 
 #[cfg(test)]
 mod tests {
@@ -155,7 +161,7 @@ mod tests {
         assert!(encode_loop_audio_bounded(&audio, limits).is_err());
     }
 
-    fn direct_bundle(channels: usize) -> SessionBundle {
+    pub(crate) fn direct_bundle(channels: usize) -> SessionBundle {
         let sample_rate = 48_000;
         let mut media = BTreeMap::new();
         let mut loop_channels = Vec::new();
@@ -253,6 +259,7 @@ mod tests {
         });
         let buses = SessionDocument::empty(sample_rate).buses;
         let document = SessionDocument {
+            preview_bus: Default::default(),
             sample_rate,
             connection_model_version: CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {

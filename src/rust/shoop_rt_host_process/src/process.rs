@@ -99,6 +99,7 @@ impl Drop for Pending {
     }
 }
 pub struct Started {
+    pub instance_name: String,
     pub client: Client,
     pub supervisor: Supervisor,
     pub warnings: Vec<String>,
@@ -294,13 +295,6 @@ impl Pending {
             transport,
             monitor: Some(monitor),
         };
-        pending
-            .input
-            .as_ref()
-            .unwrap()
-            .lock()
-            .map_err(|_| anyhow::anyhow!("engine launch pipe failed"))?
-            .write_all(listener.token())?;
         pending.control = Some(listener.accept(SocketConfig::default(), TIMEOUT)?);
         match pending.exchange(HostRequest::Hello {
             version: HOST_VERSION,
@@ -459,11 +453,16 @@ impl Pending {
             None
         };
         let mut warnings = Vec::new();
+        let mut instance_name = None;
         let mut reply = self.exchange(HostRequest::Start)?;
         loop {
             match reply {
                 HostReply::Warning(text) => {
                     warnings.push(text.as_str().to_string());
+                    reply = self.receive_reply()?;
+                }
+                HostReply::InstanceName(name) => {
+                    instance_name = Some(name.as_str().to_owned());
                     reply = self.receive_reply()?;
                 }
                 HostReply::Ready(_) => break,
@@ -491,6 +490,8 @@ impl Pending {
             received: port.received.clone(),
         };
         Ok(Started {
+            instance_name: instance_name
+                .ok_or_else(|| anyhow::anyhow!("host instance name missing"))?,
             client: ProtocolClient::new(RecordClient::new(port)),
             supervisor,
             warnings,

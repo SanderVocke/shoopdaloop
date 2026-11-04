@@ -9,12 +9,13 @@
 //! Drivers:
 //! - the dummy driver renders on its own thread, at the buffer period or only the
 //!   frames a caller requests;
+//! - with the `jack` feature, JACK audio and MIDI share one synchronous callback;
 //! - with the `cpal` feature, a CPAL output stream renders the engine in its
 //!   callback, a separate input stream feeds it through a lock-free bridge, and
 //!   midir ports exchange MIDI with the callback through bounded bridges.
 //!
-//! Changing the device, sample rate or buffer size is a lifecycle operation: stop the
-//! host, then start another.
+//! Changing the device or sample rate requires restarting the host. JACK buffer
+//! changes use the prepared callback buffers and split larger cycles.
 #![forbid(unsafe_code)]
 // Without device drivers, the MIDI bridges and parts of the callback are unused.
 #![cfg_attr(not(feature = "cpal"), allow(dead_code))]
@@ -23,6 +24,14 @@
 mod cpal_driver;
 mod cycle;
 mod dummy;
+#[cfg(feature = "jack")]
+mod jack_driver;
+#[cfg(feature = "jack")]
+mod jack_graph;
+#[cfg(feature = "jack")]
+mod jack_ports;
+#[cfg(feature = "jack")]
+mod jack_publication;
 mod midi;
 #[cfg(feature = "cpal")]
 mod midir_ports;
@@ -46,6 +55,8 @@ pub use cpal_driver::{
     Discovery,
 };
 pub use dummy::{DummyConfig, DummyControl, DummyMode};
+#[cfg(feature = "jack")]
+pub use jack_driver::JackConfig;
 pub use midi::{
     MidiDevices, MidiInputDevice, MidiInputSender, MidiOutputDevice, MidiSink, MidiSource,
     BRIDGE_MESSAGES, MAX_MESSAGE_BYTES,
@@ -66,6 +77,8 @@ pub enum DriverConfig {
     Dummy(DummyConfig),
     #[cfg(feature = "cpal")]
     Cpal(CpalConfig),
+    #[cfg(feature = "jack")]
+    Jack(JackConfig),
 }
 
 #[derive(Clone, Debug)]
@@ -74,7 +87,7 @@ pub struct NativeConfig {
     /// The engine to prepare. The host sets the device's part: the sample rate, the
     /// host ports, Master's initial connections to the first outputs (reported as
     /// preferred) and a control lead of at least one buffer. `max_frames` is the
-    /// prepared maximum; the driver's buffer must not exceed it.
+    /// prepared maximum; drivers that accept larger buffers render them in parts.
     pub engine: EngineDescription,
 }
 
@@ -175,6 +188,8 @@ pub(crate) enum Driver {
     Dummy(dummy::DummyThread),
     #[cfg(feature = "cpal")]
     Cpal(cpal_driver::Streams),
+    #[cfg(feature = "jack")]
+    Jack(jack_driver::Client),
 }
 
 impl Driver {
@@ -183,6 +198,8 @@ impl Driver {
             Self::Dummy(thread) => thread.stop(),
             #[cfg(feature = "cpal")]
             Self::Cpal(streams) => streams.stop(),
+            #[cfg(feature = "jack")]
+            Self::Jack(client) => client.stop(),
         }
     }
 }
@@ -196,6 +213,7 @@ pub(crate) struct Running {
     pub warnings: Vec<String>,
     pub reset_wait: Duration,
     pub dummy: Option<DummyControl>,
+    pub instance_name: String,
 }
 
 impl Running {
@@ -210,8 +228,12 @@ impl Running {
         {
             std::thread::sleep(Duration::from_millis(1));
         }
-        let midi_reset = shared.phase() != RenderPhase::Running;
         let cycle = self.driver.stop();
+        // The final callback may finish while joining the driver.
+        let mut midi_reset = shared.phase() != RenderPhase::Running;
+        if shared.driver().kind == DriverKind::Jack {
+            midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
+        }
         drop(self.pump);
         drop(self.connections);
         shared.set_state(DriverRunState::Stopped);
@@ -250,6 +272,13 @@ fn cleanup(render: Render) -> Result<Stopped, StopError> {
 }
 
 impl NativeHost {
+    pub fn graph_control(&self) -> Option<shoop_port_graph::Control> {
+        match &self.running.as_ref()?.driver {
+            #[cfg(feature = "jack")]
+            Driver::Jack(client) => Some(client.graph.clone()),
+            _ => None,
+        }
+    }
     fn running(&self) -> &Running {
         self.running
             .as_ref()
@@ -265,6 +294,10 @@ impl NativeHost {
             failure: shared.failure(),
             stats: shared.stats(),
         }
+    }
+
+    pub fn instance_name(&self) -> &str {
+        &self.running().instance_name
     }
 
     pub fn layout(&self) -> &HostLayout {
@@ -304,6 +337,8 @@ pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
         DriverConfig::Dummy(dummy) => dummy::start(dummy, &config.engine),
         #[cfg(feature = "cpal")]
         DriverConfig::Cpal(cpal) => cpal_driver::start(cpal, &config.engine),
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(jack) => jack_driver::start(jack, &config.engine),
     };
     match &started {
         Ok(started) => {
@@ -343,12 +378,24 @@ impl Prepared {
         sample_rate: u32,
         buffer: Option<u32>,
     ) -> Result<Self, StartError> {
+        let outputs = ports.audio_outputs.len();
+        Self::with_output_count(template, ports, kind, sample_rate, buffer, outputs)
+    }
+    pub fn with_output_count(
+        template: &EngineDescription,
+        ports: HostPorts,
+        kind: DriverKind,
+        sample_rate: u32,
+        buffer: Option<u32>,
+        outputs: usize,
+    ) -> Result<Self, StartError> {
         let max = u32::try_from(template.max_frames).unwrap_or(u32::MAX);
-        if let Some(requested) = buffer.filter(|&frames| frames > max) {
+        // JACK splits server periods into bounded render blocks. Its actual
+        // period still determines how far ahead control commands must arrive.
+        if let Some(requested) = buffer.filter(|&frames| frames > max && kind != DriverKind::Jack) {
             return Err(StartError::BufferTooLarge { requested, max });
         }
         let buffer_frames = buffer.unwrap_or(max);
-        let outputs = ports.audio_outputs.len();
         let master_connections: Vec<(u8, u16)> = (0..usize::from(template.master_channels)
             .min(outputs))
             .map(|channel| (channel as u8, channel as u16))
@@ -366,7 +413,13 @@ impl Prepared {
             sample_rate,
             buffer_frames,
         };
-        let engine = prepare(&description, driver)?;
+        let mut engine = prepare(&description, driver)?;
+        engine
+            .render
+            .set_profiling_clock(crate::status::profiling_clock());
+        if let Some(control) = engine.host.profiling() {
+            control.use_outer_callback_budget();
+        }
         let outbox = engine.outbox();
         let shared = Arc::new(Shared::new(engine.host, driver));
         Ok(Self {
@@ -422,6 +475,33 @@ mod tests {
             port_name("Speakers", ":playback_2").as_str(),
             "Speakers:playback_2"
         );
+    }
+
+    #[shoop_test(no_wasm = "native JACK preparation policy")]
+    fn jack_server_buffer_sets_control_lead_even_when_rendered_in_smaller_parts() {
+        let description = shoop_rt_engine::EngineDescription {
+            max_frames: 64,
+            ..Default::default()
+        };
+        let prepared = super::Prepared::new(
+            &description,
+            shoop_rt_engine::HostPorts::numbered(2, 2, 1),
+            shoop_rt_protocol::DriverKind::Jack,
+            48000,
+            Some(128),
+        )
+        .unwrap();
+        assert_eq!(prepared.description.max_frames, 64);
+        assert_eq!(prepared.description.control_lead_frames, 128);
+        assert_eq!(prepared.shared.driver().buffer_frames, 128);
+        assert!(super::Prepared::new(
+            &description,
+            shoop_rt_engine::HostPorts::numbered(2, 2, 1),
+            shoop_rt_protocol::DriverKind::Dummy,
+            48000,
+            Some(128)
+        )
+        .is_err());
     }
 
     #[shoop_test(no_wasm = "the native host does not build for wasm")]

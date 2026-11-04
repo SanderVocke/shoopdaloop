@@ -20,6 +20,13 @@ use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig, Revision, Sequence,
 };
 mod configuration;
+mod family;
+mod shared;
+pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
+pub use shared::{
+    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedCapacity,
+    SharedSettings, SharedTake, SharedWork,
+};
 mod node_pairs;
 mod planner;
 mod processor;
@@ -102,6 +109,48 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    SharedWork,
+    SharedCapacity,
+    HistoryStatus {
+        source: u32,
+    },
+    HistoryGrab {
+        source: HistoryId,
+        start: Frame,
+        end: Frame,
+    },
+    CandidateBegin {
+        target: LoopId,
+        take: SharedTake,
+    },
+    CandidateAudio {
+        id: CandidateId,
+        position: u64,
+        input: SnapshotId,
+        offset: u64,
+        frames: usize,
+    },
+    CandidateMidi {
+        id: CandidateId,
+        position: u64,
+        input: SnapshotId,
+    },
+    CandidateStatus {
+        id: CandidateId,
+    },
+    CandidateCancel {
+        id: CandidateId,
+    },
+    CandidatePublish {
+        id: CandidateId,
+    },
+    SelectFamily {
+        root: LoopId,
+        topology_epoch: Epoch,
+    },
+    NodePairSourceCursor {
+        id: NodePairSourceId,
+    },
     NodePairSnapshot {
         resource: rt_runtime::ResourceId,
     },
@@ -284,6 +333,21 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    History(HistoryStatus),
+    Grabbed(SharedTake),
+    Candidate {
+        id: CandidateId,
+        status: CandidateStatus,
+        steps: usize,
+    },
+    CandidatePublished {
+        id: CandidateId,
+        take: SharedTake,
+        media: media::MediaId,
+        frame: Frame,
+    },
+    SharedWork(SharedWork),
+    SharedCapacity(SharedCapacity),
     NodePairSource {
         id: NodePairSourceId,
         snapshot: Snapshot,
@@ -351,6 +415,7 @@ pub enum Reply {
     Done,
     Adopted {
         media: media::MediaId,
+        revision: Revision,
     },
     Failed(Failure),
     Transition(crate::Completion),
@@ -376,27 +441,13 @@ pub struct View {
     pub decision: Decision,
     pub audio: Option<ReadIndex>,
     pub midi: Option<ReadIndex>,
-    pub capture: Option<CaptureIntervalId>,
+    pub capture: Option<CaptureTickId>,
     pub gain: f32,
     pub balance: f32,
     pub smoothing: audio::Smoothing,
     pub playback_node: NodeId,
     pub capture_node: NodeId,
     pub reset_input: bool,
-}
-#[derive(Clone, Copy)]
-pub enum Observed {
-    Playback { target: LoopId, overflow: bool },
-    Input { target: LoopId, state: MidiState },
-    NoMidiInput { target: LoopId },
-}
-impl Default for Observed {
-    fn default() -> Self {
-        Self::Input {
-            target: LoopId::from_parts(0, 1).expect("fixed identity"),
-            state: MidiState::default(),
-        }
-    }
 }
 #[derive(Clone, Copy)]
 struct Take {
@@ -414,14 +465,12 @@ struct Row {
     resources: [[Option<rt_runtime::ResourceId>; 2]; 2],
     active: Option<Take>,
     prepared: Option<Take>,
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     next_bank: usize,
     frozen: [Option<Snapshot>; 2],
     failure: Option<Error>,
     overflows: u64,
     balance: f32,
-    seen_playback: bool,
-    seen_capture: bool,
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
@@ -473,6 +522,7 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
+    shared: Option<shared::Shared>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -485,6 +535,7 @@ pub struct LoopPlanner {
     views: Box<[View]>,
     pending: Box<[Option<Pending>]>,
     failures: Vec<crate::Observation>,
+    family: Vec<family::Selection>,
 }
 
 /// Preparation choices beyond the loops themselves; the default enables none.
@@ -511,7 +562,6 @@ pub struct Prepared {
 pub struct LoopClient {
     planner: PlannerId,
     media: Box<[PreparedMedia]>,
-    bindings: Box<[DecisionBinding]>,
 }
 impl LoopClient {
     pub fn planner(&self) -> PlannerId {
@@ -521,25 +571,13 @@ impl LoopClient {
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
     }
-    /// Decision bindings of every prepared loop node, including unassigned templates.
-    pub fn bindings(&self) -> &[DecisionBinding] {
-        &self.bindings
-    }
-    /// Decision bindings for the loop nodes present in `graph`.
-    pub fn bindings_for(&self, graph: &GraphDescription) -> Vec<DecisionBinding> {
-        self.bindings
-            .iter()
-            .filter(|binding| graph.nodes.contains(&binding.consumer))
-            .copied()
-            .collect()
-    }
-    /// Allocating control-side compilation of `graph` with the loop's bindings.
+    /// Allocating control-side compilation of the signal graph.
     pub fn compile_graph(
         &self,
         catalog: &Catalog,
         graph: &GraphDescription,
     ) -> Result<PreparedPlan, Error> {
-        rt_runtime::graph::compile_planned(catalog, graph, &self.bindings_for(graph))
+        rt_runtime::graph::compile(catalog, graph)
     }
     /// Typed loop work at `at`. Admission, delivery and the domain outcome are
     /// reported separately by the runtime.
@@ -550,7 +588,7 @@ impl LoopClient {
     ) -> Command<P, LoopPlanner, Q> {
         self.command_with_payload(at, operation, Box::new([]))
     }
-    /// Build payloads off-render. Only topology header/chunk operations accept them.
+    /// Build topology and content-family payloads off-render.
     pub fn command_with_payload<P, Q: ProcessorOperation>(
         &self,
         at: Frame,
@@ -576,6 +614,7 @@ impl LoopPlanner {
     /// templates need node-pair edit banks and stay outside the initial graph.
     pub fn prepare(
         config: PreparedConfig,
+        quantum: rt_runtime::Quantum,
         topology: PreparedTopology,
         resources: &mut ResourceStore,
         settings: Settings,
@@ -583,10 +622,12 @@ impl LoopPlanner {
         imports: Vec<media::Input>,
         options: Options,
     ) -> Result<Prepared, Failure> {
+        if resources.config() != config || resources.quantum() != quantum {
+            return Err(Error::InvalidConfig.into());
+        }
         let (topologies, topology) = topology::Topologies::prepare(topology, options.staging)?;
         let observer = options.observer.unwrap_or_else(|| Box::new(NoObserver));
         let limits = topology.limits();
-        let cfg = config.limits();
         if settings.normal_requests == 0 || settings.normal_requests >= limits.pending_requests {
             return Err(Error::InvalidConfig.into());
         }
@@ -597,7 +638,7 @@ impl LoopPlanner {
                 size_of::<Row>()
                     + size_of::<MidiState>()
                     + size_of::<View>()
-                    + 2 * size_of::<rt_runtime::planner::Observation<Observed>>(),
+                    + size_of::<family::Selection>(),
             )
             .and_then(|n| {
                 settings
@@ -610,7 +651,7 @@ impl LoopPlanner {
         if bytes > i32::MAX as usize {
             return Err(Error::Capacity.into());
         }
-        let mut resolver = Resolver::prepare(topology)?;
+        let mut resolver = Resolver::prepare(topology, quantum)?;
         let mut ledger = media::Ledger::prepare(
             slots,
             settings.media_slots,
@@ -619,7 +660,6 @@ impl LoopPlanner {
         )?;
         let mut rows = vec![None; slots].into_boxed_slice();
         let mut nodes = Vec::new();
-        let mut decision_bindings = Vec::new();
         for binding in bindings {
             let spec = resolver.topology().node(binding.target).ok();
             let assigned = spec.is_some();
@@ -660,8 +700,6 @@ impl LoopPlanner {
                 failure: None,
                 overflows: 0,
                 balance: 0.,
-                seen_playback: false,
-                seen_capture: false,
             };
             for bank in 0..2 {
                 let mut members = Vec::new();
@@ -695,19 +733,13 @@ impl LoopPlanner {
             }
             nodes.push((
                 binding.playback,
-                LoopNode::Playback(PlaybackNode::prepare(binding, cfg.max_frames)?),
+                LoopNode::Playback(PlaybackNode::prepare(binding, quantum.frames())?),
             ));
             nodes.push((
                 binding.capture,
-                LoopNode::Capture(CaptureNode::prepare(binding, cfg.max_frames)?),
+                LoopNode::Capture(CaptureNode::prepare(binding, quantum.frames())?),
             ));
-            for consumer in [binding.playback, binding.capture] {
-                decision_bindings.push(DecisionBinding {
-                    planner: settings.planner,
-                    consumer,
-                    decision_slot: slot,
-                });
-            }
+
             rows[slot] = Some(row);
         }
         for spec in resolver.topology().nodes() {
@@ -823,6 +855,7 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
+            shared: None,
             observer,
             settings,
             resolver,
@@ -835,6 +868,7 @@ impl LoopPlanner {
             views,
             pending: vec![None; settings.normal_requests + 1].into_boxed_slice(),
             failures,
+            family: family::prepare(slots, dummy),
         };
         Ok(Prepared {
             planner,
@@ -842,7 +876,6 @@ impl LoopPlanner {
             client: LoopClient {
                 planner: settings.planner,
                 media: catalog.into_boxed_slice(),
-                bindings: decision_bindings.into_boxed_slice(),
             },
         })
     }

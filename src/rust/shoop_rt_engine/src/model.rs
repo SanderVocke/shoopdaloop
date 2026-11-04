@@ -5,11 +5,45 @@ use alloc::boxed::Box;
 use alloc::vec;
 
 use shoop_rt_protocol::{
-    BusControl, LoopSlotId, PortKind, StripControl, StripId, StripPort, StripShape,
+    BusControl, BusId, LoopSlotId, PortKind, StripControl, StripId, StripPort, StripShape,
     MAX_STRIP_CHANNELS,
 };
 
-pub(crate) type Masks = [u64; MAX_STRIP_CHANNELS];
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct HostMask([u64; crate::MAX_HOST_PORTS / 64]);
+impl HostMask {
+    pub const EMPTY: Self = Self([0; crate::MAX_HOST_PORTS / 64]);
+    pub fn contains(self, index: usize) -> bool {
+        self.0[index / 64] & (1 << (index % 64)) != 0
+    }
+    pub fn set(&mut self, index: usize, connected: bool) {
+        let bit = 1 << (index % 64);
+        if connected {
+            self.0[index / 64] |= bit;
+        } else {
+            self.0[index / 64] &= !bit;
+        }
+    }
+    pub fn bits(self) -> impl Iterator<Item = usize> {
+        self.0.into_iter().enumerate().flat_map(|(word, mut mask)| {
+            core::iter::from_fn(move || {
+                if mask == 0 {
+                    return None;
+                }
+                let bit = mask.trailing_zeros() as usize;
+                mask &= mask - 1;
+                Some(word * 64 + bit)
+            })
+        })
+    }
+}
+impl PartialEq<u64> for HostMask {
+    fn eq(&self, other: &u64) -> bool {
+        self.0[0] == *other && self.0[1..].iter().all(|word| *word == 0)
+    }
+}
+pub(crate) type Masks = [HostMask; MAX_STRIP_CHANNELS];
+pub(crate) type BusMasks = [u64; MAX_STRIP_CHANNELS];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Controls {
@@ -57,11 +91,11 @@ impl Controls {
 
 /// Audio connections of one direction in two banks. The active bank carries the
 /// signal; the other is silent and receives the next change. `masks` hold host
-/// ports per channel, `master` the Master channels each strip output feeds.
+/// ports per channel; `buses` holds routed bus channels in slot order.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Banks {
     pub masks: [Masks; 2],
-    pub master: [Masks; 2],
+    pub buses: [BusMasks; 2],
     pub active: usize,
     /// Swapped in the transaction being staged: later changes of the same
     /// transaction edit the new active bank, so the node cross-fades once.
@@ -80,7 +114,7 @@ impl Banks {
         self.swapped = true;
         let next = 1 - self.active;
         self.masks[next] = self.masks[self.active];
-        self.master[next] = self.master[self.active];
+        self.buses[next] = self.buses[self.active];
         self.active = next;
         &mut self.masks[next]
     }
@@ -93,8 +127,8 @@ pub(crate) struct Strip {
     pub controls: Controls,
     pub inputs: Banks,
     pub outputs: Banks,
-    pub midi_inputs: u64,
-    pub midi_outputs: u64,
+    pub midi_inputs: HostMask,
+    pub midi_outputs: HostMask,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -108,6 +142,9 @@ pub(crate) struct Loop {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Bus {
+    pub id: BusId,
+    pub channels: u8,
+    pub outputs: Banks,
     pub gain: f32,
     pub balance: f32,
     pub mute: bool,
@@ -115,6 +152,9 @@ pub(crate) struct Bus {
 impl Default for Bus {
     fn default() -> Self {
         Self {
+            id: BusId::MASTER,
+            channels: 2,
+            outputs: Banks::default(),
             gain: 1.,
             balance: 0.,
             mute: false,
@@ -134,6 +174,13 @@ impl Bus {
 /// A structural change, applied as one activation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Change {
+    CreateBus {
+        bus: BusId,
+        channels: u8,
+    },
+    RemoveBus {
+        bus: BusId,
+    },
     CreateStrip {
         strip: StripId,
         shape: StripShape,
@@ -168,6 +215,7 @@ pub(crate) enum Change {
     },
     /// A Master output channel to host audio output `host`.
     ConnectMaster {
+        bus: BusId,
         channel: usize,
         host: usize,
         connected: bool,
@@ -179,27 +227,36 @@ pub(crate) struct Model {
     pub loops: Box<[Option<Loop>]>,
     pub strip_generations: Box<[u32]>,
     pub loop_generations: Box<[u32]>,
-    pub master: Bus,
-    pub master_outputs: Banks,
+    pub buses: Box<[Option<Bus>]>,
+    pub bus_generations: Box<[u32]>,
     pub revision: u64,
 }
 
 impl Model {
-    pub(crate) fn new(strips: usize, loops: usize, master_outputs: Masks) -> Self {
-        Self {
+    pub(crate) fn new(
+        strips: usize,
+        loops: usize,
+        buses: usize,
+        master_channels: u8,
+        master_outputs: Masks,
+    ) -> Self {
+        let mut model = Self {
             strips: vec![None; strips].into_boxed_slice(),
             loops: vec![None; loops].into_boxed_slice(),
             strip_generations: vec![0; strips].into_boxed_slice(),
             loop_generations: vec![0; loops].into_boxed_slice(),
-            master: Bus::default(),
-            master_outputs: Banks {
-                masks: [master_outputs, Masks::default()],
-                master: [Masks::default(); 2],
-                active: 0,
-                swapped: false,
-            },
+            buses: vec![None; buses].into_boxed_slice(),
+            bus_generations: vec![0; buses].into_boxed_slice(),
             revision: 0,
+        };
+        if master_channels > 0 {
+            model.apply(Change::CreateBus {
+                bus: BusId::MASTER,
+                channels: master_channels,
+            });
+            model.buses[0].as_mut().expect("default bus").outputs.masks[0] = master_outputs;
         }
+        model
     }
     /// End a transaction: its swapped banks become the banks to swap next time.
     pub(crate) fn settle(&mut self) {
@@ -207,7 +264,9 @@ impl Model {
             strip.inputs.swapped = false;
             strip.outputs.swapped = false;
         }
-        self.master_outputs.swapped = false;
+        for bus in self.buses.iter_mut().flatten() {
+            bus.outputs.swapped = false;
+        }
     }
     pub(crate) fn copy_from(&mut self, other: &Self) {
         self.strips.copy_from_slice(&other.strips);
@@ -216,8 +275,8 @@ impl Model {
             .copy_from_slice(&other.strip_generations);
         self.loop_generations
             .copy_from_slice(&other.loop_generations);
-        self.master = other.master;
-        self.master_outputs = other.master_outputs;
+        self.buses.copy_from_slice(&other.buses);
+        self.bus_generations.copy_from_slice(&other.bus_generations);
         self.revision = other.revision;
     }
     pub(crate) fn strip(&self, id: StripId) -> Option<&Strip> {
@@ -225,6 +284,18 @@ impl Model {
             .get(id.0.index as usize)
             .and_then(Option::as_ref)
             .filter(|strip| strip.id == id)
+    }
+    pub(crate) fn bus(&self, id: BusId) -> Option<&Bus> {
+        self.buses
+            .get(id.0.index as usize)?
+            .as_ref()
+            .filter(|bus| bus.id == id)
+    }
+    pub(crate) fn bus_mut(&mut self, id: BusId) -> Option<&mut Bus> {
+        self.buses
+            .get_mut(id.0.index as usize)?
+            .as_mut()
+            .filter(|bus| bus.id == id)
     }
     pub(crate) fn strip_mut(&mut self, id: StripId) -> Option<&mut Strip> {
         self.strips
@@ -249,6 +320,26 @@ impl Model {
     /// Apply a validated change.
     pub(crate) fn apply(&mut self, change: Change) {
         match change {
+            Change::CreateBus { bus, channels } => {
+                let slot = bus.0.index as usize;
+                self.bus_generations[slot] = bus.0.generation;
+                self.buses[slot] = Some(Bus {
+                    id: bus,
+                    channels,
+                    ..Bus::default()
+                });
+            }
+            Change::RemoveBus { bus } => {
+                self.buses[bus.0.index as usize] = None;
+                let mask = !(0xff_u64 << (bus.0.index as usize * MAX_STRIP_CHANNELS));
+                for strip in self.strips.iter_mut().flatten() {
+                    for bank in &mut strip.outputs.buses {
+                        for routes in bank {
+                            *routes &= mask;
+                        }
+                    }
+                }
+            }
             Change::CreateStrip { strip, shape } => {
                 let slot = strip.0.index as usize;
                 self.strip_generations[slot] = strip.0.generation;
@@ -258,8 +349,8 @@ impl Model {
                     controls: Controls::default(),
                     inputs: Banks::default(),
                     outputs: Banks::default(),
-                    midi_inputs: 0,
-                    midi_outputs: 0,
+                    midi_inputs: HostMask::EMPTY,
+                    midi_outputs: HostMask::EMPTY,
                 });
             }
             Change::RemoveStrip { strip } => {
@@ -299,14 +390,7 @@ impl Model {
                 let Some(strip) = self.strip_mut(port.strip) else {
                     return;
                 };
-                let bit = 1u64 << host;
-                let set = |mask: &mut u64| {
-                    if connected {
-                        *mask |= bit;
-                    } else {
-                        *mask &= !bit;
-                    }
-                };
+                let set = |mask: &mut HostMask| mask.set(host, connected);
                 let index = port.index as usize;
                 match port.kind {
                     PortKind::AudioIn => set(&mut strip.inputs.swap()[index]),
@@ -316,16 +400,13 @@ impl Model {
                 }
             }
             Change::ConnectMaster {
+                bus,
                 channel,
                 host,
                 connected,
             } => {
-                let mask = &mut self.master_outputs.swap()[channel];
-                if connected {
-                    *mask |= 1 << host;
-                } else {
-                    *mask &= !(1 << host);
-                }
+                let mask = &mut self.bus_mut(bus).expect("validated bus").outputs.swap()[channel];
+                mask.set(host, connected);
             }
             Change::Route {
                 strip,
@@ -335,7 +416,7 @@ impl Model {
             } => {
                 if let Some(strip) = self.strip_mut(strip) {
                     strip.outputs.swap();
-                    let mask = &mut strip.outputs.master[strip.outputs.active][channel];
+                    let mask = &mut strip.outputs.buses[strip.outputs.active][channel];
                     if connected {
                         *mask |= 1 << target;
                     } else {

@@ -43,6 +43,7 @@ pub enum TracingStopped {
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
+    SetProfiling(bool),
     SaveTrackDefaults {
         request_id: u64,
         draft: SettingsDraft,
@@ -73,6 +74,7 @@ pub enum SettingsAction {
 impl SettingsAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetProfiling(_) => "profiling.toggle",
             Self::Save(_) => "settings.save",
             Self::SaveTrackDefaults { .. } => "settings.save_track_defaults",
             Self::RequestAudioDriverSwitch { .. } => "settings.request_audio_driver_switch",
@@ -532,6 +534,7 @@ impl SettingsDialog {
     }
 
     fn show_developer(&mut self, ui: &mut egui::Ui, response: &mut SettingsDialogResponse) {
+        ui.heading("Tracing");
         ui.label(
             "Capture performance data or investigate UI/audio bugs. Tracing can be stopped again, but capturing may degrade performance.",
         );
@@ -875,7 +878,11 @@ impl SettingsDialog {
         #[cfg(test)]
         self.driver_choice_rects.clear();
         ui.horizontal_wrapped(|ui| {
-            for kind in [AudioDriverKind::Dummy, AudioDriverKind::Cpal] {
+            for kind in [
+                AudioDriverKind::Dummy,
+                AudioDriverKind::Jack,
+                AudioDriverKind::Cpal,
+            ] {
                 let button = egui::Button::selectable(current == Some(kind), kind.label());
                 let response = ui.add(button);
                 #[cfg(test)]
@@ -888,12 +895,7 @@ impl SettingsDialog {
         let prefix = match selected(draft) {
             Some(AudioDriverKind::Dummy) => "audio.dummy.",
             Some(AudioDriverKind::Cpal) => "audio.cpal.",
-            Some(AudioDriverKind::Jack) => {
-                ui.label(
-                    "This audio backend has no JACK driver and uses CPAL's JACK host or default devices instead. Choose Dummy or CPAL to configure its driver.",
-                );
-                "audio.jack."
-            }
+            Some(AudioDriverKind::Jack) => "audio.jack.",
             Some(AudioDriverKind::WebAudio) | None => return,
         };
         let definitions = self
@@ -2201,9 +2203,9 @@ mod tests {
         assert_eq!(
             cards,
             if cfg!(target_arch = "wasm32") {
-                [6, 6]
+                [9, 9]
             } else {
-                [7, 7]
+                [10, 10]
             }
         );
     }
@@ -2293,6 +2295,23 @@ mod tests {
             .unwrap()
             .set(crate::SELECTED_AUDIO_DRIVER, "jack".to_owned());
         assert_eq!(frame(&mut dialog, Vec::new()), 3);
+        assert!(dialog
+            .driver_choice_rects
+            .iter()
+            .any(|(kind, _)| *kind == AudioDriverKind::Jack));
+        dialog
+            .draft_mut()
+            .unwrap()
+            .set(crate::JACK_CLIENT_NAME, "Studio".to_owned());
+        let Some(SettingsAction::Save(saved)) = dialog.save_action() else {
+            panic!("expected JACK settings save")
+        };
+        let crate::AudioDriverConfig::Jack(config) =
+            crate::audio_driver_config_from_draft(&saved, AudioDriverKind::Jack).unwrap()
+        else {
+            panic!("JACK profile changed kind")
+        };
+        assert_eq!(config.client_name, "Studio");
     }
 
     #[shoop_wasm_test_support::shoop_test(

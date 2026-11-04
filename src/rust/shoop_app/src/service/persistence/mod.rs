@@ -1,4 +1,5 @@
 use alloc::borrow::ToOwned;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -9,6 +10,7 @@ use shoop_app_protocol::{
     persistence_transfer::{Assembly, Source},
 };
 mod capture;
+mod family;
 mod mapping;
 use capture::Cut;
 use mapping::Candidate;
@@ -28,6 +30,7 @@ pub(super) enum Input {
         backend: BackendLoopId,
         update: BackendLoopContentUpdate,
     },
+    Family(BackendLoopFamilyUpdate),
 }
 pub(super) struct Ready {
     authority: Authority,
@@ -193,6 +196,10 @@ impl Service {
             return Err(anyhow!("session epoch exhausted"));
         }
         let input = match (&image.manifest, target) {
+            (
+                image::Manifest::FamilyUpdate { root, .. },
+                persistence::Target::Loop { loop_id, .. },
+            ) if *root == loop_id => Input::Family(self.prepare_family(&image)?),
             (image::Manifest::Session(session), persistence::Target::Session { .. }) => {
                 let (candidate, backend, sync) = Candidate::prepare(self, &image, session)?;
                 Input::Session {
@@ -396,13 +403,29 @@ impl Service {
                 "wait for admitted changes before committing persistence",
             ));
         }
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }
     pub(super) fn persistence_busy(&self, command: Option<&Command>) -> bool {
+        if matches!(command, Some(Command::Preview(PreviewCommand::Stop))) {
+            return false;
+        }
+        if self
+            .pending
+            .values()
+            .any(|pending| matches!(pending.effect, Effect::SessionPublished))
+        {
+            return true;
+        }
         match self.persistence_job {
-            Some(Job::Commit(_)) => true,
-            Some(Job::Capture { .. }) => !matches!(
+            Some(Job::Commit(Ready {
+                input: Input::Family(_),
+                ..
+            }))
+            | Some(Job::Capture { .. }) => !matches!(
                 command,
                 Some(
                     Command::SelectLoops { .. }
@@ -434,6 +457,7 @@ impl Service {
                         }
                 )
             ),
+            Some(Job::Commit(_)) => true,
             _ => false,
         }
     }
@@ -689,11 +713,39 @@ impl Service {
                         .backend
                         .mutations_pending_through(self.backend.mutation_cursor())
                 {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
+                if !ready.started && matches!(ready.input, Input::Family(_)) {
+                    match self.prepare_family(&ready.image) {
+                        Ok(update) => ready.input = Input::Family(update),
+                        Err(error) => {
+                            self.persistence_closed = Some((ready.authority, ready.key));
+                            let operation = self.pending.iter().find_map(|(id, pending)| matches!(pending.effect, Effect::Persistence(key) if key == ready.key).then_some(*id));
+                            if let Some(id) = operation {
+                                self.pending.get_mut(&id).unwrap().error =
+                                    Some(CommandError::from(error));
+                                self.finish(id);
+                            }
+                            return;
+                        }
+                    }
+                }
                 ready.started = true;
                 let result = match &mut ready.input {
+                    Input::Family(update) => {
+                        self.backend
+                            .replace_loop_family_async(update)
+                            .map(|result| match result {
+                                BackendAsyncResult::Pending(_) => None,
+                                BackendAsyncResult::Ready(()) => {
+                                    Some(BackendSessionReplacement::default())
+                                }
+                            })
+                    }
                     Input::Session { backend, sync, .. } => self
                         .backend
                         .replace_session_with_sync_async(backend, sync)
@@ -712,6 +764,9 @@ impl Service {
                         }),
                 };
                 if matches!(result, Ok(None)) {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
@@ -719,6 +774,9 @@ impl Service {
                 let outcome = result.and_then(|mapping| {
                     let observed = self.backend.poll()?;
                     match ready.input {
+                        Input::Family(_) => {
+                            self.publish_family_annotations(&ready.image, &observed)
+                        }
                         Input::Session { candidate, .. } => {
                             candidate.publish(self, &mapping.unwrap())?
                         }
@@ -771,10 +829,22 @@ impl Service {
                         .then_some(*id)
                 });
                 if let Some(id) = operation {
+                    let publish = outcome.is_ok()
+                        && self.dynamic_ports()
+                        && matches!(ready.target, persistence::Target::Session { .. });
                     if let Err(error) = outcome {
                         self.pending.get_mut(&id).unwrap().error = Some(CommandError::from(error));
                     }
-                    self.finish(id);
+                    if publish {
+                        let pending = self.pending.get_mut(&id).unwrap();
+                        pending.effect = Effect::SessionPublished;
+                        pending.first = 1;
+                        pending.last = 0;
+                        pending.completed.clear();
+                        self.advance_publications();
+                    } else {
+                        self.finish(id);
+                    }
                 }
             }
             job => self.persistence_job = Some(job),
@@ -789,11 +859,6 @@ impl Service {
                 "finish or cancel existing operations before creating a new session",
             ));
         }
-        let state = self.snapshot();
-        let master = state
-            .buses
-            .first()
-            .ok_or_else(|| CommandError::invalid("Master is unavailable"))?;
         let make_port = |id: u64,
                          name: String,
                          owner: ApplicationPortOwner,
@@ -802,6 +867,7 @@ impl Service {
                          role,
                          external_connections| image::Port {
             state: ApplicationPortState {
+                publication: None,
                 id: PortId::from_raw(id),
                 name,
                 owner,
@@ -813,42 +879,45 @@ impl Service {
             external_connections,
         };
         let mut channels = Vec::new();
-        for (index, channel) in master.channels.iter().enumerate() {
-            let port = state
-                .connections
-                .application_ports
-                .iter()
-                .find(|port| port.id == channel.output_port_id)
-                .ok_or_else(|| CommandError::invalid("Master port is unavailable"))?;
-            let mut external = state
-                .connections
-                .confirmed_links
-                .iter()
-                .filter(|link| link.application_port_id == port.id)
-                .map(|link| link.host_port_id.as_str().to_owned())
-                .collect::<BTreeSet<_>>();
-            for ((id, host), intent) in &self.connection_intent {
-                if *id == port.id {
-                    if intent.connected {
-                        external.insert(host.clone());
-                    } else {
-                        external.remove(host);
-                    }
-                }
-            }
-            channels.push(image::MasterChannel {
+        let mut sinks = self
+            .observed
+            .connections
+            .host_ports
+            .values()
+            .filter(|p| {
+                p.data_type == BackendPortDataType::Audio
+                    && p.direction == BackendPortDirection::Input
+            })
+            .collect::<Vec<_>>();
+        sinks.sort_by_key(|p| {
+            (
+                !p.preferred_playback,
+                super::commands::host_port_order(&p.id),
+            )
+        });
+        for (index, label) in MASTER_BUS_CHANNEL_LABELS.into_iter().enumerate() {
+            let external = if self.options.master_auto_connect {
+                sinks
+                    .get(index)
+                    .or_else(|| sinks.last())
+                    .map(|p| vec![p.id.clone()])
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            channels.push(image::BusChannel {
                 id: BusChannelId::from_raw(index as u64 + 1),
-                label: channel.label.clone(),
+                label: label.to_owned(),
                 port: make_port(
                     index as u64 + 3,
-                    port.name.clone(),
+                    format!("master_out_{}", index + 1),
                     ApplicationPortOwner::Bus {
                         bus_id: BusId::from_raw(1),
                     },
                     PortDataType::Audio,
                     PortDirection::Output,
                     PortRole::AudioOutput,
-                    external.into_iter().collect(),
+                    external,
                 ),
             });
         }
@@ -919,14 +988,16 @@ impl Service {
                         midi: Vec::new(),
                     }],
                 }],
-                master: image::Master {
+                bus_display_order: vec![BusId::from_raw(1)],
+                preview_bus: Some(BusId::from_raw(1)),
+                buses: vec![image::Bus {
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
                     gain_db: 0.,
                     balance: 0.,
                     muted: false,
                     channels,
-                },
+                }],
                 global_ports: vec![make_port(
                     5,
                     "Global FX Control MIDI In".to_owned(),
@@ -969,6 +1040,9 @@ impl Service {
                 .finish()
                 .map_err(|_| CommandError::invalid("incomplete new session image"))?,
         )?;
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }

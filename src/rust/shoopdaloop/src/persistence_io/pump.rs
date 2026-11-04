@@ -125,7 +125,24 @@ impl Provider {
             if matches!(self.phase, Phase::Working) {
                 match value.map_err(|e| anyhow!(e))? {
                     Value::Decoded(decoded) => self.decoded(decoded)?,
-                    Value::Captured(image) => self.captured(image)?,
+                    Value::Inspected {
+                        decoded,
+                        conversion_required,
+                    } => self.inspected(
+                        decoded,
+                        conversion_required,
+                        client
+                            .snapshot()
+                            .ok_or_else(|| anyhow!("session is not ready"))?,
+                    )?,
+                    Value::Captured(image) => {
+                        self.current(
+                            client
+                                .snapshot()
+                                .ok_or_else(|| anyhow!("session is not ready"))?,
+                        )?;
+                        self.captured(image)?;
+                    }
                     Value::Image(image) => {
                         let state = client
                             .snapshot()
@@ -181,9 +198,6 @@ impl Provider {
                 self.pending_cancel = None;
             }
             return Ok(());
-        }
-        if let Some(key) = self.pending_cancel.take() {
-            self.request(client, transfer::Request::Cancel { key })?;
         }
         if let Some((key, image)) = client.take_captured_image() {
             if self.task.as_ref().is_some_and(|t| t.key == key)
@@ -268,6 +282,13 @@ impl Provider {
             }
         }
         self.read_window(client)?;
+        if let Some(key) = self.pending_cancel.take() {
+            self.messages.push_front(
+                client
+                    .persistence(transfer::Request::Cancel { key })
+                    .map_err(|error| anyhow!("{error:?}"))?,
+            );
+        }
         if matches!(self.phase, Phase::Capture) && !client.has_unfinished_operations() {
             let task = self.task.as_mut().unwrap();
             // The capture barrier includes commands sent earlier in this client turn.

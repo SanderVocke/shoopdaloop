@@ -5,17 +5,41 @@ The core slice is implemented and validated;
 [acceptance evidence](evidence/session-persistence.md) records its scope.
 P01/P02/P11 remain open for their deferred dependencies.
 
+## Shared audio reconciliation
+
+Prepared shared audio uses the same `ResourceId`, immutable `Snapshot`, read index
+and byte cursor as uploaded PCM. Capturing a snapshot pins an immutable audio
+export; session capture never borrows a mutable take's current read index.
+`NodePairSnapshot`, `Adopt`/`Select`, media-ledger exports and
+`ConfigurationReplace` remain the publication and replacement authorities.
+An upload may replace a shared resource without changing already pinned exports.
+
+Loaded PCM can become an editable COW resource while retaining its uploaded
+snapshot as an immutable base. Editing copies touched pages; untouched bytes and
+old exports remain readable, including after resource removal. Logical loop
+length is independent of the rolling-history horizon. Prepared page, node,
+transaction and owner quotas still govern admission. Registered audio stores are
+lifetime-scoped and shared snapshots fork within their originating store.
+
+Session/audio codecs continue to receive logical samples and metadata, so the
+archive and protocol formats do not encode sharing, page addresses or edit roots.
+Tests cover grabbed and imported sources through adoption, playback, full
+configuration replacement, retained exports and bounded teardown, plus session,
+exact-audio and WAV round trips for original and edited revisions. Existing core
+capability/refusal policies remain in force: this storage integration does not
+restore P04/P05 or enable capture during future replacement recording.
+
 ## Field and capability matrix
 
 | Document/live data | Core behavior | Ownership and refusal |
 | --- | --- | --- |
-| Sample rate | Save host rate; confirm conversion and resample audio, MIDI and timing before loading at another rate | Client codecs; recheck host rate before commit; never switch device implicitly |
+| Sample rate and processing quantum | Confirm resampling/retiming once, then convert audio, MIDI and timing together into the prepared format | Client codecs; recheck rate/Q and content before commit; never switch the device implicitly |
 | Direct audio/MIDI/trigger tracks and primitive loops | Preserve names, order, topology, media, supported controls and sync relationships | Service maps document IDs to fresh live IDs; RT owns playback/resources |
 | Loop/channel length, gain, offsets, capture alignment and preplay | Preserve supported stored values and exact media timing | Validate every value; reject an unsupported non-default value before mutation; this does not enable P09/P10/P12 editing |
 | Selection, target and global policies | Preserve document values supported by the core | Service-owned; reject unsupported recording/default-playback policies |
-| Master, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
+| Ordinary buses, ports and mixer routes | Preserve supported routing/control values and connection intent | Resolve external ports by exact identity; report missing destinations and retain intent |
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
-| FX/synth/dry-wet, composites, non-Master buses | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08/P13 remain open; no flattening or dropped state |
+| FX/synth/dry-wet and composites | Refuse complete documents requiring unavailable capabilities | P03/P06/P07/P08 remain open; no flattening or dropped state |
 | Session-owned scripts/resources | Refuse documents requiring unavailable ownership/resource handling | P16 remains open; VM stays client-side and is never serialized/restarted |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
@@ -27,7 +51,7 @@ P01/P02/P11 remain open for their deferred dependencies.
 | Metadata | 8 MiB, including the persistence manifest |
 | Decoded media | 256 MiB aggregate audio/MIDI, independent of the old 32 MiB media-view message |
 | Input/output file | 512 MiB compressed/encoded bytes; reject before decoding/output allocation beyond this budget |
-| Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; fixed stereo Master and supported routes |
+| Core document shape | At most 64 tracks and 256 primitive loops, with ≤2 direct audio channels and ≤1 MIDI channel per loop; zero-or-more ordinary buses within the negotiated pool (at most eight buses of eight channels), and supported routes |
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
@@ -100,7 +124,8 @@ normal service work or silently restart against newer content.
   distinguishes a download-link click from dialog cancellation/close and releases
   the temporary Blob URL after the handoff event turn. Failed/cancelled
   native output preserves any previously saved file and allows retry.
-- Load/import: read/decode, validate, ask any sample-rate/channel questions, recheck
+- Load/import: read/decode, resolve channel mapping, plan exact timing, ask for
+  conversion consent if needed, recheck
   the target, stage, commit and await the confirmed result. Decline/cancel before
   commit leaves playback/content intact. New Session uses safe replacement too.
 - Audio import/export keeps reference channel selection/role order and mapping;
@@ -109,16 +134,54 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence, duplication and generated click insertion remain named follow-ups.
+  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  and insertion use the restored bounded import path. System/Master audio preview
+  is complete under P15; see the [preview contract](preview.md).
 
 ## Engine integration boundary
 
+Session loads use one rational dependency plan and one anchored
+audio/MIDI conversion from the original media. Lengths round to the nearest
+positive quantum, with ties upward and empty loops remaining empty. Source-first
+propagation preserves exact cycle multiples. MIDI timestamps retain individual
+frame precision. Signed offsets, capture alignment and stored prefix/suffix history
+follow the same origin map; hardware calibration scales only with sample rate.
+Differing recorded quantum provenance alone does not require conversion.
+
+For loop `i`, first compute its exact ideal duration `I_i = L_i * target_rate /
+source_rate_i`. Process sync sources before their dependents. A dependent of `s`
+uses `I_i * converted_length_s / I_s` before rounding to the grid; a zero-length
+source contributes no correction. Each child's correction already contains all
+upstream corrections, so it is applied once. Empty loops stay empty and nonempty
+loops get at least one quantum. Reject missing links, dependency cycles and checked
+arithmetic overflow before mutation. Convert each loop's original media once using
+its final length ratio, rather than resampling at each dependency edge.
+
+Sample-rate changes or a nonidentity timing map require the same Convert/Cancel
+warning: resampling and retiming slightly affect audio and loop timings. No preview
+is required. Consent covers the complete affected dependency family; cancellation
+before admission leaves it unchanged.
+
+A live import first defines its intended length using the normal keep/update
+choice. Only its automatic grid correction propagates to retained channels and
+sync descendants. The client captures changed loops individually, preserving
+unrelated recording. The family manifest carries rate/Q, loop identities, links,
+old lengths and revisions; the service and adapter check these again before the
+engine's single tick publication. Audio, MIDI, periods and mapped dependent
+playheads change together. Current gains, names and routes are preserved.
+Affected active/prepared captures or stale preparation refuse the entire cut.
+Cancelled preparation releases staged owners; an admitted commit remains engine
+owned across controller loss. Application protocol version 20 carries resolved
+sync links and target format, and RT protocol version 7 carries bounded family
+staging and authoritative content revisions. Typed local and encoded transports
+use the same operations.
+
 The adapter stages a private mirror instead of removing live tracks. It uses
 prepared loop node-pair sources, immutable exports and configuration transactions,
-but first establish an engine transaction that preflights complete content, graph,
+with an engine transaction that preflights complete content, graph,
 timing and retirement ownership. The existing `ConfigurationActivate` requires
-already-stopped edited owners; a scheduled stop alone is insufficient. Stage 2
-adds `ConfigurationReplace` for a complete fresh-owner cut at callback start:
+already-stopped edited owners; a scheduled stop alone is insufficient.
+`ConfigurationReplace` provides for a complete fresh-owner cut at callback start:
 media/graph/epoch preflight precedes publication, old playback may retire and MIDI
 cleanup is requested atomically. Active/prepared recording is refused unchanged.
 Engine node presets are prepared under a token/next epoch and become active during
@@ -131,5 +194,5 @@ packaged native and browser deployment validation is recorded in the
 leave old playback faded/stopped or mappings
 partially replaced.
 
-Validation evidence is recorded in the plan as milestones complete. Protocol tests
+Validation evidence is recorded in the [acceptance evidence](evidence/session-persistence.md). Protocol tests
 alone do not establish engine atomicity, capture coherence or restored UI support.

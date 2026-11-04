@@ -343,13 +343,13 @@ class GraphBindingTests(unittest.TestCase):
                 (1, 6, 1, 1, 4, 0, 0, 0, 1, 1), (1, 2, 2, 3, 5, 4, 0, 1, 0, 2),
                 (2, 3, 2, 4, 5, 4, 4, 4, 2, 2), (1, 6, 3, 2, 6, 0, 0, 13, 0, 3)):
             data = bytearray(128)
-            data[:8] = b"LLS1\x01\x00" + bytes((phase, flags))
+            data[:8] = b"LLS1\x02\x00" + bytes((phase, flags))
             struct.pack_into("<QQIIQQQQQI", data, 8, (1 << 64) - 1, sequence, 0, status,
                              runtime, at, at, delivered, observed, 0)
             struct.pack_into("<IIIQQ", data, 76, 7, 0, 1, epoch, 0)
             if status in (1, 2):
-                struct.pack_into("<IIIII", data, 104, 0, 1 if status == 1 else 2,
-                                 *([4, 16, 4] if status == 1 else [3, 12, 2]))
+                struct.pack_into("<IIII", data, 104, 0, 1 if status == 1 else 2,
+                                 *([4, 16] if status == 1 else [3, 12]))
             data[124] = kind
             packets.append(list(data))
         report = {"audio": [[sample[channel] * (2 if 4 <= at < 12 else 1)

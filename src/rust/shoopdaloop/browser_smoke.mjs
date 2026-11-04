@@ -28,6 +28,9 @@ if (outputOnly && denyFirst) {
 if (directFileMicrophone && !selfContained) {
   throw new Error('DIRECT_FILE_MIC requires SELF_CONTAINED=1');
 }
+const previewOnly = process.env.PREVIEW_ONLY === '1';
+const previewResume = process.env.PREVIEW_RESUME || '';
+let previewSuspended = false;
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
 const largeMedia = process.env.LARGE_MEDIA === '1';
@@ -259,13 +262,26 @@ try {
         console.log('Timer diagnostic', await evaluate('({time:performance.now(),ticks:globalThis.shoopTimerProbe?.ticks,visibility:document.visibilityState})'));
         diagnosticAt = Date.now() + 10000;
       }
-      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving'].includes(state?.newEngineSelfTest)) {
+      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving'].includes(state?.newEngineSelfTest)) {
         await evaluate(`(() => {
           const output = document.getElementById('rfd-output');
           if (!output) return;
           if (document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test') === 'CancelSaving') {
             [...document.querySelectorAll('#rfd-card .rfd-button')].find(button => button.textContent === 'Cancel')?.click();
           } else output.click();
+        })()`);
+      }
+      if (previewOnly && previewResume && !previewSuspended && state?.newEngineSelfTest === 'PreviewReady') {
+        previewSuspended = true;
+        await evaluateAwait(`(async () => {
+          const context = globalThis.shoopPreviewContext;
+          if (!context) throw new Error('missing preview AudioContext');
+          await context.suspend();
+          const resume = context.resume.bind(context);
+          context.resume = () => {
+            context.resume = resume;
+            return ${previewResume === 'pending' ? 'new Promise(() => {})' : "Promise.reject(new DOMException('preview denied by acceptance probe', 'NotAllowedError'))"};
+          };
         })()`);
       }
       if (predicate(state)) return state;
@@ -294,6 +310,14 @@ try {
   await call('Page.enable');
   if (process.env.UPLOAD_DIAGNOSTICS === '1') {
     await call('Page.addScriptToEvaluateOnNewDocument', { source: 'globalThis.shoopTimerProbe={ticks:0};setInterval(()=>shoopTimerProbe.ticks++,4)' });
+  }
+  if (previewOnly) {
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const Original = globalThis.AudioContext;
+      globalThis.AudioContext = class extends Original {
+        constructor(...args) { super(...args); globalThis.shoopPreviewContext = this; }
+      };
+    })()` });
   }
   if (webMidi) {
     await call('Page.addScriptToEvaluateOnNewDocument', {
@@ -402,7 +426,7 @@ try {
     });
   }
   let entryUrl;
-  const newEngineQuery = `?new-engine-self-test=1${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}`;
+  const newEngineQuery = `?new-engine-self-test=1${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
       ? `${selfContainedUrl}${newEngineQuery}`

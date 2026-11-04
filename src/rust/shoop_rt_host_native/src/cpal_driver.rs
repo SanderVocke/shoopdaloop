@@ -345,6 +345,7 @@ impl Output {
         let shared = &*self.shared;
         let channels = self.channels;
         let frames = data.len() / channels;
+        shared.begin_profiling(cycle.next_frame(), frames);
         Shared::count(&shared.counters.callbacks, 1);
         if frames != self.frames {
             self.frames = frames;
@@ -626,6 +627,7 @@ where
         endpoint,
         outbox,
         Running {
+            instance_name: "CPAL".to_owned(),
             reset_wait: reset_wait(period_frames, sample_rate),
             shared,
             driver: Driver::Cpal(Streams {

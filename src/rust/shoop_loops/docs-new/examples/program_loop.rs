@@ -64,15 +64,11 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        None,
-        CaptureGroupConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
             groups: 6,
             members_per_group: 1,
             staging_bytes_per_group: 128,
-        },
-    )
+        })
     .unwrap();
 
     let bar = LoopId::from_parts(0, 1).unwrap();
@@ -227,24 +223,16 @@ fn main() {
             midi: None,
         },
     ];
-    let prepared = LoopPlanner::prepare(
-        config,
-        topology,
-        &mut resources,
-        Settings {
+    let prepared = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 5,
             media_slots: 16,
             export_slots: 0,
-        },
-        vec![
+        }, vec![
             binding(bar, bar_playback, bar_capture, 2),
             binding(bass, bass_playback, bass_capture, 2),
             binding(drums, drums_playback, drums_capture, 2),
-        ],
-        imports,
-        Options::default(),
-    );
+        ], imports, Options::default());
     let Prepared {
         planner,
         nodes,
@@ -257,14 +245,7 @@ fn main() {
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &graph,
-        &client.bindings_for(&graph),
-    )
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
     .unwrap();
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));

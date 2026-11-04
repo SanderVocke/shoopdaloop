@@ -37,16 +37,20 @@ extern crate std;
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+pub use rt_profiling as profiling;
+
 pub mod buffer;
 pub mod config;
 pub mod error;
 pub mod executor;
 pub mod graph;
+mod host_buffer;
 pub mod ids;
 pub mod midi;
 pub mod midi_state;
 pub mod planner;
 pub mod processor;
+mod quantum;
 pub mod render;
 pub mod resource;
 pub mod schedule;
@@ -55,4 +59,5 @@ pub mod transport;
 pub use config::{Budgets, Config, PreparedConfig};
 pub use error::Error;
 pub use ids::{Epoch, Frame, NodeId, PlannerId, ResourceId, Revision, Sequence};
+pub use quantum::Quantum;
 pub use render::RenderRuntime;

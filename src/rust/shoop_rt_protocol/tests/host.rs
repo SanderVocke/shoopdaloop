@@ -6,9 +6,12 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 #[shoop_test]
 fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
     let engine = EngineSettings {
+        quantum: 32,
         max_frames: 1,
         strip_channels: 2,
         master_channels: 3,
+        buses: 8,
+        bus_channels: 8,
         smoothing_frames: 4,
         smoothing_limit_frames: 5,
         ramp_frames: 6,
@@ -84,6 +87,7 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
             max_buffer: 1024,
         },
         HostReply::Warning(text),
+        HostReply::InstanceName(text),
         HostReply::Error(text),
         HostReply::Stopped { midi_reset: true },
         HostReply::Ready(DriverStatus {
@@ -115,4 +119,25 @@ fn host_text_and_record_bounds_are_checked() {
     );
     assert!(decode_host_request(&[4, 0, 0xf0, 255]).is_err());
     assert!(decode_host_reply(&[4, 0, 0xf1, 255]).is_err());
+}
+
+#[shoop_test]
+fn jack_driver_identity_appends_a_tag_without_changing_existing_drivers() {
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for (kind, tag) in [
+        (DriverKind::Dummy, 0),
+        (DriverKind::Cpal, 1),
+        (DriverKind::WebAudio, 2),
+        (DriverKind::Jack, 3),
+    ] {
+        let reply = HostReply::Ready(DriverStatus {
+            kind,
+            state: DriverRunState::Running,
+            sample_rate: 48000,
+            buffer_frames: 128,
+        });
+        let len = encode_host_reply(&reply, &mut bytes).unwrap();
+        assert_eq!(bytes[4], tag);
+        assert_eq!(decode_host_reply(&bytes[..len]), Ok(reply));
+    }
 }

@@ -181,6 +181,9 @@ path and network settings. Relative credential paths resolve against the profile
 Normal UI connections retain strict session-version validation. Deployment uses
 its own stable, bounded management envelope on the same authenticated listener;
 its compatibility does not depend on the UI/session version.
+Native host profiles omit `credential` and use keyless discovery. Board profiles
+retain the explicit credential path; failed board authentication does not retry
+through the native keyless protocol.
 
 The command authenticates, refuses competing ownership, binds a request to the
 current boot nonce and unique operation ID, stops rendering, acknowledges all 32

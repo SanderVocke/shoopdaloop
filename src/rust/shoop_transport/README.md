@@ -6,7 +6,7 @@ It has no production dependencies. A record includes its little-endian u16 total
 length and is at most 1280 bytes. Reliable/bulk delivery refuses on saturation;
 telemetry may replace older values.
 
-`shoop_transport_socket` provides authenticated loopback setup and bounded socket
+`shoop_transport_socket` provides versioned keyless connection/inspection setup and bounded socket
 records. `shoop_transport_shared_memory` provides process-shared queues and
 liveness monitoring. Neither interprets app or engine messages. A protocol adapter
 owns encoding, sequencing, credits and lifecycle semantics.

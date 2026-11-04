@@ -164,10 +164,14 @@ fn lose(
 pub fn run(profile: &RemoteProfile) {
     let (mut client, mut socket) = attach(profile);
     let first = client.authority().unwrap();
-    let wrong_key = profile.credential.with_file_name("wrong.key");
+    let wrong_key = profile
+        .credential
+        .as_ref()
+        .unwrap()
+        .with_file_name("wrong.key");
     shoop_host::remote::create_credential(&wrong_key).unwrap();
     let mut wrong = profile.clone();
-    wrong.credential = wrong_key.clone();
+    wrong.credential = Some(wrong_key.clone());
     assert!(connection::connect(&wrong, Duration::from_secs(2)).is_err());
     std::fs::remove_file(wrong_key).unwrap();
     let mut wrong = connection::connect(profile, Duration::from_secs(5)).unwrap();
@@ -342,7 +346,7 @@ fn ownerless_lost_reply(profile: &RemoteProfile) {
     use shoop_host::remote::ConnectionTarget;
     use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
     let token = profile.target().token().unwrap();
-    let mut port = shoop_transport_socket::setup::connect_lan(
+    let mut port = shoop_transport_socket::setup::connect_authenticated(
         profile.management.parse().unwrap(),
         &token,
         shoop_transport_socket::Config {

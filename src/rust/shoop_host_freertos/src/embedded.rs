@@ -12,7 +12,7 @@ use shoop_rt_engine::{prepare, EngineDescription, HostPorts, HostStatus, Phase, 
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
-    handshake::Handshake,
+    authenticated::Handshake,
     stream::{ByteIo, Config, IoError, Stream},
     RecordPort, MAX_RECORD_BYTES,
 };
@@ -565,6 +565,7 @@ fn authenticate(
 
 pub fn run() {
     let description = EngineDescription {
+        quantum: crate::PROCESSING_QUANTUM,
         host: HostPorts::numbered(2, 2, crate::MIDI_PORTS),
         max_frames: crate::QUANTUM,
         midi_bytes: crate::MIDI_BLOCK_BYTES,
@@ -633,6 +634,9 @@ pub fn run() {
                     buffer_size: crate::QUANTUM as u32,
                 }),
                 pools: NewEnginePools {
+                    quantum: crate::PROCESSING_QUANTUM as u32,
+                    buses: description.buses as u32,
+                    bus_channels: description.bus_channels as u32,
                     tracks: 8,
                     loops: 32,
                     channels: 2,

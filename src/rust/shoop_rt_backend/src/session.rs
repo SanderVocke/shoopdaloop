@@ -10,11 +10,10 @@ use alloc::vec::Vec;
 use anyhow::{anyhow, Result};
 use shoop_app_api::BackendCapability;
 use shoop_backend::{
-    BackendBusControl, BackendChannelMode, BackendConnectionFailure, BackendDefaultPlaybackMode,
-    BackendPortDataType, BackendPortDirection, BackendPortOwner, BackendPortRole,
-    BackendSessionBus, BackendSessionData, BackendSessionReplacement, BackendSessionTrack,
-    BackendTrackControl, BackendTrackTopology, GLOBAL_FX_PORT_ID, MASTER_BUS_CHANNEL_IDS,
-    MASTER_BUS_CHANNEL_LABELS, MASTER_BUS_ID, MASTER_BUS_NAME, MASTER_BUS_OUTPUT_PORT_IDS,
+    Backend, BackendBusControl, BackendChannelMode, BackendConnectionFailure,
+    BackendDefaultPlaybackMode, BackendPortDataType, BackendPortDirection, BackendPortOwner,
+    BackendPortRole, BackendSessionBus, BackendSessionData, BackendSessionReplacement,
+    BackendSessionTrack, BackendTrackControl, BackendTrackTopology, GLOBAL_FX_PORT_ID,
 };
 use shoop_rt_transport::carrier::Carrier;
 
@@ -39,8 +38,8 @@ fn direct_ports(
     ports
 }
 
-fn check_master(bus: &BackendSessionBus) -> Result<()> {
-    if bus.name != MASTER_BUS_NAME || bus.channels.len() != MASTER_BUS_CHANNEL_IDS.len() {
+fn check_bus(bus: &BackendSessionBus, max_channels: usize) -> Result<()> {
+    if bus.name.trim().is_empty() || bus.channels.is_empty() || bus.channels.len() > max_channels {
         return Err(unavailable(BackendCapability::BusManagement));
     }
     if bus.processor_type.is_some()
@@ -50,20 +49,16 @@ fn check_master(bus: &BackendSessionBus) -> Result<()> {
         return Err(unavailable(BackendCapability::BusFx));
     }
     let owner = BackendPortOwner::Bus(shoop_backend::BackendBusId::from_raw(bus.source_id));
-    let shaped = bus
-        .channels
-        .iter()
-        .zip(MASTER_BUS_CHANNEL_LABELS)
-        .all(|(channel, label)| {
-            let port = &channel.output_port.descriptor;
-            channel.label == label
-                && port.owner == owner
-                && port.data_type == BackendPortDataType::Audio
-                && port.direction == BackendPortDirection::Output
-                && port.role == BackendPortRole::AudioOutput
-        });
+    let shaped = bus.channels.iter().all(|channel| {
+        let port = &channel.output_port.descriptor;
+        !channel.label.is_empty()
+            && port.owner == owner
+            && port.data_type == BackendPortDataType::Audio
+            && port.direction == BackendPortDirection::Output
+            && port.role == BackendPortRole::AudioOutput
+    });
     if !shaped || !bus.gain_db.is_finite() || !bus.balance.is_finite() {
-        return Err(anyhow!("the session's Master bus is malformed"));
+        return Err(anyhow!("a session bus is malformed"));
     }
     Ok(())
 }
@@ -225,6 +220,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .expect("candidate track")
                     .controls
                     .apply(*control),
+                Purpose::CreateBus(id) => {
+                    candidate
+                        .buses
+                        .get_mut(id)
+                        .expect("candidate bus")
+                        .confirmed = true
+                }
+                Purpose::BusControl(id, control) => candidate
+                    .buses
+                    .get_mut(id)
+                    .expect("candidate bus")
+                    .apply(*control),
                 Purpose::LoopGain(id, gain) => {
                     candidate.loops.get_mut(id).expect("candidate loop").gain = *gain
                 }
@@ -366,17 +373,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     bus,
                     connected: true,
                 } => Some(ReplacementEdit::Route { port, bus }),
-                Request::BusControl { control, .. } => Some(ReplacementEdit::Master(control)),
+                Request::CreateBus { bus, channels } => {
+                    Some(ReplacementEdit::Bus { bus, channels })
+                }
+                Request::BusControl { bus, control } => {
+                    Some(ReplacementEdit::BusControl { bus, control })
+                }
                 _ => None,
             };
             if let Some(edit) = edit {
                 work.push_back(Work::Request(Request::ReplacementEdit { id, edit }));
             }
-        }
-        if let Some(master) = session.buses.first() {
-            candidate.master.gain_db = master.gain_db;
-            candidate.master.balance = master.balance;
-            candidate.master.muted = master.muted;
         }
         work.push_back(Work::Request(Request::ReplacementPrepare { id }));
         work.push_back(Work::Request(Request::ReplacementCommit { id }));
@@ -415,10 +422,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     && port.descriptor.direction == BackendPortDirection::Input => {}
             _ => return Err(anyhow!("the session's global FX control port is invalid")),
         }
-        match session.buses.as_slice() {
-            [] => {}
-            [bus] => check_master(bus)?,
-            _ => return Err(unavailable(BackendCapability::BusManagement)),
+        if session.buses.len() > self.limits().buses as usize {
+            return Err(anyhow!("session exceeds prepared bus count"));
+        }
+        let mut bus_ids = BTreeSet::new();
+        let mut channel_ids = BTreeSet::new();
+        for bus in &session.buses {
+            check_bus(bus, self.limits().bus_channels as usize)?;
+            if !bus_ids.insert(bus.source_id)
+                || bus
+                    .channels
+                    .iter()
+                    .any(|c| !channel_ids.insert(c.source_id))
+            {
+                return Err(anyhow!("duplicate bus or channel identity"));
+            }
         }
         let limits = self.limits();
         for track in &session.tracks {
@@ -528,54 +546,38 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.restore_connection(GLOBAL_FX_PORT_ID, external);
         }
 
-        let master = session.buses.first();
-        let (gain_db, balance, muted) = master.map_or((0.0, 0.0, false), |bus| {
-            (bus.gain_db, bus.balance, bus.muted)
-        });
-        for control in [
-            BackendBusControl::GainDb(gain_db),
-            BackendBusControl::Balance(balance),
-            BackendBusControl::Mute(muted),
-        ] {
-            self.queue_master_control(control)?;
+        let existing = self.mirror.buses.keys().copied().collect::<Vec<_>>();
+        for id in existing {
+            self.remove_bus(id)?;
         }
-        let mut master_links = BTreeSet::new();
-        if let Some(bus) = master {
-            replacement.buses.insert(bus.source_id, MASTER_BUS_ID);
-            for (index, channel) in bus.channels.iter().enumerate() {
-                let port = MASTER_BUS_OUTPUT_PORT_IDS[index];
+        for bus in &session.buses {
+            let created = self.create_bus(shoop_backend::BackendBusRequest {
+                name: bus.name.clone(),
+                channel_count: bus.channels.len() as u32,
+                fx: None,
+            })?;
+            replacement.buses.insert(bus.source_id, created.bus_id);
+            for control in [
+                BackendBusControl::GainDb(bus.gain_db),
+                BackendBusControl::Mute(bus.muted),
+            ] {
+                self.queue_bus_control(created.bus_id, control)?;
+            }
+            if bus.channels.len() == 2 {
+                self.queue_bus_control(created.bus_id, BackendBusControl::Balance(bus.balance))?;
+            }
+            for (channel, live) in bus.channels.iter().zip(&created.channels) {
+                replacement.bus_channels.insert(channel.source_id, live.id);
                 replacement
-                    .bus_channels
-                    .insert(channel.source_id, MASTER_BUS_CHANNEL_IDS[index]);
-                replacement.bus_output_ports.insert(channel.source_id, port);
+                    .bus_output_ports
+                    .insert(channel.source_id, live.output_port_id);
                 replacement
                     .ports
-                    .insert(channel.output_port.source_id, port);
+                    .insert(channel.output_port.source_id, live.output_port_id);
                 for external in &channel.output_port.external_connections {
-                    master_links.insert((port, external.clone()));
+                    self.restore_connection(live.output_port_id, external);
                 }
             }
-        }
-        let stale = self
-            .mirror
-            .links
-            .iter()
-            .filter(|link| MASTER_BUS_OUTPUT_PORT_IDS.contains(&link.application_port_id))
-            .map(|link| (link.application_port_id, link.host_port_id.clone()))
-            .filter(|link| !master_links.contains(link))
-            .collect::<Vec<_>>();
-        for (port, host) in stale {
-            if self.queue_connection(port, &host, false).is_err() {
-                self.mirror
-                    .links
-                    .remove(&shoop_backend::BackendConfirmedLink {
-                        application_port_id: port,
-                        host_port_id: host,
-                    });
-            }
-        }
-        for (port, host) in master_links {
-            self.restore_connection(port, &host);
         }
 
         for track in &session.tracks {

@@ -122,7 +122,62 @@ fn bounded_queues_retry_without_losing_or_growing_records() {
 }
 
 #[shoop_test]
+fn compatibility_handshake_handles_partial_io_and_remaining_deadlines() {
+    use shoop_transport::handshake::{Intent, MAGIC};
+    let mut request = MAGIC.to_vec();
+    request.push(1);
+    let mut server = Handshake::new(true, Duration::from_secs(1));
+    let mut io = Scripted::new(&request);
+    io.interrupt = true;
+    for _ in 0..16 {
+        if server.advance(&mut io, Duration::from_millis(1)).unwrap() {
+            break;
+        }
+    }
+    assert!(server.advance(&mut io, Duration::ZERO).unwrap());
+    assert_eq!(server.intent(), Intent::Inspect);
+    assert_eq!(&io.output[..io.written], &MAGIC);
+    let mut client = Handshake::inspect(Duration::from_secs(1));
+    let mut io = Scripted::new(&MAGIC);
+    for _ in 0..16 {
+        if client.advance(&mut io, Duration::from_millis(1)).unwrap() {
+            break;
+        }
+    }
+    assert!(client.advance(&mut io, Duration::ZERO).unwrap());
+    assert_eq!(&io.output[..io.written], &request);
+    let mut timeout = Handshake::new(true, Duration::from_millis(10));
+    assert_eq!(
+        timeout.advance(&mut Scripted::new(&[]), Duration::from_millis(10)),
+        Err(Error::Timeout)
+    );
+    let mut wrong = Handshake::new(true, Duration::from_secs(1));
+    let mut io = Scripted::new(&[0; 9]);
+    io.fragment = 9;
+    assert_eq!(wrong.advance(&mut io, Duration::ZERO), Err(Error::Protocol));
+    assert_eq!(wrong.advance(&mut io, Duration::ZERO), Err(Error::Protocol));
+}
+
+#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+#[global_allocator]
+static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
+
+#[shoop_test(no_wasm = "native allocation guard")]
+fn stream_progression_is_heap_free_after_preparation() {
+    let mut stream = Stream::new(Scripted::new(&[3, 0, 7]), Config::default()).unwrap();
+    let mut output = [0; 1280];
+    assert_no_alloc::assert_no_alloc(|| {
+        stream.post(&[3, 0, 8]).unwrap();
+        stream.flush().unwrap();
+        for _ in 0..4 {
+            stream.take(&mut output);
+        }
+    });
+}
+
+#[shoop_test]
 fn token_handshake_handles_partial_io_and_remaining_deadlines() {
+    use shoop_transport::authenticated::{Error, Handshake};
     let token = [9; 32];
     let mut server = Handshake::new(token, true, Duration::from_secs(1));
     let mut io = Scripted::new(&token);
@@ -159,21 +214,4 @@ fn token_handshake_handles_partial_io_and_remaining_deadlines() {
         wrong.advance(&mut io, Duration::ZERO),
         Err(Error::Credential)
     );
-}
-
-#[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
-#[global_allocator]
-static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
-
-#[shoop_test(no_wasm = "native allocation guard")]
-fn stream_progression_is_heap_free_after_preparation() {
-    let mut stream = Stream::new(Scripted::new(&[3, 0, 7]), Config::default()).unwrap();
-    let mut output = [0; 1280];
-    assert_no_alloc::assert_no_alloc(|| {
-        stream.post(&[3, 0, 8]).unwrap();
-        stream.flush().unwrap();
-        for _ in 0..4 {
-            stream.take(&mut output);
-        }
-    });
 }

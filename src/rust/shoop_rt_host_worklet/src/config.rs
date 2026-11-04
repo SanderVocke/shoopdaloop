@@ -1,7 +1,7 @@
 //! The configuration record that prepares the module before its first quantum.
 //!
 //! All numbers are little-endian `u32`, in this order: the record version, the
-//! sample rate, the largest quantum, strip channels, Master channels, smoothing,
+//! sample rate, the largest callback, the graph quantum, strip channels, Master channels, smoothing,
 //! the smoothing limit, the ramp, the control lead, resource pages, page bytes,
 //! MIDI events and bytes per port, pending transitions, reliable and bulk credits,
 //! the telemetry interval, the record inbox and outbox bytes, the MIDI-in and
@@ -15,7 +15,7 @@ use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 3;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -95,8 +95,11 @@ impl WorkletConfig {
             CONFIG_VERSION as usize,
             engine.sample_rate as usize,
             engine.max_frames,
+            engine.quantum,
             engine.strip_channels.into(),
             engine.master_channels.into(),
+            engine.buses.into(),
+            engine.bus_channels.into(),
             engine.smoothing_frames as usize,
             engine.smoothing_limit_frames as usize,
             engine.ramp_frames as usize,
@@ -154,8 +157,11 @@ impl WorkletConfig {
         }
         let sample_rate = r.u32()?;
         let max_frames = r.usize()?;
+        let quantum = r.usize()?;
         let strip_channels = r.narrow()?;
         let master_channels = r.narrow()?;
+        let buses = r.narrow()?;
+        let bus_channels = r.narrow()?;
         let smoothing_frames = r.u32()?;
         let smoothing_limit_frames = r.u32()?;
         let ramp_frames = r.u32()?;
@@ -200,10 +206,13 @@ impl WorkletConfig {
             engine: EngineDescription {
                 sample_rate,
                 max_frames,
+                quantum,
                 host,
                 segments,
                 strip_channels,
                 master_channels,
+                buses,
+                bus_channels,
                 master_connections,
                 smoothing_frames,
                 smoothing_limit_frames,
@@ -315,7 +324,7 @@ mod tests {
         version[0] = 9;
         assert_eq!(WorkletConfig::decode(&version), Err(ConfigError::Version));
         let mut channels = record.clone();
-        channels[12..16].copy_from_slice(&300u32.to_le_bytes());
+        channels[16..20].copy_from_slice(&300u32.to_le_bytes());
         assert_eq!(WorkletConfig::decode(&channels), Err(ConfigError::Range));
         let name = record.len() - "Keystep ✓".len() - 4;
         let mut invalid = record;

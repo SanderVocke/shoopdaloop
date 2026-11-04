@@ -1,10 +1,11 @@
 use crate::{
+    config::AppTransport,
     config::HostConfig,
     connection::Port,
-    engine, private,
-    registry::{identity, AppTransport, HostEntry, Registry},
+    engine,
+    remote::{identity, RemoteProfile, Target},
 };
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
@@ -23,8 +24,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct StartOptions {
-    pub registry: PathBuf,
     pub endpoint: SocketAddr,
     pub management_endpoint: SocketAddr,
     pub lan: bool,
@@ -32,14 +33,13 @@ pub struct StartOptions {
     pub advertised_management: Option<String>,
     pub export_profile: Option<PathBuf>,
     pub network: crate::remote::NetworkOptions,
-    pub credential: Option<PathBuf>,
+    pub log_file: Option<PathBuf>,
 
     pub name: String,
 }
 impl StartOptions {
-    pub fn new(registry: PathBuf) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
-            registry,
             endpoint: "127.0.0.1:0".parse()?,
             management_endpoint: "127.0.0.1:0".parse()?,
             lan: false,
@@ -47,7 +47,7 @@ impl StartOptions {
             advertised_management: None,
             export_profile: None,
             network: Default::default(),
-            credential: None,
+            log_file: None,
 
             name: "ShoopDaLoop".into(),
         })
@@ -60,17 +60,36 @@ struct Acceptor {
     ports: Receiver<shoop_transport_socket::Port>,
 }
 impl Acceptor {
-    fn new(listener: Listener, lan: bool) -> Result<Self> {
+    fn new(
+        listener: Listener,
+        lan: bool,
+        target: &Target,
+        available: Arc<AtomicBool>,
+        endpoint: crate::connection::Endpoint,
+    ) -> Result<Self> {
+        use shoop_transport::{
+            handshake::{Handshake, Intent},
+            stream::ByteIo,
+        };
+        crate::launch::write_message(std::io::sink(), target)?;
+        let target = target.clone();
+        let admission = crate::connection::admission_header(endpoint);
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = Arc::clone(&stop);
         let (sender, ports) = mpsc::sync_channel(4);
         let join = thread::Builder::new()
-            .name("shoop-auth".into())
+            .name("shoop-accept".into())
             .spawn(move || {
-                let mut pending: Vec<(
-                    shoop_transport_socket::NativeStream,
-                    shoop_transport::handshake::Handshake,
-                )> = Vec::with_capacity(4);
+                struct Pending {
+                    io: shoop_transport_socket::NativeStream,
+                    hello: Handshake,
+                    written: usize,
+                    description: Vec<u8>,
+                    admission: [u8; 3],
+                    read: usize,
+                    deadline: Instant,
+                }
+                let mut pending = Vec::<Pending>::with_capacity(16);
                 let mut last = Instant::now();
                 while !stopping.load(Ordering::Acquire) {
                     let now = Instant::now();
@@ -78,14 +97,15 @@ impl Acceptor {
                     last = now;
                     for _ in 0..4 {
                         match listener.accept_stream() {
-                            Ok(Some(stream)) if pending.len() < 4 => pending.push((
-                                shoop_transport_socket::NativeStream(stream),
-                                shoop_transport::handshake::Handshake::new(
-                                    *listener.token(),
-                                    true,
-                                    Duration::from_secs(5),
-                                ),
-                            )),
+                            Ok(Some(stream)) if pending.len() < 16 => pending.push(Pending {
+                                io: shoop_transport_socket::NativeStream(stream),
+                                hello: Handshake::new(true, Duration::from_secs(2)),
+                                written: 0,
+                                description: Vec::new(),
+                                admission: [0; 3],
+                                read: 0,
+                                deadline: now + Duration::from_secs(2),
+                            }),
                             Ok(Some(_)) => {}
                             Ok(None) => break,
                             Err(_) => return,
@@ -93,11 +113,64 @@ impl Acceptor {
                     }
                     let mut index = 0;
                     while index < pending.len() {
-                        let (io, handshake) = &mut pending[index];
-                        match handshake.advance(io, elapsed) {
-                            Ok(false) => index += 1,
+                        if now >= pending[index].deadline {
+                            pending.swap_remove(index);
+                            continue;
+                        }
+                        let item = &mut pending[index];
+                        let mut remove = false;
+                        match item.hello.advance(&mut item.io, elapsed) {
+                            Ok(false) => {}
+                            Ok(true) if item.hello.intent() == Intent::Inspect => {
+                                if item.description.is_empty() {
+                                    let mut target = target.clone();
+                                    target.can_attach = available.load(Ordering::Acquire);
+                                    if let Ok(Some(process)) =
+                                        shoop_host_processes::identity(std::process::id())
+                                    {
+                                        target.process = Some(process);
+                                    }
+                                    if crate::launch::write_message(&mut item.description, &target)
+                                        .is_err()
+                                    {
+                                        pending.swap_remove(index);
+                                        continue;
+                                    }
+                                }
+                                match item.io.try_write(&item.description[item.written..]) {
+                                    Ok(0) => remove = true,
+                                    Ok(count) => {
+                                        item.written += count;
+                                        remove = item.written == item.description.len();
+                                    }
+                                    Err(
+                                        shoop_transport::stream::IoError::WouldBlock
+                                        | shoop_transport::stream::IoError::Interrupted,
+                                    ) => {}
+                                    Err(_) => remove = true,
+                                }
+                            }
                             Ok(true) => {
-                                let (io, _) = pending.swap_remove(index);
+                                match item.io.try_read(&mut item.admission[item.read..]) {
+                                    Ok(0) => remove = true,
+                                    Ok(count) => item.read += count,
+                                    Err(
+                                        shoop_transport::stream::IoError::WouldBlock
+                                        | shoop_transport::stream::IoError::Interrupted,
+                                    ) => {}
+                                    Err(_) => remove = true,
+                                }
+                                if remove
+                                    || (item.read == admission.len() && item.admission != admission)
+                                {
+                                    pending.swap_remove(index);
+                                    continue;
+                                }
+                                if item.read != admission.len() {
+                                    index += 1;
+                                    continue;
+                                }
+                                let item = pending.swap_remove(index);
                                 let config = if lan {
                                     shoop_transport_socket::Config {
                                         reliable: 8,
@@ -108,14 +181,18 @@ impl Acceptor {
                                     Default::default()
                                 };
                                 if let Ok(port) =
-                                    shoop_transport_socket::Port::from_stream(io.0, config)
+                                    shoop_transport_socket::Port::from_stream(item.io.0, config)
                                 {
                                     let _ = sender.try_send(port);
                                 }
+                                continue;
                             }
-                            Err(_) => {
-                                pending.swap_remove(index);
-                            }
+                            Err(_) => remove = true,
+                        }
+                        if remove {
+                            pending.swap_remove(index);
+                        } else {
+                            index += 1;
                         }
                     }
                     thread::sleep(Duration::from_millis(1));
@@ -137,21 +214,15 @@ impl Drop for Acceptor {
     }
 }
 
-struct Registration {
-    registry: Option<Registry>,
-    entry: HostEntry,
-}
-impl Drop for Registration {
-    fn drop(&mut self) {
-        if let Some(registry) = self.registry.as_ref() {
-            if let Err(error) = registry.remove(&self.entry) {
-                tracing::warn!(%error, "host.registry.cleanup_failed");
-            }
-        }
-    }
+pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
+    run_with_ready(config, options, |_| Ok(()))
 }
 
-pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
+pub fn run_with_ready(
+    config: HostConfig,
+    options: StartOptions,
+    ready: impl FnOnce(Target) -> Result<()>,
+) -> Result<()> {
     let _span = tracing::info_span!("host.session").entered();
     config.validate()?;
     options.network.validate()?;
@@ -159,12 +230,7 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         !options.lan || config.transport == AppTransport::Socket,
         "LAN hosts require socket delivery"
     );
-    ensure!(
-        !options.lan || options.credential.is_some(),
-        "LAN hosts require --credential-file"
-    );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
-    let registry = Registry::open(&options.registry)?;
     let (mut native, mut warnings) = engine::native_config(
         &config.driver,
         &config.pools,
@@ -176,6 +242,8 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
             #[cfg(feature = "cpal")]
             DriverConfig::Cpal(_) => {}
+            #[cfg(feature = "jack")]
+            DriverConfig::Jack(_) => {}
         }
     }
     #[cfg(not(feature = "testing"))]
@@ -195,8 +263,19 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     warnings.extend(started.host.warnings().iter().cloned());
+    for warning in &warnings {
+        tracing::warn!("{warning}");
+    }
+    let status = started.host.status().driver;
+    let profile = shoop_app_api::ResolvedAudioDriverConfig {
+        configured: config.driver.clone(),
+        sample_rate: status.sample_rate,
+        buffer_size: status.buffer_frames,
+        instance_name: started.host.instance_name().to_owned(),
+    };
     let mut host = Some(started.host);
-    let backend = RtBackend::connect(started.client, Sleep::default())?;
+    let mut backend = RtBackend::connect(started.client, Sleep::default())?;
+    backend.set_driver_profile(profile);
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
@@ -204,6 +283,9 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             loop_smoothing_ms: config.loop_smoothing_ms,
         },
     )?;
+    if let Some(controller) = crate::host_graph::controller(host.as_ref().expect("running host")) {
+        service.set_host_graph_controller(controller)?;
+    }
     service.set_host_settings(config.settings.clone(), warnings.clone())?;
     let deadline = Instant::now() + Duration::from_secs(10);
     while !service.is_ready() {
@@ -219,59 +301,13 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
         );
         thread::sleep(Duration::from_millis(2));
     }
-    let token = match &options.credential {
-        Some(path) => private::read(path, 32)?
-            .try_into()
-            .map_err(|_| anyhow!("invalid credential length"))?,
-        None => {
-            let mut token = [0; 32];
-            getrandom::fill(&mut token)
-                .map_err(|_| anyhow!("session credential entropy unavailable"))?;
-            token
-        }
-    };
     let bind = if options.lan {
         Listener::bind_lan
     } else {
         Listener::bind_with
     };
-    let data = bind(options.endpoint, token)?;
-    let management = bind(options.management_endpoint, token)?;
-    if options.lan && options.export_profile.is_some() {
-        let profile = crate::remote::RemoteProfile {
-            version: VERSION,
-
-            name: options.name.clone(),
-            endpoint: options
-                .advertised_endpoint
-                .clone()
-                .unwrap_or(data.address()?.to_string()),
-            management: options
-                .advertised_management
-                .clone()
-                .unwrap_or(management.address()?.to_string()),
-            credential: PathBuf::from(
-                options
-                    .credential
-                    .as_ref()
-                    .and_then(|path| path.file_name())
-                    .context("credential filename unavailable")?,
-            ),
-            network: options.network,
-        };
-        let path = options.export_profile.as_ref().unwrap();
-        if path.exists() {
-            let existing = crate::remote::RemoteProfile::read(path)?;
-            ensure!(
-                existing.endpoint == profile.endpoint
-                    && existing.management == profile.management
-                    && existing.credential.file_name() == profile.credential.file_name(),
-                "existing profile selects different endpoints or credentials"
-            );
-        } else {
-            profile.write(path)?;
-        }
-    }
+    let data = bind(options.endpoint)?;
+    let management = bind(options.management_endpoint)?;
     let descriptor = if config.transport == AppTransport::SharedMemory {
         Some(shoop_transport_shared_memory::Descriptor::new([
             512, 32, 32,
@@ -287,30 +323,84 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             )
         })
         .transpose()?;
-    let credential = options
-        .credential
-        .map(Ok)
-        .unwrap_or_else(|| registry.create_credential(std::process::id(), &token))?;
-    let registration = Registration {
-        entry: HostEntry {
-            version: VERSION,
-
-            name: options.name,
-            process: std::process::id(),
-            endpoint: data.address()?,
-            management: management.address()?,
-            credential,
-            transport: config.transport,
-            shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
-            warnings,
-        },
-        registry: if options.lan { None } else { Some(registry) },
+    let local_endpoint = concrete(data.address()?).to_string();
+    let local_management = concrete(management.address()?).to_string();
+    let target = Target {
+        credential: None,
+        can_attach: true,
+        local_endpoint: Some(local_endpoint.clone()),
+        local_management: Some(local_management.clone()),
+        process: shoop_host_processes::identity(std::process::id())?,
+        instance: identity()?,
+        version: VERSION,
+        name: options.name.clone(),
+        endpoint: options
+            .advertised_endpoint
+            .clone()
+            .unwrap_or(local_endpoint),
+        management: options
+            .advertised_management
+            .clone()
+            .unwrap_or(local_management),
+        transport: config.transport,
+        shared_memory: descriptor.map(|descriptor| descriptor.encode().to_vec()),
+        warnings,
+        network: options.lan.then_some(options.network),
+        log_file: options
+            .log_file
+            .as_ref()
+            .map(|path| path.canonicalize())
+            .transpose()?,
     };
-    if let Some(registry) = registration.registry.as_ref() {
-        registry.publish(&registration.entry)?;
+    if let Some(path) = &options.export_profile {
+        let profile = RemoteProfile {
+            credential: None,
+            version: VERSION,
+            name: target.name.clone(),
+            endpoint: target.endpoint.clone(),
+            management: target.management.clone(),
+            network: options.network,
+            local: !options.lan,
+            transport: target.transport,
+            log_file: if options.lan {
+                None
+            } else {
+                target.log_file.clone()
+            },
+        };
+        if path.exists() {
+            let existing = RemoteProfile::read(path)?;
+            ensure!(
+                existing.endpoint == profile.endpoint
+                    && existing.management == profile.management
+                    && existing.transport == profile.transport,
+                "existing profile selects different endpoints"
+            );
+        } else {
+            profile.write(path)?;
+        }
     }
-    let data = Acceptor::new(data, options.lan)?;
-    let management = Acceptor::new(management, options.lan)?;
+    tracing::info!(
+        "Host ready: data={}, management={}",
+        target.endpoint,
+        target.management
+    );
+    let available = Arc::new(AtomicBool::new(true));
+    let data = Acceptor::new(
+        data,
+        options.lan,
+        &target,
+        Arc::clone(&available),
+        crate::connection::Endpoint::Data,
+    )?;
+    let management = Acceptor::new(
+        management,
+        options.lan,
+        &target,
+        Arc::clone(&available),
+        crate::connection::Endpoint::Management,
+    )?;
+    ready(target)?;
     let mut clients = Vec::new();
     let mut managers = Vec::new();
 
@@ -327,7 +417,10 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
             }
             let shared_port = if config.transport == AppTransport::SharedMemory {
                 match shared.take() {
-                    Some(shared) => Some(shared.with_liveness(port.stream().try_clone()?)?),
+                    Some(shared) => {
+                        available.store(false, Ordering::Release);
+                        Some(shared.with_liveness(port.stream().try_clone()?)?)
+                    }
                     None => {
                         let _ = send(&mut port, &WireMessage::Rejected(Refusal::Unsupported));
                         continue;
@@ -399,10 +492,19 @@ pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
     }
     drop(service);
     drop(host);
-    drop(registration);
     Ok(())
 }
 
+fn concrete(mut address: SocketAddr) -> SocketAddr {
+    if address.ip().is_unspecified() {
+        address.set_ip(if address.is_ipv4() {
+            std::net::Ipv4Addr::LOCALHOST.into()
+        } else {
+            std::net::Ipv6Addr::LOCALHOST.into()
+        });
+    }
+    address
+}
 fn stop(host: NativeHost) -> Result<(), String> {
     let report = host.stop();
     let mut errors = Vec::new();
@@ -447,7 +549,7 @@ impl Data {
             Some(network) => core
                 .with_network(
                     network.heartbeat(),
-                    (crate::registry::identity()? as u64).max(1),
+                    (crate::remote::identity()? as u64).max(1),
                     network.snapshot_hz,
                 )
                 .map_err(|_| anyhow!("invalid heartbeat settings"))?,

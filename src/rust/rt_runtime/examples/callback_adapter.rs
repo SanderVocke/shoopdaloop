@@ -1,4 +1,4 @@
-//! Host block validation, processor failure, and continued rendering at next_frame.
+//! Host block validation, processor failure, and terminal fault handling.
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{GraphRuntime, PreparedNode};
@@ -88,11 +88,11 @@ fn main() -> Result<(), Error> {
     };
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, FailOnce(true))],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
-        &[],
     )?;
     let input = [1.0; 8];
     let mut output = [9.0; 8];
@@ -146,16 +146,20 @@ fn main() -> Result<(), Error> {
     );
 
     output.fill(9.0);
-    assert_no_heap(|| callback(&mut runtime, &input, &mut output, 2))?;
-    assert_eq!(runtime.next_frame(), Frame(6));
-    assert_eq!(output[..2], [1.0; 2]);
+    assert_eq!(
+        assert_no_heap(|| callback(&mut runtime, &input, &mut output, 2)),
+        Err(Error::InvalidParameter)
+    );
+    assert_eq!(runtime.next_frame(), Frame(4));
+    assert_eq!(output[..2], [0.0; 2]);
     assert_eq!(output[2..], [9.0; 6]);
-    assert_eq!(runtime.diagnostics().render_error, None);
+    assert_eq!(
+        runtime.diagnostics().render_error,
+        Some(Error::InvalidParameter)
+    );
 
     drop(runtime);
     drop(control);
-    println!(
-        "callback adapter: zero/invalid/error/continued blocks checked, no callback heap work"
-    );
+    println!("callback adapter: zero/invalid/terminal fault blocks checked, no callback heap work");
     Ok(())
 }

@@ -46,6 +46,14 @@ impl SessionBundle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub enum PreviewBusDocument {
+    #[default]
+    Automatic,
+    Disabled,
+    Bus(u64),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SessionDocument {
     pub sample_rate: u32,
@@ -59,6 +67,8 @@ pub struct SessionDocument {
     pub buses: Vec<BusDocument>,
     #[serde(default)]
     pub bus_display_order: Vec<u64>,
+    #[serde(default)]
+    pub preview_bus: PreviewBusDocument,
     #[serde(default)]
     pub mixer_routes: Vec<MixerRouteDocument>,
     pub global_ports: Vec<PortDocument>,
@@ -119,6 +129,7 @@ impl SessionDocument {
                 muted: false,
             }],
             bus_display_order: vec![1],
+            preview_bus: PreviewBusDocument::Automatic,
             mixer_routes: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),

@@ -21,7 +21,7 @@ use shoop_backend::{
     BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
     BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest, MASTER_BUS_ID,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -85,7 +85,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }),
             ),
             DriverKind::WebAudio => (AudioDriverKind::WebAudio, AudioDriverConfig::WebAudio),
+            DriverKind::Jack => (
+                AudioDriverKind::Jack,
+                AudioDriverConfig::Jack(Default::default()),
+            ),
         };
+        let mut active = ResolvedAudioDriverConfig {
+            configured,
+            sample_rate: driver.sample_rate,
+            buffer_size: driver.buffer_frames,
+            instance_name: "New engine".to_owned(),
+        };
+        if let Some(profile) = &self.driver_profile {
+            if profile.configured.kind() == kind {
+                active.configured = profile.configured.clone();
+                active.instance_name = profile.instance_name.clone();
+            }
+        }
         AudioDriverRuntimeState {
             supported: false,
             catalog: Arc::from([AudioDriverDescriptor {
@@ -93,12 +109,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 available: true,
                 ..Default::default()
             }]),
-            active: Some(ResolvedAudioDriverConfig {
-                configured,
-                sample_rate: driver.sample_rate,
-                buffer_size: driver.buffer_frames,
-                instance_name: "New engine".to_owned(),
-            }),
+            active: Some(active),
             switch: Default::default(),
         }
     }
@@ -217,8 +228,44 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .retain(|id, _| self.canonical_imports.contains(id));
     }
 
+    fn bus_limits(&self) -> shoop_app_api::BusLimits {
+        let Some(limits) = self.limits else {
+            return shoop_app_api::BusLimits {
+                buses: 0,
+                channels: 0,
+                total_channels: 0,
+            };
+        };
+        shoop_app_api::BusLimits {
+            buses: u32::from(limits.buses),
+            channels: u32::from(limits.bus_channels),
+            total_channels: u32::from(limits.buses) * u32::from(limits.bus_channels),
+        }
+    }
+    fn supports_audio_preview(&self) -> bool {
+        self.is_ready()
+    }
+    fn start_bus_audio_preview_async(
+        &mut self,
+        bus: BackendBusId,
+        request_id: u64,
+        rate: u32,
+        samples: Arc<Vec<f32>>,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.bus_preview(bus, request_id, rate, samples)
+    }
+    fn audio_preview_playing(&self) -> bool {
+        self.preview
+            .as_ref()
+            .is_some_and(|p| !p.stopped && p.job.id == self.preview_playing)
+    }
+    fn stop_audio_preview(&mut self) -> Result<()> {
+        self.stop_preview();
+        Ok(())
+    }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(BackendCapability::BusManagement, self.is_ready())
             .with(
                 BackendCapability::MidiInjection,
                 self.capabilities.contains(Capabilities::MIDI_INJECTION),
@@ -674,6 +721,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn replace_loop_family_async(
+        &mut self,
+        update: &shoop_backend::BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_family(update)
+    }
+
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
         Err(unavailable(BackendCapability::LoopTimingEdits))
     }
@@ -742,6 +796,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() && self.preview.is_some() {
+            self.stop_preview();
+            return Ok(BackendAsyncResult::Pending(
+                shoop_backend::BackendOperationProgress {
+                    key: 0,
+                    kind: shoop_backend::BackendOperationKind::SessionReplacement,
+                    completed: 0,
+                    total: None,
+                },
+            ));
+        }
         if self.replacement.is_none() {
             self.start_replacement(session)?;
         }
@@ -759,10 +824,37 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         session: &BackendSessionData,
         sync: &alloc::collections::BTreeMap<u64, u64>,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() && self.preview.is_some() {
+            self.stop_preview();
+            return Ok(BackendAsyncResult::Pending(
+                shoop_backend::BackendOperationProgress {
+                    key: 0,
+                    kind: shoop_backend::BackendOperationKind::SessionReplacement,
+                    completed: 0,
+                    total: None,
+                },
+            ));
+        }
         if self.replacement.is_none() {
             self.start_replacement_with_sync(session, sync)?;
         }
         self.persistence_progress()
+    }
+
+    fn set_profiling(&mut self, enabled: bool) -> Result<()> {
+        self.ready()?;
+        if !self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::PROFILING)
+        {
+            if enabled {
+                return Err(anyhow!("Runtime profiling is unavailable on this engine"));
+            }
+            return Ok(());
+        }
+        self.requests
+            .push(Request::Profiling(enabled), Purpose::Profiling);
+        Ok(())
     }
 
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
@@ -805,21 +897,48 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
 
-    fn create_bus(&mut self, _request: BackendBusRequest) -> Result<BackendBusCreation> {
-        Err(unavailable(BackendCapability::BusManagement))
-    }
-
-    fn remove_bus(&mut self, _bus_id: BackendBusId) -> Result<()> {
-        Err(unavailable(BackendCapability::BusManagement))
-    }
-
-    fn set_bus_control(&mut self, bus_id: BackendBusId, control: BackendBusControl) -> Result<()> {
+    fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
-        if bus_id != MASTER_BUS_ID {
-            return Err(anyhow!("unknown bus {bus_id:?}"));
+        let request = request.normalized()?;
+        if request.fx.is_some() {
+            return Err(unavailable(BackendCapability::BusFx));
         }
-        self.queue_master_control(control)?;
+        if request.channel_count > u32::from(self.limits().bus_channels) {
+            return Err(anyhow!("bus exceeds prepared channel limit"));
+        }
+        self.require_mutation_capacity(1)?;
+        let creation = self
+            .mirror
+            .create_bus(request.name, request.channel_count as u8)
+            .ok_or_else(|| anyhow!("prepared bus capacity exhausted"))?;
+        let slot = self.mirror.buses[&creation.bus_id].slot;
+        self.requests.push(
+            Request::CreateBus {
+                bus: slot,
+                channels: request.channel_count as u8,
+            },
+            Purpose::CreateBus(creation.bus_id),
+        );
+        Ok(creation)
+    }
+    fn remove_bus(&mut self, id: BackendBusId) -> Result<()> {
+        self.ready()?;
+        self.require_mutation_capacity(1)?;
+        let bus = self
+            .mirror
+            .buses
+            .get_mut(&id)
+            .filter(|b| !b.removing)
+            .ok_or_else(|| anyhow!("unknown bus"))?;
+        bus.removing = true;
+        let slot = bus.slot;
+        self.requests
+            .push(Request::RemoveBus { bus: slot }, Purpose::RemoveBus(id));
         Ok(())
+    }
+    fn set_bus_control(&mut self, id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.ready()?;
+        self.queue_bus_control(id, control)
     }
 
     fn set_bus_fx_control(
@@ -847,6 +966,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
+            quantum_frames: self.limits.map_or(0, |limits| limits.quantum),
             driver_state: self.driver_state(),
             callback_count: self.status.callbacks,
             processed_frames: self.status.frame,
@@ -878,14 +998,15 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             confirmed_links: mirror.links.clone(),
             failures: core::mem::take(&mut self.connection_failures),
         };
-        let master = mirror.master_state();
+        let buses = mirror.bus_states();
         let mixer = BackendMixerSnapshot {
             revision: mirror.mixer_revision,
-            buses: [(MASTER_BUS_ID, master)].into_iter().collect(),
+            buses,
             confirmed_links: mirror.routes.clone(),
             failures: core::mem::take(&mut self.mixer_failures),
         };
         Ok(BackendSnapshot {
+            profiling: self.profiling.view(),
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,

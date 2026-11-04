@@ -13,6 +13,7 @@ default = ["std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_port_graph = { path = "../shoop_port_graph" }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
 shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 anyhow = { workspace = true }
@@ -21,6 +22,7 @@ shoop_backend = { path = "../shoop_backend", default-features = false }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["testing"] }
 shoop_scripting = { path = "../shoop_scripting" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }

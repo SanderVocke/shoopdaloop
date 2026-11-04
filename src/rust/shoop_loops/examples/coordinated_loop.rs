@@ -4,7 +4,6 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{Command, Control, GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
-    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
     resource::{CaptureGroupConfig, MidiIndexConfig, Request, ResourceStore},
     transport::Lane,
@@ -25,16 +24,17 @@ enum Node {
     Mix(Mix),
 }
 impl Processor<LoopPlanner> for Node {
+    fn admit(&self, id: rt_runtime::NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.admit(id, domain),
+            _ => Ok(()),
+        }
+    }
+
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Mix(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Mix(node) => node.planning(),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -137,7 +137,6 @@ fn main() {
         budgets: Budgets {
             commands: 8,
             events: 8,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 8,
@@ -148,6 +147,7 @@ fn main() {
     .unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
@@ -231,6 +231,7 @@ fn main() {
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology,
         &mut resources,
         Settings {
@@ -262,11 +263,11 @@ fn main() {
         .collect();
     let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
         resources,
         &graph,
-        &client.bindings_for(&graph),
     )
     .unwrap();
     let mut control = Controls {

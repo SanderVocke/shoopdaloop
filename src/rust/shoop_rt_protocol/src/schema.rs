@@ -154,6 +154,38 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    Profiling(bool),
+    ContentFamilyBegin {
+        id: u64,
+        root: LoopSlotId,
+        count: u32,
+        sample_rate: u32,
+        quantum: u32,
+    },
+    ContentFamilyEdit {
+        id: u64,
+        edit: crate::ContentFamilyEdit,
+    },
+    ContentFamilyCommit {
+        id: u64,
+    },
+    ContentFamilyCancel {
+        id: u64,
+    },
+    PreviewStart {
+        request_id: u64,
+        bus: BusId,
+        content: u64,
+        frames: u64,
+    },
+    PreviewStop,
+    CreateBus {
+        bus: BusId,
+        channels: u8,
+    },
+    RemoveBus {
+        bus: BusId,
+    },
     CancelBulk,
     ReplacementBegin {
         id: u64,
@@ -272,6 +304,8 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    ContentPrepared { revision: u64 },
+    ContentApplied { revision: u64 },
     Done,
     Refused(Refusal),
 }
@@ -281,6 +315,7 @@ pub enum DriverKind {
     Dummy,
     Cpal,
     WebAudio,
+    Jack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,6 +363,7 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
+    pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);
@@ -353,11 +389,17 @@ pub struct Limits {
     pub loops: u32,
     pub strip_audio_channels: u8,
     pub master_channels: u8,
+    pub buses: u8,
+    pub bus_channels: u8,
     pub host_audio_inputs: u16,
     pub host_audio_outputs: u16,
     pub host_midi_inputs: u16,
     pub host_midi_outputs: u16,
     pub max_frames: u32,
+    /// Prepared graph tick, independent of host capacity.
+    pub quantum: u32,
+    /// Constant host stream delay introduced by tick buffering.
+    pub processing_latency_frames: u32,
     /// Largest loop boundary smoothing a client may set.
     pub smoothing_limit_frames: u32,
     /// Unanswered reliable requests a client may have.
@@ -368,6 +410,9 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    Preview {
+        request_id: u64,
+    },
     Engine {
         frame: u64,
         /// Callbacks rendered since preparation.
@@ -393,6 +438,7 @@ pub enum Telemetry {
         mode: LoopMode,
         next_mode: Option<LoopMode>,
         next_delay: Option<u32>,
+        content_revision: u64,
         length: u64,
         position: u64,
         peaks: Peaks,
@@ -406,6 +452,13 @@ pub enum Telemetry {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    BusShape {
+        bus: BusId,
+        channels: u8,
+    },
+    BusGenerations {
+        generation: u32,
+    },
     Begin {
         epoch: u64,
     },

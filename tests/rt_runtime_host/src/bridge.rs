@@ -64,7 +64,8 @@ impl Bridge {
         assert!(stream != 0);
         assert!(allocator_canaries());
         let config = config();
-        let mut store = ResourceStore::new(config).expect("resource preparation");
+        let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())
+            .expect("resource preparation");
         let playback = store.create().unwrap();
         let audio_capture = store.create().unwrap();
         let midi_capture = store.create().unwrap();
@@ -100,6 +101,7 @@ impl Bridge {
         };
         let (mut control, runtime) = GraphRuntime::prepare_with_resources(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node_id(), node)],
             store,
         )

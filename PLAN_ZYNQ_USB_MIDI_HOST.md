@@ -20,6 +20,31 @@ to reach the session proxy. No physical USB test has been performed. Stage
 verification will use automated evidence first and collect physical evidence
 with the user's assistance in the final qualification stage.
 
+## Integration with the current backend branch
+
+On 2026-11-05 the user requested integration with the latest
+`feat/backend-replacement`. Merge upstream
+`0ef7581b4ac625db19f0a2f5356d5a5a715227f7` into the published USB branch, preserving
+both histories and the existing FreeRTOS/network-deployment work. Retarget the
+unmerged implementation PR to `feat/backend-replacement`.
+
+The combined application schema is version 22, retaining physical port availability
+alongside upstream host graphs, buses, preview and profiling. Native hosts keep
+keyless discovery. Provisioned Zynq profiles retain explicit credential admission
+and independent deployment-version handling, with no authentication fallback.
+FreeRTOS retains 256-frame callbacks and uses the upstream fixed 32-frame engine
+quantum. Re-run the native, browser and actual-guest integration gates on this
+combined implementation. Physical acceptance remains pending.
+
+Merge checkpoint: all 2777 native Rust tests pass (8 policy skips), all 119
+Node/Wasm tests in the five affected packages pass, and warning-denying native,
+browser/worklet and ARM firmware builds pass. Chromium core and Web MIDI workflows
+pass with zero xruns. Formatting, test attributes, the 431-module tracing inventory
+and cross-platform dependency boundaries pass. The fresh actual-guest USB run
+passes HS/FS, sixteen cables, nested hubs, four devices, 100 hotplugs and the
+content-mismatch canary. Remaining baseline/deployment and final-head CI evidence
+will be reported on PR #928. No hardware result is claimed.
+
 ## Goals and scope
 
 Make the ZC702 FreeRTOS host discover, select and exchange MIDI with

@@ -9,7 +9,7 @@ export function checkGraphPayloads(wasm, Receiver) {
     let sequence = 0x100000000n;
     function packet(kind, slot = 0, generation = 1, fill = () => {}) {
         const bytes = new Uint8Array(96), data = new DataView(bytes.buffer);
-        bytes.set([76, 71, 80, 49, 1, 0, kind]);
+        bytes.set([76, 71, 80, 50, 2, 0, kind]);
         data.setBigUint64(8, 0xffffffffffffffffn, true);
         data.setBigUint64(16, sequence + 1n, true);
         data.setUint32(24, slot, true); data.setUint32(28, generation, true);
@@ -25,8 +25,7 @@ export function checkGraphPayloads(wasm, Receiver) {
     }
     const begin = packet(1, 0, 1, data => {
         data.setBigUint64(32, 0xffffffffffffffffn, true);
-        for (const at of [40, 44, 48]) data.setUint32(at, 1, true);
-        data.setUint8(52, 1);
+        for (const at of [40, 44]) data.setUint32(at, 1, true);
     });
     send(begin);
     assert(receiver.phase(0, 1) === 1 && receiver.generation(0) === 1, "receiving identity");
@@ -48,17 +47,9 @@ export function checkGraphPayloads(wasm, Receiver) {
     const invalidHost = edge(); invalidHost[36] = 1; send(invalidHost, 6);
     const padding = edge(); padding[45] = 1; send(padding, 4);
     send(edge());
-    const planning = () => packet(4, 0, 1, data => {
-        data.setUint32(36, 1, true); data.setBigUint64(40, 1n, true); data.setBigUint64(48, 2n, true);
-    });
-    for (const at of [40, 48, 56, 64]) {
-        const bytes = planning(); new DataView(bytes.buffer).setBigUint64(at, 0x100000000n, true); send(bytes, 2);
-    }
-    send(planning());
-    send(planning(), 17);
-    const binding = () => packet(5, 0, 1, data => { data.setUint32(40, 1, true); data.setUint32(48, 1, true); });
-    const hugeSlot = binding(); new DataView(hugeSlot.buffer).setBigUint64(52, 0x100000000n, true); send(hugeSlot, 2);
-    send(binding()); send(packet(6));
+    send(packet(4), 7); // Retired descriptor operations are invalid events.
+    send(packet(5), 7);
+    send(packet(6));
     assert(receiver.phase(0, 1) === 2 && receiver.take(0, 1) === 0 && receiver.phase(0, 1) === 3, "sealed/local loan phases");
     assert(receiver.loan_epoch(0) === 0xffffffffffffffffn, "full-width epoch lost");
     send(packet(7), 15);

@@ -104,7 +104,11 @@ mod tests {
     use super::*;
     #[shoop_wasm_test_support::shoop_test]
     fn render_work_saturation_never_changes_the_access_result() {
-        let mut store = ResourceStore::new(crate::Config::default().prepare().unwrap()).unwrap();
+        let mut store = ResourceStore::new(
+            crate::Config::default().prepare().unwrap(),
+            crate::Quantum::new(1).unwrap(),
+        )
+        .unwrap();
         store.render_work = RenderWork {
             operations: usize::MAX,
             copied_bytes: usize::MAX - 1,

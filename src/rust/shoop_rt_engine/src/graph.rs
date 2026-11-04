@@ -6,7 +6,6 @@ use alloc::vec;
 use crate::model::{Model, Strip};
 use crate::pool::Pool;
 use rt_runtime::graph::{Connection, Endpoint, NodeStep, PortType, PreparedPlan};
-use rt_runtime::planner::{DecisionBinding, PlannerSpec, PlanningStep};
 use rt_runtime::{Error, NodeId};
 
 pub(crate) struct Shape {
@@ -17,7 +16,6 @@ pub(crate) struct Shape {
 /// Prepared scratch for sorting one node's input edges and the loop bindings.
 pub(crate) struct Builder {
     edges: Box<[Connection]>,
-    bindings: Box<[DecisionBinding]>,
 }
 
 fn audio(node: NodeId, port: usize) -> Endpoint {
@@ -26,8 +24,8 @@ fn audio(node: NodeId, port: usize) -> Endpoint {
 fn midi(node: NodeId, port: usize) -> Endpoint {
     Endpoint::node(node, PortType::Midi, port as u32)
 }
-fn bits(mask: u64) -> impl Iterator<Item = usize> {
-    (0..64).filter(move |bit| mask & (1 << bit) != 0)
+fn bits(mask: crate::model::HostMask) -> impl Iterator<Item = usize> {
+    mask.bits()
 }
 fn link(source: Endpoint, destination: Endpoint) -> Connection {
     Connection {
@@ -48,19 +46,13 @@ pub(crate) fn source_channel(strip: &Strip, channel: usize) -> usize {
 }
 
 impl Builder {
-    pub(crate) fn new(max_edges: usize, max_loops: usize) -> Self {
+    pub(crate) fn new(max_edges: usize) -> Self {
         let edge = link(
             Endpoint::host(PortType::Audio, 0),
             Endpoint::host(PortType::Audio, 0),
         );
-        let binding = DecisionBinding {
-            planner: rt_runtime::PlannerId::from_parts(0, 1).expect("fixed identity"),
-            consumer: NodeId::from_parts(0, 1).expect("fixed identity"),
-            decision_slot: 0,
-        };
         Self {
             edges: vec![edge; max_edges].into_boxed_slice(),
-            bindings: vec![binding; 2 * max_loops].into_boxed_slice(),
         }
     }
 
@@ -89,13 +81,8 @@ impl Builder {
         model: &Model,
         pool: &Pool,
         shape: &Shape,
-        planner: PlannerSpec,
     ) -> Result<(), Error> {
         plan.begin_descriptor()?;
-        plan.set_planning_step(Some(PlanningStep {
-            planner,
-            before_step: 0,
-        }));
         let channels = shape.channels;
         let mut end = 0;
         let push = |edges: &mut [Connection], count: &mut usize, edge| -> Result<(), Error> {
@@ -132,7 +119,6 @@ impl Builder {
             }
             self.step(plan, node, count, &mut end)?;
         }
-        let mut bindings = 0;
         for (slot, entry) in model.loops.iter().enumerate() {
             let Some(entry) = entry else { continue };
             let strip_slot = entry.strip.0.index as usize;
@@ -169,14 +155,6 @@ impl Builder {
                 )?;
             }
             self.step(plan, fader, count, &mut end)?;
-            for consumer in [playback, capture] {
-                *self.bindings.get_mut(bindings).ok_or(Error::Capacity)? = DecisionBinding {
-                    planner: planner.id,
-                    consumer,
-                    decision_slot: slot,
-                };
-                bindings += 1;
-            }
         }
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };
@@ -222,28 +200,36 @@ impl Builder {
             }
             self.step(plan, node, count, &mut end)?;
         }
-        let master = pool.master();
-        let mut count = 0;
-        for (slot, strip) in model.strips.iter().enumerate() {
-            let Some(strip) = strip else { continue };
-            let node = pool.strip_output(slot);
-            let outputs = strip.shape.audio_outputs as usize;
-            for bank in 0..2 {
-                for channel in 0..outputs {
-                    for target in bits(strip.outputs.master[bank][channel]) {
-                        push(
-                            &mut self.edges,
-                            &mut count,
-                            link(
-                                audio(node, bank * channels + channel),
-                                audio(master, target),
-                            ),
-                        )?;
+        for (bus_slot, bus) in model.buses.iter().enumerate() {
+            let Some(bus) = bus else { continue };
+            let node = pool.bus(bus_slot);
+            let mut count = 0;
+            for (slot, strip) in model.strips.iter().enumerate() {
+                let Some(strip) = strip else { continue };
+                for bank in 0..2 {
+                    for channel in 0..strip.shape.audio_outputs as usize {
+                        let routes = strip.outputs.buses[bank][channel];
+                        for target in 0..bus.channels as usize {
+                            if routes
+                                & (1u64
+                                    << (bus_slot * shoop_rt_protocol::MAX_STRIP_CHANNELS + target))
+                                != 0
+                            {
+                                push(
+                                    &mut self.edges,
+                                    &mut count,
+                                    link(
+                                        audio(pool.strip_output(slot), bank * channels + channel),
+                                        audio(node, target),
+                                    ),
+                                )?;
+                            }
+                        }
                     }
                 }
             }
+            self.step(plan, node, count, &mut end)?;
         }
-        self.step(plan, master, count, &mut end)?;
         self.step(plan, pool.reader(), 0, &mut end)?;
         let mut count = 0;
         for (slot, strip) in model.strips.iter().enumerate() {
@@ -273,17 +259,20 @@ impl Builder {
                 }
             }
         }
-        for bank in 0..2 {
-            for channel in 0..shape.master_channels {
-                for host in bits(model.master_outputs.masks[bank][channel]) {
-                    push(
-                        &mut self.edges,
-                        &mut count,
-                        link(
-                            audio(master, bank * shape.master_channels + channel),
-                            Endpoint::host(PortType::Audio, host as u32),
-                        ),
-                    )?;
+        for (slot, bus) in model.buses.iter().enumerate() {
+            let Some(bus) = bus else { continue };
+            for bank in 0..2 {
+                for channel in 0..bus.channels as usize {
+                    for host in bits(bus.outputs.masks[bank][channel]) {
+                        push(
+                            &mut self.edges,
+                            &mut count,
+                            link(
+                                audio(pool.bus(slot), bank * shape.master_channels + channel),
+                                Endpoint::host(PortType::Audio, host as u32),
+                            ),
+                        )?;
+                    }
                 }
             }
         }
@@ -291,11 +280,6 @@ impl Builder {
         edges.sort_unstable();
         for edge in edges.iter() {
             plan.push_connection(*edge)?;
-        }
-        let bindings = &mut self.bindings[..bindings];
-        bindings.sort_unstable_by_key(|binding| binding.consumer);
-        for binding in bindings.iter() {
-            plan.push_binding(*binding)?;
         }
         Ok(())
     }

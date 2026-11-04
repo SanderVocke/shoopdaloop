@@ -592,6 +592,7 @@ pub struct BackendStatus {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub driver_state: BackendDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -700,6 +701,7 @@ pub fn dry_wet_routing_state(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub content_revision: u64,
+    pub sync_source: Option<BackendLoopId>,
     pub mode: BackendLoopMode,
     pub length: u32,
     pub position: u32,
@@ -932,6 +934,26 @@ pub struct BackendLoopContentUpdate {
     pub length: Option<u32>,
 }
 
+/// A complete content cut with fences for the affected sync family and its ancestors.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendLoopFamilyUpdate {
+    pub root: BackendLoopId,
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+    pub members: Vec<BackendLoopFamilyMember>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendLoopFamilyMember {
+    pub loop_id: BackendLoopId,
+    pub sync_source: Option<BackendLoopId>,
+    pub expected_revision: u64,
+    pub expected_frames: u32,
+    pub fence_content: bool,
+    pub restart: bool,
+    pub content: Option<BackendLoopContent>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendSessionPort {
     pub source_id: u64,
@@ -1129,6 +1151,7 @@ pub struct BackendMutationCompletion {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
+    pub profiling: shoop_app_api::ProfilingView,
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
@@ -1148,6 +1171,16 @@ pub trait Backend {
     fn host_port_in_use(&self, _id: &str) -> bool {
         false
     }
+    fn set_profiling(&mut self, enabled: bool) -> Result<()> {
+        if enabled {
+            Err(anyhow!("Runtime profiling is unavailable on this backend"))
+        } else {
+            Ok(())
+        }
+    }
+    fn bus_limits(&self) -> shoop_app_api::BusLimits {
+        shoop_app_api::BusLimits::default()
+    }
     /// Synchronous backends use cursor zero and complete before returning.
     fn mutation_cursor(&self) -> u64 {
         0
@@ -1163,6 +1196,18 @@ pub trait Backend {
     fn cancel_media_reads(&mut self) {}
     fn close_connection(&mut self) {}
 
+    fn start_bus_audio_preview_async(
+        &mut self,
+        _bus: BackendBusId,
+        _request_id: u64,
+        _sample_rate: u32,
+        _samples: Arc<Vec<f32>>,
+    ) -> Result<BackendAsyncResult<()>> {
+        Err(anyhow!("Master bus preview is unavailable in this backend"))
+    }
+    fn audio_preview_playing(&self) -> bool {
+        false
+    }
     fn supports_audio_preview(&self) -> bool {
         false
     }
@@ -1496,6 +1541,13 @@ pub trait Backend {
     ) -> Result<BackendAsyncResult<()>> {
         self.replace_loop_content(loop_id, update)
             .map(BackendAsyncResult::Ready)
+    }
+    fn replace_loop_family_async(
+        &mut self,
+        update: &BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        let _ = update;
+        Err(anyhow!("atomic loop family replacement is unavailable"))
     }
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()>;
     fn set_port_connected(

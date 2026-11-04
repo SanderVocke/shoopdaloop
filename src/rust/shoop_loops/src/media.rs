@@ -13,7 +13,9 @@ use rt_runtime::{resource::*, Error, Frame, Revision};
 mod tests;
 
 mod activation;
+mod playback;
 pub use activation::{OwnerActivation, OwnerChange};
+pub use playback::{PlaybackActivation, PlaybackChange};
 
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 macro_rules! key {

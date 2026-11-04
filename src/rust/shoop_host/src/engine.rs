@@ -35,7 +35,8 @@ pub fn inventory(driver: &AudioDriverConfig) -> Discovery {
             let host = Some(config.host.as_str()).filter(|host| named(host));
             shoop_rt_host_native::discover(host).unwrap_or_else(|_| listed())
         }
-        AudioDriverConfig::Cpal(_) | AudioDriverConfig::Jack(_) => listed(),
+        AudioDriverConfig::Cpal(_) => listed(),
+        AudioDriverConfig::Jack(_) => Discovery::default(),
         AudioDriverConfig::Dummy(_) | AudioDriverConfig::WebAudio => Discovery::default(),
     }
 }
@@ -63,33 +64,25 @@ pub fn native_config(
             let max_frames = config.buffer_frames.unwrap_or(DEVICE_MAX_FRAMES);
             (DriverConfig::Cpal(config), max_frames)
         }
-        #[cfg(feature = "cpal")]
+        #[cfg(feature = "jack")]
         AudioDriverConfig::Jack(jack) => {
-            let jack_host = inventory.hosts.iter().any(|host| host == "jack");
-            warnings.push(
-                if jack_host {
-                    "The new engine backend has no JACK driver; it uses CPAL's JACK host instead"
-                } else {
-                    "The new engine backend has no JACK driver; it uses CPAL's default devices instead"
-                }
-                .to_owned(),
-            );
-            let config = CpalConfig {
-                host: jack_host.then(|| "jack".to_owned()),
-                midi_inputs: midi_ports(&[], &inventory.midi_inputs, "input", &mut warnings),
-                midi_outputs: midi_ports(&[], &inventory.midi_outputs, "output", &mut warnings),
+            let config = shoop_rt_host_native::JackConfig {
                 client_name: jack.client_name.clone(),
-                ..CpalConfig::default()
             };
-            (DriverConfig::Cpal(config), DEVICE_MAX_FRAMES)
+            (DriverConfig::Jack(config), 1024)
+        }
+        #[cfg(not(feature = "jack"))]
+        AudioDriverConfig::Jack(_) => {
+            warnings.push(
+                "Native JACK is unavailable in this build; using the dummy driver".to_owned(),
+            );
+            let dummy = DummyAudioDriverConfig::default();
+            (DriverConfig::Dummy(dummy_config(&dummy)), dummy.buffer_size)
         }
         #[cfg(not(feature = "cpal"))]
-        AudioDriverConfig::Cpal(_) | AudioDriverConfig::Jack(_) => {
+        AudioDriverConfig::Cpal(_) => {
             let _ = inventory;
-            warnings.push(
-                "The new engine backend has no CPAL or JACK driver in this build; using the dummy driver"
-                    .to_owned(),
-            );
+            warnings.push("CPAL is unavailable in this build; using the dummy driver".to_owned());
             let dummy = DummyAudioDriverConfig::default();
             (DriverConfig::Dummy(dummy_config(&dummy)), dummy.buffer_size)
         }
@@ -113,7 +106,10 @@ pub fn engine_description(pools: &NewEnginePools, max_frames: u32) -> EngineDesc
     let defaults = EngineDescription::default();
     let loop_memory = pools.loop_memory_mb as usize * (1 << 20);
     EngineDescription {
+        buses: pools.buses as u8,
+        bus_channels: pools.bus_channels as u8,
         max_frames: max_frames.max(1) as usize,
+        quantum: pools.quantum as usize,
         segments: vec![Segment {
             strips: pools.tracks,
             loops: pools.loops,

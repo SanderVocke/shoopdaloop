@@ -1,10 +1,11 @@
 //! Prepared slot pools made of segments, and the runtime node identities of
 //! every slot.
 //!
-//! The master bus owns node slot zero and the bulk reader slot one. Each segment
+//! Bus slot zero owns node slot zero and the bulk reader slot one. Each segment
 //! then owns a contiguous node range: two nodes per strip (input and output
 //! stage), followed by three per loop (playback, capture and fader). Appending a segment extends both the
-//! slot indices and the node range without moving existing slots.
+//! slot indices and the node range without moving existing slots. Remaining bus
+//! nodes follow the segments.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -27,6 +28,7 @@ pub(crate) struct Pool {
     strips: usize,
     loops: usize,
     nodes: usize,
+    buses: usize,
 }
 
 fn node(slot: usize) -> NodeId {
@@ -34,7 +36,7 @@ fn node(slot: usize) -> NodeId {
 }
 
 impl Pool {
-    pub(crate) fn new(segments: &[Segment]) -> Self {
+    pub(crate) fn new(segments: &[Segment], buses: usize) -> Self {
         let mut layouts = Vec::with_capacity(segments.len());
         let (mut strips, mut loops, mut nodes) = (0, 0, 2);
         for segment in segments {
@@ -54,7 +56,8 @@ impl Pool {
             segments: layouts.into_boxed_slice(),
             strips,
             loops,
-            nodes,
+            nodes: nodes + buses - 1,
+            buses,
         }
     }
     pub(crate) fn strips(&self) -> usize {
@@ -63,11 +66,18 @@ impl Pool {
     pub(crate) fn loops(&self) -> usize {
         self.loops
     }
+    pub(crate) fn buses(&self) -> usize {
+        self.buses
+    }
     pub(crate) fn nodes(&self) -> usize {
         self.nodes
     }
-    pub(crate) fn master(&self) -> NodeId {
-        node(0)
+    pub(crate) fn bus(&self, slot: usize) -> NodeId {
+        if slot == 0 {
+            node(0)
+        } else {
+            node(self.nodes - self.buses + slot)
+        }
     }
     pub(crate) fn reader(&self) -> NodeId {
         node(1)

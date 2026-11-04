@@ -1,5 +1,13 @@
 # Incremental validation
 
+Current host management supersedes the historical credential/registry milestones
+below. Native connections are keyless; discovery uses live OS processes and owned
+sockets, with file-free launch and attachment. See
+[the simplification plan](../../PLAN_HOST_MANAGER_SIMPLIFICATION.md) for current
+acceptance criteria and final verification evidence. Earlier results remain as
+historical records of their inspected revisions.
+
+
 The [acceptance index](acceptance.md) records the current milestone status and
 evidence boundaries. Sections below are chronological checkpoints: their pending
 work and source-specific claims describe those checkpoints, not the final state.
@@ -407,7 +415,8 @@ review request was available; absence of review is not approval.
 The [A1–A11 index](acceptance.md) and [compact CI record](evidence/ci-929ed71b.json)
 retain exact source/run provenance. The completion follow-up retains production
 sources; its current-head CI is linked from the index and must pass
-before delivery. The 16 parity gaps remain OPEN, and physical hardware limitations
+before delivery. The 16 parity gaps were OPEN at that checkpoint; subsequent
+restorations are recorded in the feature parity ledger. Physical hardware limitations
 and the selected Miri scope remain explicit.
 
 ## Recording budget follow-up

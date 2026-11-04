@@ -14,6 +14,8 @@ Drivers:
 - **Dummy**: a thread renders a buffer every buffer period (`Automatic`), or only
   the frames requested through `DummyControl` (`Controlled`). Inputs are silent
   or come from a function of host port and absolute frame.
+- **Native JACK** (feature `jack`, on by default): audio and MIDI share one JACK
+  callback. MIDI offsets are preserved without CPAL or midir bridges.
 - **CPAL with midir** (feature `cpal`, on by default): the engine renders in the
   CPAL output stream's callback; an input stream feeds it through a lock-free
   bridge; midir ports exchange MIDI with the callback through bounded bridges.
@@ -50,9 +52,9 @@ let report = host.stop();
 The host fills in the device's part of the `EngineDescription`: sample rate, host
 ports, Master's initial connections to the first outputs (which the engine
 reports as preferred host ports) and a control lead of at least one buffer, since
-the control endpoint runs concurrently with rendering. Opening other devices or
-another sample rate or buffer size is a lifecycle operation: stop, then start
-again.
+the control endpoint runs concurrently with rendering. Requesting another device,
+sample rate or buffer size requires stop/start. JACK server buffer-size changes
+are handled in place, as described below.
 
 Host ports, in the engine's numbering (audio inputs, audio outputs, MIDI inputs,
 MIDI outputs):
@@ -61,18 +63,76 @@ MIDI outputs):
 | --- | --- | --- |
 | Dummy | `audio_in_N`, `audio_out_N` | `midi_in_N`, `midi_out_N` |
 | CPAL | `<device>:capture_N`, `<device>:playback_N` | the midir port name |
+| JACK | `jack:<configured audio port>` | `jack:<configured MIDI port>` |
 
 Names are shortened to the protocol's 64 bytes by shortening the device part.
 A named device that does not exist is refused. A missing default input or MIDI
 port, or a MIDI output that fails to open, is left out with a warning; a MIDI
 input that fails to connect stays silent with a warning.
 
+## Native JACK configuration
+
+Select JACK in the application settings and restart the host. Both application
+startup and independent `shoop_host --config <file>` use the direct JACK driver.
+The JACK configuration contains only the client-name hint:
+
+```json
+{
+  "driver": {
+    "Jack": { "client_name": "ShoopDaLoop" }
+  }
+}
+```
+
+The hint has at most 63 bytes and no colon or NUL. JACK supplies the actual client
+name, sample rate and callback size. Probing and startup never autostart JACK;
+missing libraries/server and other startup failures follow the existing diagnostic
+and fallback policy.
+
+The host starts without public ports. The session service publishes track audio/MIDI,
+sync audio and audio-bus outputs as needed, and removes them with their owners.
+Connections are edited in the application or a JACK patchbay and saved with the
+session. Master auto-connect selects physical playback ports. Fixed startup port
+lists and connection pairs are no longer accepted in JACK profiles or CLI arguments.
+
+`NativeHost::graph_control` exposes an optional provider-independent handle. JACK
+supports discovery, connection editing, publication/removal and rename. All I/O
+slots are private prepared capacity derived from the track/channel/bus pools;
+reserving a slot does not register a public JACK port. See the
+[session graph contract](../../../docs/native_session_recovery/jack-graph.md).
+
+The server determines sample rate and callback size. A callback above the engine
+maximum is rendered in parts without an extra duplex buffer. MIDI offsets are
+rebased for each part and restored for JACK output; recovery and ordinary output
+are merged in timestamp order, with each output MIDI buffer cleared once per JACK
+cycle. Invalid/capacity-limited input and failed output writes are counted.
+Buffer-size changes remain supported through splitting. Control lead stays at
+least one current server period when the buffer size changes. A sample-rate change
+marks the host failed and silences output until restart. Server shutdown reports
+a device failure; cleanup is bounded and does not claim MIDI recovery delivery
+to an unavailable server. Normal stop drops the endpoint, delivers recovery,
+deactivates JACK, and cleans up the render owner off the callback thread.
+
+JACK and CPAL are independently selectable at build time:
+
+```sh
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features jack
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features cpal
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
+```
+
+Native distribution defaults enable both. JACK is loaded at runtime; browser
+production graphs contain neither native driver. CPAL's JACK host remains a
+separate CPAL selection. Live driver switching and JACK transport/timebase or
+session management are not provided by this driver.
+
 ## Threads and bridges
 
 | Thread | Work |
 | --- | --- |
 | Caller | `start`, `stop`, discovery; the client and control endpoint |
-| Driver: dummy thread or CPAL output callback | The render owner: one engine callback per block |
+| Driver: dummy thread, CPAL output or JACK process callback | Owns rendering and processes audio blocks |
+| JACK monitor | Publishes server shutdown from the control side |
 | CPAL input callback | Pushes captured frames into the duplex bridge |
 | midir input callbacks | Stamp messages with the host clock and push them into a MIDI input bridge |
 | MIDI output pump | Sends render output and MIDI recovery to midir ports |
@@ -124,8 +184,9 @@ cleaned-up engine. With the client still alive no reset is sent.
 ## Tests
 
 ```sh
-cargo test -p shoop_rt_host_native
-cargo test -p shoop_rt_host_native --release
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test -p shoop_rt_host_native
+python3 scripts/run_native_jack_tests.py
+python3 scripts/run_native_jack_tests.py --profile release
 ```
 
 The CPAL tests run the driver against a software CPAL host (`tests/support`),
@@ -133,3 +194,12 @@ whose streams are driven by the test or by threads at the buffer period; every
 data callback runs inside a heap measurement. MIDI ports are test sources and
 sinks. The dummy tests guard each driver cycle the same way through
 `DummyConfig::wrap_cycle`. Real devices and midir ports are checked manually.
+
+The strict JACK runner requires `jackd` with its dummy audio backend. It creates
+an isolated named server, removes the missing-backend skip flag, verifies
+readiness, and runs direct audio/MIDI, server-loss, buffer-change, host-process,
+application-startup and service/session recovery scenarios. Logs are written to
+`target/native-jack`; a missing server fails this acceptance. The Linux native
+JACK CI job runs the same commands. The small `shoop_jack` notification adapter
+isolates the JACK trait's unsafe shutdown declaration to an atomic store;
+`shoop_rt_host_native` retains its `forbid(unsafe_code)` policy.

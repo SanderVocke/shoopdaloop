@@ -83,10 +83,6 @@ impl GraphStages {
             (limits.max_nodes, size_of::<super::NodeStep>()),
             (limits.max_edges, size_of::<super::Connection>()),
             (limits.max_nodes, size_of::<super::Membership>()),
-            (
-                limits.max_nodes,
-                size_of::<crate::planner::DecisionBinding>(),
-            ),
         ] {
             plan_bytes = count
                 .checked_mul(size)

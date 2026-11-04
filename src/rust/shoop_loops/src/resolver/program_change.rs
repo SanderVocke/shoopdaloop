@@ -81,6 +81,7 @@ impl Resolver {
         candidate: PreparedTopology,
     ) -> Result<RequestId, (Error, PreparedTopology)> {
         let result = (|| {
+            candidate.validate_quantum(self.quantum)?;
             if self.quiescent || self.committed || self.epoch != expected {
                 return Err(Error::InvalidState);
             }

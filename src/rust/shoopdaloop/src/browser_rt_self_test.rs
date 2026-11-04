@@ -26,7 +26,18 @@ const SIGNAL_DB: f32 = -80.0;
 enum Step {
     Disabled,
     Startup,
+    ProfilingStarted,
+    ProfilingStopped,
+    ProfilingRestarted,
+    ProfilingFinished,
     NewSession,
+    Buses,
+    BusZero,
+    BusZeroSaving,
+    BusZeroCleared,
+    BusZeroLoaded,
+    BusAddedAgain,
+    BusNewSession,
     Tracks,
     Connections,
     SyncRecording,
@@ -57,6 +68,13 @@ enum Step {
     LargeLoaded,
     LargeResaving,
     LargePlayback,
+    PreviewReady,
+    PreviewDenied,
+    PreviewSystem,
+    PreviewMaster,
+    PreviewSwitchSystem,
+    PreviewStopped,
+    PreviewCompleted,
     Passed,
     Failed,
 }
@@ -70,6 +88,8 @@ struct Ids {
 }
 
 pub struct NewEngineSelfTest {
+    preview_only: bool,
+    preview_denied: bool,
     stress: bool,
     large: bool,
     step: Step,
@@ -78,6 +98,7 @@ pub struct NewEngineSelfTest {
     links: Vec<(PortId, HostPortId)>,
     routes: Vec<(PortId, BusChannelId)>,
     sync_length: u64,
+    profiling_generation: u64,
     position: Option<f32>,
     saved_file: Option<Arc<Vec<u8>>>,
     saved_bundle: Option<shoop_session::SessionBundle>,
@@ -92,7 +113,12 @@ impl NewEngineSelfTest {
             Step::Disabled
         };
         report(&format!("{step:?}"));
+        let query = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .unwrap_or_default();
         Self {
+            preview_only: query.contains("preview-only=1"),
+            preview_denied: query.contains("preview-denied=1"),
             stress,
             large,
             step,
@@ -101,6 +127,7 @@ impl NewEngineSelfTest {
             links: Vec::new(),
             routes: Vec::new(),
             sync_length: 0,
+            profiling_generation: 0,
             position: None,
             saved_file: None,
             saved_bundle: None,
@@ -111,12 +138,21 @@ impl NewEngineSelfTest {
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
         if !matches!(
             self.step,
-            Step::Saving | Step::Resaving | Step::LargeSaving | Step::LargeResaving
+            Step::Saving
+                | Step::Resaving
+                | Step::LargeSaving
+                | Step::LargeResaving
+                | Step::BusZeroSaving
         ) {
             return;
         }
         match shoop_session::decode_session(&output.bytes) {
-            Ok(bundle) if matches!(self.step, Step::Saving | Step::LargeSaving) => {
+            Ok(bundle)
+                if matches!(
+                    self.step,
+                    Step::Saving | Step::LargeSaving | Step::BusZeroSaving
+                ) =>
+            {
                 self.saved_file = Some(Arc::clone(&output.bytes));
                 self.saved_bundle = Some(bundle);
             }
@@ -151,12 +187,21 @@ impl NewEngineSelfTest {
                             | Step::LargeLoaded
                             | Step::LargeResaving
                             | Step::LargePlayback
-                    ) {
+                    ) || (self.large
+                        && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
+                    {
                         Duration::from_secs(120)
                     } else {
                         STEP_TIMEOUT
                     } => {}
-            Ok(None) => self.fail(format!("timed out; file task: {:?}", snapshot.io_task)),
+            Ok(None) => self.fail(format!(
+                "timed out; pending operations: {}; profiling requested/active/available: {}/{}/{}; file task: {:?}",
+                runtime.session_operations_pending(),
+                snapshot.profiling.requested,
+                snapshot.profiling.active,
+                snapshot.profiling.available,
+                snapshot.io_task,
+            )),
             Err(reason) => self.fail(reason),
         }
     }
@@ -191,6 +236,8 @@ impl NewEngineSelfTest {
         }
         let running = runtime.audio_running();
         let signal = runtime.new_engine_microphone();
+        let pending = runtime.session_operations_pending();
+        let profiling_preferences_ready = runtime.applied_profiling_preference.is_some();
         let mut send = |intent: AppIntent| {
             runtime
                 .dispatch(intent)
@@ -200,12 +247,23 @@ impl NewEngineSelfTest {
         let next = match self.step {
             Step::Disabled | Step::Passed | Step::Failed => return Ok(None),
             Step::Startup => {
-                if !(running
-                    && snapshot.connections.backend_available
-                    && snapshot.tracks.len() == 1)
+                if pending
+                    || !profiling_preferences_ready
+                    || !(running
+                        && snapshot.connections.backend_available
+                        && snapshot.tracks.len() == 1)
                 {
                     return Ok(None);
                 }
+                send(AppIntent::SetProfiling(true))?;
+                Step::ProfilingStarted
+            }
+            Step::ProfilingStarted => {
+                let profile = &snapshot.profiling;
+                if pending || !profile.requested || (profile.available && !profile.active) {
+                    return Ok(None);
+                }
+                self.profiling_generation = profile.generation;
                 send(AppIntent::RequestNewSession)?;
                 Step::NewSession
             }
@@ -220,6 +278,34 @@ impl NewEngineSelfTest {
                 if snapshot.tracks.len() != 1 || !snapshot.tracks[0].is_sync {
                     return Err("a new session has only the sync track".to_owned());
                 }
+                if self.preview_only {
+                    self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
+                    self.ids.master = snapshot.buses.first().map(|b| b.id);
+                    return Ok(Some(Step::PreviewReady));
+                }
+                for (name, channel_count) in [("Cue", 1), ("Wide", 8)] {
+                    send(AppIntent::AddBus(shoop_egui::BusSpec {
+                        name: name.into(),
+                        channel_count,
+                        fx: None,
+                        creation_request_id: None,
+                    }))?;
+                }
+                Step::Buses
+            }
+            Step::Buses => {
+                if snapshot.buses.len() != 3
+                    || snapshot
+                        .buses
+                        .iter()
+                        .any(|bus| bus.structural_state != StructuralState::Confirmed)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::Bus {
+                    bus_id: snapshot.buses[2].id,
+                    action: BusAction::MoveBefore(Some(snapshot.buses[1].id)),
+                })?;
                 let sync = &snapshot.tracks[0];
                 self.ids.sync = Some((sync.id, sync.loops[0].id));
                 self.ids.master = snapshot.buses.first().map(|bus| bus.id);
@@ -278,6 +364,11 @@ impl NewEngineSelfTest {
                     .zip(master.channels.iter())
                     .map(|(port, channel)| (*port, channel.id))
                     .collect();
+                for bus in snapshot.buses.iter().skip(1) {
+                    for channel in bus.channels.iter() {
+                        self.routes.push((audio_outputs[0], channel.id));
+                    }
+                }
                 for (port_id, host_port_id) in &self.links {
                     send(AppIntent::SetPortConnected {
                         port_id: *port_id,
@@ -596,6 +687,16 @@ impl NewEngineSelfTest {
                         .any(|entry| entry.mode != LoopMode::Stopped)
                     || snapshot.tracks[1].controls.output_gain_db != -6.0
                     || snapshot.buses[0].gain_db != -3.0
+                    || snapshot
+                        .buses
+                        .iter()
+                        .map(|b| b.name.as_str())
+                        .collect::<Vec<_>>()
+                        != ["Master", "Wide", "Cue"]
+                    || snapshot.buses[1].channels.len() != 8
+                    || snapshot
+                        .capabilities
+                        .supports(shoop_egui::BackendCapability::BusFx)
                     || snapshot.tracks[0].loops[0].length_frames != self.sync_length
                 {
                     return Err(
@@ -628,6 +729,12 @@ impl NewEngineSelfTest {
                 Step::RestoredPlayback
             }
             Step::RestoredPlayback => {
+                if snapshot.profiling.available && snapshot.profiling.live.rows.is_empty() {
+                    return Ok(None);
+                }
+                if snapshot.profiling.generation <= self.profiling_generation {
+                    return Err("graph rebuild did not reset profiling".into());
+                }
                 let entry = first_loop(snapshot, ids.audio)?;
                 if entry.mode != LoopMode::Playing || entry.length_frames == 0 {
                     return Ok(None);
@@ -641,7 +748,13 @@ impl NewEngineSelfTest {
                     _ => {}
                 }
                 if !self.large {
-                    return Ok(Some(Step::Passed));
+                    for bus in snapshot.buses.iter() {
+                        send(AppIntent::Bus {
+                            bus_id: bus.id,
+                            action: BusAction::Remove,
+                        })?;
+                    }
+                    return Ok(Some(Step::BusZero));
                 }
                 self.saved_file = None;
                 self.saved_bundle = None;
@@ -788,6 +901,240 @@ impl NewEngineSelfTest {
                     Some(position) if position == entry.position => return Ok(None),
                     _ => {}
                 }
+                for bus in snapshot.buses.iter() {
+                    send(AppIntent::Bus {
+                        bus_id: bus.id,
+                        action: BusAction::Remove,
+                    })?;
+                }
+                Step::BusZero
+            }
+            Step::BusZero => {
+                if !snapshot.buses.is_empty() {
+                    return Ok(None);
+                }
+                self.saved_file = None;
+                self.saved_bundle = None;
+                send(AppIntent::RequestSaveSession)?;
+                Step::BusZeroSaving
+            }
+            Step::BusZeroSaving => {
+                if pending
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::SaveSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                let Some(bundle) = &self.saved_bundle else {
+                    return Ok(None);
+                };
+                if !bundle.document.buses.is_empty()
+                    || !bundle.document.bus_display_order.is_empty()
+                    || !bundle.document.mixer_routes.is_empty()
+                {
+                    return Err("zero-bus save retained bus state".into());
+                }
+                send(AppIntent::RequestNewSession)?;
+                Step::BusZeroCleared
+            }
+            Step::BusZeroCleared => {
+                if snapshot.buses.len() != 1
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::LoadSessionBytes {
+                    name: "zero-buses.shoop".into(),
+                    bytes: Arc::clone(self.saved_file.as_ref().unwrap()),
+                })?;
+                Step::BusZeroLoaded
+            }
+            Step::BusZeroLoaded => {
+                if !snapshot.buses.is_empty()
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::AddBus(shoop_egui::BusSpec {
+                    name: "After zero".into(),
+                    channel_count: 1,
+                    fx: None,
+                    creation_request_id: None,
+                }))?;
+                Step::BusAddedAgain
+            }
+            Step::BusAddedAgain => {
+                if pending
+                    || snapshot.buses.len() != 1
+                    || snapshot.buses[0].name != "After zero"
+                    || snapshot.buses[0].structural_state != StructuralState::Confirmed
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::RequestNewSession)?;
+                Step::BusNewSession
+            }
+            Step::PreviewReady => {
+                if waiting < Duration::from_secs(1) {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                if self.preview_denied {
+                    Step::PreviewDenied
+                } else {
+                    Step::PreviewSystem
+                }
+            }
+            Step::PreviewDenied => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Playing
+                {
+                    return Err("suspended System preview falsely reported Playing".into());
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Ok(None);
+                }
+                if !(snapshot.click_track.preview_message.contains("resume")
+                    || snapshot.click_track.preview_message.contains("suspended"))
+                {
+                    return Err(format!(
+                        "unexpected preview error: {:?}",
+                        snapshot.click_track
+                    ));
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                Step::PreviewSystem
+            }
+            Step::PreviewSystem | Step::PreviewSwitchSystem => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Err(format!("System preview failed: {:?}", snapshot.click_track));
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Playing
+                    || waiting < Duration::from_millis(400)
+                {
+                    return Ok(None);
+                }
+                if self.step == Step::PreviewSystem {
+                    send(preview_intent(
+                        ids.sync,
+                        shoop_egui::ClickTrackPreviewOutput::MasterBus,
+                        16,
+                    )?)?;
+                    Step::PreviewMaster
+                } else {
+                    send(AppIntent::StopClickTrackPreview)?;
+                    Step::PreviewStopped
+                }
+            }
+            Step::PreviewMaster => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Err(format!("Master preview failed: {:?}", snapshot.click_track));
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Playing
+                    || !snapshot
+                        .buses
+                        .iter()
+                        .any(|b| b.output_peaks_db.iter().any(|p| *p > SIGNAL_DB))
+                {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                Step::PreviewSwitchSystem
+            }
+            Step::PreviewStopped => {
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Cancelled
+                    || waiting < Duration::from_millis(500)
+                {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    2,
+                )?)?;
+                Step::PreviewCompleted
+            }
+            Step::PreviewCompleted => {
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Completed
+                {
+                    return Ok(None);
+                }
+                if snapshot
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .any(|l| l.length_frames != 0 || l.mode != LoopMode::Stopped)
+                {
+                    return Err("preview changed loop media or transport".into());
+                }
+                Step::Passed
+            }
+            Step::BusNewSession => {
+                if snapshot.buses.len() != 1
+                    || snapshot.buses[0].name != "Master"
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::LoadSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::SetProfiling(false))?;
+                Step::ProfilingStopped
+            }
+            Step::ProfilingStopped => {
+                if snapshot.profiling.requested || snapshot.profiling.active {
+                    return Ok(None);
+                }
+                self.profiling_generation = snapshot.profiling.generation;
+                send(AppIntent::SetProfiling(true))?;
+                Step::ProfilingRestarted
+            }
+            Step::ProfilingRestarted => {
+                let profile = &snapshot.profiling;
+                if !profile.requested
+                    || profile.generation <= self.profiling_generation
+                    || (profile.available && !profile.active)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::SetProfiling(false))?;
+                Step::ProfilingFinished
+            }
+            Step::ProfilingFinished => {
+                if snapshot.profiling.requested || snapshot.profiling.active {
+                    return Ok(None);
+                }
                 Step::Passed
             }
         };
@@ -892,4 +1239,19 @@ fn output_completed(snapshot: &AppSnapshot) -> Result<bool, String> {
         ));
     }
     Ok(true)
+}
+
+fn preview_intent(
+    ids: Option<(TrackId, shoop_egui::LoopId)>,
+    output: shoop_egui::ClickTrackPreviewOutput,
+    click_count: u32,
+) -> Result<AppIntent, String> {
+    Ok(AppIntent::PreviewClickTrack {
+        loop_id: ids.ok_or("missing preview target")?.1,
+        request: shoop_egui::ClickTrackRequest {
+            click_count,
+            ..Default::default()
+        },
+        output,
+    })
 }

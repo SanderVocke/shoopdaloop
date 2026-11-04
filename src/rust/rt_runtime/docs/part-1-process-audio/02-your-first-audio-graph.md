@@ -70,22 +70,22 @@ Port numbers are local to their endpoint and direction. A host source is an inpu
 Compile and activate the initial graph during preparation:
 
 ```rust
-    let resources = ResourceStore::new(config)?;
+    let resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     // Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(0.5))],
         NoPlanner,
         resources,
         &graph,
-        &[],
     )?;
     assert_eq!(runtime.epoch(), Epoch(1));
     assert_eq!(runtime.next_frame(), Frame(0));
     assert_eq!(control.outstanding(), 0);
 ```
 
-`PreparedNode` transfers the processor into the runtime. `NoPlanner` and empty decision bindings select ordinary signal processing; [Planning processing intervals](../part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md) introduces the optional planner.
+`PreparedNode` transfers the processor into the runtime. `NoPlanner` selects ordinary signal processing; [Planning processing intervals](../part-4-coordinate-processors-and-changes/13-planning-processing-intervals.md) introduces the optional planner.
 
 This constructor returns an active graph at epoch 1 and frame 0. It does not run a warm-up callback or consume command/result slots. Invalid graph descriptions fail during preparation. Other constructors start without an active graph and require a later commit, as described in [Routing and live graph edits](../part-2-control-a-running-graph/06-routing-and-live-graph-edits.md).
 

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use shoop_rt_protocol::{Name, MAX_STRIP_CHANNELS};
 
 /// Most host ports of one kind and direction.
-pub const MAX_HOST_PORTS: usize = 64;
+pub const MAX_HOST_PORTS: usize = 1024;
 
 /// A pool segment: a number of prepared strip and loop slots. Slot indices count
 /// through the segments in order.
@@ -49,11 +49,16 @@ pub struct EngineDescription {
     pub sample_rate: u32,
     /// Largest callback the host will render.
     pub max_frames: usize,
+    /// Fixed graph tick. Changing it requires preparing a new engine.
+    /// One frame provides sample-accurate fixed execution for offline/reference use.
+    pub quantum: usize,
     pub host: HostPorts,
     pub segments: Vec<Segment>,
     /// Audio channels per strip direction; also the channels of every loop.
     pub strip_channels: u8,
     pub master_channels: u8,
+    pub buses: u8,
+    pub bus_channels: u8,
     /// Initial Master connections as (Master channel, host audio output index).
     /// They are part of the engine state and can be changed like any connection.
     pub master_connections: Vec<(u8, u16)>,
@@ -86,6 +91,7 @@ impl Default for EngineDescription {
         Self {
             sample_rate: 48_000,
             max_frames: 512,
+            quantum: 32,
             host: HostPorts::numbered(2, 2, 1),
             segments: vec![Segment {
                 strips: 8,
@@ -93,6 +99,8 @@ impl Default for EngineDescription {
             }],
             strip_channels: 2,
             master_channels: 2,
+            buses: 8,
+            bus_channels: 8,
             master_connections: vec![(0, 0), (1, 1)],
             smoothing_frames: 0,
             smoothing_limit_frames: 4800,
@@ -121,10 +129,16 @@ impl EngineDescription {
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
         use rt_runtime::Error;
         let host = &self.host;
+        rt_runtime::Quantum::new(self.quantum)?;
         if self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0
             || self.master_channels == 0
+            || self.buses == 0
+            || self.buses as usize > shoop_rt_protocol::MAX_BUSES
+            || self.bus_channels == 0
+            || self.bus_channels as usize > MAX_STRIP_CHANNELS
+            || self.master_channels > self.bus_channels
             || self.segments.is_empty()
             || self.page_bytes == 0
             || self.page_bytes % 4 != 0

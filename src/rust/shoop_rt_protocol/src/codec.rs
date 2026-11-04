@@ -121,13 +121,20 @@ tags!(Refusal {
     0 => Refusal::Unsupported, 1 => Refusal::Capacity, 2 => Refusal::InvalidId, 3 => Refusal::InvalidValue,
     4 => Refusal::Busy, 5 => Refusal::Overloaded, 6 => Refusal::NotConnected, 7 => Refusal::Internal,
 });
-tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio });
+tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack });
 tags!(DriverRunState {
     0 => DriverRunState::Starting, 1 => DriverRunState::Running, 2 => DriverRunState::Stopped, 3 => DriverRunState::Failed,
 });
 tags!(HostPortKind { 0 => HostPortKind::Audio, 1 => HostPortKind::Midi });
 tags!(Direction { 0 => Direction::Input, 1 => Direction::Output });
-tags!(BusId { 0 => BusId::Master });
+impl Wire for BusId {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        self.0.put(w)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self(SlotId::get(r)?))
+    }
+}
 tags!(DisconnectReason { 0 => DisconnectReason::Shutdown, 1 => DisconnectReason::Fault, 2 => DisconnectReason::ProtocolError });
 
 impl Wire for SlotId {
@@ -391,6 +398,68 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Profiling(enabled) => {
+                w.u8(35)?;
+                w.bool(enabled)
+            }
+            Self::ContentFamilyBegin {
+                id,
+                root,
+                count,
+                sample_rate,
+                quantum,
+            } => {
+                w.u8(31)?;
+                w.u64(id)?;
+                root.put(w)?;
+                w.u32(count)?;
+                w.u32(sample_rate)?;
+                w.u32(quantum)
+            }
+            Self::ContentFamilyEdit { id, edit } => {
+                w.u8(32)?;
+                w.u64(id)?;
+                edit.loop_id.put(w)?;
+                edit.sync_source.put(w)?;
+                w.u64(edit.expected_revision)?;
+                w.u64(edit.expected_frames)?;
+                w.u64(edit.frames)?;
+                edit.audio.put(w)?;
+                edit.midi.put(w)?;
+                w.bool(edit.replace)?;
+                w.bool(edit.restart)?;
+                w.bool(edit.fence_content)
+            }
+            Self::ContentFamilyCommit { id } => {
+                w.u8(33)?;
+                w.u64(id)
+            }
+            Self::ContentFamilyCancel { id } => {
+                w.u8(34)?;
+                w.u64(id)
+            }
+            Self::PreviewStart {
+                request_id,
+                bus,
+                content,
+                frames,
+            } => {
+                w.u8(29)?;
+                w.u64(request_id)?;
+                bus.put(w)?;
+                w.u64(content)?;
+                w.u64(frames)
+            }
+            Self::PreviewStop => w.u8(30),
+            Self::CreateBus { bus, channels } => {
+                w.u8(27)?;
+                bus.put(w)?;
+                w.u8(channels)
+            }
+            Self::RemoveBus { bus } => {
+                w.u8(28)?;
+                bus.put(w)
+            }
             Self::CancelBulk => w.u8(26),
             Self::ReplacementBegin { id } => {
                 w.u8(19)?;
@@ -542,6 +611,45 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            35 => Self::Profiling(r.bool()?),
+            31 => Self::ContentFamilyBegin {
+                id: r.u64()?,
+                root: LoopSlotId::get(r)?,
+                count: r.u32()?,
+                sample_rate: r.u32()?,
+                quantum: r.u32()?,
+            },
+            32 => Self::ContentFamilyEdit {
+                id: r.u64()?,
+                edit: crate::ContentFamilyEdit {
+                    loop_id: LoopSlotId::get(r)?,
+                    sync_source: LoopSlotId::get(r)?,
+                    expected_revision: r.u64()?,
+                    expected_frames: r.u64()?,
+                    frames: r.u64()?,
+                    audio: Option::get(r)?,
+                    midi: Option::get(r)?,
+                    replace: r.bool()?,
+                    restart: r.bool()?,
+                    fence_content: r.bool()?,
+                },
+            },
+            33 => Self::ContentFamilyCommit { id: r.u64()? },
+            34 => Self::ContentFamilyCancel { id: r.u64()? },
+            29 => Self::PreviewStart {
+                request_id: r.u64()?,
+                bus: BusId::get(r)?,
+                content: r.u64()?,
+                frames: r.u64()?,
+            },
+            30 => Self::PreviewStop,
+            27 => Self::CreateBus {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            28 => Self::RemoveBus {
+                bus: BusId::get(r)?,
+            },
             0 => Self::CreateStrip {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
@@ -644,6 +752,16 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Bus { bus, channels } => {
+                w.u8(5)?;
+                bus.put(w)?;
+                w.u8(channels)
+            }
+            Self::BusControl { bus, control } => {
+                w.u8(6)?;
+                bus.put(w)?;
+                control.put(w)
+            }
             Self::Strip {
                 strip,
                 shape,
@@ -689,14 +807,18 @@ impl Wire for crate::ReplacementEdit {
                 port.put(w)?;
                 bus.put(w)
             }
-            Self::Master(control) => {
-                w.u8(4)?;
-                control.put(w)
-            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            5 => Self::Bus {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            6 => Self::BusControl {
+                bus: BusId::get(r)?,
+                control: BusControl::get(r)?,
+            },
             0 => Self::Strip {
                 strip: StripId::get(r)?,
                 shape: StripShape::get(r)?,
@@ -727,7 +849,6 @@ impl Wire for crate::ReplacementEdit {
                 port: StripPort::get(r)?,
                 bus: BusPort::get(r)?,
             },
-            4 => Self::Master(BusControl::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -737,6 +858,14 @@ impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
             Self::Done => w.u8(0),
+            Self::ContentApplied { revision } => {
+                w.u8(2)?;
+                w.u64(*revision)
+            }
+            Self::ContentPrepared { revision } => {
+                w.u8(3)?;
+                w.u64(*revision)
+            }
             Self::Refused(refusal) => {
                 w.u8(1)?;
                 refusal.put(w)
@@ -746,6 +875,8 @@ impl Wire for Outcome {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
             0 => Self::Done,
+            2 => Self::ContentApplied { revision: r.u64()? },
+            3 => Self::ContentPrepared { revision: r.u64()? },
             1 => Self::Refused(Refusal::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
@@ -795,11 +926,15 @@ impl Wire for Limits {
         w.u32(self.loops)?;
         w.u8(self.strip_audio_channels)?;
         w.u8(self.master_channels)?;
+        w.u8(self.buses)?;
+        w.u8(self.bus_channels)?;
         w.u16(self.host_audio_inputs)?;
         w.u16(self.host_audio_outputs)?;
         w.u16(self.host_midi_inputs)?;
         w.u16(self.host_midi_outputs)?;
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
+        w.u32(self.processing_latency_frames)?;
         w.u32(self.smoothing_limit_frames)?;
         w.u16(self.reliable_credits)?;
         w.u16(self.bulk_credits)
@@ -811,11 +946,15 @@ impl Wire for Limits {
             loops: r.u32()?,
             strip_audio_channels: r.u8()?,
             master_channels: r.u8()?,
+            buses: r.u8()?,
+            bus_channels: r.u8()?,
             host_audio_inputs: r.u16()?,
             host_audio_outputs: r.u16()?,
             host_midi_inputs: r.u16()?,
             host_midi_outputs: r.u16()?,
             max_frames: r.u32()?,
+            quantum: r.u32()?,
+            processing_latency_frames: r.u32()?,
             smoothing_limit_frames: r.u32()?,
             reliable_credits: r.u16()?,
             bulk_credits: r.u16()?,
@@ -826,6 +965,10 @@ impl Wire for Limits {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Preview { request_id } => {
+                w.u8(4)?;
+                w.u64(*request_id)
+            }
             Self::Engine {
                 frame,
                 callbacks,
@@ -863,6 +1006,7 @@ impl Wire for Telemetry {
                 mode,
                 next_mode,
                 next_delay,
+                content_revision,
                 length,
                 position,
                 peaks,
@@ -872,6 +1016,7 @@ impl Wire for Telemetry {
                 mode.put(w)?;
                 next_mode.put(w)?;
                 next_delay.put(w)?;
+                w.u64(*content_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
                 peaks.put(w)
@@ -885,6 +1030,9 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            4 => Self::Preview {
+                request_id: r.u64()?,
+            },
             0 => Self::Engine {
                 frame: r.u64()?,
                 callbacks: r.u64()?,
@@ -906,6 +1054,7 @@ impl Wire for Telemetry {
                 mode: LoopMode::get(r)?,
                 next_mode: Option::get(r)?,
                 next_delay: Option::get(r)?,
+                content_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,
                 peaks: Peaks::get(r)?,
@@ -922,6 +1071,15 @@ impl Wire for Telemetry {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::BusShape { bus, channels } => {
+                w.u8(10)?;
+                bus.put(w)?;
+                w.u8(*channels)
+            }
+            Self::BusGenerations { generation } => {
+                w.u8(11)?;
+                w.u32(*generation)
+            }
             Self::Begin { epoch } => {
                 w.u8(0)?;
                 w.u64(*epoch)
@@ -982,6 +1140,13 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            10 => Self::BusShape {
+                bus: BusId::get(r)?,
+                channels: r.u8()?,
+            },
+            11 => Self::BusGenerations {
+                generation: r.u32()?,
+            },
             0 => Self::Begin { epoch: r.u64()? },
             1 => Self::HostPort(HostPort::get(r)?),
             2 => Self::Strip {
@@ -1169,9 +1334,109 @@ impl Wire for ClientMessage {
     }
 }
 
+impl Wire for rt_profiling::Packet {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.generation)?;
+        w.u64(self.capture)?;
+        w.u64(self.sequence)?;
+        w.u64(self.callback)?;
+        w.u64(self.callback_frame)?;
+        w.u64(self.frame)?;
+        w.u64(self.epoch)?;
+        w.u64(self.start_ns)?;
+        w.u64(self.end_ns)?;
+        w.u32(self.frames)?;
+        w.u32(self.index)?;
+        w.u32(self.total)?;
+        w.u8(self.len)?;
+        w.u32(self.flags)?;
+        w.u32(self.trigger)?;
+        for sample in &self.samples[..usize::from(self.len)] {
+            w.u64(sample.key)?;
+            w.u64(sample.at)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut packet = Self {
+            generation: r.u64()?,
+            capture: r.u64()?,
+            sequence: r.u64()?,
+            callback: r.u64()?,
+            callback_frame: r.u64()?,
+            frame: r.u64()?,
+            epoch: r.u64()?,
+            start_ns: r.u64()?,
+            end_ns: r.u64()?,
+            frames: r.u32()?,
+            index: r.u32()?,
+            total: r.u32()?,
+            len: r.u8()?,
+            flags: r.u32()?,
+            trigger: r.u32()?,
+            ..Self::default()
+        };
+        if !packet.valid() {
+            return Err(CodecError::Invalid);
+        }
+        for sample in &mut packet.samples[..usize::from(packet.len)] {
+            sample.key = r.u64()?;
+            sample.at = r.u64()?;
+        }
+        Ok(packet)
+    }
+}
+impl Wire for rt_profiling::Status {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.generation)?;
+        w.bool(self.requested)?;
+        w.bool(self.active)?;
+        w.bool(self.available)?;
+        w.u64(self.resolution_ns)?;
+        w.u64(self.dropped)?;
+        w.u64(self.skipped_captures)?;
+        w.u64(self.high_water)?;
+        w.u64(self.storage_bytes)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            generation: r.u64()?,
+            requested: r.bool()?,
+            active: r.bool()?,
+            available: r.bool()?,
+            resolution_ns: r.u64()?,
+            dropped: r.u64()?,
+            skipped_captures: r.u64()?,
+            high_water: r.u64()?,
+            storage_bytes: r.u64()?,
+        })
+    }
+}
+
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ProfilingStatus(status) => {
+                w.u8(8)?;
+                status.put(w)
+            }
+            Self::Profiling(packet) => {
+                w.u8(9)?;
+                packet.put(w)
+            }
+            Self::ProfilingNode {
+                generation,
+                key,
+                name,
+            } => {
+                w.u8(10)?;
+                w.u64(*generation)?;
+                w.u64(*key)?;
+                name.put(w)
+            }
             Self::Welcome {
                 version,
                 capabilities,
@@ -1220,6 +1485,13 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            8 => Self::ProfilingStatus(rt_profiling::Status::get(r)?),
+            9 => Self::Profiling(rt_profiling::Packet::get(r)?),
+            10 => Self::ProfilingNode {
+                generation: r.u64()?,
+                key: r.u64()?,
+                name: Name::get(r)?,
+            },
             0 => Self::Welcome {
                 version: r.u16()?,
                 capabilities: Capabilities(r.u32()?),

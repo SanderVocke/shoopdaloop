@@ -164,14 +164,7 @@ fn run_impl(
     let address = std::env::var("SHOOP_RT_PROCESS_ADDRESS")?.parse()?;
     let transport = Transport::parse(&std::env::var("SHOOP_RT_PROCESS_TRANSPORT")?)?;
     let mut input = std::io::stdin().lock();
-    let mut token = [0; 32];
-    input.read_exact(&mut token)?;
-    let mut control = setup::connect(
-        address,
-        &token,
-        SocketConfig::default(),
-        Duration::from_secs(10),
-    )?;
+    let mut control = setup::connect(address, SocketConfig::default(), Duration::from_secs(10))?;
     let mut hello = false;
     let mut engine: Option<EngineDescription> = None;
     let mut driver = None;
@@ -323,7 +316,7 @@ fn run_impl(
                 send(
                     &mut control,
                     HostReply::Warning(Text::clipped(&format!(
-                        "Could not start the CPAL driver: {error}; using the dummy driver"
+                        "Could not start the configured audio driver: {error}; using the dummy driver"
                     ))),
                 )?;
                 let dummy = DummyConfig::default();
@@ -345,6 +338,10 @@ fn run_impl(
         for warning in started.host.warnings() {
             send(&mut control, HostReply::Warning(Text::clipped(warning)))?;
         }
+        send(
+            &mut control,
+            HostReply::InstanceName(Text::clipped(started.host.instance_name())),
+        )?;
         send(&mut control, HostReply::Ready(started.host.status().driver))?;
         let data = if let Some(shared) = shared {
             let liveness = control.stream().try_clone()?;

@@ -176,6 +176,7 @@ impl ControlEndpoint {
                 if !shape
                     || description.bytes > MAX_CONTENT_BYTES
                     || description.frames > u32::MAX as u64
+                    || description.frames % u64::from(self.limits.quantum) != 0
                     || (description.midi && description.frames == 0 && description.bytes != 0)
                 {
                     return Err(Refusal::InvalidValue);
@@ -339,6 +340,13 @@ impl ControlEndpoint {
             let Some(mut entry) = self.uploads.slots[slot] else {
                 continue;
             };
+            if self
+                .preview
+                .as_ref()
+                .is_some_and(|preview| preview.content == entry.description.id)
+            {
+                continue;
+            }
             if entry.pending != 0 || !self.room(1) {
                 continue;
             }
@@ -491,6 +499,9 @@ impl ControlEndpoint {
             RuntimeResult::Completion(outcome, ..) => completion_refusal(*outcome),
             RuntimeResult::Execution(execution) => match execution_outcome(execution) {
                 Outcome::Done => None,
+                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                    Some(Refusal::Internal)
+                }
                 Outcome::Refused(reason) => Some(reason),
             },
         };

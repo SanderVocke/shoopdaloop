@@ -11,6 +11,7 @@ pub fn description() -> EngineDescription {
     EngineDescription {
         sample_rate: 1000,
         max_frames: 16,
+        quantum: 1,
         host: HostPorts::numbered(2, 2, 1),
         segments: vec![
             Segment {
@@ -24,6 +25,8 @@ pub fn description() -> EngineDescription {
         ],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: vec![(0, 0), (1, 1)],
         smoothing_frames: 0,
         smoothing_limit_frames: 8,
@@ -66,7 +69,7 @@ pub fn route(strip: StripId, channel: u8, target: u8, connected: bool) -> Reques
             index: channel,
         },
         bus: BusPort {
-            bus: BusId::Master,
+            bus: BusId::MASTER,
             index: target,
         },
         connected,
@@ -74,7 +77,7 @@ pub fn route(strip: StripId, channel: u8, target: u8, connected: bool) -> Reques
 }
 pub fn master(index: u8) -> EnginePort {
     EnginePort::Bus(BusPort {
-        bus: BusId::Master,
+        bus: BusId::MASTER,
         index,
     })
 }
@@ -156,6 +159,9 @@ impl Harness {
                 EngineMessage::Telemetry(record) => self.telemetry.push((frame, record)),
                 EngineMessage::State(record) => self.states.push(record),
                 EngineMessage::Bulk(chunk) => self.chunks.push(chunk),
+                EngineMessage::ProfilingStatus(_)
+                | EngineMessage::Profiling(_)
+                | EngineMessage::ProfilingNode { .. } => {}
                 other => self.lifecycle.push(other),
             }
         }
@@ -228,7 +234,15 @@ impl Harness {
         self.results[&correlation]
     }
     pub fn done(&mut self, request: Request) {
-        assert_eq!(self.apply(request), Outcome::Done, "{request:?}");
+        let outcome = self.apply(request);
+        if matches!(request, Request::ContentApply { .. }) {
+            assert!(
+                matches!(outcome, Outcome::ContentApplied { .. }),
+                "{request:?}: {outcome:?}"
+            );
+        } else {
+            assert_eq!(outcome, Outcome::Done, "{request:?}");
+        }
     }
     pub fn last_loop(&self, id: LoopSlotId) -> Option<(u64, Telemetry)> {
         self.telemetry

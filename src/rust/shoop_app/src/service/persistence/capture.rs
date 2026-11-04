@@ -62,15 +62,17 @@ impl Cut {
         }
     }
     fn port(&self, id: PortId) -> Result<image::Port> {
+        let mut state = self
+            .state
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == id)
+            .ok_or_else(|| anyhow!("capture omitted port {id}"))?
+            .clone();
+        state.publication = None;
         Ok(image::Port {
-            state: self
-                .state
-                .connections
-                .application_ports
-                .iter()
-                .find(|port| port.id == id)
-                .ok_or_else(|| anyhow!("capture omitted port {id}"))?
-                .clone(),
+            state,
             external_connections: self
                 .external
                 .get(&id)
@@ -217,60 +219,64 @@ impl Cut {
                     .find(|content| content.id == loop_id)
                     .ok_or_else(|| anyhow!("capture omitted requested loop"))?,
             },
-            persistence::Target::Session { .. } => {
-                let master = self
-                    .state
-                    .buses
-                    .first()
-                    .ok_or_else(|| anyhow!("capture omitted Master"))?;
-                image::Manifest::Session(image::Session {
-                    sample_rate: capture.sample_rate,
-                    global: self.state.global.clone(),
-                    tracks,
-                    master: image::Master {
-                        id: master.id,
-                        name: master.name.clone(),
-                        gain_db: master.gain_db,
-                        balance: master.balance,
-                        muted: master.muted,
-                        channels: master
-                            .channels
-                            .iter()
-                            .map(|channel| {
-                                Ok(image::MasterChannel {
-                                    id: channel.id,
-                                    label: channel.label.clone(),
-                                    port: self.port(channel.output_port_id)?,
-                                })
+            persistence::Target::Session { .. } => image::Manifest::Session(image::Session {
+                sample_rate: capture.sample_rate,
+                global: self.state.global.clone(),
+                tracks,
+                buses: {
+                    let mut buses = self.state.buses.iter().collect::<Vec<_>>();
+                    buses.sort_by_key(|bus| bus.id);
+                    buses
+                        .into_iter()
+                        .map(|bus| {
+                            Ok(image::Bus {
+                                id: bus.id,
+                                name: bus.name.clone(),
+                                gain_db: bus.gain_db,
+                                balance: bus.balance,
+                                muted: bus.muted,
+                                channels: bus
+                                    .channels
+                                    .iter()
+                                    .map(|channel| {
+                                        Ok(image::BusChannel {
+                                            id: channel.id,
+                                            label: channel.label.clone(),
+                                            port: self.port(channel.output_port_id)?,
+                                        })
+                                    })
+                                    .collect::<Result<_>>()?,
                             })
-                            .collect::<Result<_>>()?,
-                    },
-                    global_ports: self
-                        .state
-                        .connections
-                        .application_ports
-                        .iter()
-                        .filter(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
-                        .map(|port| self.port(port.id))
-                        .collect::<Result<_>>()?,
-                    routes: self.routes.iter().copied().collect(),
-                    selected: self
-                        .state
-                        .tracks
-                        .iter()
-                        .flat_map(|track| &track.loops)
-                        .filter(|entry| entry.selected)
-                        .map(|entry| entry.id)
-                        .collect(),
-                    target: self
-                        .state
-                        .tracks
-                        .iter()
-                        .flat_map(|track| &track.loops)
-                        .find(|entry| entry.targeted)
-                        .map(|entry| entry.id),
-                })
-            }
+                        })
+                        .collect::<Result<_>>()?
+                },
+                bus_display_order: self.state.buses.iter().map(|bus| bus.id).collect(),
+                preview_bus: self.state.preview_bus,
+                global_ports: self
+                    .state
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+                    .map(|port| self.port(port.id))
+                    .collect::<Result<_>>()?,
+                routes: self.routes.iter().copied().collect(),
+                selected: self
+                    .state
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .filter(|entry| entry.selected)
+                    .map(|entry| entry.id)
+                    .collect(),
+                target: self
+                    .state
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .find(|entry| entry.targeted)
+                    .map(|entry| entry.id),
+            }),
         };
         let image = Arc::new(image::Image { manifest, payloads });
         Ok(image)

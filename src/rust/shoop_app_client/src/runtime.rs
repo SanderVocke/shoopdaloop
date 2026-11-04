@@ -17,6 +17,10 @@ pub trait Delivery {
 /// Client-local file tasks. The application supplies codecs without coupling the
 /// session client or service to file formats or platform APIs.
 pub trait PersistenceIo {
+    fn click_track(&self) -> ClickTrackState;
+    fn take_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        None
+    }
     fn handles(&self, intent: &AppIntent) -> bool;
     fn complete_platform(&mut self, intent: AppIntent);
     fn apply(
@@ -191,13 +195,16 @@ impl Runtime {
     pub fn take_file_request(&mut self) -> Option<ApplicationFileRequest> {
         self.persistence_io.as_mut()?.take_request()
     }
-    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-        None
+    pub fn take_audio_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        self.persistence_io.as_mut()?.take_preview()
     }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
         if matches!(
             intent,
-            AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+            AppIntent::CompleteIoOutput { .. }
+                | AppIntent::FailIoTask { .. }
+                | AppIntent::CompleteClickTrackPreview { .. }
+                | AppIntent::ClickTrackPreviewStarted { .. }
         ) {
             let handled = self
                 .persistence_io
@@ -353,7 +360,7 @@ impl Runtime {
                     intent,
                     AppIntent::CompleteIoInput { .. }
                         | AppIntent::CompleteIoOutput { .. }
-                        | AppIntent::ConfirmSampleRateConversion { .. }
+                        | AppIntent::ConfirmFormatConversion { .. }
                         | AppIntent::ConfirmAudioChannelMapping { .. }
                         | AppIntent::ConfirmAudioChannelSelection { .. }
                         | AppIntent::CancelIoTask { .. }
@@ -500,7 +507,7 @@ impl Runtime {
                 status: IoTaskStatus::Running,
                 progress: 0.0,
                 message: "Starting a fresh session".into(),
-                sample_rate_warning: None,
+                format_conversion_warning: None,
                 audio_channel_mapping: None,
                 audio_channel_selection: None,
             });
@@ -592,6 +599,8 @@ impl Runtime {
             .client
             .snapshot()
             .map(|state| AppSnapshot {
+                profiling: state.profiling.clone(),
+                bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
                 track_processors: Arc::clone(&state.track_processors),
@@ -601,12 +610,14 @@ impl Runtime {
                 audio_drivers: state.audio_drivers.clone(),
                 capabilities: state.capabilities,
                 connections: Arc::clone(&state.connections),
+                host_graph: Arc::clone(&state.host_graph),
                 ..Default::default()
             })
             .unwrap_or_default();
         view.details = self.details();
         view.io_task = self.io_task.clone();
         if let Some(provider) = &self.persistence_io {
+            view.click_track = provider.click_track();
             if let Some(task) = provider.task() {
                 view.io_task = Some(task);
             }
@@ -619,6 +630,13 @@ impl Runtime {
                 view.capabilities = view.capabilities.with(capability, false);
             }
         }
+        view.capabilities = view.capabilities.with(
+            BackendCapability::ClickTrackInsertion,
+            self.persistence_io.is_some()
+                && view
+                    .capabilities
+                    .supports(BackendCapability::LoopContentImport),
+        );
         view.revision = self.snapshot.revision.saturating_add(1);
         view.notifications = self
             .notifications
@@ -688,6 +706,7 @@ impl Runtime {
                         | u64::from(registration.saturating_add(1)),
                 );
                 ports.push(ApplicationPortState {
+                    publication: None,
                     id: port,
                     owner: ApplicationPortOwner::LuaControl {
                         script_id: script.id,
@@ -928,6 +947,7 @@ impl Runtime {
             AppIntent::AddLoop { track_id } => Command::AddLoop { track: track_id },
             AppIntent::Global(action) => Command::Global(action),
             AppIntent::Piano(action) => Command::Piano(action),
+            AppIntent::SetHostGraphConnected(request) => Command::SetHostGraphConnected(request),
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
@@ -946,6 +966,7 @@ impl Runtime {
                 destination: destination_channel_id,
                 connected,
             },
+            AppIntent::SetProfiling(value) => Command::SetProfiling(value),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,
@@ -1185,19 +1206,22 @@ impl Runtime {
         ControlSnapshot {
             loops,
             tracks,
-            buses: state
-                .buses
-                .iter()
-                .enumerate()
-                .map(|(index, bus)| ControlBus {
-                    id: bus.id,
-                    index: index as i64,
-                    channel_count: bus.channels.len(),
-                    gain_db: bus.gain_db,
-                    balance: bus.balance,
-                    muted: bus.muted,
-                })
-                .collect(),
+            buses: {
+                let mut buses = state.buses.iter().collect::<Vec<_>>();
+                buses.sort_by_key(|bus| bus.id);
+                buses
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, bus)| ControlBus {
+                        id: bus.id,
+                        index: index as i64,
+                        channel_count: bus.channels.len(),
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                    })
+                    .collect()
+            },
             apply_n_cycles: state.global.apply_n_cycles,
             solo: state.global.solo,
             sync_active: state.global.sync,

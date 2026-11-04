@@ -104,6 +104,64 @@ fn controlled_mode_renders_exactly_the_requested_frames() {
     assert!(report.stopped.is_ok());
 }
 
+#[shoop_test(no_wasm = "native driver and threads")]
+fn quantum_native_startup_handles_partial_callbacks_and_returns_all_owners() {
+    for q in [16, 32, 64, 128] {
+        let mut settings = config(DummyConfig {
+            buffer_frames: 7,
+            mode: DummyMode::Controlled,
+            wrap_cycle: Some(guarded),
+            ..DummyConfig::default()
+        });
+        settings.engine.quantum = q;
+        let Started { host, mut client } = start(&settings).unwrap();
+        let dummy = host.dummy().unwrap().clone();
+        let mut received = Received::default();
+        connected(&mut client, &mut received);
+        assert!(received.lifecycle.iter().any(|m| matches!(m,
+            EngineMessage::Welcome { limits, .. } if limits.quantum == q as u32 && limits.processing_latency_frames == q as u32)));
+        let strip = strip(0);
+        for request in [
+            Request::CreateStrip {
+                strip,
+                shape: shape(1, false),
+            },
+            Request::CreateLoop {
+                loop_id: loop_id(0),
+                strip,
+            },
+            Request::LoopTransition {
+                loop_id: loop_id(0),
+                mode: LoopMode::Recording,
+                delay: None,
+            },
+        ] {
+            let correlation = client.request(request).unwrap();
+            until(&mut client, &mut received, |r| {
+                if r.results.contains_key(&correlation) {
+                    return true;
+                }
+                dummy.request_frames(q as u64);
+                assert!(dummy.wait_rendered(Duration::from_secs(5)));
+                false
+            });
+            assert_eq!(received.results[&correlation], Outcome::Done);
+        }
+        let before = host.status().next_frame;
+        dummy.request_frames((2 * q + 3) as u64);
+        assert!(dummy.wait_rendered(Duration::from_secs(5)));
+        assert_eq!(host.status().next_frame, before + (2 * q + 3) as u64);
+        assert_eq!(host.status().phase, RenderPhase::Running);
+        drop(client);
+        let stopped = host.stop().stopped.unwrap();
+        assert_eq!(
+            stopped.resource_usage().free_pages,
+            settings.engine.resource_pages
+        );
+        assert_eq!(HEAP_OPERATIONS.load(Ordering::Relaxed), 0);
+    }
+}
+
 #[shoop_test(no_wasm = "the native host does not build for wasm")]
 fn buffers_above_the_prepared_maximum_are_refused() {
     let refused = start(&config(DummyConfig {

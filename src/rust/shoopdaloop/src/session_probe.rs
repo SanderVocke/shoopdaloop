@@ -7,13 +7,13 @@ use shoop_egui::{
     LoopAction, LoopMode, MidiNote, PianoAction, TrackAction, TrackSpec, TrackSpecTopology,
 };
 use shoop_host::{
+    config::AppTransport,
     config::HostConfig,
     connection::{self, Connection},
-    registry::{AppTransport, Registry},
     remote::Target as HostEntry,
 };
 use std::{
-    process::{Child, Command as Process, Stdio},
+    process::Child,
     time::{Duration, Instant},
 };
 
@@ -43,13 +43,19 @@ fn wait(
                 .map_err(|error| anyhow!("probe readiness: {error:?}"))?;
         }
         ensure!(client.state() != State::Lost, "probe client lost its host");
-        ensure!(Instant::now() < deadline, "session probe timed out");
+        ensure!(
+            Instant::now() < deadline,
+            "session probe timed out: state={:?}, pending={:?}, profiling={:?}",
+            client.state(),
+            client.pending(),
+            client.snapshot().map(|s| &s.profiling)
+        );
         std::thread::sleep(Duration::from_millis(2));
     }
     Ok(())
 }
 fn attach(entry: &HostEntry) -> Result<(Client, Connection)> {
-    attach_as(entry, ClientId(shoop_host::registry::identity()?))
+    attach_as(entry, ClientId(shoop_host::remote::identity()?))
 }
 fn attach_as(entry: &HostEntry, _actor: ClientId) -> Result<(Client, Connection)> {
     let mut connection = connection::connect(entry, Duration::from_secs(3))?;
@@ -98,17 +104,19 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
 fn launch(
     transport: EngineTransportKind,
     memory_mb: u32,
-) -> Result<(tempfile::TempDir, ProbeHost, std::path::PathBuf, HostEntry)> {
+) -> Result<(tempfile::TempDir, ProbeHost, HostEntry)> {
     ensure!(
         transport != EngineTransportKind::InProcess,
         "session companion probe requires socket or shared_memory"
     );
     let root = tempfile::tempdir()?;
-    let registry = Registry::open(&root.path().join("registry"))?;
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
             pools: shoop_egui::NewEnginePools {
+                quantum: 32,
+                buses: 8,
+                bus_channels: 8,
                 tracks: 3,
                 loops: 20,
                 channels: 2,
@@ -123,67 +131,44 @@ fn launch(
         },
         ..Default::default()
     };
-    let config_file = root.path().join("config.json");
-    std::fs::write(&config_file, serde_json::to_vec(&config)?)?;
     let companion = shoop_host::launch::companion_path(&std::env::current_exe()?)?;
     let lan = std::env::var("SHOOP_PROBE_LAN").is_ok_and(|value| value == "1");
     ensure!(
         !lan || transport == EngineTransportKind::Socket,
         "LAN probes require socket delivery"
     );
-    let profile_path = root.path().join("remote.json");
-    let mut command = Process::new(companion);
-    command
-        .arg("--config")
-        .arg(config_file)
-        .arg("--registry")
-        .arg(registry.root())
-        .env("RUST_LOG", "shoop_rt_backend=debug")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit());
-    if lan {
-        let credential = root.path().join("host.key");
-        shoop_host::remote::create_credential(&credential)?;
-        command
-            .arg("--lan")
-            .arg("--endpoint")
-            .arg("127.0.0.1:0")
-            .arg("--management-endpoint")
-            .arg("127.0.0.1:0")
-            .arg("--credential-file")
-            .arg(credential)
-            .arg("--export-profile")
-            .arg(&profile_path);
+    let mut options = shoop_host::serve::StartOptions::new()?;
+    options.lan = lan;
+    let (child, entry) = shoop_host::launch::spawn(&config, options, &companion)?;
+    let host = ProbeHost(child);
+    ensure!(
+        std::fs::read_dir(root.path())?.count() == 0,
+        "ordinary launch wrote host configuration or records"
+    );
+    for address in [&entry.endpoint, &entry.management] {
+        let description = connection::describe(address, Duration::from_secs(2))?;
+        ensure!(
+            description.instance == entry.instance
+                && description.process == entry.process
+                && description.can_attach,
+            "inspection changed the host or consumed its attachment"
+        );
     }
-    let mut host = ProbeHost(command.spawn()?);
-    let deadline = Instant::now() + Duration::from_secs(12);
-    let (path, entry) = loop {
-        if lan {
-            if profile_path.exists() {
-                break (
-                    profile_path.clone(),
-                    shoop_host::remote::RemoteProfile::read(&profile_path)?.into(),
-                );
-            }
-        } else if let Some((path, entry)) = registry.list()?.into_iter().next() {
-            break (path, HostEntry::from(entry));
-        }
-        ensure!(
-            host.0.try_wait()?.is_none(),
-            "session companion failed before readiness"
-        );
-        ensure!(
-            Instant::now() < deadline,
-            "session companion startup timed out"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    };
-    Ok((root, host, path, entry))
+    shoop_host_manager::verify_host_discovery(&entry, Some((false, true)))?;
+    Ok((root, host, entry))
 }
+
 pub fn run(transport: EngineTransportKind) -> Result<()> {
-    let (_root, mut host, path, entry) = launch(transport, 16)?;
+    let (root, mut host, entry) = launch(transport, 16)?;
     let (mut client, mut connection) = attach(&entry)?;
+    ensure!(
+        !client.snapshot().unwrap().profiling.requested,
+        "profiling must default off"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    wait(&mut client, &mut connection, |client| {
+        client.snapshot().unwrap().profiling.active
+    })?;
     command(
         &mut client,
         &mut connection,
@@ -239,7 +224,33 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         &mut connection,
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
+    wait(&mut client, &mut connection, |client| {
+        client
+            .snapshot()
+            .unwrap()
+            .profiling
+            .live
+            .rows
+            .iter()
+            .any(|row| row.samples > 0)
+    })?;
+    let profile_generation = client.snapshot().unwrap().profiling.generation;
+    ensure!(
+        client
+            .snapshot()
+            .unwrap()
+            .profiling
+            .live
+            .rows
+            .iter()
+            .any(|row| row.name.contains("playback")),
+        "profiling lost node metadata"
+    );
     let before = client.snapshot().unwrap().status.processed_frames;
+    shoop_host_manager::verify_host_discovery(
+        &entry,
+        Some((true, transport == EngineTransportKind::Socket)),
+    )?;
     if transport == EngineTransportKind::Socket {
         drop(connection);
         std::thread::sleep(Duration::from_millis(50));
@@ -290,6 +301,27 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             && media.midi[0].events.len() == 2,
         "recorded audio/MIDI was not preserved"
     );
+    ensure!(
+        client.snapshot().unwrap().profiling.generation >= profile_generation,
+        "profiling generation regressed"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(false))?;
+    wait(&mut client, &mut connection, |client| {
+        !client.snapshot().unwrap().profiling.active
+    })?;
+    ensure!(
+        !client.snapshot().unwrap().profiling.live.rows.is_empty(),
+        "disabling lost the final report"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    wait(&mut client, &mut connection, |client| {
+        let profiling = &client.snapshot().unwrap().profiling;
+        profiling.active && profiling.generation > profile_generation
+    })?;
+    println!(
+        "Profiling {}: default off, live names/statistics, recovery and runtime toggles passed",
+        transport.id()
+    );
     let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
     crate::recovery::shutdown(&entry, ticket)
         .0
@@ -303,13 +335,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         ensure!(Instant::now() < deadline, "host did not exit after cleanup");
         std::thread::sleep(Duration::from_millis(5));
     }
+    shoop_host_manager::verify_host_discovery(&entry, None)?;
     ensure!(
-        if entry.network.is_some() {
-            path.exists() && entry.credential.exists()
-        } else {
-            !path.exists() && !entry.credential.exists()
-        },
-        "session registration was not cleaned up"
+        std::fs::read_dir(root.path())?.count() == 0,
+        "normal host workflow wrote persistent metadata"
     );
     Ok(())
 }
@@ -405,7 +434,7 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         transport = transport.id()
     )
     .entered();
-    let (root, mut host, path, entry) = launch(transport, 192)?;
+    let (root, mut host, entry) = launch(transport, 192)?;
     let app = crate::application::ApplicationRuntime::attach(
         entry.clone(),
         crate::application::ApplicationStartOptions {
@@ -607,12 +636,8 @@ pub fn files(transport: EngineTransportKind) -> Result<()> {
         std::thread::sleep(Duration::from_millis(5));
     }
     ensure!(
-        if entry.network.is_some() {
-            path.exists() && entry.credential.exists()
-        } else {
-            !path.exists() && !entry.credential.exists()
-        },
-        "file companion registration was not cleaned up"
+        !root.path().join("config.json").exists() && !root.path().join("remote.json").exists(),
+        "file companion workflow wrote host profiles/configuration"
     );
     println!("Persistence {}: >32 MiB WAV/exact-MIDI, native output/input, corrupt refusal, fresh load and exact resave passed", transport.id());
     Ok(())
@@ -665,7 +690,7 @@ fn socket_file_loss(
     };
     let source =
         Source::new(std::sync::Arc::clone(&image)).map_err(|error| anyhow!("{error:?}"))?;
-    let actor = ClientId(shoop_host::registry::identity()?);
+    let actor = ClientId(shoop_host::remote::identity()?);
     let (mut client, mut connection) = attach_as(entry, actor)?;
     let epoch = client.snapshot().unwrap().persistence_epoch;
     let old_track = client.snapshot().unwrap().tracks[1].id;

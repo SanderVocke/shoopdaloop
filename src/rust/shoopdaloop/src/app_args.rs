@@ -12,62 +12,46 @@ pub enum SettingsTest {
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(name = "shoopdaloop", about = "ShoopDaLoop application")]
-#[cfg_attr(not(target_arch = "wasm32"), command(group = clap::ArgGroup::new("connection_target").args(["host_file","remote_profile"])))]
 pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_config", conflicts_with = "ui_only")]
-    pub host_only: bool,
+    #[command(flatten)]
+    pub audio: shoop_host::audio_args::AudioArgs,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
-    pub host_config: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub host_registry: Option<std::path::PathBuf>,
+    pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
     pub endpoint: Option<std::net::SocketAddr>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long)]
-    pub management_endpoint: Option<std::net::SocketAddr>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_only")]
-    pub lan: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub advertise_data: Option<String>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub advertise_management: Option<String>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
     pub export_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub heartbeat_interval_ms: Option<u64>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub heartbeat_timeout_ms: Option<u64>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub snapshot_hz: Option<u32>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub credential_file: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub list_hosts: bool,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
-    pub host_file: Option<std::path::PathBuf>,
-    #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, conflicts_with = "host_only")]
+    #[arg(
+        long = "host-profile",
+        visible_alias = "remote-profile",
+        group = "host_target",
+        conflicts_with = "audio_options"
+    )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "connection_target")]
+    /// Connect to a host's data or management address (HOST:PORT).
+    #[arg(long, group = "host_target", conflicts_with = "audio_options")]
+    pub host_address: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(
+        long,
+        hide = true,
+        group = "host_target",
+        conflicts_with = "audio_options",
+        requires = "ui_only"
+    )]
+    pub host_stdin: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[arg(long, requires = "host_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    /// Shut down the selected ownerless host using authenticated management authority.
-    #[arg(long, requires = "connection_target", conflicts_with = "ui_only")]
+    /// Shut down the selected ownerless host using current management authority.
+    #[arg(long, requires = "host_target", conflicts_with = "ui_only")]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
@@ -143,6 +127,44 @@ pub struct AppArgs {
 }
 
 impl AppArgs {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configured_audio_driver(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> Result<shoop_egui::AudioDriverConfig, String> {
+        let kind = self
+            .audio
+            .audio_driver
+            .map(|driver| Ok(driver.kind()))
+            .unwrap_or_else(|| shoop_egui::selected_audio_driver(settings))?;
+        let config = shoop_egui::audio_driver_config_from_snapshot(settings, kind)?;
+        self.audio.apply(config).map_err(|error| error.to_string())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn host_target(&self) -> anyhow::Result<Option<shoop_host::remote::Target>> {
+        if self.host_stdin {
+            let address: String = shoop_host::launch::read_message(std::io::stdin().lock())?;
+            return Ok(Some(shoop_host::connection::describe(
+                &address,
+                std::time::Duration::from_secs(3),
+            )?));
+        }
+        let address = match (&self.host_address, &self.remote_profile) {
+            (Some(address), _) => address.clone(),
+            (_, Some(path)) => {
+                return Ok(Some(shoop_host::connection::resolve_target(
+                    &shoop_host::remote::RemoteProfile::read(path)?,
+                    std::time::Duration::from_secs(3),
+                )?))
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(shoop_host::connection::describe(
+            &address,
+            std::time::Duration::from_secs(3),
+        )?))
+    }
     pub fn selected_engine_transport(
         &self,
         settings: &shoop_settings::SettingsSnapshot,
@@ -232,6 +254,54 @@ mod native_tests {
     use super::*;
 
     #[shoop_wasm_test_support::shoop_test]
+    fn native_host_roles_do_not_require_profile_or_config_files() {
+        for flag in ["--host-only", "--manage-hosts", "--host-config", "--lan"] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", flag]).is_err());
+        }
+        for role in ["--ui-only", "--shutdown-host"] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", role]).is_err());
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                role,
+                "--host-address",
+                "127.0.0.1:12345"
+            ])
+            .is_ok());
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                role,
+                "--host-profile",
+                "advanced.json"
+            ])
+            .is_ok());
+        }
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--host-address",
+            "127.0.0.1:12345",
+            "--host-profile",
+            "advanced.json"
+        ])
+        .is_err());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--ui-only", "--host-stdin"]).is_ok());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--host-stdin"]).is_err());
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--ui-only",
+            "--host-stdin",
+            "--host-address=127.0.0.1:12345"
+        ])
+        .is_err());
+        for flag in [
+            "--credential-file",
+            "--generate-credential",
+            "--host-registry",
+        ] {
+            assert!(AppArgs::try_parse_from(["shoopdaloop", flag, "removed"]).is_err());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn cli_parses_session_source() {
         let args = AppArgs::try_parse_from([
             "shoopdaloop",
@@ -281,6 +351,73 @@ mod native_tests {
             assert_eq!(args.selected_engine_transport(&settings).unwrap(), kind);
         }
         assert!(AppArgs::try_parse_from(["shoopdaloop", "--engine-transport=ipc"]).is_err());
+    }
+
+    #[cfg(feature = "jack")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn jack_cli_uses_the_saved_jack_profile_without_changing_preferences() {
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::SELECTED_AUDIO_DRIVER, "dummy".into());
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        for transport in ["in_process", "socket", "shared_memory"] {
+            let args = AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--session-transport",
+                transport,
+                "--audio-driver",
+                "jack",
+                "--jack-client-name",
+                "Live",
+            ])
+            .unwrap();
+            let shoop_egui::AudioDriverConfig::Jack(config) =
+                args.configured_audio_driver(&settings).unwrap()
+            else {
+                panic!("direct JACK expected");
+            };
+            assert_eq!(config.client_name, "Live");
+        }
+        assert_eq!(
+            settings.get(shoop_egui::SELECTED_AUDIO_DRIVER).unwrap(),
+            "dummy"
+        );
+        assert_eq!(
+            settings.get(shoop_egui::JACK_CLIENT_NAME).unwrap(),
+            "ShoopDaLoop"
+        );
+        for target in ["--host-address", "--host-profile", "--remote-profile"] {
+            assert!(AppArgs::try_parse_from([
+                "shoopdaloop",
+                "--audio-driver",
+                "jack",
+                target,
+                "existing-host",
+            ])
+            .is_err());
+        }
+        let original = [
+            "--session-transport=socket",
+            "--audio-driver=jack",
+            "--jack-client-name",
+            "Live",
+        ];
+        let mut child = vec![std::ffi::OsString::from("shoopdaloop")];
+        child.extend(shoop_host::audio_args::AudioArgs::without_overrides(
+            original.map(std::ffi::OsString::from),
+        ));
+        child.extend(["--ui-only", "--host-stdin"].map(std::ffi::OsString::from));
+        let args = AppArgs::try_parse_from(child).unwrap();
+        assert!(args.audio.audio_driver.is_none() && args.host_stdin && args.ui_only);
     }
 
     #[shoop_wasm_test_support::shoop_test]

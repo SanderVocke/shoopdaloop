@@ -128,7 +128,6 @@ fn prepare_mode(
         budgets: Budgets {
             commands: 8,
             events: 8,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 8,
@@ -139,6 +138,7 @@ fn prepare_mode(
     .expect("fixture configuration");
     let resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,

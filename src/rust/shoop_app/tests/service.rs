@@ -8,6 +8,7 @@ use shoop_wasm_test_support::shoop_test;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -43,6 +44,7 @@ struct Fixture {
     waits: Rc<Cell<usize>>,
     initial_waits: usize,
     refuse_next_loop: Rc<Cell<bool>>,
+    refuse_next_bus: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
     fixture_with_inventory(None)
@@ -50,16 +52,28 @@ fn fixture() -> Fixture {
 fn fixture_with_inventory(
     inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
 ) -> Fixture {
+    fixture_with_options(2, inventory)
+}
+fn fixture_with_outputs(outputs: usize) -> Fixture {
+    fixture_with_options(outputs, None)
+}
+fn fixture_with_options(
+    outputs: usize,
+    inventory: Option<Box<dyn shoop_rt_backend::HostPortInventory>>,
+) -> Fixture {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
-        host: HostPorts::numbered(2, 2, 1),
+        host: HostPorts::numbered(2, outputs, 1),
         segments: vec![Segment {
             strips: 8,
             loops: 80,
         }],
         strip_channels: 2,
         master_channels: 2,
+        buses: 8,
+        bus_channels: 8,
         master_connections: Vec::new(),
         ramp_frames: 4,
         resource_pages: 4096,
@@ -82,9 +96,11 @@ fn fixture_with_inventory(
         waits: Rc::clone(&waits),
     };
     let refuse_next_loop = Rc::new(Cell::new(false));
+    let refuse_next_bus = Rc::new(Cell::new(false));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
+        refuse_bus: Rc::clone(&refuse_next_bus),
         reply: None,
     });
     let mut backend = RtBackend::connect(client, clock).unwrap();
@@ -119,6 +135,7 @@ fn fixture_with_inventory(
         waits,
         initial_waits,
         refuse_next_loop,
+        refuse_next_bus,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -206,6 +223,413 @@ fn new_track(name: &str, midi: bool) -> Command {
         initial_output_bus_names: vec!["Master".to_owned()],
         creation_request_id: None,
     })
+}
+
+#[shoop_test]
+fn buses_round_trip_order_routes_zero_and_reconcile_admitted_mutations_after_ui_loss() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut client = attach(&mut f.service, 6001, ConnectionId(1), encoded);
+        let run = |f: &mut Fixture, client: &mut Client, value| {
+            let id = submit(&mut f.service, client, ConnectionId(1), value);
+            complete(&mut f.service, client, ConnectionId(1), id, encoded)
+        };
+        for (name, channel_count) in [("Cue", 2), ("Wide", 8)] {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::AddBus(BusSpec {
+                        name: name.into(),
+                        channel_count,
+                        creation_request_id: None,
+                        fx: None
+                    })
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let buses = client.snapshot().unwrap().buses.clone();
+        let master = buses[0].id;
+        let cue = buses[1].id;
+        let wide = buses[2].id;
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Control(ControlOperation::SetBusBalance {
+                    buses: vec![cue, wide],
+                    balance: 0.5,
+                })
+            ),
+            Outcome::Refused { .. }
+        ));
+        for _ in 0..20 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .all(|bus| bus.balance == 0.));
+        for operation in [
+            ControlOperation::SetBusGain {
+                buses: vec![cue, wide],
+                gain_db: -6.,
+            },
+            ControlOperation::SetBusMuted {
+                buses: vec![cue, wide],
+                muted: true,
+            },
+        ] {
+            assert!(matches!(
+                run(&mut f, &mut client, Command::Control(operation)),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(client.snapshot().unwrap().buses[1..]
+            .iter()
+            .all(|bus| bus.gain_db == -6. && bus.muted));
+        assert!(matches!(
+            run(
+                &mut f,
+                &mut client,
+                Command::Bus {
+                    bus: wide,
+                    action: BusAction::MoveBefore(Some(master))
+                }
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        for action in [
+            BusAction::GainChanged(-6.),
+            BusAction::BalanceChanged(0.25),
+            BusAction::MuteChanged(true),
+        ] {
+            assert!(matches!(
+                run(&mut f, &mut client, Command::Bus { bus: cue, action }),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        let Command::AddTrack(mut spec) = new_track("Fanout", false) else {
+            unreachable!()
+        };
+        spec.initial_output_bus_names = vec![
+            "Master".into(),
+            "Cue".into(),
+            "Wide".into(),
+            "Missing".into(),
+        ];
+        created(run(&mut f, &mut client, Command::AddTrack(spec)));
+        assert_eq!(client.snapshot().unwrap().connections.mixer_links.len(), 12);
+        let old_ids = client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .map(|b| b.id)
+            .collect::<Vec<_>>();
+        let image = capture_image(&mut f.service, &mut client, 1, encoded);
+        release_image(&mut f.service, &mut client, 1, 1, encoded);
+        let key = stage_image(&mut f.service, &mut client, 2, image, encoded);
+        assert!(matches!(
+            run(&mut f, &mut client, Command::CommitPersistence(key)),
+            Outcome::Confirmed { .. }
+        ));
+        let loaded = client.snapshot().unwrap();
+        let mut logical_order = loaded.buses.iter().collect::<Vec<_>>();
+        logical_order.sort_by_key(|bus| bus.id);
+        assert_eq!(
+            logical_order
+                .iter()
+                .map(|bus| bus.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Master", "Cue", "Wide"]
+        );
+        assert_eq!(
+            loaded
+                .buses
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Wide", "Master", "Cue"]
+        );
+        assert!(loaded.buses.iter().all(|b| !old_ids.contains(&b.id)));
+        assert_eq!(loaded.connections.mixer_links.len(), 12);
+        assert_eq!(loaded.buses[2].gain_db, -6.);
+        assert_eq!(loaded.buses[2].balance, 0.25);
+        assert!(loaded.buses[2].muted);
+        assert_eq!(loaded.buses[0].gain_db, -6.);
+        assert!(loaded.buses[0].muted);
+        let ids = loaded.buses.iter().map(|b| b.id).collect::<Vec<_>>();
+        for bus in ids {
+            assert!(matches!(
+                run(
+                    &mut f,
+                    &mut client,
+                    Command::Bus {
+                        bus,
+                        action: BusAction::Remove
+                    }
+                ),
+                Outcome::Confirmed { .. }
+            ));
+        }
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .connections
+            .mixer_links
+            .is_empty());
+        let image = capture_image(&mut f.service, &mut client, 3, encoded);
+        release_image(&mut f.service, &mut client, 3, 2, encoded);
+        let persistence_image::Manifest::Session(session) = &image.manifest else {
+            panic!()
+        };
+        assert!(session.buses.is_empty() && session.bus_display_order.is_empty());
+        let key = stage_image(&mut f.service, &mut client, 4, image, encoded);
+        assert!(matches!(
+            run(&mut f, &mut client, Command::CommitPersistence(key)),
+            Outcome::Confirmed { .. }
+        ));
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        let accepted = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddBus(BusSpec {
+                name: "After loss".into(),
+                channel_count: 1,
+                creation_request_id: None,
+                fx: None,
+            }),
+        );
+        f.service.detach(ConnectionId(1));
+        for _ in 0..20 {
+            f.service.tick(STEP);
+        }
+        assert!(f
+            .service
+            .snapshot()
+            .results
+            .iter()
+            .any(|r| r.id == accepted && matches!(r.outcome, Outcome::Confirmed { .. })));
+        client = attach(&mut f.service, 6002, ConnectionId(1), encoded);
+        assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+        assert_eq!(client.snapshot().unwrap().buses[0].name, "After loss");
+        let bus = client.snapshot().unwrap().buses[0].id;
+        for (index, action) in [
+            BusAction::GainChanged(-9.),
+            BusAction::MuteChanged(true),
+            BusAction::Remove,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            f.advance.set(false);
+            let accepted = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::Bus { bus, action },
+            );
+            f.service.detach(ConnectionId(1));
+            client = attach(
+                &mut f.service,
+                6003 + index as u128,
+                ConnectionId(1),
+                encoded,
+            );
+            assert!(client
+                .snapshot()
+                .unwrap()
+                .pending
+                .iter()
+                .any(|op| op.id == accepted));
+            f.advance.set(true);
+            for _ in 0..100 {
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+                if client.snapshot().unwrap().results.iter().any(|result| {
+                    result.id == accepted && matches!(result.outcome, Outcome::Confirmed { .. })
+                }) {
+                    break;
+                }
+            }
+            assert!(client.snapshot().unwrap().results.iter().any(|result| {
+                result.id == accepted && matches!(result.outcome, Outcome::Confirmed { .. })
+            }));
+            if index < 2 {
+                assert_eq!(client.snapshot().unwrap().buses[0].gain_db, -9.);
+                assert_eq!(client.snapshot().unwrap().buses[0].muted, index == 1);
+            }
+        }
+        assert!(client.snapshot().unwrap().buses.is_empty());
+        assert!(matches!(
+            run(&mut f, &mut client, Command::NewSession),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+        assert_eq!(client.snapshot().unwrap().buses[0].name, "Master");
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}
+
+#[shoop_test]
+fn refused_bus_structure_reconciles_ports_and_retains_a_removable_survivor() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 6100, ConnectionId(1), false);
+    let before = client
+        .snapshot()
+        .unwrap()
+        .connections
+        .application_ports
+        .len();
+    let add = || {
+        Command::AddBus(BusSpec {
+            name: "Cue".into(),
+            channel_count: 2,
+            creation_request_id: None,
+            fx: None,
+        })
+    };
+    f.refuse_next_bus.set(true);
+    let operation = submit(&mut f.service, &mut client, ConnectionId(1), add());
+    let reserved = f.service.snapshot().buses[1].id;
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            operation,
+            false
+        ),
+        Outcome::Refused { .. }
+    ));
+    assert_eq!(client.snapshot().unwrap().buses.len(), 1);
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .len(),
+        before
+    );
+    assert!(matches!(
+        command(&mut f.service, &mut client, ConnectionId(1), add()),
+        Outcome::Confirmed { .. }
+    ));
+    let bus = client.snapshot().unwrap().buses[1].id;
+    assert_ne!(bus, reserved);
+    f.refuse_next_bus.set(true);
+    let removal = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Bus {
+            bus,
+            action: BusAction::Remove,
+        },
+    );
+    let addition = submit(&mut f.service, &mut client, ConnectionId(1), add());
+    assert!(matches!(
+        complete(&mut f.service, &mut client, ConnectionId(1), removal, false,),
+        Outcome::Refused { .. }
+    ));
+    assert!(matches!(
+        complete(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            addition,
+            false
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let state = client.snapshot().unwrap();
+    assert_eq!(state.buses[1].id, bus);
+    assert_eq!(state.buses[1].structural_state, StructuralState::Confirmed);
+    assert!(state.buses[1].structural_error.is_some());
+    assert_eq!(state.connections.application_ports.len(), before + 4);
+    let added = state.buses[2].id;
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus,
+                action: BusAction::Remove
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus: added,
+                action: BusAction::Remove,
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(
+        client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .len(),
+        before
+    );
+}
+
+#[shoop_test]
+fn default_bus_bootstrap_and_reset_from_zero_fan_out_to_a_mono_host() {
+    let mut f = fixture_with_outputs(1);
+    let mut client = attach(&mut f.service, 6200, ConnectionId(1), false);
+    let initial = client.snapshot().unwrap();
+    assert_eq!(initial.connections.confirmed_links.len(), 2);
+    assert_eq!(
+        initial.connections.confirmed_links[0].host_port_id,
+        initial.connections.confirmed_links[1].host_port_id
+    );
+    let bus = initial.buses[0].id;
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Bus {
+                bus,
+                action: BusAction::Remove
+            }
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::NewSession
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let reset = client.snapshot().unwrap();
+    assert_eq!(reset.buses.len(), 1);
+    assert_eq!(reset.connections.confirmed_links.len(), 2);
+    assert_eq!(
+        reset.connections.confirmed_links[0].host_port_id,
+        reset.connections.confirmed_links[1].host_port_id
+    );
 }
 fn created(outcome: Outcome) -> (TrackId, Vec<LoopId>) {
     let Outcome::TrackCreated { track, loops, .. } = outcome else {
@@ -939,6 +1363,7 @@ fn shutdown_waits_for_engine_outcomes_and_host_cleanup_and_allows_failure_retry(
 struct RefuseLoop<C> {
     inner: C,
     refuse: Rc<Cell<bool>>,
+    refuse_bus: Rc<Cell<bool>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -948,6 +1373,24 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::CreateBus { .. }
+                | shoop_rt_protocol::Request::RemoveBus { .. },
+        } = message
+        {
+            if self.refuse_bus.replace(false) {
+                assert!(self.reply.is_none());
+                self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                    correlation,
+                    outcome: shoop_rt_protocol::Outcome::Refused(
+                        shoop_rt_protocol::Refusal::Capacity,
+                    ),
+                });
+                return Ok(());
+            }
+        }
         if let shoop_rt_protocol::ClientMessage::Request {
             correlation,
             request: shoop_rt_protocol::Request::CreateLoop { .. },
@@ -1318,7 +1761,10 @@ fn temporary_parity_gaps_refuse_file_preview_and_driver_work_without_mutating_th
     for capability in BackendCapability::ALL {
         assert_eq!(
             state.capabilities.supports(capability),
-            capability == BackendCapability::MidiInjection
+            matches!(
+                capability,
+                BackendCapability::MidiInjection | BackendCapability::BusManagement
+            )
         );
     }
     assert!(runtime.take_file_output().is_none());
@@ -2777,4 +3223,454 @@ fn observe_host_result(
         }
     }
     panic!("host operation did not finish");
+}
+
+#[shoop_test]
+fn graph_commands_wait_for_host_observation_and_reconcile_after_ui_detach() {
+    use shoop_port_graph::{
+        self as graph,
+        testing::{perform, FakeProvider},
+    };
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut provider = FakeProvider::new(4);
+        let mut control = provider.control();
+        let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+        let logical = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.data_type == PortDataType::Audio && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        let key = graph::LocalPortKey(1001);
+        let graph::Outcome::Published { port: local, .. } = perform(
+            &mut control,
+            graph::Operation::Publish {
+                key,
+                spec: graph::PortSpec {
+                    name: "shared label".into(),
+                    data_type: PortDataType::Audio,
+                    direction: PortDirection::Output,
+                },
+            },
+            || provider.advance(),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        let peer = provider.peer(graph::PortSpec {
+            name: "shared label".into(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Input,
+        });
+        f.service
+            .set_host_graph_controller(Box::new(control))
+            .unwrap();
+        f.service.bind_host_publication(logical, Some(key)).unwrap();
+        assert!(f
+            .service
+            .set_host_graph_controller(Box::new(provider.control()))
+            .is_err());
+        let other = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.id != logical
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        assert!(f.service.bind_host_publication(other, Some(key)).is_err());
+
+        let request = HostGraphRequest {
+            epoch: 4,
+            local,
+            peer,
+            connected: true,
+        };
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::SetHostGraphConnected(request.clone()),
+        );
+        for _ in 0..4 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p.id == id));
+        assert!(!client.results().contains_key(&id));
+        assert!(client.snapshot().unwrap().host_graph.links.is_empty());
+        let stale_message = client
+            .command(Command::SetHostGraphConnected(request.clone()), None)
+            .unwrap();
+        f.service.detach(ConnectionId(1));
+        provider.advance();
+        assert!(!provider.control().snapshot().connected(local, peer));
+        provider.advance();
+        f.service.tick(STEP);
+        let mut client = attach(&mut f.service, 2, ConnectionId(2), encoded);
+        let state = client.snapshot().unwrap();
+        assert!(state.host_graph.valid());
+        assert_eq!(state.host_graph.links.len(), 1);
+        assert!(state.pending.is_empty());
+        assert!(state
+            .results
+            .iter()
+            .any(|r| r.id == id && matches!(r.outcome, Outcome::Confirmed { .. })));
+        let binding = state
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == logical)
+            .unwrap()
+            .publication
+            .unwrap();
+        assert!(
+            matches!(state.host_graph.publication(binding).unwrap().state, HostGraphPublicationState::Published(port) if port == local)
+        );
+        assert_eq!(
+            f.service.handle(ConnectionId(1), stale_message),
+            Err(Refusal::StaleAuthority)
+        );
+        provider.fail_next(graph::Error::new(
+            graph::ErrorKind::Backend,
+            "connection refused by provider",
+        ));
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetHostGraphConnected(HostGraphRequest {
+                connected: false,
+                ..request
+            }),
+        );
+        provider.advance();
+        provider.advance();
+        assert!(matches!(
+            complete(&mut f.service, &mut client, ConnectionId(2), id, encoded),
+            Outcome::Refused {
+                reason: Refusal::Engine,
+                ..
+            }
+        ));
+        assert_eq!(client.snapshot().unwrap().host_graph.links.len(), 1);
+        f.service.bind_host_publication(logical, None).unwrap();
+    }
+}
+#[shoop_test]
+fn graph_control_is_explicitly_unsupported_without_a_host_adapter() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1, ConnectionId(1), false);
+    assert_eq!(
+        client.snapshot().unwrap().host_graph.status,
+        HostGraphStatus::Unsupported
+    );
+    let outcome = command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::SetHostGraphConnected(HostGraphRequest {
+            epoch: 1,
+            local: HostGraphPortId(1),
+            peer: HostGraphPortId(2),
+            connected: true,
+        }),
+    );
+    assert!(matches!(
+        outcome,
+        Outcome::Refused {
+            reason: Refusal::Unsupported,
+            ..
+        }
+    ));
+}
+
+struct BoundProvider {
+    control: shoop_port_graph::Control,
+    refuse_unpublish: Arc<Mutex<Option<(String, shoop_port_graph::ErrorKind)>>>,
+}
+impl shoop_port_graph::Controller for BoundProvider {
+    fn supports_io_binding(&self) -> bool {
+        true
+    }
+    fn io_binding(
+        &self,
+        key: shoop_port_graph::LocalPortKey,
+    ) -> Option<shoop_port_graph::IoBinding> {
+        use shoop_port_graph::{DataType, Direction, PublicationState};
+        let snapshot = self.control.snapshot();
+        let publication = snapshot.publication(key)?;
+        if !matches!(publication.state, PublicationState::Published(_)) {
+            return None;
+        }
+        let port = match (publication.spec.data_type, publication.spec.direction) {
+            (DataType::Audio, Direction::Input) => "audio_in_1",
+            (DataType::Audio, Direction::Output) => "audio_out_1",
+            (DataType::Midi, Direction::Input) => "midi_in_1",
+            (DataType::Midi, Direction::Output) => "midi_out_1",
+        };
+        Some(shoop_port_graph::IoBinding { port: port.into() })
+    }
+    fn snapshot(&mut self) -> std::sync::Arc<shoop_port_graph::Snapshot> {
+        self.control.snapshot()
+    }
+    fn submit(
+        &mut self,
+        request: shoop_port_graph::Request,
+    ) -> Result<shoop_port_graph::OperationId, shoop_port_graph::Error> {
+        if let shoop_port_graph::Operation::Unpublish { key } = &request.operation {
+            let mut refusal = self.refuse_unpublish.lock().unwrap();
+            if refusal.as_ref().is_some_and(|(name, _)| {
+                self.control
+                    .snapshot()
+                    .publication(*key)
+                    .is_some_and(|port| port.spec.name == *name)
+            }) {
+                let (_, kind) = refusal.take().unwrap();
+                return Err(shoop_port_graph::Error::new(
+                    kind,
+                    "unpublish admission refused",
+                ));
+            }
+        }
+        if let shoop_port_graph::Operation::Publish { key, spec } = &request.operation {
+            assert!(
+                !self
+                    .control
+                    .snapshot()
+                    .ports
+                    .iter()
+                    .any(|port| { port.name == spec.name && port.local != Some(*key) }),
+                "publication reused a physical name before retirement"
+            );
+        }
+        self.control.submit(request)
+    }
+    fn take_result(&mut self) -> Option<shoop_port_graph::Completion> {
+        self.control.take_result()
+    }
+}
+#[shoop_test]
+fn application_publication_is_provider_independent_and_failed_creation_rolls_back() {
+    use shoop_port_graph::{self as graph, testing::FakeProvider};
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut provider = FakeProvider::new(9);
+        f.service
+            .set_host_graph_controller(Box::new(BoundProvider {
+                control: provider.control(),
+                refuse_unpublish: Arc::new(Mutex::new(None)),
+            }))
+            .unwrap();
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+        }
+        assert!(f.service.is_ready());
+        let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+        let initial = client.snapshot().unwrap().host_graph.publications.len();
+        assert_eq!(initial, 4);
+        let spec = TrackSpec {
+            name: "Published".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: true,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        };
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddTrack(spec.clone()),
+        );
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(
+            !client.results().contains_key(&id),
+            "engine acknowledgement alone cannot finish creation"
+        );
+        provider.fail_next(graph::Error::new(
+            graph::ErrorKind::Backend,
+            "publication failed",
+        ));
+        for _ in 0..64 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        assert!(matches!(
+            client.results()[&id],
+            Outcome::Refused {
+                reason: Refusal::Engine,
+                ..
+            }
+        ));
+        assert_eq!(client.snapshot().unwrap().tracks.len(), 1);
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial
+        );
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddTrack(spec),
+        );
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        let Outcome::TrackCreated { track, .. } = client.results()[&id] else {
+            panic!("{:?}", client.results()[&id])
+        };
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial + 4
+        );
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Track {
+                track,
+                action: TrackAction::Remove,
+            },
+        );
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(
+            !client.results().contains_key(&id),
+            "removal waits for provider reclamation"
+        );
+        if encoded {
+            provider.fail_next(graph::Error::new(
+                graph::ErrorKind::Backend,
+                "retirement failed",
+            ));
+        }
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        if encoded {
+            assert!(matches!(
+                client.results()[&id],
+                Outcome::Refused {
+                    reason: Refusal::Engine,
+                    ..
+                }
+            ));
+        } else {
+            assert!(matches!(client.results()[&id], Outcome::Confirmed { .. }));
+        }
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial
+        );
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}
+
+#[shoop_test]
+fn session_replacement_retains_publications_until_unpublish_admission_and_completion() {
+    use shoop_port_graph::{self as graph, testing::FakeProvider};
+    for encoded in [false, true] {
+        for kind in [graph::ErrorKind::Unavailable, graph::ErrorKind::Backend] {
+            let mut f = fixture();
+            let mut provider = FakeProvider::new(9);
+            let refusal = Arc::new(Mutex::new(None));
+            f.service
+                .set_host_graph_controller(Box::new(BoundProvider {
+                    control: provider.control(),
+                    refuse_unpublish: Arc::clone(&refusal),
+                }))
+                .unwrap();
+            for _ in 0..32 {
+                provider.advance();
+                f.service.tick(STEP);
+            }
+            assert!(f.service.is_ready());
+            let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+            let old: Vec<_> = client.snapshot().unwrap().host_graph.publications.clone();
+            assert_eq!(old.len(), 4);
+            let image = capture_image(&mut f.service, &mut client, 1, encoded);
+            release_image(&mut f.service, &mut client, 1, 1, encoded);
+            let key = stage_image(&mut f.service, &mut client, 2, image, encoded);
+            *refusal.lock().unwrap() = Some(("sync_loop_direct_in".into(), kind));
+            let id = submit(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                Command::CommitPersistence(key),
+            );
+            for _ in 0..16 {
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            }
+            assert!(refusal.lock().unwrap().is_none());
+            if kind == graph::ErrorKind::Unavailable {
+                assert!(!client.results().contains_key(&id));
+            } else {
+                assert!(matches!(
+                    client.results()[&id],
+                    Outcome::Refused {
+                        reason: Refusal::Engine,
+                        ..
+                    }
+                ));
+            }
+            assert_eq!(provider.control().snapshot().publications, old);
+            for _ in 0..64 {
+                provider.advance();
+                f.service.tick(STEP);
+                drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+            }
+            assert_eq!(
+                matches!(client.results()[&id], Outcome::Confirmed { .. }),
+                kind == graph::ErrorKind::Unavailable
+            );
+            let snapshot = client.snapshot().unwrap();
+            assert_eq!(snapshot.host_graph.publications.len(), old.len());
+            for previous in old {
+                assert!(snapshot.host_graph.publication(previous.key).is_none());
+                if previous.spec.name.starts_with("sync_loop_") {
+                    assert_eq!(
+                        snapshot
+                            .host_graph
+                            .publications
+                            .iter()
+                            .filter(|current| current.spec.name == previous.spec.name)
+                            .count(),
+                        1
+                    );
+                }
+            }
+            assert_eq!(f.waits.get(), f.initial_waits);
+        }
+    }
 }

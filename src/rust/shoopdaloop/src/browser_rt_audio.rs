@@ -76,8 +76,11 @@ pub(crate) fn worklet_config(
     };
     let defaults = EngineDescription::default();
     let engine = EngineDescription {
+        buses: pools.buses as u8,
+        bus_channels: pools.bus_channels as u8,
         sample_rate: setup.sample_rate,
         max_frames: WORKLET_MAX_FRAMES,
+        quantum: pools.quantum as usize,
         host,
         segments: vec![Segment {
             strips: pools.tracks,
@@ -1180,6 +1183,9 @@ mod tests {
     #[shoop_test]
     fn capacity_settings_and_the_audio_setup_prepare_the_worklet() {
         let pools = NewEnginePools {
+            quantum: 32,
+            buses: 8,
+            bus_channels: 8,
             tracks: 5,
             loops: 40,
             channels: 2,
@@ -1222,6 +1228,8 @@ mod tests {
     #[shoop_test]
     fn the_browser_bounds_loop_memory_and_ports_with_warnings() {
         let pools = NewEnginePools {
+            buses: 8,
+            bus_channels: 8,
             loop_memory_mb: 2047,
             ..NewEnginePools::default()
         };

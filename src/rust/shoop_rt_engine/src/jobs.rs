@@ -46,6 +46,7 @@ pub(crate) enum Step {
     Configure,
     ContentAdopt,
     ContentSelect,
+    FamilySelect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +66,7 @@ enum Phase {
     Prepared,
     ContentSelect,
     ContentFinish,
+    FamilyFinish,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,6 +81,10 @@ enum Kind {
         frames: u64,
         audio: Option<shoop_loops::runtime::NodePairSourceId>,
         midi: Option<shoop_loops::runtime::NodePairSourceId>,
+        family: Option<usize>,
+    },
+    Family {
+        commit: bool,
     },
 }
 
@@ -111,6 +117,7 @@ pub(crate) struct Job {
     committed: bool,
     cancelled: bool,
     content_media: Option<shoop_loops::media::MediaId>,
+    content_revision: Option<rt_runtime::Revision>,
 }
 
 impl Job {
@@ -137,6 +144,7 @@ impl Job {
             committed: false,
             cancelled: false,
             content_media: None,
+            content_revision: None,
         }
     }
     pub(crate) fn batch(len: usize) -> Self {
@@ -186,7 +194,26 @@ impl Job {
             frames,
             audio,
             midi,
+            family: None,
         })
+    }
+    pub(crate) fn family_append(
+        slot: usize,
+        id: LoopSlotId,
+        frames: u64,
+        audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        midi: Option<shoop_loops::runtime::NodePairSourceId>,
+    ) -> Self {
+        Self::new(Kind::Content {
+            id,
+            frames,
+            audio,
+            midi,
+            family: Some(slot),
+        })
+    }
+    pub(crate) fn family(commit: bool) -> Self {
+        Self::new(Kind::Family { commit })
     }
     fn fail(&mut self, refusal: Refusal) {
         self.failure.get_or_insert(refusal);
@@ -195,7 +222,9 @@ impl Job {
 
 impl ControlEndpoint {
     fn configuration_nodes(&self) -> usize {
-        1 + 2 * self.next.strips.iter().flatten().count() + self.next.loops.iter().flatten().count()
+        self.next.buses.iter().flatten().count()
+            + 2 * self.next.strips.iter().flatten().count()
+            + self.next.loops.iter().flatten().count()
     }
     fn configure_replacement(&mut self, job: &mut Job) -> bool {
         if job.configured {
@@ -258,18 +287,23 @@ impl ControlEndpoint {
                 self.submit_configuration(job, self.pool.fader(slot), base);
             }
         }
-        let master = self.next.master;
-        self.submit_configuration(
-            job,
-            self.pool.master(),
-            crate::NodeConfiguration {
-                bank: self.next.master_outputs.active as u8,
-                gain: master.gain,
-                balance: master.balance,
-                muted: master.mute,
-                ..base
-            },
-        );
+        for slot in 0..self.next.buses.len() {
+            let Some(bus) = self.next.buses[slot] else {
+                continue;
+            };
+            self.submit_configuration(
+                job,
+                self.pool.bus(slot),
+                crate::NodeConfiguration {
+                    outputs: bus.channels,
+                    bank: bus.outputs.active as u8,
+                    gain: bus.gain,
+                    balance: bus.balance,
+                    muted: bus.mute,
+                    ..base
+                },
+            );
+        }
         true
     }
     fn submit_configuration(
@@ -294,6 +328,13 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn advance_job(&mut self) {
+        if self.job.is_none()
+            && self.family.id.is_some()
+            && self.family.cancel_requested
+            && !self.family.committing
+        {
+            self.job = Some(Job::family(false));
+        }
         for _ in 0..16 {
             let Some(mut job) = self.job.take() else {
                 return;
@@ -313,6 +354,12 @@ impl ControlEndpoint {
                     self.replacement.clear();
                 }
                 self.clear_touched();
+                if self.family.id.is_some()
+                    && self.family.cancel_requested
+                    && !self.family.committing
+                {
+                    self.job = Some(Job::family(false));
+                }
             }
             if !progressed {
                 return;
@@ -395,11 +442,20 @@ impl ControlEndpoint {
                 count += 1;
             }
         }
+        for slot in 0..self.model.buses.len() {
+            if self.model.buses[slot].is_some_and(|bus| self.next.bus(bus.id).is_none()) {
+                self.fades[count] = self.pool.bus(slot);
+                count += 1;
+            }
+        }
         count
     }
 
     /// Run the next phase of `job`; returns whether it can continue immediately.
     fn step_job(&mut self, job: &mut Job) -> bool {
+        if let Kind::Family { commit } = job.kind {
+            return self.step_family(job, commit);
+        }
         if job.cancelled && !matches!(job.phase, Phase::Cleanup | Phase::Finishing) {
             job.phase = Phase::Cleanup;
             return true;
@@ -425,6 +481,23 @@ impl ControlEndpoint {
         }
         match job.phase {
             Phase::ContentSelect => {
+                if let Kind::Content {
+                    family: Some(slot), ..
+                } = job.kind
+                {
+                    self.family.entries[slot]
+                        .as_mut()
+                        .expect("staged family entry")
+                        .media = job.content_media.take();
+                    self.answer_job(
+                        job,
+                        Outcome::ContentPrepared {
+                            revision: job.content_revision.expect("adopted revision").0,
+                        },
+                    );
+                    job.phase = Phase::Finishing;
+                    return true;
+                }
                 if !self.room(1) {
                     return false;
                 }
@@ -453,11 +526,17 @@ impl ControlEndpoint {
                 if let Some(media) = job.content_media.take() {
                     self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
                 }
-                self.answer_job(job, Outcome::Done);
+                self.answer_job(
+                    job,
+                    Outcome::ContentApplied {
+                        revision: job.content_revision.expect("adopted revision").0,
+                    },
+                );
                 job.phase = Phase::Finishing;
                 true
             }
             Phase::Start => self.start_job(job),
+            Phase::FamilyFinish => unreachable!("family job handled separately"),
             Phase::Append => self.append(job),
             Phase::Validate => {
                 if job.topology_needed && !job.ready {
@@ -529,6 +608,7 @@ impl ControlEndpoint {
                 frames,
                 audio,
                 midi,
+                ..
             } => {
                 if !self.room(1) {
                     return false;
@@ -586,7 +666,58 @@ impl ControlEndpoint {
                 true
             }
             Kind::Batch(_) | Kind::Replacement => self.prepare_batch(job),
+            Kind::Family { .. } => unreachable!("family job handled separately"),
         }
+    }
+
+    fn step_family(&mut self, job: &mut Job, commit: bool) -> bool {
+        if job.phase == Phase::Start {
+            if commit {
+                if !self.room(1) || self.family.payload.is_none() {
+                    return false;
+                }
+                let payload = match self.family_payload() {
+                    Ok(payload) => payload,
+                    Err(refusal) => {
+                        job.fail(refusal);
+                        job.phase = Phase::FamilyFinish;
+                        return true;
+                    }
+                };
+                let operation = Operation::SelectFamily {
+                    root: loop_id(self.family.root.expect("staged family root")),
+                    topology_epoch: self.family.epoch,
+                };
+                let command = self
+                    .loops
+                    .command_with_payload(Frame(0), operation, payload);
+                self.submit_job(job, command, Step::FamilySelect, true);
+            }
+            job.phase = Phase::FamilyFinish;
+            return true;
+        }
+        if job.phase != Phase::FamilyFinish {
+            job.fail(Refusal::Internal);
+        }
+        for slot in 0..self.family.entries.len() {
+            if self.family.entries[slot].is_some_and(|entry| entry.media.is_some()) {
+                if !self.room(1) {
+                    return false;
+                }
+                let media = self.family.entries[slot]
+                    .as_mut()
+                    .unwrap()
+                    .media
+                    .take()
+                    .unwrap();
+                self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+                return true;
+            }
+        }
+        self.answer_job(job, job.failure.map_or(Outcome::Done, Outcome::Refused));
+        self.family.clear();
+        job.phase = Phase::Finishing;
+        true
     }
 
     /// Start the independent preparations of the staged model together.
@@ -602,7 +733,7 @@ impl ControlEndpoint {
             model.loops[slot].map(|l| (l.id, l.sync)) != next.loops[slot].map(|l| (l.id, l.sync))
         });
         job.graph_needed = job.edits > 0
-            || model.master_outputs != next.master_outputs
+            || model.buses != next.buses
             || (0..model.strips.len()).any(|slot| {
                 let shape = |strip: Option<crate::model::Strip>| {
                     strip.map(|s| {
@@ -675,13 +806,14 @@ impl ControlEndpoint {
                 job.fail(Refusal::Internal);
                 return true;
             };
-            if let Err(error) = self.work.builder.build(
-                &mut plan,
-                &self.next,
-                &self.pool,
-                &self.shape,
-                self.planner,
-            ) {
+            if let Some(control) = &self.cells.profiling {
+                control.reset();
+            }
+            if let Err(error) =
+                self.work
+                    .builder
+                    .build(&mut plan, &self.next, &self.pool, &self.shape)
+            {
                 self.work.return_plan(plan);
                 job.fail(if error == rt_runtime::Error::Capacity {
                     Refusal::Capacity
@@ -848,13 +980,29 @@ impl ControlEndpoint {
             + stopping * (PLANNED + 1)
             + 4 * self.next.strips.len()
             + self.next.loops.len()
+            + 2 * self.next.buses.len()
             + 2;
         if !self.room(bound) {
             return false;
         }
-        let ramp = u64::from(self.settings.ramp);
-        let base = self.at().0.max(self.quiet_until);
-        let mut activation = base;
+        let timing = (|| {
+            let quantum = rt_runtime::Quantum::new(self.limits.quantum as usize)?;
+            let base = quantum.ceil(Frame(self.at().0.max(self.quiet_until)))?;
+            let stop = quantum.ceil(base.checked_add(self.settings.ramp as usize)?)?;
+            let activation = if faded == 0 {
+                base
+            } else if stopping == 0 {
+                stop
+            } else {
+                stop.checked_add(quantum.frames())?
+            };
+            let quiet = activation.checked_add(self.settings.ramp as usize)?;
+            Ok::<_, rt_runtime::Error>((base.0, stop.0, activation.0, quiet.0))
+        })();
+        let Ok((base, stop, activation, quiet)) = timing else {
+            job.fail(Refusal::InvalidValue);
+            return true;
+        };
         for slot in 0..self.next.strips.len() {
             let Some(strip) = self.next.strips[slot] else {
                 continue;
@@ -888,7 +1036,6 @@ impl ControlEndpoint {
                 let node = self.fades[index];
                 self.submit_job_op(job, Frame(base), node, EngineOp::Presence(false));
             }
-            activation = base + ramp;
             for slot in 0..self.model.loops.len() {
                 if !removed(slot, &self.model, &self.next) {
                     continue;
@@ -897,7 +1044,7 @@ impl ControlEndpoint {
                 self.cancel_planned(slot, None, Frame(base));
                 self.submit_job_loop(
                     job,
-                    Frame(base + ramp),
+                    Frame(stop),
                     Operation::Transition {
                         target: loop_id(id),
                         timing: Timing::At,
@@ -905,7 +1052,6 @@ impl ControlEndpoint {
                     },
                     Step::Prelude,
                 );
-                activation = base + ramp + 1;
             }
         }
         for slot in 0..self.next.strips.len() {
@@ -920,6 +1066,22 @@ impl ControlEndpoint {
                     EngineOp::Crossfade,
                 );
             }
+            if job.graph.is_some() && self.model.strip(strip.id).is_some() {
+                let Ok(epoch) = self.graph_epoch.checked_next() else {
+                    job.fail(Refusal::Capacity);
+                    return true;
+                };
+                self.submit_job_op(
+                    job,
+                    Frame(activation),
+                    self.pool.strip_input(slot),
+                    EngineOp::InputSource {
+                        epoch,
+                        changed: self.model.strips[slot]
+                            .is_none_or(|old| old.midi_inputs != strip.midi_inputs),
+                    },
+                );
+            }
             if strip.outputs.swapped {
                 self.submit_job_op(
                     job,
@@ -929,13 +1091,29 @@ impl ControlEndpoint {
                 );
             }
         }
-        if self.next.master_outputs.swapped {
-            self.submit_job_op(
-                job,
-                Frame(activation),
-                self.pool.master(),
-                EngineOp::Crossfade,
-            );
+        for slot in 0..self.next.buses.len() {
+            let Some(bus) = self.next.buses[slot] else {
+                continue;
+            };
+            if self.model.bus(bus.id).is_none() {
+                self.submit_job_op(
+                    job,
+                    Frame(base),
+                    self.pool.bus(slot),
+                    EngineOp::Reset {
+                        inputs: 0,
+                        outputs: bus.channels,
+                    },
+                );
+            }
+            if bus.outputs.swapped {
+                self.submit_job_op(
+                    job,
+                    Frame(activation),
+                    self.pool.bus(slot),
+                    EngineOp::Crossfade,
+                );
+            }
         }
         let graph_epoch = self.graph_epoch;
         let topology_epoch = self.topology_epoch;
@@ -973,7 +1151,7 @@ impl ControlEndpoint {
         if job.failure.is_some() {
             return true;
         }
-        self.quiet_until = activation + ramp;
+        self.quiet_until = quiet;
         self.submit_job_loop(job, Frame(activation), operation, Step::Activation);
         job.phase = Phase::Activating;
         true
@@ -1103,12 +1281,16 @@ impl ControlEndpoint {
                     );
                 }
             }
-            self.submit_job_op(
-                job,
-                Frame(0),
-                self.pool.master(),
-                EngineOp::DiscardConfiguration { token },
-            );
+            for slot in 0..self.next.buses.len() {
+                if self.next.buses[slot].is_some() {
+                    self.submit_job_op(
+                        job,
+                        Frame(0),
+                        self.pool.bus(slot),
+                        EngineOp::DiscardConfiguration { token },
+                    );
+                }
+            }
             job.configured = false;
         }
         if !self.room(3) {
@@ -1172,6 +1354,9 @@ impl ControlEndpoint {
                     (Step::Prelude | Step::Cleanup | Step::Retire | Step::ClearStop, _) => None,
                     (_, Outcome::Refused(refusal)) => Some(refusal),
                     (_, Outcome::Done) => None,
+                    (_, Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. }) => {
+                        Some(Refusal::Internal)
+                    }
                 };
                 (refusal, execution.operation_result, true, None)
             }
@@ -1196,8 +1381,9 @@ impl ControlEndpoint {
                 return;
             }
             match (step, reply) {
-                (Step::ContentAdopt, Some(Reply::Adopted { media })) => {
-                    job.content_media = Some(media)
+                (Step::ContentAdopt, Some(Reply::Adopted { media, revision })) => {
+                    job.content_media = Some(media);
+                    job.content_revision = Some(revision);
                 }
                 (Step::NodePairBegin, Some(Reply::NodePairStatus { id, .. })) => {
                     job.node_pairs = Some(id)

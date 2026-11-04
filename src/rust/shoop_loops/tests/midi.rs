@@ -42,6 +42,7 @@ fn config() -> rt_runtime::PreparedConfig {
 fn store_with(cfg: rt_runtime::PreparedConfig) -> ResourceStore {
     ResourceStore::with_capture_groups(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 16,
@@ -301,12 +302,11 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
     assert_no_heap(|| {
         let take = store.prepare_capture_take(group, &[initial]).unwrap();
         store.activate_capture_take(take, Frame(2)).unwrap();
-        let interval = store.reserve_capture_interval(take, Frame(2), 2).unwrap();
+        let interval = store.reserve_capture_tick(take, Frame(2)).unwrap();
         input.clear();
-        input.push(0, 2, &[0x80, 60, 0]).unwrap();
-        input.push(1, 2, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+        input.push(0, 1, &[0x80, 60, 0]).unwrap();
         capture
-            .process(&mut store.render_io(), &input, 2, Some((interval, 0)))
+            .process(&mut store.render_io(), &input, 1, Some((interval, 0)))
             .unwrap();
         assert!(!capture.state().channel(0).unwrap().note(60).unwrap().held());
         assert_eq!(
@@ -320,7 +320,15 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
             99
         );
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
-        store.commit_capture_interval(interval).unwrap();
+        store.commit_capture_tick(interval).unwrap();
+        let next = store.reserve_capture_tick(take, Frame(3)).unwrap();
+        input.clear();
+        input.push(0, 1, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+        capture
+            .process(&mut store.render_io(), &input, 1, Some((next, 0)))
+            .unwrap();
+        store.commit_capture_tick(next).unwrap();
+
         store
             .freeze_capture_take(take, Frame(4), None, &mut frozen)
             .unwrap();
@@ -341,10 +349,9 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
             .held());
         let mut cursor = store.render_io().midi_cursor(index).unwrap();
         let mut packet = [0; 32];
-        for event_index in 0..2 {
+        for (at, expected) in [(0, &[0x80, 60, 0][..]), (1, &[0xf0, 1, 2, 3, 0xf7][..])] {
             let event = store.render_io().midi_next(&mut cursor).unwrap().unwrap();
-            let (offset, expected) = input.get(event_index).unwrap();
-            assert_eq!(event.frame(), u64::from(offset));
+            assert_eq!(event.frame(), at);
             let count = store.render_io().midi_read(event, &mut packet).unwrap();
             assert_eq!(&packet[..count], expected);
         }
@@ -533,16 +540,27 @@ impl Processor for RuntimeNode {
                     .note(61)
                     .unwrap()
                     .velocity(),
-                88
+                if block.frame.0 >= 1 { 88 } else { 0 }
             );
-            assert_eq!(report.output_error, Some(Error::Full));
+            assert_eq!(
+                report.output_error,
+                if block.frame == Frame(0) {
+                    Some(Error::Full)
+                } else {
+                    None
+                }
+            );
             self.observed.fetch_add(1, Ordering::Relaxed);
             report.output_error.map_or(Ok(()), Err)
         } else {
             let (input, output) = block.audio.pair(0, 0).unwrap();
             output.copy_from_slice(input);
-            assert!(block.midi_inputs[0].is_recovery());
-            assert_eq!(block.midi_inputs[0].len(), 32);
+            if block.frame == Frame(0) {
+                assert!(block.midi_inputs[0].is_recovery());
+                assert_eq!(block.midi_inputs[0].len(), 32);
+            } else {
+                assert!(block.midi_inputs[0].is_empty());
+            }
             self.tracker.process(
                 &mut block.resources.render(),
                 &block.midi_inputs[0],
@@ -570,6 +588,11 @@ impl Processor for RuntimeNode {
 }
 #[shoop_test]
 fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_audio() {
+    for shared in [false, true] {
+        runtime_overflow_case(shared);
+    }
+}
+fn runtime_overflow_case(shared: bool) {
     let cfg = Config {
         max_frames: 2,
         max_nodes: 2,
@@ -593,12 +616,42 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
     .prepare()
     .unwrap();
     let mut store = store_with(cfg);
-    let snapshot = upload(
+    let mut snapshot = upload(
         &mut store,
         &[(0, vec![0x90, 60, 99]), (1, vec![0x90, 61, 88])],
         2,
         &MidiState::default(),
     );
+    let history = if shared {
+        let midi = store
+            .prepare_midi_store(
+                shared_midi::Config {
+                    history_frames: 2,
+                    chunks: 1,
+                    views: 8,
+                    pages: 220,
+                    max_events: 2,
+                    max_bytes: 6,
+                    max_packet: 3,
+                    transactions: 1,
+                    edit_steps: 2,
+                },
+                Frame(0),
+                &MidiState::default(),
+            )
+            .unwrap();
+        let import = store.prepare_midi_import(midi, snapshot.id).unwrap();
+        while assert_no_heap(|| store.render_io().progress_midi_import(import, 2))
+            == Ok(shared_midi::EditStatus::Building)
+        {}
+        let resource = store.finish_midi_import(import).unwrap();
+        store.release_snapshot(snapshot.id).unwrap();
+        store.remove(snapshot.resource).unwrap();
+        snapshot = store.snapshot(resource, Frame(0)).unwrap();
+        Some(midi)
+    } else {
+        None
+    };
     let index = store.read_index(snapshot.id).unwrap();
     let observed = Arc::new(AtomicUsize::new(0));
     let mut tracker = MidiCapture::prepare(2, 1, 3).unwrap();
@@ -635,8 +688,13 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
             },
         ),
     ];
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_resources(cfg, nodes, store).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_resources(
+        cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        store,
+    )
+    .unwrap();
     let edge = |from, to, kind| Connection {
         source: Endpoint {
             node: from,
@@ -685,7 +743,7 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
             .unwrap();
         assert_eq!(audio, [0.25; 2]);
         assert_eq!(runtime.next_frame(), Frame(2));
-        assert_eq!(observed.load(Ordering::Relaxed), 2);
+        assert_eq!(observed.load(Ordering::Relaxed), 4);
         assert!(runtime.diagnostics().midi_overflows > 0);
         assert_eq!(runtime.drain_midi_recovery(0, &mut reset, 2), Ok(32));
         for i in 0..32 {
@@ -700,7 +758,27 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
     });
     drop(control);
     let mut store = runtime.into_resources();
-    cleanup(&mut store, &[snapshot]);
+    if let Some(history) = history {
+        assert_no_heap(|| {
+            store.release_snapshot(snapshot.id).unwrap();
+            store.remove(snapshot.resource).unwrap();
+            for _ in 0..272 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            store.cleanup_midi_store(history).unwrap();
+            for _ in 0..272 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            assert_eq!(store.usage().free_pages, 256);
+            assert_eq!(store.usage().free_versions, 8);
+            assert_eq!(store.usage().free_snapshots, 8);
+            assert_eq!(store.midi_index_usage().free_versions, 4);
+        });
+    } else {
+        cleanup(&mut store, &[snapshot]);
+    }
 }
 #[shoop_test]
 fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
@@ -747,7 +825,8 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let mut renderer = MidiRenderer::prepare(64, 2048).unwrap();
         let mut output = MidiBuffer::new(128, 512).unwrap();
         let mut actual = Vec::new();
@@ -770,7 +849,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             loop {
                 let interval = assert_no_heap(|| {
                     output.clear();
-                    let interval = resolver.preview(Frame(end), &[]).unwrap();
+                    let interval = resolver.preview_tick(&[]).unwrap();
                     let decision = resolver.decisions().unwrap()[0];
                     resolver.commit().unwrap();
                     let report = renderer
@@ -786,7 +865,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
                         )
                         .unwrap();
                     assert_eq!(report.output_error, None);
-                    resolver.finish(interval.end).unwrap();
+                    resolver.finish().unwrap();
                     interval
                 });
                 collect(&output, interval.start.0, &mut actual);

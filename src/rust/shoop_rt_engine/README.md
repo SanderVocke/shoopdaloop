@@ -28,6 +28,9 @@ crate; `scripts/check_rt_engine_boundary.py` enforces that.
 
 ## Owners
 
+All hosts use the complete endpoint and loop-domain composition. Graph calls
+process whole prepared quanta; changing Q requires stop/reprepare.
+
 `prepare(&EngineDescription, DriverStatus)` allocates everything and returns an
 `Engine` with three owners:
 
@@ -52,8 +55,8 @@ telemetry.
 
 `EngineDescription` gives the sample rate, the largest callback, named host port
 slots (at most 64 per kind and direction), pool segments, audio channels per strip
-direction (also the channels of every loop), Master channels and their initial
-host connections, the initial and largest loop boundary smoothing, the ramp for
+direction (also the channels of every loop), prepared bus count/width and the default bus
+channels/connections, the initial and largest loop boundary smoothing, the ramp for
 control changes and removals, a control lead for hosts whose control side runs
 concurrently with rendering, storage sizes and the client's credits.
 
@@ -64,6 +67,15 @@ and only existing loops are in the loop topology, so inactive slots cost no
 rendering or resolver work. This milestone prepares all segments at once;
 another segment can be appended without moving existing slots.
 
+Buses use a separate prepared pool, defaulting to eight slots of eight channels.
+Route masks store eight channel bits per bus slot. Bus IDs include generations;
+create/remove requests, controls, meters and resync all name the exact occupant.
+The default stereo bus is created as an ordinary active slot, can be removed, and
+is absent from an empty replacement. Inactive buses do not render. Bus processors
+use the existing ramps, banked routes and staged replacement configuration; no FX
+stage is installed. Native setup, worklet configuration and protocol limits carry
+the same bounds.
+
 ## Signal chain
 
 | Node | Ports | Function |
@@ -72,16 +84,16 @@ another segment can be appended without moving existing slots.
 | Loop playback and capture | the loop library's nodes | Recording and playback decided by the loop resolver |
 | Loop fader | one audio channel set | Fade-out for removal, loop meters |
 | Strip output | the sum of its loop faders and the monitoring feed; two output banks | Output gain, balance, mute and presence ramps, output meters |
-| Master | Master channels; two output banks | Sum of routed strips; gain, balance, mute, meters |
+| Bus | Prepared bus channels; two output banks | Sum of routed strips; gain, stereo balance, mute, presence and meters |
 
 Stereo balance uses the legacy linear factors on two-channel stages. A strip
 output channel `c` takes input channel `c mod inputs`. Routes connect single strip
-output channels to single Master channels; `Limits::master_channels` reports the
-Master's width.
+output channels to single bus channels; `Limits::buses` and `bus_channels` report
+prepared capacity.
 
 ## Requests
 
-Requests keep their order per target (a strip, a loop, the Master). Controls,
+Requests keep their order per target (a strip, a loop or a bus). Controls,
 loop transitions, loop gain and balance and MIDI injection are forwarded to the
 runtime as soon as nothing they depend on is pending, and answered with their
 execution's outcome. Structural requests (create and remove strips and loops,

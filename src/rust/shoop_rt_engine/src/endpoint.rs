@@ -26,16 +26,16 @@ use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 use rt_runtime::executor::Command;
 use rt_runtime::graph::PreparedPlan;
-use rt_runtime::planner::PlannerSpec;
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::{Lane, Outcome as RuntimeOutcome};
 use rt_runtime::{Epoch, Frame, NodeId, Sequence};
 use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_rt_protocol::{
-    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
-    HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
-    Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
+    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, DriverKind,
+    EngineMessage, HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode,
+    LoopSlotId, Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry,
+    PROTOCOL_VERSION,
 };
 use shoop_rt_transport::carrier::{Endpoint, Outbox};
 
@@ -79,6 +79,7 @@ pub(crate) enum Purpose {
         delayed: bool,
         slot: usize,
     },
+    Preview,
     Silent,
     Job(Step),
     Bulk,
@@ -148,11 +149,15 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) profiling: Option<rt_runtime::profiling::Reader>,
+    pub(crate) profile_named: Box<[bool]>,
+    pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
+    pub(crate) profile_generation: u64,
+    pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
     pub(crate) shape: Shape,
-    pub(crate) planner: PlannerSpec,
     pub(crate) cells: Arc<Cells>,
     pub(crate) settings: Settings,
     pub(crate) host_ports: Box<[HostPort]>,
@@ -169,15 +174,14 @@ pub struct ControlEndpoint {
     /// The staged transaction's requests and changes, in order.
     pub(crate) batch: Box<[(Option<u64>, Change)]>,
     pub(crate) batch_len: usize,
-    /// How far the pending transaction affects each strip, loop and the
-    /// Master (see `queue`).
+    /// How far the pending transaction affects each strip, loop and bus.
     pub(crate) touched_strips: Box<[u8]>,
     pub(crate) touched_loops: Box<[u8]>,
-    pub(crate) touched_master: u8,
+    pub(crate) touched_buses: Box<[u8]>,
     /// Targets of requests that wait in the current pass over the queue.
     pub(crate) blocked_strips: Box<[bool]>,
     pub(crate) blocked_loops: Box<[bool]>,
-    pub(crate) blocked_master: bool,
+    pub(crate) blocked_buses: Box<[bool]>,
     pub(crate) blocked_all: bool,
     /// Initial media of new loops, to release.
     pub(crate) retired: Ring<shoop_loops::media::MediaId>,
@@ -191,10 +195,12 @@ pub struct ControlEndpoint {
     pub(crate) bulk: Bulk,
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
+    pub(crate) family: crate::family::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
     pub(crate) protocol_error: bool,
+    pub(crate) preview: Option<crate::preview::Preview>,
 }
 
 fn runtime_refusal(error: rt_runtime::Error) -> Refusal {
@@ -286,7 +292,13 @@ impl ControlEndpoint {
     }
     /// The earliest frame a newly submitted command can be scheduled at.
     pub(crate) fn at(&self) -> Frame {
-        Frame(self.next_frame().0 + u64::from(self.settings.lead))
+        let driver = self.cells.driver();
+        let lead = if driver.kind == DriverKind::Jack {
+            self.settings.lead.max(driver.buffer_frames)
+        } else {
+            self.settings.lead
+        };
+        Frame(self.next_frame().0 + u64::from(lead))
     }
 
     /// No request, transaction or bulk read is in progress and every ramp of
@@ -321,7 +333,8 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::MIDI_INJECTION
+        Capabilities::PROFILING
+            .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
@@ -405,9 +418,21 @@ impl ControlEndpoint {
                 }
                 _ => {}
             },
-            Command::Schedule { payload, .. } => {
+            Command::Schedule {
+                payload, action, ..
+            } => {
                 if !payload.is_empty() {
-                    self.work.return_payload(payload);
+                    if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::SelectFamily { .. },
+                            ..
+                        }
+                    ) {
+                        self.family.payload = Some(payload);
+                    } else {
+                        self.work.return_payload(payload);
+                    }
                 }
             }
             Command::StageGraph {
@@ -450,7 +475,11 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        if self.family.id.is_some() && !self.family.committing {
+            self.family.cancel_requested = true;
+        }
         self.bulk.disconnect();
+        self.disconnect_preview();
         self.uploads.disconnect();
     }
 
@@ -515,6 +544,7 @@ impl ControlEndpoint {
                 sequence,
                 result,
             ),
+            Purpose::Preview => self.preview_result(finished, result),
             Purpose::Silent => {
                 if let RuntimeResult::Completion(_, command, retired) = result {
                     self.reclaim(command);
@@ -726,17 +756,58 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::Profiling(enabled) => match &self.profiling {
+                Some(reader) => {
+                    reader.control().set_enabled(enabled);
+                    Ok(Some(Outcome::Done))
+                }
+                _ => Err(Refusal::Unsupported),
+            },
+            Request::PreviewStart {
+                request_id,
+                bus,
+                content,
+                frames,
+            } => self.start_preview(correlation, request_id, bus, content, frames),
+            Request::PreviewStop => {
+                self.cancel_preview();
+                Ok(Some(Outcome::Done))
+            }
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::ContentFamilyBegin { .. }
+            | Request::ContentFamilyEdit { .. }
+            | Request::ContentFamilyCommit { .. }
+            | Request::ContentFamilyCancel { .. } => {
+                if self.job.is_some() {
+                    return Err(());
+                }
+                self.family_request(correlation, request)
+            }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
-            | Request::ReplacementCancel { .. } => self.replacement_request(correlation, request),
+            | Request::ReplacementCancel { .. } => {
+                if matches!(request, Request::ReplacementBegin { .. }) {
+                    self.cancel_preview();
+                }
+                if self.preview.is_some() {
+                    return Err(());
+                }
+                self.replacement_request(correlation, request)
+            }
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
-            | Request::ContentRelease { .. } => self.content_request(correlation, request),
+            | Request::ContentRelease { .. } => {
+                if matches!(request, Request::ContentRelease { id } if self.preview.as_ref().is_some_and(|p| p.content == id))
+                {
+                    Err(Refusal::Busy)
+                } else {
+                    self.content_request(correlation, request)
+                }
+            }
             Request::ContentApply {
                 loop_id: id,
                 frames,
@@ -813,10 +884,7 @@ impl ControlEndpoint {
                     )
                 }
             }
-            Request::BusControl {
-                bus: BusId::Master,
-                control,
-            } => self.bus_control(correlation, control),
+            Request::BusControl { bus, control } => self.bus_control(correlation, bus, control),
             Request::InjectMidi { strip, message } => match self.model.strip(strip) {
                 None => Err(Refusal::InvalidId),
                 Some(entry) if !entry.shape.midi_input => Err(Refusal::Unsupported),
@@ -832,7 +900,9 @@ impl ControlEndpoint {
                     .map(|()| None)
                 }
             },
-            Request::CreateStrip { .. }
+            Request::CreateBus { .. }
+            | Request::RemoveBus { .. }
+            | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -935,21 +1005,33 @@ impl ControlEndpoint {
     fn bus_control(
         &mut self,
         correlation: u64,
+        bus: BusId,
         control: BusControl,
     ) -> Result<Option<Outcome>, Refusal> {
+        let entry = self.model.bus(bus).ok_or(Refusal::InvalidId)?;
         let operation = match control {
-            BusControl::Gain(value) if value.is_finite() => EngineOp::Gain(value),
-            BusControl::Balance(value) if finite_balance(value) => EngineOp::Balance(value),
+            BusControl::Gain(value) if value.is_finite() && value >= 0. => EngineOp::Gain(value),
+            BusControl::Balance(value) if finite_balance(value) && entry.channels == 2 => {
+                EngineOp::Balance(value)
+            }
             BusControl::Mute(muted) => EngineOp::Mute(muted),
             _ => return Err(Refusal::InvalidValue),
         };
-        let at = self.at();
-        let master = self.pool.master();
-        self.submit_op(at, master, operation, Purpose::Reply(Some(correlation)))?;
-        self.model.master.apply(control);
+        self.submit_op(
+            self.at(),
+            self.pool.bus(bus.0.index as usize),
+            operation,
+            Purpose::Reply(Some(correlation)),
+        )?;
+        self.model
+            .bus_mut(bus)
+            .expect("validated bus")
+            .apply(control);
         self.model.revision += 1;
         if self.job.is_some() {
-            self.next.master.apply(control);
+            if let Some(entry) = self.next.bus_mut(bus) {
+                entry.apply(control);
+            }
         }
         Ok(None)
     }
@@ -993,6 +1075,9 @@ impl ControlEndpoint {
             .is_none_or(|last| frame >= last.saturating_add(interval));
         if periodic {
             self.telemetry_frame = Some(frame);
+            let _ = out.push(EngineMessage::Telemetry(Telemetry::Preview {
+                request_id: self.cells.preview_playing.load(Ordering::Acquire),
+            }));
             let peaks = self.cells.host_peaks.take(2);
             let _ = out.push(EngineMessage::Telemetry(Telemetry::Engine {
                 frame,
@@ -1016,10 +1101,14 @@ impl ControlEndpoint {
                     midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
                 }));
             }
-            let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
-                bus: BusId::Master,
-                peaks: self.cells.master.take(self.settings.master_channels),
-            }));
+            for (slot, bus) in self.model.buses.iter().enumerate() {
+                if let Some(bus) = bus {
+                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
+                        bus: bus.id,
+                        peaks: self.cells.buses[slot].take(bus.channels as usize),
+                    }));
+                }
+            }
         }
         for slot in 0..self.model.loops.len() {
             if !(periodic || self.dirty[slot]) {
@@ -1050,6 +1139,11 @@ impl ControlEndpoint {
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            content_revision: if current {
+                cells.content_revision.load(Ordering::Relaxed)
+            } else {
+                0
+            },
             length: if current {
                 cells.length.load(Ordering::Relaxed)
             } else {
@@ -1082,6 +1176,7 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.profile_status = None;
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
@@ -1148,9 +1243,11 @@ impl Endpoint for ControlEndpoint {
         self.advance_job();
         self.process_queue(true);
         self.advance_bulk();
+        self.advance_preview();
         self.advance_content();
         self.flush(out);
         self.telemetry(out);
+        self.forward_profiling(out);
     }
 }
 

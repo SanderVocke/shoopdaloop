@@ -106,6 +106,20 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(xml.attrib["failures"], "1")
         self.assertIn("crate::failure", ET.tostring(xml, encoding="unicode"))
 
+    def test_doc_test_summaries_and_native_failure_spelling_are_accounted(self):
+        output = SUCCESS + """   Doc-tests pilot
+running 3 tests
+test src/lib.rs - (line 9) ... ok
+test src/lib.rs - (line 20) ... FAILED
+test src/lib.rs - (line 30) ... ignored
+test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+"""
+        parsed, xml = self.junit(output, 1)
+        self.assertEqual(parsed.malformed, ())
+        self.assertEqual((parsed.listed, parsed.passed, parsed.failed, parsed.ignored), (6, 3, 1, 2))
+        self.assertEqual(xml.attrib["failures"], "1")
+        self.assertEqual(xml.attrib["skipped"], "2")
+
     def test_compile_or_browser_crash_gets_synthetic_failure(self):
         _, xml = self.junit("Chrome session crashed before tests\n", 1)
         self.assertGreaterEqual(int(xml.attrib["failures"]), 1)

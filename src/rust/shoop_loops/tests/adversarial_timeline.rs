@@ -78,7 +78,7 @@ fn run(
         let at = resolver.frame();
         let end = Frame(at.0 + frames);
         while resolver.frame() < end {
-            let interval = assert_no_heap(|| resolver.preview(end, &[])).unwrap();
+            let interval = assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
             assert_eq!(assert_no_heap(|| resolver.commit()).unwrap(), interval);
             events.extend_from_slice(resolver.events());
             for offset in 0..interval.end.0 - interval.start.0 {
@@ -100,7 +100,7 @@ fn run(
                         .collect(),
                 );
             }
-            assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+            assert_no_heap(|| resolver.finish()).unwrap();
             if !rejected {
                 if let Some(description) = candidate {
                     let owner = compile(limits, description).unwrap();
@@ -274,8 +274,11 @@ fn seeded_programs_preserve_scalar_timing_through_full_receipts_journal_loss_and
                         description.loops.rotate_left(2);
                     }
                     let limits = limits(5, 3, journal);
-                    let mut resolver =
-                        Resolver::prepare(compile(limits, &description).unwrap()).unwrap();
+                    let mut resolver = Resolver::prepare(
+                        compile(limits, &description).unwrap(),
+                        rt_runtime::Quantum::new(1).unwrap(),
+                    )
+                    .unwrap();
                     let starts = [
                         submit(&mut resolver, 0, 1, 0, play()),
                         submit(&mut resolver, 1, 2, 0, play()),
@@ -406,8 +409,11 @@ fn seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_an
                         description.loops.rotate_left(1);
                     }
                     let limits = limits(count as usize, 2, journal);
-                    let mut resolver =
-                        Resolver::prepare(compile(limits, &description).unwrap()).unwrap();
+                    let mut resolver = Resolver::prepare(
+                        compile(limits, &description).unwrap(),
+                        rt_runtime::Quantum::new(1).unwrap(),
+                    )
+                    .unwrap();
                     let start = submit(&mut resolver, 0, 1, 0, play());
                     let waiting = assert_no_heap(|| {
                         resolver.submit(Request {

@@ -6,8 +6,6 @@ use crate::Error;
 pub struct Budgets {
     pub commands: usize,
     pub events: usize,
-    /// Retained for source compatibility; ignored. Internal intervals have no quota.
-    pub subranges: usize,
     pub transfer_bytes: usize,
     pub validation_steps: usize,
     pub publications: usize,
@@ -18,7 +16,6 @@ impl Default for Budgets {
         Self {
             commands: 8,
             events: 64,
-            subranges: 65,
             transfer_bytes: 4096,
             validation_steps: 32,
             publications: 8,

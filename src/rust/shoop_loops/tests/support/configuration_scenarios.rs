@@ -26,6 +26,25 @@ fn prepared(media: bool, journal: usize, reverse: bool, packets: usize, spare: b
     h.engine.prepare_graph_staging(2).unwrap();
     h
 }
+fn prepared_shared(backing: SharedInput) -> Harness {
+    let mut h = Harness::with_shared_backing(
+        true,
+        0,
+        false,
+        staging(),
+        8,
+        None,
+        NodePairSettings {
+            candidates: 2,
+            sources: 8,
+            source_packets_per_callback: 64,
+        },
+        false,
+        Some(backing),
+    );
+    h.engine.prepare_graph_staging(2).unwrap();
+    h
+}
 fn generation(slot: u32, number: u32) -> LoopId {
     LoopId::from_parts(slot, number).unwrap()
 }
@@ -225,7 +244,22 @@ fn full_replacement(h: &mut Harness) -> (NodePairStageId, StageId, GraphStageId)
 
 #[shoop_test]
 fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_validated_cut() {
-    let mut h = prepared(true, 0, false, 64, false);
+    complete_replacement_case(prepared(true, 0, false, 64, false));
+}
+
+#[shoop_test]
+fn complete_replacement_and_old_exports_accept_cow_loaded_audio_and_grabbed_history() {
+    for backing in [
+        SharedInput::Loaded,
+        SharedInput::History,
+        SharedInput::MixedLoaded,
+        SharedInput::MixedHistory,
+    ] {
+        complete_replacement_case(prepared_shared(backing));
+    }
+}
+
+fn complete_replacement_case(mut h: Harness) {
     let (node_pairs, topology, graph) = full_replacement(&mut h);
     let at = h.engine.next_frame().0;
     h.op(at, play(0));
@@ -254,22 +288,7 @@ fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_valida
     assert_eq!(old.state.mode, Mode::Playing);
     assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
     let at = h.engine.next_frame().0;
-    let mid_callback = h.op(
-        at + 1,
-        Operation::ConfigurationReplace {
-            node_pairs,
-            topology,
-            graph,
-            graph_epoch: Epoch(1),
-            topology_epoch: Epoch(0),
-        },
-    );
-    h.step(2);
-    h.drain();
-    assert!(matches!(h.reply(mid_callback), Reply::Failed(_)));
-    assert_eq!(h.engine.epoch(), Epoch(1));
-    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
-    let at = h.engine.next_frame().0;
+    let at = at + 1;
     let applied = h.op(
         at,
         Operation::ConfigurationReplace {
@@ -287,7 +306,7 @@ fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_valida
         },
     );
     let stale = h.op(at, Operation::State { target: id(1) });
-    h.step(1);
+    h.step(2);
     h.drain();
     assert!(matches!(
         h.reply(applied),
@@ -319,6 +338,7 @@ fn complete_replacement_retires_playback_and_requests_midi_cleanup_at_one_valida
         h.read_export(export, true, encoded_midi().len()),
         encoded_midi()
     );
+    h.finish();
 }
 
 #[shoop_test]

@@ -35,12 +35,14 @@ use alloc::vec::Vec;
 mod backend;
 mod capture;
 mod clock;
+mod family;
 mod import;
 mod incoming;
 mod mirror;
 mod outgoing;
 mod persistence;
 mod prepared;
+mod preview;
 mod reads;
 mod requests;
 mod session;
@@ -144,12 +146,14 @@ pub struct RtBackend<C, K> {
     retired_host_ports:
         alloc::collections::BTreeMap<shoop_rt_protocol::HostPortId, alloc::string::String>,
     resource_limits: shoop_app_api::HostResourceLimits,
+    profiling: shoop_rt_protocol::profiling::Collector,
     client: ProtocolClient<C>,
     clock: K,
     link: Link,
     capabilities: Capabilities,
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
+    driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
     status: Status,
     mirror: Mirror,
     requests: Requests,
@@ -164,6 +168,8 @@ pub struct RtBackend<C, K> {
     /// Telemetry arrived after the latest outcome.
     telemetry_fresh: bool,
     replacement: Option<Replacement>,
+    preview: Option<preview::Preview>,
+    preview_playing: u64,
     next_persistence: u64,
     canonical_content: alloc::collections::BTreeMap<
         shoop_backend::BackendLoopId,
@@ -180,6 +186,11 @@ pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    /// Attach host-resolved metadata; runtime telemetry remains authoritative about the active kind.
+    pub fn set_driver_profile(&mut self, profile: shoop_app_api::ResolvedAudioDriverConfig) {
+        self.driver_profile = Some(profile);
+    }
+
     /// Starts the handshake over an unconnected client. The backend refuses operations until
     /// [`RtBackend::is_ready`]; pumping it, as `poll` does, completes the handshake.
     pub fn begin(mut client: ProtocolClient<C>, clock: K) -> Result<Self> {
@@ -192,12 +203,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             inventory_reconcile: false,
             retired_host_ports: alloc::collections::BTreeMap::new(),
             resource_limits: shoop_app_api::HostResourceLimits::default(),
+            profiling: Default::default(),
             client,
             clock,
             link: Link::Connecting,
             capabilities: Capabilities::default(),
             limits: None,
             driver: None,
+            driver_profile: None,
             status: Status::default(),
             mirror: Mirror::new(),
             requests: Requests::default(),
@@ -211,6 +224,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             failure_sequence: 0,
             telemetry_fresh: false,
             replacement: None,
+            preview: None,
+            preview_playing: 0,
             next_persistence: 1,
             canonical_content: Default::default(),
             canonical_imports: Default::default(),
@@ -437,6 +452,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 self.read_cancel_needed = false;
             }
+            self.advance_preview();
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
@@ -451,11 +467,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn ready(&self) -> Result<()> {
-        if self
-            .replacement
-            .as_ref()
-            .is_some_and(|replacement| !replacement.job.finished)
-        {
+        if self.replacement.as_ref().is_some_and(|replacement| {
+            !replacement.job.finished && replacement.job.family.is_none()
+        }) {
             return Err(anyhow!("a session replacement is in progress"));
         }
         match &self.link {
@@ -584,6 +598,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
+        self.profiling = Default::default();
         for pending in self
             .requests
             .outgoing
@@ -597,6 +612,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.requests.clear();
         self.reads.clear();
+        if let Some(preview) = &mut self.preview {
+            preview.job.disconnected(reason.clone());
+        }
         if let Some(replacement) = &mut self.replacement {
             replacement.job.disconnected(reason);
         }

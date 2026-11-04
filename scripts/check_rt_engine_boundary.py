@@ -19,10 +19,11 @@ SPEC.loader.exec_module(RUNTIME)
 
 PACKAGES = (
     "shoop_deployment_protocol",
+    "shoop_port_graph",
     "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_host_freertos", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
-    "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
+    "shoop_rt_host_native", "shoop_jack", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
 )
 FORBIDDEN = {
@@ -35,6 +36,9 @@ FORBIDDEN = {
 
 def violations(tree: str, package: str | None = None) -> list[str]:
     names = set(re.findall(r"^([A-Za-z0-9_-]+) v\d", tree, re.MULTILINE))
+    if package == "shoop_port_graph":
+        forbidden = {"rt_runtime", "jack", "jack-sys", "cpal", "midir", "web-sys", "js-sys", "iceoryx2"}
+        return sorted(name for name in names if name in forbidden or (name.startswith("shoop_") and name != package))
     if package == "shoopdaloop":
         return sorted(names & {"shoop_engine", "shoop_app_reference", "shoop_rt_host_process", "shoop_worklet_client", "shoop_audio_worklet", "shoop_audio_protocol"})
     if package == "shoop_persistence_codec":

@@ -2,7 +2,7 @@
 use crate::codec::{Decoded, Value, Work};
 use anyhow::{anyhow, bail, ensure, Result};
 use serde::{Deserialize, Serialize};
-use shoop_app_api::IoTaskKind;
+use shoop_app_api::{ConversionTarget, IoTaskKind};
 use shoop_app_protocol::{persistence::*, persistence_transfer::UploadStream, *};
 use std::sync::Arc;
 
@@ -14,9 +14,15 @@ pub struct Summary {
     pub handle: u64,
     pub rate: u32,
     pub audio_labels: Option<Vec<String>>,
+    pub conversion_required: Option<bool>,
+    pub frames: Option<u64>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Command {
+    BeginFamily {
+        description: Description,
+        handle: u64,
+    },
     BeginFile {
         kind: u8,
         bytes: u64,
@@ -35,9 +41,10 @@ pub enum Command {
         channels: Vec<u32>,
     },
     Image(Request),
-    Resample {
+    Convert {
         handle: u64,
-        rate: u32,
+        target: ConversionTarget,
+        update_length: bool,
     },
     Prepare {
         handle: u64,
@@ -48,6 +55,16 @@ pub enum Command {
     NextImageBatch,
     Reset,
     ImageBatch(Vec<Request>),
+    GenerateClick {
+        request: shoop_app_api::ClickTrackRequest,
+        rate: u32,
+    },
+    Inspect {
+        handle: u64,
+        target: ConversionTarget,
+        mapping: Vec<u32>,
+        update_length: bool,
+    },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
@@ -154,6 +171,7 @@ enum Input {
     },
     Image {
         receiver: Receiver,
+        family: Option<u64>,
         kind: IoTaskKind,
         wav: bool,
         standard: bool,
@@ -193,8 +211,13 @@ impl Worker {
         }
     }
     fn decoded(&mut self, value: Value) -> Result<Response> {
-        let Value::Decoded(decoded) = value else {
-            bail!("codec returned an unexpected result")
+        let (decoded, conversion_required) = match value {
+            Value::Decoded(decoded) => (decoded, None),
+            Value::Inspected {
+                decoded,
+                conversion_required,
+            } => (decoded, Some(conversion_required)),
+            _ => bail!("codec returned an unexpected result"),
         };
         self.next = self
             .next
@@ -204,6 +227,8 @@ impl Worker {
             handle: self.next,
             rate: decoded.rate(),
             audio_labels: decoded.audio_labels(),
+            frames: decoded.frames(),
+            conversion_required,
         };
         self.decoded = Some((self.next, decoded));
         Ok(Response::Decoded(summary))
@@ -217,6 +242,28 @@ impl Worker {
     }
     fn apply(&mut self, command: Command) -> Result<Response> {
         match command {
+            Command::BeginFamily {
+                description,
+                handle,
+            } => {
+                ensure!(
+                    self.decoded.as_ref().is_some_and(|(id, _)| *id == handle),
+                    "stale decoded codec handle"
+                );
+                let receiver = Receiver::new(authority(), description)
+                    .map_err(|reason| anyhow!("invalid family image: {reason:?}"))?;
+                self.image = None;
+                self.file = None;
+                self.input = Some(Input::Image {
+                    receiver,
+                    family: Some(handle),
+                    kind: IoTaskKind::ImportLoopAudio,
+                    wav: false,
+                    standard: false,
+                    channels: Vec::new(),
+                });
+                Ok(Response::Ack)
+            }
             Command::ImageBatch(parts) => {
                 ensure!(
                     !parts.is_empty() && parts.len() <= IMAGE_BATCH_PARTS,
@@ -323,9 +370,39 @@ impl Worker {
                 .run()?;
                 self.decoded(value)
             }
-            Command::Resample { handle, rate } => {
+            Command::GenerateClick { request, rate } => {
+                let value = Work::GenerateClick { request, rate }.run()?;
+                self.decoded(value)
+            }
+            Command::Inspect {
+                handle,
+                target,
+                mapping,
+                update_length,
+            } => {
+                ensure!(mapping.len() <= 2, "too many destination channels");
                 let decoded = self.take_decoded(handle)?;
-                let value = Work::Resample { decoded, rate }.run()?;
+                let value = Work::Inspect {
+                    decoded,
+                    target,
+                    mapping,
+                    update_length,
+                }
+                .run()?;
+                self.decoded(value)
+            }
+            Command::Convert {
+                handle,
+                target,
+                update_length,
+            } => {
+                let decoded = self.take_decoded(handle)?;
+                let value = Work::Convert {
+                    decoded,
+                    target,
+                    update_length,
+                }
+                .run()?;
                 self.decoded(value)
             }
             Command::Prepare {
@@ -379,6 +456,7 @@ impl Worker {
                     .map_err(|r| anyhow!("invalid codec image: {r:?}"))?;
                 self.input = Some(Input::Image {
                     receiver,
+                    family: None,
                     kind,
                     wav,
                     standard,
@@ -405,6 +483,7 @@ impl Worker {
                 }
                 let Some(Input::Image {
                     receiver,
+                    family,
                     kind,
                     wav,
                     standard,
@@ -419,6 +498,28 @@ impl Worker {
                         .map_err(|r| anyhow!("incomplete image: {r:?}"))?,
                 )
                 .map_err(|r| anyhow!("invalid image: {r:?}"))?;
+                if let Some(handle) = family {
+                    let decoded = self.take_decoded(handle)?;
+                    let Value::Image(image) = (Work::ConvertFamily {
+                        decoded,
+                        base: image,
+                    })
+                    .run()?
+                    else {
+                        bail!("codec returned an unexpected family result");
+                    };
+                    let stream = UploadStream::new(
+                        image,
+                        key(),
+                        Target::Session {
+                            revision: Revision(1),
+                        },
+                    )
+                    .map_err(|reason| anyhow!("invalid converted family: {reason:?}"))?;
+                    let description = stream.description();
+                    self.image = Some(stream);
+                    return Ok(Response::Image(description));
+                }
                 let Value::File {
                     name,
                     mime,
@@ -525,6 +626,50 @@ mod exports {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn generated_clicks_cross_the_worker_protocol_and_reject_invalid_timing() {
+        for kind in [
+            shoop_app_api::ClickTrackKind::Audio,
+            shoop_app_api::ClickTrackKind::Midi,
+        ] {
+            let mut worker = Worker::default();
+            let command = Command::GenerateClick {
+                request: shoop_app_api::ClickTrackRequest {
+                    kind,
+                    ..Default::default()
+                },
+                rate: 48_000,
+            };
+            let command = decode(&encode(&command).unwrap()).unwrap();
+            let Response::Decoded(summary) = worker.receive(command) else {
+                panic!("generation failed")
+            };
+            assert_eq!(summary.rate, 48_000);
+            assert_eq!(
+                summary.audio_labels.is_some(),
+                kind == shoop_app_api::ClickTrackKind::Audio
+            );
+            assert!(matches!(
+                worker.receive(Command::Prepare {
+                    handle: summary.handle,
+                    mapping: vec![0, 0],
+                    update_length: true,
+                }),
+                Response::Image(_)
+            ));
+            assert!(matches!(
+                worker.receive(Command::GenerateClick {
+                    request: shoop_app_api::ClickTrackRequest {
+                        kind,
+                        bpm: f64::NAN,
+                        ..Default::default()
+                    },
+                    rate: 48_000,
+                }),
+                Response::Failed(_)
+            ));
+        }
+    }
     #[shoop_test]
     fn worker_refuses_quotas_order_and_stale_handles_without_retained_work() {
         let mut worker = Worker::default();
@@ -696,6 +841,88 @@ mod tests {
         }
         assert_eq!(files[0], files[1]);
     }
+    #[shoop_test]
+    fn worker_plans_selected_channels_before_consent_and_converts_only_when_requested() {
+        for (source, update_length, required, length) in [
+            (0, true, false, 64),
+            (1, false, false, 48),
+            (1, true, true, 64),
+        ] {
+            let mut worker = Worker::default();
+            let audio = shoop_session::LoopAudio {
+                sample_rate: 1000,
+                channels: [64, 48]
+                    .into_iter()
+                    .map(|frames| shoop_session::LoopAudioChannel {
+                        label: format!("{frames}"),
+                        role: "direct".into(),
+                        samples: vec![0.25; frames],
+                    })
+                    .collect(),
+            };
+            let Response::Decoded(summary) = worker
+                .decoded(Value::Decoded(Decoded::Audio(audio)))
+                .unwrap()
+            else {
+                panic!("decoded audio");
+            };
+            let target = ConversionTarget {
+                sample_rate: 1000,
+                quantum_frames: 32,
+            };
+            let command = Command::Inspect {
+                handle: summary.handle,
+                target,
+                mapping: vec![source],
+                update_length,
+            };
+            let Response::Decoded(inspected) =
+                worker.receive(decode(&encode(&command).unwrap()).unwrap())
+            else {
+                panic!("inspection failed");
+            };
+            assert_eq!(inspected.conversion_required, Some(required));
+            let Some((_, Decoded::Audio(retained))) = &worker.decoded else {
+                panic!("retained input");
+            };
+            assert_eq!(
+                retained.channels[0].samples.len(),
+                if source == 0 { 64 } else { 48 }
+            );
+            let handle = if required {
+                let command = Command::Convert {
+                    handle: inspected.handle,
+                    target,
+                    update_length,
+                };
+                let Response::Decoded(converted) =
+                    worker.receive(decode(&encode(&command).unwrap()).unwrap())
+                else {
+                    panic!("conversion failed");
+                };
+                converted.handle
+            } else {
+                inspected.handle
+            };
+            let Some((_, Decoded::Audio(retained))) = &worker.decoded else {
+                panic!("retained output");
+            };
+            assert_eq!(retained.channels[0].samples.len(), length);
+            assert!(retained.channels[0]
+                .samples
+                .iter()
+                .all(|sample| *sample == 0.25));
+            assert!(matches!(
+                worker.receive(Command::Prepare {
+                    handle,
+                    mapping: vec![0],
+                    update_length
+                }),
+                Response::Image(_)
+            ));
+        }
+    }
+
     #[shoop_test]
     fn worker_retains_decoded_audio_across_dialog_and_streams_the_complete_image() {
         let expected = vec![0., 0.25, -0.5, 0.75];

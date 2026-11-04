@@ -2,7 +2,7 @@
 
 use crate::endpoint::ControlEndpoint;
 use shoop_rt_protocol::{
-    BusControl, BusId, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
+    BusControl, BusPort, EngineMessage, EnginePort, HostPortId, Lane, PortKind, StateRecord,
     StripPort,
 };
 use shoop_rt_transport::carrier::Outbox;
@@ -44,7 +44,7 @@ impl ControlEndpoint {
         let strip = self.model.strips[cursor.index]?;
         while cursor.part < PORT_KINDS.len() {
             let kind = PORT_KINDS[cursor.part];
-            let (channels, masks): (usize, &[u64]) = match kind {
+            let (channels, masks): (usize, &[crate::model::HostMask]) = match kind {
                 PortKind::AudioIn => (strip.shape.audio_inputs as usize, strip.inputs.current()),
                 PortKind::AudioOut => (strip.shape.audio_outputs as usize, strip.outputs.current()),
                 PortKind::MidiIn => (
@@ -58,10 +58,10 @@ impl ControlEndpoint {
             };
             while cursor.channel < channels {
                 let mask = masks[cursor.channel];
-                while cursor.bit < 64 {
+                while cursor.bit < crate::MAX_HOST_PORTS {
                     let bit = cursor.bit;
                     cursor.bit += 1;
-                    if mask & (1 << bit) != 0 {
+                    if mask.contains(bit) {
                         return Some(StateRecord::Connection {
                             port: EnginePort::Strip(StripPort {
                                 strip: strip.id,
@@ -92,11 +92,23 @@ impl ControlEndpoint {
                     });
                 }
                 GENERATIONS => {
-                    cursor.stage = 1;
+                    cursor.stage = 8;
                     let floor = |generations: &[u32]| generations.iter().copied().max();
                     return Some(StateRecord::Generations {
                         strips: floor(&self.model.strip_generations).unwrap_or(0),
                         loops: floor(&self.model.loop_generations).unwrap_or(0),
+                    });
+                }
+                8 => {
+                    cursor.stage = 1;
+                    return Some(StateRecord::BusGenerations {
+                        generation: self
+                            .model
+                            .bus_generations
+                            .iter()
+                            .copied()
+                            .max()
+                            .unwrap_or(0),
                     });
                 }
                 1 => {
@@ -140,9 +152,11 @@ impl ControlEndpoint {
                             });
                         }
                         part if part == controls.len() + 1 => {
-                            let routes = &strip.outputs.master[strip.outputs.active];
+                            let routes = &strip.outputs.buses[strip.outputs.active];
                             while cursor.channel < strip.shape.audio_outputs as usize {
-                                while cursor.bit < self.settings.master_channels {
+                                while cursor.bit
+                                    < self.model.buses.len() * shoop_rt_protocol::MAX_STRIP_CHANNELS
+                                {
                                     let bit = cursor.bit;
                                     cursor.bit += 1;
                                     if routes[cursor.channel] & (1 << bit) != 0 {
@@ -153,8 +167,11 @@ impl ControlEndpoint {
                                                 index: cursor.channel as u8,
                                             },
                                             bus: BusPort {
-                                                bus: BusId::Master,
-                                                index: bit as u8,
+                                                bus: self.model.buses
+                                                    [bit / shoop_rt_protocol::MAX_STRIP_CHANNELS]?
+                                                    .id,
+                                                index: (bit % shoop_rt_protocol::MAX_STRIP_CHANNELS)
+                                                    as u8,
                                             },
                                         });
                                     }
@@ -206,29 +223,42 @@ impl ControlEndpoint {
                     }
                 }
                 4 => {
-                    let master = self.model.master;
-                    let controls = [
-                        BusControl::Gain(master.gain),
-                        BusControl::Balance(master.balance),
-                        BusControl::Mute(master.mute),
-                    ];
-                    if let Some(control) = controls.get(cursor.index) {
+                    let Some(slot) = self.model.buses.get(cursor.index) else {
+                        cursor.stage = 5;
+                        continue;
+                    };
+                    let Some(bus) = slot else {
                         cursor.index += 1;
+                        continue;
+                    };
+                    if cursor.part == 0 {
+                        cursor.part += 1;
+                        return Some(StateRecord::BusShape {
+                            bus: bus.id,
+                            channels: bus.channels,
+                        });
+                    }
+                    let controls = [
+                        BusControl::Gain(bus.gain),
+                        BusControl::Balance(bus.balance),
+                        BusControl::Mute(bus.mute),
+                    ];
+                    if let Some(control) = controls.get(cursor.part - 1) {
+                        cursor.part += 1;
                         return Some(StateRecord::Bus {
-                            bus: BusId::Master,
+                            bus: bus.id,
                             control: *control,
                         });
                     }
-                    let outputs = self.model.master_outputs.current();
-                    while cursor.channel < self.settings.master_channels {
-                        let mask = outputs[cursor.channel];
-                        while cursor.bit < 64 {
+                    while cursor.channel < bus.channels as usize {
+                        let mask = bus.outputs.current()[cursor.channel];
+                        while cursor.bit < crate::MAX_HOST_PORTS {
                             let bit = cursor.bit;
                             cursor.bit += 1;
-                            if mask & (1 << bit) != 0 {
+                            if mask.contains(bit) {
                                 return Some(StateRecord::Connection {
                                     port: EnginePort::Bus(BusPort {
-                                        bus: BusId::Master,
+                                        bus: bus.id,
                                         index: cursor.channel as u8,
                                     }),
                                     host: self.host_port_id(PortKind::AudioOut, bit),
@@ -238,7 +268,10 @@ impl ControlEndpoint {
                         cursor.bit = 0;
                         cursor.channel += 1;
                     }
-                    cursor.stage = 5;
+                    cursor.index += 1;
+                    cursor.part = 0;
+                    cursor.channel = 0;
+                    cursor.bit = 0;
                 }
                 5 => {
                     cursor.stage = 6;

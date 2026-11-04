@@ -155,7 +155,7 @@ def validate_graph_receipts(records, session, release_frame):
             (2, 3, 2, 4, 5, 4, 4, 4, 4, 2, 2),
             (1, 6, 3, 2, 6, 0, 0, 0, release_frame, 0, 3),
         )[index]
-        expected[:8] = b"LLS1\x01\x00" + bytes((phase, flags))
+        expected[:8] = b"LLS1\x02\x00" + bytes((phase, flags))
         for offset, value in ((8, session), (16, sequence), (32, runtime),
                               (40, requested), (48, effective), (56, delivered),
                               (64, observed), (88, epoch)):
@@ -163,8 +163,8 @@ def validate_graph_receipts(records, session, release_frame):
         struct.pack_into("<I", expected, 28, status)
         struct.pack_into("<III", expected, 76, scope, slot, generation)
         if index in (0, 3):
-            struct.pack_into("<IIIII", expected, 104, 0, 1 if index == 0 else 2,
-                             *([4, 16, 4] if index == 0 else [3, 12, 2]))
+            struct.pack_into("<IIII", expected, 104, 0, 1 if index == 0 else 2,
+                             *([4, 16] if index == 0 else [3, 12]))
         expected[124] = kind
         if packet != expected:
             raise RuntimeError("graph binding receipt differs from independent complete byte table")
@@ -178,7 +178,7 @@ def compare_graph_worklets(result, native):
     validate_graph_receipts(native["graphResponses"], (1 << 64) - 1, 129)
     expected_midi = b"".join(struct.pack("<QI", at, len(packet)) + bytes(packet) for at, packet in native["midi"])
     expected_audio = [[sample[channel] for sample in native["samples"]] for channel in range(2)]
-    if (len(native["samples"]) != 129 or len(native["payloads"]) != 20
+    if (len(native["samples"]) != 129 or len(native["payloads"]) != 17
             or native["frames"] != 130 or native["callbacks"] != 3):
         raise RuntimeError("incomplete native graph reference")
 
@@ -215,7 +215,7 @@ def compare_graph_worklets(result, native):
         if primitive(report["responses"]) != primitive(native["responses"]):
             raise RuntimeError("actual graph primitive receipts differ from native")
         payloads, requests = report["payloads"], report["graphRequests"]
-        if (len(payloads) != 21 or payloads[0]["result"] != 4 or any(p["result"] != 0 for p in payloads[1:])
+        if (len(payloads) != 18 or payloads[0]["result"] != 4 or any(p["result"] != 0 for p in payloads[1:])
                 or any(p["frame"] != "0" for p in payloads)
                 or len(requests) != 4 or requests[0]["result"] != 9 or any(p["result"] != 0 for p in requests[1:])
                 or [p["frame"] for p in requests[:3]] != ["0", "0", "1"]):

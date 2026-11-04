@@ -59,26 +59,28 @@ pub struct Track {
     pub loops: Vec<Loop>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct MasterChannel {
+pub struct BusChannel {
     pub id: BusChannelId,
     pub label: String,
     pub port: Port,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Master {
+pub struct Bus {
     pub id: BusId,
     pub name: String,
     pub gain_db: f32,
     pub balance: f32,
     pub muted: bool,
-    pub channels: Vec<MasterChannel>,
+    pub channels: Vec<BusChannel>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Session {
     pub sample_rate: u32,
     pub global: GlobalControlState,
     pub tracks: Vec<Track>,
-    pub master: Master,
+    pub buses: Vec<Bus>,
+    pub bus_display_order: Vec<BusId>,
+    pub preview_bus: Option<BusId>,
     pub global_ports: Vec<Port>,
     pub routes: Vec<MixerRouteState>,
     pub selected: Vec<LoopId>,
@@ -95,6 +97,16 @@ pub struct MidiUpdate {
     pub content: MidiChannel,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FamilyMember {
+    pub loop_id: LoopId,
+    pub sync_source: Option<LoopId>,
+    pub expected_revision: u64,
+    pub expected_frames: u64,
+    pub fence_content: bool,
+    pub restart: bool,
+    pub content: Option<Loop>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Manifest {
     Session(Session),
     Loop {
@@ -106,6 +118,11 @@ pub enum Manifest {
         frames: Option<u64>,
         audio: Vec<AudioUpdate>,
         midi: Vec<MidiUpdate>,
+    },
+    FamilyUpdate {
+        format: ConversionTarget,
+        root: LoopId,
+        members: Vec<FamilyMember>,
     },
 }
 #[derive(Clone, Debug, PartialEq)]

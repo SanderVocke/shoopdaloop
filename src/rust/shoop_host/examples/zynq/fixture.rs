@@ -493,24 +493,30 @@ pub fn run(client: &mut Client, connection: &mut Connection) {
     assert_eq!(actual.sample_rate, expected_session.sample_rate);
     assert_eq!(actual.global, expected_session.global);
     assert_eq!(actual.tracks.len(), expected_session.tracks.len());
-    assert_eq!(actual.master.name, expected_session.master.name);
-    assert_eq!(actual.master.gain_db, expected_session.master.gain_db);
-    assert_eq!(actual.master.balance, expected_session.master.balance);
-    assert_eq!(actual.master.muted, expected_session.master.muted);
-    assert_eq!(
-        actual
-            .master
-            .channels
-            .iter()
-            .map(|c| &c.label)
-            .collect::<Vec<_>>(),
-        expected_session
-            .master
-            .channels
-            .iter()
-            .map(|c| &c.label)
-            .collect::<Vec<_>>()
-    );
+    assert_eq!(actual.buses.len(), expected_session.buses.len());
+    for (actual, expected) in actual.buses.iter().zip(&expected_session.buses) {
+        assert_eq!(
+            (&actual.name, actual.gain_db, actual.balance, actual.muted),
+            (
+                &expected.name,
+                expected.gain_db,
+                expected.balance,
+                expected.muted
+            )
+        );
+        assert_eq!(
+            actual
+                .channels
+                .iter()
+                .map(|channel| &channel.label)
+                .collect::<Vec<_>>(),
+            expected
+                .channels
+                .iter()
+                .map(|channel| &channel.label)
+                .collect::<Vec<_>>()
+        );
+    }
     assert_eq!(actual.routes.len(), expected_session.routes.len());
     for (actual, expected) in actual.tracks.iter().zip(&expected_session.tracks) {
         assert_eq!(

@@ -198,6 +198,7 @@ enum Sending {
     },
     Image {
         validation: Option<Validation>,
+        family: Option<u64>,
         stream: Option<UploadStream>,
         kind: u8,
         wav: bool,
@@ -241,6 +242,7 @@ impl Sending {
             }),
             Self::Image {
                 validation,
+                family,
                 stream,
                 kind,
                 wav,
@@ -277,6 +279,12 @@ impl Sending {
                 let stream = stream.as_mut().unwrap();
                 if !*declared {
                     *declared = true;
+                    if let Some(handle) = family.take() {
+                        return Ok(Some(WorkerCommand::BeginFamily {
+                            description: stream.description(),
+                            handle,
+                        }));
+                    }
                     return Ok(Some(WorkerCommand::BeginImage {
                         description: stream.description(),
                         kind: *kind,
@@ -397,7 +405,13 @@ impl BrowserJob {
                 WorkerResponse::Ack => {}
                 WorkerResponse::Failed(message) => bail!(message),
                 WorkerResponse::Decoded(summary) => {
-                    return Ok(Some(Value::Decoded(Decoded::Remote(summary))))
+                    if let Some(conversion_required) = summary.conversion_required {
+                        return Ok(Some(Value::Inspected {
+                            decoded: Decoded::Remote(summary),
+                            conversion_required,
+                        }));
+                    }
+                    return Ok(Some(Value::Decoded(Decoded::Remote(summary))));
                 }
                 WorkerResponse::Image(description) => {
                     self.output = Output::Image(
@@ -518,6 +532,9 @@ impl CodecExecutor {
             return Ok(CodecJob(Mode::Synchronous(Some(work))));
         }
         let sending = match work {
+            Work::GenerateClick { request, rate } => {
+                Sending::One(Some(WorkerCommand::GenerateClick { request, rate }))
+            }
             Work::Decode { kind, bytes, rate } => Sending::File {
                 bytes,
                 kind: worker::kind(kind)?,
@@ -532,6 +549,7 @@ impl CodecExecutor {
                 standard,
                 channels,
             } => Sending::Image {
+                family: None,
                 validation: Some(
                     Validation::for_transfer(image)
                         .map_err(|r| anyhow!("invalid capture: {r:?}"))?,
@@ -543,6 +561,25 @@ impl CodecExecutor {
                 channels,
                 declared: false,
             },
+            Work::ConvertFamily {
+                decoded: Decoded::Remote(summary),
+                base,
+            } => {
+                ensure!(self.peer.is_some(), "decoded codec worker was lost");
+                Sending::Image {
+                    validation: Some(
+                        Validation::for_transfer(base)
+                            .map_err(|reason| anyhow!("invalid family capture: {reason:?}"))?,
+                    ),
+                    family: Some(summary.handle),
+                    stream: None,
+                    kind: 0,
+                    wav: false,
+                    standard: false,
+                    channels: Vec::new(),
+                    declared: false,
+                }
+            }
             Work::Prepare {
                 decoded: Decoded::Remote(summary),
                 mapping,
@@ -555,14 +592,30 @@ impl CodecExecutor {
                     update_length,
                 }))
             }
-            Work::Resample {
+            Work::Inspect {
                 decoded: Decoded::Remote(summary),
-                rate,
+                target,
+                mapping,
+                update_length,
             } => {
                 ensure!(self.peer.is_some(), "decoded codec worker was lost");
-                Sending::One(Some(WorkerCommand::Resample {
+                Sending::One(Some(WorkerCommand::Inspect {
                     handle: summary.handle,
-                    rate,
+                    target,
+                    mapping,
+                    update_length,
+                }))
+            }
+            Work::Convert {
+                decoded: Decoded::Remote(summary),
+                target,
+                update_length,
+            } => {
+                ensure!(self.peer.is_some(), "decoded codec worker was lost");
+                Sending::One(Some(WorkerCommand::Convert {
+                    handle: summary.handle,
+                    target,
+                    update_length,
                 }))
             }
             _ => bail!("decoded media is not owned by the browser codec worker"),

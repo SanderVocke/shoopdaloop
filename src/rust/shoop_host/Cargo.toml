@@ -9,11 +9,14 @@ description = "Independent native session service and RT engine composition"
 workspace = true
 
 [features]
-default = ["cpal"]
+default = ["cpal", "jack"]
+jack = ["shoop_rt_host_native/jack", "dep:jack"]
 cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }
+jack = { workspace = true, optional = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true, features = ["std"] }
 clap = { workspace = true }
@@ -21,9 +24,9 @@ serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 getrandom = "0.4"
-directories = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 tracing-subscriber = { workspace = true }
+shoop_host_processes = { path = "../shoop_host_processes" }
 shoop_app_connection = { path = "../shoop_app_connection" }
 shoop_app = { path = "../shoop_app", default-features = false }
 shoop_app_api = { path = "../shoop_app_api", features = ["serde"] }
@@ -39,9 +42,10 @@ shoop_transport_socket = { path = "../shoop_transport_socket" }
 shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
 
 [dev-dependencies]
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_host = { path = ".", default-features = false, features = ["testing"] }
 tempfile = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["user", "process", "signal"] }
+nix = { version = "0.31", features = ["user"] }

@@ -240,6 +240,16 @@ struct Harness {
         >,
     >,
     imports: Vec<rt_runtime::ResourceId>,
+    shared_audio: Option<resource::AudioStoreId>,
+    shared_midi: Option<resource::MidiStoreId>,
+    resource_pages: usize,
+}
+#[derive(Clone, Copy)]
+enum SharedInput {
+    Loaded,
+    History,
+    MixedLoaded,
+    MixedHistory,
 }
 impl Harness {
     fn new(media: bool, journal: usize, reverse: bool, staging: TopologySettings) -> Self {
@@ -274,6 +284,29 @@ impl Harness {
         node_pairs: NodePairSettings,
         spare: bool,
     ) -> Self {
+        Self::with_shared_backing(
+            media,
+            journal,
+            reverse,
+            staging,
+            media_slots,
+            fault,
+            node_pairs,
+            spare,
+            None,
+        )
+    }
+    fn with_shared_backing(
+        media: bool,
+        journal: usize,
+        reverse: bool,
+        staging: TopologySettings,
+        media_slots: usize,
+        fault: Option<Frame>,
+        node_pairs: NodePairSettings,
+        spare: bool,
+        backing: Option<SharedInput>,
+    ) -> Self {
         let config = Config {
             max_frames: 32,
             max_nodes: if spare { 7 } else { 5 },
@@ -286,7 +319,14 @@ impl Harness {
             midi_events_per_port: 1024,
             midi_bytes_per_port: 4096,
             resource_slots: 16,
-            resource_pages: 128,
+            resource_pages: if matches!(
+                backing,
+                Some(SharedInput::MixedLoaded | SharedInput::MixedHistory)
+            ) {
+                512
+            } else {
+                128
+            },
             page_bytes: 64,
             command_slots: 32,
             scheduled_events: 32,
@@ -294,7 +334,6 @@ impl Harness {
                 commands: 32,
                 events: 32,
                 publications: 32,
-                subranges: 0,
                 transfer_bytes: (staging.records_per_callback * 64).max(64),
                 validation_steps: 128,
                 ..Budgets::default()
@@ -305,6 +344,7 @@ impl Harness {
         .unwrap();
         let mut resources = ResourceStore::with_capture_groups(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             Some(MidiIndexConfig {
                 versions: 4,
                 checkpoints_per_version: 4,
@@ -319,14 +359,120 @@ impl Harness {
         .unwrap();
         let mut imports = Vec::new();
         let mut owned = Vec::new();
+        let mut shared_audio = None;
+        let mut shared_midi = None;
         if media {
             let bytes: Vec<_> = [4f32, 8., 12., 16.]
                 .into_iter()
                 .flat_map(|v| [v, v * 10.])
                 .flat_map(f32::to_le_bytes)
                 .collect();
-            let audio = upload(&mut resources, Format::Audio { channels: 2 }, &bytes);
-            let midi = upload(&mut resources, Format::Midi, &encoded_midi());
+            let mut audio = upload(&mut resources, Format::Audio { channels: 2 }, &bytes);
+            if let Some(backing) = backing {
+                let store = resources
+                    .prepare_audio_store(
+                        resource::shared_audio::Config {
+                            channels: 2,
+                            history_frames: 4,
+                            views: 16,
+                            pages: 64,
+                        },
+                        Frame(0),
+                    )
+                    .unwrap();
+                let editable = match backing {
+                    SharedInput::Loaded | SharedInput::MixedLoaded => {
+                        resources.fork_audio(store, audio.snapshot.id).unwrap()
+                    }
+                    SharedInput::History | SharedInput::MixedHistory => {
+                        resources
+                            .render_io()
+                            .append_audio_history(
+                                store,
+                                Frame(0),
+                                &[4., 40., 8., 80., 12., 120., 16., 160.],
+                            )
+                            .unwrap();
+                        resources.grab_audio(store, Frame(0)..Frame(4)).unwrap()
+                    }
+                };
+                resources
+                    .render_io()
+                    .replace_audio(editable, Revision(1), 3, &[16., 160., 4., 40.])
+                    .unwrap();
+                resources.release_snapshot(audio.snapshot.id).unwrap();
+                resources.remove(audio.snapshot.resource).unwrap();
+                let snapshot = resources.snapshot(editable, Frame(4)).unwrap();
+                audio = media::Source {
+                    snapshot,
+                    index: resources.read_index(snapshot.id).unwrap(),
+                };
+                shared_audio = Some(store);
+            }
+            let mut midi = upload(&mut resources, Format::Midi, &encoded_midi());
+            if matches!(
+                backing,
+                Some(SharedInput::MixedLoaded | SharedInput::MixedHistory)
+            ) {
+                let store = resources
+                    .prepare_midi_store(
+                        resource::shared_midi::Config {
+                            history_frames: 4,
+                            chunks: 2,
+                            views: 16,
+                            pages: 400,
+                            max_events: 8,
+                            max_bytes: 64,
+                            max_packet: 16,
+                            transactions: 2,
+                            edit_steps: 3,
+                        },
+                        Frame(0),
+                        &MidiState::default(),
+                    )
+                    .unwrap();
+                let mut input = MidiBuffer::new(8, 64).unwrap();
+                input.push(0, 4, &[0x90, 60, 100]).unwrap();
+                input.push(2, 4, &[0x80, 60, 45]).unwrap();
+                let editable = if matches!(backing, Some(SharedInput::MixedLoaded)) {
+                    let import = resources
+                        .prepare_midi_import(store, midi.snapshot.id)
+                        .unwrap();
+                    while resources.render_io().progress_midi_import(import, 3)
+                        == Ok(resource::shared_midi::EditStatus::Building)
+                    {}
+                    resources.finish_midi_import(import).unwrap()
+                } else {
+                    let mut capture = shoop_loops::midi::MidiCapture::prepare(4, 8, 64).unwrap();
+                    capture
+                        .append_history(&mut resources.render_io(), store, Frame(0), 4, &input)
+                        .unwrap();
+                    resources.grab_midi(store, Frame(0)..Frame(4)).unwrap()
+                };
+                let edit = resources
+                    .render_io()
+                    .prepare_midi_replace(
+                        editable,
+                        Revision(1),
+                        0,
+                        4,
+                        &input,
+                        &MidiState::default(),
+                    )
+                    .unwrap();
+                while resources.render_io().progress_midi_edit(edit, 3)
+                    == Ok(resource::shared_midi::EditStatus::Building)
+                {}
+                resources.render_io().commit_midi_edit(edit).unwrap();
+                resources.release_snapshot(midi.snapshot.id).unwrap();
+                resources.remove(midi.snapshot.resource).unwrap();
+                let snapshot = resources.snapshot(editable, Frame(4)).unwrap();
+                midi = media::Source {
+                    snapshot,
+                    index: resources.read_index(snapshot.id).unwrap(),
+                };
+                shared_midi = Some(store);
+            }
             imports.extend([audio.snapshot.resource, midi.snapshot.resource]);
             owned.push(media::Input {
                 description: media::Description {
@@ -438,6 +584,9 @@ impl Harness {
             returned: Vec::new(),
             graphs: Vec::new(),
             imports,
+            shared_audio,
+            shared_midi,
+            resource_pages: config.limits().resource_pages,
         }
     }
     fn send(&mut self, lane: Lane, at: u64, operation: Operation, payload: Box<[u8]>) -> Sequence {
@@ -669,7 +818,21 @@ impl Harness {
                 stopped.resources().begin_callback();
                 stopped.resources().reclaim();
             }
-            assert_eq!(stopped.resource_usage().free_pages, 128);
+            if let Some(audio) = self.shared_audio {
+                stopped.resources().cleanup_audio_store(audio).unwrap();
+                for _ in 0..128 {
+                    stopped.resources().begin_callback();
+                    stopped.resources().reclaim();
+                }
+            }
+            if let Some(midi) = self.shared_midi {
+                stopped.resources().cleanup_midi_store(midi).unwrap();
+                for _ in 0..128 {
+                    stopped.resources().begin_callback();
+                    stopped.resources().reclaim();
+                }
+            }
+            assert_eq!(stopped.resource_usage().free_pages, self.resource_pages);
             assert_eq!(stopped.resource_usage().free_versions, 16);
             assert_eq!(stopped.resource_usage().free_snapshots, 16);
             assert_eq!(stopped.media_usage().references, 0);
@@ -3066,19 +3229,11 @@ fn graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_witho
             .compile_graph(&routes(false, true, false))
             .unwrap();
         let mut descriptor = plan.descriptor().clone();
-        let mut planning = plan.planning().clone();
-        if missing {
-            descriptor.steps.retain(|s| s.node != node(1));
-            planning.bindings.retain(|b| b.consumer != node(1));
-        } else {
-            planning.bindings[0].decision_slot = 2;
-        }
-        let bad = rt_runtime::graph::PreparedPlan::from_planned_descriptor(
-            plan.config(),
-            descriptor.clone(),
-            planning.clone(),
-        )
-        .unwrap();
+        let removed = node(if missing { 1 } else { 3 });
+        descriptor.steps.retain(|s| s.node != removed);
+        let bad =
+            rt_runtime::graph::PreparedPlan::from_descriptor(plan.config(), descriptor.clone())
+                .unwrap();
         let staged = h.graph_plan(1, 1, bad);
         let at = h.engine.next_frame().0;
         let rejected = h.op(at, pair(topology, staged, 1, 0));
@@ -3108,7 +3263,6 @@ fn graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_witho
             panic!("candidate owner")
         };
         assert_eq!(owner.descriptor(), &descriptor);
-        assert_eq!(owner.planning(), &planning);
     }
     let at = h.engine.next_frame();
     let ticket = assert_no_heap(|| {
