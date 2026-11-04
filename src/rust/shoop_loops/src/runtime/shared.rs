@@ -81,6 +81,7 @@ struct History {
     tracker: Option<midi::MidiCapture>,
     audio_scratch: Box<[f32]>,
     token: Option<u64>,
+    midi_token: Option<u64>,
     generation: u64,
     observed: Frame,
     completed: Frame,
@@ -215,6 +216,7 @@ impl Shared {
                 tracker,
                 audio_scratch: vec![0.; samples].into_boxed_slice(),
                 token: None,
+                midi_token: None,
                 generation: 1,
                 observed: Frame(0),
                 completed: Frame(0),
@@ -405,6 +407,7 @@ impl Shared {
         &mut self,
         source: u32,
         token: u64,
+        midi_token: u64,
         frame: Frame,
         q: usize,
         ports: &mut AudioPorts<'_>,
@@ -424,7 +427,7 @@ impl Shared {
             return Err(Error::InvalidFrame);
         }
         let h = &mut self.histories[slot];
-        if token == 0 {
+        if token == 0 || midi_token == 0 {
             return Err(Error::Exhausted);
         }
         let end = frame.checked_add(q)?;
@@ -432,7 +435,7 @@ impl Shared {
             return Err(Error::InvalidFrame);
         }
         let changed = h.token.is_some_and(|old| old != token);
-        if changed {
+        if h.midi_token.is_some_and(|old| old != midi_token) {
             if let Some(tracker) = &mut h.tracker {
                 tracker.reset();
             }
@@ -450,6 +453,7 @@ impl Shared {
             h.restart = false;
         }
         h.token = Some(token);
+        h.midi_token = Some(midi_token);
         h.observed = end;
         h.staged = None;
         self.work.history_ticks = self.work.history_ticks.saturating_add(1);
@@ -1239,6 +1243,7 @@ impl LoopPlanner {
         &mut self,
         source: u32,
         token: u64,
+        midi_token: u64,
         frame: Frame,
         q: usize,
         ports: &mut AudioPorts<'_>,
@@ -1246,7 +1251,7 @@ impl LoopPlanner {
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         if let Some(shared) = &mut self.shared {
-            shared.observe(source, token, frame, q, ports, midi, io)?;
+            shared.observe(source, token, midi_token, frame, q, ports, midi, io)?;
         }
         Ok(())
     }

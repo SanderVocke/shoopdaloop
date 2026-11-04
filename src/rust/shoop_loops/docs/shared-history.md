@@ -27,6 +27,9 @@ that tick never advances the common completion watermark. Routing changes fence
 old source IDs immediately. No coverage in the new graph is eligible until a tick
 finishes in that graph. Input changes, resets and gaps also change the source
 generation. Unchanged routing masks do not reset the source's MIDI projection.
+Audio-only routing changes start a common segment while preserving the unchanged
+MIDI source's observed projection. MIDI-source changes and full input resets use
+a separate observation token and reset that projection.
 
 Schedule `HistoryGrab` through the ordinary domain lane. Its source ID includes
 planner scope, graph epoch and source generation. The positive logical duration

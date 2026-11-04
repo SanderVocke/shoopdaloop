@@ -1134,6 +1134,70 @@ fn midi_storage_refusal_keeps_observation_and_recovers_a_truthful_segment() {
 }
 
 #[shoop_test]
+fn audio_rerouting_preserves_the_unchanged_midi_sources_pre_cut_projection() {
+    let mut h = Fixture::new(32, 7);
+    let (old, _, start) = h.grabs();
+    let retained = h.snapshot(old.audio.unwrap());
+    let strip = protocol::StripId(protocol::SlotId::new(0, 1));
+    h.request(protocol::Request::Connect {
+        port: protocol::EnginePort::Strip(protocol::StripPort {
+            strip,
+            kind: protocol::PortKind::AudioIn,
+            index: 0,
+        }),
+        host: protocol::HostPortId(0),
+        connected: false,
+    });
+    let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    let at = h.aligned_future(128);
+    let seq = h.send(
+        at,
+        Operation::HistoryGrab {
+            source: status.id,
+            start: Frame(at - 32),
+            end: Frame(at),
+        },
+    );
+    let Reply::Grabbed(fresh) = h.result(seq) else {
+        panic!("fresh segment")
+    };
+    let midi = h.snapshot(fresh.midi.unwrap());
+    let audio = h.snapshot(fresh.audio.unwrap());
+    let expected = input_state(h.stimulus.unwrap(), at - 32, 32);
+    let mut stopped = h.engine.render.into_stopped();
+    let index = stopped.resources.read_index(midi.id).unwrap();
+    assert_eq!(
+        stopped
+            .resources
+            .render_io()
+            .midi_seek(index, 0)
+            .unwrap()
+            .state,
+        expected
+    );
+    let samples = bytes(&mut stopped.resources, audio);
+    for (i, frame) in samples.chunks_exact(8).enumerate() {
+        assert_eq!(f32::from_le_bytes(frame[..4].try_into().unwrap()), 0.);
+        assert_eq!(
+            f32::from_le_bytes(frame[4..].try_into().unwrap()),
+            -2. * (at - 32 + i as u64 + 1) as f32
+        );
+    }
+    let previous = bytes(&mut stopped.resources, retained);
+    assert_eq!(
+        f32::from_le_bytes(previous[..4].try_into().unwrap()),
+        (start + 1) as f32
+    );
+    for snapshot in [retained, midi, audio] {
+        stopped.resources.release_snapshot(snapshot.id).unwrap();
+    }
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
 fn paired_grab_refusal_releases_the_first_private_owner_and_reroutes_invalidate_source_ids() {
     let mut h = Fixture::new(32, 7);
     let Reply::History(status) = h.op(Operation::HistoryStatus { source: 0 }) else {

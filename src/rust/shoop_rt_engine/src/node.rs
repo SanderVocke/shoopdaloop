@@ -176,6 +176,7 @@ impl Gains {
 pub struct StripInput {
     pending_history: Option<(rt_runtime::Epoch, bool)>,
     history_token: u64,
+    midi_history_token: u64,
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -281,6 +282,7 @@ impl StripInput {
         let frames = settings.frames;
         Self {
             history_token: 1,
+            midi_history_token: 1,
             pending_history: None,
             configuration: None,
             slot,
@@ -457,6 +459,7 @@ impl EngineNode {
             Self::StripInput(node) => {
                 node.pending_history = None;
                 node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
                 node.reset(configuration.inputs);
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
@@ -522,6 +525,7 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                 block.domain.observe_history(
                     node.slot as u32,
                     node.history_token,
+                    node.midi_history_token,
                     block.frame,
                     block.quantum.frames(),
                     &mut block.audio,
@@ -630,6 +634,7 @@ impl StripInput {
         match operation {
             EngineOp::Reset { inputs, .. } => {
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
+                self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
                 self.reset(inputs);
             }
             EngineOp::Gain(value) => self.gains.gain.set(value, self.ramp),
@@ -996,6 +1001,7 @@ impl EngineNode {
             {
                 if changed {
                     node.history_token = node.history_token.checked_add(1).unwrap_or(0);
+                    node.midi_history_token = node.midi_history_token.checked_add(1).unwrap_or(0);
                 }
             }
         }
