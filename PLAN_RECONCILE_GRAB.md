@@ -2,7 +2,7 @@
 
 ## Status, baseline and delivery
 
-R0 complete; R1 is reconciled with the target cleanup at `435eb2a2`.
+R0 complete; R1 is reconciled with the target cleanup through `d43871fb`.
 R2–R7 implementation and proofs are under CI validation. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
@@ -79,6 +79,21 @@ pending uploads. Publication now scans the finite prepared version table, counts
 that render validation and refuses uploads/capture writers. Stopped shared cleanup
 cancels unfinished uploads on its returned owners before removing them. The
 unread-terminal-result fixture retains such an upload and checks full recovery.
+
+Target refresh at `d43871fb965ea6fc59d53dfb41b60139a2e22735` is merged in
+`090ef6b8`. Its buffered `AudioIo` interface supersedes the temporary enlarged
+stack arrays; no port cap or prototype path from this branch remains. Structural
+ramp/stop/activation now follows the target's separate quantum ticks. Source
+fencing compares the complete control-side host mask and stages a compact changed
+flag under the next graph epoch, rather than copying routing tables into commands.
+
+Reconciliation compile fixes include the scalar resolver finish signature, current
+preview/port-publication fixture metadata, and supported format-conversion quanta.
+Source review restored the resolver's committed/quiescent boundary guards in the
+shared same-length replacement helper and added a regression fixture. Ready/private
+writers also validate a checked preparation scan bound. CI remains the sole test
+execution route. No completed reconciliation behavior or timing result is claimed
+until the consolidated foundation/full suites run successfully.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |
@@ -264,17 +279,17 @@ present, execution scope is fixed-only, and every criterion has an owner/test.
 
 ### R1 — Reconcile source and make the new PR target testable
 
-- [ ] Resolve the merge using fixed execution as authoritative. Retain both tracing
+- [x] Resolve the merge using fixed execution as authoritative. Retain both tracing
   inventories and shared-MIDI codec tests; adapt codec helpers and source fixtures
   to current APIs. Preserve fixed conversion/family publication and the shared
   retirement fix that scans prepared stores rather than all configured slots.
-- [ ] Remove/port our obsolete execution glue; preserve generic backing, logical
+- [x] Remove/port our obsolete execution glue; preserve generic backing, logical
   export and immutable ownership APIs. Do not reintroduce a production interval
   executor, old observation lifecycle or a selectable compatibility backend.
-- [ ] Add `feat/fixed-quantum-runtime` to relevant PR base filters in
+- [x] Add `feat/fixed-quantum-runtime` to relevant PR base filters in
   `.github/workflows/build_and_test.yml`, `docs.yml` and `codeql.yml`. Preserve
   the full matrix, required Node suites and pinned-Chrome library proofs.
-- [ ] Commit/push the reconciled baseline and retarget PR #927 to
+- [x] Commit/push the reconciled baseline and retarget PR #927 to
   `feat/fixed-quantum-runtime`; ensure a supported event starts fresh checks.
   If the existing PR is no longer usable, create its replacement against this
   same target and link the superseded deliveries/dependencies.
@@ -283,15 +298,19 @@ Verification through CI: the source builds with warnings denied, storage/codec
 and existing fixed tests compile/run, and checks belong to the reconciled head
 and intended base. A base edit or old status alone is not CI evidence.
 
+Implementation checkboxes in R1–R5 record completed source/fixture work. Their
+verification gates remain pending the consolidated CI run; they do not claim
+passing behavioral evidence. R6–R8 remain open until execution/artifacts pass.
+
 ### R2 — Small fixed-runtime compatibility proof
 
-- [ ] Add a Q=32 fixture using the production fixed kernel and loop processors.
+- [x] Add a Q=32 fixture using the production fixed kernel and loop processors.
   Prepare shared audio and MIDI resources, select their immutable snapshots using
   ordinary media operations, then play, seek, wrap, stop and export them.
-- [ ] Retain an old export and sibling owner, edit a private candidate and select
+- [x] Retain an old export and sibling owner, edit a private candidate and select
   its complete snapshots at a known tick. Assert source-change/MIDI restoration,
   unchanged siblings/exports, content revisions and correct continued playhead.
-- [ ] Exercise direct divisible processing and buffered host partitions, including
+- [x] Exercise direct divisible processing and buffered host partitions, including
   callbacks shorter than Q; verify the declared delay and exact intra-tick MIDI
   offsets against independent expected output. Guard RT execution against heap use.
 
@@ -301,17 +320,17 @@ using the old process/decision/observation execution adapter.
 
 ### R3 — Continuous fixed-tick history and coherent grabs
 
-- [ ] Add prepared audio/MIDI history bindings and a fixed input tap with Q-sized
+- [x] Add prepared audio/MIDI history bindings and a fixed input tap with Q-sized
   scratch, stable source identity and explicit capacity. Wire it through engine
   preparation/graph lifetime without enabling application mode flags or policies.
-- [ ] Append exactly once per source/tick, including stopped loops and event-free
+- [x] Append exactly once per source/tick, including stopped loops and event-free
   MIDI intervals. Maintain pre-input state and a completed common audio/MIDI
   watermark; independent loops must share history rather than duplicate writes.
-- [ ] Implement boundary-aware grab settlement and all-or-nothing source admission
+- [x] Implement boundary-aware grab settlement and all-or-nothing source admission
   for each audio/MIDI content view. Validate coverage, logical length, Q alignment,
   source identity and requested/effective cut; release partial private admissions
   on refusal without exposing a half-created result.
-- [ ] Handle storage gaps, density eviction, input resets/reroutes and partial-tick
+- [x] Handle storage gaps, density eviction, input resets/reroutes and partial-tick
   faults explicitly. Supply bounded segment restart/recovery where missing and
   retain old exports while queued cleanup settles.
 
@@ -323,16 +342,16 @@ uncompleted or partially advertised simultaneous MIDI input.
 
 ### R4 — Bounded private replacement and preparation scheduling
 
-- [ ] Adapt audio edit scratch/admission to the Q-sized runtime while retaining
+- [x] Adapt audio edit scratch/admission to the Q-sized runtime while retaining
   exact stored interval semantics, multichannel/page wrapping and zero edits.
   Build candidates without changing the live selected source or editable mapping.
-- [ ] Own MIDI patch bytes and pre-input state at preparation. Retain incremental
+- [x] Own MIDI patch bytes and pre-input state at preparation. Retain incremental
   suffix rebuilding and complete-index readiness, including logical-zero refresh,
   erased intervals, long loaded bases and competing/cancelled edits.
-- [ ] Add a prepared fair progress schedule and explicit callback-wide allowance.
+- [x] Add a prepared fair progress schedule and explicit callback-wide allowance.
   Keep capture/playback/ready commit independent of ordinary transfer credits;
   account event steps, state copies, index paths and private cleanup separately.
-- [ ] Define and implement publication-cut readiness/refusal/rescheduling outcomes.
+- [x] Define and implement publication-cut readiness/refusal/rescheduling outcomes.
   Preserve the committed revision until a complete candidate is accepted. This
   does not add a continuous replacement-recording writer or promise next-tick
   readiness for every admitted suffix.
@@ -343,16 +362,16 @@ stale edits, and checks fair bounded progress without interrupting required audi
 
 ### R5 — Atomic selection and fixed-only integration proofs
 
-- [ ] Preflight candidate snapshot/media ownership and target fences, then select
+- [x] Preflight candidate snapshot/media ownership and target fences, then select
   the complete audio/MIDI view at one eligible tick through current domain media
   transactions. Preserve position/controls according to existing selection rules.
-- [ ] Recheck resource version/revision, loop generation/content revision, relevant
+- [x] Recheck resource version/revision, loop generation/content revision, relevant
   topology/session epoch, length and format. Coordinate normal selection, family
   import and full configuration replacement; reject stale candidates intact.
-- [ ] Preserve MIDI renderer discontinuities, held-note cleanup/restoration,
+- [x] Preserve MIDI renderer discontinuities, held-note cleanup/restoration,
   packet order and output-overflow recovery. Do not silently swap a cached MIDI
   index or mutate a snapshot already owned by playback/export.
-- [ ] Port interval-driven mixed-history/replacement fixtures to fixed execution;
+- [x] Port interval-driven mixed-history/replacement fixtures to fixed execution;
   retain independent sample/packet/state oracles. Cover Q=1/16/32/64/128, host
   partitions 1/7/31 and larger/divisible blocks, several loops and repeated wraps.
 
@@ -388,13 +407,13 @@ normal playback, selection, file conversion or ownership enforcement.
 - [ ] Measure prepared memory and worst-case work across Q and maximum host sizes,
   active sources/loops, retained exports, page boundaries and MIDI event density.
   Include enough ticks before callback-end maintenance to expose peak pressure.
-- [ ] Add reproducible full-callback measurements for history capture, repeated
+- [x] Add reproducible full-callback measurements for history capture, repeated
   audio edits, MIDI preparation/publication and mixed playback with old exports.
   Report copy/state/index/reclamation counters, tails, maxima and every deadline
   miss; simple immutable-playback timings do not establish these costs.
 - [ ] Resolve violations of configured operation/storage bounds; document finite
   capacity/refusal and observed timing limits without claiming device acceptance.
-- [ ] Update runtime/loop documentation, tracing inventory, parity/persistence
+- [x] Update runtime/loop documentation, tracing inventory, parity/persistence
   evidence and PLAN_SHARED_MIDI.md to link this fixed-only completion. Remove
   obsolete interval integration claims; keep application P04/P05 flags open.
 
