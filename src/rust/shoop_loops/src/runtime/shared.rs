@@ -107,6 +107,7 @@ pub(super) struct Shared {
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
+    owned: Box<[Option<rt_runtime::ResourceId>]>,
     building: usize,
     turn: usize,
     callback: Option<Frame>,
@@ -138,7 +139,7 @@ impl Shared {
             .filter(|&n| n <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
         let scope = NEXT_SCOPE
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| Error::Exhausted)?;
         let mut histories = Vec::with_capacity(settings.histories.len());
         let mut lookup = vec![None; c.max_nodes].into_boxed_slice();
@@ -219,6 +220,7 @@ impl Shared {
                 })
                 .collect(),
             building: 0,
+            owned: vec![None; c.resource_slots].into_boxed_slice(),
             turn: 0,
             callback: None,
             allowance: settings.edit_steps_per_callback,
@@ -441,13 +443,15 @@ impl Shared {
                 return Err(error);
             }
         };
-        Ok(SharedTake {
+        let take = SharedTake {
             frames: end.0 - start.0,
             audio,
             midi,
             audio_store: h.audio,
             midi_store: h.midi,
-        })
+        };
+        self.track(take);
+        Ok(take)
     }
     pub fn candidate(&self, id: CandidateId) -> Result<Candidate, Error> {
         if self.closed || id.scope != self.scope {
@@ -552,6 +556,11 @@ impl Shared {
             midi_edit: None,
             failure: None,
             packet_bytes,
+        });
+        self.track(SharedTake {
+            audio,
+            midi,
+            ..source
         });
         Ok(CandidateId {
             scope: self.scope,
@@ -759,9 +768,15 @@ impl Shared {
         }
         for resource in [job.take.audio, job.take.midi].into_iter().flatten() {
             io.remove(resource)?;
+            self.owned[resource.slot() as usize] = None;
         }
         self.take(id)?;
         Ok(())
+    }
+    fn track(&mut self, take: SharedTake) {
+        for resource in [take.audio, take.midi].into_iter().flatten() {
+            self.owned[resource.slot() as usize] = Some(resource);
+        }
     }
     pub fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
         for slot in 0..self.jobs.len() {
@@ -774,6 +789,16 @@ impl Shared {
                     },
                     &mut resources.io(),
                 )?;
+            }
+        }
+        for slot in 0..self.owned.len() {
+            if let Some(resource) = self.owned[slot] {
+                match resources.info(resource) {
+                    Ok(_) => resources.remove(resource)?,
+                    Err(Error::InvalidId) => {}
+                    Err(error) => return Err(error),
+                }
+                self.owned[slot] = None;
             }
         }
         let mut busy = false;
