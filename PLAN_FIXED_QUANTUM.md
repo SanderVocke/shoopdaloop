@@ -62,8 +62,12 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
       or a partial-tick fault, preserving unread results under saturation.
 - [ ] Integrate engine, protocol/host configuration, settings, persistence and
   recovery. Verify native and browser production routes and capability parity.
-  - [ ] Share production strip/fader/bus/reader DSP with fixed-core execution,
+  - [x] Share production strip/fader/bus/reader DSP with fixed-core execution,
     including ramps, meters, MIDI monitoring and callback-scoped bulk reads.
+  - [x] Prepare production engine parts with independent host capacity/Q and
+    typed node operations, including inactive slots and shared ingress budgeting.
+  - [ ] Integrate the full protocol endpoint and logical slot lifecycle; carry Q
+    through startup/configuration/settings/persistence and select the fixed host.
 - [ ] Re-run whole-callback performance experiments for regular, two-transition,
   simultaneous-burst, recording, MIDI and graph/media workloads; include plugin
   block/readiness adapter coverage and target-device evidence.
@@ -116,7 +120,21 @@ after a fault during partial-tick staging without replaying that tick.
 Sync/program arbitration and production integration remain incomplete. The
 production application still selects the existing interval path.
 
+Production-composition continuation: `shoop_rt_engine::fixed` prepares the real
+engine processors next to the direct loop bank and reuses capacity calculations.
+Typed operations bind targets off-render, execute before same-tick route changes,
+and share normal callback ingress capacity with loop commands. Engine DSP render
+bodies are shared between both paths. Fixed bulk streaming retains one allowance
+across all ticks. Host/protocol startup still selects the interval composition;
+the fixed parts do not yet implement complete logical slot/endpoint lifecycle.
+
 Validation completed:
+
+- Production-DSP continuation: warning-denying workspace build and 2587 native
+  tests pass (four host skips). Node and headless Chromium each pass 14 core,
+  eight loop and six engine cases, including the full production signal chain,
+  recorded audio/MIDI, meters, staged configuration, cross-tick ramps and bulk
+  transfer limits. Logical slot/endpoint and host startup cutover remain pending.
 
 - Live-routing continuation: 2582 native workspace tests pass (four host skips),
   with 12 core and eight loop cases passing natively, in Node and Chromium.

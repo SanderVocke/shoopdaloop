@@ -1,6 +1,10 @@
-use super::{GraphCompiler, GraphControl, PreparedGraph, Quantum, Tick};
+use super::{
+    CommandQueue, GraphCompiler, GraphControl, NodeOperation, OperationContext, OperationControl,
+    PreparedGraph, Quantum, Tick,
+};
 use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
 use crate::graph::{GraphDescription, NodeSpec, PortCounts, PortType};
+use crate::processor::ProcessorOperation;
 use crate::resource::{ResourceIo, ResourceStore};
 use crate::{Epoch, Error, Frame, NodeId};
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -79,6 +83,14 @@ pub trait State: Send {
     ) -> Result<(), Error> {
         Ok(())
     }
+    fn begin_callback_with_budget(
+        &mut self,
+        frame: Frame,
+        resources: &mut ResourceStore,
+        _commands: usize,
+    ) -> Result<(), Error> {
+        self.begin_callback(frame, resources)
+    }
     fn begin_tick(&mut self, _tick: Tick, _resources: &mut ResourceStore) -> Result<(), Error> {
         Ok(())
     }
@@ -94,18 +106,27 @@ impl State for () {
 
 pub struct Block<'a> {
     pub graph_epoch: Epoch,
+    pub callback_frame: Frame,
     pub tick: Tick,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
     pub resources: ResourceIo<'a>,
 }
-pub trait Processor<S: State>: Send {
+pub trait Processor<S: State, O: ProcessorOperation = ()>: Send {
     fn validate_state(&self, _id: NodeId, _state: &S) -> Result<(), Error> {
         Ok(())
     }
     fn ports(&self) -> PortCounts;
     fn process(&mut self, block: &mut Block<'_>, state: &mut S) -> Result<(), Error>;
+    fn operation(
+        &mut self,
+        _value: O,
+        _context: OperationContext<'_>,
+        _state: &mut S,
+    ) -> Result<O::Result, Error> {
+        Err(Error::InvalidEvent)
+    }
 }
 
 struct Slot<P> {
@@ -135,22 +156,24 @@ pub struct Diagnostics {
     pub fault: Option<Error>,
 }
 
-pub struct Runtime<P, S> {
+pub struct Runtime<P, S, O: ProcessorOperation = ()> {
     pub(super) config: PreparedConfig,
     slots: Vec<Slot<P>>,
     graph: PreparedGraph,
     epoch: Epoch,
     graph_inbox: Option<super::publication::Inbox>,
+    operations: Option<CommandQueue<NodeOperation<O>, O::Result>>,
     state: S,
     resources: ResourceStore,
     pub(super) frame: Frame,
+    callback_frame: Frame,
     diagnostics: Diagnostics,
     fault: Option<Error>,
     recovery: Vec<crate::midi::ResetState>,
     recovery_remaining: Vec<usize>,
 }
 
-impl<P: Processor<S>, S: State> Runtime<P, S> {
+impl<P: Processor<S, O>, S: State, O: ProcessorOperation> Runtime<P, S, O> {
     pub fn prepare(
         config: PreparedConfig,
         nodes: Vec<(NodeId, P)>,
@@ -205,9 +228,11 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
             graph,
             epoch: Epoch(0),
             graph_inbox: None,
+            operations: None,
             state,
             resources,
             frame: Frame(0),
+            callback_frame: Frame(0),
             diagnostics: Diagnostics::default(),
             fault: None,
             recovery: (0..limits.midi_outputs)
@@ -224,6 +249,37 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
     }
     pub fn graph_compiler(&self) -> GraphCompiler {
         self.graph.compiler()
+    }
+    /// Prepare typed node control, sharing the callback's normal ingress budget with state.
+    pub fn prepare_operations(
+        &mut self,
+        capacity: usize,
+        ingress: usize,
+    ) -> Result<OperationControl<O>, Error>
+    where
+        O: Default,
+        O::Result: Default,
+    {
+        if self.frame != Frame(0) || self.fault.is_some() || self.operations.is_some() {
+            return Err(Error::InvalidState);
+        }
+        let limits = self.config.resources.limits();
+        if capacity > limits.command_slots || ingress > limits.budgets.commands {
+            return Err(Error::Capacity);
+        }
+        let (commands, queue) =
+            super::command_channel_with_budget(self.config.quantum, capacity, ingress)?;
+        self.operations = Some(queue);
+        Ok(OperationControl {
+            commands,
+            compiler: self.graph.compiler(),
+        })
+    }
+    pub fn shutdown_operations(&mut self, control: &mut OperationControl<O>) -> Result<(), Error> {
+        self.operations
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .shutdown(&mut control.commands, self.frame)
     }
     /// Prepare the single-credit owning publication transport before callbacks.
     pub fn prepare_graph_changes(&mut self) -> Result<GraphControl, Error> {
@@ -347,11 +403,18 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
             return Err(e);
         }
         self.diagnostics = Diagnostics::default();
+        self.callback_frame = self.frame;
         self.resources.begin_callback();
         if let Some(inbox) = &mut self.graph_inbox {
             inbox.begin_callback(self.frame, self.config.quantum);
         }
-        self.state.begin_callback(self.frame, &mut self.resources)
+        let commands = self.config.resources.limits().budgets.commands;
+        let admitted = match &mut self.operations {
+            Some(queue) => queue.begin_callback_with_budget(self.frame, commands)?,
+            None => 0,
+        };
+        self.state
+            .begin_callback_with_budget(self.frame, &mut self.resources, commands - admitted)
     }
     pub(super) fn end_callback(&mut self, result: Result<(), Error>) -> Result<(), Error> {
         self.resources.reclaim();
@@ -414,6 +477,27 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
         };
         let end = tick.end()?;
         let q = tick.quantum.frames();
+        if let Some(queue) = &mut self.operations {
+            let slots = &mut self.slots;
+            let state = &mut self.state;
+            let resources = &mut self.resources;
+            let graph_epoch = self.epoch;
+            queue.dispatch(tick.frame, |command| {
+                slots
+                    .get_mut(command.slot)
+                    .ok_or(Error::InvalidId)?
+                    .processor
+                    .operation(
+                        command.value,
+                        OperationContext {
+                            graph_epoch,
+                            tick,
+                            resources: resources.io(),
+                        },
+                        state,
+                    )
+            })?;
+        }
         if let Some(mut submission) = self
             .graph_inbox
             .as_mut()
@@ -443,6 +527,7 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
             slot.processor.process(
                 &mut Block {
                     graph_epoch: self.epoch,
+                    callback_frame: self.callback_frame,
                     tick,
                     audio: AudioPorts::new(&slot.input, &mut slot.output, q, 0, q)?,
                     midi_inputs: &slot.midi_input,

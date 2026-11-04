@@ -6,12 +6,14 @@
 
 mod graph;
 mod host;
+mod operation;
 mod publication;
 mod queue;
 mod routing;
 mod timing;
 pub use graph::{Block, Config, Diagnostics, PreparedConfig, Processor, Runtime, State};
 pub use host::BufferedHost;
+pub use operation::{NodeOperation, OperationContext, OperationControl};
 pub use publication::{GraphControl, GraphReceipt, GraphRejected, GraphTicket};
 pub use queue::{
     command_channel, command_channel_with_budget, CommandControl, CommandQueue, Receipt, Ticket,

@@ -309,6 +309,14 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
     }
     /// Ingress is snapshotted once per host callback, including callbacks without a tick.
     pub fn begin_callback(&mut self, next: Frame) -> Result<(), Error> {
+        self.begin_callback_with_budget(next, self.ingress_limit)
+            .map(|_| ())
+    }
+    pub fn begin_callback_with_budget(
+        &mut self,
+        next: Frame,
+        available: usize,
+    ) -> Result<usize, Error> {
         if self.closed {
             return Err(Error::Disconnected);
         }
@@ -317,7 +325,7 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
         }
         // Visible cancellations must include their preceding normal submissions.
         let cancels = self.cancels.slots();
-        let commands = self.commands.slots().min(self.ingress_limit);
+        let commands = self.commands.slots().min(self.ingress_limit).min(available);
         for _ in 0..commands {
             let command = self.commands.pop().map_err(|_| Error::InvalidState)?;
             self.last_admitted = Some(command.ticket.sequence);
@@ -357,7 +365,7 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
                 && self.commands.slots() > 0
             {
                 self.deferred_cancel = Some(cancel);
-                return Ok(());
+                return Ok(commands);
             }
             let result = if let Some(index) = self
                 .pending
@@ -386,7 +394,7 @@ impl<C: Copy, R: Copy> CommandQueue<C, R> {
                 result,
             })?;
         }
-        Ok(())
+        Ok(commands)
     }
     /// Equal-tick commands execute in submission order; handlers must not allocate.
     pub fn dispatch(

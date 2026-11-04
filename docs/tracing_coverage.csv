@@ -6,6 +6,7 @@ src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independen
 src/rust/rt_runtime/src/fixed/graph.rs,generic_realtime_library,excluded,Prepared fixed-tick execution; hosts observe Copy tick and route counts and terminal fault diagnostics outside rendering.
 src/rust/rt_runtime/src/fixed/host.rs,generic_realtime_library,excluded,Partition adaptation exposes core and host clocks and constant latency without callback tracing.
 src/rust/rt_runtime/src/fixed/mod.rs,generic_realtime_library,excluded,Portable fixed-core module declarations; no execution boundary to instrument.
+src/rust/rt_runtime/src/fixed/operation.rs,generic_realtime_library,excluded,Typed node operations and terminal receipts; direct bound targets without host tracing dependencies.
 src/rust/rt_runtime/src/fixed/publication.rs,generic_realtime_library,excluded,Owning route publication exposes terminal timing and epoch receipts; retirement stays off-render without application tracing.
 src/rust/rt_runtime/src/fixed/queue.rs,generic_realtime_library,excluded,Bounded copy-command transport exposes timing and terminal receipts without application tracing dependencies.
 src/rust/rt_runtime/src/fixed/routing.rs,generic_realtime_library,excluded,Control-side fixed-catalog graph compiler; typed validation results without application tracing dependencies.
@@ -243,6 +244,7 @@ src/rust/shoop_rt_engine/src/endpoint.rs,realtime_engine,excluded,Bounded alloca
 src/rust/shoop_rt_engine/src/graph.rs,realtime_engine,excluded,Allocation-free graph descriptor construction for staged activation; no execution boundary to instrument.
 src/rust/shoop_rt_engine/src/jobs.rs,realtime_engine,excluded,Structural transactions over prepared slots run by the control endpoint; the adapter traces their outcomes.
 src/rust/shoop_rt_engine/src/lib.rs,realtime_engine,excluded,Engine preparation and declarations; the host traces preparation failures.
+src/rust/shoop_rt_engine/src/fixed.rs,realtime_engine,excluded,Fixed composition of production DSP and direct loop state; copy telemetry cells and reliable receipts without callback tracing.
 src/rust/shoop_rt_engine/src/model.rs,realtime_engine,excluded,Plain confirmed engine state on the control side.
 src/rust/shoop_rt_engine/src/node.rs,realtime_engine,excluded,Real-time strip stage and fader and Master processors; rendering must not trace.
 src/rust/shoop_rt_engine/src/pool.rs,realtime_engine,excluded,Prepared slot and node identity layout.
@@ -251,6 +253,7 @@ src/rust/shoop_rt_engine/src/render.rs,realtime_engine,excluded,Render owner cal
 src/rust/shoop_rt_engine/src/resync.rs,realtime_engine,excluded,Bounded full-state record stream; the adapter traces resynchronization.
 src/rust/shoop_rt_engine/src/ring.rs,realtime_engine,excluded,Fixed-capacity queue.
 src/rust/shoop_rt_engine/src/stream.rs,realtime_engine,excluded,Bulk reader node and lock-free byte ring on the render path; rendering must not trace and the adapter traces reads and refusals.
+src/rust/shoop_rt_engine/src/signal.rs,realtime_engine,excluded,Borrowed common DSP buffers for interval and fixed execution; no independent execution or tracing boundary.
 src/rust/shoop_rt_engine/src/testing.rs,realtime_engine,excluded,Deterministic offline test host for tests and adapters; not a production path.
 src/rust/shoop_rt_engine/src/topology.rs,realtime_engine,excluded,Allocation-free timing image encoding; no execution boundary to instrument.
 src/rust/shoop_rt_host_native/src/cpal_driver.rs,native_engine_host,instrumented_indirect,"Opens devices and streams within the traced host start; stream and render callbacks must not trace, so failures and xruns are reported through host status and engine telemetry."

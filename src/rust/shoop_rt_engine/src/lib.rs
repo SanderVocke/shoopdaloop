@@ -33,6 +33,7 @@ mod cells;
 mod content;
 mod description;
 mod endpoint;
+pub mod fixed;
 mod graph;
 mod jobs;
 mod model;
@@ -43,6 +44,7 @@ mod render;
 mod replacement;
 mod resync;
 mod ring;
+mod signal;
 mod stream;
 mod topology;
 
@@ -150,27 +152,19 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-/// Prepare an engine for `description`. Allocation happens here only.
-pub fn prepare(
-    description: &EngineDescription,
-    driver: DriverStatus,
-) -> Result<Engine, PrepareError> {
-    description.validate()?;
-    let pool = Pool::new(&description.segments, description.buses as usize);
+fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames: usize) -> Config {
     let (strips, loops) = (pool.strips(), pool.loops());
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
     let buses = description.buses as usize;
-    let host = &description.host;
     let counts = [
-        host.audio_inputs.len(),
-        host.audio_outputs.len(),
-        host.midi_inputs.len(),
-        host.midi_outputs.len(),
+        description.host.audio_inputs.len(),
+        description.host.audio_outputs.len(),
+        description.host.midi_inputs.len(),
+        description.host.midi_outputs.len(),
     ];
     let [audio_in, audio_out, midi_in, midi_out] = counts;
     let credits = usize::from(description.reliable_credits);
-    let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
     let ports = strips * (7 * channels + 5)
@@ -184,9 +178,9 @@ pub fn prepare(
         + 2 * buses * master_channels * audio_out;
     let page_bytes = description.page_bytes;
     let payload = RECORDS_PER_APPEND * RECORD_BYTES;
-    let config = Config {
+    Config {
         sample_rate: description.sample_rate,
-        max_frames: description.max_frames,
+        max_frames: graph_frames,
         audio_inputs: audio_in,
         audio_outputs: audio_out,
         midi_inputs: midi_in,
@@ -216,7 +210,72 @@ pub fn prepare(
             publications: slots,
         },
     }
-    .prepare()?;
+}
+
+fn signal_nodes(
+    description: &EngineDescription,
+    pool: &Pool,
+    settings: &NodeSettings,
+) -> Vec<(rt_runtime::NodeId, EngineNode)> {
+    let (strips, loops) = (pool.strips(), pool.loops());
+    let buses = description.buses as usize;
+    let mut nodes = Vec::with_capacity(2 * strips + loops + buses + 1);
+    for slot in 0..buses {
+        nodes.push((
+            pool.bus(slot),
+            EngineNode::Bus(BusMixer::new(slot, settings)),
+        ));
+    }
+    nodes.push((
+        pool.reader(),
+        EngineNode::Reader(stream::BulkReader::new(
+            settings.cells.clone(),
+            description.page_bytes,
+        )),
+    ));
+    for slot in 0..strips {
+        nodes.push((
+            pool.strip_input(slot),
+            EngineNode::StripInput(StripInput::new(slot, settings)),
+        ));
+        nodes.push((
+            pool.strip_output(slot),
+            EngineNode::StripOutput(StripOutput::new(slot, settings)),
+        ));
+    }
+    for slot in 0..loops {
+        nodes.push((
+            pool.fader(slot),
+            EngineNode::Fader(LoopFader::new(slot, settings)),
+        ));
+    }
+    nodes
+}
+
+/// Prepare an engine for `description`. Allocation happens here only.
+pub fn prepare(
+    description: &EngineDescription,
+    driver: DriverStatus,
+) -> Result<Engine, PrepareError> {
+    description.validate()?;
+    let pool = Pool::new(&description.segments, description.buses as usize);
+    let (strips, loops) = (pool.strips(), pool.loops());
+    let channels = description.strip_channels as usize;
+    let master_channels = description.bus_channels as usize;
+    let buses = description.buses as usize;
+    let host = &description.host;
+    let counts = [
+        host.audio_inputs.len(),
+        host.audio_outputs.len(),
+        host.midi_inputs.len(),
+        host.midi_outputs.len(),
+    ];
+    let [audio_in, audio_out, midi_in, midi_out] = counts;
+    let credits = usize::from(description.reliable_credits);
+    let bulk_credits = usize::from(description.bulk_credits);
+    let pending = description.pending_transitions;
+    let config = runtime_capacities(description, &pool, description.max_frames).prepare()?;
+    let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
     let mut resources = ResourceStore::with_capture_groups(
@@ -312,32 +371,11 @@ pub fn prepare(
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, EngineNode::Loop(node)))
         .collect();
-    for slot in 0..buses {
-        nodes.push(PreparedNode::new(
-            pool.bus(slot),
-            EngineNode::Bus(BusMixer::new(slot, &settings)),
-        ));
-    }
-    nodes.push(PreparedNode::new(
-        pool.reader(),
-        EngineNode::Reader(stream::BulkReader::new(cells.clone(), page_bytes)),
-    ));
-    for slot in 0..strips {
-        nodes.push(PreparedNode::new(
-            pool.strip_input(slot),
-            EngineNode::StripInput(StripInput::new(slot, &settings)),
-        ));
-        nodes.push(PreparedNode::new(
-            pool.strip_output(slot),
-            EngineNode::StripOutput(StripOutput::new(slot, &settings)),
-        ));
-    }
-    for slot in 0..loops {
-        nodes.push(PreparedNode::new(
-            pool.fader(slot),
-            EngineNode::Fader(LoopFader::new(slot, &settings)),
-        ));
-    }
+    nodes.extend(
+        signal_nodes(description, &pool, &settings)
+            .into_iter()
+            .map(|(id, node)| PreparedNode::new(id, node)),
+    );
     let (mut control, mut runtime) =
         GraphRuntime::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
     runtime.prepare_graph_staging(1)?;

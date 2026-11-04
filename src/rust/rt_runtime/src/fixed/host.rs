@@ -1,5 +1,6 @@
 use super::graph::MAX_HOST_PORTS;
 use super::{Processor, Runtime, State};
+use crate::processor::ProcessorOperation;
 use crate::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     Error, Frame,
@@ -8,8 +9,8 @@ use alloc::{boxed::Box, vec, vec::Vec};
 
 /// Arbitrary host partitions with a constant one-quantum stream delay.
 /// The selected buffering policy never changes with individual callback sizes.
-pub struct BufferedHost<P, S> {
-    runtime: Runtime<P, S>,
+pub struct BufferedHost<P, S, O: ProcessorOperation = ()> {
+    runtime: Runtime<P, S, O>,
     frame: Frame,
     fill: usize,
     input: Box<[f32]>,
@@ -17,8 +18,8 @@ pub struct BufferedHost<P, S> {
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
 }
-impl<P: Processor<S>, S: State> BufferedHost<P, S> {
-    pub fn prepare(runtime: Runtime<P, S>) -> Result<Self, Error> {
+impl<P: Processor<S, O>, S: State, O: ProcessorOperation> BufferedHost<P, S, O> {
+    pub fn prepare(runtime: Runtime<P, S, O>) -> Result<Self, Error> {
         if runtime.next_frame() != Frame(0) {
             return Err(Error::InvalidState);
         }
@@ -50,13 +51,13 @@ impl<P: Processor<S>, S: State> BufferedHost<P, S> {
     pub fn next_frame(&self) -> Frame {
         self.frame
     }
-    pub fn runtime(&self) -> &Runtime<P, S> {
+    pub fn runtime(&self) -> &Runtime<P, S, O> {
         &self.runtime
     }
-    pub fn runtime_mut(&mut self) -> &mut Runtime<P, S> {
+    pub fn runtime_mut(&mut self) -> &mut Runtime<P, S, O> {
         &mut self.runtime
     }
-    pub fn into_runtime(self) -> Runtime<P, S> {
+    pub fn into_runtime(self) -> Runtime<P, S, O> {
         self.runtime
     }
     pub fn process(&mut self, audio: AudioBlock<'_, '_>, midi: MidiBlock<'_>) -> Result<(), Error> {

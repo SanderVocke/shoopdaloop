@@ -78,6 +78,28 @@ Disconnected receipts; unread terminal results survive. This also works after a
 partial-tick fault. This route transport does not yet coordinate logical owner,
 media and routing changes as one engine configuration transaction.
 
+## Typed processor operations
+
+`Processor<State, Operation>` and `Runtime<Processor, State, Operation>` accept a
+copy-valued processor operation family, defaulting to `()`. Prepare its bounded
+`OperationControl` before callbacks. Targets bind to physical slots at submission;
+operations reach inactive prepared processors as well as active graph members.
+Normal ingress is snapshotted once per callback and shares the configured command
+budget with `State::begin_callback_with_budget`. The loop bank obeys the remaining
+allowance. A per-channel ingress ceiling can reserve room for domain work.
+
+Tick ordering is typed node operations, routing publication, state settlement,
+graph execution, then state advancement. This allows a processor to retain a
+configuration for the next epoch before a same-tick route publication. Operation
+failures produce terminal command errors without faulting ordinary rendering;
+processors remain responsible for atomic parameter preflight. Coordinated engine
+configuration publication still needs joint preflight across all participants.
+
+`Block::callback_frame` identifies the outer callback even when the graph is called
+many times. It lets prepared processors retain a callback-wide allowance in
+addition to the shared resource-copy budget. Stop callbacks and use
+`shutdown_operations` to settle remaining node requests before extracting owners.
+
 Verification is in `tests/fixed.rs`: all supported quanta, an independently checked
 DAG with reversed logical identifiers, exact MIDI offsets, arbitrary single-frame
 and irregular partitions, heap guards, unread-result pressure, cancellation,

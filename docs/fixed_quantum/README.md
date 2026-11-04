@@ -9,6 +9,11 @@ Measured source: `4d8d608be184541c98af2f3254e1cb80fd4c6b6e`. The initial sweep m
 `2443a6aab76931a4b516514f1d4609ca8d06af8e` before the quiescent-shutdown addition. Both sweeps
 are retained, including every missed deadline.
 
+Later integration commits add live routing, typed node operations and a fixed
+composition of the production engine DSP. The tables below measure the stated
+earlier source revisions; they are not performance measurements of the complete
+production composition or its unfinished protocol/host integration.
+
 ## Method
 
 Each measurement times the entire **128-frame callback at 48 kHz**: the available

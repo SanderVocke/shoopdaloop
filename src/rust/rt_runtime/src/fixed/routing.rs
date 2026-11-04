@@ -37,6 +37,13 @@ impl core::fmt::Debug for PreparedGraph {
 }
 
 impl GraphCompiler {
+    pub(super) fn node_slot(&self, id: NodeId) -> Result<usize, Error> {
+        self.layout
+            .nodes
+            .iter()
+            .position(|&n| n == id)
+            .ok_or(Error::InvalidId)
+    }
     pub(super) fn new(config: PreparedConfig, nodes: &[NodeSpec]) -> Result<Self, Error> {
         Ok(Self {
             layout: Arc::new(Layout {

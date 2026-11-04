@@ -629,6 +629,16 @@ impl State for Bank {
     fn begin_callback(&mut self, frame: Frame, _: &mut ResourceStore) -> Result<(), Error> {
         self.commands.begin_callback(frame)
     }
+    fn begin_callback_with_budget(
+        &mut self,
+        frame: Frame,
+        _: &mut ResourceStore,
+        commands: usize,
+    ) -> Result<(), Error> {
+        self.commands
+            .begin_callback_with_budget(frame, commands)
+            .map(|_| ())
+    }
     fn begin_tick(&mut self, tick: Tick, resources: &mut ResourceStore) -> Result<(), Error> {
         if tick.quantum != self.quantum {
             return Err(Error::InvalidConfig);
