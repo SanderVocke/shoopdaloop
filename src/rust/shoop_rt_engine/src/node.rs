@@ -633,6 +633,7 @@ impl StripInput {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
             EngineOp::Reset { inputs, .. } => {
+                self.pending_history = None;
                 self.history_token = self.history_token.checked_add(1).unwrap_or(0);
                 self.midi_history_token = self.midi_history_token.checked_add(1).unwrap_or(0);
                 self.reset(inputs);
