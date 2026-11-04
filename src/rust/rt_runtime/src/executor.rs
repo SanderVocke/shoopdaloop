@@ -969,8 +969,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     /// Host recovery sink, separate from ordinary MIDI output. Reserve sink space
     /// for resets and call at most once per output per callback. Full sinks retain
     /// the exact next reset packet; ordinary output stays suppressed meanwhile.
-    /// Buffered pre-reset input finishes its tick before reset acknowledgment,
-    /// preserving recording input while discarding its ordinary output.
+    /// A partially collected tick finishes before reset acknowledgment, preserving
+    /// recording input and due actions while discarding their ordinary output.
     pub fn drain_midi_recovery(
         &mut self,
         port: usize,

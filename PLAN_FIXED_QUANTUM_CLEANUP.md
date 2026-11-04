@@ -380,7 +380,7 @@ Historical reports remain unchanged; native-only golden replay passes.
 | Stop and structural activation rounded onto one tick, refusing playing-strip removal | Align base/ramp end; activate one complete tick after Stop settlement. Fail-first Q16/32/64 tests cover ramps4 and Q+3, exact unrelated audio and reused slots. |
 | Coverage/Windows UI shutdown reported MIDI reset unconfirmed | Perfetto inspection plus a constrained reproduction identified the error. Dummy owner now completes its final reset callback; confirmation is read after driver join. Deterministic zero-grace regression and 10 contention/tracing trials × 2 original UI tests pass; deadlines/grace unchanged. |
 | Delayed MIDI note survived an acknowledged reset | Pending recovery clears current and delayed output per port. Fail-first heap-guarded Q16/32/64 tests cover explicit reset, output overflow, immediate/one-packet sinks, exact 32-packet order, continuous audio and fresh-note latency. Input/recording history is preserved. |
-| Reset acknowledged before a partial input tick rendered | Retain input for recording and defer acknowledgment until its whole tick completes, with stale output suppressed. One adapter flag arms only on actual reset/overflow requests; fresh traffic cannot starve recovery. Fail-first Q16/32/64 tests cover immediate/one-packet sinks, repeated reset during unfinished recovery, exact input-history timestamps/counts, continuous audio and every fresh packet at exact Q latency. Miri passes in14.77s. |
+| Reset acknowledged before a partial input tick rendered | Retain input for recording and defer acknowledgment until the unfinished whole tick completes, with stale output suppressed. One adapter flag arms only on actual reset/overflow requests; fresh traffic cannot starve recovery. Fail-first Q16/32/64 tests cover received and scheduled MIDI (including empty external input), immediate/one-packet sinks, repeated reset during unfinished recovery, exact input-history timestamps/counts, continuous audio and every fresh packet at exact Q latency. Expanded Miri case passes in29.50s. |
 | Session restore collided with an existing JACK port name | Refused unpublish admission could retain an old ready flag, discard ownership bookkeeping, then reuse a live name. Transient Unavailable now defers; hard errors clear readiness and retain ownership until successful retirement. A fail-first captured-session regression reproduces the exact physical-name collision, then passes transient/hard errors over typed/encoded delivery without sleeps or weakened assertions. |
 | CodeQL mistook a synthetic `nonce` for cryptography | Renamed the deterministic node-generation argument to `seed`. Maximum epoch/sequence tests remain. Fresh CodeQL has no new alerts and automatically resolved its thread; no rule was disabled. |
 
@@ -388,14 +388,14 @@ Historical reports remain unchanged; native-only golden replay passes.
 
 | Gate | Evidence |
 | --- | --- |
-| Warning-denying workspace build; full native suite | **2,667 passed, six existing skips** on final implementation; `work/cleanup-input-reset-build.log`, `work/cleanup-input-reset-native.log`. |
-| Complete affected Wasm suite, pinned Node22.22.2 | **473 passed**: 438 core plus all35 application-service tests; `work/cleanup-input-reset-node.log`. |
+| Warning-denying workspace build; full native suite | **2,667 passed, six existing skips** on final implementation; `work/cleanup-pending-tick-build.log`, `work/cleanup-pending-tick-native.log`. |
+| Complete affected Wasm suite, pinned Node22.22.2 | **473 passed**: 438 core plus all35 application-service tests; `work/cleanup-pending-tick-node.log`. |
 | Independent loop fixture | **60 native tests passed**; final seeded descriptor model also passes in `work/cleanup-final-graph-model.log`. |
-| Actual non-isolated loop AudioWorklets | Fresh final-code **debug and release**, offline/live, all six deliberate failure gates per profile; `work/cleanup-input-reset-browser-{debug,release}.log`. |
+| Actual non-isolated loop AudioWorklets | Fresh final-code **debug and release**, offline/live, all six deliberate failure gates per profile; `work/cleanup-pending-tick-browser-{debug,release}.log`. |
 | Generic runtime worklets | Offline/live media/replay agreement and both deliberate failure gates; `target/rt-runtime-host/reports`. |
 | Production browser workflows | **21 Chromium file/retiming tests**, including sync families and Q16/Q64; hosted UI record/play/save/clear/load, bus changes and new session; `work/cleanup-delivery-retiming-browser.log`, `work/cleanup-app-browser-smoke.log`. Zero reported xruns in that smoke is not a deadline guarantee. |
 | Native transports and persistence | Socket/shared-memory/TCP workflows, >32 MiB exact WAV/MIDI round trips, corrupt refusal, abandoned-owner cleanup and fresh load identities; `work/cleanup-native-{probe,files}-*`. |
-| Strict JACK acceptance | All seven commands pass, including five session scenarios, Master preview, companion and UI startup; `work/cleanup-input-reset-jack.log`, `work/cleanup-input-reset-jack`. |
+| Strict JACK acceptance | All seven commands pass, including five session scenarios, Master preview, companion and UI startup; `work/cleanup-pending-tick-jack-final.log`, `work/cleanup-pending-tick-jack-final`. |
 | Miri, nightly-2026-05-04 | **29 selected tests across this cleanup**, original workloads and 900s watchdog retained; breakdown below. |
 | Structural checks | Formatting, test policy, closed **390-module** tracing inventory, book/excerpts, **17 inventoried runnable examples**, parity ledger, dependency boundaries and **133 Python tooling tests** pass; `work/cleanup-final-*`, `work/cleanup-python-tests.log`. |
 
@@ -472,4 +472,21 @@ Windows debug and web release gates passed; rerun required gates after this fix.
 Fresh strict JACK acceptance and actual debug/release offline/live worklets with
 all six deliberate failure gates pass after the pending-input guard; logs are
 `work/cleanup-input-reset-jack.log` and
-`work/cleanup-input-reset-browser-{debug,release}.log`.
+`work/cleanup-pending-tick-browser-{debug,release}.log`.
+
+Follow-up self-review extends the same guard to the entire partially collected
+tick: due MIDI injections with empty external input otherwise reproduce the same
+stale acknowledgment. The fail-first expansion is
+`work/cleanup-pending-tick-{before,after}.log`. The guard is now an O(1) fill check,
+using the same single bit; no additional state or graph processing mode. Complete
+native2667/Node473 suites, expanded Miri29.50s, and actual debug/release worklets
+with all failure gates pass on the strengthened code.
+
+The final strict JACK rerun passes all seven commands. Its first local attempt
+failed before the nested server-loss fixture started: JACK reported too many
+active servers. Inspection with the same shared-memory namespace found no live
+JACK server and seven dead fixture registrations left by repeated intentional
+SIGKILL tests. Backed up the registry, verified dead PIDs and current ownership,
+and cleared only those28 dead test objects and their registry. The unchanged
+suite then passed (`work/cleanup-pending-tick-jack-final.log`); failure assertions
+and deadlines remain intact.

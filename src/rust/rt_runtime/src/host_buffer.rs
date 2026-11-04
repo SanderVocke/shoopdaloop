@@ -165,7 +165,7 @@ impl HostBuffer {
     }
 
     pub fn defer_midi_recovery(&mut self) {
-        self.midi_recovery_wait |= self.midi_input.iter().any(|port| !port.is_empty());
+        self.midi_recovery_wait |= self.fill != 0;
     }
 
     pub fn midi_recovery_ready(&self) -> bool {
