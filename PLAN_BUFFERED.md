@@ -349,3 +349,18 @@ builds or implementation tests.
   both timing examples, bare-metal build, dependency audits, formatting, tracing
   inventory and shared test attributes pass after the rename. Historical branch
   and commit identifiers retain their actual names.
+
+- CI investigation at 31ddc295: all executed native matrix jobs reached the
+  same independent-host replay failure. The historical browser journal contained
+  four obsolete capture revision values after fixed-quantum migration. A fresh
+  non-isolated Chrome worklet run passes offline/live checks, exact offline and
+  two-thread native replay, and both intentional failure canaries. All ingress
+  packets and every callback audio hash match the old recording; only the four
+  capture revision fields differ. Refreshed the actual recorded artifact, pinned
+  digest and current provenance report; retained historical evidence and every
+  exact replay assertion. Both original web jobs, coverage, CodeQL and JACK
+  acceptance passed. macOS debug never acquired a runner and will be retried
+  on the final head if necessary.
+  The refreshed recording passes native-only debug and release replay; the
+  separate loop host also passes debug and release. All 44 selected host-runner,
+  loop-host, dependency-boundary and Wasm-report policy tests pass.
