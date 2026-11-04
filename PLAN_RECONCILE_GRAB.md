@@ -2,10 +2,11 @@
 
 ## Status, baseline and delivery
 
-R0–R7 are implemented with passing native functional and release evidence at
-`480a77a6`. Target refresh through `bbf027e9` is consolidated. R8 delivery requires
-green checks on the resulting head; [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927)
-records its exact final SHA and validation results. Written using
+Implementation and reconciliation are complete through target `df468352`.
+The full matrix passed at `7dad1991`; the final recovery-fix consolidation is
+pushed without another CI waiting round, as the user explicitly requested.
+[PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927) records the exact
+handoff SHA, tested head and pending validation distinction. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -189,38 +190,52 @@ prove the new integration. Pure shared-store and codec tests remain applicable.
 
 ## Delivery record
 
-The implementation/evidence input is
-`cec6cf26b15eab2d6e1493b1e821ec15ee37e4eb`; the included fixed target is
-`bbf027e98c4d1449f775019585acafd44728bd71`. This completion record is committed
-on top of that input. Its resulting exact head and applicable CI/artifact links
-are recorded in [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927),
-which remains open against `feat/fixed-quantum-runtime`. This keeps the record
-prepared before final validation without requiring a self-referential Git SHA.
-The latest target independently removes the same CI dependency on inspection
-runner queues; its merge changes no runtime source or fixture behavior.
-The checklist records completed implementation, fixtures and validation launch;
-**delivery is accepted only when that exact head's applicable checks pass**.
+The final consolidation input is
+`0c95d6c950d3cca908f925c3b74fe38bf4f0bc64`, which merges fixed target
+`df4683527dbde0ec7483c3e522fc3873e39a81c8`. The documentation commit on top
+is the handoff head, recorded exactly in
+[PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927). The PR remains
+open against `feat/fixed-quantum-runtime` and unmerged.
 
-Run [6217](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891916353)
-at `76d13d2e` passed the foundation/policy/release, native JACK, bare-metal,
-Linux/Windows inspection and complete Linux coverage: **2,723 passed, seven
-skipped**. The focused release measurement runs separately from the ignored
-ordinary-suite entry; physical-device tests and opt-in failure canaries retain
-their existing scope. [Refreshed raw artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891916353/artifacts/13355430264)
-records the same 71,965 callbacks, 193 individual deadline misses (all one-frame
-callbacks), zero misses at 128 frames, and the same 2,844 Q=1/128 MIDI overflow
-diagnostics. Timing variation across CI runs is not a performance improvement
-claim. The earlier detailed measurement record remains explicitly attributed to
-its own source. Final non-macOS platform, Node/Chrome, app/worklet/browser,
-CodeQL and policy results must pass on the documentation head and are linked in
-the PR; macOS alone is waived by the user's instruction above.
+The final target update adds `17df278e` and `df468352`: MIDI output recovery waits
+for an unfinished input tick before acknowledging resets, preserving collected
+input and due actions while suppressing stale output. The merge retains both
+upstream regressions and its terminal-fault exception. Our input tap, source
+identity, common completed watermark and private publication interfaces need no
+adaptation: collected input still reaches history once at the completed tick;
+output reset acknowledgment changes independently. No compatibility backend or
+callback replay is introduced.
 
-No reviewer submission or inline review thread was present at the latest
-inspection; inspect again at delivery and resolve any arriving feedback. This
-records absence, not reviewer approval. P04/P05 application actions/modes, service
-selection/sync policy, UI/Lua integration and continuous replacement recording
-remain open. Physical-device timing/lossless output beyond prepared quotas is
-not certified. The audio dependency from #909 and fixed parent #930 remain explicit.
+Full [run 6221](https://github.com/SanderVocke/shoopdaloop/actions/runs/41894695139)
+at `7dad19913b2cf82c4f07db523b0939beaf449945` passed **all** configured platform,
+Node/Chrome, app/worklet/browser, policy, portable, Docs and CodeQL checks.
+macOS eventually passed too, although the user had waived waiting for it. Linux
+coverage passed 2,723 tests with seven skips; Windows release passed 1,901 tests
+with three skips. Engine unit proofs passed 21 tests, with the ignored release
+measurement executed separately. Physical-device and opt-in failure tests retain
+their explicit skip scope. No reviewer submissions or inline threads were present
+at the final inspection; absence is not reviewer approval.
+
+[Final tested-head raw measurements](https://github.com/SanderVocke/shoopdaloop/actions/runs/41894695139/artifacts/13356453045)
+retain 71,965 callbacks, 598 individual deadline misses, zero misses in every
+128-frame case, and 2,844 MIDI overflow diagnostics in Q=1/128. Tested PR merge
+checkout: `aa375fcc017b5c01eb66cf629306d7f91a2c31c4`. The
+[Node/Chrome reports](https://github.com/SanderVocke/shoopdaloop/actions/runs/41894695139/artifacts/13359764922)
+and attributed earlier measurements remain available. Timing variation between
+runs is not claimed as a performance improvement or device qualification.
+
+Final handoff instruction, 2026-11-04: **consolidate and push without another CI
+waiting round**. The latest recovery merge and this record are therefore handed
+off without claiming fresh green checks. The green run above validates the
+preceding head, not the final consolidation. Normal automatic CI may run after
+push; it is not awaited, and no local tests replace it. This explicit handoff
+instruction qualifies the exact-head validation gate in R8 and criterion 12 for
+this final merge only.
+
+P04/P05 application actions/modes, service selection/sync policy, UI/Lua
+integration and continuous replacement recording remain open. Physical-device
+timing and lossless output beyond prepared quotas are not certified. The audio
+foundation from #909 and fixed parent #930 remain explicit dependencies.
 
 ## Goals and scope
 
@@ -551,8 +566,9 @@ substitutes for evidence.
   parity and dependency boundaries, with the user-approved macOS waiver above.
   Keep test execution separate from builds
   that overwrite test-enabled host executables. Record real skips/facility limits.
-  Successful applicable checks on the exact delivered head remain the final
-  verification gate; launching checks alone does not satisfy acceptance.
+  The complete matrix passed at `7dad1991`. The final recovery merge follows
+  the user's explicit consolidate/push/no-wait instruction in the delivery record;
+  its checks are not represented as green.
 - [x] Run the mixed fixed-runtime end-to-end sequence: continuous history -> two
   overlapping grabs -> ordinary loop selection/playback -> delayed private wrapped
   edits -> coherent tick publication -> retained exports -> save/reload/edit ->
@@ -565,19 +581,19 @@ substitutes for evidence.
 - [x] Prepare the final source/base, evidence scope, CI/artifact links and remaining
   application gaps in this completion record before final CI. Record the resulting
   documentation-head SHA and its actual checks/artifacts in the PR description
-  before delivery. Any later
-  completion-record commit must itself receive applicable final-head checks.
-  Leave the PR unmerged.
+  before delivery. The final consolidation follows the explicit no-wait handoff
+  qualification above. Leave the PR unmerged.
 
 Validation routing: the user requested relying on CI. For this reconciliation,
 CI runs the focused and full checks above; do not duplicate the matrix locally.
-This overrides local-before-push defaults for this task while preserving all
-functional gates. Follow the current branch's build/test commands and provisioned
+For the final consolidation, push and hand off without waiting for another CI
+round, per the user's subsequent instruction. This overrides local-before-push
+and final-wait defaults for this task without claiming unexecuted checks passed. Follow the current branch's build/test commands and provisioned
 CI tools. Failed checks require fixes and fresh evidence, not weaker assertions.
 
 Completion requires the final end-to-end sequence through the sole fixed runtime,
-on the delivered tree, with green applicable CI and resolved arriving review.
-A textual merge, passing old CI, storage-only tests, Q=1-only execution, manual
+with green applicable CI and resolved arriving review, subject to the explicit
+final-consolidation handoff qualification above. A textual merge, passing old CI, storage-only tests, Q=1-only execution, manual
 renderer composition or an unfinished MIDI index builder is not completion.
 
 ## Execution contract

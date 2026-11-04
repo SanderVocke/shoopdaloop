@@ -8,7 +8,10 @@ head/base, applicable matrix and latest artifacts. The user waived macOS checks
 on 2026-11-04 after runner queues blocked independent validation; queued macOS
 jobs are not represented as passes. Other validation requirements remain in force.
 Parent delivery is #930; this branch
-also includes the audio foundation from #909.
+also includes the audio foundation from #909. Full run 6221 subsequently passed
+on `7dad1991`, including macOS. The final consolidation through target `df468352`
+is pushed without another CI waiting round at the user's request; the tested
+preceding head and the final handoff head remain distinguished in the plan/PR.
 
 ## Functional evidence
 
