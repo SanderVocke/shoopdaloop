@@ -417,7 +417,7 @@ def compare_dense_worklets(result, native, *, stalled=False):
             or native["recovered"] != [256,16,16,0]):
         raise RuntimeError("incomplete native dense reference")
     semantics = validate_semantic(native["semanticBytes"], capacity=4096)
-    if semantics["boundaries"] != list(map(str,range(frames))) or semantics["records"] != (2042 if stalled else 1968):
+    if semantics["boundaries"] != list(map(str,range(frames))) or semantics["records"] != (1805 if stalled else 1740):
         raise RuntimeError("incomplete dense semantic boundaries")
     for report in reports:
         data = json.loads(json.dumps(report["data"]))

@@ -34,6 +34,11 @@ editor and per-channel timing behavior in the reference stack. P12 still require
 authoritative service admission, atomic single/all-channel updates, RT execution,
 persistence and recovery coverage before production timing edits can be enabled.
 
+P03 restoration is planned in [PLAN_P03_COMPOSITES.md](../../PLAN_P03_COMPOSITES.md).
+The accepted [composite execution contract](composites.md) uses frame-driven
+arrangements with launch/repeat alignment, superseding source-tick progression.
+P03 remains OPEN until production implementation and its dependency evidence exist.
+
 ## What is already available
 
 The service supports direct audio/MIDI/trigger tracks, primitive loop creation and

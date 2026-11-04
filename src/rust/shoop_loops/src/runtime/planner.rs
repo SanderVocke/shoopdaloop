@@ -956,6 +956,9 @@ impl LoopPlanner {
                         context.requested_frame,
                         &mut self.resolver,
                     )?;
+                    if graph.is_some() {
+                        self.resolver.defer_program_until_restart(request);
+                    }
                     self.pending[slot] = Some(Pending {
                         token: context.token,
                         kind: PendingKind::Program {
@@ -1011,6 +1014,10 @@ impl LoopPlanner {
                         .expect("row")
                         .binding
                         .gain = value;
+                    Ok(Disposition::Complete(Reply::Done))
+                }
+                Operation::RepeatSync { target, enabled } => {
+                    self.resolver.set_repeat_sync(target, enabled)?;
                     Ok(Disposition::Complete(Reply::Done))
                 }
                 Operation::Balance { target, value } => {

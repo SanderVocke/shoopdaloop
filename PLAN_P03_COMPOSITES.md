@@ -2,7 +2,7 @@
 
 ## Status and delivery
 
-Planning complete; implementation has not started. Written using
+Implementation in progress on `feat/p03-composites`. Written using
 [write_plan.md](.agents/prompts/write_plan.md) for P03 in the
 [feature parity ledger](docs/native_session_recovery/feature-parity.md).
 
@@ -17,8 +17,8 @@ Planning complete; implementation has not started. Written using
 - The user-approved execution contract below replaces source-tick-driven
   composite progression. Reference code is evidence for preserved editor,
   control and persistence behavior; it does not override this timing decision.
-- This request creates the plan only. Implementation-branch creation, code changes, commits,
-  pushing, PR creation and validation below are execution work for a later request.
+- Execution was authorized by the user's goal to complete this plan. The branch
+  starts at the inspected base; the planning checkpoint is commit `18f7a5b1`.
 
 ## Goals, scope and dependencies
 
@@ -294,12 +294,12 @@ status and its named limits.
 - [ ] Create the implementation branch from the refreshed target head, preserve
   unrelated changes, and commit/push the plan. Reconcile this baseline with any
   intervening changes before editing production code.
-- [ ] Write the maintained composite contract and a preservation/difference matrix
+- [x] Write the maintained composite contract and a preservation/difference matrix
   covering frame timing, repeat waits, pulse meaning, live edits and mode dependencies.
   Link it from the parity ledger and architecture.
 - [ ] Define immutable prepared timing, explicit repeat policy, wait/projection state,
   version/fencing rules, finite capacity defaults and resource/graph budgets.
-- [ ] Add an independent frame-based scalar oracle and table-driven contract cases.
+- [x] Add an independent frame-based scalar oracle and table-driven contract cases.
   Register meaningful native/Wasm tests using the repository test attribute.
 
 Verification: oracle examples include unequal section lengths, Q=1 and Q=32,
@@ -308,17 +308,17 @@ while waiting. Review every immutable criterion against a stage/test destination
 
 ### Stage 2 — loop resolver, shared repetition and owning program changes
 
-- [ ] Implement frame-driven program advancement, explicit playhead/wait state and
+- [x] Implement frame-driven program advancement, explicit playhead/wait state and
   start/pass boundary publication. Preserve snapshot/arbitration behavior and sparse
   compilation; avoid parallel frame-clock/source-clock execution modes.
-- [ ] Implement shared primitive/composite repeat alignment, active-source fallback,
+- [x] Implement shared primitive/composite repeat alignment, active-source fallback,
   release of an existing wait when the source stops, and complete outgoing actions
   at pass end. Keep delayed commands independent from internal progression.
-- [ ] Update nesting, iteration seeks, current-position reporting, clear/Stop,
+- [x] Update nesting, iteration seeks, current-position reporting, clear/Stop,
   cancellation, exhaustion, supersession and capture preflight for the new cursor.
-- [ ] Extend safe future-only adoption and real-restart/stopped publication, including
+- [x] Extend safe future-only adoption and real-restart/stopped publication, including
   waiting-state probes, empty candidates and atomic program/graph updates.
-- [ ] Update affected new-library fixtures, independent loop hosts/examples and
+- [x] Update affected new-library fixtures, independent loop hosts/examples and
   current guides. Record intentional contract differences; keep historical fixtures.
 
 Verification: debug/release `shoop_loops` composites, program changes/boundaries,
@@ -518,5 +518,30 @@ candidate swaps/returns, repeat waits with capture preflight, conversion/slot re
 and reconnect ownership under the pinned repository setup. Keep heap guards active
 and retain the normal/full test groups required before behavioral commits/pushes.
 
-Planning validation is documentation-only. No runtime implementation or test pass
-is claimed by this plan.
+## Execution evidence
+
+- Planning checkpoint: local Markdown links and whitespace checked; no runtime
+  result claimed. Base refreshed to `bbf027e9` before branch creation.
+- Environment: prepared Rust 1.99.1, nextest 0.9.116, Node 22.22.2 and Chrome/
+  ChromeDriver 147.0.7727.137. Local activation is
+  `/workspace/work/p03-tools/activate.sh`; compact debug/test profiles and disabled
+  incremental compilation keep the complete workspace within available storage.
+  Builds and tests deny Rust warnings.
+- Loop execution milestone (Stages 1/2): frame-driven progression, shared repeat
+  policy, explicit end waiting, own start/wrap pulses, future-only edits and paired
+  program/graph deferral implemented. The independent dense oracle preserves every
+  media sample and MIDI packet; its new semantic counts remove source-relay pulses
+  deliberately superseded by the accepted contract.
+- Validation at this milestone: complete workspace nextest **2675 passed / 6
+  skipped** with `shoop_engine/app_backend,shoop_backend/native-fx`; loop release,
+  Node/Wasm and Chrome/Wasm **184 passed each**; standalone loop-host **60 passed**;
+  independent native replay and actual offline/live AudioWorklet replay passed.
+  Debug loop cases are included in the full workspace run. The maintained program
+  book example compiles and runs; runner Python tests **41 passed**.
+- Guarded repeat tests inspect real audio/MIDI and recording across source stop,
+  pass-end waiting and restart at all supported quanta and irregular/zero callback
+  partitions. Program/configuration tests retain capture refusal/retry, nesting,
+  arbitration, cancellation and displaced-owner coverage.
+- Formatting, Rust test-attribute policy, parity/tracing inventories, generic
+  dependency boundaries and whitespace checks pass. Production composite support
+  remains unavailable: Stages 3–10 and the dependent-mode gate are not complete.

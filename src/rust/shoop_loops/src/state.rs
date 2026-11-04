@@ -7,6 +7,7 @@ pub struct CompositeState {
     pub iteration: u64,
     pub passes: u64,
     pub entered_at: Option<Frame>,
+    pub waiting_repeat: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,6 +24,7 @@ pub struct State {
     pub monitor_previous: bool,
     pub last_pulse: Option<Frame>,
     pub composite: Option<CompositeState>,
+    pub repeat_sync: bool,
     pub(crate) revision_watermark: Revision,
 }
 
@@ -41,6 +43,7 @@ impl State {
             monitor_previous: false,
             last_pulse: None,
             composite: None,
+            repeat_sync: false,
             revision_watermark: Revision(0),
         }
     }
@@ -48,6 +51,7 @@ impl State {
     pub fn plays(self) -> bool {
         self.composite.is_none()
             && self.content_length != 0
+            && self.position < self.content_length
             && (self.mode == Mode::Playing
                 || (self.mode == Mode::Recording && self.monitor_previous))
     }

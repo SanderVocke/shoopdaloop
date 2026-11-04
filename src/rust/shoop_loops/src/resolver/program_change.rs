@@ -14,6 +14,7 @@ pub(super) struct ProgramChange {
     pub expected: Epoch,
     pub candidate: PreparedTopology,
     pub activated_epoch: Option<Epoch>,
+    pub future_only: bool,
 }
 
 impl Boundary<'_> {
@@ -65,12 +66,48 @@ pub(super) struct Replacement {
     pub authoritative: bool,
 }
 
+fn preserves_prefix(
+    old: crate::program::CompiledProgram<'_>,
+    new: crate::program::CompiledProgram<'_>,
+    horizon: u64,
+) -> bool {
+    if old.kind != new.kind
+        || old.nominal_unit_frames != new.nominal_unit_frames
+        || old.iterations <= horizon
+        || new.iterations <= horizon
+        || old.targets().len() != new.targets().len()
+    {
+        return false;
+    }
+    old.targets().iter().zip(new.targets()).all(|(a, b)| {
+        let prefix = |segment: &crate::program::Segment| {
+            (
+                segment.start,
+                segment.end.min(horizon),
+                segment.mode,
+                segment.occurrence_start,
+                segment.ordinal,
+            )
+        };
+        a.target == b.target
+            && a.segments()
+                .iter()
+                .take_while(|s| s.start < horizon)
+                .map(prefix)
+                .eq(b
+                    .segments()
+                    .iter()
+                    .take_while(|s| s.start < horizon)
+                    .map(prefix))
+    })
+}
+
 impl Resolver {
     /// Retain one owning program change until its eligible boundary and result collection.
     ///
     /// Only this composite's program/compiled nominal length may change. Logical identities,
-    /// sync/trigger relations and other programs stay fixed. Running changes wait for
-    /// zero entry (or a stopped cut); future requests wait until their effective frame.
+    /// sync/trigger relations and other programs stay fixed. Future-only edits may
+    /// preserve the protected prefix; other running changes await a real restart.
     /// Admission reserves a normal request slot and the displaced owner's return slot.
     pub fn stage_program(
         &mut self,
@@ -134,11 +171,22 @@ impl Resolver {
                     expected,
                     candidate,
                     activated_epoch: None,
+                    future_only: true,
                 });
                 Ok(id)
             }
             Err(error) => Err((error, candidate)),
         }
+    }
+
+    pub(crate) fn defer_program_until_restart(&mut self, id: RequestId) {
+        let change = self
+            .program_change
+            .as_mut()
+            .expect("staged program retained");
+        assert_eq!(change.id, id);
+        change.future_only = false;
+        self.preview = None;
     }
 
     pub(crate) fn preview_program_change(&self) -> Result<Option<RequestId>, Error> {
@@ -231,7 +279,27 @@ impl Resolver {
                 .terminal = terminal;
             return Ok(None);
         }
-        if probe.state.mode != Mode::Stopped && !probe.enters_zero() {
+        let future_only = self
+            .program_change
+            .as_ref()
+            .expect("retained change")
+            .future_only
+            && probe.state.composite.is_some_and(|cursor| {
+                !cursor.waiting_repeat
+                    && cursor.iteration.checked_add(2).is_some_and(|horizon| {
+                        preserves_prefix(
+                            self.topology.program(target).expect("active program"),
+                            self.program_change
+                                .as_ref()
+                                .expect("retained change")
+                                .candidate
+                                .program(target)
+                                .expect("candidate program"),
+                            horizon,
+                        )
+                    })
+            });
+        if probe.state.mode != Mode::Stopped && !probe.enters_zero() && !future_only {
             return Ok(None);
         }
         self.preview_program_epoch = Some(self.epoch.checked_next().map_err(|_| Error::Exhausted)?);

@@ -155,10 +155,14 @@ fn unpublished_program_cuts_match_scalar_clocks_across_partitions_orders_and_unr
                             CompositeState {
                                 iteration,
                                 passes,
+                                waiting_repeat: false,
                                 entered_at: Some(Frame(entered))
                             }
                         );
-                        assert_eq!(probe.state.last_pulse, Some(Frame(f / 2 * 2)));
+                        assert_eq!(
+                            probe.state.last_pulse,
+                            Some(Frame(if explicit { 0 } else { f / 6 * 6 }))
+                        );
                         assert_eq!(probe.enters_zero(), !ended && f % 6 == 0);
                         assert_eq!(resolver.state(id(1)).unwrap(), before);
                         assert_eq!(
@@ -261,11 +265,11 @@ fn prospective_zero_cut_obeys_same_frame_control_priority_and_actual_source_puls
         let probe =
             assert_no_heap(|| resolver.probe_program_boundary(id(1), &observations)).unwrap();
         let (mode, iteration, passes, entered, last, zero) = match case {
-            1 => (Mode::Stopped, 0, 0, 6, 4, false),
-            2 => (Mode::Playing, 1, 0, 6, 6, false),
-            3 | 4 | 8 => (Mode::Playing, 0, 0, 6, 6, true),
-            9 => (Mode::Stopped, 0, 0, 6, 6, false),
-            10 => (Mode::Playing, 2, 0, 4, 4, false),
+            1 => (Mode::Stopped, 0, 0, 6, 0, false),
+            2 => (Mode::Playing, 1, 0, 6, 0, false),
+            3 => (Mode::Playing, 0, 0, 6, 0, true),
+            4 | 8 => (Mode::Playing, 0, 0, 6, 6, true),
+            9 => (Mode::Stopped, 0, 0, 6, 0, false),
             _ => (Mode::Playing, 0, 1, 6, 6, true),
         };
         assert_eq!(probe.state.mode, mode, "case {case}");
@@ -274,6 +278,7 @@ fn prospective_zero_cut_obeys_same_frame_control_priority_and_actual_source_puls
             CompositeState {
                 iteration,
                 passes,
+                waiting_repeat: false,
                 entered_at: Some(Frame(entered))
             },
             "case {case}"
@@ -400,8 +405,8 @@ fn nested_request_refusal_invalid_inputs_and_committed_phase_keep_probe_state_un
     assert_eq!(clocked.state.composite.unwrap().iteration, 1);
     let stalled =
         assert_no_heap(|| resolver.probe_program_boundary(id(1), &[unavailable])).unwrap();
-    assert_eq!(stalled.state.composite.unwrap().iteration, 0);
-    assert_eq!(stalled.state.composite.unwrap().entered_at, Some(Frame(0)));
+    assert_eq!(stalled.state.composite.unwrap().iteration, 1);
+    assert_eq!(stalled.state.composite.unwrap().entered_at, Some(Frame(2)));
     assert_eq!(stalled.state.last_pulse, Some(Frame(0)));
     assert!(!stalled.enters_zero());
     assert_eq!(resolver.completion(start).unwrap(), None);

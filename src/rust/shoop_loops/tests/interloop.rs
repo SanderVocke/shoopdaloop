@@ -662,7 +662,9 @@ fn semantic_reference() -> Vec<Event> {
                 }),
             );
         }
-        add(4, EventKind::Pulse);
+        if [6, 12].contains(&frame) {
+            add(4, EventKind::Pulse);
+        }
         if frame >= 6 {
             add(
                 4,
@@ -684,7 +686,9 @@ fn semantic_reference() -> Vec<Event> {
                     }),
                 );
             }
-            add(5, EventKind::Pulse);
+            if [7, 13].contains(&frame) {
+                add(5, EventKind::Pulse);
+            }
             if frame >= 7 {
                 add(
                     5,
@@ -812,8 +816,8 @@ fn check_state(frame: u64, state: State) {
         4 => {
             length = 6;
             let mut cursor = shoop_loops::CompositeState::default();
-            if frame >= 4 {
-                last_pulse = Some(frame.min(17));
+            if frame >= 6 {
+                last_pulse = Some(if frame < 12 { 6 } else { 12 });
             }
             if frame >= 6 {
                 cursor.passes = (frame.min(17) - 6) / 6;
@@ -821,6 +825,7 @@ fn check_state(frame: u64, state: State) {
                 if frame < 18 {
                     mode = Mode::Playing;
                     cursor.iteration = (frame - 6) % 6;
+                    position = cursor.iteration;
                 }
             }
             composite = Some(cursor);
@@ -828,19 +833,15 @@ fn check_state(frame: u64, state: State) {
         5 => {
             length = 5;
             let mut cursor = shoop_loops::CompositeState::default();
-            if frame >= 4 {
-                last_pulse = Some(match frame {
-                    6 => 5,
-                    12 => 11,
-                    18 => 17,
-                    _ => frame,
-                });
+            if frame >= 7 {
+                last_pulse = Some(if frame < 13 { 7 } else { 13 });
             }
             if frame >= 6 {
                 cursor.entered_at = Some(Frame(frame));
                 if (7..12).contains(&frame) || (13..18).contains(&frame) {
                     mode = Mode::Playing;
                     cursor.iteration = (frame - 7) % 6;
+                    position = cursor.iteration;
                 }
             }
             composite = Some(cursor);

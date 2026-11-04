@@ -77,6 +77,12 @@ and capture completion updates that domain at its end. Processors do not run a
 separate musical clock. Host callback sizes are adapted outside graph execution;
 callback-wide work budgets are not renewed at internal tick boundaries.
 
+The accepted [P03 composite contract](docs/native_session_recovery/composites.md)
+uses prepared frame timelines for composite progression. Source synchronization
+aligns scheduled commands and repeats; it cannot stall or retime the middle of an
+arrangement. Implementation and production enablement follow
+[the P03 plan](PLAN_P03_COMPOSITES.md).
+
 Every processor uses `ProcessBlock` and borrows the render-owned domain directly.
 The planner has one `begin_tick`/`finish_tick` lifecycle. `NoPlanner` supplies an
 empty domain for independent signal-only processing.

@@ -1,0 +1,105 @@
+# Composite execution and ownership
+
+Status: implementation in progress under [P03](feature-parity.md) and
+[the implementation plan](../../PLAN_P03_COMPOSITES.md). This document specifies
+the accepted contract; it does not advertise current production support.
+
+## Frames and synchronization
+
+One render-owned loop resolver advances primitives and composites on the engine's
+immutable quantum. A prepared composite describes sparse child actions on a
+frame timeline. Its stored unit is the actual frame duration of one program
+iteration. Source pulses, client elapsed time and child positions do not advance
+that timeline.
+
+The unit is captured when the arrangement is prepared. Cycle-authored positions
+use that stored basis; changing the sync source's length or phase never implicitly
+retimes an accepted arrangement. Gridless serial Lua composition uses the maximum
+child duration per parallel section and sums sequential sections. Its compiled
+unit must represent these spans exactly on the engine's quantum grid. Explicit
+timing edits are admitted, versioned changes to the arrangement.
+
+A start applies its complete child snapshot at the effective engine frame.
+Every subsequent iteration begins after its prepared unit has elapsed. Stop,
+seek and retrigger are authoritative controls. All decisions are speculative until
+capture/graph preflight succeeds and the resolver commits. A retry cannot advance
+the cursor or emit an action twice. No callback allocation or application timer
+is involved.
+
+Synchronization has two separate uses:
+
+- A scheduled command may await a configured source boundary. Skipping n edges
+  executes on edge n+1. A stopped source leaves that command pending.
+- Repeat alignment may hold a playing loop at the end of its own pass. Earlier
+  source edges never truncate the pass. At its end, an aligned loop waits only
+  while its source is actively playing and no source boundary occurs. Without
+  alignment or an active source, it repeats independently. If the source stops
+  during a wait, the next settled quantum releases the wait.
+
+Primitives and regular composites share that repeat rule. Configured source,
+command timing and repeat intent are distinct. An explicit-mode composite ends
+after one pass; an empty composite starts as a successful stopped operation.
+Recording continues in frames until an admitted transition ends it.
+
+At pass end, completed authored child occurrences end even if the parent waits.
+The parent remains Playing with its playhead at the end and explicit wait state.
+Completed-pass accounting happens once; entering iteration zero happens only when
+the next pass really starts. A coincident end/source boundary preserves permitted
+same-mode continuations; a gap ends them and a later restart emits a new snapshot.
+Internal unit boundaries are not external synchronization pulses. A composite's
+own start/retrigger and repeating pass boundaries supply its own musical edges.
+
+## Controls, edits and accepted work
+
+Explicit child commands outrank competing inherited or explicit program actions
+at the same frame. An independently controlled child never advances its parent.
+Later authored actions may affect that child through normal arbitration. Nested
+starts and seeks establish descendant snapshots in the same quantum.
+
+Prepared edits carry active/pending versions. Safe changes strictly beyond the
+current and next unit may activate before wrap if they preserve current ownership
+and state. Other running changes wait for an actual pass restart, or use an
+explicit structural stop/reconfiguration. Waiting at the end is not permission
+to emit a new plan's first section. Cancellation/refusal retains the working plan
+and reliably returns the candidate owner; activation returns the displaced owner.
+
+The session service owns authored data, timing basis, repeat and monitoring intent,
+accepted operations and retained results. The adapter owns identity mappings;
+the resolver owns actual execution. A disconnected UI or lost Lua VM does not
+cancel accepted playback, schedules, edits or automatic monitoring. Future VM
+commands are not accepted work, and reconnect does not restart scripts.
+
+Persistence records the accepted timing basis and confirmed plan, including after
+the source has changed length. Pending edits cannot be mixed into active capture.
+Load remaps child identities and starts stopped. Legacy migration derives missing
+timing from the saved session, not the destination's running sync source.
+
+## Prepared capacity
+
+The initial production budget is 256 program entries, 1024 compiled segments and
+512 timing/action relations across the engine. Composite count uses the negotiated
+logical loop slots; composites consume no playback/capture nodes or host ports.
+These budgets do not reduce existing primitive slots or recording media capacity.
+Engine preparation will expose them as configurable, finite negotiated limits.
+
+Account separately for active metadata, staging receivers, candidate/displaced
+owners, pending requests and reliable results. Use the loop library's checked
+storage calculations rather than estimating only raw entry bytes. Existing
+single-owner program staging may serialize edit publication; saturation refuses
+new work before acceptance and never stops admitted autonomous playback.
+
+## Reference disposition
+
+| Behavior | Disposition |
+| --- | --- |
+| Stable event IDs, serial/parallel layout, move/copy/delete, nesting and child control | Preserve and test through production UI/Lua. |
+| Deterministic arbitration, contiguous playback and owning publication | Preserve under frame-driven execution. |
+| Source ticks advancing every internal iteration or stalling a running program | Superseded by frame progression. |
+| Application elapsed-time fallback, one section per pump and discarded overshoot | Superseded by render-owned frame progression. |
+| Safe future-only live edits and deferred wrap edits | Preserve using the prepared frame timeline and real restart eligibility. |
+| Automatic monitoring, persistence and socket recovery | Restore with authoritative service/host ownership. |
+| Replacing/dry-wet script events | Depend on P05/P06/P07; full P03 closure remains gated on these interactions. |
+
+Retain old-stack fixtures as historical evidence. New-library and production tests
+must describe the new contract explicitly, including source stop/restart/resize,
+repeat waiting, transactional preflight and callback-partition invariance.

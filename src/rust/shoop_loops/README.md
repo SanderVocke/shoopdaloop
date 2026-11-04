@@ -130,12 +130,16 @@ an authoritative snapshot without replaying preceding events. A non-retriggering
 seek repositions already-playing descendants without inventing new clock edges;
 newly activated playback/recording still has its normal start edge.
 
-Composite cursors report iteration, passes, and the frame the iteration was
-entered. `last_pulse` separately records the last actual clock edge. Nominal
-units are duration/seek metadata, never a clock generator; an unsynchronized
-program starts at its selected iteration and stalls until explicitly repositioned.
-A stopped source can still relay clocks from its own source. Composite position
-is not a synthetic uniformly advancing media playhead.
+Composite cursors report iteration, completed passes, entry frame and repeat-wait
+state. `nominal_unit_frames` is the prepared frame duration of each iteration;
+source changes never retime a running arrangement. Position advances on rendered
+frames, including without a source. `last_pulse` records the composite's own start
+or repeating pass edge, not every internal iteration or incoming source pulse.
+`Resolver::set_repeat_sync` / `Operation::RepeatSync` configure repeat alignment
+independently of the source used by delayed commands. Aligned primitives and
+regular composites wait only at their own end while the source plays; its next
+edge restarts them. An inactive source releases the wait. Explicit programs stop
+after one pass. See the [composite contract](../../../docs/native_session_recovery/composites.md).
 
 Capture preflight can supply `CaptureUnavailable { target, reason }` to refuse a
 primitive start/restart without inventing an external request or start pulse.

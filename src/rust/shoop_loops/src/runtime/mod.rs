@@ -219,6 +219,10 @@ pub enum Operation {
         timing: Timing,
         transition: Transition,
     },
+    RepeatSync {
+        target: LoopId,
+        enabled: bool,
+    },
     Select {
         target: LoopId,
         timing: Timing,

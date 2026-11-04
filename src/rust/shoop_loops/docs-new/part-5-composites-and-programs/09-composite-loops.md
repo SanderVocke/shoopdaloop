@@ -110,7 +110,7 @@ Instead of recording, the example **imports** audio into the resource store befo
 
 An import with `revision: Revision(0)` becomes the loop's initial playback content. The primitive loops' `length` in the topology must match the imported frame count — that is the check the library performs at prepare time.
 
-## 3. Start the bar loop; the arranger follows its ticks
+## 3. Start the bar loop and frame-timed arranger
 
 Record the bar loop for one bar and play it; it wraps every 4 frames, ticking all three followers at each bar boundary:
 
@@ -131,10 +131,10 @@ bass out:   1 2 3 4   0 0 0 0   0 0 0  0     (1-bar bass plays during bar 1)
 drums out:  0 0 0 0   5 6 7 8   9 10 11 12  (2-bar drums play during bars 2-3)
 ```
 
-The arranger's program starts the bass at the first bar boundary and the drums one bar later, for two bars — everything lands on bar boundaries because the arranger itself is synced to the bar loop. Stopping the bar loop at frame 12 stops the ticks; stopping the arranger ends the program.
+The arranger starts bass at frame zero and drums four frames later for eight frames, using its prepared unit. The source relation permits delayed commands and optional repeat alignment. Stopping the bar loop stops its ticks; the arranger continues until its own Stop at frame 12.
 
 ## 4. What sync means (and does not mean)
 
-A sync source's ticks are delivered to its followers at the source's wrap frame, in the same render pass — there is no one-block delay. Ticks do not themselves start or stop anything; they make a follower *eligible* for its scheduled requests (chapter 6) and drive its program iterations. A follower with no pending work simply keeps its current mode.
+A sync source's ticks are delivered to its followers at the source's wrap frame, in the same render pass — there is no one-block delay. Ticks do not themselves start or stop anything; they make a follower *eligible* for its scheduled requests (chapter 6). Programs advance on their prepared frame timeline. Repeat alignment can wait for a source edge at the end of a whole pass; an inactive source permits independent repetition.
 
 [Previous: MIDI state and restoration](../part-4-midi/08-midi-state-and-restoration.md) · [Next: Programs](10-programs.md)

@@ -268,7 +268,10 @@ def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]
     if cargo_profile == "release":
         reference_command.append("--release")
     run_checked(reference_command, env=env)
-    shutil.copy2(ROOT / "target" / "wasm32-unknown-unknown" / cargo_profile / "shoop_audio_worklet.wasm", directory / "shoop_audio_worklet.wasm")
+    target_directory = pathlib.Path(env.get("CARGO_TARGET_DIR", ROOT / "target"))
+    if not target_directory.is_absolute():
+        target_directory = ROOT / target_directory
+    shutil.copy2(target_directory / "wasm32-unknown-unknown" / cargo_profile / "shoop_audio_worklet.wasm", directory / "shoop_audio_worklet.wasm")
     sources = {
         "raw_wasm_host.js": ROOT / "reference/legacy_browser/raw_wasm_host.js",
         "audio_worker.js": ROOT / "reference/legacy_browser/audio_worker.js",

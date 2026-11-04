@@ -666,7 +666,7 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
                         0,
                         0,
                         false,
-                        live.then_some(Frame(frame.min(16) as u64)),
+                        None,
                         Some(CompositeState::default()),
                     ),
                     _ => {
@@ -770,7 +770,6 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
                     },
                 );
                 push(id(0), Pulse);
-                push(id(2), Pulse);
             }
             let target = if frame < 10 { id(1) } else { next };
             match frame {
