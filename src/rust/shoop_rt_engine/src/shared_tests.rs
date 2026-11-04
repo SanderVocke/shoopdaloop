@@ -240,6 +240,9 @@ impl Fixture {
         (self.now() + gap).div_ceil(q) * q
     }
     fn render(&mut self, frames: usize, raw: bool) {
+        self.render_result(frames, raw).unwrap();
+    }
+    fn render_result(&mut self, frames: usize, raw: bool) -> Result<crate::Report, Error> {
         let start = self.now();
         self.midi_input.clear();
         self.midi_output.clear();
@@ -264,7 +267,7 @@ impl Fixture {
         let [left, right] = &mut self.output;
         #[cfg(not(target_arch = "wasm32"))]
         let clock = self.timings.as_ref().map(|_| std::time::Instant::now());
-        assert_no_heap(|| {
+        let result = assert_no_heap(|| {
             self.engine.render.process(
                 AudioBlock {
                     frame: Frame(start),
@@ -277,8 +280,7 @@ impl Fixture {
                     outputs: core::slice::from_mut(&mut self.midi_output),
                 },
             )
-        })
-        .unwrap();
+        });
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(clock) = clock {
             let elapsed = clock.elapsed().as_nanos();
@@ -308,6 +310,7 @@ impl Fixture {
                 self.executions.push(e);
             }
         }
+        result
     }
     fn run_to(&mut self, end: u64) {
         assert!(end >= self.now());
@@ -771,7 +774,7 @@ fn late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick() {
         .cells
         .fail_reader_tick
         .store(true, core::sync::atomic::Ordering::Relaxed);
-    h.render(32, true);
+    assert_eq!(h.render_result(32, true), Err(Error::InvalidState));
     assert_eq!(h.engine.render.phase(), Phase::Faulted(Error::InvalidState));
     let mut stopped = h.engine.render.into_stopped();
     let status = stopped

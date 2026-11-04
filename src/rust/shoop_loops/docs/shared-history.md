@@ -84,6 +84,12 @@ the resolver revision and playback selection in one tick. Same-length replacemen
 preserves playhead and current controls, including primitive loops used by programs.
 Actual period/family changes retain the separate family-selection contract.
 
+Source-writer validation scans the prepared ordinary version table (at most twice
+per mixed candidate), charges that finite scan to render diagnostics and refuses
+pending uploads or capture writers. It does not consume background validation
+credits. Permanent shared-owner teardown also cancels unfinished ordinary uploads
+before returning their resource and reserved-page credits.
+
 Ordinary MIDI cleanup, seek and restoration occur on the playback discontinuity.
 They are output policy, separate from stored replacement packet data. Old exports
 and sibling takes retain their original complete revisions after selection, source
