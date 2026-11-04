@@ -49,6 +49,12 @@ history wraps, then prepares an edit and verifies the immutable old export.
 This preserves conservative admission and live workspace; it is an F2 sizing
 increment, not resolution of global pooling or the continuous-writer design.
 
+The first fresh focused CI exposed duplicate test global allocators where the
+new parent BufferedProcessor fixture and shared-media fixture were combined.
+The engine test allocator is now defined once at crate scope so both sets retain
+their heap guards. This repairs a target-integration compile failure; fresh CI
+must confirm it before either milestone is called validated.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

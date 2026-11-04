@@ -21,11 +21,6 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
-#[cfg(test)]
-#[global_allocator]
-static TEST_ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
-    shoop_wasm_test_support::heap::TrackingAllocator;
-
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
