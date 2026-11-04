@@ -423,7 +423,7 @@ impl Fixture {
     }
     fn drain_protocol(&mut self) {
         for _ in 0..10000 {
-            if self.engine.endpoint.pending.iter().all(Option::is_none) {
+            if self.engine.endpoint.is_idle() {
                 return;
             }
             self.engine.endpoint.poll(&mut self.outbox);

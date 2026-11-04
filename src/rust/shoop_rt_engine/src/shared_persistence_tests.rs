@@ -616,7 +616,6 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
         final_data.midi
     );
 
-    final_data.content(&mut h, 1);
     h.request(protocol::Request::LoopSync {
         loop_id: protocol::LoopSlotId(protocol::SlotId::new(1, 1)),
         source: Some(protocol::LoopSlotId(protocol::SlotId::new(0, 1))),
@@ -630,6 +629,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
         quantum: 32,
     });
     for slot in 0..2 {
+        let source = 1 + 2 * u64::from(slot);
+        final_data.content(&mut h, source);
         let Reply::State(cut) = h.op(Operation::State {
             target: target(slot),
         }) else {
@@ -643,8 +644,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
                 expected_revision: cut.state.content_revision.0,
                 expected_frames: take.frames,
                 frames: take.frames,
-                audio: Some(1),
-                midi: Some(2),
+                audio: Some(source),
+                midi: Some(source + 1),
                 replace: true,
                 restart: slot == 0,
                 fence_content: true,
@@ -663,6 +664,7 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     h.op(Operation::CandidateCancel { id: stale });
     let retained = h.export(0);
     let displaced = h.audio_candidate(reedited);
+    final_data.content(&mut h, 5);
     h.request(protocol::Request::ReplacementBegin { id: 1 });
     let strip = protocol::StripId(protocol::SlotId::new(0, 2));
     h.request(protocol::Request::ReplacementEdit {
@@ -692,8 +694,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
             strip,
             sync: None,
             frames: take.frames,
-            audio: Some(1),
-            midi: Some(2),
+            audio: Some(5),
+            midi: Some(6),
             gain: 0.75,
             balance: 0.,
         },
@@ -705,8 +707,6 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
         Reply::Failed(_)
     ));
     h.op(Operation::CandidateCancel { id: displaced });
-    h.request(protocol::Request::ContentRelease { id: 1 });
-    h.request(protocol::Request::ContentRelease { id: 2 });
     assert_eq!(
         h.read(retained.view.audio.unwrap().snapshot),
         final_data.audio
