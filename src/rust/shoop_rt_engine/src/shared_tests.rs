@@ -794,6 +794,57 @@ fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() 
 }
 
 #[shoop_test]
+fn saturated_unread_results_do_not_interrupt_history_and_shutdown_recovers_private_work() {
+    let mut h = Fixture::new(32, 32);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let id = h.audio_candidate(take);
+    let at = h.aligned_future(128);
+    let mut admitted = 0;
+    loop {
+        let command = h
+            .engine
+            .endpoint
+            .loops
+            .command(Frame(at), Operation::CandidateStatus { id });
+        match h
+            .engine
+            .endpoint
+            .control
+            .submit_prepared(Lane::Normal, command)
+        {
+            Ok(_) => admitted += 1,
+            Err(error) => {
+                assert_eq!(error.error, Error::Full);
+                break;
+            }
+        }
+    }
+    assert!(admitted > 1);
+    while h.now() < at + 512 {
+        h.render(32, false);
+    }
+    assert_eq!(h.engine.render.phase(), Phase::Running);
+    let end = h.now();
+    let mut stopped = h.engine.render.into_stopped();
+    assert_eq!(
+        stopped
+            .planner
+            .history_status(0, &stopped.resources.io())
+            .unwrap()
+            .end,
+        Frame(end)
+    );
+    let mut returned = 0;
+    while h.engine.endpoint.control.try_execution().is_some() {
+        returned += 1;
+    }
+    assert!(returned > 1);
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
 fn late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick() {
     let mut h = Fixture::new(32, 32);
     let (take, _, _) = h.grabs();
@@ -1137,6 +1188,7 @@ fn candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_t
     let ac = h.send(at + 32, Operation::CandidateStatus { id: a });
     let bc = h.send(at + 32, Operation::CandidateStatus { id: b });
     let w1 = h.send(at + 32, Operation::SharedWork);
+    let cancel = h.send(at + 64, Operation::CandidateCancel { id: a });
     let w2 = h.send(at + 96, Operation::SharedWork);
     h.run_to(at + 128);
     assert!(matches!(
@@ -1169,7 +1221,7 @@ fn candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_t
     assert_eq!(work1.edit_steps, 8);
     assert_eq!(work2.edit_steps, 8);
     assert!(work2.jobs_scanned <= 16);
-    assert_eq!(h.op(Operation::CandidateCancel { id: a }), Reply::Done);
+    assert_eq!(h.result(cancel), Reply::Done);
     assert_eq!(
         h.op(Operation::CandidateStatus { id: a }),
         Reply::Failed(shoop_loops::runtime::Failure::Runtime(Error::InvalidId))
