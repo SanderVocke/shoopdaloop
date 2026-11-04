@@ -700,6 +700,7 @@ pub fn dry_wet_routing_state(
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub content_revision: u64,
+    pub sync_source: Option<BackendLoopId>,
     pub mode: BackendLoopMode,
     pub length: u32,
     pub position: u32,
@@ -930,6 +931,26 @@ pub struct BackendLoopContentUpdate {
     pub audio: Vec<BackendAudioChannelUpdate>,
     pub midi: Vec<BackendMidiChannelUpdate>,
     pub length: Option<u32>,
+}
+
+/// A complete content cut with fences for the affected sync family and its ancestors.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendLoopFamilyUpdate {
+    pub root: BackendLoopId,
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+    pub members: Vec<BackendLoopFamilyMember>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendLoopFamilyMember {
+    pub loop_id: BackendLoopId,
+    pub sync_source: Option<BackendLoopId>,
+    pub expected_revision: u64,
+    pub expected_frames: u32,
+    pub fence_content: bool,
+    pub restart: bool,
+    pub content: Option<BackendLoopContent>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1493,6 +1514,13 @@ pub trait Backend {
     ) -> Result<BackendAsyncResult<()>> {
         self.replace_loop_content(loop_id, update)
             .map(BackendAsyncResult::Ready)
+    }
+    fn replace_loop_family_async(
+        &mut self,
+        update: &BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        let _ = update;
+        Err(anyhow!("atomic loop family replacement is unavailable"))
     }
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()>;
     fn set_port_connected(

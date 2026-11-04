@@ -210,6 +210,7 @@ struct NativeComposite {
 }
 
 struct NativeLoop {
+    sync_source: Option<BackendLoopId>,
     handle: Loop,
     audio: Vec<AudioChannel>,
     audio_modes: Vec<BackendChannelMode>,
@@ -1555,6 +1556,7 @@ impl NativeRuntime {
         self.loops.insert(
             id,
             NativeLoop {
+                sync_source: None,
                 handle,
                 audio,
                 audio_modes,
@@ -3971,6 +3973,7 @@ impl Backend for NativeBackend {
         runtime.loops.insert(
             id,
             NativeLoop {
+                sync_source: None,
                 handle,
                 audio: Vec::new(),
                 audio_modes: Vec::new(),
@@ -4417,6 +4420,7 @@ impl Backend for NativeBackend {
         source: Option<BackendLoopId>,
     ) -> Result<()> {
         let runtime = self.runtime_mut()?;
+        let source_id = source;
         let source = source
             .map(|source| {
                 runtime
@@ -4432,6 +4436,11 @@ impl Backend for NativeBackend {
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
             .handle
             .set_sync_source(source.as_ref())?;
+        runtime
+            .loops
+            .get_mut(&loop_id)
+            .expect("checked loop")
+            .sync_source = source_id;
         Ok(())
     }
 
@@ -5039,6 +5048,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    sync_source: loop_.sync_source,
                     content_revision: 0,
                     mode: from_native_mode(state.mode),
                     length: state.length,

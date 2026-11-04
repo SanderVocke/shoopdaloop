@@ -15,9 +15,14 @@ pub struct Summary {
     pub rate: u32,
     pub audio_labels: Option<Vec<String>>,
     pub conversion_required: Option<bool>,
+    pub frames: Option<u64>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Command {
+    BeginFamily {
+        description: Description,
+        handle: u64,
+    },
     BeginFile {
         kind: u8,
         bytes: u64,
@@ -166,6 +171,7 @@ enum Input {
     },
     Image {
         receiver: Receiver,
+        family: Option<u64>,
         kind: IoTaskKind,
         wav: bool,
         standard: bool,
@@ -221,6 +227,7 @@ impl Worker {
             handle: self.next,
             rate: decoded.rate(),
             audio_labels: decoded.audio_labels(),
+            frames: decoded.frames(),
             conversion_required,
         };
         self.decoded = Some((self.next, decoded));
@@ -235,6 +242,28 @@ impl Worker {
     }
     fn apply(&mut self, command: Command) -> Result<Response> {
         match command {
+            Command::BeginFamily {
+                description,
+                handle,
+            } => {
+                ensure!(
+                    self.decoded.as_ref().is_some_and(|(id, _)| *id == handle),
+                    "stale decoded codec handle"
+                );
+                let receiver = Receiver::new(authority(), description)
+                    .map_err(|reason| anyhow!("invalid family image: {reason:?}"))?;
+                self.image = None;
+                self.file = None;
+                self.input = Some(Input::Image {
+                    receiver,
+                    family: Some(handle),
+                    kind: IoTaskKind::ImportLoopAudio,
+                    wav: false,
+                    standard: false,
+                    channels: Vec::new(),
+                });
+                Ok(Response::Ack)
+            }
             Command::ImageBatch(parts) => {
                 ensure!(
                     !parts.is_empty() && parts.len() <= IMAGE_BATCH_PARTS,
@@ -427,6 +456,7 @@ impl Worker {
                     .map_err(|r| anyhow!("invalid codec image: {r:?}"))?;
                 self.input = Some(Input::Image {
                     receiver,
+                    family: None,
                     kind,
                     wav,
                     standard,
@@ -453,6 +483,7 @@ impl Worker {
                 }
                 let Some(Input::Image {
                     receiver,
+                    family,
                     kind,
                     wav,
                     standard,
@@ -467,6 +498,28 @@ impl Worker {
                         .map_err(|r| anyhow!("incomplete image: {r:?}"))?,
                 )
                 .map_err(|r| anyhow!("invalid image: {r:?}"))?;
+                if let Some(handle) = family {
+                    let decoded = self.take_decoded(handle)?;
+                    let Value::Image(image) = (Work::ConvertFamily {
+                        decoded,
+                        base: image,
+                    })
+                    .run()?
+                    else {
+                        bail!("codec returned an unexpected family result");
+                    };
+                    let stream = UploadStream::new(
+                        image,
+                        key(),
+                        Target::Session {
+                            revision: Revision(1),
+                        },
+                    )
+                    .map_err(|reason| anyhow!("invalid converted family: {reason:?}"))?;
+                    let description = stream.description();
+                    self.image = Some(stream);
+                    return Ok(Response::Image(description));
+                }
                 let Value::File {
                     name,
                     mime,

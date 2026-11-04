@@ -679,6 +679,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn replace_loop_family_async(
+        &mut self,
+        update: &shoop_backend::BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_family(update)
+    }
+
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
         Err(unavailable(BackendCapability::LoopTimingEdits))
     }

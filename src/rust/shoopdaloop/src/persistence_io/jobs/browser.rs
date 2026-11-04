@@ -198,6 +198,7 @@ enum Sending {
     },
     Image {
         validation: Option<Validation>,
+        family: Option<u64>,
         stream: Option<UploadStream>,
         kind: u8,
         wav: bool,
@@ -241,6 +242,7 @@ impl Sending {
             }),
             Self::Image {
                 validation,
+                family,
                 stream,
                 kind,
                 wav,
@@ -277,6 +279,12 @@ impl Sending {
                 let stream = stream.as_mut().unwrap();
                 if !*declared {
                     *declared = true;
+                    if let Some(handle) = family.take() {
+                        return Ok(Some(WorkerCommand::BeginFamily {
+                            description: stream.description(),
+                            handle,
+                        }));
+                    }
                     return Ok(Some(WorkerCommand::BeginImage {
                         description: stream.description(),
                         kind: *kind,
@@ -541,6 +549,7 @@ impl CodecExecutor {
                 standard,
                 channels,
             } => Sending::Image {
+                family: None,
                 validation: Some(
                     Validation::for_transfer(image)
                         .map_err(|r| anyhow!("invalid capture: {r:?}"))?,
@@ -552,6 +561,25 @@ impl CodecExecutor {
                 channels,
                 declared: false,
             },
+            Work::ConvertFamily {
+                decoded: Decoded::Remote(summary),
+                base,
+            } => {
+                ensure!(self.peer.is_some(), "decoded codec worker was lost");
+                Sending::Image {
+                    validation: Some(
+                        Validation::for_transfer(base)
+                            .map_err(|reason| anyhow!("invalid family capture: {reason:?}"))?,
+                    ),
+                    family: Some(summary.handle),
+                    stream: None,
+                    kind: 0,
+                    wav: false,
+                    standard: false,
+                    channels: Vec::new(),
+                    declared: false,
+                }
+            }
             Work::Prepare {
                 decoded: Decoded::Remote(summary),
                 mapping,

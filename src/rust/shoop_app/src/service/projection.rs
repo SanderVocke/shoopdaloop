@@ -47,6 +47,16 @@ impl Service {
         Arc::new(SessionSnapshot {
             bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
+            sync_sources: self
+                .loops
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let source = self.observed.loops.get(&entry.backend)?.sync_source?;
+                    self.loops.iter().find_map(|(source_id, source_entry)| {
+                        (source_entry.backend == source).then_some((*id, *source_id))
+                    })
+                })
+                .collect(),
             revision: self.revision,
             tracks,
             buses,

@@ -167,7 +167,8 @@ The initial milestone adds the shared rational planner and anchored, incremental
 prepared engine quantum separately from host callback size; application wire
 version 14 fences the changed snapshot schema. Production whole-session load now
 uses this conversion through native codecs and the browser worker, with one generic
-Convert/Cancel warning. Atomic live-family imports remain pending. Conversion handles
+Convert/Cancel warning. Atomic live-family imports are now integrated through the
+backend, service, native codecs and browser worker. Conversion handles
 physical versus musical metadata, context-sensitive shared-media splitting,
 MIDI collision ordering, cancellation and converted save/reload idempotence.
 
@@ -197,14 +198,47 @@ fixed tick. RT protocol version 6 carries family staging and authoritative conte
 revisions, including changes that keep the same length. Core and engine tests
 cover Q=16/32/64, callbacks smaller than Q, stale revisions, unrelated recording
 and gain changes, cancellation, resource reclamation and disconnects before and
-after admitted commits. The backend/service/import coordinator still needs to
-drive this transaction; stage 4 remains open until that integration is complete.
+after admitted commits. The subsequent integration milestone connects this cut
+through the backend, service and import coordinator.
 
 Atomic runtime validation: 2,621 native tests pass, with four host-facility skips;
 all three engine family tests also pass in Node/Wasm. The warning-denying workspace
 build, formatting, test-attribute and tracing inventory checks pass. Logs:
 `work/retiming-family-native.log`, `work/retiming-family-node.log` and
 `work/retiming-family-workspace-build.log`.
+
+Live integration milestone: the frontend plans from authoritative resolved sync
+links, captures only changed loops, retains original file input through consent
+and context capture, then converts retained and imported media once. A bounded
+family manifest and backend operation carry format, identity, dependency, length
+and revision fences to one RT cut. Unrelated recording and current controls
+survive; session loads still use full replacement and start stopped. Native and
+the real browser codec Worker use the same planner and transformation. Cooperative
+capture release now precedes subsequent capture/staging, including synchronous
+Wasm completion and cancellation under queued delivery.
+
+Completed local validation: 2,630 native tests pass (four host-facility skips);
+16 file-workflow tests pass in Node and 17 in Chromium, including the real Worker
+and large media. Four engine and three adapter family tests pass natively, in Node
+and Chromium; two family codec/worker tests pass natively, in Node and Chromium.
+They check Q=16/32/64, retained audio/MIDI/history, combined SRC, three-level sync
+propagation, exact event frames, current gains/playback, unrelated recording,
+stale format/content/dependencies, affected capture, cancellation, bounded ownership
+and controller loss. Production application/codec/worklet Wasm builds and artifact
+contracts pass, as do the warning-denying workspace build, formatting,
+test-attribute, tracing, four-target boundary and runtime documentation checks.
+The import-free worklet is built independently of the application to avoid Cargo
+feature unification pulling browser bindings into the worklet artifact.
+
+Evidence: `work/retiming-complete-native.log`,
+`work/retiming-live-family-node.log`, `work/retiming-live-family-chromium.log`,
+`work/retiming-family-stack-node.log`,
+`work/retiming-family-components-chromium.log`,
+`work/retiming-family-engine-chromium-final.log`,
+`work/retiming-live-codec-node.log`, `work/retiming-live-production-wasm.log`,
+`work/retiming-live-artifact-contract.log` and
+`work/retiming-live-family-workspace-build.log`. Stages 1–7 are complete;
+push, CI, incoming automated review and human acceptance remain stage 8.
 
 Timing field classification: loop lengths, channel offsets, combined playback
 origin, capture alignment, preplay, raw audio/MIDI extents and event frames follow
@@ -225,18 +259,18 @@ window and 256-phase linear interpolation; it is one path for every correction.
 - [x] Specify conversion types and enumerate timing fields by musical, physical
   or dimensionless meaning; expose authoritative engine Q alongside sample rate
   through service/app status and native/browser worker inputs.
-- [ ] Snapshot target format and relevant revisions; define coordinated protocol
+- [x] Snapshot target format and relevant revisions; define coordinated protocol
   version changes and explicit conversion authorization for API/Lua callers.
-- [ ] Verify: format/status round-trips, default/old-session handling, malformed
+- [x] Verify: format/status round-trips, default/old-session handling, malformed
   target refusal and fixtures for identity, Q=16 -> 32/64 and combined SRC.
 
 ### 2. Dependency-aware rational planner
 
-- [ ] Build the post-import candidate and resolve its supported sync forest;
+- [x] Build the post-import candidate and resolve its supported sync forest;
   implement checked alignment, source-first propagation and per-channel maps.
 - [x] Identify the full affected family, retained media, required topology and
   identity/deduplication cases without allocating output audio yet.
-- [ ] Verify with independent arithmetic expectations: chains, multiple roots,
+- [x] Verify with independent arithmetic expectations: chains, multiple roots,
   shuffled declarations, self-sync, empty/silent/MIDI-only loops, exact multiples,
   fractional ratios, ties, minimum lengths, overflow and all supported Q values
   (1/16/32/64/128). Include the 48,016-frame example and 44.1 -> 48 kHz cases.
@@ -254,28 +288,28 @@ window and 256-phase linear interpolation; it is one path for every correction.
 
 ### 4. Atomic affected-family publication
 
-- [ ] Extend bounded backend/protocol/engine content staging to multiple affected
+- [x] Extend bounded backend/protocol/engine content staging to multiple affected
   loops with one preflight/commit, including derived timing and playhead mapping.
-- [ ] Carry fences and ownership through in-process, socket/shared-memory and
+- [x] Carry fences and ownership through in-process, socket/shared-memory and
   worklet routes; keep aligned-input validation as the final RT boundary.
-- [ ] Verify no partial family is observable, exact tick publication, active
+- [x] Verify no partial family is observable, exact tick publication, active
   playback continuity, unrelated control edits/recording, capture refusal, stale
   format/topology/content, saturation and complete reclamation with RT heap guards.
   Cover cancellation and connection loss before and after commit.
 
 ### 5. Wire session and standalone import flows
 
-- [ ] Replace rate-only persistence orchestration with plan -> authorize ->
+- [x] Replace rate-only persistence orchestration with plan -> authorize ->
   convert -> prepare -> fenced publish, sharing the Rust planner across native
   codecs and the browser worker. Resolve channel mapping/length choice before
   planning; coordinate worker/protocol schema changes.
-- [ ] Route session loads to whole-session replacement and live imports to the
+- [x] Route session loads to whole-session replacement and live imports to the
   affected-family transaction. Cover retained audio/MIDI, sync-source imports,
   empty loops, structure-only loads and generated-media insertion paths.
-- [ ] Save converted actual media and lengths without changing source files;
+- [x] Save converted actual media and lengths without changing source files;
   accept older sessions without quantum provenance. Never infer correctness from
   recorded Q alone or change the prepared engine's format to fit a file.
-- [ ] Verify WAV, loop-audio, exact MIDI and SMF workflows for both length choices,
+- [x] Verify WAV, loop-audio, exact MIDI and SMF workflows for both length choices,
   mixed retained/imported content, combined rate/Q conversion, save/reload
   idempotence, stale tasks and worker transfer/cancellation bounds.
 
@@ -285,22 +319,22 @@ window and 256-phase linear interpolation; it is one path for every correction.
   show one Convert/Cancel warning for rate and/or timing changes with no preview.
 - [x] Apply the same explicit authorization to script/API imports. Preserve
   independent format-loss warnings and existing task/error reporting.
-- [ ] Verify automatically in native and browser app tests: accept/cancel,
+- [x] Verify automatically in native and browser app tests: accept/cancel,
   identity/no prompt, aligned old-Q/no prompt, combined conversion/one prompt,
   required authorization, stale confirmation and reconnect reconciliation.
 
 ### 7. Complete local end-to-end validation
 
-- [ ] Run production session/import/save/reload scenarios at Q=16/32/64, including
+- [x] Run production session/import/save/reload scenarios at Q=16/32/64, including
   sync chains and an affected playing family beside unrelated playback/recording.
   Check audio/MIDI/timing and atomicity against independent expected results.
-- [ ] Run targeted suites throughout, then the full native workspace suite,
+- [x] Run targeted suites throughout, then the full native workspace suite,
   Node/Chromium tests, production application/worklet Wasm builds and artifact
   contracts using [.agents/info/test.md](.agents/info/test.md). Run formatting,
   warning-denying builds, test-attribute, tracing and boundary/document checks.
   Keep workspace builds and native integration execution sequential to avoid
   replacing a test-enabled host executable during tests.
-- [ ] Record local evidence and remaining limitations, update the parent plan and
+- [x] Record local evidence and remaining limitations, update the parent plan and
   commit the completed milestones. No CI investigation or human acceptance yet.
 
 ### 8. Final delivery, CI and human acceptance — last

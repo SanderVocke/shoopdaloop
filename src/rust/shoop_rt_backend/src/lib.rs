@@ -35,6 +35,7 @@ use alloc::vec::Vec;
 mod backend;
 mod capture;
 mod clock;
+mod family;
 mod import;
 mod incoming;
 mod mirror;
@@ -293,11 +294,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn ready(&self) -> Result<()> {
-        if self
-            .replacement
-            .as_ref()
-            .is_some_and(|replacement| !replacement.job.finished)
-        {
+        if self.replacement.as_ref().is_some_and(|replacement| {
+            !replacement.job.finished && replacement.job.family.is_none()
+        }) {
             return Err(anyhow!("a session replacement is in progress"));
         }
         match &self.link {

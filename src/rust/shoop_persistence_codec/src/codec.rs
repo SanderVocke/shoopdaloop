@@ -4,6 +4,7 @@ use shoop_app_api::*;
 use shoop_app_protocol::{persistence::*, persistence_image as image};
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
+pub mod family;
 
 fn codec_limits() -> CodecLimits {
     CodecLimits {
@@ -37,6 +38,21 @@ fn midi_bytes(m: &ExactMidi) -> u64 {
 }
 
 impl Decoded {
+    pub fn frames(&self) -> Option<u64> {
+        match self {
+            Self::Remote(summary) => summary.frames,
+            Self::Audio(audio) => Some(
+                audio
+                    .channels
+                    .iter()
+                    .map(|channel| channel.samples.len() as u64)
+                    .max()
+                    .unwrap_or(0),
+            ),
+            Self::Midi(midi) => Some(midi.length_frames),
+            Self::Session(_) => None,
+        }
+    }
     pub fn rate(&self) -> u32 {
         match self {
             Self::Remote(summary) => summary.rate,
@@ -179,6 +195,10 @@ impl Decoded {
     }
 }
 pub enum Work {
+    ConvertFamily {
+        decoded: Decoded,
+        base: Arc<image::Image>,
+    },
     GenerateClick {
         request: ClickTrackRequest,
         rate: u32,
@@ -233,7 +253,13 @@ impl Work {
         self.run_with_cancel(|| false)
     }
     pub fn run_with_cancel(self, mut cancelled: impl FnMut() -> bool) -> Result<Value> {
+        self.run_cancelled(&mut cancelled)
+    }
+    fn run_cancelled(self, mut cancelled: &mut dyn FnMut() -> bool) -> Result<Value> {
         match self {
+            Self::ConvertFamily { decoded, base } => {
+                family::convert(decoded, base, &mut cancelled).map(Value::Image)
+            }
             Self::GenerateClick { request, rate } => {
                 let timing = ClickTrackTimingSpec {
                     bpm: request.bpm,
@@ -659,6 +685,11 @@ impl Work {
 
 fn validate_initials(image: &image::Image) -> Result<()> {
     let channels: Vec<&image::MidiChannel> = match &image.manifest {
+        image::Manifest::FamilyUpdate { members, .. } => members
+            .iter()
+            .filter_map(|member| member.content.as_ref())
+            .flat_map(|content| &content.midi)
+            .collect(),
         image::Manifest::Session(session) => session
             .tracks
             .iter()

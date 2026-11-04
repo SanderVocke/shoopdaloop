@@ -35,6 +35,7 @@ pub(crate) struct Job {
     retry_after: Option<u64>,
     retries: u16,
     session: bool,
+    pub family: Option<shoop_backend::BackendLoopId>,
     validation: VecDeque<Validation>,
     pub prepared: BTreeMap<u64, Prepared>,
     pub revisions: BTreeMap<shoop_rt_protocol::LoopSlotId, u64>,
@@ -69,6 +70,7 @@ impl Job {
             retry_after: None,
             retries: 0,
             session,
+            family: None,
             validation,
             prepared: BTreeMap::new(),
             revisions: BTreeMap::new(),
@@ -135,6 +137,10 @@ impl Job {
             self.work
                 .push_back(Work::Request(Request::ReplacementCancel { id: self.id }));
         }
+        if self.family.is_some() && !self.committed {
+            self.work
+                .push_back(Work::Request(Request::ContentFamilyCancel { id: self.id }));
+        }
         for id in self.uploads.drain(..) {
             self.work
                 .push_back(Work::Request(Request::ContentRelease { id }));
@@ -153,11 +159,24 @@ impl Job {
         {
             self.revisions.insert(loop_id, revision);
         }
+        if let (Request::ContentFamilyEdit { edit, .. }, Outcome::ContentPrepared { revision }) =
+            (request, outcome)
+        {
+            self.revisions.insert(edit.loop_id, revision);
+        }
+        if matches!(request, Request::ContentFamilyEdit { edit, .. } if edit.replace)
+            && outcome == Outcome::Done
+        {
+            self.fail("engine omitted the prepared content revision".to_owned());
+        }
         if self.retries < 1024
             && !matches!(request, Request::ContentWrite { .. })
             && (outcome == Outcome::Refused(Refusal::Overloaded)
                 || (outcome == Outcome::Refused(Refusal::Busy)
-                    && matches!(request, Request::ReplacementBegin { .. })))
+                    && matches!(
+                        request,
+                        Request::ReplacementBegin { .. } | Request::ContentFamilyBegin { .. }
+                    )))
         {
             self.retries += 1;
             self.retry_after = Some(callbacks.saturating_add(1));
@@ -167,7 +186,9 @@ impl Job {
         if let Outcome::Refused(refusal) = outcome {
             if matches!(
                 request,
-                Request::ReplacementCommit { .. } | Request::ContentApply { .. }
+                Request::ReplacementCommit { .. }
+                    | Request::ContentApply { .. }
+                    | Request::ContentFamilyCommit { .. }
             ) {
                 self.committed = false;
             }
@@ -180,7 +201,9 @@ impl Job {
             }
         } else if matches!(
             request,
-            Request::ReplacementCommit { .. } | Request::ContentApply { .. }
+            Request::ReplacementCommit { .. }
+                | Request::ContentApply { .. }
+                | Request::ContentFamilyCommit { .. }
         ) {
             self.committed = true;
         }
@@ -265,7 +288,9 @@ impl Job {
         };
         if matches!(
             request,
-            Request::ReplacementCommit { .. } | Request::ContentApply { .. }
+            Request::ReplacementCommit { .. }
+                | Request::ContentApply { .. }
+                | Request::ContentFamilyCommit { .. }
         ) {
             self.committed = true;
         }
@@ -309,18 +334,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         if replacement.job.finished && replacement.job.error.is_none() && !replacement.published {
             replacement.published = true;
-            if let Some(id) = replacement.loop_target {
-                let content = replacement.content.remove(&id).expect("prepared content");
-                if let Some(entry) = self.mirror.loops.get_mut(&id) {
-                    entry.content += 1;
-                    entry.rt_content_revision = replacement.job.revisions[&entry.slot];
-                    entry.view.length = u64::from(content.length);
+            if replacement.loop_target.is_some() {
+                for (id, content) in core::mem::take(&mut replacement.content) {
+                    if let Some(entry) = self.mirror.loops.get_mut(&id) {
+                        entry.content += 1;
+                        entry.rt_content_revision = replacement.job.revisions[&entry.slot];
+                        entry.view.length = u64::from(content.length);
+                    }
+                    self.prepared_content
+                        .insert(id, replacement.job.prepared[&content.source_id].clone());
+                    self.canonical_content.insert(id, content);
+                    self.canonical_imports.insert(id);
+                    self.reads.forget(id);
                 }
-                self.prepared_content
-                    .insert(id, replacement.job.prepared[&content.source_id].clone());
-                self.canonical_content.insert(id, content);
-                self.canonical_imports.insert(id);
-                self.reads.forget(id);
             }
             if let Some(image) = replacement.candidate.take() {
                 self.mirror = image;

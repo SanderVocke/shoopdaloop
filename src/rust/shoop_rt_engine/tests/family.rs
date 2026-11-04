@@ -199,6 +199,88 @@ fn controller_loss_discards_preparation_and_preserves_an_admitted_family_commit(
 }
 
 #[shoop_test]
+fn family_refuses_wrong_formats_changed_dependencies_and_affected_capture() {
+    for recording in [false, true] {
+        let mut h = baseline();
+        let root = loop_id(0, 1);
+        let child = loop_id(1, 1);
+        for (sample_rate, quantum) in [(2000, 32), (1000, 16)] {
+            assert_eq!(
+                h.apply(Request::ContentFamilyBegin {
+                    id: 1,
+                    root,
+                    count: 2,
+                    sample_rate,
+                    quantum
+                }),
+                Outcome::Refused(Refusal::InvalidValue)
+            );
+        }
+        h.done(Request::ContentFamilyBegin {
+            id: 1,
+            root,
+            count: 2,
+            sample_rate: 1000,
+            quantum: 32,
+        });
+        upload(&mut h, 3, 128, 0.25);
+        prepare(&mut h, 1, root, root, 96, 1, 128, 3);
+        upload(&mut h, 4, 512, 0.5);
+        prepare(&mut h, 1, child, root, 384, 1, 512, 4);
+        if recording {
+            h.done(Request::LoopTransition {
+                loop_id: root,
+                mode: LoopMode::Recording,
+                delay: None,
+            });
+        } else {
+            h.done(Request::LoopSync {
+                loop_id: child,
+                source: None,
+            });
+        }
+        assert!(matches!(
+            h.apply(Request::ContentFamilyCommit { id: 1 }),
+            Outcome::Refused(_)
+        ));
+        h.run(64, 16);
+        assert!(matches!(
+            h.last_loop(child),
+            Some((
+                _,
+                Telemetry::Loop {
+                    length: 384,
+                    content_revision: 1,
+                    ..
+                }
+            ))
+        ));
+        if recording {
+            assert!(matches!(
+                h.last_loop(root),
+                Some((
+                    _,
+                    Telemetry::Loop {
+                        mode: LoopMode::Recording,
+                        ..
+                    }
+                ))
+            ));
+        } else {
+            assert_eq!(h.outputs[0].last(), Some(&3.0));
+        }
+        h.done(Request::ContentFamilyBegin {
+            id: 2,
+            root,
+            count: 1,
+            sample_rate: 1000,
+            quantum: 32,
+        });
+        h.done(Request::ContentFamilyCancel { id: 2 });
+    }
+}
+
+#[shoop_test]
 fn family_prepares_without_changing_music_and_publishes_one_cut_beside_recording() {
     for quantum in [16, 32, 64] {
         let mut description = description();

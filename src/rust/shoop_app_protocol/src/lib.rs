@@ -225,6 +225,7 @@ pub struct OperationResult {
 pub struct SessionSnapshot {
     pub bus_limits: BusLimits,
     pub persistence_epoch: u64,
+    pub sync_sources: Vec<(LoopId, LoopId)>,
     pub revision: Revision,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
