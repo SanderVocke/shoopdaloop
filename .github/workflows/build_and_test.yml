@@ -146,6 +146,10 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -193,7 +197,8 @@ jobs:
           cargo nextest run --locked --workspace \
             --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
           python3 scripts/run_native_jack_tests.py --output target/native-jack-coverage
-          cargo llvm-cov report --lcov --output-path lcov.info
+          # SIGKILL recovery tests can leave truncated child profiles; retain the valid profiles.
+          cargo llvm-cov report --failure-mode all --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
         if: github.event.pull_request.user.login != 'dependabot[bot]'
