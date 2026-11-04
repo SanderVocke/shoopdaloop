@@ -24,11 +24,13 @@ impl IntoIterator for LoopNodes {
 pub struct PlaybackNode {
     binding: Binding,
     audio: Option<audio::AudioRenderer>,
+    auxiliary: Option<audio::AudioRenderer>,
     midi: Option<midi::MidiRenderer>,
 }
 pub struct CaptureNode {
     binding: Binding,
     audio: Option<audio::AudioCapture>,
+    auxiliary: Option<audio::AudioCapture>,
     midi: Option<midi::MidiCapture>,
 }
 impl PlaybackNode {
@@ -38,6 +40,15 @@ impl PlaybackNode {
             audio: if binding.channels > 0 {
                 Some(audio::AudioRenderer::prepare(
                     binding.channels,
+                    frames,
+                    binding.smoothing,
+                )?)
+            } else {
+                None
+            },
+            auxiliary: if binding.auxiliary_channels > 0 {
+                Some(audio::AudioRenderer::prepare(
+                    binding.auxiliary_channels,
                     frames,
                     binding.smoothing,
                 )?)
@@ -58,6 +69,14 @@ impl CaptureNode {
             binding,
             audio: if binding.channels > 0 {
                 Some(audio::AudioCapture::prepare(binding.channels, frames)?)
+            } else {
+                None
+            },
+            auxiliary: if binding.auxiliary_channels > 0 {
+                Some(audio::AudioCapture::prepare(
+                    binding.auxiliary_channels,
+                    frames,
+                )?)
             } else {
                 None
             },
@@ -105,6 +124,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
             || row.binding.playback != self.binding.playback
             || row.binding.capture != self.binding.capture
             || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.auxiliary_channels != self.binding.auxiliary_channels
             || row.binding.channels != self.binding.channels
             || row.binding.midi != self.binding.midi
         {
@@ -124,7 +144,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
         }
         if let Some(audio) = &mut self.audio {
             audio.set_smoothing(view.smoothing);
-            audio.render_ports(
+            audio.render_port_range(
                 &mut block.resources.render(),
                 audio::Playback {
                     source: view.audio,
@@ -134,6 +154,22 @@ impl Processor<LoopPlanner> for PlaybackNode {
                     discontinuity: view.decision.playback_discontinuity,
                 },
                 &mut block.audio,
+                0,
+            )?;
+        }
+        if let Some(audio) = &mut self.auxiliary {
+            audio.set_smoothing(view.smoothing);
+            audio.render_port_range(
+                &mut block.resources.render(),
+                audio::Playback {
+                    source: view.auxiliary,
+                    position: view.decision.state.position,
+                    gain: view.gain,
+                    balance: view.balance,
+                    discontinuity: view.decision.playback_discontinuity,
+                },
+                &mut block.audio,
+                self.binding.channels,
             )?;
         }
         let error = if let Some(midi) = &mut self.midi {
@@ -159,7 +195,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
     }
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_outputs: self.binding.channels,
+            audio_outputs: self.binding.channels + self.binding.auxiliary_channels,
             midi_outputs: usize::from(self.binding.midi),
             ..PortCounts::default()
         }
@@ -176,6 +212,7 @@ impl Processor<LoopPlanner> for CaptureNode {
             || row.binding.playback != self.binding.playback
             || row.binding.capture != self.binding.capture
             || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.auxiliary_channels != self.binding.auxiliary_channels
             || row.binding.channels != self.binding.channels
             || row.binding.midi != self.binding.midi
         {
@@ -194,7 +231,44 @@ impl Processor<LoopPlanner> for CaptureNode {
             return Err(Error::InvalidId);
         }
         if let (Some(audio), Some(interval)) = (&mut self.audio, view.capture) {
-            audio.stage_ports(&mut block.resources.render(), interval, 0, &block.audio)?;
+            audio.stage_port_range(&mut block.resources.render(), interval, 0, &block.audio, 0)?;
+        }
+        if let (Some(audio), Some(interval)) =
+            (&mut self.auxiliary, view.capture.filter(|_| view.dry_wet))
+        {
+            audio.stage_port_range(
+                &mut block.resources.render(),
+                interval,
+                usize::from(self.binding.channels > 0),
+                &block.audio,
+                self.binding.channels,
+            )?;
+        }
+        if let (Some(audio), Some((resource, revision))) = (&mut self.audio, view.replace) {
+            match audio.replace_ports(
+                &mut block.resources.render(),
+                resource,
+                revision,
+                view.decision.state.position,
+                &block.audio,
+            ) {
+                Ok(revision) => {
+                    block.domain.rows[slot]
+                        .as_mut()
+                        .ok_or(Error::InvalidId)?
+                        .active
+                        .as_mut()
+                        .ok_or(Error::InvalidState)?
+                        .edit = Some((resource, revision))
+                }
+                Err(error @ (Error::Capacity | Error::Exhausted | Error::Budget)) => {
+                    block.domain.rows[slot]
+                        .as_mut()
+                        .ok_or(Error::InvalidId)?
+                        .failure = Some(error);
+                }
+                Err(error) => return Err(error),
+            }
         }
         if let Some(midi) = &mut self.midi {
             if view.reset_input {
@@ -204,8 +278,13 @@ impl Processor<LoopPlanner> for CaptureNode {
                 &mut block.resources.render(),
                 block.midi_inputs.first().ok_or(Error::InvalidShape)?,
                 block.quantum.frames(),
-                view.capture
-                    .map(|interval| (interval, usize::from(self.binding.channels > 0))),
+                view.capture.map(|interval| {
+                    (
+                        interval,
+                        usize::from(self.binding.channels > 0)
+                            + usize::from(view.dry_wet && self.binding.auxiliary_channels > 0),
+                    )
+                }),
             )?;
             block.domain.inputs[slot] = *midi.state();
         }
@@ -213,7 +292,7 @@ impl Processor<LoopPlanner> for CaptureNode {
     }
     fn ports(&self) -> PortCounts {
         PortCounts {
-            audio_inputs: self.binding.channels,
+            audio_inputs: self.binding.channels + self.binding.auxiliary_channels,
             midi_inputs: usize::from(self.binding.midi),
             ..PortCounts::default()
         }

@@ -26,7 +26,9 @@ fn exhausted_media_and_export_generations_retire_instead_of_retargeting() {
             .adopt(
                 &mut store.io(),
                 Input {
+                    auxiliary: None,
                     description: Description {
+                        auxiliary_channels: 0,
                         owner,
                         revision: Revision(0),
                         frames: 1,
@@ -86,6 +88,7 @@ fn exhausted_media_and_export_generations_retire_instead_of_retargeting() {
         assert_eq!(ledger.exported(export), Err(Error::InvalidId));
         assert_eq!(
             ledger.reserve(Description {
+                auxiliary_channels: 0,
                 owner,
                 revision: Revision(1),
                 frames: 0,
@@ -94,5 +97,83 @@ fn exhausted_media_and_export_generations_retire_instead_of_retargeting() {
             }),
             Err(Error::Capacity)
         );
+    });
+}
+
+#[shoop_test]
+fn two_audio_roles_require_independent_leases_and_release_each_exactly_once() {
+    let mut store = ResourceStore::new(
+        rt_runtime::Config {
+            resource_slots: 4,
+            ..rt_runtime::Config::default()
+        }
+        .prepare()
+        .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
+    let resource = store.create().unwrap();
+    let upload = store
+        .begin_upload(
+            resource,
+            Revision(0),
+            rt_runtime::resource::Description {
+                format: Format::Audio { channels: 1 },
+                frames: 0,
+                bytes: 0,
+            },
+        )
+        .unwrap();
+    store.finish_upload(upload).unwrap();
+    store.commit(upload).unwrap();
+    let snapshot = store.snapshot(resource, Frame(0)).unwrap();
+    let source = Source {
+        snapshot,
+        index: store.read_index(snapshot.id).unwrap(),
+    };
+    let owner = LoopId::from_parts(0, 1).unwrap();
+    let mut ledger = Ledger::prepare(1, 2, 1, 1).unwrap();
+    ledger.bind(owner).unwrap();
+    support::assert_no_heap(|| {
+        let before = ledger.usage();
+        let rejected = ledger
+            .adopt(
+                &mut store.io(),
+                Input {
+                    description: Description {
+                        owner,
+                        revision: Revision(0),
+                        frames: 0,
+                        channels: 1,
+                        auxiliary_channels: 1,
+                        midi: false,
+                    },
+                    audio: Some(source),
+                    auxiliary: Some(source),
+                    midi: None,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(rejected.error, Error::InvalidState);
+        assert_eq!(ledger.usage(), before);
+        let retained = store.retain_snapshot(snapshot.id).unwrap();
+        let auxiliary = Source {
+            snapshot: retained,
+            index: store.read_index(retained.id).unwrap(),
+        };
+        let media = ledger
+            .adopt(
+                &mut store.io(),
+                Input {
+                    auxiliary: Some(auxiliary),
+                    ..rejected.input
+                },
+            )
+            .unwrap();
+        ledger.retire(&mut store.io(), media).unwrap();
+        assert_eq!(store.currentness(snapshot.id), Err(Error::InvalidId));
+        assert_eq!(store.currentness(retained.id), Err(Error::InvalidId));
+        assert_eq!(store.usage().free_snapshots, 4);
+        assert_eq!(ledger.usage(), before);
     });
 }

@@ -20,6 +20,7 @@ fn full_loop_adopt_select_and_export_use_immutable_shared_snapshots() {
         let Reply::Adopted { media, .. } = call(
             &mut h,
             Operation::Adopt {
+                auxiliary: None,
                 target: id(1),
                 frames: 4,
                 audio: Some(sources[0]),

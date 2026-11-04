@@ -248,7 +248,7 @@ impl Resolver {
                 return Err(Error::DuplicateId);
             }
             let state = self.state(change.target)?;
-            if state.mode == Mode::Recording
+            if state.mode.records()
                 || state.content_length != change.expected_length
                 || state.content_revision != change.expected_revision
                 || change.revision <= state.content_revision

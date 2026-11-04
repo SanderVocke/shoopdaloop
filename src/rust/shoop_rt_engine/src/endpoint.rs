@@ -264,6 +264,11 @@ fn loop_transition(mode: LoopMode) -> Transition {
             position: 0,
             retrigger: false,
         },
+        LoopMode::PlayingDryThroughWet => Transition::PlayDry {
+            position: 0,
+            retrigger: false,
+        },
+        LoopMode::RecordingDryIntoWet => Transition::Rerecord,
         LoopMode::Recording => Transition::Record {
             monitor_previous: false,
         },
@@ -274,6 +279,8 @@ pub(crate) fn protocol_mode(mode: Mode) -> LoopMode {
         Mode::Stopped => LoopMode::Stopped,
         Mode::Playing => LoopMode::Playing,
         Mode::Recording => LoopMode::Recording,
+        Mode::PlayingDryThroughWet => LoopMode::PlayingDryThroughWet,
+        Mode::RecordingDryIntoWet => LoopMode::RecordingDryIntoWet,
     }
 }
 pub(crate) fn loop_id(id: LoopSlotId) -> LoopId {

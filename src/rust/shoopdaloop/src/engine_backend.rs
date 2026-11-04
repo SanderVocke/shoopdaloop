@@ -477,7 +477,7 @@ mod jack_acceptance {
             client_name: format!("jack-application-{}", std::process::id()),
             ..Default::default()
         });
-        let mut engine = start(
+        let mut engine = start_selected_with_processors(
             &config,
             &NewEnginePools {
                 tracks: 4,
@@ -485,6 +485,8 @@ mod jack_acceptance {
                 loop_memory_mb: 16,
                 ..Default::default()
             },
+            shoop_egui::EngineTransportKind::InProcess,
+            shoop_app_api::ProcessorSettings::default(),
         )
         .unwrap();
         let state = engine.backend.audio_driver_state().unwrap();

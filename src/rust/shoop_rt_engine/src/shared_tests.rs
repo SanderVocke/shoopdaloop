@@ -479,6 +479,7 @@ impl Fixture {
         let audio = take.audio.map(|id| self.node_source(id));
         let midi = take.midi.map(|id| self.node_source(id));
         let Reply::Adopted { media, .. } = self.op(Operation::Adopt {
+            auxiliary: None,
             target: target(slot),
             frames: take.frames,
             audio,

@@ -74,7 +74,9 @@ pub(super) fn make_imports(store: &mut ResourceStore, one_sample: bool) -> Vec<m
             Some(&initial),
         );
         result.push(media::Input {
+            auxiliary: None,
             description: media::Description {
+                auxiliary_channels: 0,
                 owner: id(),
                 revision: Revision(revision),
                 frames,
@@ -1225,6 +1227,8 @@ fn lightweight(
     )
     .unwrap();
     let mut bindings = vec![Binding {
+        dry_wet: false,
+        auxiliary_channels: 0,
         target: id(),
         playback: node(0),
         capture: node(1),
@@ -1262,7 +1266,9 @@ fn lightweight(
 #[shoop_test]
 fn facade_node_pair_validation_invalid_operations_and_imported_revision_exhaustion_are_checked() {
     let input = |revision| media::Input {
+        auxiliary: None,
         description: media::Description {
+            auxiliary_channels: 0,
             owner: id(),
             revision,
             frames: 4,

@@ -85,6 +85,8 @@ pub struct Binding {
     pub playback: NodeId,
     pub capture: NodeId,
     pub channels: usize,
+    pub auxiliary_channels: usize,
+    pub dry_wet: bool,
     pub midi: bool,
     pub gain: f32,
     pub smoothing: audio::Smoothing,
@@ -268,6 +270,7 @@ pub enum Operation {
     Adopt {
         target: LoopId,
         frames: u64,
+        auxiliary: Option<NodePairSourceId>,
         audio: Option<NodePairSourceId>,
         midi: Option<NodePairSourceId>,
     },
@@ -440,6 +443,7 @@ pub enum Reply {
 pub struct View {
     pub decision: Decision,
     pub audio: Option<ReadIndex>,
+    pub auxiliary: Option<ReadIndex>,
     pub midi: Option<ReadIndex>,
     pub capture: Option<CaptureTickId>,
     pub gain: f32,
@@ -448,6 +452,8 @@ pub struct View {
     pub playback_node: NodeId,
     pub capture_node: NodeId,
     pub reset_input: bool,
+    pub dry_wet: bool,
+    pub replace: Option<(rt_runtime::ResourceId, Revision)>,
 }
 #[derive(Clone, Copy)]
 struct Take {
@@ -455,19 +461,25 @@ struct Take {
     media: media::MediaId,
     bank: usize,
     token: Option<CaptureTakeId>,
+    edit: Option<(rt_runtime::ResourceId, Revision)>,
+    snapshot_credit: Option<SnapshotReservation>,
+    auxiliary: Option<media::Source>,
+    midi: Option<media::Source>,
 }
 #[derive(Clone, Copy)]
 struct Row {
     binding: Binding,
     assigned: bool,
+    dry_wet: bool,
+    history_source: u32,
     reset_input: bool,
-    groups: [Option<CaptureGroupId>; 2],
-    resources: [[Option<rt_runtime::ResourceId>; 2]; 2],
+    groups: [[Option<CaptureGroupId>; 2]; 2],
+    resources: [[[Option<rt_runtime::ResourceId>; 3]; 2]; 2],
     active: Option<Take>,
     prepared: Option<Take>,
     interval: Option<CaptureTickId>,
     next_bank: usize,
-    frozen: [Option<Snapshot>; 2],
+    frozen: [Option<Snapshot>; 3],
     failure: Option<Error>,
     overflows: u64,
     balance: f32,
@@ -671,6 +683,8 @@ impl LoopPlanner {
                 || rows[slot].is_some()
                 || !binding.gain.is_finite()
                 || binding.channels > u32::MAX as usize
+                || binding.auxiliary_channels > u32::MAX as usize
+                || (binding.dry_wet && binding.auxiliary_channels == 0)
             {
                 return Err(Error::InvalidShape.into());
             }
@@ -689,46 +703,66 @@ impl LoopPlanner {
             let mut row = Row {
                 binding,
                 assigned,
+                dry_wet: binding.dry_wet,
+                history_source: 0,
                 reset_input: false,
-                groups: [None; 2],
-                resources: [[None; 2]; 2],
+                groups: [[None; 2]; 2],
+                resources: [[[None; 3]; 2]; 2],
                 active: None,
                 prepared: None,
                 interval: None,
                 next_bank: 0,
-                frozen: [None; 2],
+                frozen: [None; 3],
                 failure: None,
                 overflows: 0,
                 balance: 0.,
             };
             for bank in 0..2 {
-                let mut members = Vec::new();
-                if binding.channels > 0 {
-                    let resource = resources.create()?;
-                    row.resources[bank][0] = Some(resource);
-                    members.push(CaptureMember {
-                        resource,
-                        format: Format::Audio {
-                            channels: binding.channels as u32,
-                        },
-                        midi_events: 0,
-                        midi_bytes: 0,
-                    });
-                }
-                if binding.midi {
-                    let resource = resources.create()?;
-                    row.resources[bank][1] = Some(resource);
-                    members.push(CaptureMember {
-                        resource,
-                        format: Format::Midi,
-                        midi_events: binding
-                            .midi_events
-                            .max(rt_runtime::midi::ResetState::EVENTS),
-                        midi_bytes: binding.midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
-                    });
-                }
-                if !members.is_empty() {
-                    row.groups[bank] = Some(resources.bind_capture_group(&members)?);
+                for roles in 0..2 {
+                    if roles == 1 && binding.auxiliary_channels == 0 {
+                        continue;
+                    }
+                    let mut members = Vec::new();
+                    for (member, channels) in [
+                        (0, binding.channels),
+                        (
+                            1,
+                            if roles == 1 {
+                                binding.auxiliary_channels
+                            } else {
+                                0
+                            },
+                        ),
+                    ] {
+                        if channels == 0 {
+                            continue;
+                        }
+                        let resource = resources.create()?;
+                        row.resources[bank][roles][member] = Some(resource);
+                        members.push(CaptureMember {
+                            resource,
+                            format: Format::Audio {
+                                channels: channels as u32,
+                            },
+                            midi_events: 0,
+                            midi_bytes: 0,
+                        });
+                    }
+                    if binding.midi {
+                        let resource = resources.create()?;
+                        row.resources[bank][roles][2] = Some(resource);
+                        members.push(CaptureMember {
+                            resource,
+                            format: Format::Midi,
+                            midi_events: binding
+                                .midi_events
+                                .max(rt_runtime::midi::ResetState::EVENTS),
+                            midi_bytes: binding.midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
+                        });
+                    }
+                    if !members.is_empty() {
+                        row.groups[bank][roles] = Some(resources.bind_capture_group(&members)?);
+                    }
                 }
             }
             nodes.push((
@@ -758,7 +792,13 @@ impl LoopPlanner {
                 .and_then(|r| *r)
                 .filter(|r| r.assigned && r.binding.target == description.owner)
                 .ok_or(Error::InvalidId)?;
-            if description.channels as usize != row.binding.channels
+            if description.auxiliary_channels as usize
+                != if row.dry_wet {
+                    row.binding.auxiliary_channels
+                } else {
+                    0
+                }
+                || description.channels as usize != row.binding.channels
                 || description.midi != row.binding.midi
                 || catalog.iter().any(|m: &PreparedMedia| {
                     m.target == description.owner && m.revision == description.revision
@@ -801,7 +841,13 @@ impl LoopPlanner {
                     .adopt(
                         &mut resources.io(),
                         media::Input {
+                            auxiliary: None,
                             description: media::Description {
+                                auxiliary_channels: if row.dry_wet {
+                                    row.binding.auxiliary_channels as u32
+                                } else {
+                                    0
+                                },
                                 owner: target,
                                 revision: Revision(0),
                                 frames: length,
@@ -830,6 +876,7 @@ impl LoopPlanner {
                 origin: None,
             },
             audio: None,
+            auxiliary: None,
             midi: None,
             capture: None,
             gain: 1.,
@@ -838,6 +885,8 @@ impl LoopPlanner {
             playback_node: NodeId::from_parts(0, 1)?,
             capture_node: NodeId::from_parts(0, 1)?,
             reset_input: false,
+            dry_wet: false,
+            replace: None,
         };
         let mut views = vec![initial; slots].into_boxed_slice();
         let mut inputs = vec![MidiState::default(); slots].into_boxed_slice();
@@ -878,6 +927,20 @@ impl LoopPlanner {
                 media: catalog.into_boxed_slice(),
             },
         })
+    }
+    fn validate_media_shape(row: Row, view: media::View) -> Result<(), Error> {
+        if view.description.channels as usize != row.binding.channels
+            || view.description.auxiliary_channels as usize
+                != if row.dry_wet {
+                    row.binding.auxiliary_channels
+                } else {
+                    0
+                }
+            || view.description.midi != row.binding.midi
+        {
+            return Err(Error::InvalidShape);
+        }
+        Ok(())
     }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer

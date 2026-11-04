@@ -57,6 +57,9 @@ pub struct NodePairInitial {
     pub target: LoopId,
     pub frames: u64,
     pub audio: Option<NodePairSourceId>,
+    pub auxiliary: Option<NodePairSourceId>,
+    pub dry_wet: bool,
+    pub history_source: u32,
     pub midi: Option<NodePairSourceId>,
     pub gain: f32,
     pub balance: f32,
@@ -318,15 +321,18 @@ impl NodePairs {
         &mut self,
         description: media::Description,
         audio: Option<NodePairSourceId>,
+        auxiliary: Option<NodePairSourceId>,
         midi: Option<NodePairSourceId>,
         packet_bytes: usize,
         ledger: &mut media::Ledger,
         io: &mut ResourceIo<'_>,
     ) -> Result<media::MediaId, Error> {
-        if audio.is_some() && audio == midi {
+        if audio.is_some() && (audio == midi || audio == auxiliary)
+            || auxiliary.is_some() && auxiliary == midi
+        {
             return Err(Error::InvalidShape);
         }
-        for id in [audio, midi].into_iter().flatten() {
+        for id in [audio, auxiliary, midi].into_iter().flatten() {
             match self.source_status(id)? {
                 NodePairSourceStatus::Ready { max_packet } if max_packet <= packet_bytes => {}
                 NodePairSourceStatus::Ready { .. } => return Err(Error::Capacity),
@@ -337,13 +343,14 @@ impl NodePairs {
             .adopt(
                 io,
                 media::Input {
+                    auxiliary: auxiliary.map(|id| self.source(id)).transpose()?,
                     description,
                     audio: audio.map(|id| self.source(id)).transpose()?,
                     midi: midi.map(|id| self.source(id)).transpose()?,
                 },
             )
             .map_err(|e| e.error)?;
-        for id in [audio, midi].into_iter().flatten() {
+        for id in [audio, auxiliary, midi].into_iter().flatten() {
             self.take_source(id);
         }
         Ok(media)
@@ -404,13 +411,20 @@ impl NodePairs {
             return Err(Error::InvalidId);
         }
         let mut change = if let Some(initial) = edit.initial {
-            if !initial.gain.is_finite()
+            if (initial.dry_wet && binding.auxiliary_channels == 0)
+                || (!initial.dry_wet && initial.auxiliary.is_some())
+                || !initial.gain.is_finite()
                 || !(-1.0..=1.0).contains(&initial.balance)
-                || (initial.audio.is_some() && initial.audio == initial.midi)
+                || (initial.audio.is_some()
+                    && (initial.audio == initial.midi || initial.audio == initial.auxiliary))
+                || (initial.auxiliary.is_some() && initial.auxiliary == initial.midi)
             {
                 return Err(Error::InvalidShape);
             }
-            for source in [initial.audio, initial.midi].into_iter().flatten() {
+            for source in [initial.audio, initial.auxiliary, initial.midi]
+                .into_iter()
+                .flatten()
+            {
                 let NodePairSourceStatus::Ready { max_packet } = self.source_status(source)? else {
                     return Err(Error::InvalidState);
                 };
@@ -419,11 +433,18 @@ impl NodePairs {
                 }
             }
             let audio = initial.audio.map(|id| self.source(id)).transpose()?;
+            let auxiliary = initial.auxiliary.map(|id| self.source(id)).transpose()?;
             let midi = initial.midi.map(|id| self.source(id)).transpose()?;
             media::OwnerChange::replace(
                 edit.previous,
                 media::Input {
+                    auxiliary,
                     description: media::Description {
+                        auxiliary_channels: if initial.dry_wet {
+                            binding.auxiliary_channels as u32
+                        } else {
+                            0
+                        },
                         owner: initial.target,
                         revision: Revision(0),
                         frames: initial.frames,
@@ -442,7 +463,10 @@ impl NodePairs {
                 ledger.prepare_owner_activation(io, core::slice::from_mut(&mut change))?;
         }
         if let Some(initial) = edit.initial {
-            for source in [initial.audio, initial.midi].into_iter().flatten() {
+            for source in [initial.audio, initial.auxiliary, initial.midi]
+                .into_iter()
+                .flatten()
+            {
                 self.take_source(source);
             }
         }

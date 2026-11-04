@@ -90,6 +90,13 @@ pub enum LoopMode {
     Stopped,
     Playing,
     Recording,
+    PlayingDryThroughWet,
+    RecordingDryIntoWet,
+}
+impl LoopMode {
+    pub fn records(self) -> bool {
+        matches!(self, Self::Recording | Self::RecordingDryIntoWet)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

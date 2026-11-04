@@ -314,6 +314,15 @@ checks run alongside Stages 5–7.
   shape; prove maximum dry plus maximum wet is supported simultaneously. Exercise
   native CPAL/JACK/dummy and worklet partitioning, plus failure rollback; commit.
 
+Loop/media foundation milestone: prepared bindings now have independent primary
+and auxiliary audio widths. One resolver owns dry-through-wet and wet-rerecord
+modes, including one wrap clock, scheduling and cancellation. Wet rerecord forks
+only wet audio using the existing COW stores, retains dry audio/MIDI leases and
+preserves take length. Capture groups have separate prepared role variants;
+reserved snapshot credits protect edit completion. Native and Wasm primitive
+regressions cover 8+8 channels and unequal side widths. Production graph routing,
+processor activity/latency and end-to-end host admission remain pending.
+
 ### 6. Restore service operations, editors and track control MIDI
 
 - [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace

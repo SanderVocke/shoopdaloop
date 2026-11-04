@@ -100,7 +100,9 @@ fn input(
         }
     };
     Input {
+        auxiliary: None,
         description: Description {
+            auxiliary_channels: 0,
             owner: who,
             revision: Revision(revision),
             frames: 4,
@@ -113,6 +115,7 @@ fn input(
 }
 fn copy(view: View) -> Input {
     Input {
+        auxiliary: None,
         description: view.description,
         audio: view.audio,
         midi: view.midi,
@@ -337,6 +340,7 @@ fn owner_batch_refusals_preserve_every_input_and_do_not_reserve_generation_or_ca
                 6 => {
                     release_input(&mut store, second);
                     second = copy(View {
+                        auxiliary: None,
                         description: Description {
                             owner: LoopId::from_parts(1, 2).unwrap(),
                             ..first.description
@@ -573,6 +577,7 @@ fn seeded_owner_activation_model_checks_references_generations_and_retained_medi
                 assert_eq!(
                     view.description,
                     Description {
+                        auxiliary_channels: 0,
                         owner: held.owner,
                         revision: Revision(0),
                         frames: 4,
@@ -629,7 +634,9 @@ fn seeded_owner_activation_model_checks_references_generations_and_retained_medi
             OwnerChange::replace(
                 None,
                 Input {
+                    auxiliary: None,
                     description: Description {
+                        auxiliary_channels: 0,
                         owner: maximal,
                         revision: Revision(0),
                         frames: 0,
@@ -816,6 +823,7 @@ fn malformed_foreign_duplicate_and_unindexed_inputs_return_owners_without_public
     assert_no_heap(|| {
         let data = input(&mut store, ids, owner(1), 0, Frame(0));
         let original = View {
+            auxiliary: None,
             description: data.description,
             audio: data.audio,
             midi: data.midi,
@@ -922,6 +930,7 @@ fn optional_metadata_capacity_and_cancelled_reservations_do_not_steal_internal_n
     ledger.bind(owner(1)).unwrap();
     assert_no_heap(|| {
         let description = Description {
+            auxiliary_channels: 0,
             owner: owner(1),
             revision: Revision(1),
             frames: 0,

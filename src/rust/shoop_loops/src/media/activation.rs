@@ -97,8 +97,11 @@ impl Ledger {
                 }
                 self.validate(io, input)?;
                 for earlier in changes[..index].iter().filter_map(|c| c.input.as_ref()) {
-                    for source in [earlier.audio, earlier.midi].into_iter().flatten() {
-                        if [input.audio, input.midi]
+                    for source in [earlier.audio, earlier.auxiliary, earlier.midi]
+                        .into_iter()
+                        .flatten()
+                    {
+                        if [input.audio, input.auxiliary, input.midi]
                             .into_iter()
                             .flatten()
                             .any(|new| new.snapshot.id == source.snapshot.id)
@@ -136,6 +139,7 @@ impl OwnerActivation<'_, '_> {
                         View {
                             description: input.description,
                             audio: input.audio,
+                            auxiliary: input.auxiliary,
                             midi: input.midi,
                         },
                         true,

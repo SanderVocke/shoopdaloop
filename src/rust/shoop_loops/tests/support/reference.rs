@@ -67,6 +67,8 @@ pub fn primitive(length: u64, requests: &[Request], frames: u64) -> Expected {
             let mut failure = None;
             match operation {
                 Transition::Program
+                | Transition::PlayDry { .. }
+                | Transition::Rerecord
                 | Transition::PlayIteration { .. }
                 | Transition::SeekIteration { .. } => failure = Some(Error::InvalidState),
                 Transition::Stop => {

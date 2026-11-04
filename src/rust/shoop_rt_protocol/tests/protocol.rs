@@ -40,6 +40,16 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::LoopTransition {
+            loop_id: loop_id(0),
+            mode: LoopMode::PlayingDryThroughWet,
+            delay: None,
+        },
+        Request::LoopTransition {
+            loop_id: loop_id(0),
+            mode: LoopMode::RecordingDryIntoWet,
+            delay: Some(2),
+        },
         Request::CreateBus {
             bus: BusId(SlotId::new(7, 42)),
             channels: 8,

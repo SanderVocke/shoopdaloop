@@ -756,6 +756,8 @@ pub(crate) fn app_mode(mode: LoopMode) -> BackendLoopMode {
         LoopMode::Stopped => BackendLoopMode::Stopped,
         LoopMode::Playing => BackendLoopMode::Playing,
         LoopMode::Recording => BackendLoopMode::Recording,
+        LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
     }
 }
 

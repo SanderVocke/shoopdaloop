@@ -25,6 +25,11 @@ pub enum Transition {
         position: u64,
         retrigger: bool,
     },
+    PlayDry {
+        position: u64,
+        retrigger: bool,
+    },
+    Rerecord,
     Record {
         monitor_previous: bool,
     },

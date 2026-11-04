@@ -79,7 +79,7 @@ impl LoopPlanner {
             {
                 return Err(Error::InvalidState.into());
             }
-            for group in row.groups.into_iter().flatten() {
+            for group in row.groups.into_iter().flatten().flatten() {
                 let info = io.capture().info(group)?;
                 if info.phase != CapturePhase::Idle
                     || info.members
@@ -149,7 +149,7 @@ impl LoopPlanner {
             let slot = edit.slot().expect("validated edit");
             let row = self.rows[slot].as_mut().expect("prepared node_pair");
             if replace_all {
-                for group in row.groups.into_iter().flatten() {
+                for group in row.groups.into_iter().flatten().flatten() {
                     io.capture()
                         .clear_idle_group(group)
                         .expect("prevalidated idle capture group");
@@ -158,6 +158,8 @@ impl LoopPlanner {
             row.assigned = edit.initial.is_some();
             if let Some(initial) = edit.initial {
                 row.binding.target = initial.target;
+                row.dry_wet = initial.dry_wet;
+                row.history_source = initial.history_source;
                 row.binding.gain = initial.gain;
                 row.balance = initial.balance;
                 row.reset_input |= !initial.preserve_input;

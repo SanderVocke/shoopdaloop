@@ -129,6 +129,8 @@ pub fn assemble(
             export_slots: 4,
         },
         vec![Binding {
+            dry_wet: false,
+            auxiliary_channels: 0,
             target,
             playback,
             capture,
@@ -228,7 +230,9 @@ fn import(
         resources.remove(resource)?;
     }
     Ok(media::Input {
+        auxiliary: None,
         description: media::Description {
+            auxiliary_channels: 0,
             owner: target,
             revision: Revision(0),
             frames,

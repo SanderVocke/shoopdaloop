@@ -440,6 +440,8 @@ pub fn prepare_with_shared_and_processors(
     let bindings = (0..loops)
         .map(|slot| {
             Ok(Binding {
+                dry_wet: false,
+                auxiliary_channels: 0,
                 target: LoopId::from_parts(slot as u32, 1)?,
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),

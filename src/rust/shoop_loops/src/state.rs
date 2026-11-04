@@ -48,7 +48,7 @@ impl State {
     pub fn plays(self) -> bool {
         self.composite.is_none()
             && self.content_length != 0
-            && (self.mode == Mode::Playing
+            && (self.mode.playback_mode()
                 || (self.mode == Mode::Recording && self.monitor_previous))
     }
 }

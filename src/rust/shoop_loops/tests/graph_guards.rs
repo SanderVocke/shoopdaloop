@@ -104,6 +104,8 @@ fn settings() -> Settings {
 fn bindings() -> Vec<Binding> {
     (0..3)
         .map(|slot| Binding {
+            dry_wet: false,
+            auxiliary_channels: 0,
             target: id(slot),
             playback: node(slot * 2),
             capture: node(slot * 2 + 1),

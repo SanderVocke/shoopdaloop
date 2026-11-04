@@ -617,6 +617,7 @@ impl ControlEndpoint {
                     job,
                     Frame(0),
                     Operation::Adopt {
+                        auxiliary: None,
                         target: loop_id(id),
                         frames,
                         audio,
@@ -869,6 +870,9 @@ impl ControlEndpoint {
                         };
                         let entry = self.next.loops[slot].expect("candidate loop");
                         Some(NodePairInitial {
+                            history_source: 0,
+                            dry_wet: false,
+                            auxiliary: None,
                             target: loop_id(created),
                             frames: data.frames,
                             audio,
@@ -879,6 +883,9 @@ impl ControlEndpoint {
                         })
                     }
                     Some(created) => Some(NodePairInitial {
+                        history_source: 0,
+                        dry_wet: false,
+                        auxiliary: None,
                         target: loop_id(created),
                         frames: 0,
                         audio: None,

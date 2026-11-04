@@ -160,6 +160,9 @@ pub fn simulate(input: &TopologyDescription, frames: u64) -> Expected {
                     current.unwrap_or(Mode::Stopped)
                 };
                 match desired {
+                    Mode::PlayingDryThroughWet | Mode::RecordingDryIntoWet => {
+                        unreachable!("ordinary composite reference fixture")
+                    }
                     Mode::Stopped => {
                         if child.mode != Mode::Stopped {
                             emit(target, EventKind::Transition(Transition::Stop));

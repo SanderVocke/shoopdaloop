@@ -105,10 +105,86 @@ impl LoopPlanner {
             if let Some(token) = take.token {
                 io.capture().cancel_take(token)?;
             }
+            Self::release_edit(take, io)?;
             self.ledger.retire(io, take.media)?;
             self.rows[slot].as_mut().expect("row").prepared = None;
         }
         Ok(())
+    }
+    fn release_edit(take: Take, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+        for source in [take.auxiliary, take.midi].into_iter().flatten() {
+            io.release_snapshot(source.snapshot.id)?;
+        }
+        if let Some((resource, _)) = take.edit {
+            io.remove(resource)?;
+        }
+        if let Some(credit) = take.snapshot_credit {
+            io.cancel_snapshot_reservation(credit)?;
+        }
+        Ok(())
+    }
+    fn prepare_wet_edit(
+        &mut self,
+        slot: usize,
+        decision: Decision,
+        id: media::MediaId,
+        bank: usize,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<Take, Error> {
+        let row = self.rows[slot].ok_or(Error::InvalidId)?;
+        if !row.dry_wet {
+            return Err(Error::InvalidState);
+        }
+        let view = self.ledger.view(
+            self.ledger
+                .playback(row.binding.target)?
+                .ok_or(Error::InvalidState)?,
+        )?;
+        let store = self
+            .shared
+            .as_ref()
+            .ok_or(Error::InvalidState)?
+            .audio_store(row.history_source)?;
+        let audio = view.audio.ok_or(Error::InvalidShape)?;
+        let credit = io.reserve_snapshot()?;
+        let resource = match io.fork_audio(store, audio.snapshot.id) {
+            Ok(resource) => resource,
+            Err(error) => {
+                io.cancel_snapshot_reservation(credit)?;
+                return Err(error);
+            }
+        };
+        let mut take = Take {
+            revision: decision.state.capture_revision,
+            media: id,
+            bank,
+            token: None,
+            edit: Some((resource, io.info(resource)?.revision)),
+            snapshot_credit: Some(credit),
+            auxiliary: None,
+            midi: None,
+        };
+        let result = (|| {
+            if let Some(source) = view.auxiliary {
+                let snapshot = io.retain_snapshot(source.snapshot.id)?;
+                take.auxiliary = Some(media::Source {
+                    snapshot,
+                    index: io.read_index(snapshot.id)?,
+                });
+            }
+            if let Some(source) = view.midi {
+                let snapshot = io.retain_snapshot(source.snapshot.id)?;
+                take.midi = Some(media::Source {
+                    snapshot,
+                    index: io.read_index(snapshot.id)?,
+                });
+            }
+            Ok(take)
+        })();
+        if result.is_err() {
+            Self::release_edit(take, io)?;
+        }
+        result
     }
     fn prepare_take(
         &mut self,
@@ -118,6 +194,11 @@ impl LoopPlanner {
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let id = self.ledger.reserve(media::Description {
+            auxiliary_channels: if row.dry_wet {
+                row.binding.auxiliary_channels as u32
+            } else {
+                0
+            },
             owner: row.binding.target,
             revision: decision.state.capture_revision,
             frames: 0,
@@ -125,7 +206,17 @@ impl LoopPlanner {
             midi: row.binding.midi,
         })?;
         let bank = row.active.map_or(row.next_bank, |take| 1 - take.bank);
-        let token = if let Some(group) = row.groups[bank] {
+        if decision.state.mode == Mode::RecordingDryIntoWet {
+            match self.prepare_wet_edit(slot, decision, id, bank, io) {
+                Ok(take) => self.rows[slot].as_mut().expect("row").prepared = Some(take),
+                Err(error) => {
+                    self.ledger.retire(io, id)?;
+                    return Err(error);
+                }
+            }
+            return Ok(());
+        }
+        let token = if let Some(group) = row.groups[bank][usize::from(row.dry_wet)] {
             match io.capture().prepare(
                 group,
                 if row.binding.midi {
@@ -148,6 +239,10 @@ impl LoopPlanner {
             media: id,
             bank,
             token,
+            edit: None,
+            snapshot_credit: None,
+            auxiliary: None,
+            midi: None,
         });
         Ok(())
     }
@@ -158,7 +253,7 @@ impl LoopPlanner {
         error: Error,
         starting: bool,
     ) -> Result<(), Error> {
-        if !matches!(error, Error::Capacity | Error::Exhausted) {
+        if !matches!(error, Error::Capacity | Error::Exhausted) && !starting {
             return Err(error);
         }
         let target = decision.state.id;
@@ -212,7 +307,7 @@ impl LoopPlanner {
                 continue;
             };
             let decision = self.views[slot].decision;
-            let recording = decision.state.mode == Mode::Recording;
+            let recording = decision.state.mode.records();
             let starting = recording
                 && row
                     .active
@@ -272,14 +367,52 @@ impl LoopPlanner {
                 index: io.read_index(snapshot.id)?,
             }))
         };
+        if let Some((resource, _)) = take.edit {
+            let snapshot = io.snapshot_reserved(
+                take.snapshot_credit.ok_or(Error::InvalidState)?,
+                resource,
+                self.resolver.frame(),
+            )?;
+            return Ok(media::Input {
+                description: media::Description {
+                    owner: row.binding.target,
+                    revision: take.revision,
+                    frames: self
+                        .resolver
+                        .state(row.binding.target)
+                        .map_err(runtime_error)?
+                        .content_length,
+                    channels: row.binding.channels as u32,
+                    auxiliary_channels: row.binding.auxiliary_channels as u32,
+                    midi: row.binding.midi,
+                },
+                audio: Some(media::Source {
+                    snapshot,
+                    index: io.read_index(snapshot.id)?,
+                }),
+                auxiliary: take.auxiliary,
+                midi: take.midi,
+            });
+        }
         let audio = if row.binding.channels > 0 {
+            source()?
+        } else {
+            None
+        };
+        let auxiliary = if row.dry_wet && row.binding.auxiliary_channels > 0 {
             source()?
         } else {
             None
         };
         let midi = if row.binding.midi { source()? } else { None };
         Ok(media::Input {
+            auxiliary,
             description: media::Description {
+                auxiliary_channels: if row.dry_wet {
+                    row.binding.auxiliary_channels as u32
+                } else {
+                    0
+                },
                 owner: row.binding.target,
                 revision: take.revision,
                 frames,
@@ -300,8 +433,10 @@ impl LoopPlanner {
         let take = row.active.ok_or(Error::InvalidState)?;
         let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
         if let Some(token) = take.token {
-            let mut output = [None; 2];
-            let members = usize::from(row.binding.channels > 0) + usize::from(row.binding.midi);
+            let mut output = [None; 3];
+            let members = usize::from(row.binding.channels > 0)
+                + usize::from(row.dry_wet && row.binding.auxiliary_channels > 0)
+                + usize::from(row.binding.midi);
             io.capture().freeze(
                 token,
                 frame,
@@ -320,7 +455,10 @@ impl LoopPlanner {
         self.ledger
             .publish(io, take.media, input)
             .map_err(|e| e.error)?;
-        self.rows[slot].as_mut().expect("row").frozen = [None; 2];
+        if let Some((resource, _)) = take.edit {
+            io.remove(resource)?;
+        }
+        self.rows[slot].as_mut().expect("row").frozen = [None; 3];
         self.ledger
             .set_latest(io, row.binding.target, Some(take.media))?;
         self.ledger.retire(io, take.media)?;
@@ -333,7 +471,7 @@ impl LoopPlanner {
             };
             let decision = self.views[slot].decision;
             if let Some(take) = row.active {
-                if decision.state.mode != Mode::Recording
+                if !decision.state.mode.records()
                     || decision.state.capture_revision != take.revision
                 {
                     let media = self.freeze(slot, frame, io)?;
@@ -387,14 +525,21 @@ impl LoopPlanner {
                 return Err(Error::InvalidState);
             }
             let playing = decision.state.plays();
+            let dry_playing = playing && decision.state.mode.dry_playback();
             self.views[slot] = View {
                 decision,
+                dry_wet: row.dry_wet,
+                replace: row.active.and_then(|take| take.edit),
+                auxiliary: media
+                    .filter(|_| dry_playing)
+                    .and_then(|m| m.auxiliary)
+                    .map(|s| s.index),
                 audio: media
-                    .filter(|_| playing)
+                    .filter(|_| playing && (!row.dry_wet || !dry_playing))
                     .and_then(|m| m.audio)
                     .map(|s| s.index),
                 midi: media
-                    .filter(|_| playing)
+                    .filter(|_| playing && (!row.dry_wet || dry_playing))
                     .and_then(|m| m.midi)
                     .map(|s| s.index),
                 capture: row.interval,
@@ -421,15 +566,78 @@ impl LoopPlanner {
             return Err(Error::Capacity);
         }
         let id = self.ledger.reserve(media::Description {
+            auxiliary_channels: if row.dry_wet {
+                row.binding.auxiliary_channels as u32
+            } else {
+                0
+            },
             owner: target,
             revision: take.revision,
             frames: 0,
             channels: row.binding.channels as u32,
             midi: row.binding.midi,
         })?;
-        let mut sources = [None; 2];
+        if let Some((resource, _)) = take.edit {
+            let mut sources = [None; 3];
+            let result = (|| {
+                let wet = io.snapshot(resource, frame)?;
+                sources[0] = Some(wet);
+                let mut retain = |source: Option<media::Source>,
+                                  index: usize|
+                 -> Result<Option<media::Source>, Error> {
+                    let Some(source) = source else {
+                        return Ok(None);
+                    };
+                    let snapshot = io.retain_snapshot(source.snapshot.id)?;
+                    sources[index] = Some(snapshot);
+                    Ok(Some(media::Source {
+                        snapshot,
+                        index: io.read_index(snapshot.id)?,
+                    }))
+                };
+                let auxiliary = retain(take.auxiliary, 1)?;
+                let midi = retain(take.midi, 2)?;
+                let wet_index = io.read_index(wet.id)?;
+                self.ledger
+                    .publish(
+                        io,
+                        id,
+                        media::Input {
+                            description: media::Description {
+                                owner: target,
+                                revision: take.revision,
+                                frames: state.content_length,
+                                channels: row.binding.channels as u32,
+                                auxiliary_channels: row.binding.auxiliary_channels as u32,
+                                midi: row.binding.midi,
+                            },
+                            audio: Some(media::Source {
+                                snapshot: wet,
+                                index: wet_index,
+                            }),
+                            auxiliary,
+                            midi,
+                        },
+                    )
+                    .map_err(|error| error.error)?;
+                sources = [None; 3];
+                self.ledger.export(id, frame)
+            })();
+            for snapshot in sources.into_iter().flatten() {
+                io.release_snapshot(snapshot.id)?;
+            }
+            self.ledger.retire(io, id)?;
+            return result;
+        }
+        let mut sources = [None; 3];
         let result = (|| {
-            for (member, resource) in row.resources[take.bank].iter().enumerate() {
+            for (member, resource) in row.resources[take.bank][usize::from(row.dry_wet)]
+                .iter()
+                .enumerate()
+            {
+                if member == 1 && !row.dry_wet {
+                    continue;
+                }
                 if let Some(resource) = resource {
                     let snapshot = io.snapshot(*resource, frame)?;
                     sources[member] = Some(snapshot);
@@ -441,7 +649,13 @@ impl LoopPlanner {
                         .map(|index| media::Source { snapshot, index })
                 })
                 .transpose()?;
-            let midi = sources[1]
+            let auxiliary = sources[1]
+                .map(|snapshot| {
+                    io.read_index(snapshot.id)
+                        .map(|index| media::Source { snapshot, index })
+                })
+                .transpose()?;
+            let midi = sources[2]
                 .map(|snapshot| {
                     io.read_index(snapshot.id)
                         .map(|index| media::Source { snapshot, index })
@@ -452,7 +666,13 @@ impl LoopPlanner {
                     io,
                     id,
                     media::Input {
+                        auxiliary,
                         description: media::Description {
+                            auxiliary_channels: if row.dry_wet {
+                                row.binding.auxiliary_channels as u32
+                            } else {
+                                0
+                            },
                             owner: target,
                             revision: take.revision,
                             frames: state.capture_frames,
@@ -464,7 +684,7 @@ impl LoopPlanner {
                     },
                 )
                 .map_err(|e| e.error)?;
-            sources = [None; 2];
+            sources = [None; 3];
             self.ledger.export(id, frame)
         })();
         for snapshot in sources.into_iter().flatten() {
@@ -580,15 +800,19 @@ impl LoopPlanner {
                 if let Some(token) = take.token {
                     resources.cancel_capture_take(token)?;
                 }
+                Self::release_edit(take, &mut resources.io())?;
                 self.rows[slot].as_mut().expect("row").prepared = None;
             }
             if let Some(take) = row.active {
                 if let Some(token) = take.token {
-                    let info = resources
-                        .capture_group_info(row.groups[take.bank].ok_or(Error::InvalidState)?)?;
-                    let mut output = [None; 2];
-                    let members =
-                        usize::from(row.binding.channels > 0) + usize::from(row.binding.midi);
+                    let info = resources.capture_group_info(
+                        row.groups[take.bank][usize::from(row.dry_wet)]
+                            .ok_or(Error::InvalidState)?,
+                    )?;
+                    let mut output = [None; 3];
+                    let members = usize::from(row.binding.channels > 0)
+                        + usize::from(row.dry_wet && row.binding.auxiliary_channels > 0)
+                        + usize::from(row.binding.midi);
                     resources.freeze_capture_take(
                         token,
                         info.next_frame.ok_or(Error::InvalidState)?,
@@ -597,9 +821,10 @@ impl LoopPlanner {
                     )?;
                     self.rows[slot].as_mut().expect("row").frozen = output;
                 }
+                Self::release_edit(take, &mut resources.io())?;
                 self.rows[slot].as_mut().expect("row").active = None;
             }
-            for member in 0..2 {
+            for member in 0..3 {
                 if let Some(snapshot) = self.rows[slot].expect("row").frozen[member] {
                     resources.release_snapshot(snapshot.id)?;
                     self.rows[slot].as_mut().expect("row").frozen[member] = None;
@@ -609,11 +834,13 @@ impl LoopPlanner {
         self.ledger.release_all(&mut resources.io())?;
         for row in self.rows.iter_mut().flatten() {
             for bank in 0..2 {
-                if let Some(group) = row.groups[bank] {
-                    resources.release_capture_group(group)?;
-                    row.groups[bank] = None;
+                for group in &mut row.groups[bank] {
+                    if let Some(id) = *group {
+                        resources.release_capture_group(id)?;
+                        *group = None;
+                    }
                 }
-                for resource in &mut row.resources[bank] {
+                for resource in row.resources[bank].iter_mut().flatten() {
                     if let Some(id) = *resource {
                         resources.remove(id)?;
                         *resource = None;
@@ -1082,7 +1309,13 @@ impl LoopPlanner {
                         .adopt(
                             &mut context.resources,
                             media::Input {
+                                auxiliary: None,
                                 description: media::Description {
+                                    auxiliary_channels: if row.dry_wet {
+                                        row.binding.auxiliary_channels as u32
+                                    } else {
+                                        0
+                                    },
                                     owner: target,
                                     revision,
                                     frames: 0,
@@ -1138,6 +1371,7 @@ impl LoopPlanner {
                 Operation::Adopt {
                     target,
                     frames,
+                    auxiliary,
                     audio,
                     midi,
                 } => {
@@ -1146,7 +1380,7 @@ impl LoopPlanner {
                     }
                     let row = self.row(target)?;
                     let state = self.resolver.state(target)?;
-                    if state.mode == crate::Mode::Recording {
+                    if state.mode.records() {
                         return Err(Error::Busy.into());
                     }
                     let revision = state
@@ -1154,6 +1388,11 @@ impl LoopPlanner {
                         .checked_next()
                         .map_err(|_| Error::Exhausted)?;
                     let description = media::Description {
+                        auxiliary_channels: if row.dry_wet {
+                            row.binding.auxiliary_channels as u32
+                        } else {
+                            0
+                        },
                         owner: target,
                         revision,
                         frames,
@@ -1163,6 +1402,7 @@ impl LoopPlanner {
                     let media = self.node_pairs.adopt(
                         description,
                         audio,
+                        auxiliary,
                         midi,
                         row.binding.packet_bytes,
                         &mut self.ledger,
@@ -1214,6 +1454,7 @@ impl LoopPlanner {
                             ..
                         } => {
                             let view = self.ledger.view(media)?;
+                            Self::validate_media_shape(self.row(target)?, view)?;
                             if view.description.owner != target {
                                 return Err(Error::InvalidId.into());
                             }
@@ -1227,6 +1468,13 @@ impl LoopPlanner {
                             )
                         }
                         Operation::Transition { transition, .. } => {
+                            if matches!(
+                                transition,
+                                Transition::PlayDry { .. } | Transition::Rerecord
+                            ) && !self.row(target)?.dry_wet
+                            {
+                                return Err(Error::InvalidState.into());
+                            }
                             if matches!(
                                 transition,
                                 Transition::Program | Transition::Replace { .. }
@@ -1310,6 +1558,13 @@ impl LoopPlanner {
             return Err(Error::InvalidFrame);
         }
         self.failures.clear();
+        for row in self.rows.iter().flatten() {
+            if row.active.is_some_and(|take| take.edit.is_some()) && row.failure.is_some() {
+                self.failures.push(crate::Observation::CaptureExhausted {
+                    target: row.binding.target,
+                });
+            }
+        }
         for pending in self.pending.iter().flatten() {
             if let PendingKind::Program {
                 request,

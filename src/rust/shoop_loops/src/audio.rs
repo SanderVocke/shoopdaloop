@@ -90,37 +90,41 @@ fn shape(
 }
 enum Outputs<'a, 'b> {
     Slices(&'a mut [&'b mut [f32]]),
-    Ports(&'a mut AudioPorts<'b>),
+    Ports(&'a mut AudioPorts<'b>, usize, usize),
 }
 impl Outputs<'_, '_> {
     fn count(&self) -> usize {
         match self {
             Self::Slices(value) => value.len(),
-            Self::Ports(value) => value.output_count(),
+            Self::Ports(_, _, count) => *count,
         }
     }
     fn channel(&mut self, channel: usize) -> &mut [f32] {
         match self {
             Self::Slices(value) => value[channel],
-            Self::Ports(value) => value.output(channel).expect("declared output port"),
+            Self::Ports(value, first, _) => value
+                .output(first.saturating_add(channel))
+                .expect("declared output port"),
         }
     }
 }
 enum Inputs<'a, 'b> {
     Slices(&'a [&'b [f32]]),
-    Ports(&'a AudioPorts<'b>),
+    Ports(&'a AudioPorts<'b>, usize, usize),
 }
 impl Inputs<'_, '_> {
     fn count(&self) -> usize {
         match self {
             Self::Slices(value) => value.len(),
-            Self::Ports(value) => value.input_count(),
+            Self::Ports(_, _, count) => *count,
         }
     }
     fn channel(&self, channel: usize) -> &[f32] {
         match self {
             Self::Slices(value) => value[channel],
-            Self::Ports(value) => value.input(channel).expect("declared input port"),
+            Self::Ports(value, first, _) => value
+                .input(first.saturating_add(channel))
+                .expect("declared input port"),
         }
     }
 }
@@ -184,7 +188,27 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.render_output(io, playback, Outputs::Ports(outputs))
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs, 0, outputs.output_count()),
+        )
+    }
+
+    pub fn render_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        outputs: &mut AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > outputs.output_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.render_output(io, playback, Outputs::Ports(outputs, first, self.channels))
     }
 
     fn render_output(
@@ -234,7 +258,7 @@ impl AudioRenderer {
                 discontinuity: playback.discontinuity,
             },
             playback.source.map(|index| Source::Shared(media, index)),
-            Outputs::Ports(outputs),
+            Outputs::Ports(outputs, 0, outputs.output_count()),
         )
     }
 
@@ -385,7 +409,12 @@ impl AudioCapture {
         frame: rt_runtime::Frame,
         inputs: &AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.append_shared_input(io, media, frame, Inputs::Ports(inputs))
+        self.append_shared_input(
+            io,
+            media,
+            frame,
+            Inputs::Ports(inputs, 0, inputs.input_count()),
+        )
     }
 
     fn append_shared_input(
@@ -430,7 +459,63 @@ impl AudioCapture {
         member: usize,
         inputs: &AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.stage_input(io, interval, member, Inputs::Ports(inputs))
+        self.stage_input(
+            io,
+            interval,
+            member,
+            Inputs::Ports(inputs, 0, inputs.input_count()),
+        )
+    }
+
+    pub fn stage_port_range(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        interval: CaptureTickId,
+        member: usize,
+        inputs: &AudioPorts<'_>,
+        first: usize,
+    ) -> Result<(), Error> {
+        if first
+            .checked_add(self.channels)
+            .is_none_or(|end| end > inputs.input_count())
+        {
+            return Err(Error::InvalidShape);
+        }
+        self.stage_input(
+            io,
+            interval,
+            member,
+            Inputs::Ports(inputs, first, self.channels),
+        )
+    }
+    pub fn replace_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        resource: rt_runtime::ResourceId,
+        revision: rt_runtime::Revision,
+        position: u64,
+        inputs: &AudioPorts<'_>,
+    ) -> Result<rt_runtime::Revision, Error> {
+        if inputs.input_count() < self.channels {
+            return Err(Error::InvalidShape);
+        }
+        let frames = shape(
+            self.channels,
+            self.max_frames,
+            (0..self.channels).map(|channel| inputs.input(channel).expect("validated port").len()),
+        )?;
+        for frame in 0..frames {
+            for channel in 0..self.channels {
+                self.interleaved[frame * self.channels + channel] =
+                    inputs.input(channel).expect("validated port")[frame];
+            }
+        }
+        io.replace_audio(
+            resource,
+            revision,
+            position,
+            &self.interleaved[..frames * self.channels],
+        )
     }
 
     fn stage_input(

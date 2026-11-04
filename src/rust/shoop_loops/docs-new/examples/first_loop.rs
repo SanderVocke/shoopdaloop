@@ -67,6 +67,8 @@ fn main() {
     let capture = NodeId::from_parts(1, 1).unwrap();
     // 3. Bind the loop to its two signal nodes (playback outputs, capture inputs).
     let binding = Binding {
+dry_wet: false,
+auxiliary_channels: 0,
         target,
         playback,
         capture,

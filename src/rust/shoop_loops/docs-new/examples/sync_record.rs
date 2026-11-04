@@ -74,6 +74,8 @@ fn main() {
     let take_playback = NodeId::from_parts(2, 1).unwrap();
     let take_capture = NodeId::from_parts(3, 1).unwrap();
     let binding = |target, playback, capture| Binding {
+dry_wet: false,
+auxiliary_channels: 0,
         target,
         playback,
         capture,

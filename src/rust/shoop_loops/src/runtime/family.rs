@@ -167,10 +167,11 @@ impl LoopPlanner {
                 if !descendant(self.resolver.topology(), entry.target, root)? {
                     return Err(Error::InvalidShape.into());
                 }
-                if row.active.is_some() || row.prepared.is_some() || state.mode == Mode::Recording {
+                if row.active.is_some() || row.prepared.is_some() || state.mode.records() {
                     return Err(Error::Busy.into());
                 }
                 let view = self.ledger.view(media)?;
+                Self::validate_media_shape(row, view)?;
                 if view.description.owner != entry.target {
                     return Err(Error::InvalidId.into());
                 }

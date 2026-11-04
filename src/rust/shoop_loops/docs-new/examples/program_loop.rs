@@ -141,6 +141,8 @@ fn main() {
     };
     let node = |slot: u32| NodeId::from_parts(slot, 1).unwrap();
     let binding = |target, playback, capture, channels| Binding {
+dry_wet: false,
+auxiliary_channels: 0,
         target,
         playback,
         capture,
@@ -201,7 +203,9 @@ fn main() {
     );
     let imports = vec![
         media::Input {
+auxiliary: None,
             description: media::Description {
+auxiliary_channels: 0,
                 owner: bass,
                 revision: Revision(0),
                 frames: 4,
@@ -212,7 +216,9 @@ fn main() {
             midi: None,
         },
         media::Input {
+auxiliary: None,
             description: media::Description {
+auxiliary_channels: 0,
                 owner: drums,
                 revision: Revision(0),
                 frames: 8,

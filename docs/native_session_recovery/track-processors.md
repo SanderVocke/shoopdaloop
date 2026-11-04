@@ -203,3 +203,32 @@ workspace build, tracing and test-attribute audits. The actual both-feature
 `shoop_rt_host_worklet.wasm` links and `WebAssembly.Module.imports` returns `[]`.
 Full track admission, callback deadline measurements and packaged UI acceptance
 remain outstanding; these startup checks do not substitute for those gates.
+
+### Loop/media foundation milestone
+
+Loop bindings expose independent primary and auxiliary audio capacities; each
+source retains its own snapshot format and channels. Dynamic node-pair activation
+carries dry/wet roles and auxiliary media with the existing owner generation cut.
+The resolver owns `PlayingDryThroughWet` and `RecordingDryIntoWet`, so transitions,
+scheduling, cancellation and wrap counting use one logical loop clock. RT protocol
+version 9 adds the corresponding mode tags; production creation remains gated.
+
+Ordinary dry/wet capture records wet, dry and dry MIDI as separate sources.
+Regular playback selects wet only. Dry playback selects dry audio/MIDI only. Wet
+rerecord forks a writable COW wet source while independently retaining the dry
+leases. Repeated wraps edit wet positions without changing take length, dry
+samples or the dry media resource/revision. Capacity failure refuses the transition
+and leaves the former media and playback running. The edit reserves a snapshot
+metadata credit at admission; unrelated snapshots cannot consume that credit.
+Aliased incoming leases are rejected before media ownership changes.
+
+Native primitive tests exercise Q=1/16/32/64/128, widths 1/2/8, independent 1+8,
+8+1, 2+5 and 5+2 sides, complete sample comparisons, MIDI suppression on ordinary
+wet playback, wrapping rerecord, repeated capacity failures and canceled scheduled
+rerecord without a second wrap count. All render and prepared submission paths in
+these fixtures count allocations and deallocations. The loop-library Wasm Node
+suite passed 185 tests before the last unequal-width fixture was added; its final
+rerun is still required. Portable runtime tests cover reserved-snapshot saturation
+and stale reservation generations. Runtime and loop dependency audits pass for
+Linux, Windows, macOS and Wasm. Production processor routing, latency alignment,
+public operations and persistence remain to be connected and validated.

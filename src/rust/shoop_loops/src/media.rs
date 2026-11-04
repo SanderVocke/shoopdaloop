@@ -53,6 +53,7 @@ pub struct Description {
     pub revision: Revision,
     pub frames: u64,
     pub channels: u32,
+    pub auxiliary_channels: u32,
     pub midi: bool,
 }
 /// Metadata/access for an existing snapshot lease. Copying acquires nothing;
@@ -67,6 +68,7 @@ pub struct Source {
 pub struct Input {
     pub description: Description,
     pub audio: Option<Source>,
+    pub auxiliary: Option<Source>,
     pub midi: Option<Source>,
 }
 #[derive(Debug)]
@@ -78,6 +80,7 @@ pub struct Rejected {
 pub struct View {
     pub description: Description,
     pub audio: Option<Source>,
+    pub auxiliary: Option<Source>,
     pub midi: Option<Source>,
 }
 /// Immutable metadata viewed through an existing export owner. Copying acquires
@@ -301,17 +304,32 @@ impl Ledger {
             View {
                 description,
                 audio: None,
+                auxiliary: None,
                 midi: None,
             },
             false,
         )
     }
     fn validate(&self, io: &mut ResourceIo<'_>, input: &Input) -> Result<(), Error> {
+        let sources = [input.audio, input.auxiliary, input.midi];
+        for (index, source) in sources.iter().enumerate() {
+            if source.is_some_and(|source| {
+                sources[..index]
+                    .iter()
+                    .flatten()
+                    .any(|earlier| earlier.snapshot.id == source.snapshot.id)
+            }) {
+                return Err(Error::InvalidState);
+            }
+        }
         for slot in &self.media {
             if let Some(media) = slot.value {
                 Self::check_sources(io, media)?;
-                for existing in [media.view.audio, media.view.midi].into_iter().flatten() {
-                    if [input.audio, input.midi]
+                for existing in [media.view.audio, media.view.auxiliary, media.view.midi]
+                    .into_iter()
+                    .flatten()
+                {
+                    if [input.audio, input.auxiliary, input.midi]
                         .into_iter()
                         .flatten()
                         .any(|s| s.snapshot.id == existing.snapshot.id)
@@ -329,6 +347,13 @@ impl Ledger {
                     channels: description.channels,
                 },
                 description.channels > 0,
+            ),
+            (
+                input.auxiliary,
+                Format::Audio {
+                    channels: description.auxiliary_channels,
+                },
+                description.auxiliary_channels > 0,
             ),
             (input.midi, Format::Midi, description.midi),
         ] {
@@ -364,6 +389,7 @@ impl Ledger {
                 View {
                     description: input.description,
                     audio: input.audio,
+                    auxiliary: input.auxiliary,
                     midi: input.midi,
                 },
                 true,
@@ -394,6 +420,7 @@ impl Ledger {
                 view: View {
                     description: input.description,
                     audio: input.audio,
+                    auxiliary: input.auxiliary,
                     midi: input.midi,
                 },
                 ready: true,
@@ -411,7 +438,10 @@ impl Ledger {
         Ok(media.view)
     }
     fn check_sources(io: &mut ResourceIo<'_>, media: Media) -> Result<(), Error> {
-        for source in [media.view.audio, media.view.midi].into_iter().flatten() {
+        for source in [media.view.audio, media.view.auxiliary, media.view.midi]
+            .into_iter()
+            .flatten()
+        {
             if io.render().snapshot(source.index)? != source.snapshot {
                 return Err(Error::InvalidId);
             }
@@ -439,7 +469,10 @@ impl Ledger {
             return Ok(());
         }
         Self::check_sources(io, media)?;
-        for source in [media.view.audio, media.view.midi].into_iter().flatten() {
+        for source in [media.view.audio, media.view.auxiliary, media.view.midi]
+            .into_iter()
+            .flatten()
+        {
             io.release_snapshot(source.snapshot.id)?;
         }
         let slot = &mut self.media[id.slot as usize];

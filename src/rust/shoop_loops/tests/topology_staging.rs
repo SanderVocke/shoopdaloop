@@ -414,7 +414,7 @@ fn malformed_semantics_never_publish_and_failed_storage_can_be_reused() {
         (2, 9, 2),
         (3, 16, 7),
         (4, 8, 4),
-        (6, 28, 3),
+        (6, 28, 5),
         (0, 4, 0),
     ] {
         let mut bad = rows.clone();
