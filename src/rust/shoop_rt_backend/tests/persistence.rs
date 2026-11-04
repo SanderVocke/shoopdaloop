@@ -556,6 +556,7 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
     struct Measured<C> {
         carrier: C,
         wide: bool,
+        initial: bool,
         writes: BTreeSet<u64>,
         peak: Rc<Cell<usize>>,
     }
@@ -564,11 +565,15 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
             self.carrier.send(message)?;
             if let ClientMessage::Request {
                 correlation,
-                request: Request::ContentWrite { .. },
+                request,
             } = message
             {
-                self.writes.insert(correlation);
-                self.peak.set(self.peak.get().max(self.writes.len()));
+                if matches!(request, Request::ContentInitial { .. }) && self.initial
+                    || matches!(request, Request::ContentWrite { .. }) && !self.initial
+                {
+                    self.writes.insert(correlation);
+                    self.peak.set(self.peak.get().max(self.writes.len()));
+                }
             }
             Ok(())
         }
@@ -586,7 +591,12 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
             Some(message)
         }
     }
-    for (wide, expected) in [(false, 8), (true, 64)] {
+    for (midi, wide, expected) in [
+        (false, false, 8),
+        (false, true, 64),
+        (true, false, 8),
+        (true, true, 64),
+    ] {
         let mut configured = description();
         configured.reliable_credits = 128;
         let (offline, client) = shoop_rt_engine::testing::OfflineRender::new(&configured).unwrap();
@@ -594,6 +604,7 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
         let client = ProtocolClient::new(Measured {
             carrier: client.into_carrier(),
             wide,
+            initial: midi,
             writes: BTreeSet::new(),
             peak: Rc::clone(&peak),
         });
@@ -610,14 +621,22 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "window".into(),
                 audio_channels: 1,
-                midi: false,
+                midi,
                 initial_loops: 1,
             })
             .unwrap();
         backend.wait_idle();
         let mut session = backend.capture_session().unwrap();
         session.tracks[0].loops[0].length = 4096;
-        session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4096].into();
+        if midi {
+            session.tracks[0].loops[0].midi[0].length = 4096;
+            session.tracks[0].loops[0].midi[0].start_state = (0..65)
+                .map(|value| Vec::from([0xb0, 1, value]).into())
+                .collect::<Vec<_>>()
+                .into();
+        } else {
+            session.tracks[0].loops[0].audio[0].samples = vec![0.25; 4096].into();
+        }
         let mut finished = false;
         for _ in 0..2000 {
             if matches!(
@@ -631,11 +650,14 @@ fn upload_window_negotiates_wide_support_and_keeps_legacy_peers_at_eight() {
         }
         assert!(finished);
         assert_eq!(peak.get(), expected);
+        let restored = backend.capture_session().unwrap();
         assert_eq!(
-            backend.capture_session().unwrap().tracks[0].loops[0].audio[0]
-                .samples
-                .as_ref(),
-            &vec![0.25; 4096]
+            restored.tracks[0].loops[0].audio,
+            session.tracks[0].loops[0].audio
+        );
+        assert_eq!(
+            restored.tracks[0].loops[0].midi,
+            session.tracks[0].loops[0].midi
         );
     }
 }

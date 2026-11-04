@@ -224,6 +224,15 @@ Goals and these criteria require explicit user approval to change.
   engine test allocator after the two upstream test modules introduced duplicate
   global allocator declarations. P04/P05 application gates remain unchanged.
 
+- Final integration checkpoint: 2,753 native tests, debug/release loop-host replay,
+  Cortex-M/Cortex-A no-std builds, actual JACK and both packaged transports pass.
+  Four timing Miri cases plus the shared MIDI checkpoint/reset oracle pass on
+  `6c0ab030`. Browser diagnostics exposed serial initial-state packet upload under
+  load; the existing negotiated 8/64-credit window now includes ordered MIDI
+  initial packets. Private window acknowledgment leaves replacement cancellable.
+  All 42 adapter regressions pass, including exact initial-state retention and
+  bounded in-flight counts for old/wide peers. Final browser/Node/CI remain open.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
