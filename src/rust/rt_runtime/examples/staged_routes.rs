@@ -3,13 +3,8 @@
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired};
 use rt_runtime::graph::activation::{GraphAccess, StageId, StageStatus};
-use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
-};
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, Disposition, FinishContext, OperationContext, PlanContext,
-    Planner, PlannerSpec,
-};
+use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
+use rt_runtime::planner::{Disposition, FinishContext, OperationContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::schedule::{Action, Execution, ReceiptToken};
@@ -36,13 +31,6 @@ fn graph(swapped: bool) -> GraphDescription {
             })
             .collect(),
     }
-}
-fn bindings(swapped: bool) -> [DecisionBinding; 2] {
-    std::array::from_fn(|slot| DecisionBinding {
-        planner: planner(),
-        consumer: node(slot as u32),
-        decision_slot: if swapped { 1 - slot } else { slot },
-    })
 }
 
 #[derive(Clone, Copy)]
@@ -76,6 +64,7 @@ struct Domain {
     values: [f32; 2],
     swapped: bool,
     active: bool,
+    processed: u8,
     epoch: Epoch,
     pending: Option<(ReceiptToken, StageId, Epoch, Frame)>,
 }
@@ -100,13 +89,7 @@ impl Domain {
             return Err(Error::InvalidGraph);
         }
         for (consumer, decision_slot) in [(node(0), 1), (node(1), 0)] {
-            if !candidate.contains(consumer)
-                || !candidate.planning().bindings.iter().any(|binding| {
-                    binding.consumer == consumer
-                        && binding.planner == planner()
-                        && binding.decision_slot == decision_slot
-                })
-            {
+            if !candidate.contains(consumer) {
                 return Err(Error::InvalidGraph);
             }
             let route = Connection {
@@ -127,20 +110,10 @@ impl Domain {
     }
 }
 impl Planner for Domain {
-    type Decision = f32;
-    type Observation = f32;
     type Operation = Op;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 2,
-            observation_capacity: 2,
-            operation_bytes: 0,
-        })
-    }
-    fn decisions(&self) -> &[f32] {
-        &self.values
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
     fn operation(
         &mut self,
@@ -164,7 +137,8 @@ impl Planner for Domain {
         };
         Ok(Disposition::Complete(reply))
     }
-    fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<(), Error> {
+        self.processed = 0;
         self.epoch = context.graph_epoch;
         if self
             .pending
@@ -174,19 +148,11 @@ impl Planner for Domain {
             let result = self.activate(&mut context.graphs, id, expected, Attempt::Publish);
             context.receipts.complete(token, result)?;
         }
-        Ok(self
-            .pending
-            .map_or(context.ceiling, |(_, _, _, at)| at.min(context.ceiling)))
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, f32, Op, Reply>) -> Result<(), Error> {
-        assert_eq!(context.observations.len(), if self.active { 2 } else { 0 });
-        for observation in context.observations {
-            let slot = observation.producer.slot() as usize;
-            assert_eq!(
-                observation.value,
-                self.values[if self.swapped { 1 - slot } else { slot }]
-            );
-        }
+    fn finish_tick(&mut self, context: FinishContext<'_, Op, Reply>) -> Result<(), Error> {
+        assert_eq!(self.processed, if self.active { 3 } else { 0 });
+        assert!(context.interval.end > context.interval.start);
         Ok(())
     }
 }
@@ -198,21 +164,18 @@ impl Processor<Domain> for Fill {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Domain>) -> Result<(), Error> {
-        let value = *block.decision.as_ref().ok_or(Error::InvalidState)?.value;
+        let slot = block.node.slot() as usize;
+        assert!(slot < 2 && block.domain.processed & (1 << slot) == 0);
+        block.domain.processed |= 1 << slot;
+        let value = block.domain.values[if block.domain.swapped { 1 - slot } else { slot }];
         block
             .audio
             .output(0)
             .ok_or(Error::InvalidShape)?
             .fill(value);
-        block.observations.push(value)
+        Ok(())
     }
 }
 
@@ -245,21 +208,28 @@ fn prepare(initial: bool) -> Result<(Control<Fill, Domain>, GraphRuntime<Fill, D
         values: [0.5, 0.25],
         swapped: false,
         active: initial,
+        processed: 0,
         epoch: Epoch(u64::from(initial)),
         pending: None,
     };
-    let resources = ResourceStore::new(config)?;
+    let resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let (control, mut runtime) = if initial {
         GraphRuntime::prepare_with_initial_graph(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             nodes,
             domain,
             resources,
             &graph(false),
-            &bindings(false),
         )?
     } else {
-        GraphRuntime::prepare_with_planner_and_resources(config, nodes, domain, resources)?
+        GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+            domain,
+            resources,
+        )?
     };
     // Opt in to one staging slot before the first callback; a staged plan becomes Ready, not active.
     runtime.prepare_graph_staging(1)?;
@@ -338,7 +308,7 @@ fn stage(
     runtime: &mut GraphRuntime<Fill, Domain>,
     output: &mut [[f32; 16]; 2],
 ) -> StageId {
-    let plan = compile_planned(runtime.catalog(), &graph(true), &bindings(true)).unwrap();
+    let plan = compile(runtime.catalog(), &graph(true)).unwrap();
     let epoch = runtime.epoch();
     let completion = apply(
         control,
@@ -459,7 +429,7 @@ fn exact_cut(partition: &[usize]) -> Result<(), Error> {
     );
     assert_eq!(completion.outcome, Outcome::Applied);
     assert!(
-        matches!(&completion.retired, Some(Retired::Plan(plan)) if plan.planning().bindings == bindings(false))
+        matches!(&completion.retired, Some(Retired::Plan(plan)) if plan.descriptor().connections == graph(false).connections)
     );
     drop(completion);
     let completion = apply(

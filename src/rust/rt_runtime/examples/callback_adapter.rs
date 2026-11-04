@@ -88,11 +88,11 @@ fn main() -> Result<(), Error> {
     };
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, FailOnce(true))],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
-        &[],
     )?;
     let input = [1.0; 8];
     let mut output = [9.0; 8];

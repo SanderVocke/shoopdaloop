@@ -82,7 +82,7 @@ fn header(b: &[u8], size: usize, magic: &[u8]) -> Result<(), Error> {
     if &b[..4] != magic {
         return Err(Error::Format);
     }
-    if b[4..6] != 1u16.to_le_bytes() {
+    if b[4..6] != 2u16.to_le_bytes() {
         return Err(Error::Version);
     }
     Ok(())
@@ -97,7 +97,7 @@ impl Request {
         }
         let mut b = [0; REQUEST_BYTES];
         b[..4].copy_from_slice(b"LLG1");
-        b[4..6].copy_from_slice(&1u16.to_le_bytes());
+        b[4..6].copy_from_slice(&2u16.to_le_bytes());
         b[6] = self.operation.kind();
         b[7] = u8::from(self.cancelled);
         put64(&mut b, 8, self.session);
@@ -234,13 +234,7 @@ impl Response {
             return Err(Error::State);
         }
         if self.bank.is_some_and(|bank| {
-            bank.id.generation == 0
-                && bank.capacity
-                    != (Counts {
-                        steps: 0,
-                        edges: 0,
-                        bindings: 0,
-                    })
+            bank.id.generation == 0 && bank.capacity != (Counts { steps: 0, edges: 0 })
         }) {
             return Err(Error::State);
         }
@@ -307,7 +301,7 @@ impl Response {
         self.validate()?;
         let mut b = [0; RESPONSE_BYTES];
         b[..4].copy_from_slice(b"LLS1");
-        b[4..6].copy_from_slice(&1u16.to_le_bytes());
+        b[4..6].copy_from_slice(&2u16.to_le_bytes());
         b[6] = self.phase as u8;
         b[7] = u8::from(self.delivered.is_some())
             | (u8::from(self.graph.is_some()) << 1)
@@ -336,7 +330,6 @@ impl Response {
             put32(&mut b, 108, bank.id.generation);
             put32(&mut b, 112, bank.capacity.steps);
             put32(&mut b, 116, bank.capacity.edges);
-            put32(&mut b, 120, bank.capacity.bindings);
         }
         b[124] = self.kind;
         Ok(b)
@@ -387,7 +380,6 @@ impl Response {
                 capacity: Counts {
                     steps: get32(b, 112),
                     edges: get32(b, 116),
-                    bindings: get32(b, 120),
                 },
             }),
         };

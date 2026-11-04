@@ -396,10 +396,23 @@ impl Service {
                 "wait for admitted changes before committing persistence",
             ));
         }
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }
     pub(super) fn persistence_busy(&self, command: Option<&Command>) -> bool {
+        if matches!(command, Some(Command::Preview(PreviewCommand::Stop))) {
+            return false;
+        }
+        if self
+            .pending
+            .values()
+            .any(|pending| matches!(pending.effect, Effect::SessionPublished))
+        {
+            return true;
+        }
         match self.persistence_job {
             Some(Job::Commit(Ready {
                 input: Input::Family(_),
@@ -691,6 +704,9 @@ impl Service {
                         .backend
                         .mutations_pending_through(self.backend.mutation_cursor())
                 {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
@@ -739,6 +755,9 @@ impl Service {
                         }),
                 };
                 if matches!(result, Ok(None)) {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
@@ -801,10 +820,22 @@ impl Service {
                         .then_some(*id)
                 });
                 if let Some(id) = operation {
+                    let publish = outcome.is_ok()
+                        && self.dynamic_ports()
+                        && matches!(ready.target, persistence::Target::Session { .. });
                     if let Err(error) = outcome {
                         self.pending.get_mut(&id).unwrap().error = Some(CommandError::from(error));
                     }
-                    self.finish(id);
+                    if publish {
+                        let pending = self.pending.get_mut(&id).unwrap();
+                        pending.effect = Effect::SessionPublished;
+                        pending.first = 1;
+                        pending.last = 0;
+                        pending.completed.clear();
+                        self.advance_publications();
+                    } else {
+                        self.finish(id);
+                    }
                 }
             }
             job => self.persistence_job = Some(job),
@@ -827,6 +858,7 @@ impl Service {
                          role,
                          external_connections| image::Port {
             state: ApplicationPortState {
+                publication: None,
                 id: PortId::from_raw(id),
                 name,
                 owner,
@@ -948,6 +980,7 @@ impl Service {
                     }],
                 }],
                 bus_display_order: vec![BusId::from_raw(1)],
+                preview_bus: Some(BusId::from_raw(1)),
                 buses: vec![image::Bus {
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
@@ -998,6 +1031,9 @@ impl Service {
                 .finish()
                 .map_err(|_| CommandError::invalid("incomplete new session image"))?,
         )?;
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }

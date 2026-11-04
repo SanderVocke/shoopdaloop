@@ -110,17 +110,33 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence, duplication and generated click insertion remain named follow-ups.
+  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  and insertion use the restored bounded import path. System/Master audio preview
+  is complete under P15; see the [preview contract](preview.md).
 
 ## Engine integration boundary
 
-Fixed-quantum session loads use one rational dependency plan and one anchored
+Session loads use one rational dependency plan and one anchored
 audio/MIDI conversion from the original media. Lengths round to the nearest
 positive quantum, with ties upward and empty loops remaining empty. Source-first
 propagation preserves exact cycle multiples. MIDI timestamps retain individual
 frame precision. Signed offsets, capture alignment and stored prefix/suffix history
 follow the same origin map; hardware calibration scales only with sample rate.
 Differing recorded quantum provenance alone does not require conversion.
+
+For loop `i`, first compute its exact ideal duration `I_i = L_i * target_rate /
+source_rate_i`. Process sync sources before their dependents. A dependent of `s`
+uses `I_i * converted_length_s / I_s` before rounding to the grid; a zero-length
+source contributes no correction. Each child's correction already contains all
+upstream corrections, so it is applied once. Empty loops stay empty and nonempty
+loops get at least one quantum. Reject missing links, dependency cycles and checked
+arithmetic overflow before mutation. Convert each loop's original media once using
+its final length ratio, rather than resampling at each dependency edge.
+
+Sample-rate changes or a nonidentity timing map require the same Convert/Cancel
+warning: resampling and retiming slightly affect audio and loop timings. No preview
+is required. Consent covers the complete affected dependency family; cancellation
+before admission leaves it unchanged.
 
 A live import first defines its intended length using the normal keep/update
 choice. Only its automatic grid correction propagates to retained channels and
@@ -131,17 +147,17 @@ engine's single tick publication. Audio, MIDI, periods and mapped dependent
 playheads change together. Current gains, names and routes are preserved.
 Affected active/prepared captures or stale preparation refuse the entire cut.
 Cancelled preparation releases staged owners; an admitted commit remains engine
-owned across controller loss. Application protocol version 14 carries resolved
-sync links and target format, and RT protocol version 6 carries bounded family
+owned across controller loss. Application protocol version 20 carries resolved
+sync links and target format, and RT protocol version 7 carries bounded family
 staging and authoritative content revisions. Typed local and encoded transports
 use the same operations.
 
 The adapter stages a private mirror instead of removing live tracks. It uses
 prepared loop node-pair sources, immutable exports and configuration transactions,
-but first establish an engine transaction that preflights complete content, graph,
+with an engine transaction that preflights complete content, graph,
 timing and retirement ownership. The existing `ConfigurationActivate` requires
-already-stopped edited owners; a scheduled stop alone is insufficient. Stage 2
-adds `ConfigurationReplace` for a complete fresh-owner cut at callback start:
+already-stopped edited owners; a scheduled stop alone is insufficient.
+`ConfigurationReplace` provides for a complete fresh-owner cut at callback start:
 media/graph/epoch preflight precedes publication, old playback may retire and MIDI
 cleanup is requested atomically. Active/prepared recording is refused unchanged.
 Engine node presets are prepared under a token/next epoch and become active during
@@ -154,5 +170,5 @@ packaged native and browser deployment validation is recorded in the
 leave old playback faded/stopped or mappings
 partially replaced.
 
-Validation evidence is recorded in the plan as milestones complete. Protocol tests
+Validation evidence is recorded in the [acceptance evidence](evidence/session-persistence.md). Protocol tests
 alone do not establish engine atomicity, capture coherence or restored UI support.

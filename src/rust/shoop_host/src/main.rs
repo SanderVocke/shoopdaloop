@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     if let Err(error) = run() {
+        tracing::error!("session host: {error:#}");
         eprintln!("session host: {error:#}");
         std::process::exit(1);
     }
@@ -9,19 +10,14 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     use clap::Parser;
     use std::{io::Read, path::PathBuf};
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
-        )
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
     #[derive(Parser)]
     struct Args {
-        #[arg(long, required_unless_present = "generate_credential")]
+        #[command(flatten)]
+        audio: shoop_host::audio_args::AudioArgs,
+        #[arg(long)]
         config: Option<PathBuf>,
-        #[arg(long, conflicts_with = "config")]
-        generate_credential: Option<PathBuf>,
+        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
+        launch_stdin: bool,
         #[arg(long)]
         lan: bool,
         #[arg(long, default_value = "127.0.0.1:0")]
@@ -38,46 +34,84 @@ fn run() -> anyhow::Result<()> {
         heartbeat_timeout_ms: u64,
         #[arg(long, default_value_t = 30)]
         snapshot_hz: u32,
-        #[arg(long)]
-        registry: Option<PathBuf>,
         #[arg(long, default_value = "127.0.0.1:0")]
         endpoint: std::net::SocketAddr,
         #[arg(long)]
-        credential_file: Option<PathBuf>,
+        log_file: Option<PathBuf>,
         #[arg(long, default_value = "ShoopDaLoop")]
         name: String,
     }
     let args = Args::parse();
-    if let Some(path) = args.generate_credential {
-        shoop_host::remote::create_credential(&path)?;
-        println!("Credential file created");
-        return Ok(());
-    }
-    let mut bytes = Vec::new();
-    std::fs::File::open(args.config.as_ref().unwrap())?
-        .take(65537)
-        .read_to_end(&mut bytes)?;
-    anyhow::ensure!(bytes.len() <= 65536, "host configuration exceeds 64 KiB");
-    let config = serde_json::from_slice(&bytes)?;
-    let mut options = shoop_host::serve::StartOptions::new(
-        args.registry
-            .map(Ok)
-            .unwrap_or_else(shoop_host::registry::Registry::default_path)?,
-    )?;
-    options.endpoint = args.endpoint;
-    options.management_endpoint = args.management_endpoint;
-    options.lan = args.lan;
-    options.advertised_endpoint = args.advertise_data;
-    options.advertised_management = args.advertise_management;
-    options.export_profile = args.export_profile;
-    options.network = shoop_host::remote::NetworkOptions {
-        heartbeat_interval_ms: args.heartbeat_interval_ms,
-        heartbeat_timeout_ms: args.heartbeat_timeout_ms,
-        snapshot_hz: args.snapshot_hz,
+    let (startup_config, mut options) = if args.launch_stdin {
+        let startup: shoop_host::launch::Startup =
+            shoop_host::launch::read_message(std::io::stdin().lock())?;
+        (Some(startup.config), startup.options)
+    } else {
+        let mut options = shoop_host::serve::StartOptions::new()?;
+        options.endpoint = args.endpoint;
+        options.management_endpoint = args.management_endpoint;
+        options.lan = args.lan;
+        options.advertised_endpoint = args.advertise_data;
+        options.advertised_management = args.advertise_management;
+        options.export_profile = args.export_profile;
+        options.network = shoop_host::remote::NetworkOptions {
+            heartbeat_interval_ms: args.heartbeat_interval_ms,
+            heartbeat_timeout_ms: args.heartbeat_timeout_ms,
+            snapshot_hz: args.snapshot_hz,
+        };
+        options.log_file = args.log_file;
+        options.name = args.name;
+        (None, options)
     };
-    options.credential = args.credential_file;
-    options.name = args.name;
-    shoop_host::serve::run(config, options)
+    // Only an explicitly requested log file creates persistent diagnostics.
+    if let Some(path) = &options.log_file {
+        let log = shoop_host::logging::Writer::open(path)?;
+        options.log_file = Some(path.canonicalize()?);
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .with_writer(move || log.clone())
+            .with_ansi(false)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .with_writer(std::io::stderr)
+            .with_ansi(false)
+            .init();
+    }
+    let mut config = match startup_config {
+        Some(config) => config,
+        None if args.config.is_none() => shoop_host::config::HostConfig::default(),
+        None => {
+            let mut bytes = Vec::new();
+            std::fs::File::open(args.config.as_ref().unwrap())?
+                .take(65537)
+                .read_to_end(&mut bytes)?;
+            anyhow::ensure!(bytes.len() <= 65536, "host configuration exceeds 64 KiB");
+            serde_json::from_slice(&bytes)?
+        }
+    };
+    config.settings.driver = args.audio.apply(config.settings.driver)?;
+    config.validate()?;
+    tracing::info!(
+        "Starting host {} (PID {})",
+        options.name,
+        std::process::id()
+    );
+    shoop_host::serve::run_with_ready(config, options, |target| {
+        if args.launch_stdin {
+            shoop_host::launch::write_message(std::io::stdout().lock(), &target)?;
+        }
+        Ok(())
+    })?;
+    tracing::info!("Host cleanup confirmed; exiting");
+    Ok(())
 }
 #[cfg(target_arch = "wasm32")]
 fn main() {}

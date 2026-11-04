@@ -16,6 +16,7 @@ static NEXT_FILE_TASK: AtomicU64 = AtomicU64::new(1 << 32);
 
 mod family;
 mod jobs;
+mod preview;
 use jobs::{CodecExecutor, CodecJob};
 struct Read {
     receiver: transfer::Receiver,
@@ -52,6 +53,7 @@ struct Task {
     output_warning: String,
 }
 pub(super) struct Provider {
+    preview: preview::Preview,
     task: Option<Task>,
     phase: Phase,
     worker: Option<CodecJob>,
@@ -65,6 +67,7 @@ pub(super) struct Provider {
 impl Provider {
     pub fn new() -> Self {
         Self {
+            preview: preview::Preview::new(),
             task: None,
             phase: Phase::Idle,
             worker: None,
@@ -457,10 +460,16 @@ impl PersistenceIo for Provider {
                 .into(),
             max_click_count: shoop_session::MAX_CLICK_TRACK_CLICKS,
             max_output_frames: shoop_session::MAX_CLICK_TRACK_FRAMES,
-            ..Default::default()
+            ..self.preview.state.clone()
         }
     }
+    fn take_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        self.preview.take_output()
+    }
     fn handles(&self, intent: &AppIntent) -> bool {
+        if preview::Preview::handles(intent) {
+            return true;
+        }
         if matches!(intent, AppIntent::FailIoTask { task_id, .. } if task_id.raw() < (1 << 32)) {
             return false;
         }
@@ -489,6 +498,10 @@ impl PersistenceIo for Provider {
         )
     }
     fn complete_platform(&mut self, intent: AppIntent) {
+        if preview::Preview::handles(&intent) {
+            self.preview.complete(intent);
+            return;
+        }
         match intent {
             AppIntent::FailIoTask { task_id, message }
                 if self.matches(task_id) && !matches!(self.phase, Phase::Committed(_)) =>
@@ -511,6 +524,9 @@ impl PersistenceIo for Provider {
         }
     }
     fn apply(&mut self, intent: AppIntent, state: &SessionSnapshot, scripts: bool) -> Result<()> {
+        if preview::Preview::handles(&intent) {
+            return self.preview.apply(intent, state);
+        }
         let _span =
             tracing::debug_span!("frontend.persistence.intent", intent = intent.kind()).entered();
         let starting = matches!(
@@ -586,6 +602,7 @@ impl PersistenceIo for Provider {
         Ok(())
     }
     fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool) {
+        self.preview.tick(client, delivery);
         let _span = tracing::trace_span!(
             "frontend.persistence.pump",
             task = self.task.as_ref().map_or(0, |t| t.view.id.raw())

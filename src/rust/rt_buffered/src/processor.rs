@@ -5,12 +5,11 @@ use crate::{
 use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
     buffer::{AudioPorts, Event, MidiBuffer},
-    fixed::{self, Quantum, Tick},
     graph::PortCounts,
     midi::ResetState,
     planner::Planner,
-    processor::{FixedProcessBlock, ProcessBlock, ProcessorOperation},
-    Error, Frame,
+    processor::{ProcessBlock, ProcessorOperation},
+    Error, Frame, Quantum,
 };
 
 pub const MAX_STORAGE_BYTES: usize = 32 * 1024 * 1024;
@@ -166,14 +165,15 @@ impl BufferedProcessor<InlineTestProcessor> {
 
     pub fn process_tick(
         &mut self,
-        tick: Tick,
+        frame: Frame,
+        quantum: Quantum,
         audio: &mut AudioPorts<'_>,
         input: &MidiBuffer,
         output: &mut MidiBuffer,
     ) -> Result<(), Error> {
         let q = self.timing.quantum().frames();
         let b = self.timing.batch_frames();
-        if tick.quantum != self.timing.quantum() || tick.frame != self.next {
+        if quantum != self.timing.quantum() || frame != self.next {
             return Err(Error::InvalidFrame);
         }
         if audio.input_count() != 2
@@ -190,7 +190,7 @@ impl BufferedProcessor<InlineTestProcessor> {
         if !output.is_empty() || output.is_recovery() {
             return Err(Error::InvalidState);
         }
-        let next = tick.end()?;
+        let next = frame.checked_add(q)?;
         next.checked_add(self.latency_frames())?;
         let complete = self.filled + q == b;
         let sequence = self
@@ -221,9 +221,8 @@ impl BufferedProcessor<InlineTestProcessor> {
                 return Err(Error::InvalidState);
             }
             let due = done.job.source.checked_add(self.latency_frames())?;
-            if tick.frame >= due {
-                let offset =
-                    usize::try_from(tick.frame.0 - due.0).map_err(|_| Error::InvalidFrame)?;
+            if frame >= due {
+                let offset = usize::try_from(frame.0 - due.0).map_err(|_| Error::InvalidFrame)?;
                 if offset >= b {
                     return Err(Error::InvalidState);
                 }
@@ -318,60 +317,22 @@ fn capacity(error: Error) -> Error {
     }
 }
 
-impl<S: fixed::State, O: ProcessorOperation> fixed::Processor<S, O>
-    for BufferedProcessor<InlineTestProcessor>
-{
-    fn ports(&self) -> PortCounts {
-        self.ports()
-    }
-    fn process(&mut self, block: &mut fixed::Block<'_>, _: &mut S) -> Result<(), Error> {
-        if block.midi_inputs.len() != 1 || block.midi_outputs.len() != 1 {
-            return Err(Error::InvalidShape);
-        }
-        self.process_tick(
-            block.tick,
-            &mut block.audio,
-            &block.midi_inputs[0],
-            &mut block.midi_outputs[0],
-        )
-    }
-}
-
 impl<P: Planner, O: ProcessorOperation> rt_runtime::processor::Processor<P, O>
     for BufferedProcessor<InlineTestProcessor>
 {
     fn ports(&self) -> PortCounts {
         self.ports()
     }
-    fn supports_fixed(&self) -> bool {
-        true
-    }
-    fn process_fixed(&mut self, block: &mut FixedProcessBlock<'_, P>) -> Result<(), Error> {
-        if block.midi_inputs.len() != 1 || block.midi_outputs.len() != 1 {
-            return Err(Error::InvalidShape);
-        }
-        self.process_tick(
-            Tick {
-                frame: block.frame,
-                quantum: block.quantum,
-            },
-            &mut block.audio,
-            &block.midi_inputs[0],
-            &mut block.midi_outputs[0],
-        )
-    }
     fn process(&mut self, block: &mut ProcessBlock<'_, P>) -> Result<(), Error> {
-        if block.frames != self.timing.quantum().frames()
+        if block.frames != block.quantum.frames()
             || block.midi_inputs.len() != 1
             || block.midi_outputs.len() != 1
         {
             return Err(Error::InvalidShape);
         }
         self.process_tick(
-            Tick {
-                frame: block.frame,
-                quantum: self.timing.quantum(),
-            },
+            block.frame,
+            block.quantum,
             &mut block.audio,
             &block.midi_inputs[0],
             &mut block.midi_outputs[0],

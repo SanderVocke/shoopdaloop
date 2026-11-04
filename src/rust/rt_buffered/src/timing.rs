@@ -1,4 +1,4 @@
-use rt_runtime::{fixed::Quantum, Error};
+use rt_runtime::{Error, Quantum};
 
 pub const MAX_BATCH_FRAMES: usize = 65_536;
 pub const MAX_LATENCY_FRAMES: usize = 262_144;

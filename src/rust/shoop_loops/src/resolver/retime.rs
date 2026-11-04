@@ -35,16 +35,14 @@ mod tests {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
-        resolver
-            .enable_fixed(rt_runtime::fixed::Quantum::new(32).unwrap())
-            .unwrap();
+        let resolver = Resolver::prepare(topology, rt_runtime::Quantum::new(32).unwrap()).unwrap();
+
         resolver
     }
     fn tick(resolver: &mut Resolver) {
-        let interval = resolver.preview_fixed(&[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         resolver.commit().unwrap();
-        resolver.finish(interval.end).unwrap();
+        resolver.finish().unwrap();
     }
     fn change(target: u32, previous: u64, length: u64) -> ContentRetime {
         ContentRetime {
@@ -96,7 +94,7 @@ mod tests {
         assert_eq!(resolver.state(id(0)).unwrap().position, 128);
         assert_eq!(resolver.state(id(1)).unwrap().position, 128);
         assert_eq!(resolver.state(id(2)).unwrap(), unrelated);
-        let interval = resolver.preview_fixed(&[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         let source = resolver
             .decisions()
             .unwrap()
@@ -117,7 +115,7 @@ mod tests {
             .events()
             .iter()
             .any(|event| event.target == id(0) && event.kind == EventKind::Wrap));
-        resolver.finish(interval.end).unwrap();
+        resolver.finish().unwrap();
         assert!(!resolver.retimed_pending);
     }
 
@@ -179,7 +177,7 @@ impl Resolver {
         {
             return Err(Error::InvalidState);
         }
-        let quantum = self.quantum.map_or(1, |quantum| quantum.frames() as u64);
+        let quantum = self.quantum.frames() as u64;
         self.scratch.states.copy_from_slice(&self.states);
         for (index, change) in changes.clone().enumerate() {
             if changes

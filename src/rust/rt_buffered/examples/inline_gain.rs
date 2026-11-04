@@ -1,10 +1,9 @@
 use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
-    fixed::{Config, Quantum, Runtime},
+    executor::{GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortType},
-    resource::ResourceStore,
-    Frame, NodeId,
+    Config, Frame, NodeId, Quantum,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,15 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let block = node.timing().batch_frames();
     let q = quantum.frames();
     let config = Config {
-        quantum,
-        max_host_frames: q,
-        capacities: rt_runtime::Config {
-            audio_inputs: 2,
-            audio_outputs: 2,
-            midi_inputs: 1,
-            midi_outputs: 1,
-            ..Default::default()
-        },
+        max_frames: q,
+        audio_inputs: 2,
+        audio_outputs: 2,
+        midi_inputs: 1,
+        midi_outputs: 1,
+        ..Default::default()
     }
     .prepare()?;
     let id = NodeId::from_parts(0, 1)?;
@@ -51,13 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    let mut runtime = Runtime::<BufferedProcessor, ()>::prepare(
-        config,
-        vec![(id, node)],
-        (),
-        ResourceStore::new(config.resources())?,
-        &graph,
-    )?;
+    let (_, mut runtime) =
+        GraphRuntime::prepare(config, quantum, vec![PreparedNode::new(id, node)])?;
+    runtime.prepare_initial_graph(&graph)?;
     let source: &[(usize, &[u8], &[u8])] = &[
         (q - 1, &[0x9f, 60, 100], &[0x90, 60, 100]),
         (block + q - 1, &[0x8f, 60, 0], &[0x80, 60, 0]),

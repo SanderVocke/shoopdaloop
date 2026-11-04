@@ -1,8 +1,7 @@
 use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioPorts, MidiBuffer},
-    fixed::{Quantum, Tick},
-    Error, Frame,
+    Error, Frame, Quantum,
 };
 use shoop_wasm_test_support::{
     heap::{assert_no_heap, TrackingAllocator},
@@ -51,10 +50,8 @@ impl Harness {
         )
         .unwrap();
         self.node.process_tick(
-            Tick {
-                frame: Frame(frame),
-                quantum,
-            },
+            Frame(frame),
+            quantum,
             &mut audio,
             &self.midi_input,
             &mut self.midi_output,
@@ -239,10 +236,8 @@ fn buffered_reset_and_discontinuity_refusal_preserve_stream_identity() {
     let mut audio = AudioPorts::new(&h.input, &mut h.output, 16, 0, 16).unwrap();
     assert_eq!(
         h.node.process_tick(
-            Tick {
-                frame: Frame(320),
-                quantum: Quantum::new(32).unwrap()
-            },
+            Frame(320),
+            Quantum::new(32).unwrap(),
             &mut audio,
             &h.midi_input,
             &mut h.midi_output
@@ -252,10 +247,8 @@ fn buffered_reset_and_discontinuity_refusal_preserve_stream_identity() {
     let mut malformed = AudioPorts::new(&h.input, &mut h.output, 16, 0, 8).unwrap();
     assert_eq!(
         h.node.process_tick(
-            Tick {
-                frame: Frame(320),
-                quantum: Quantum::new(16).unwrap()
-            },
+            Frame(320),
+            Quantum::new(16).unwrap(),
             &mut malformed,
             &h.midi_input,
             &mut h.midi_output

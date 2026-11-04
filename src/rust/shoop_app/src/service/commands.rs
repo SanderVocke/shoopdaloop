@@ -13,6 +13,20 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::SetHostGraphConnected(request) => {
+                let controller =
+                    self.host_graph_controller
+                        .as_mut()
+                        .ok_or_else(|| CommandError {
+                            reason: Refusal::Unsupported,
+                            message: "the active host does not support graph control".into(),
+                        })?;
+                controller
+                    .submit(request.into())
+                    .map(Effect::HostGraph)
+                    .map_err(CommandError::graph)
+            }
+            Command::Preview(command) => self.preview_command(command),
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {
@@ -88,8 +102,33 @@ impl Service {
                 host_port,
                 connected,
             } => {
+                if self.dynamic_ports()
+                    && !self
+                        .observed
+                        .connections
+                        .host_ports
+                        .contains_key(host_port.as_str())
+                    && self.graph_host(host_port.as_str()).is_none()
+                {
+                    return Err(CommandError {
+                        reason: Refusal::NotReady,
+                        message: "the external port is unavailable".into(),
+                    });
+                }
                 self.connect_port(port, host_port.as_str(), connected)?;
-                Ok(Effect::None)
+                Ok(
+                    if self.dynamic_ports()
+                        && !self
+                            .observed
+                            .connections
+                            .host_ports
+                            .contains_key(host_port.as_str())
+                    {
+                        Effect::Connection(port, host_port.as_str().to_owned())
+                    } else {
+                        Effect::None
+                    },
+                )
             }
             Command::SetMixerRoute {
                 source,
@@ -100,6 +139,9 @@ impl Service {
                 Ok(Effect::None)
             }
             Command::SetMasterAutoConnect(value) => {
+                if !value {
+                    self.master_graph_auto_done = false;
+                }
                 if value && !self.options.master_auto_connect {
                     self.connect_master()?;
                 }
@@ -294,8 +336,31 @@ impl Service {
         self.next_port
             .checked_add(u64::from(audio_channels) * 2 + u64::from(midi) * 2)
             .ok_or_else(|| CommandError::invalid("session identity space exhausted"))?;
+        let mut base: String = spec
+            .name
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if base.is_empty() {
+            base = "track".into();
+        }
+        if self
+            .ports
+            .values()
+            .any(|port| port.view.name.starts_with(&format!("{base}_direct_")))
+        {
+            base = format!("{base}_{}", self.next_track);
+        }
         let created = self.backend.create_direct_track(DirectTrackRequest {
-            port_name_base: format!("track_{}", self.next_track),
+            port_name_base: base,
             audio_channels,
             midi,
             initial_loops: slot_count,
@@ -805,10 +870,28 @@ impl Service {
             .ports
             .get(&id)
             .ok_or_else(|| CommandError::invalid("stale or unknown port"))?;
+        if self.dynamic_ports() && matches!(port.view.owner, ApplicationPortOwner::GlobalFxControl)
+        {
+            return Err(CommandError {
+                reason: Refusal::Unsupported,
+                message: "the active backend does not provide global FX control MIDI".into(),
+            });
+        }
         if self.connection_intent.len() == MAX_BUS_HOST_LINKS
             && !self.connection_intent.contains_key(&(id, host.to_owned()))
         {
             return Err(CommandError::invalid("connection intent limit reached"));
+        }
+        if self.dynamic_ports() && !self.observed.connections.host_ports.contains_key(host) {
+            self.connection_intent.insert(
+                (id, host.to_owned()),
+                Intent {
+                    connected,
+                    pending: None,
+                    error: None,
+                },
+            );
+            return Ok(());
         }
         let before = self.backend.mutation_cursor();
         self.backend
@@ -861,6 +944,34 @@ impl Service {
         Ok(())
     }
     pub(super) fn connect_master(&mut self) -> Result<()> {
+        if self.dynamic_ports() {
+            let outputs: Vec<_> = self.ports.iter().filter_map(|(id, port)| matches!(port.view.owner, ApplicationPortOwner::Bus { bus_id } if self.buses.get(&bus_id).is_some_and(|bus| bus.backend == MASTER_BUS_ID)).then_some(*id)).collect();
+            let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for port in self.host_graph.ports.iter().filter(|port| {
+                port.physical
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Input
+            }) {
+                if let Some(locator) = &port.locator {
+                    groups
+                        .entry(port.name.split(':').next().unwrap_or("").to_owned())
+                        .or_default()
+                        .push(locator.clone());
+                }
+            }
+            if let Some(mut sinks) = groups
+                .into_values()
+                .find(|ports| ports.len() >= outputs.len())
+            {
+                self.master_graph_auto_done = true;
+                sinks.sort_by_key(|port| host_port_order(port));
+                for (port, sink) in outputs.into_iter().zip(sinks) {
+                    self.connect_port(port, &sink, true)
+                        .map_err(|error| anyhow!(error.message))?;
+                }
+            }
+            return Ok(());
+        }
         let mut sinks: Vec<_> = self
             .observed
             .connections
@@ -903,6 +1014,31 @@ impl Service {
             .collect();
         let mut audio_index = 0;
         for (port, kind) in inputs {
+            if self.dynamic_ports() {
+                let mut candidates: Vec<_> = self
+                    .host_graph
+                    .ports
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.physical
+                            && candidate.data_type == kind
+                            && candidate.direction == PortDirection::Output
+                    })
+                    .filter_map(|port| port.locator.clone())
+                    .collect();
+                candidates.sort_by_key(|id| host_port_order(id));
+                let index = if kind == PortDataType::Audio {
+                    let index = audio_index;
+                    audio_index += 1;
+                    index
+                } else {
+                    0
+                };
+                if let Some(host) = candidates.get(index) {
+                    self.connect_port(port, host, true)?;
+                }
+                continue;
+            }
             let mut candidates: Vec<_> = self
                 .observed
                 .connections

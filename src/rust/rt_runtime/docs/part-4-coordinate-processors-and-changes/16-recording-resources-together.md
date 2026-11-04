@@ -16,19 +16,19 @@ The [coordinated capture example](../../examples/coordinated_capture.rs) records
 cargo run -p rt_runtime --example coordinated_capture
 ```
 
-One planner reserves one-sample intervals for a consumer that contributes both members. Host callbacks use maximum four-frame blocks, single frames and irregular partitions across eight samples. One-sample intervals are this synthetic planner's policy, not a runtime subdivision allowance or performance recommendation.
+The runtime and resource store use an explicit one-frame quantum. Each tick reserves both members. Host callbacks use maximum four-frame blocks, single frames and irregular partitions across eight samples. The same APIs support larger quanta; reservation size always comes from the store's immutable quantum.
 
 With 24 data pages, it records eight frames. With six, the next preflight refuses at frame 2: the dependent output changes gain **before sample 2**, while an unrelated output remains 7. Both exports retain exactly `[0,2)`. A four-page host-boundary probe separately refuses the first reservation without replacing old media. Every real callback and required export read is heap-guarded.
 
 ## 1. Bound staging, data and lifecycle storage separately
 
-The maximum callback length is four. The group declares stereo audio and at most two MIDI events/six payload bytes per interval:
+The maximum callback length is four, but staging covers one quantum. The group declares stereo audio and at most two MIDI events/six payload bytes per tick:
 
 | Member | Staging bound |
 |---|---:|
-| Stereo LE `f32` | `4 × 2 × 4 = 32` bytes |
+| Stereo LE `f32` | `1 × 2 × 4 = 8` bytes |
 | MIDI records | `2 × 12 + 6 = 30` bytes |
-| Total | 62 bytes inside a 64-byte group region |
+| Total | 38 bytes inside a 64-byte group region |
 
 Bind those `CaptureMember`s in audio/MIDI order using `bind_capture_group`. Each has a fixed region and producer bound; MIDI cannot borrow unused audio bytes or vice versa. The example's producer emits at most one three-byte packet and no recovery traffic. A producer capable of emitting the 32-message recovery sequence from [Processing and scheduling MIDI](../part-2-control-a-running-graph/08-processing-and-scheduling-midi.md) needs bounds that cover that traffic too; these small limits would not suffice.
 
@@ -68,12 +68,12 @@ The runtime lends `PlannerResourceIo::capture()` with its current frame and exte
                 context
                     .resources
                     .capture()
-                    .reserve_prepared(self.take, context.frame, 1)
+                    .reserve_prepared(self.take, context.frame)
             } else {
                 context
                     .resources
                     .capture()
-                    .reserve(self.take, context.frame, 1)
+                    .reserve(self.take, context.frame)
             };
 ```
 
@@ -87,9 +87,9 @@ The probe calls standalone `store.planner_io(frame, ceiling)` while the host own
 
 ## 4. Stage each member once
 
-A validated `DecisionBinding` gives the consumer the planner's interval token and member ordinals. Its ordinary processing view can stage data but cannot activate, reserve, commit or freeze the shared group.
+The consumer borrows the tick token and member ordinals from `block.domain`. Its actual node identity is available as `block.node`. Its ordinary processing view can stage data but cannot activate, reserve, commit or freeze the shared group.
 
-Audio is interleaved and must exactly fit `interval_frames × channels`. The consumer stages its sample and its negation:
+Audio is interleaved and must exactly fit `quantum.frames() × channels`. The consumer stages its sample and its negation:
 
 ```rust
             let [audio, midi] = decision.members;
@@ -99,7 +99,7 @@ Audio is interleaved and must exactly fit `interval_frames × channels`. The con
                 .stage_audio(interval, audio, &[sample, -sample])?;
 ```
 
-`stage_midi` accepts complete packets with offsets in `[0, interval_frames)`. Even a silent positive interval needs its complete empty MIDI contribution so duration advances. The example records at take-relative frames 0/2/4/6, with note/velocity pairs 60/64, 61/66, 62/68 and 63/70.
+`stage_midi` accepts complete packets with offsets in `[0, quantum.frames())`. Even a silent positive interval needs its complete empty MIDI contribution so duration advances. The example records at take-relative frames 0/2/4/6, with note/velocity pairs 60/64, 61/66, 62/68 and 63/70.
 
 Staging copies data into group storage without publishing a prefix. The consumer compares resource metadata before/after both contributions and observes no change. It also checks duplicate audio staging returns InvalidState, and a three-event/nine-byte MIDI probe returns Capacity without consuming the two-event/six-byte promise; the subsequent valid contribution still fits.
 
@@ -107,7 +107,7 @@ Missing, duplicate, malformed, wrong-member, stale or over-bound contributions a
 
 ## 5. Commit at the reserved end, then freeze the common cut
 
-`finish` commits the interval after both contributions. Its stamped frame equals the reserved end. The store validates the complete set before appending any member, advances their common duration/next frame and returns unused conservative page promises. A repeated commit is InvalidState; using the preceding interval after a fresh reservation is InvalidId.
+`finish_tick` commits the tick after both contributions. Its stamped frame equals the reserved end. The store validates the complete set before appending any member, advances their common duration/next frame and returns unused conservative page promises. A repeated commit is InvalidState; using the preceding interval after a fresh reservation is InvalidId.
 
 After every callback, `reserved_pages` is zero. Final free-page assertions match actual audio/MIDI byte lengths, not the larger reserved MIDI bound. The eight-frame export has 64 audio bytes and four 15-byte records; the two-frame prefix has 16 audio bytes and one 15-byte record, including one trailing silent MIDI frame.
 
@@ -115,7 +115,7 @@ At the common stop boundary, `freeze(take, frame, incomplete, output)` publishes
 
 The example occupies every unrelated optional snapshot slot before rendering and consumes all 16 background transfer bytes at each callback's start using old-prefix reads. Optional snapshot acquisition returns Capacity, yet required staging/commit and final freeze succeed. Internal intervals never replenish that background allowance. The final snapshots agree on duration/cut and retain the same incomplete reason.
 
-In the successful case `[0,8)` is committed by `finish` at 8, but freeze at 8 is settled by the **next nonempty callback**. A zero call there does nothing. `finish` is not the next boundary's planning pass.
+In the successful case `[0,8)` is committed by `finish_tick` at 8, but freeze at 8 is settled by the **next nonempty callback**. A zero call there does nothing. `finish_tick` is not the next boundary's planning pass.
 
 ## Refuse before the affected sample, not after it
 

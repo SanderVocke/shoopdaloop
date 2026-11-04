@@ -32,6 +32,7 @@ fn prepared() -> (
     .unwrap();
     let mut store = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 2,
             checkpoints_per_version: 4,
@@ -90,7 +91,7 @@ fn finish(
     assert_eq!(store.midi_index_usage().free_versions, 2);
 }
 #[shoop_test]
-fn staged_stereo_and_midi_match_independent_content_across_interval_partitions() {
+fn staged_stereo_and_midi_match_independent_content_across_callback_partitions() {
     for partition in [&[8, 8][..], &[1; 16][..], &[3, 2, 5, 6][..]] {
         let (mut store, group, take, resources) = prepared();
         let mut input = MidiBuffer::new(8, 128).unwrap();
@@ -113,34 +114,37 @@ fn staged_stereo_and_midi_match_independent_content_across_interval_partitions()
             assert_eq!(store.copy_remaining(), 0);
             let background = store.work();
             let mut at = 0usize;
-            for &frames in partition {
-                let mut audio = [0.; 16];
-                input.clear();
-                for offset in 0..frames {
-                    audio[offset * 2] = (at + offset) as f32 + 0.25;
-                    audio[offset * 2 + 1] = -(at as f32 + offset as f32) - 0.5;
-                    input
-                        .push(offset as u32, frames, &[0x90, 60, (at + offset + 1) as u8])
+            for &period in partition {
+                for _ in 0..period {
+                    let frames = 1;
+                    let mut audio = [0.; 16];
+                    input.clear();
+                    for offset in 0..frames {
+                        audio[offset * 2] = (at + offset) as f32 + 0.25;
+                        audio[offset * 2 + 1] = -(at as f32 + offset as f32) - 0.5;
+                        input
+                            .push(offset as u32, frames, &[0x90, 60, (at + offset + 1) as u8])
+                            .unwrap();
+                    }
+                    let interval = store
+                        .reserve_capture_tick(take, Frame(100 + at as u64))
                         .unwrap();
-                }
-                let interval = store
-                    .reserve_capture_interval(take, Frame(100 + at as u64), frames)
-                    .unwrap();
-                store.stage_capture_midi(interval, 1, &input).unwrap();
-                assert_eq!(
-                    store.info(resources[1]).unwrap().description.frames,
-                    at as u64
-                );
-                store
-                    .stage_capture_audio(interval, 0, &audio[..frames * 2])
-                    .unwrap();
-                store.commit_capture_interval(interval).unwrap();
-                at += frames;
-                assert_eq!(store.usage().reserved_pages, 0);
-                for resource in resources {
-                    let info = store.info(resource).unwrap();
-                    assert_eq!(info.description.frames, at as u64);
-                    assert_eq!(info.capture.unwrap().next_frame, Frame(100 + at as u64));
+                    store.stage_capture_midi(interval, 1, &input).unwrap();
+                    assert_eq!(
+                        store.info(resources[1]).unwrap().description.frames,
+                        at as u64
+                    );
+                    store
+                        .stage_capture_audio(interval, 0, &audio[..frames * 2])
+                        .unwrap();
+                    store.commit_capture_tick(interval).unwrap();
+                    at += frames;
+                    assert_eq!(store.usage().reserved_pages, 0);
+                    for resource in resources {
+                        let info = store.info(resource).unwrap();
+                        assert_eq!(info.description.frames, at as u64);
+                        assert_eq!(info.capture.unwrap().next_frame, Frame(100 + at as u64));
+                    }
                 }
             }
             assert_eq!(store.work(), background);
@@ -199,17 +203,14 @@ fn partial_staging_is_unpublished_and_cancelled_tokens_cannot_retarget() {
     let input = MidiBuffer::new(8, 128).unwrap();
     assert_no_heap(|| {
         store.activate_capture_take(take, Frame(0)).unwrap();
-        let interval = store.reserve_capture_interval(take, Frame(0), 1).unwrap();
+        let interval = store.reserve_capture_tick(take, Frame(0)).unwrap();
         assert!(store.usage().reserved_pages > 0);
         store.stage_capture_audio(interval, 0, &[1., 2.]).unwrap();
         assert_eq!(
             store.stage_capture_audio(interval, 0, &[1., 2.]),
             Err(Error::InvalidState)
         );
-        assert_eq!(
-            store.commit_capture_interval(interval),
-            Err(Error::Incomplete)
-        );
+        assert_eq!(store.commit_capture_tick(interval), Err(Error::Incomplete));
         assert_eq!(
             store.freeze_capture_take(take, Frame(0), None, &mut [None; 2]),
             Err(Error::InvalidState)
@@ -217,22 +218,16 @@ fn partial_staging_is_unpublished_and_cancelled_tokens_cannot_retarget() {
         for resource in resources {
             assert_eq!(store.info(resource).unwrap().description.frames, 0);
         }
-        store.cancel_capture_interval(interval).unwrap();
+        store.cancel_capture_tick(interval).unwrap();
         assert_eq!(store.usage().reserved_pages, 0);
-        let next = store.reserve_capture_interval(take, Frame(0), 1).unwrap();
+        let next = store.reserve_capture_tick(take, Frame(0)).unwrap();
         assert_ne!(next, interval);
         assert_eq!(
             store.stage_capture_audio(interval, 0, &[3., 4.]),
             Err(Error::InvalidId)
         );
-        assert_eq!(
-            store.cancel_capture_interval(interval),
-            Err(Error::InvalidId)
-        );
-        assert_eq!(
-            store.commit_capture_interval(interval),
-            Err(Error::InvalidId)
-        );
+        assert_eq!(store.cancel_capture_tick(interval), Err(Error::InvalidId));
+        assert_eq!(store.commit_capture_tick(interval), Err(Error::InvalidId));
         assert_eq!(
             store.stage_capture_audio(next, 2, &[3., 4.]),
             Err(Error::InvalidOffset)
@@ -243,11 +238,8 @@ fn partial_staging_is_unpublished_and_cancelled_tokens_cannot_retarget() {
         );
         store.stage_capture_audio(next, 0, &[3., 4.]).unwrap();
         store.stage_capture_midi(next, 1, &input).unwrap();
-        store.commit_capture_interval(next).unwrap();
-        assert_eq!(
-            store.commit_capture_interval(next),
-            Err(Error::InvalidState)
-        );
+        store.commit_capture_tick(next).unwrap();
+        assert_eq!(store.commit_capture_tick(next), Err(Error::InvalidState));
         let mut snapshots = [None; 2];
         store
             .freeze_capture_take(take, Frame(1), None, &mut snapshots)
@@ -272,18 +264,16 @@ fn conservative_checkpoint_refusal_preserves_a_common_prefix_before_next_samples
     assert_no_heap(|| {
         store.activate_capture_take(take, Frame(0)).unwrap();
         for frame in 0..24 {
-            let interval = store
-                .reserve_capture_interval(take, Frame(frame), 1)
-                .unwrap();
+            let interval = store.reserve_capture_tick(take, Frame(frame)).unwrap();
             store
                 .stage_capture_audio(interval, 0, &[frame as f32, -(frame as f32)])
                 .unwrap();
             store.stage_capture_midi(interval, 1, &input).unwrap();
-            store.commit_capture_interval(interval).unwrap();
+            store.commit_capture_tick(interval).unwrap();
         }
         let before = store.usage();
         assert_eq!(
-            store.reserve_capture_interval(take, Frame(24), 1),
+            store.reserve_capture_tick(take, Frame(24)),
             Err(Error::Capacity)
         );
         assert_eq!(store.usage(), before);
@@ -327,7 +317,8 @@ fn immutable_group_prefixes_survive_staging_and_later_page_index_rotations() {
         store.begin_callback();
         let mut old = [None; 2];
         let mut at = 0;
-        for frames in [4, 8, 8] {
+        for _ in 0..20 {
+            let frames = 1;
             input.clear();
             for offset in 0..frames {
                 input
@@ -338,9 +329,7 @@ fn immutable_group_prefixes_survive_staging_and_later_page_index_rotations() {
                     )
                     .unwrap();
             }
-            let interval = store
-                .reserve_capture_interval(take, Frame(at as u64), frames as usize)
-                .unwrap();
+            let interval = store.reserve_capture_tick(take, Frame(at as u64)).unwrap();
             store
                 .stage_capture_audio(interval, 0, &[1.; 16][..frames as usize * 2])
                 .unwrap();
@@ -356,7 +345,7 @@ fn immutable_group_prefixes_survive_staging_and_later_page_index_rotations() {
                     })
                 );
             }
-            store.commit_capture_interval(interval).unwrap();
+            store.commit_capture_tick(interval).unwrap();
             at += frames;
             if at == 4 {
                 old[0] = Some(store.snapshot(resources[0], Frame(4)).unwrap());
@@ -420,7 +409,7 @@ fn producer_bound_violations_leave_staged_transaction_cancellable() {
     late.push(1, 2, &[0xf8]).unwrap();
     assert_no_heap(|| {
         store.activate_capture_take(take, Frame(0)).unwrap();
-        let interval = store.reserve_capture_interval(take, Frame(0), 1).unwrap();
+        let interval = store.reserve_capture_tick(take, Frame(0)).unwrap();
         store.stage_capture_audio(interval, 0, &[1., 2.]).unwrap();
         assert_eq!(
             store.stage_capture_midi(interval, 1, &oversized),
@@ -430,18 +419,179 @@ fn producer_bound_violations_leave_staged_transaction_cancellable() {
             store.stage_capture_midi(interval, 1, &late),
             Err(Error::InvalidEvent)
         );
-        assert_eq!(
-            store.commit_capture_interval(interval),
-            Err(Error::Incomplete)
-        );
+        assert_eq!(store.commit_capture_tick(interval), Err(Error::Incomplete));
         for resource in resources {
             assert_eq!(store.info(resource).unwrap().description.frames, 0);
         }
-        store.cancel_capture_interval(interval).unwrap();
+        store.cancel_capture_tick(interval).unwrap();
         let mut snapshots = [None; 2];
         store
             .freeze_capture_take(take, Frame(0), None, &mut snapshots)
             .unwrap();
         finish(&mut store, group, resources, snapshots);
     });
+}
+
+#[shoop_test]
+fn whole_tick_capture_is_atomic_and_retained_prefixes_survive_at_larger_quanta() {
+    for frames in [16, 32, 64] {
+        let quantum = rt_runtime::Quantum::new(frames).unwrap();
+        let config = Config {
+            max_frames: frames,
+            resource_slots: 8,
+            resource_pages: 256,
+            page_bytes: 64,
+            midi_events_per_port: 2,
+            midi_bytes_per_port: 6,
+            ..Config::default()
+        }
+        .prepare()
+        .unwrap();
+        let mut store = ResourceStore::with_capture_groups(
+            config,
+            quantum,
+            Some(MidiIndexConfig {
+                versions: 2,
+                checkpoints_per_version: 8,
+                replay_events: 8,
+            }),
+            CaptureGroupConfig {
+                groups: 1,
+                members_per_group: 2,
+                staging_bytes_per_group: frames * 8 + 30,
+            },
+        )
+        .unwrap();
+        let ids = [store.create().unwrap(), store.create().unwrap()];
+        let group = store
+            .bind_capture_group(&[
+                CaptureMember {
+                    resource: ids[0],
+                    format: Format::Audio { channels: 2 },
+                    midi_events: 0,
+                    midi_bytes: 0,
+                },
+                CaptureMember {
+                    resource: ids[1],
+                    format: Format::Midi,
+                    midi_events: 2,
+                    midi_bytes: 6,
+                },
+            ])
+            .unwrap();
+        let mut packets = MidiBuffer::new(2, 6).unwrap();
+        let samples: Vec<_> = (0..frames)
+            .flat_map(|frame| [frame as f32 + 0.25, -(frame as f32) - 0.5])
+            .collect();
+        store.begin_callback();
+        assert_no_heap(|| {
+            let take = store
+                .prepare_capture_take(group, &[MidiState::default()])
+                .unwrap();
+            let before = store.usage();
+            assert_eq!(
+                store.reserve_prepared_capture_tick(take, Frame(frames as u64 + 1)),
+                Err(Error::InvalidFrame)
+            );
+            assert_eq!(store.usage(), before);
+            let cancelled = store
+                .reserve_prepared_capture_tick(take, Frame(frames as u64))
+                .unwrap();
+            store.cancel_capture_tick(cancelled).unwrap();
+            let tick = store
+                .reserve_prepared_capture_tick(take, Frame(frames as u64))
+                .unwrap();
+            assert_ne!(tick, cancelled);
+            assert_eq!(store.cancel_capture_tick(cancelled), Err(Error::InvalidId));
+            store
+                .activate_capture_take(take, Frame(frames as u64))
+                .unwrap();
+            assert_eq!(
+                store.stage_capture_audio(tick, 0, &samples[..samples.len() - 1]),
+                Err(Error::InvalidShape)
+            );
+            store.stage_capture_audio(tick, 0, &samples).unwrap();
+            assert_eq!(store.commit_capture_tick(tick), Err(Error::Incomplete));
+            for id in ids {
+                assert_eq!(store.info(id).unwrap().description.frames, 0);
+            }
+            packets
+                .push((frames - 1) as u32, frames, &[0x90, 60, 90])
+                .unwrap();
+            store.stage_capture_midi(tick, 1, &packets).unwrap();
+            store.commit_capture_tick(tick).unwrap();
+            let old = [
+                store.snapshot(ids[0], Frame((2 * frames) as u64)).unwrap(),
+                store.snapshot(ids[1], Frame((2 * frames) as u64)).unwrap(),
+            ];
+            let next = store
+                .reserve_capture_tick(take, Frame((2 * frames) as u64))
+                .unwrap();
+            store.stage_capture_audio(next, 0, &samples).unwrap();
+            packets.clear();
+            packets.push(0, frames, &[0x80, 60, 0]).unwrap();
+            store.stage_capture_midi(next, 1, &packets).unwrap();
+            store.commit_capture_tick(next).unwrap();
+            let mut frozen = [None; 2];
+            store
+                .freeze_capture_take(take, Frame((3 * frames) as u64), None, &mut frozen)
+                .unwrap();
+            assert_eq!(store.currentness(old[0].id), Ok(Currentness::Stale));
+            let audio = store.read_index(old[0].id).unwrap();
+            let mut cursor = store.render_io().cursor_at(audio, 0).unwrap();
+            let mut bytes = [0; 512];
+            let mut copied = 0;
+            while copied < frames * 8 {
+                copied += store
+                    .render_io()
+                    .read(&mut cursor, &mut bytes[copied..frames * 8])
+                    .unwrap();
+            }
+            for (encoded, sample) in bytes[..frames * 8].chunks_exact(4).zip(&samples) {
+                assert_eq!(encoded, &sample.to_le_bytes());
+            }
+            let midi = store.read_index(old[1].id).unwrap();
+            let mut cursor = store.render_io().midi_cursor(midi).unwrap();
+            assert_eq!(
+                store
+                    .render_io()
+                    .midi_next(&mut cursor)
+                    .unwrap()
+                    .unwrap()
+                    .frame(),
+                frames as u64 - 1
+            );
+            assert_eq!(store.render_io().midi_next(&mut cursor), Ok(None));
+            let midi = store.read_index(frozen[1].unwrap().id).unwrap();
+            let mut cursor = store.render_io().midi_cursor(midi).unwrap();
+            for at in [frames as u64 - 1, frames as u64] {
+                assert_eq!(
+                    store
+                        .render_io()
+                        .midi_next(&mut cursor)
+                        .unwrap()
+                        .unwrap()
+                        .frame(),
+                    at
+                );
+            }
+            assert_eq!(store.render_io().midi_next(&mut cursor), Ok(None));
+            for snapshot in old.into_iter().chain(frozen.into_iter().flatten()) {
+                store.release_snapshot(snapshot.id).unwrap();
+            }
+            store.release_capture_group(group).unwrap();
+            for id in ids {
+                store.remove(id).unwrap();
+            }
+            for _ in 0..128 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            assert_eq!(store.usage().free_pages, 256);
+            assert_eq!(store.usage().free_versions, 8);
+            assert_eq!(store.usage().free_snapshots, 8);
+            assert_eq!(store.usage().reserved_pages, 0);
+            assert_eq!(store.midi_index_usage().free_versions, 2);
+        });
+    }
 }

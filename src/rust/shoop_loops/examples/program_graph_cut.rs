@@ -3,7 +3,6 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Command, Control, GraphRuntime, PreparedNode, Retired},
     graph::{Catalog, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan},
-    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
     transport::{Lane, Outcome as Admission, SubmitError, Ticket},
@@ -50,12 +49,6 @@ impl Processor<LoopPlanner> for Node {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Half(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Half(node) => node.planning(),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -328,13 +321,14 @@ fn run(parts: &[usize]) {
             packet_bytes: 0,
         })
         .collect();
-    let mut resources = ResourceStore::new(config).unwrap();
+    let mut resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let Prepared {
         planner,
         nodes,
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology(4),
         &mut resources,
         Settings {
@@ -363,11 +357,11 @@ fn run(parts: &[usize]) {
         .collect();
     let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
         resources,
         &initial,
-        &client.bindings_for(&initial),
     )
     .unwrap();
     let mut control = Controls {

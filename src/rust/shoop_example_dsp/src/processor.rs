@@ -97,20 +97,6 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
             preset,
         }))
     }
-    fn supports_fixed(&self) -> bool {
-        true
-    }
-    fn process_fixed(
-        &mut self,
-        block: &mut rt_runtime::processor::FixedProcessBlock<'_, L>,
-    ) -> Result<(), Error> {
-        self.render(
-            block.quantum.frames(),
-            &mut block.audio,
-            block.midi_inputs,
-            block.midi_outputs,
-        )
-    }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
         self.render(
             block.frames,

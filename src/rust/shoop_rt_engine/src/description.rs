@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use shoop_rt_protocol::{Name, MAX_STRIP_CHANNELS};
 
 /// Most host ports of one kind and direction.
-pub const MAX_HOST_PORTS: usize = 64;
+pub const MAX_HOST_PORTS: usize = 1024;
 
 /// A pool segment: a number of prepared strip and loop slots. Slot indices count
 /// through the segments in order.
@@ -129,7 +129,7 @@ impl EngineDescription {
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
         use rt_runtime::Error;
         let host = &self.host;
-        rt_runtime::fixed::Quantum::new(self.quantum)?;
+        rt_runtime::Quantum::new(self.quantum)?;
         if self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0

@@ -4,7 +4,7 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Control, GraphRuntime, PreparedNode},
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
-    planner::{ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec},
+    planner::{FinishContext, PlanContext, Planner},
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
     Budgets, Config, Error, Frame, NodeId, PlannerId,
@@ -37,22 +37,15 @@ fn planner() -> PlannerId {
     PlannerId::from_parts(0, 1).unwrap()
 }
 impl Planner for Clock {
-    type Decision = Decision;
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[Decision] {
-        &self.decisions
+    fn operation_bytes(&self) -> usize {
+        0
     }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
         self.counts.plans.store(
             self.counts.plans.load(Ordering::Relaxed).saturating_add(1),
             Ordering::Relaxed,
@@ -62,7 +55,7 @@ impl Planner for Clock {
         }
         let interval = self
             .resolver
-            .preview(context.ceiling, &[])
+            .preview_tick(&[])
             .map_err(|_| Error::InvalidState)?;
         if self.fault == 1 {
             self.counts.witness.store(3, Ordering::Relaxed);
@@ -85,15 +78,14 @@ impl Planner for Clock {
             self.resolver.events(),
             self.resolver.dropped_events(),
         );
-        Ok(interval.end)
+        assert_eq!(interval.end, context.ceiling);
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, ()>) -> Result<(), Error> {
-        if !context.observations.is_empty() {
-            return Err(Error::InvalidState);
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        if self.resolver.frame() != context.interval.start {
+            return Err(Error::InvalidFrame);
         }
-        self.resolver
-            .finish(context.interval.end)
-            .map_err(|_| Error::InvalidState)?;
+        self.resolver.finish().map_err(|_| Error::InvalidState)?;
         self.counts.finishes.store(
             self.counts
                 .finishes
@@ -123,20 +115,12 @@ impl Processor<Clock> for Half {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            ..ConsumerAccess::default()
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?;
-        if view.planner != planner()
-            || view.slot != 0
-            || view.interval.start != block.frame
-            || view.value.state.mode != Mode::Playing
-            || view.value.state.position != 0
-            || view.value.state.cycles != block.frame.0
+        let view = block.domain.decisions[0];
+        if view.state.mode != Mode::Playing
+            || view.state.position != 0
+            || view.state.cycles != block.frame.0
             || block.frames != 1
         {
             return Err(Error::InvalidState);
@@ -217,7 +201,8 @@ impl BrowserPlannerCanary {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let decisions = [Decision {
             state: resolver.state(target).unwrap(),
             playback_discontinuity: false,
@@ -260,15 +245,12 @@ impl BrowserPlannerCanary {
         }
         let (control, runtime) = GraphRuntime::prepare_with_initial_graph(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node, Half)],
             clock,
-            ResourceStore::new(config).map_err(wire::runtime_error)?,
+            ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())
+                .map_err(wire::runtime_error)?,
             &graph,
-            &[DecisionBinding {
-                planner: planner(),
-                consumer: node,
-                decision_slot: 0,
-            }],
         )
         .map_err(wire::runtime_error)?;
         Ok(Self {

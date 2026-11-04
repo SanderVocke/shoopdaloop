@@ -74,47 +74,32 @@ input that fails to connect stays silent with a warning.
 
 Select JACK in the application settings and restart the host. Both application
 startup and independent `shoop_host --config <file>` use the direct JACK driver.
-An existing profile containing only `client_name` receives two audio inputs, two
-audio outputs, one MIDI input and one MIDI output. A host configuration can set
-all port names and optional external startup connections:
+The JACK configuration contains only the client-name hint:
 
 ```json
 {
   "driver": {
-    "Jack": {
-      "client_name": "ShoopDaLoop",
-      "audio_inputs": ["audio_in_1", "audio_in_2"],
-      "audio_outputs": ["audio_out_1", "audio_out_2"],
-      "midi_inputs": ["midi_in_1"],
-      "midi_outputs": ["midi_out_1"],
-      "connections": [
-        ["system:capture_1", "audio_in_1"],
-        ["audio_out_1", "system:playback_1"]
-      ]
-    }
+    "Jack": { "client_name": "ShoopDaLoop" }
   }
 }
 ```
 
-Port lists in the settings UI are comma-separated; startup connection pairs use
-`source -> destination`, separated by semicolons. An empty list registers no ports
-of that kind/direction. Names are unique across the bank, nonempty, at most 59
-UTF-8 bytes, and contain no colon, comma or NUL. Each kind/direction has at most
-64 ports. The client-name hint has at most 63 bytes and no colon or NUL.
+The hint has at most 63 bytes and no colon or NUL. JACK supplies the actual client
+name, sample rate and callback size. Probing and startup never autostart JACK;
+missing libraries/server and other startup failures follow the existing diagnostic
+and fallback policy.
 
-A short connection endpoint names a local port. A `client:port` endpoint names
-an external JACK graph port. Required connection failures roll back startup;
-missing libraries/server or other startup failures are diagnosed, with the
-application's existing dummy fallback and saved preference preserved. Probing
-and startup never autostart JACK. The actual client name may gain a JACK suffix
-when another client uses the hint; runtime metadata reports the resolved name.
+The host starts without public ports. The session service publishes track audio/MIDI,
+sync audio and audio-bus outputs as needed, and removes them with their owners.
+Connections are edited in the application or a JACK patchbay and saved with the
+session. Master auto-connect selects physical playback ports. Fixed startup port
+lists and connection pairs are no longer accepted in JACK profiles or CLI arguments.
 
-Engine port identities use `jack:<short name>`, independent of that suffix, so
-session connection intent survives restart. Master initially uses the first
-configured audio outputs; external playback connections are explicit startup
-pairs or JACK patchbay connections. Track-to-host routing uses the existing
-application connection UI. The port bank is fixed for the host lifetime; changing
-it requires restart, rather than dynamically registering per-track JACK ports.
+`NativeHost::graph_control` exposes an optional provider-independent handle. JACK
+supports discovery, connection editing, publication/removal and rename. All I/O
+slots are private prepared capacity derived from the track/channel/bus pools;
+reserving a slot does not register a public JACK port. See the
+[session graph contract](../../../docs/native_session_recovery/jack-graph.md).
 
 The server determines sample rate and callback size. A callback above the engine
 maximum is rendered in parts without an extra duplex buffer. MIDI offsets are
@@ -131,9 +116,9 @@ deactivates JACK, and cleans up the render owner off the callback thread.
 JACK and CPAL are independently selectable at build time:
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features jack
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features cpal
-cargo build -p shoopdaloop -p shoop_host --no-default-features
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features jack
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features cpal
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
 ```
 
 Native distribution defaults enable both. JACK is loaded at runtime; browser

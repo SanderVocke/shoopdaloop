@@ -60,11 +60,15 @@ impl From<shoop_app_client::Error> for DispatchError {
 }
 #[derive(Default)]
 struct FileMailbox {
+    preview: Option<ApplicationAudioPreview>,
     outputs: VecDeque<ApplicationFileOutput>,
     requests: VecDeque<ApplicationFileRequest>,
 }
 impl FileMailbox {
     fn collect(&mut self, runtime: &mut ClientRuntime) {
+        if let Some(preview) = runtime.take_audio_preview() {
+            self.preview = Some(preview);
+        }
         while self.outputs.len() < 8 {
             let Some(output) = runtime.take_file_output() else {
                 break;
@@ -171,7 +175,11 @@ impl CooperativeApplicationRuntime {
     }
     #[cfg(target_arch = "wasm32")]
     pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-        self.client.take_audio_preview()
+        self.outputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .preview
+            .take()
     }
 }
 
@@ -409,7 +417,11 @@ mod native {
                 .pop_front()
         }
         pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-            None
+            self.outputs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .preview
+                .take()
         }
     }
     pub struct ApplicationRuntime {
@@ -421,14 +433,18 @@ mod native {
         pub fn start_with_options(
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
+            graph: Option<Box<dyn shoop_app::HostGraphController>>,
         ) -> Result<Self> {
             Self::start_thread(true, move || {
-                CooperativeApplicationRuntime::start_with_options_and_midi(
+                let mut runtime = CooperativeApplicationRuntime::start_with_options_and_midi(
                     backend,
                     options,
                     Box::new(shoop_scripting::NativeMidiService::new()),
-                )
-                .map(SessionRuntime::Local)
+                )?;
+                if let Some(graph) = graph {
+                    runtime.service.set_host_graph_controller(graph)?;
+                }
+                Ok(SessionRuntime::Local(runtime))
             })
         }
         pub fn attach(
@@ -628,7 +644,7 @@ mod native {
     }
 }
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{ApplicationHandle, ApplicationRuntime};
+pub use native::{ApplicationHandle, ApplicationRuntime, ConnectionStatus};
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 mod browser_tests {

@@ -48,24 +48,17 @@ struct Owner {
     stopped: bool,
     group: Option<CaptureGroupId>,
     take: Option<CaptureTakeId>,
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     snapshots: [Option<Snapshot>; 2],
 }
 impl Planner for Owner {
-    type Decision = ();
-    type Observation = ();
     type Operation = bool;
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: pid(),
-            decision_slots: 0,
-            observation_capacity: 0,
-            operation_bytes: 1,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(pid())
     }
-    fn decisions(&self) -> &[()] {
-        &[]
+    fn operation_bytes(&self) -> usize {
+        1
     }
     fn recovery_safe(stop: bool) -> bool {
         stop
@@ -81,10 +74,10 @@ impl Planner for Owner {
         self.stopped = true;
         Ok(Disposition::Complete(()))
     }
-    fn plan(&mut self, mut context: PlanContext<'_, bool, ()>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, bool, ()>) -> Result<(), Error> {
         if self.stopped {
             if let Some(interval) = self.interval.take() {
-                context.resources.capture().cancel_interval(interval)?;
+                context.resources.capture().cancel_tick(interval)?;
             }
             if let Some(group) = self.group {
                 match context.resources.capture().info(group)?.phase {
@@ -114,9 +107,9 @@ impl Planner for Owner {
                 }
             }
         }
-        context.frame.checked_add(1)
+        Ok(())
     }
-    fn finish(&mut self, mut context: FinishContext<'_, (), bool, ()>) -> Result<(), Error> {
+    fn finish_tick(&mut self, mut context: FinishContext<'_, bool, ()>) -> Result<(), Error> {
         if !self.stopped && context.interval.end == Frame(1) {
             assert!((7..=11).contains(&self.cut));
             context
@@ -220,6 +213,7 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
         .unwrap();
         let mut store = ResourceStore::with_capture_groups(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             Some(MidiIndexConfig {
                 versions: 2,
                 checkpoints_per_version: 4,
@@ -271,12 +265,10 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
                         store.cancel_capture_take(take).unwrap();
                         owner.take = None;
                     } else if cut >= 14 {
-                        let interval = store
-                            .reserve_prepared_capture_interval(take, Frame(0), 1)
-                            .unwrap();
+                        let interval = store.reserve_prepared_capture_tick(take, Frame(0)).unwrap();
                         owner.interval = Some(interval);
                         if cut == 15 {
-                            store.cancel_capture_interval(interval).unwrap();
+                            store.cancel_capture_tick(interval).unwrap();
                             owner.interval = None;
                         } else if cut == 16 {
                             store.activate_capture_take(take, Frame(0)).unwrap();
@@ -286,8 +278,7 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
                             store.activate_capture_take(take, Frame(0)).unwrap();
                         }
                         if cut >= 4 {
-                            let interval =
-                                store.reserve_capture_interval(take, Frame(0), 1).unwrap();
+                            let interval = store.reserve_capture_tick(take, Frame(0)).unwrap();
                             owner.interval = Some(interval);
                             if cut >= 5 {
                                 store
@@ -298,7 +289,7 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
                                 store.stage_capture_midi(interval, 1, &midi).unwrap();
                             }
                             if cut == 13 {
-                                store.cancel_capture_interval(interval).unwrap();
+                                store.cancel_capture_tick(interval).unwrap();
                                 owner.interval = None;
                             }
                         }
@@ -310,6 +301,7 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
         let drops = Arc::new(Drops::default());
         let (mut control, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(
                 NodeId::from_parts(0, 1).unwrap(),
                 NeverRun(drops.clone()),

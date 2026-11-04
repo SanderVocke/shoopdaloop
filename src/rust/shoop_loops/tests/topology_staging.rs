@@ -655,7 +655,7 @@ fn decoded_owners_replace_and_recycle_through_the_real_resolver_without_callback
     append(&mut a, token, &rows, 14);
     settle(&mut a, token, usize::MAX).unwrap();
     let initial = assert_no_heap(|| a.take(token)).unwrap();
-    let mut resolver = Resolver::prepare(initial).unwrap();
+    let mut resolver = Resolver::prepare(initial, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     for sequence in 0..128 {
         let receiver = if sequence % 2 == 0 { &mut b } else { &mut a };
         let token = assert_no_heap(|| receiver.begin(&bytes)).unwrap();
@@ -684,7 +684,7 @@ fn partial_and_failed_candidate_validation_does_not_change_active_clock_progress
     let original = fixture();
     let (bytes, mut rows) = golden();
     put32(&mut rows[12], 4, 2);
-    let mut resolver = Resolver::prepare(original).unwrap();
+    let mut resolver = Resolver::prepare(original, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     assert_no_heap(|| {
         resolver.submit(Request {
             target: id(0),
@@ -715,7 +715,7 @@ fn partial_and_failed_candidate_validation_does_not_change_active_clock_progress
                 }
             }
             assert_eq!(stager.view(token), Err(Error::InvalidState));
-            let interval = resolver.preview(Frame(frame as u64 + 1), &[]).unwrap();
+            let interval = resolver.preview_tick(&[]).unwrap();
             assert_eq!(interval.end, Frame(frame as u64 + 1));
             resolver.commit().unwrap();
             for (target, length) in [(0, 4), (1, 2)] {
@@ -730,7 +730,7 @@ fn partial_and_failed_candidate_validation_does_not_change_active_clock_progress
             }
             assert_eq!(resolver.epoch(), Epoch(0));
             assert_eq!(resolver.retained_requests(), 1);
-            resolver.finish(interval.end).unwrap();
+            resolver.finish().unwrap();
         });
     }
     assert!(failed);

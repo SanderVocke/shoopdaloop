@@ -211,8 +211,6 @@ python3 scripts/run_rt_runtime_hosts.py --verify-failures
 python3 scripts/run_loops_hosts.py --verify-failures
 # In an authorized supervised immutable background snapshot, then collect/verify:
 python3 scripts/run_rt_runtime_miri.py
-python3 scripts/benchmark_rt_runtime.py
-python3 scripts/benchmark_loops.py
 ```
 
 Additionally execute applicable public examples and doctests, both native-only

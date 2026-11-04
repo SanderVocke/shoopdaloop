@@ -1,5 +1,5 @@
 use rt_buffered::{Timing, MAX_BATCH_FRAMES, MAX_LATENCY_FRAMES};
-use rt_runtime::{fixed::Quantum, Error};
+use rt_runtime::{Error, Quantum};
 use shoop_wasm_test_support::shoop_test;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]

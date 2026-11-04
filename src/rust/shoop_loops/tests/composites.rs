@@ -73,7 +73,11 @@ fn submit(
     .unwrap()
 }
 fn prepare(description: &TopologyDescription) -> Resolver {
-    Resolver::prepare(compile(Limits::default(), description).unwrap()).unwrap()
+    Resolver::prepare(
+        compile(Limits::default(), description).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap()
 }
 fn random(seed: &mut u64) -> u64 {
     *seed ^= *seed << 13;
@@ -197,7 +201,7 @@ fn run(resolver: &mut Resolver, parts: &[u64]) -> (Vec<Event>, Vec<Vec<State>>) 
     for &frames in parts {
         let end = Frame(resolver.frame().0 + frames);
         while resolver.frame() < end {
-            let interval = assert_no_heap(|| resolver.preview(end, &[])).unwrap();
+            let interval = assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
             assert_no_heap(|| resolver.commit()).unwrap();
             events.extend_from_slice(resolver.events());
             for offset in 0..interval.end.0 - interval.start.0 {
@@ -219,7 +223,7 @@ fn run(resolver: &mut Resolver, parts: &[u64]) -> (Vec<Event>, Vec<Vec<State>>) 
                         .collect(),
                 );
             }
-            assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+            assert_no_heap(|| resolver.finish()).unwrap();
         }
     }
     (events, rows)
@@ -406,7 +410,11 @@ fn nested_program_journals_match_across_partitions_and_declarations() {
         journal_events: 1,
         ..Limits::default()
     };
-    let mut limited = Resolver::prepare(compile(limits, &shuffled).unwrap()).unwrap();
+    let mut limited = Resolver::prepare(
+        compile(limits, &shuffled).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     start(&mut limited);
     assert_eq!(run(&mut limited, &[128]).1, expected.1);
     assert!(limited.dropped_events() > 0);
@@ -518,7 +526,7 @@ fn autonomous_actions_do_not_claim_an_unrelated_request_as_transaction_origin() 
     });
     let mut resolver = prepare(&input);
     start(&mut resolver);
-    let interval = assert_no_heap(|| resolver.preview(Frame(1), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     let follower = resolver
         .decisions()
         .unwrap()
@@ -528,10 +536,10 @@ fn autonomous_actions_do_not_claim_an_unrelated_request_as_transaction_origin() 
     assert_eq!(follower.state.mode, Mode::Playing);
     assert_eq!(follower.origin, None);
     assert_no_heap(|| resolver.commit()).unwrap();
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
     run(&mut resolver, &[1]);
     submit(&mut resolver, 1, 3, 2, play());
-    assert_no_heap(|| resolver.preview(Frame(3), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     let natural = resolver
         .decisions()
         .unwrap()
@@ -604,7 +612,7 @@ fn refused_authoritative_preview_preserves_every_descendant() {
             retrigger: false,
         },
     );
-    assert_no_heap(|| resolver.preview(Frame(2), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     let child = resolver
         .decisions()
         .unwrap()
@@ -614,16 +622,13 @@ fn refused_authoritative_preview_preserves_every_descendant() {
     assert_eq!(child.state.mode, Mode::Recording);
     assert_eq!(child.origin, Some(seek));
     assert_no_heap(|| {
-        resolver.preview(
-            Frame(2),
-            &[Observation::Refused {
-                request: seek,
-                reason: Error::Capacity,
-            }],
-        )
+        resolver.preview_tick(&[Observation::Refused {
+            request: seek,
+            reason: Error::Capacity,
+        }])
     })
     .unwrap();
-    let interval = assert_no_heap(|| resolver.commit()).unwrap();
+    assert_no_heap(|| resolver.commit()).unwrap();
     for slot in 1..4 {
         assert_eq!(
             resolver.state(id(slot)).unwrap(),
@@ -637,7 +642,7 @@ fn refused_authoritative_preview_preserves_every_descendant() {
             reason: Error::Capacity
         }
     );
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_no_heap(|| resolver.finish()).unwrap();
 }
 
 #[shoop_test]
@@ -659,12 +664,20 @@ fn deep_nested_programs_execute_all_dense_ticks_without_wave_or_subrange_caps() 
         loop_slots: (depth + 2) as usize,
         ..Limits::default()
     };
-    let mut whole = Resolver::prepare(compile(limits, &input).unwrap()).unwrap();
+    let mut whole = Resolver::prepare(
+        compile(limits, &input).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     start(&mut whole);
     let expected = run(&mut whole, &[128]);
     input.loops.reverse();
     input.programs.reverse();
-    let mut split = Resolver::prepare(compile(limits, &input).unwrap()).unwrap();
+    let mut split = Resolver::prepare(
+        compile(limits, &input).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
     start(&mut split);
     assert_eq!(run(&mut split, &[1; 128]), expected);
     for (frame, row) in expected.1.iter().enumerate() {

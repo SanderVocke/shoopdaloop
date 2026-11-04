@@ -4,102 +4,115 @@
 
 [Contents](../README.md) · [Previous: MIDI state and checkpointed seeking](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md) · [Next: Application-specific operations](14-application-specific-operations.md)
 
-A domain settles changes at a fixed tick before processors render its whole quantum. This chapter demonstrates the compatibility decision/observation interface with Q=1. Production loop consumers use `FixedProcessBlock::domain` directly, without decision lookup or observation acknowledgements. Consumers borrow its immutable decisions, then report bounded observations about the work they performed. They do not advance another authoritative clock.
+Every graph iteration covers one whole configured quantum. A render-owned planner
+settles state in `begin_tick`, processors borrow that domain through `ProcessBlock`,
+and `finish_tick` completes the tick. Host callback adaptation surrounds this loop;
+it does not introduce smaller graph intervals.
 
 ```text
-at current frame:
-    deliver due external actions
-    settle whole tick → publish state/decisions
-    process signal graph over [frame, end)
-    finish → consume this interval's observations
-repeat at end, if still inside the host callback
+deliver due operations → begin_tick → render DAG for one quantum → finish_tick
 ```
 
 ## Run the example
 
-The [planned pair example](../../examples/planned_pair.rs) shares one alternating gain decision with two processors:
+The [planned pair example](../../examples/planned_pair.rs) shares an alternating
+gain value with two processors:
 
 ```sh
 cargo run -p rt_runtime --example planned_pair
 ```
 
-It asserts every sample, both producers' observations, callback origins and 32 fixed ticks in one 32-frame callback. It also runs split/irregular callbacks, a zero call at a cut, reversed consumer declarations, and a one-sample planner. Every callback is heap-guarded; setup/results/destruction are off-render.
+It uses an explicit one-frame quantum so automation at frame 13 is exact. It checks
+every sample, per-node completion, callback origins, whole/split/irregular callbacks,
+a zero call at the cut and reversed processor declarations. Every callback is
+heap-guarded. Preparation, results and destruction stay off-render.
 
-The older [planned gain example](../../examples/planned_gain.rs) remains a useful one-consumer variant, but has no heap guard of its own and no pending planner receipt demonstration. Those claims belong to the new examples here and in [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md).
+## 1. Keep domain state in the planner
 
-## 1. Prepare one authority and fixed decision storage
-
-Implement `Planner` with Copy decision, observation, operation and result types. Its preparation-only specification declares concrete stores:
-
-```rust
-        Some(PlannerSpec {
-            id: self.id,
-            decision_slots: 1,
-            observation_capacity: 2,
-            operation_bytes: 0,
-        })
-```
-
-This planner exposes one initialized `f32` decision and reserves two observations. Its decision slice length/signature must remain valid throughout rendering; do not resize or allocate it in `plan`.
-
-The runtime owns absolute frames. `PlanContext::frame` is the boundary now being settled; `ceiling` is the prepared tick end. The compatibility planner must return that exact end; requesting an interior cut fails. A direct domain implements `fixed_begin` and `fixed_finish` instead.
-
-Here gain alternates between 1.0 and 2.0 every eight frames. Each sample is one whole tick, so a processor multiplier change at frame 13 occurs at a tick boundary:
-
-```text
-[0,1) [1,2) ... [13,14) ... [31,32)
-```
-
-The scheduled change is an immediate typed processor operation at its effective tick. The planner itself accepts no operations here, so its operation and result types are `()`; the processors declare their own family. Chapter 14 explains both families.
-
-## 2. Declare each consumer's access and bind it
-
-Each gain declares that it requires a decision and may write one observation:
+The planner owns the gain value and prepared per-node accounting. It updates gain
+at the tick start and checks both consumers at the tick end:
 
 ```rust
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
+        assert_eq!(context.graph_epoch, Epoch(1));
+        assert_eq!(
+            context.callback_start,
+            self.callback_origins[context.frame.0 as usize]
+        );
+        self.values[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
+        Ok(())
+    }
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        for frames in self.observed {
+            assert_eq!(frames as u64, context.interval.end.0);
         }
+        self.finishes += 1;
+        Ok(())
+    }
+}
+```
+
+`PlanContext::frame` is the tick start and `ceiling` is its exact end. The planner
+returns success or an error, rather than choosing a shorter interval. The runtime
+owns absolute frames; processors do not run another clock. A planner may validate
+the prepared quantum through `validate_quantum` before rendering begins.
+
+## 2. Borrow the domain during processing
+
+The runtime supplies the actual node identity, current frame, quantum, signal ports,
+resources and an exclusive domain borrow in the same block for every processor:
+
+```rust
+    fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
+        let slot = block.node.slot() as usize;
+        assert_eq!(block.domain.observed[slot] as u64, block.frame.0);
+        block.domain.observed[slot] += block.frames;
+        let gain = block.domain.values[0] * self.0;
+        let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
+        for (input, output) in input.iter().zip(output) {
+            *output = input * gain;
+        }
+        Ok(())
     }
 ```
 
-Prepare explicit bindings from both consumer NodeIds to decision slot zero. Pass them to `prepare_with_initial_graph`, or to `compile_planned` when preparing a later plan. The compiler checks planner identity, slot bounds and required bindings against prepared catalog metadata. The example verifies missing bindings return `InvalidGraph`.
+The example indexes its own fixed accounting by actual node identity. A production
+domain must admit those physical identities and roles before installation, and
+protect required membership through `Planner::admit_graph` and
+`Planner::admit_processor_change`. These are domain safety checks, independent of
+signal connections. See [graph activation](15-staging-and-coordinating-graph-activation.md).
 
-A binding does not connect signal ports. The graph separately routes the input through each gain to its corresponding output. Reversing consumer declarations changes neither the canonical signal execution nor the expected samples.
+Domain state and buffers cannot escape the process call. Signal-only processors
+may ignore `block.domain`; `NoPlanner` is the empty domain for an ordinary graph.
 
-## 3. Borrow decisions only for this process call
+## 3. Verify samples independently
 
-The processor checks that the borrowed `DecisionView` covers its actual `ProcessBlock` interval, then multiplies the input by that decision and its local multiplier. It reports its frame count through:
+For every absolute frame the expected gain is `(1 + (frame / 8) % 2)`. Left output
+multiplies it by 1.0 before frame 13 and 0.5 afterward; right output multiplies it by
+0.25. The processor's independent typed operation changes its local multiplier at
+13 and produces one reliable result. The planner operation family is `()` here.
+[Chapter 14](14-application-specific-operations.md) explains both operation families.
 
-```rust
-        block.observations.push(block.frames)
-```
+Splitting callbacks at `[8, 5, 3, 8, 8]` or `[3, 10, 19]` preserves all samples and
+32 completed ticks. A zero call at 13 changes neither time nor diagnostics. Larger
+quanta round operation delivery to a whole-tick boundary and may require host
+buffering; they use this same lifecycle.
 
-The writer stamps the producer NodeId. Its reservation is local to this consumer: a producer cannot spend another's unused observation allowance. Refusal preserves earlier observations; exceeding the declared interface is a fault to handle, not permission to grow storage.
+## Callback identity and bounded work
 
-Do not retain the borrowed decision or observation slice across mutation/another interval. `finish` receives the completed interval and observations; here it checks exactly one correctly sized contribution from each known producer. After stopped extraction, the example verifies each producer observed 32 frames.
+`callback_start` remains the enclosing callback origin while `frame` advances.
+`graph_epoch` identifies context entry; a graph permit returns the newly committed
+epoch. Borrowed graph/resource authority cannot escape its scope.
 
-## 4. Check samples independently of interval shape
+Ingress snapshots, recycling, validation, optional transfer and recovery allowances
+belong to the enclosing callback. Another tick does not replenish them. Required
+render and capture work remains separately shape/capacity checked. Domain settlement
+must terminate within prepared structural bounds; valid finite work can still miss
+a device deadline. See [capacity and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md).
 
-For every absolute frame, the expected decision is `(1 + (frame / 8) % 2)`. Left output multiplies it by 1.0 before frame 13 and 0.5 afterward. Right output always multiplies it by 0.25. The example computes these expectations directly, not from the planner's decisions.
-
-One callback produces 32 ticks. Splitting at `[8, 5, 3, 8, 8]` or irregular `[3, 10, 19]` preserves all tick boundaries and samples. A zero call at 13 neither settles that boundary nor changes diagnostics. A valid one-sample planner completes all 32 intervals with the same samples.
-
-There is no arbitrary internal-subdivision allowance: this example sets `budgets.subranges: 0` and needs only one external event/result slot. Domain structural rules must establish same-frame termination and finite progress. Valid finite work can still be too expensive for a device deadline.
-
-## Context identity and callback-wide work
-
-`callback_start` stays at the enclosing nonempty callback's origin while `frame` advances internally. The example prepares an independent origin table from its host partitions and checks every plan call against it. It is useful for private callback-wide bookkeeping, not a second musical clock.
-
-`graph_epoch` is the context-entry graph identity. `graphs` is scoped graph authority, not an owned runtime/control reference. Active/candidate views cannot survive mutation or escape the callback. If a permit publishes a new graph, use the epoch returned by its commit; later contexts observe that epoch. [Chapter 15](15-staging-and-coordinating-graph-activation.md) explains preflight/publication. Standalone prototype contexts may use `GraphAccess::disabled()`, which cannot manufacture runtime authority.
-
-Command snapshots, execution-credit recycling, graph validation, optional transfer, recovery and telemetry remain one enclosing callback envelope. Calling `plan` again does not renew them. Required `RenderIo` work is independently capacity/shape/time checked, not a discretionary quota that can drop mandatory samples. Decisions, observations and retained execution results also occupy distinct stores; [Capacity, work budgets, and diagnostics](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) sizes them.
-
-`finish` consumes the interval; it does **not** settle its end boundary. At callback end that work belongs to the next nonempty callback. NoPlanner remains the ordinary default when no domain planner is needed.
-
-A fault after a domain publication is not rollback. Do not replay the frames or synthesize `finish`; domain policy may require stopped extraction and explicit permanent cleanup instead of continuation.
+`finish_tick` completes this tick without settling the next boundary. A change at
+callback end belongs to the next nonempty call. A fault after publication is not
+rollback: do not replay frames or invent a finish; stop and extract owners according
+to the domain's cleanup policy.
 
 [Next: Application-specific operations](14-application-specific-operations.md)

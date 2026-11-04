@@ -24,6 +24,7 @@ fn store() -> ResourceStore {
         }
         .prepare()
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 1,
@@ -200,7 +201,7 @@ fn runtime_input_ports_stage_exact_stereo_window_and_keep_failed_contributions_u
     assert_no_heap(|| {
         let take = store.prepare_capture_take(group, &[]).unwrap();
         let interval = store
-            .reserve_prepared_capture_interval(take, Frame(10), 3)
+            .reserve_prepared_capture_tick(take, Frame(10))
             .unwrap();
         let ports = AudioPorts::new(&input, &mut output, 8, 2, 3).unwrap();
         assert_eq!(
@@ -224,12 +225,22 @@ fn runtime_input_ports_stage_exact_stereo_window_and_keep_failed_contributions_u
             Err(Error::InvalidFrame)
         );
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
-        let ports = AudioPorts::new(&input, &mut output, 8, 2, 3).unwrap();
+        let ports = AudioPorts::new(&input, &mut output, 8, 2, 1).unwrap();
         capture
             .stage_ports(&mut store.render_io(), interval, 0, &ports)
             .unwrap();
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
-        store.commit_capture_interval(interval).unwrap();
+        store.commit_capture_tick(interval).unwrap();
+        for offset in 1..3 {
+            let next = store
+                .reserve_capture_tick(take, Frame(10 + offset as u64))
+                .unwrap();
+            let ports = AudioPorts::new(&input, &mut output, 8, 2 + offset, 1).unwrap();
+            capture
+                .stage_ports(&mut store.render_io(), next, 0, &ports)
+                .unwrap();
+            store.commit_capture_tick(next).unwrap();
+        }
         store
             .freeze_capture_take(take, Frame(13), None, &mut frozen)
             .unwrap();

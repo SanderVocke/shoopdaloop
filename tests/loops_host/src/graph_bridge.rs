@@ -94,11 +94,10 @@ impl Graphs {
             slot: original.slot,
             generation: 0,
         });
-        let capacity = self.pool.capacities(id).unwrap_or(Counts {
-            steps: 0,
-            edges: 0,
-            bindings: 0,
-        });
+        let capacity = self
+            .pool
+            .capacities(id)
+            .unwrap_or(Counts { steps: 0, edges: 0 });
         Bank { id, capacity }
     }
     pub(crate) fn ingest(

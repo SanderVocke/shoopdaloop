@@ -96,7 +96,6 @@ fn local_transport_refusal_returns_the_candidate_and_next_bank_generation_withou
         Counts {
             steps: 4,
             edges: 16,
-            bindings: 4
         }
     );
     assert_eq!(graphs.pool.phase(bank.id), Ok(graph_transfer::Phase::Idle));

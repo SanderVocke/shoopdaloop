@@ -24,6 +24,7 @@ fn prepare(pages: usize) -> Result<ResourceStore, Error> {
             ..Config::default()
         }
         .prepare()?,
+        rt_runtime::Quantum::new(1).unwrap(),
     )
 }
 

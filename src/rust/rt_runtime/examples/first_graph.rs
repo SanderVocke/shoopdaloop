@@ -64,15 +64,15 @@ fn main() -> Result<(), Error> {
             },
         ],
     };
-    let resources = ResourceStore::new(config)?;
+    let resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     // Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(0.5))],
         NoPlanner,
         resources,
         &graph,
-        &[],
     )?;
     assert_eq!(runtime.epoch(), Epoch(1));
     assert_eq!(runtime.next_frame(), Frame(0));

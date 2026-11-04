@@ -8,7 +8,7 @@ The graph still supplies and consumes exactly its prepared quantum Q.
 
 ```rust
 use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
-use rt_runtime::fixed::Quantum;
+use rt_runtime::Quantum;
 # fn main() -> Result<(), rt_runtime::Error> {
 let node = BufferedProcessor::prepare(
     Quantum::new(16)?,
@@ -63,17 +63,16 @@ runtime-owned terminal audio fault and MIDI recovery handle it. Note-off message
 are never silently dropped. The runtime's `Error::Full` overflow policy is not
 used for these adapter failures.
 
-The node implements both `fixed::Processor` and `Processor::process_fixed` through
-one core; the required older `process` entry point accepts only whole prepared
-ticks. `process_tick` is also available for caller-owned audio/MIDI views. It
-requires exact stereo/Q shape, one prepared quantum, contiguous timestamps, and
-an empty ordinary MIDI output buffer. Processor operation families are left to
+The node implements the runtime's unified `Processor::process` interface through
+one core. `process_tick(frame, quantum, ...)` also accepts caller-owned audio/MIDI
+views. Both entry points require exact stereo/Q shape, the prepared quantum,
+contiguous timestamps, and an empty ordinary MIDI output buffer. Processor operation families are left to
 the composition; this dummy exposes no live parameters.
 
 ## Lifecycle
 
 Changing timing requires preparing a new node. `reset(origin)` clears all buffered
-audio/MIDI, advances the stream generation, resets the completed-block counter,
+audio/MIDI, advances the stream generation, resets the completed-batch counter,
 and starts at an aligned origin with the same initial silence. Use it only after
 callbacks stop and downstream MIDI recovery is settled. Frame gaps and replayed
 ticks are refused before mutation. Graph epoch changes alone do not clear audio
@@ -86,7 +85,7 @@ are outside this initial implementation.
 cargo run --locked -p rt_buffered --example inline_gain
 cargo run --locked -p rt_buffered --example inline_gain -- 32 3 7
 cargo test --locked -p rt_buffered
-cargo test --locked -p shoop_rt_engine --test buffered_processor
+cargo test --locked -p shoop_rt_engine --lib buffered_tests
 ```
 
 The example checks stereo samples, channel-wrapped MIDI note pairs, SysEx, startup,

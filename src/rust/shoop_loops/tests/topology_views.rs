@@ -180,12 +180,14 @@ fn submit(resolver: &mut Resolver, target: u32, sequence: u64, transition: Trans
     .unwrap();
 }
 fn step(resolver: &mut Resolver, end: u64) {
-    assert_no_heap(|| {
-        let interval = resolver.preview(Frame(end), &[]).unwrap();
-        assert_eq!(interval.end, Frame(end));
-        resolver.commit().unwrap();
-        resolver.finish(Frame(end)).unwrap();
-    });
+    while resolver.frame().0 < end {
+        assert_no_heap(|| {
+            let interval = resolver.preview_tick(&[]).unwrap();
+            assert!(interval.end <= Frame(end));
+            assert_eq!(resolver.commit().unwrap(), interval);
+            resolver.finish().unwrap();
+        });
+    }
 }
 #[shoop_test]
 fn unrelated_table_relocation_preserves_running_program_identity_and_owning_returns() {
@@ -205,7 +207,7 @@ fn unrelated_table_relocation_preserves_running_program_identity_and_owning_retu
         .push(program(2, vec![entry(1, 2, 5, Some(Mode::Recording))]));
     let candidate = compile(Limits::default(), &input).unwrap();
     assert_no_heap(|| assert_eq!(original.program(id(3)), candidate.program(id(3))));
-    let mut resolver = Resolver::prepare(original).unwrap();
+    let mut resolver = Resolver::prepare(original, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let play = Transition::Play {
         position: 0,
         retrigger: false,

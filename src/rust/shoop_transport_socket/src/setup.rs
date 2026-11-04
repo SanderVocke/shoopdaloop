@@ -1,40 +1,34 @@
-//! Authenticated loopback connection setup; credentials stay outside logical protocols.
+//! Compatible socket setup; endpoint metadata belongs to native composition.
 use crate::{Config, NativeStream, Port};
-use shoop_transport::handshake::Handshake;
+pub use shoop_transport::handshake::MAGIC;
+use shoop_transport::handshake::{Handshake, Intent};
 use std::{
     io,
     net::{SocketAddr, TcpListener, TcpStream},
     time::{Duration, Instant},
 };
-pub type Token = [u8; 32];
+
 pub struct Listener {
     listener: TcpListener,
-    token: Token,
     lan: bool,
 }
 impl Listener {
     pub fn bind() -> io::Result<Self> {
-        let mut token = [0; 32];
-        getrandom::fill(&mut token).map_err(io::Error::other)?;
-        Self::bind_with("127.0.0.1:0".parse().expect("loopback address"), token)
+        Self::bind_with("127.0.0.1:0".parse().expect("loopback address"))
     }
-    pub fn bind_with(address: SocketAddr, token: Token) -> io::Result<Self> {
+    pub fn bind_with(address: SocketAddr) -> io::Result<Self> {
         if !address.ip().is_loopback() {
             return Err(io::Error::other("only loopback endpoints are supported"));
         }
-        Self::bind_policy(address, token, false)
+        Self::bind_policy(address, false)
     }
-    pub fn bind_lan(address: SocketAddr, token: Token) -> io::Result<Self> {
-        Self::bind_policy(address, token, true)
+    pub fn bind_lan(address: SocketAddr) -> io::Result<Self> {
+        Self::bind_policy(address, true)
     }
-    fn bind_policy(address: SocketAddr, token: Token, lan: bool) -> io::Result<Self> {
+    fn bind_policy(address: SocketAddr, lan: bool) -> io::Result<Self> {
         let listener = TcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
-        Ok(Self {
-            listener,
-            token,
-            lan,
-        })
+        Ok(Self { listener, lan })
     }
     pub fn address(&self) -> io::Result<SocketAddr> {
         self.listener.local_addr()
@@ -43,6 +37,7 @@ impl Listener {
         match self.listener.accept() {
             Ok((stream, peer)) if self.lan || peer.ip().is_loopback() => {
                 stream.set_nonblocking(true)?;
+                stream.set_nodelay(true)?;
                 Ok(Some(stream))
             }
             Ok(_) => Ok(None),
@@ -50,27 +45,19 @@ impl Listener {
             Err(error) => Err(error),
         }
     }
-    pub fn token(&self) -> &Token {
-        &self.token
-    }
     pub fn accept(&self, config: Config, timeout: Duration) -> io::Result<Port> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
-            match self.listener.accept() {
-                Ok((stream, peer)) => {
-                    if !self.lan && !peer.ip().is_loopback() {
-                        continue;
-                    }
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    match authenticate(stream, self.token, true, remaining) {
-                        Ok(stream) => return Port::from_stream(stream, config),
-                        Err(_) => continue,
+            if let Some(stream) = self.accept_stream()? {
+                let mut handshake =
+                    Handshake::new(true, deadline.saturating_duration_since(Instant::now()));
+                if let Ok(stream) = progress(stream, &mut handshake) {
+                    if handshake.intent() == Intent::Connect {
+                        return Port::from_stream(stream, config);
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(1))
-                }
-                Err(error) => return Err(error),
+            } else {
+                std::thread::sleep(Duration::from_millis(1));
             }
         }
         Err(io::Error::new(
@@ -79,44 +66,35 @@ impl Listener {
         ))
     }
 }
-pub fn connect(
-    address: SocketAddr,
-    token: &Token,
-    config: Config,
-    timeout: Duration,
-) -> io::Result<Port> {
+pub fn connect(address: SocketAddr, config: Config, timeout: Duration) -> io::Result<Port> {
     if !address.ip().is_loopback() {
         return Err(io::Error::other("only loopback endpoints are supported"));
     }
-    connect_lan(address, token, config, timeout)
+    connect_lan(address, config, timeout)
 }
-pub fn connect_lan(
-    address: SocketAddr,
-    token: &Token,
-    config: Config,
-    timeout: Duration,
-) -> io::Result<Port> {
+pub fn connect_lan(address: SocketAddr, config: Config, timeout: Duration) -> io::Result<Port> {
     let deadline = Instant::now() + timeout;
     let stream = TcpStream::connect_timeout(&address, timeout)?;
-    let stream = authenticate(
-        stream,
-        *token,
-        false,
-        deadline.saturating_duration_since(Instant::now()),
-    )?;
-    Port::from_stream(stream, config)
+    Port::from_stream(
+        progress(
+            stream,
+            &mut Handshake::new(false, deadline.saturating_duration_since(Instant::now())),
+        )?,
+        config,
+    )
 }
-
-pub fn authenticate(
-    stream: TcpStream,
-    token: Token,
-    server: bool,
-    timeout: Duration,
-) -> io::Result<TcpStream> {
+pub fn inspect(address: SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
+    let deadline = Instant::now() + timeout;
+    let stream = TcpStream::connect_timeout(&address, timeout)?;
+    progress(
+        stream,
+        &mut Handshake::inspect(deadline.saturating_duration_since(Instant::now())),
+    )
+}
+fn progress(stream: TcpStream, handshake: &mut Handshake) -> io::Result<TcpStream> {
     stream.set_nodelay(true)?;
     stream.set_nonblocking(true)?;
     let mut io = NativeStream(stream);
-    let mut handshake = Handshake::new(token, server, timeout);
     let mut last = Instant::now();
     loop {
         let now = Instant::now();
@@ -128,9 +106,9 @@ pub fn authenticate(
                     if error == shoop_transport::handshake::Error::Timeout {
                         io::ErrorKind::TimedOut
                     } else {
-                        io::ErrorKind::PermissionDenied
+                        io::ErrorKind::InvalidData
                     },
-                    format!("connection authentication failed: {error:?}"),
+                    format!("connection negotiation failed: {error:?}"),
                 ))
             }
         }

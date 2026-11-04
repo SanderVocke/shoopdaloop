@@ -13,64 +13,76 @@ For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapte
 ## Native roles and delivery
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host
-# Local service and engine: ordinary process-exit behavior.
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager
 cargo run -p shoopdaloop
-# Launcher starts independent host/UI siblings, then exits.
+# Detached host and UI siblings, with configuration exchanged over pipes.
 target/debug/shoopdaloop --session-transport socket
-# Independent host, without socket reattachment support.
+# Shared memory permits one data attachment.
 target/debug/shoopdaloop --session-transport shared_memory
+# Configure and manage detached hosts from the GUI.
+target/debug/shoop_host_manager
 ```
 
 The default is `in_process`. **Settings → Audio → Session delivery** selects the
-next launch's placement. `--engine-transport` remains a CLI alias. These settings
-configure UI/service delivery; the host's RT engine connection stays internal.
-The external host owns devices, the service and the existing RT adapter. Detaching
-or killing its UI does not reset playback, recording or accepted operations.
-Only socket delivery supports reattachment. No host is automatically restarted.
+next launch's placement. `--engine-transport` remains a CLI alias. A detached host
+survives its launcher and UI. Socket delivery supports reattachment; a shared-memory
+host supports its first attachment only. Hosts do not restart automatically.
 
-Start roles independently with a JSON host configuration (an empty object selects
-the dummy driver and default pools):
+The manager discovers local `shoop_host` processes and their owned TCP listeners
+through the OS. It probes only those sockets and retains OS-assigned ports. Discovery
+and status queries do not take control or consume a shared-memory attachment.
+There is no registry, port scan, advertisement file or remembered host list.
+
+For CLI use, start the roles separately (the host defaults to dummy audio):
 
 ```sh
-printf '{}\n' > host.json
-target/debug/shoop_host --config host.json
-# Alternative application role: --host-only --host-config host.json
-# Discover protected per-user registrations, then select one explicitly.
-target/debug/shoopdaloop --list-hosts
-target/debug/shoopdaloop --ui-only --host-file /path/from/list/host.json
+target/debug/shoop_host
+# Use the management address printed by the host, or select it in Host Manager.
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-Host-only also accepts `--registry`, `--endpoint 127.0.0.1:PORT`,
-`--credential-file PATH` and `--name`. The application
-wrapper uses `--host-registry` for the registry override. Credential files contain
-exactly 32 random bytes and require owner-only permissions/ACLs. Registry entries
-refer to credentials rather than embedding tokens; never put tokens in arguments.
-Registrations carry data/management endpoints and local process metadata.
-Authentication and protocol checks precede attachment; a second controller is
-refused while the current owner remains healthy. Registrations are discovery hints.
+`shoop_host --config PATH` accepts an optional host configuration.
+`--endpoint`, `--management-endpoint`, `--name` and `--log-file` remain explicit host
+options. Advanced connection profiles can be exported with `--export-profile PATH`
+and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
+select endpoints, never process or session identities, and are never saved or loaded
+automatically. The launcher exchanges bounded startup/readiness messages over pipes.
+Manager and sibling UI launches pass the live endpoint through a bounded stdin pipe;
+normal creation and attachment require no configuration or profile files.
+
+Compatible clients connect without keys, certificates or trust records. Protocol
+checks, controller generations and exclusive control still apply. A second controller
+is refused while the current owner remains healthy.
 
 Every connection obtains a fresh snapshot of the endpoint's current state. The
-**Connect to endpoint** action uses the same flow after loss or host restart.
+**Reconnect to host** action uses the same flow after loss or host restart.
 Previous pending requests are discarded and commands are not replayed. Configured
 scripts remain visible but disabled; start them explicitly in Scripts. Connection
 does not apply local preferences or initialize the host's session.
 
-The Session menu's **Connected host settings…** panel queries the host's startup
+The main menu's **Host → Connected host settings…** panel queries the host's startup
 settings, effective audio status and diagnostics. Local preference saves change
 future local launch defaults, independently of the connected host.
 
-For an external host, the Session menu and window/platform close offer:
+The backend status LED in the bottom bar shows audio health. Hover for host name,
+location, connection state, audio driver and what happens when the UI closes. Click
+to keep these details open and access Host Manager or connected host settings.
+After connection loss, the indicator reports unknown audio state; the host may
+still be playing and recording. The main menu and status popover stay available
+while session controls are disabled. Socket hosts offer **Reconnect to host**;
+shared-memory hosts cannot reattach.
 
-- **Close UI only (keep host running)** releases control and exits this UI.
-- **Close UI and host** waits for authenticated MIDI reset, render stop and cleanup.
+For an external host, the main menu and window/platform close offer:
+
+- **Close UI — keep host running** releases control and exits this UI.
+- **Close UI and stop host…** waits for MIDI reset, render stop and cleanup.
 - **Cancel** keeps the UI open.
 
-After data loss, shutdown uses a separate authenticated management connection with
+After data loss, shutdown uses a separate management connection with
 the last owner's generation. A replacement UI fences that authority. Failure is
 reported with retry and UI-only options; an uncertain retry checks the same operation.
 A host with no live UI owner can be closed explicitly with
-`shoopdaloop --shutdown-host --host-file PATH`. This authenticates and acquires a new
+`shoopdaloop --shutdown-host --host-address HOST:PORT`. This acquires a new
 shutdown generation; a live owner refuses it. It also manages a shared-memory host
 after its single data connection is lost, without enabling shared-memory reattachment.
 The UI never uses this claim as a fallback for stale-owner shutdown.
@@ -79,14 +91,52 @@ mode ends with its page. Shared-memory mode cannot reattach after UI exit.
 
 ## Drivers, controls and files
 
-Default native builds include CPAL+midir. Without default features the RT host uses
-the dummy driver; Lua controller MIDI remains client-local. Saved JACK preferences
-map to CPAL's JACK host or default device with a diagnostic. Unusable device settings
-fall back to dummy with a visible warning and do not overwrite the saved preference.
+Default native builds include CPAL+midir and native JACK audio/MIDI. The application
+and Host Manager default to CPAL, or JACK in a JACK-only build; the standalone host
+defaults to Dummy. Driver-free builds use Dummy. Lua controller MIDI remains client-local.
+JACK connects directly to the JACK server; CPAL's JACK API is a separate CPAL selection.
+Unusable device settings fall back to Dummy with a visible warning and do not
+overwrite the saved preference.
+
+**Settings → Audio** selects the application's preferred driver for its next launch.
+In Host Manager, **New host → Audio driver → JACK** configures the client-name
+hint. Audio/MIDI ports follow the tracks and buses in the session; connections are
+managed in the application's connection dialog or a JACK patchbay. The JACK server
+supplies sample rate and buffer size. No profile files are required.
+
+Both native launch executables accept the same audio overrides:
+
+```sh
+shoop_host --audio-driver jack --jack-client-name Studio
+shoopdaloop --audio-driver jack --session-transport socket
+```
+
+`--audio-driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
+the chosen JACK profile for this launch only. For `shoop_host --config FILE`, flags
+override the JSON driver configuration. Explicitly selecting a driver omitted from
+the build fails with a diagnostic. Audio overrides cannot be used when attaching to
+an existing host. `--help` lists the available options.
+
+The JACK JSON configuration contains only the client-name hint:
+
+```json
+{"driver":{"Jack":{"client_name":"Studio"}}}
+```
+
+Fixed audio/MIDI port lists and startup connection pairs have been removed from
+settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected.
+Connections are persisted in the session through dynamically published ports.
+
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet
-operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
+operations, timing/alignment edits and loop duplication.
 The authoritative capability checks refuse unsupported operations.
+
+Audio/MIDI click generation and insertion are supported. Audio clicks can be
+previewed through the client's native/Web Audio System output or through Master
+on the RT host, including an attached host. Master preview follows the bus's
+gain, balance, mute and output routes. P15 is complete; see the
+[preview contract and completion evidence](../../../docs/native_session_recovery/preview.md).
 
 Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
 targets/policies, supported track/bus controls, routes/connections, piano MIDI and
@@ -116,7 +166,14 @@ Session script ownership conversion/resource persistence remains in the parity l
 Source builds use a sibling `SHOOP_SRC_TREE` marker to locate built-ins. Native
 packages omit it and carry built-ins beside the executable on Linux/Windows or in
 `Contents/Resources` on macOS. `shoop_host` ships beside the UI executable, including
-inside `Contents/MacOS`. Carla runtime payloads and old worker/worklet payloads are
+inside `Contents/MacOS`. `shoop_host_manager` ships beside both executables. The macOS
+archive also provides **ShoopDaLoop Host Manager.app**; Windows includes a manager
+shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` and
+`icon.png` for installation into the desktop applications/icon directories, with
+the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
+three executables together when installing. On macOS, keep both app bundles
+together, for example by copying both to Applications.
+Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
 ## Output buses
@@ -170,7 +227,7 @@ The workspace suite includes the isolated `shoop_app_reference` and independent 
 engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
 is a reference-test feature, never a production frontend dependency.
 
-A packaged, windowless canary exercises the actual companion, authenticated attach,
+A packaged, windowless canary exercises the actual companion, keyless attach,
 recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 
 ```sh
@@ -210,3 +267,87 @@ The browser tracing smoke waits for more than 8,192 records from the local UI
 capture. After 60 seconds it saves the available trace and reports a failure with
 the observed record count.
 Forced process termination cannot finalize an in-process trace.
+
+## Host Manager
+
+Run `shoop_host_manager`, or choose **main menu → Host → Host Manager…** in the
+native looper UI. The three native entry points are `shoopdaloop` (looper),
+`shoop_host` (headless host), and `shoop_host_manager` (management GUI).
+The manager runs in its own process without starting audio
+or taking control of a session. Closing the manager leaves hosts and UIs running.
+
+**New host…** configures and starts a detached companion. Set its name and audio
+settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+connection or optional logging when needed. The form uses OS-assigned local ports;
+no profile, key or configuration path is required. Driver and capacity changes
+require a new host/session.
+
+The manager automatically enumerates local host processes and their actual
+listening sockets. Scans run in the background with bounded concurrency. A fresh
+manager rediscovers hosts started through the GUI or CLI; closing
+the manager leaves their processes and sessions running. Exited hosts disappear
+through OS observation. Inspection failures are surfaced separately from exits;
+processes that cannot answer a compatible greeting are not presented as ready.
+
+**Advanced** contains **Connect to address…**, **Import profile…** and
+**Export profile…**. Manual targets exist only for the current manager session.
+Local and manual connections to the same live instance appear once. Remote hosts
+are added explicitly; LAN-wide discovery is outside scope.
+
+Select a host to inspect effective audio state, DSP load, xruns, startup settings
+and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
+**Audio fallback**. **Open UI** is available when the host can accept an attachment
+and has no controller. Socket hosts can reattach; shared-memory hosts can attach
+once. **••• → Stop host…** requests orderly cleanup after confirmation; the server
+refuses this while a controller is live. **Force stop…** is available only for an
+OS-identified local process, requires separate confirmation and terminates without
+session cleanup. Its PID, creation identity and executable are revalidated before
+termination. Remote descriptor PIDs cannot select a local process to kill. Tray
+integration is not included.
+
+Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
+host. This writes a rotating file only at the requested path, including
+startup errors. Logs rotate at
+1 MiB with three backups and remain until manually removed. Without `--log-file`,
+host diagnostics go to stderr and no persistent host logs or records are created.
+`RUST_LOG` controls verbosity (default `info`). An explicitly exported local profile
+includes its requested log path; a manually authored profile can set `log_file`.
+The **Logs** tab reads the latest 64 KiB from that explicit path. Remote log files
+stay on the host computer. **Open saved log…** opens only a file explicitly chosen
+by the user. **••• → Copy diagnostics** copies the current report with current process and connection information.
+Success messages dismiss after five seconds without moving the layout; errors stay
+visible until dismissed.
+
+Screenshots from the native manager (800 × 500):
+
+![Configure and start a detached host](../../../docs/screenshots/host-manager-new-host.png)
+
+![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
+
+![Host Manager persistent log viewer](../../../docs/screenshots/host-manager-logs.png)
+
+![Host Manager observing a connected controller](../../../docs/screenshots/host-manager-controller.png)
+
+![Host Manager warning for an audio fallback](../../../docs/screenshots/host-manager-fallback.png)
+
+![Host Manager with no running hosts](../../../docs/screenshots/host-manager-empty.png)
+
+![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
+
+![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)
+
+The hosted preview canary uses the real codec worker and AudioWorklet, switches
+System → Master → System, checks Master signal, Stop and natural completion, and
+requires unchanged loop media/transport. It can run with output-only permission:
+
+```sh
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending CHROME_BIN=chromium node browser_smoke.mjs
+```
+
+`PREVIEW_RESUME=reject` injects a rejected Web Audio resume after suspending the
+actual context. `pending` leaves the resume unresolved to model autoplay gating.
+Both require a visible failure without a false Playing state and a successful
+retry. `DENY_FIRST=1` additionally checks browser microphone denial and retry.
+These flags select acceptance probes; they do not alter production playback.

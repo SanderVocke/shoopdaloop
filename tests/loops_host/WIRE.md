@@ -165,7 +165,7 @@ through public Wasm bindings and MessagePort in actual graph worklets. Program
 staging and capture export still remain open;
 this is not the complete Stage7 bridge.
 
-## Prepared graph descriptor payload (`LGP1`)
+## Prepared graph descriptor payload (`LGP2`)
 
 `graph_transfer::{Record, Receiver}` adds a separate fixed96-byte payload format.
 It does **not** extend `LLC1`/`LLR1` or by itself submit/admit/activate a runtime
@@ -184,7 +184,7 @@ the runtime's scoped graph stage IDs.
 
 The receiver retains actual vector capacity and a maximum per-owner byte envelope.
 An externally retired plan may be smaller than the initial full-capacity owner.
-`capacities(id)` advertises the usable node/edge/binding counts of the current owner,
+`capacities(id)` advertises the usable node/edge counts of the current owner,
 capped by configuration. Begin refuses larger declarations before changing state;
 it never reallocates to restore earlier capacities. Oversized or foreign-config
 recycled owners are returned to the caller unchanged for off-render quarantine.
@@ -195,9 +195,9 @@ Every record has this header. All unlisted bytes are zero; size must be exactly9
 
 | Offset | Bytes | Meaning |
 | --- | --- | --- |
-| 0 | 4 | ASCII `LGP1` |
-| 4 | 2 | Version1 |
-| 6 | 1 | Operation1–7 below |
+| 0 | 4 | ASCII `LGP2` |
+| 4 | 2 | Version2 |
+| 6 | 1 | Operation1/2/3/6/7 below |
 | 7 | 1 | Reserved zero |
 | 8 | 8 | Nonzero session |
 | 16 | 8 | Nonzero, strictly increasing receiver-wide sequence |
@@ -207,11 +207,9 @@ Every record has this header. All unlisted bytes are zero; size must be exactly9
 
 | Operation | Fields at absolute byte offsets |
 | --- | --- |
-| 1 Begin | u64 expected graph epoch32; u32 step count40, edge count44, binding count48; byte52 planned flag0/1 |
+| 1 Begin | u64 expected graph epoch32; u32 step count40, edge count44 |
 | 2 Step | u32 offset32; node slot36/generation40; u64 input-end44 |
 | 3 Edge | u32 offset32; source endpoint36, destination endpoint52 |
-| 4 Planning | planner slot32/generation36; u64 decision slots40, observation capacity48, operation bytes56, before-step64 |
-| 5 Binding | u32 offset32; planner slot36/generation40; consumer slot44/generation48; u64 decision slot52 |
 | 6 Seal | No fields |
 | 7 Abort | No fields |
 
@@ -222,9 +220,9 @@ unsigned little-endian. `usize`-shaped descriptor fields travel as u64: a value
 not representable by the receiving target is rejected, never truncated on Wasm32.
 Session, sequence and epoch retain all64 bits.
 
-Begin is legal only in Idle. Append all declared steps, then edges, then the
-single Planning record if planned, then bindings, then Seal. Step/edge/binding
-offsets must be exactly the next index. Unplanned descriptors require zero bindings.
+Begin is legal only in Idle. Append all declared steps, then edges, then Seal. Step/edge offsets must be
+exactly the next index. Operations4/5 are invalid; there is no planner metadata in
+the signal descriptor.
 Zero counts are valid payload declarations, not proof of compatibility with the
 loop planner. Each call consumes at most one external record; there is no retry or
 musical-work loop. Any malformed/stale/foreign/out-of-order/Busy refusal leaves all
@@ -234,7 +232,7 @@ a later sequence. Sequence `u64::MAX` is usable once; no subsequent record can p
 ### 3. Hand off, validate, return
 
 Seal proves only framing and declared-count completeness. It does not check live
-catalog generations, signal ordering/cycles, planner signatures or loop node-pair
+catalog generations, signal ordering/cycles, domain membership or loop node-pair
 compatibility. `take(id)` changes Sealed→Loaned and returns local owning
 `Loan { id, epoch, plan }`. Submit the plan with `LoopControl::stage_graph`; process
 real callbacks and inspect its owning completion. Only receiver-side runtime
@@ -342,7 +340,7 @@ All integers are unsigned little-endian; absent/unlisted fields are zero.
 | Offset | Bytes | Meaning |
 | --- | --- | --- |
 | 0 | 4 | ASCII `LLG1` |
-| 4 | 2 | Version1 |
+| 4 | 2 | Version2 |
 | 6 | 1 | 1 Stage,2 Activate,3 Release |
 | 7 | 1 | 0 normal,1 request cancellation before dequeue |
 | 8 | 8 | Nonzero session |
@@ -366,7 +364,7 @@ A syntactically valid ID does not prove that it belongs to this runtime or is Re
 | Offset | Bytes | Meaning |
 | --- | --- | --- |
 | 0 | 4 | ASCII `LLS1` |
-| 4 | 2 | Version1 |
+| 4 | 2 | Version2 |
 | 6 | 1 | 1 owning admission/completion,2 execution |
 | 7 | 1 | Presence bits:0 delivered frame,1 scoped graph ID,2 bank/capacities; other bits zero |
 | 8/16 | 8 each | Session/original graph-command sequence |
@@ -380,7 +378,8 @@ A syntactically valid ID does not prove that it belongs to this runtime or is Re
 | 76/80/84 | 4 each | Scoped graph ID, or all zero when absent |
 | 88/96 | 8 each | Staged validated graph epoch / Activated published graph+topology epochs; otherwise zero |
 | 104/108 | 4 each | Descriptor bank slot/generation, or zero when absent |
-| 112/116/120 | 4 each | Actual usable step/edge/binding capacities, or zero when absent |
+| 112/116 | 4 each | Actual usable step/edge capacities, or zero when absent |
+| 120 | 4 | Reserved zero |
 | 124 | 1 | Original command kind1–3 |
 | 125 | 3 | Reserved zero |
 
@@ -567,7 +566,7 @@ No pointer/owner crosses instances.
 
 | Message | Meaning |
 | --- | --- |
-| `graph-payload` / `graph-payload-ack` | Copy one96-byte `LGP1` record; return its transfer buffer, runtime result and current engine frame. Result0 is materialization, not admission/publication. |
+| `graph-payload` / `graph-payload-ack` | Copy one96-byte `LGP2` record; return its transfer buffer, runtime result and current engine frame. Result0 is materialization, not admission/publication. |
 | `graph-request` / `graph-ingested` | Copy one96-byte `LLG1` record; return buffer, protocol result and current engine frame. Result0 is envelope acceptance, not Ready/domain success. |
 | `graph-response` / `graph-credit` | Transfer one128-byte `LLS1` result and return its independent buffer credit0–3. Rust command credit is released only by validated terminal results. |
 | `prime` / `primed` | Request one real engine sample; the acknowledgement does not mean Ready. |
@@ -898,7 +897,7 @@ acknowledged browser start, native-equal data,128 plans/finishes, fixed ordinary
 main/worklet memories and actual instance-local markers. Successful stopped recovery
 is8 pages/4 versions/4 snapshots. Stop does not settle a future wrap at128.
 
-`--failure-canary planner` returns runtime InvalidState10 inside `Planner::plan`
+`--failure-canary planner` returns runtime InvalidState10 inside `Planner::begin_tick`
 after actual preview but before commit/render; witness planner3/plans1/finishes0,
 processor0 and heap0 are required. `planner-rust-heap` grows/drops a Vec inside that
 method: guard result4294901761, planner4/plans128/finishes128, processor0 and positive

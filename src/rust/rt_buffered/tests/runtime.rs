@@ -2,30 +2,25 @@ use rt_buffered::{BufferedProcessor, MidiLimits, Timing};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{GraphRuntime, PreparedNode},
-    fixed::{self, BufferedHost, Quantum, Runtime},
     graph::{Connection, Endpoint, GraphDescription, PortType},
     planner::NoPlanner,
     resource::ResourceStore,
-    Config, Error, Frame, NodeId,
+    Config, Error, Frame, NodeId, Quantum,
 };
 use shoop_wasm_test_support::shoop_test;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
-enum Host {
-    Direct(Runtime<BufferedProcessor, ()>),
-    Buffered(BufferedHost<BufferedProcessor, ()>),
-    Integrated(GraphRuntime<BufferedProcessor>),
-}
+struct Host(GraphRuntime<BufferedProcessor>);
 
 impl Host {
-    fn new(q: usize, timing: Timing, buffered: bool, integrated: bool, limits: MidiLimits) -> Self {
+    fn new(q: usize, timing: Timing, buffered: bool, limits: MidiLimits) -> Self {
         let quantum = Quantum::new(q).unwrap();
         let node = NodeId::from_parts(0, 1).unwrap();
         let processor = BufferedProcessor::prepare(quantum, timing, limits).unwrap();
         let capacities = Config {
-            max_frames: q,
+            max_frames: 128,
             audio_inputs: 2,
             audio_outputs: 2,
             midi_inputs: 1,
@@ -54,76 +49,37 @@ impl Host {
                 }
             }
         }
-        if integrated {
-            let config = capacities.prepare().unwrap();
-            let (_, mut runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
-                config,
-                128,
-                quantum,
-                vec![PreparedNode::new(node, processor)],
-                NoPlanner,
-                ResourceStore::new(config).unwrap(),
-            )
-            .unwrap();
-            runtime.prepare_initial_graph(&graph, &[]).unwrap();
-            if buffered {
-                runtime.prepare_host_buffering().unwrap();
-            }
-            Self::Integrated(runtime)
-        } else {
-            let config = fixed::Config {
-                quantum,
-                max_host_frames: 128,
-                capacities,
-            }
-            .prepare()
-            .unwrap();
-            let runtime = Runtime::prepare(
-                config,
-                vec![(node, processor)],
-                (),
-                ResourceStore::new(config.resources()).unwrap(),
-                &graph,
-            )
-            .unwrap();
-            if buffered {
-                Self::Buffered(BufferedHost::prepare(runtime).unwrap())
-            } else {
-                Self::Direct(runtime)
-            }
+        let config = capacities.prepare().unwrap();
+        let (_, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            quantum,
+            vec![PreparedNode::new(node, processor)],
+            NoPlanner,
+            ResourceStore::new(config, quantum).unwrap(),
+        )
+        .unwrap();
+        runtime.prepare_initial_graph(&graph).unwrap();
+        if buffered {
+            runtime.prepare_host_buffering().unwrap();
         }
+        Self(runtime)
     }
     fn process(&mut self, audio: AudioBlock<'_, '_>, midi: MidiBlock<'_>) -> Result<(), Error> {
-        match self {
-            Self::Direct(r) => r.process(audio, midi),
-            Self::Buffered(r) => r.process(audio, midi),
-            Self::Integrated(r) => r.process(audio, midi),
-        }
+        self.0.process(audio, midi)
     }
     fn recovery(&mut self, sink: &mut MidiBuffer) -> usize {
-        match self {
-            Self::Direct(r) => r.drain_midi_recovery(0, sink, 16).unwrap(),
-            Self::Integrated(r) => r.drain_midi_recovery(0, sink, 16).unwrap(),
-            Self::Buffered(_) => unreachable!(),
-        }
+        self.0.drain_midi_recovery(0, sink, 16).unwrap()
     }
 }
 
 type Journal = (Vec<f32>, Vec<f32>, Vec<(u64, Vec<u8>)>);
 
-fn run(
-    q: usize,
-    m: usize,
-    s: usize,
-    partition: usize,
-    buffered: bool,
-    integrated: bool,
-) -> Journal {
+fn run(q: usize, m: usize, s: usize, partition: usize, buffered: bool) -> Journal {
     let timing = Timing {
         batch_quanta: m,
         slack_quanta: s,
     };
-    let mut host = Host::new(q, timing, buffered, integrated, MidiLimits::default());
+    let mut host = Host::new(q, timing, buffered, MidiLimits::default());
     let total = 96 + (m + s) * q + if buffered { q } else { 0 };
     let source: &[(usize, &[u8])] = &[
         (0, &[0x9f, 60, 100]),
@@ -219,29 +175,22 @@ fn run(
 }
 
 #[shoop_test]
-fn buffered_fixed_interfaces_and_host_partitions_match_independent_reference() {
+fn buffered_runtime_host_partitions_match_independent_reference() {
     for (q, m, s) in [(16, 2, 1), (32, 3, 7)] {
-        let reference = run(q, m, s, q, false, false);
-        for integrated in [false, true] {
-            for partition in [q, 128] {
-                assert_eq!(run(q, m, s, partition, false, integrated), reference);
-            }
+        let reference = run(q, m, s, q, false);
+        for partition in [q, 128] {
+            assert_eq!(run(q, m, s, partition, false), reference);
         }
-        let buffered_reference = run(q, m, s, 128, true, false);
-        for integrated in [false, true] {
-            for partition in [1, 7, q, 128] {
-                assert_eq!(
-                    run(q, m, s, partition, true, integrated),
-                    buffered_reference
-                );
-            }
+        let buffered_reference = run(q, m, s, 128, true);
+        for partition in [1, 7, q, 128] {
+            assert_eq!(run(q, m, s, partition, true), buffered_reference);
         }
     }
 }
 
 #[shoop_test]
 fn buffered_capacity_fault_silences_audio_and_recovers_rotated_notes() {
-    for integrated in [false, true] {
+    {
         let mut host = Host::new(
             16,
             Timing {
@@ -249,7 +198,6 @@ fn buffered_capacity_fault_silences_audio_and_recovers_rotated_notes() {
                 slack_quanta: 0,
             },
             false,
-            integrated,
             MidiLimits {
                 events_per_quantum: 1,
                 bytes_per_quantum: 3,

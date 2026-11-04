@@ -9,7 +9,41 @@ use shoop_rt_protocol::{
     MAX_STRIP_CHANNELS,
 };
 
-pub(crate) type Masks = [u64; MAX_STRIP_CHANNELS];
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct HostMask([u64; crate::MAX_HOST_PORTS / 64]);
+impl HostMask {
+    pub const EMPTY: Self = Self([0; crate::MAX_HOST_PORTS / 64]);
+    pub fn contains(self, index: usize) -> bool {
+        self.0[index / 64] & (1 << (index % 64)) != 0
+    }
+    pub fn set(&mut self, index: usize, connected: bool) {
+        let bit = 1 << (index % 64);
+        if connected {
+            self.0[index / 64] |= bit;
+        } else {
+            self.0[index / 64] &= !bit;
+        }
+    }
+    pub fn bits(self) -> impl Iterator<Item = usize> {
+        self.0.into_iter().enumerate().flat_map(|(word, mut mask)| {
+            core::iter::from_fn(move || {
+                if mask == 0 {
+                    return None;
+                }
+                let bit = mask.trailing_zeros() as usize;
+                mask &= mask - 1;
+                Some(word * 64 + bit)
+            })
+        })
+    }
+}
+impl PartialEq<u64> for HostMask {
+    fn eq(&self, other: &u64) -> bool {
+        self.0[0] == *other && self.0[1..].iter().all(|word| *word == 0)
+    }
+}
+pub(crate) type Masks = [HostMask; MAX_STRIP_CHANNELS];
+pub(crate) type BusMasks = [u64; MAX_STRIP_CHANNELS];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Controls {
@@ -61,7 +95,7 @@ impl Controls {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Banks {
     pub masks: [Masks; 2],
-    pub buses: [Masks; 2],
+    pub buses: [BusMasks; 2],
     pub active: usize,
     /// Swapped in the transaction being staged: later changes of the same
     /// transaction edit the new active bank, so the node cross-fades once.
@@ -93,8 +127,8 @@ pub(crate) struct Strip {
     pub controls: Controls,
     pub inputs: Banks,
     pub outputs: Banks,
-    pub midi_inputs: u64,
-    pub midi_outputs: u64,
+    pub midi_inputs: HostMask,
+    pub midi_outputs: HostMask,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -315,8 +349,8 @@ impl Model {
                     controls: Controls::default(),
                     inputs: Banks::default(),
                     outputs: Banks::default(),
-                    midi_inputs: 0,
-                    midi_outputs: 0,
+                    midi_inputs: HostMask::EMPTY,
+                    midi_outputs: HostMask::EMPTY,
                 });
             }
             Change::RemoveStrip { strip } => {
@@ -356,14 +390,7 @@ impl Model {
                 let Some(strip) = self.strip_mut(port.strip) else {
                     return;
                 };
-                let bit = 1u64 << host;
-                let set = |mask: &mut u64| {
-                    if connected {
-                        *mask |= bit;
-                    } else {
-                        *mask &= !bit;
-                    }
-                };
+                let set = |mask: &mut HostMask| mask.set(host, connected);
                 let index = port.index as usize;
                 match port.kind {
                     PortKind::AudioIn => set(&mut strip.inputs.swap()[index]),
@@ -379,11 +406,7 @@ impl Model {
                 connected,
             } => {
                 let mask = &mut self.bus_mut(bus).expect("validated bus").outputs.swap()[channel];
-                if connected {
-                    *mask |= 1 << host;
-                } else {
-                    *mask &= !(1 << host);
-                }
+                mask.set(host, connected);
             }
             Change::Route {
                 strip,

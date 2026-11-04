@@ -4,6 +4,20 @@
 
 ## Buffered processor
 
+The implementation is being revalidated against the updated base `435eb2a2`.
+The former fixed-processing APIs were consolidated upstream; the node now uses
+`Processor::process` and its direct `process_tick` core. The private production
+strip-DSP composition fixture and all focused processor tests pass natively and
+in Node/Chromium, including the API doctest. Workspace build, examples, boundaries,
+bare-metal build, source policies, 28 Python checks and both independent hosts'
+native debug/release replays pass. The earlier live-recovery fixture edits are
+removed; upstream Q=1 settings and all lifecycle assertions are preserved.
+The broad local run had 2669 passes and three lifecycle failures; a fresh isolated
+run passed those cases but observed a different shutdown-confirmation failure
+(19/20 passed). Six default skips are four canaries and two manual device checks.
+Final non-macOS CI is pending; checkpoints below predate this integration.
+macOS remains explicitly waived.
+
 The implementation and focused coverage are tracked in
 [PLAN_BUFFERED.md](PLAN_BUFFERED.md); the public timing and MIDI contract is in
 [the crate documentation](src/rust/rt_buffered/README.md). Source revision
@@ -709,7 +723,8 @@ Node/browser execution. Full workspace tests, release/measurement collection,
 Node/browser/worklet/Miri and final-head CI/review were **not rerun**, as requested.
 The old dependency wait is historical; original full final acceptance is unclaimed.
 Detailed contracts/probes and complete earlier stage history are in the archived
-integration notes; usage remains in the [service README](src/rust/shoop_engine_service/README.md).
+integration notes. The demonstrator was subsequently retired; its useful composition
+and latency scenarios now live in the [shared test support](src/rust/shoop_loops_test_support/README.md).
 
 Historical release source `c2734153` retains 21 processes / 43008 callback rows and
 complete raw-bundle validation under

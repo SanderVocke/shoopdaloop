@@ -340,6 +340,13 @@ impl ControlEndpoint {
             let Some(mut entry) = self.uploads.slots[slot] else {
                 continue;
             };
+            if self
+                .preview
+                .as_ref()
+                .is_some_and(|preview| preview.content == entry.description.id)
+            {
+                continue;
+            }
             if entry.pending != 0 || !self.room(1) {
                 continue;
             }

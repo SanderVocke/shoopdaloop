@@ -170,10 +170,11 @@ def main():
     if args.native_only:
         data = gzip.decompress((FIXTURE / "data/offline.rtj.gz").read_bytes())
         digest = hashlib.sha256(data).hexdigest()
-        if digest != "873203b4be670722b02fdca740157f7342b8b74e0eeb6cc20c6faff0b68c4e47":
+        evidence = json.loads((FIXTURE / "data/offline.json").read_text())
+        if digest != evidence["journal_sha256"]:
             raise RuntimeError("checked-in browser journal digest differs")
         journal.write_bytes(data)
-        reference = json.loads((ROOT / "docs/rt_runtime/evidence/hosts-fixed-quantum.json").read_text())["reports"][0]
+        reference = evidence["reference"]
         result = {"passed": True, "browser": "not run; replaying checked-in real-worklet evidence", "golden_sha256": digest, "profile": args.profile}
     else:
         for source in (FIXTURE / "web").glob("*.js"):

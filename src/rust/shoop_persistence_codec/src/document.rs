@@ -69,6 +69,7 @@ fn port_from_document(port: PortDocument, owner: ApplicationPortOwner) -> Result
     );
     Ok(image::Port {
         state: ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(port.id),
             owner,
             name: port.name,
@@ -326,6 +327,10 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
             })
         })
         .collect::<Result<_>>()?;
+    doc.preview_bus = match session.preview_bus {
+        Some(id) => shoop_session::PreviewBusDocument::Bus(id.raw()),
+        None => shoop_session::PreviewBusDocument::Disabled,
+    };
     doc.bus_display_order = session
         .bus_display_order
         .iter()
@@ -461,6 +466,19 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
         .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
     let mut used_media = BTreeSet::new();
     let doc = bundle.document;
+    let preview_bus = match doc.preview_bus {
+        shoop_session::PreviewBusDocument::Automatic => {
+            let mut masters = doc.buses.iter().filter(|b| b.name == "Master");
+            let first = masters.next().map(|b| BusId::from_raw(b.id));
+            if masters.next().is_none() {
+                first
+            } else {
+                None
+            }
+        }
+        shoop_session::PreviewBusDocument::Disabled => None,
+        shoop_session::PreviewBusDocument::Bus(id) => Some(BusId::from_raw(id)),
+    };
     let bus_display_order = doc
         .bus_display_order
         .iter()
@@ -648,6 +666,7 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
             .ok_or_else(|| anyhow!("port identity space exhausted"))?;
         global_ports.push(image::Port {
             state: ApplicationPortState {
+                publication: None,
                 id: PortId::from_raw(id),
                 owner: ApplicationPortOwner::GlobalFxControl,
                 name: "Global FX Control MIDI In".into(),
@@ -675,6 +694,7 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
             tracks,
             buses,
             bus_display_order,
+            preview_bus,
             global_ports,
             routes: doc
                 .mixer_routes

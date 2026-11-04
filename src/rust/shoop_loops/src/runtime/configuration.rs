@@ -8,10 +8,7 @@ impl LoopPlanner {
         initial: Option<NodePairInitial>,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
-        if initial.is_some_and(|i| {
-            self.fixed_quantum
-                .is_some_and(|q| i.frames % q.frames() as u64 != 0)
-        }) {
+        if initial.is_some_and(|i| i.frames % self.resolver.quantum().frames() as u64 != 0) {
             return Err(Error::InvalidFrame);
         }
         let edit = node_pairs::Edit { previous, initial };
@@ -109,7 +106,6 @@ impl LoopPlanner {
                 return Err(Error::InvalidId.into());
             }
         }
-        let mut bindings = 0usize;
         for (slot, row) in self.rows.iter().enumerate() {
             let Some(row) = row else { continue };
             let owner = if let Some(edit) = bank.edits.iter().find(|e| e.slot() == Ok(slot)) {
@@ -122,28 +118,22 @@ impl LoopPlanner {
                     return Err(Error::InvalidShape.into());
                 }
                 for consumer in [row.binding.playback, row.binding.capture] {
-                    if !permit.candidate().contains(consumer)
-                        || !permit.candidate().planning().bindings.iter().any(|b| {
-                            b.consumer == consumer
-                                && b.planner == self.settings.planner
-                                && b.decision_slot == slot
-                        })
-                    {
+                    if !permit.candidate().contains(consumer) {
                         return Err(Error::InvalidShape.into());
                     }
-                    bindings += 1;
                 }
-            } else if candidate
-                .nodes()
-                .iter()
-                .any(|n| n.id.slot() as usize == slot && n.kind == LoopKind::Primitive)
+            } else if [row.binding.playback, row.binding.capture]
+                .into_iter()
+                .any(|consumer| permit.candidate().contains(consumer))
+                || candidate
+                    .nodes()
+                    .iter()
+                    .any(|n| n.id.slot() as usize == slot && n.kind == LoopKind::Primitive)
             {
                 return Err(Error::InvalidShape.into());
             }
         }
-        if bindings != permit.candidate().planning().bindings.len() {
-            return Err(Error::InvalidShape.into());
-        }
+
         let bank = self.node_pairs.bank_mut(node_pairs)?;
         let media = self
             .ledger

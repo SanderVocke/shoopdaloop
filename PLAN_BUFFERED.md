@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-Implementation and delivery are complete. Code is unchanged since `9cee6c15`;
-all non-macOS checks passed at `e51fe082`. The user waived macOS validation
-because hosted ARM64 runners could not be acquired. The work starts from
+Implementation is integrated with the updated base `435eb2a2`; final non-macOS
+validation is being repeated after upstream API consolidation. The user waived
+macOS validation because hosted ARM64 runners could not be acquired. Work starts from
 `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
@@ -15,7 +15,7 @@ move to the next channel. Real batching and scheduled output make the timing
 configuration observable despite immediate computation.
 
 Included: one portable crate, prepared timing/storage, audio and MIDI processing,
-both current fixed-processing interfaces, a runnable development example, and
+the direct tick entry point and unified runtime interface, a runnable development example, and
 focused engine-composition coverage. Excluded: threads, processes, IPC/networking,
 plugin hosting, public asynchronous transport protocols, latency compensation,
 UI/catalog/session/protocol additions, live timing changes, and performance claims.
@@ -48,8 +48,8 @@ These criteria must not change without explicit user approval.
 - **A5 — bounded execution.** Preparation allocates and touches all storage.
   Rendering allocates/frees nothing, locks/waits for nothing, and performs no I/O.
   Capacities and overflow are explicit; storage never grows during rendering.
-- **A6 — equivalent integration.** The direct `fixed::Processor` interface and
-  production `Processor::process_fixed` interface use one processing core and
+- **A6 — equivalent integration.** The direct `process_tick` entry point and
+  production `Processor::process` interface use one processing core and
   agree in audio, MIDI, and latency. Supported host partitions do not change
   stream results; host buffering latency is accounted for separately.
 - **A7 — lifecycle and failures.** Reset/reprepare cannot leak buffered samples
@@ -73,7 +73,7 @@ These criteria must not change without explicit user approval.
   `BufferedProcessor<InlineTestProcessor>`, preparation, latency queries, and quiescent reset.
   `InlineTestProcessor` names the combined 2x-audio/channel-rotation backend. Timing is
   immutable after preparation. Accept non-power-of-two block multiples such as
-  M=3; a processing batch size is not another `fixed::Quantum`.
+  M=3; a processing batch size is not another `Quantum`.
 - Validate checked products/sums for block frames, latency, channel samples,
   event/byte capacity, frame timestamps, and allocation sizes before allocating.
   Publish supported preparation limits. Reject requests exceeding those limits
@@ -167,19 +167,19 @@ preceding stage. Keep fixes and verification within their owning milestone.
   are retained until due and that backend invocation count follows batches, not
   graph ticks. Commit after these checks pass.
 
-### 4. Both runtime interfaces and development composition
+### 4. Unified runtime integration and development composition
 
-- [x] Implement thin direct `fixed::Processor` and production `process_fixed`
-  wrappers around the same core. Keep the required older trait entry point a
-  whole-tick adapter; reject invalid shape and do not introduce another algorithm.
-- [x] Add one shared integration group comparing both interfaces against an
-  independent sample/event reference. Run direct whole-Q callbacks and buffered
+- [x] Implement the unified production `Processor::process` entry point around
+  the same core as direct `process_tick` calls. Reject invalid quantum/shape;
+  do not retain retired runtime APIs or introduce another algorithm.
+- [x] Check direct ticks and unified runtime integration against independent
+  sample/event references. Run direct whole-Q callbacks and buffered
   host partitions of 1, 7, Q, and a larger multi-Q callback, plus zero-length
   callbacks. Assert exact timestamps with node latency L and host latency H
   separately; flush enough zero input to observe the final delayed output.
 - [x] Add one engine-composition test in `shoop_rt_engine` using a dev-only
   `rt_buffered` dependency and a test node enum combining existing prepared
-  engine nodes with BufferedProcessor. Route audio and MIDI through the processor and a
+  production strip DSP with BufferedProcessor in a crate-private unit fixture. Route audio and MIDI through the processor and a
   downstream consumer. No application catalog, protocol, or production graph
   changes are required to select the dummy.
 - [x] Add a small runnable `rt_buffered` example with Q/M/S settings and checked
@@ -205,7 +205,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
   audio plus timestamped MIDI note pairs, channel wrap, equal-time events and
   SysEx; verify exact output against the independent reference, including startup,
   slack, delayed tail, reset, and a fresh instance. Record the tested revision.
-- [x] Run the complete native regression gate once the focused checks pass; run
+- [ ] Run the complete native regression gate once the focused checks pass; run
   portable BufferedProcessor tests in Node and Chromium and the existing application/
   worklet build gates. Keep environment failures or unavailable facilities visible;
   do not count skips as passes or weaken existing assertions.
@@ -214,7 +214,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
 - [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
   behavior.
-- [x] Ensure required non-macOS CI is green on the final head. The user explicitly
+- [ ] Ensure required non-macOS CI is green on the final head. The user explicitly
   waived macOS validation after repeated hosted ARM64 runner acquisition failures.
 - [x] Check for automated review. Repeatedly assess and address incoming feedback,
   rerun affected checks, and continue until the reviewer approves. If no automated
@@ -233,7 +233,7 @@ Run commands in the development environment selected by the build guidance:
 
 ```sh
 cargo test --locked -p rt_buffered
-cargo test --locked -p shoop_rt_engine --test buffered_processor
+cargo test --locked -p shoop_rt_engine --lib buffered_tests
 cargo run --locked -p rt_buffered --example inline_gain
 python3 scripts/run_wasm_tests.py --runtime node --package rt_buffered
 python3 scripts/run_wasm_tests.py --runtime chrome --package rt_buffered
@@ -268,6 +268,36 @@ builds or implementation tests.
   that led to the implementation.
 
 ## Progress and evidence
+
+- Updated-base local gates: all eleven focused processor/production-DSP cases
+  plus the API doctest pass natively and in Node/Chromium. Warning-denying
+  workspace build, all three Q/M/S examples, four-target dependency boundaries,
+  bare-metal library build, Wasm dependency isolation, 395-module tracing inventory,
+  shared test attributes, 28 Python policy tests, and runtime/loop-host native
+  debug/release replays pass. The unified API port preserves quantum mismatch,
+  shape, timing, MIDI, typed-operation and heap-guard assertions.
+- Broader local diagnostics: the first merged workspace run executed 2672 tests
+  (2669 passed, three host/LAN lifecycle failures, six skips). Rechecking the
+  unchanged upstream recovery fixtures in a fresh container passed those three
+  cases, with 19/20 selected tests passing and a different existing shutdown
+  confirmation failing. These results are retained without changing lifecycle
+  assertions or host production code. The earlier Q=32 fixture edits are removed
+  after integration; the updated base's Q=1 fixtures are preserved. The six
+  default skips are four intentional failure canaries and two manual isolated
+  device-acceptance tests. Final non-macOS CI must validate the merged source.
+
+- Base synchronization after closeout: refreshed PR state revealed base 435eb2a2
+  (fixed-quantum API cleanup and host-manager integration). Its consolidation
+  removes the former parallel fixed runtime/processor hooks. API references in
+  A6 and stage 4 are updated mechanically to direct `process_tick` plus the
+  unified `Processor::process`; timing, audio/MIDI, heap and host-partition
+  equivalence requirements are unchanged. The production-DSP composition fixture
+  is now a private engine unit test, preserving its assertions without restoring
+  a retired public test facade. All eleven focused tests and the API doctest pass.
+  The new base's canonical browser journal has the same uncompressed digest as
+  our actual browser recording, so its journal, sidecar and runner are retained.
+  Earlier CI checkpoints below predate this integration; renewed non-macOS
+  verification remains required. macOS stays waived by explicit user instruction.
 
 - Delivery checkpoint: [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937)
   targets `feat/fixed-quantum-runtime`. At `e51fe082`,

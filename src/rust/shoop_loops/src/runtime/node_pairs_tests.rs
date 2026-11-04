@@ -70,6 +70,7 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
     .unwrap();
     let mut store = ResourceStore::with_midi_indexing(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         rt_runtime::resource::MidiIndexConfig {
             versions: 1,
             checkpoints_per_version: 1,
@@ -77,7 +78,7 @@ fn node_pair_and_source_generations_retire_and_failed_validation_keeps_its_owned
         },
     )
     .unwrap();
-    let mut foreign = ResourceStore::new(config).unwrap();
+    let mut foreign = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let audio = store.create().unwrap();
     let midi = store.create().unwrap();
     let token = store
