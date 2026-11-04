@@ -117,7 +117,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libjack-jackd2-dev jackd2 \
-            libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev gdb
+            libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev
       - name: Test direct audio and MIDI through production host paths
         run: python3 scripts/run_native_jack_tests.py
       - name: Build and test native driver feature combinations
@@ -715,7 +715,9 @@ jobs:
           rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
           uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
           export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
           cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
 
       - name: Upload production shared media callback measurements
         if: always() && matrix.target == 'linux' && matrix.profile == 'release'

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -63,20 +62,8 @@ def main() -> int:
                 print("+", " ".join(command), flush=True)
                 with (args.output / f"acceptance-{index}.log").open("w") as output:
                     result = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=1200)
-                recorded = (args.output / f"acceptance-{index}.log").read_text()
-                print(recorded, end="", flush=True)
+                print((args.output / f"acceptance-{index}.log").read_text(), end="", flush=True)
                 if result.returncode:
-                    binaries = re.findall(r"Running .* \(([^)]+)\)", recorded)
-                    if binaries and "SIGSEGV" in recorded and shutil.which("gdb"):
-                        with (args.output / f"backtrace-{index}.log").open("w") as output:
-                            try:
-                                subprocess.run([
-                                    "gdb", "--batch", "--return-child-result", "-ex", "run",
-                                    "-ex", "thread apply all bt 25", "--args", binaries[-1],
-                                    "--test-threads=1",
-                                ], cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=180)
-                            except subprocess.TimeoutExpired:
-                                output.write("\nBacktrace capture timed out.\n")
                     return result.returncode
                 if server.poll() is not None:
                     raise RuntimeError("JACK server exited during acceptance")
