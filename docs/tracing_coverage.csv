@@ -6,7 +6,9 @@ src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independen
 src/rust/rt_runtime/src/fixed/graph.rs,generic_realtime_library,excluded,Prepared fixed-tick execution; hosts observe Copy tick and route counts and terminal fault diagnostics outside rendering.
 src/rust/rt_runtime/src/fixed/host.rs,generic_realtime_library,excluded,Partition adaptation exposes core and host clocks and constant latency without callback tracing.
 src/rust/rt_runtime/src/fixed/mod.rs,generic_realtime_library,excluded,Portable fixed-core module declarations; no execution boundary to instrument.
+src/rust/rt_runtime/src/fixed/publication.rs,generic_realtime_library,excluded,Owning route publication exposes terminal timing and epoch receipts; retirement stays off-render without application tracing.
 src/rust/rt_runtime/src/fixed/queue.rs,generic_realtime_library,excluded,Bounded copy-command transport exposes timing and terminal receipts without application tracing dependencies.
+src/rust/rt_runtime/src/fixed/routing.rs,generic_realtime_library,excluded,Control-side fixed-catalog graph compiler; typed validation results without application tracing dependencies.
 src/rust/rt_runtime/src/fixed/timing.rs,generic_realtime_library,excluded,Validated quantum and checked clock values; no execution boundary to instrument.
 src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent graph compiler and bounded validator; no application tracing dependency.
 src/rust/rt_runtime/src/graph/activation.rs,generic_realtime_library,excluded,Generic scoped graph activation capabilities; bounded stage status and authoritative epochs expose outcomes without application tracing.

@@ -614,6 +614,9 @@ fn apply(
     Ok(Reply::Done)
 }
 impl State for Bank {
+    fn validate_activation(&self, graph: &GraphDescription) -> Result<(), Error> {
+        self.validate_graph(graph)
+    }
     fn validate_graph(&self, graph: &GraphDescription) -> Result<(), Error> {
         for &slot in &self.active {
             let b = self.entries[slot].ok_or(Error::InvalidState)?.binding;

@@ -7,6 +7,19 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 static NEXT_SCOPE: AtomicU32 = AtomicU32::new(1);
 
+pub(super) fn allocate_scope() -> Result<u32, Error> {
+    loop {
+        let current = NEXT_SCOPE.load(Ordering::Relaxed);
+        let next = current.checked_add(1).ok_or(Error::Exhausted)?;
+        if NEXT_SCOPE
+            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            return Ok(current);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Ticket {
     scope: u32,
@@ -89,16 +102,7 @@ pub fn command_channel_with_budget<C: Copy + Default + Send, R: Copy + Default +
     if capacity == 0 || capacity >= i32::MAX as usize {
         return Err(Error::InvalidConfig);
     }
-    let scope = loop {
-        let current = NEXT_SCOPE.load(Ordering::Relaxed);
-        let next = current.checked_add(1).ok_or(Error::Exhausted)?;
-        if NEXT_SCOPE
-            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            break current;
-        }
-    };
+    let scope = allocate_scope()?;
     for (count, bytes) in [
         (capacity, size_of::<Pending<C>>()),
         (capacity + 1, size_of::<Receipt<C, R>>()),

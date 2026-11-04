@@ -56,10 +56,14 @@ Do not port the benchmark's opt-in flags or bypasses into the production lifecyc
     content, explicit exhaustion and failed-start preservation.
   - [ ] Sync/program compilation and domain precedence/request-family semantics.
   - [ ] Live media/graph publication and complete shutdown/export transport.
+    - [x] Prepared fixed-catalog routing publication, tick-aligned epochs,
+      processor state retention and control-side retirement with heap guards.
     - [x] Quiescent command settlement and recording cleanup after normal stop
       or a partial-tick fault, preserving unread results under saturation.
 - [ ] Integrate engine, protocol/host configuration, settings, persistence and
   recovery. Verify native and browser production routes and capability parity.
+  - [ ] Share production strip/fader/bus/reader DSP with fixed-core execution,
+    including ramps, meters, MIDI monitoring and callback-scoped bulk reads.
 - [ ] Re-run whole-callback performance experiments for regular, two-transition,
   simultaneous-burst, recording, MIDI and graph/media workloads; include plugin
   block/readiness adapter coverage and target-device evidence.
@@ -94,8 +98,11 @@ Fixed-core milestone: `rt_runtime::fixed` implements immutable prepared routing,
 Q-sized buffers, direct state hooks, terminal faults and MIDI reset output, a
 bounded copy-command SPSC queue with reserved cancellation, and a constant-latency
 audio/MIDI host adapter. Command ingress obeys a callback-wide budget, including
-when cancellation targets work that has not yet been admitted. Dynamic graph
-publication is not implemented in the new core.
+when cancellation targets work that has not yet been admitted. Prepared routing
+publication is available for the immutable processor catalog. Its owning channel
+returns retired/rejected routing to control; publication is tick-aligned and
+validates namespace, expected epoch and bounded state requirements. Atomic
+graph/media/owner transactions remain incomplete.
 
 Primitive-loop milestone: `shoop_loops::fixed` owns cached sources and tick state,
 reusing capture/lease primitives without resolver preview/commit or consumer
@@ -110,6 +117,12 @@ Sync/program arbitration and production integration remain incomplete. The
 production application still selects the existing interval path.
 
 Validation completed:
+
+- Live-routing continuation: 2582 native workspace tests pass (four host skips),
+  with 12 core and eight loop cases passing natively, in Node and Chromium.
+  Tests cover changed dependency order, inactive processor retention, same-tick
+  MIDI offsets, callback ingress snapshots, stale/foreign/refused candidates,
+  capture rerouting and quiescent ownership return after a render fault.
 
 - Nine fixed-core and seven fixed-loop integration cases pass natively, under
   Node 24.19.0 / wasm-bindgen 0.2.127, and headless Chromium 154.0.8037.57 with a
@@ -144,6 +157,7 @@ See `docs/fixed_quantum/README.md` and its checked evidence for per-configuratio
 tails, all misses and the original/prototype comparisons. Full application
 parity/cutover and device/plugin acceptance remain unchecked above.
 
-Publishing is blocked: automatic approval review rejected pushing the local
-branch to `SanderVocke/shoopdaloop`, requiring explicit user authorization for
-source publication. Approval was requested; no push, PR or remote CI run occurred.
+The branch was pushed after explicit authorization. Draft PR #930 targets
+`feat/backend-replacement`; production integration continues on the same branch.
+Docs CI passed on the initial head; build/test and CodeQL were still running
+when integration work resumed. No automated review comments had arrived.

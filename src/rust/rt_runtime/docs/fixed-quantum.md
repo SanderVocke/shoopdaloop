@@ -8,8 +8,8 @@ Prepare `fixed::Config` with a validated `Quantum` and an independent
 `max_host_frames`. Its resource configuration uses Q-sized node audio buffers.
 Compile an ordinary `GraphDescription` with `Runtime::prepare`: node identities,
 ports, topological order and state bindings are validated outside processing;
-routes retain direct prepared slot indices. Graphs stay immutable for this
-runtime's lifetime. Safe live graph publication is a remaining milestone.
+routes retain direct prepared slot indices. The processor catalog stays fixed;
+prepared routing may change without replacing processors or their storage.
 
 Implement `fixed::State` for the render-owned state and `fixed::Processor<State>`
 for nodes. State changes precede each complete graph tick. State advancement and
@@ -50,6 +50,33 @@ Disconnected receipt for every remaining normal or cancellation request, includi
 unadmitted work beyond the ingress budget. New submissions and dispatch are then
 refused. Supply the final aligned core boundary, including the start of a failed
 partial tick. Shutdown is idempotent and does not replay work.
+
+## Live routing
+
+Call `Runtime::prepare_graph_changes` before rendering to obtain an independent
+single-credit `GraphControl`. Its compiler owns immutable catalog metadata and
+builds `PreparedGraph`s outside rendering. Candidates may reorder, deactivate or
+reactivate prepared nodes; processor state and Q-sized working buffers remain in
+their stable slots. New processor catalogs require re-preparation.
+
+Submit a candidate with a requested frame and expected graph epoch. Ingress is
+snapshotted once per callback; publication occurs before loop state settlement
+and graph execution at an aligned tick. The state must implement bounded
+`validate_activation`; the default refuses live publication. The loop bank
+requires both consumers of every bound loop. Foreign catalogs, stale epochs and
+state refusals preserve the active graph and produce terminal receipts.
+
+Successful receipts own the retired routing. Failed receipts own the candidate.
+The one admission credit stays occupied until the receipt is consumed. Dropping
+or recompiling that storage belongs to the control side. Routing publication
+neither compiles nor allocates/frees on render. `Block::graph_epoch` exposes the
+published epoch to processors, independently of host callback partitions.
+
+After callbacks stop, call `shutdown_graph_changes` with the matching control
+endpoint before extracting runtime parts. Pending/unadmitted candidates return
+Disconnected receipts; unread terminal results survive. This also works after a
+partial-tick fault. This route transport does not yet coordinate logical owner,
+media and routing changes as one engine configuration transaction.
 
 Verification is in `tests/fixed.rs`: all supported quanta, an independently checked
 DAG with reversed logical identifiers, exact MIDI offsets, arbitrary single-frame

@@ -579,3 +579,356 @@ fn quiescent_shutdown_settles_unread_admitted_and_unadmitted_requests_exactly_on
         );
     }
 }
+
+#[shoop_test]
+fn live_routes_change_topological_order_without_replacing_processors_or_losing_midi() {
+    use rt_runtime::Epoch;
+    struct Live;
+    impl State for Live {
+        fn validate_activation(&self, graph: &GraphDescription) -> Result<(), Error> {
+            if graph.nodes.contains(&NodeId::from_parts(2, 1)?) {
+                Ok(())
+            } else {
+                Err(Error::Busy)
+            }
+        }
+    }
+    struct Counter {
+        gain: f32,
+        offset: f32,
+        calls: u32,
+    }
+    impl Processor<Live> for Counter {
+        fn ports(&self) -> PortCounts {
+            <Gain as Processor<Clock>>::ports(&Gain(1.))
+        }
+        fn process(&mut self, b: &mut Block<'_>, _: &mut Live) -> Result<(), Error> {
+            self.calls += 1;
+            let (input, output) = b.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
+            for (i, o) in input.iter().zip(output) {
+                *o = self.gain * i + self.offset + self.calls as f32;
+            }
+            for i in 0..b.midi_inputs[0].len() {
+                let (at, packet) = b.midi_inputs[0].get(i).ok_or(Error::InvalidEvent)?;
+                b.midi_outputs[0].push(at, b.tick.quantum.frames(), packet)?;
+            }
+            Ok(())
+        }
+    }
+    let a = NodeId::from_parts(9, 1).unwrap();
+    let b = NodeId::from_parts(2, 1).unwrap();
+    let graph = |order: &[NodeId]| {
+        let mut connections = vec![];
+        for kind in [PortType::Audio, PortType::Midi] {
+            let mut source = Endpoint::host(kind, 0);
+            for &node in order {
+                connections.push(Connection {
+                    source,
+                    destination: Endpoint::node(node, kind, 0),
+                });
+                source = Endpoint::node(node, kind, 0);
+            }
+            connections.push(Connection {
+                source,
+                destination: Endpoint::host(kind, 0),
+            });
+        }
+        GraphDescription {
+            nodes: order.to_vec(),
+            connections,
+        }
+    };
+    for q in [16, 32, 64, 128] {
+        let c = config(q);
+        let original = graph(&[a, b]);
+        let reversed = graph(&[b, a]);
+        let mut r = Runtime::prepare(
+            c,
+            vec![
+                (
+                    b,
+                    Counter {
+                        gain: 0.5,
+                        offset: 100.,
+                        calls: 0,
+                    },
+                ),
+                (
+                    a,
+                    Counter {
+                        gain: 4.,
+                        offset: 10.,
+                        calls: 0,
+                    },
+                ),
+            ],
+            Live,
+            ResourceStore::new(c.resources()).unwrap(),
+            &original,
+        )
+        .unwrap();
+        let compiler = r.graph_compiler();
+        let mut control = r.prepare_graph_changes().unwrap();
+        let ticket = control
+            .submit(Frame(1), Epoch(0), compiler.compile(&reversed).unwrap())
+            .unwrap();
+        let mut input = vec![1.; 2 * q];
+        let mut output = vec![0.; 2 * q];
+        let mut mi = [MidiBuffer::new(16, 128).unwrap()];
+        let mut mo = [MidiBuffer::new(16, 128).unwrap()];
+        mi[0].push((q - 1) as u32, 2 * q, &[0x90, 60, 90]).unwrap();
+        mi[0].push((q + 3) as u32, 2 * q, &[0x80, 60, 0]).unwrap();
+        let render = |r: &mut Runtime<Counter, Live>,
+                      input: &[f32],
+                      output: &mut [f32],
+                      mi: &[MidiBuffer],
+                      mo: &mut [MidiBuffer],
+                      frames| {
+            assert_no_heap(|| {
+                r.process(
+                    AudioBlock {
+                        frame: r.next_frame(),
+                        frames,
+                        inputs: &[input],
+                        outputs: &mut [output],
+                    },
+                    MidiBlock {
+                        inputs: mi,
+                        outputs: mo,
+                    },
+                )
+            })
+            .unwrap();
+        };
+        render(&mut r, &input, &mut output, &mi, &mut mo, 2 * q);
+        assert_eq!(&output[..q], vec![108.5; q]);
+        assert_eq!(&output[q..], vec![422.; q]);
+        assert_eq!(mo[0].len(), 2);
+        for i in 0..2 {
+            assert_eq!(mo[0].get(i), mi[0].get(i));
+        }
+        assert_eq!(r.epoch(), Epoch(1));
+        let refused = control
+            .submit(
+                r.next_frame(),
+                Epoch(1),
+                compiler.compile(&original).unwrap(),
+            )
+            .unwrap_err();
+        assert_eq!(refused.error, Error::Full);
+        let receipt = control.try_receipt().unwrap();
+        assert_eq!(receipt.ticket, ticket);
+        assert_eq!(receipt.requested, Frame(1));
+        assert_eq!(receipt.effective, Some(Frame(q as u64)));
+        assert_eq!(receipt.actual, Frame(q as u64));
+        assert_eq!(receipt.result, Ok(Epoch(1)));
+        assert_eq!(receipt.graph.description(), &original);
+        mi[0].clear();
+        input.fill(2.);
+        for (description, expected, result, expected_sample) in [
+            (original.clone(), Epoch(0), Err(Error::StaleEpoch), 429.),
+            (graph(&[a]), Epoch(1), Err(Error::Busy), 434.),
+            (graph(&[b]), Epoch(1), Ok(Epoch(2)), 106.),
+            (original.clone(), Epoch(2), Ok(Epoch(3)), 117.5),
+        ] {
+            control
+                .submit(
+                    r.next_frame(),
+                    expected,
+                    compiler.compile(&description).unwrap(),
+                )
+                .unwrap();
+            render(&mut r, &input, &mut output, &mi, &mut mo, q);
+            assert_eq!(&output[..q], vec![expected_sample; q]);
+            let receipt = control.try_receipt().unwrap();
+            assert_eq!(receipt.result, result);
+            if result.is_err() {
+                assert_eq!(receipt.graph.description(), &description);
+            }
+        }
+        assert_eq!(r.epoch(), Epoch(3));
+        let other = runtime(q, Clock::default());
+        let foreign = other.graph_compiler().compile(&graph(&[a, b])).unwrap();
+        assert_eq!(
+            control
+                .submit(r.next_frame(), r.epoch(), foreign)
+                .unwrap_err()
+                .error,
+            Error::InvalidId
+        );
+        assert_no_heap(|| r.shutdown_graph_changes(&mut control)).unwrap();
+    }
+}
+
+#[shoop_test]
+fn graph_ingress_is_snapshotted_once_even_when_control_submits_during_a_callback() {
+    use rt_runtime::Epoch;
+    struct StateWithControl {
+        control: Option<fixed::GraphControl>,
+        candidate: Option<fixed::PreparedGraph>,
+    }
+    impl State for StateWithControl {
+        fn validate_activation(&self, _: &GraphDescription) -> Result<(), Error> {
+            Ok(())
+        }
+        fn begin_tick(&mut self, _: Tick, _: &mut ResourceStore) -> Result<(), Error> {
+            if let Some(graph) = self.candidate.take() {
+                if let Err(rejected) =
+                    self.control
+                        .as_mut()
+                        .unwrap()
+                        .submit(Frame(0), Epoch(0), graph)
+                {
+                    self.candidate = Some(rejected.graph);
+                    return Err(rejected.error);
+                }
+            }
+            Ok(())
+        }
+    }
+    struct Never;
+    impl Processor<StateWithControl> for Never {
+        fn ports(&self) -> PortCounts {
+            PortCounts::default()
+        }
+        fn process(&mut self, _: &mut Block<'_>, _: &mut StateWithControl) -> Result<(), Error> {
+            Err(Error::InvalidState)
+        }
+    }
+    let c = config(32);
+    let mut r = Runtime::<Never, _>::prepare(
+        c,
+        vec![],
+        StateWithControl {
+            control: None,
+            candidate: None,
+        },
+        ResourceStore::new(c.resources()).unwrap(),
+        &GraphDescription {
+            nodes: vec![],
+            connections: vec![Connection {
+                source: Endpoint::host(PortType::Audio, 0),
+                destination: Endpoint::host(PortType::Audio, 0),
+            }],
+        },
+    )
+    .unwrap();
+    let control = r.prepare_graph_changes().unwrap();
+    let candidate = control
+        .compiler()
+        .compile(&GraphDescription::default())
+        .unwrap();
+    r.state_mut().control = Some(control);
+    r.state_mut().candidate = Some(candidate);
+    let input = [1.; 128];
+    let mut output = [9.; 128];
+    let mi = [MidiBuffer::new(16, 128).unwrap()];
+    let mut mo = [MidiBuffer::new(16, 128).unwrap()];
+    for (frames, expected) in [
+        (31, Err(Error::InvalidFrame)),
+        (128, Ok(())),
+        (0, Ok(())),
+        (32, Ok(())),
+    ] {
+        let epoch = r.epoch();
+        assert_eq!(
+            assert_no_heap(|| r.process(
+                AudioBlock {
+                    frame: r.next_frame(),
+                    frames,
+                    inputs: &[&input],
+                    outputs: &mut [&mut output]
+                },
+                MidiBlock {
+                    inputs: &mi,
+                    outputs: &mut mo
+                }
+            )),
+            expected
+        );
+        if frames == 128 {
+            assert_eq!(output, [1.; 128]);
+            assert_eq!(r.epoch(), Epoch(0));
+            assert!(r
+                .state_mut()
+                .control
+                .as_mut()
+                .unwrap()
+                .try_receipt()
+                .is_none());
+        } else if frames == 32 {
+            assert_eq!(output[..32], [0.; 32]);
+            assert_eq!(r.epoch(), Epoch(1));
+        } else {
+            assert_eq!(r.epoch(), epoch);
+        }
+    }
+    let receipt = r
+        .state_mut()
+        .control
+        .as_mut()
+        .unwrap()
+        .try_receipt()
+        .unwrap();
+    assert_eq!(receipt.requested, Frame(0));
+    assert_eq!(receipt.effective, Some(Frame(128)));
+    assert_eq!(receipt.actual, Frame(128));
+}
+
+#[shoop_test]
+fn graph_shutdown_returns_owning_candidates_after_faults_and_before_admission() {
+    use rt_runtime::Epoch;
+    for admitted in [false, true] {
+        let mut r = runtime(
+            32,
+            Clock {
+                fail_at: Some(0),
+                ..Default::default()
+            },
+        );
+        let mut control = r.prepare_graph_changes().unwrap();
+        let graph = control
+            .compiler()
+            .compile(&GraphDescription::default())
+            .unwrap();
+        let ticket = control.submit(Frame(1024), Epoch(0), graph).unwrap();
+        if admitted {
+            let mi = [MidiBuffer::new(16, 128).unwrap()];
+            let mut mo = [MidiBuffer::new(16, 128).unwrap()];
+            assert_eq!(
+                assert_no_heap(|| r.process(
+                    AudioBlock {
+                        frame: Frame(0),
+                        frames: 32,
+                        inputs: &[&[0.; 32]],
+                        outputs: &mut [&mut [0.; 32]]
+                    },
+                    MidiBlock {
+                        inputs: &mi,
+                        outputs: &mut mo
+                    }
+                )),
+                Err(Error::InvalidState)
+            );
+        }
+        assert_no_heap(|| r.shutdown_graph_changes(&mut control)).unwrap();
+        assert_no_heap(|| r.shutdown_graph_changes(&mut control)).unwrap();
+        let receipt = control.try_receipt().unwrap();
+        assert_eq!(receipt.ticket, ticket);
+        assert_eq!(receipt.result, Err(Error::Disconnected));
+        assert_eq!(
+            receipt.effective,
+            if admitted { Some(Frame(1024)) } else { None }
+        );
+        assert_eq!(receipt.actual, Frame(0));
+        assert_eq!(receipt.graph.description(), &GraphDescription::default());
+        let graph = control
+            .compiler()
+            .compile(&GraphDescription::default())
+            .unwrap();
+        assert_eq!(
+            control.submit(Frame(0), Epoch(0), graph).unwrap_err().error,
+            Error::Disconnected
+        );
+    }
+}

@@ -1,8 +1,8 @@
-use super::{Quantum, Tick};
+use super::{GraphCompiler, GraphControl, PreparedGraph, Quantum, Tick};
 use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
-use crate::graph::{self, Catalog, Connection, GraphDescription, NodeSpec, PortCounts, PortType};
+use crate::graph::{GraphDescription, NodeSpec, PortCounts, PortType};
 use crate::resource::{ResourceIo, ResourceStore};
-use crate::{Error, Frame, NodeId};
+use crate::{Epoch, Error, Frame, NodeId};
 use alloc::{boxed::Box, vec, vec::Vec};
 
 pub const MAX_HOST_PORTS: usize = 64;
@@ -68,6 +68,10 @@ pub trait State: Send {
     fn validate_graph(&self, _graph: &GraphDescription) -> Result<(), Error> {
         Ok(())
     }
+    /// Bounded, allocation-free preflight before publishing prepared routing.
+    fn validate_activation(&self, _graph: &GraphDescription) -> Result<(), Error> {
+        Err(Error::InvalidState)
+    }
     fn begin_callback(
         &mut self,
         _frame: Frame,
@@ -82,9 +86,14 @@ pub trait State: Send {
         Ok(())
     }
 }
-impl State for () {}
+impl State for () {
+    fn validate_activation(&self, _: &GraphDescription) -> Result<(), Error> {
+        Ok(())
+    }
+}
 
 pub struct Block<'a> {
+    pub graph_epoch: Epoch,
     pub tick: Tick,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
@@ -105,18 +114,17 @@ struct Slot<P> {
     output: Box<[f32]>,
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
-    input_end: usize,
 }
 #[derive(Clone, Copy)]
-struct Address {
-    node: Option<usize>,
-    port: usize,
+pub(super) struct Address {
+    pub node: Option<usize>,
+    pub port: usize,
 }
 #[derive(Clone, Copy)]
-struct Route {
-    source: Address,
-    destination: Address,
-    kind: PortType,
+pub(super) struct Route {
+    pub source: Address,
+    pub destination: Address,
+    pub kind: PortType,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -130,7 +138,9 @@ pub struct Diagnostics {
 pub struct Runtime<P, S> {
     pub(super) config: PreparedConfig,
     slots: Vec<Slot<P>>,
-    routes: Vec<Route>,
+    graph: PreparedGraph,
+    epoch: Epoch,
+    graph_inbox: Option<super::publication::Inbox>,
     state: S,
     resources: ResourceStore,
     pub(super) frame: Frame,
@@ -162,42 +172,13 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
                 ports: p.ports(),
             })
             .collect();
-        let catalog = Catalog::new(config.resources, &specs)?;
-        let plan = graph::compile(&catalog, description)?;
-        let descriptor = plan.descriptor();
-        let order: Vec<_> = descriptor.steps.iter().map(|s| s.node).collect();
-        let bind = |edge: &Connection| -> Result<Route, Error> {
-            let address = |e: graph::Endpoint| -> Result<Address, Error> {
-                Ok(Address {
-                    node: e
-                        .node
-                        .map(|id| order.iter().position(|&n| n == id).ok_or(Error::InvalidId))
-                        .transpose()?,
-                    port: e.port as usize,
-                })
-            };
-            Ok(Route {
-                source: address(edge.source)?,
-                destination: address(edge.destination)?,
-                kind: edge.source.kind,
-            })
-        };
-        let routes = descriptor
-            .connections
-            .iter()
-            .map(bind)
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut nodes: Vec<_> = nodes.into_iter().map(Some).collect();
-        let mut slots = Vec::with_capacity(order.len());
+        let compiler = GraphCompiler::new(config.resources, &specs)?;
+        let graph = compiler.compile(description)?;
+        let mut slots = Vec::with_capacity(nodes.len());
         let limits = config.resources.limits();
         let q = config.quantum.frames();
-        for step in &descriptor.steps {
-            let index = nodes
-                .iter()
-                .position(|n| n.as_ref().is_some_and(|(id, _)| *id == step.node))
-                .ok_or(Error::InvalidId)?;
-            let (_, processor) = nodes[index].take().ok_or(Error::InvalidId)?;
-            let ports = catalog.node(step.node)?.ports;
+        for ((_, processor), spec) in nodes.into_iter().zip(&specs) {
+            let ports = spec.ports;
             let midi = |n| {
                 (0..n)
                     .map(|_| {
@@ -216,13 +197,14 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
                 output,
                 midi_input: midi(ports.midi_inputs)?,
                 midi_output: midi(ports.midi_outputs)?,
-                input_end: step.input_end,
             });
         }
         Ok(Self {
             config,
             slots,
-            routes,
+            graph,
+            epoch: Epoch(0),
+            graph_inbox: None,
             state,
             resources,
             frame: Frame(0),
@@ -236,6 +218,45 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
     }
     pub fn next_frame(&self) -> Frame {
         self.frame
+    }
+    pub fn epoch(&self) -> Epoch {
+        self.epoch
+    }
+    pub fn graph_compiler(&self) -> GraphCompiler {
+        self.graph.compiler()
+    }
+    /// Prepare the single-credit owning publication transport before callbacks.
+    pub fn prepare_graph_changes(&mut self) -> Result<GraphControl, Error> {
+        if self.frame != Frame(0) || self.fault.is_some() || self.graph_inbox.is_some() {
+            return Err(Error::InvalidState);
+        }
+        let (control, inbox) = super::publication::channel(&self.graph)?;
+        self.graph_inbox = Some(inbox);
+        Ok(control)
+    }
+    /// Only after callbacks stop; terminal results retain every routing owner.
+    pub fn shutdown_graph_changes(&mut self, control: &mut GraphControl) -> Result<(), Error> {
+        self.graph_inbox
+            .as_mut()
+            .ok_or(Error::InvalidState)?
+            .shutdown(control, self.frame)
+    }
+    fn exchange_graph(
+        &mut self,
+        expected: Epoch,
+        graph: &mut PreparedGraph,
+    ) -> Result<Epoch, Error> {
+        if expected != self.epoch {
+            return Err(Error::StaleEpoch);
+        }
+        if !self.graph.accepts(graph) {
+            return Err(Error::InvalidId);
+        }
+        self.state.validate_activation(&graph.description)?;
+        let next = self.epoch.checked_next()?;
+        core::mem::swap(&mut self.graph, graph);
+        self.epoch = next;
+        Ok(next)
     }
     pub fn diagnostics(&self) -> Diagnostics {
         self.diagnostics
@@ -327,6 +348,9 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
         }
         self.diagnostics = Diagnostics::default();
         self.resources.begin_callback();
+        if let Some(inbox) = &mut self.graph_inbox {
+            inbox.begin_callback(self.frame, self.config.quantum);
+        }
         self.state.begin_callback(self.frame, &mut self.resources)
     }
     pub(super) fn end_callback(&mut self, result: Result<(), Error>) -> Result<(), Error> {
@@ -390,22 +414,35 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
         };
         let end = tick.end()?;
         let q = tick.quantum.frames();
+        if let Some(mut submission) = self
+            .graph_inbox
+            .as_mut()
+            .and_then(|i| i.take_due(self.frame))
+        {
+            let result = self.exchange_graph(submission.expected, &mut submission.graph);
+            if let Some(inbox) = &mut self.graph_inbox {
+                inbox.complete(submission, self.frame, result);
+            }
+        }
         self.state.begin_tick(tick, &mut self.resources)?;
         let mut first = 0;
-        for index in 0..self.slots.len() {
+        for step in 0..self.graph.steps.len() {
+            let routing = self.graph.steps[step];
+            let index = routing.slot;
             let slot = &mut self.slots[index];
             slot.input.fill(0.);
             slot.output.fill(0.);
             for m in slot.midi_input.iter_mut().chain(&mut slot.midi_output) {
                 m.clear();
             }
-            let input_end = slot.input_end;
+            let input_end = routing.input_end;
             for edge in first..input_end {
-                self.route(self.routes[edge], audio, midi, start)?;
+                self.route(self.graph.routes[edge], audio, midi, start)?;
             }
             let slot = &mut self.slots[index];
             slot.processor.process(
                 &mut Block {
+                    graph_epoch: self.epoch,
                     tick,
                     audio: AudioPorts::new(&slot.input, &mut slot.output, q, 0, q)?,
                     midi_inputs: &slot.midi_input,
@@ -417,8 +454,8 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
             self.diagnostics.nodes = self.diagnostics.nodes.saturating_add(1);
             first = input_end;
         }
-        for edge in first..self.routes.len() {
-            self.route(self.routes[edge], audio, midi, start)?;
+        for edge in first..self.graph.routes.len() {
+            self.route(self.graph.routes[edge], audio, midi, start)?;
         }
         self.state.end_tick(tick, &mut self.resources)?;
         self.frame = end;
@@ -437,9 +474,13 @@ impl<P: Processor<S>, S: State> Runtime<P, S> {
         let d = edge.destination;
         match (s.node, d.node) {
             (Some(a), Some(b)) => {
-                let (before, after) = self.slots.split_at_mut(b);
-                let source = &before[a];
-                let target = &mut after[0];
+                let (source, target) = if a < b {
+                    let (before, after) = self.slots.split_at_mut(b);
+                    (&before[a], &mut after[0])
+                } else {
+                    let (before, after) = self.slots.split_at_mut(a);
+                    (&after[0], &mut before[b])
+                };
                 match edge.kind {
                     PortType::Audio => mix(
                         &source.output[s.port * q..(s.port + 1) * q],

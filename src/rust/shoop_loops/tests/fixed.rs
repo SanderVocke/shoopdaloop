@@ -617,3 +617,113 @@ fn shutdown_settles_commands_and_reclaims_recording_even_after_a_partial_tick_fa
         }
     }
 }
+
+#[shoop_test]
+fn live_capture_rerouting_publishes_whole_ticks_and_refuses_missing_consumers() {
+    use rt_runtime::Epoch;
+    for q in [16, 32, 64, 128] {
+        let c = config(q, 256, true);
+        let store = Bank::resource_store(c, 1).unwrap();
+        let p = Bank::prepare(c, store, vec![binding(0, true)], vec![]).unwrap();
+        let g = graph(1, true);
+        let (mut control, mut runtime) = p.runtime(c, &g).unwrap();
+        let mut routes = runtime.prepare_graph_changes().unwrap();
+        let mut swapped = g.clone();
+        for edge in &mut swapped.connections {
+            if edge.source.node.is_none()
+                && edge.destination.node == Some(node(1))
+                && edge.source.kind == PortType::Audio
+            {
+                edge.source.port = 1 - edge.source.port;
+            }
+        }
+        routes
+            .submit(
+                Frame(1),
+                Epoch(0),
+                routes.compiler().compile(&swapped).unwrap(),
+            )
+            .unwrap();
+        control
+            .submit(
+                Frame(0),
+                Command::Record {
+                    target: id(0),
+                    monitor_previous: false,
+                },
+            )
+            .unwrap();
+        control
+            .submit(
+                Frame(2 * q as u64),
+                Command::Play {
+                    target: id(0),
+                    position: 0,
+                },
+            )
+            .unwrap();
+        let frames = q * 4;
+        let input = vec![vec![3.; frames], vec![-7.; frames]];
+        let mut output = vec![vec![0.; frames]; 2];
+        let mut mi = [MidiBuffer::new(512, 4096).unwrap()];
+        let mut mo = [MidiBuffer::new(512, 4096).unwrap()];
+        mi[0].push((q - 1) as u32, frames, &[0x90, 60, 90]).unwrap();
+        mi[0].push((q + 3) as u32, frames, &[0x80, 60, 0]).unwrap();
+        render(&mut runtime, &input, &mut output, &mi, &mut mo, frames).unwrap();
+        assert_eq!(&output[0][..2 * q], vec![0.; 2 * q]);
+        assert_eq!(&output[1][..2 * q], vec![0.; 2 * q]);
+        assert_eq!(&output[0][2 * q..3 * q], vec![3.; q]);
+        assert_eq!(&output[1][2 * q..3 * q], vec![-7.; q]);
+        assert_eq!(&output[0][3 * q..], vec![-7.; q]);
+        assert_eq!(&output[1][3 * q..], vec![3.; q]);
+        let packets: Vec<_> = (0..mo[0].len())
+            .filter_map(|i| {
+                let (offset, packet) = mo[0].get(i)?;
+                (packet == [0x90, 60, 90] || packet == [0x80, 60, 0])
+                    .then_some((offset, packet.to_vec()))
+            })
+            .collect();
+        assert_eq!(
+            packets,
+            vec![
+                ((3 * q - 1) as u32, vec![0x90, 60, 90]),
+                ((3 * q + 3) as u32, vec![0x80, 60, 0])
+            ]
+        );
+        let r = routes.try_receipt().unwrap();
+        assert_eq!(r.result, Ok(Epoch(1)));
+        assert_eq!(r.actual, Frame(q as u64));
+        while let Some(r) = control.try_receipt() {
+            assert_eq!(r.result, Ok(Reply::Done));
+        }
+        let mut missing = g.clone();
+        missing.nodes.retain(|&n| n != node(1));
+        missing
+            .connections
+            .retain(|e| e.destination.node != Some(node(1)));
+        routes
+            .submit(
+                runtime.next_frame(),
+                Epoch(1),
+                routes.compiler().compile(&missing).unwrap(),
+            )
+            .unwrap();
+        mi[0].clear();
+        render(&mut runtime, &input, &mut output, &mi, &mut mo, q).unwrap();
+        assert_eq!(
+            routes.try_receipt().unwrap().result,
+            Err(Error::InvalidGraph)
+        );
+        assert_eq!(runtime.epoch(), Epoch(1));
+        assert_eq!(runtime.diagnostics().fault, None);
+        assert_no_heap(|| runtime.shutdown_graph_changes(&mut routes)).unwrap();
+        let at = runtime.next_frame();
+        let (mut bank, mut store) = runtime.into_parts();
+        bank.shutdown(&mut control, &mut store, at).unwrap();
+        for _ in 0..256 {
+            store.begin_callback();
+            store.reclaim();
+        }
+        assert_eq!(store.usage().free_pages, 256);
+    }
+}
