@@ -548,9 +548,6 @@ impl Recorder {
         self.phase(Phase::TickStart);
     }
     pub fn graph_start(&mut self, epoch: u64, frame: u64) {
-        if !self.enabled {
-            return;
-        }
         if self.epoch != epoch {
             if let Some(storage) = &self.storage {
                 storage.control.reset();
@@ -561,6 +558,9 @@ impl Recorder {
                 .map_or(self.generation, |s| s.control.status().generation);
             self.reset(generation);
             self.epoch = epoch;
+            if !self.enabled {
+                return;
+            }
             let at = self.now();
             let mut header = self.header(self.callback_frame, at, CALLBACK);
             header.frames = self.callback_frames;
@@ -798,6 +798,31 @@ mod tests {
         recorder.node_ready(3);
         recorder.end_tick(true);
         recorder.end_callback(true);
+    }
+
+    #[shoop_test]
+    fn graph_activation_invalidates_retained_samples_while_disabled() {
+        let (control, mut recorder, mut reader) = prepare(4).unwrap();
+        recorder.set_clock(Clock {
+            now,
+            resolution_ns: 10,
+        });
+        control.set_enabled(true);
+        render(&mut recorder, 0);
+        control.set_enabled(false);
+        render(&mut recorder, 1);
+        let generation = control.status().generation;
+        let before = TIME.with(core::cell::Cell::get);
+        assert_no_heap(|| {
+            recorder.graph_start(1, 2);
+            recorder.graph_start(1, 3);
+        });
+        assert_eq!(control.status().generation, generation + 1);
+        assert_eq!(TIME.with(core::cell::Cell::get), before);
+        assert!(!control.status().active);
+        for _ in 0..128 {
+            assert!(reader.next_packet().is_none());
+        }
     }
 
     #[shoop_test]

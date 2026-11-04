@@ -181,7 +181,9 @@ pub(crate) fn show(
         ui.add_space(28.);
         ui.vertical_centered(|ui| {
             ui.strong("No measured graph node samples");
-            ui.weak(if view.requested {
+            ui.weak(if !view.available {
+                "Timing measurements require a host with an elapsed-time clock."
+            } else if view.requested {
                 "Waiting for timing data from the host."
             } else {
                 "Turn on profiling to measure this graph."
@@ -257,18 +259,38 @@ pub(crate) fn show(
                 .auto_shrink([false, false])
                 .max_height((ui.available_height() - 26.).max(100.))
                 .show(ui, |ui| {
+                    let name_width = (ui.available_width() - 3. * 96. - 3. * 20.).max(160.);
                     egui::Grid::new("runtime_profiling_table")
                         .striped(true)
                         .spacing([20., 7.])
                         .min_col_width(76.)
                         .show(ui, |ui| {
-                            for title in ["Node", "Avg", "Worst", "Stddev"] {
-                                ui.strong(title);
+                            ui.strong("Node");
+                            for title in ["Avg", "Worst", "Stddev"] {
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(96., 20.),
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.strong(title);
+                                    },
+                                );
                             }
                             ui.end_row();
                             for row in &report.rows {
-                                ui.add_sized([240., 20.], egui::Label::new(&row.name).truncate())
-                                    .on_hover_text(&row.name);
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(name_width, 20.),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&row.name)
+                                                    .color(colors::FOREGROUND),
+                                            )
+                                            .truncate(),
+                                        )
+                                        .on_hover_text(&row.name);
+                                    },
+                                );
                                 for ns in [row.avg_ns, row.worst_ns as f64, row.stddev_ns] {
                                     let text = if row.samples == 0 {
                                         "—".into()
@@ -276,10 +298,14 @@ pub(crate) fn show(
                                         units.format(ns, budget)
                                     };
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(76., 20.),
+                                        egui::vec2(96., 20.),
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
-                                            ui.monospace(text);
+                                            ui.label(
+                                                egui::RichText::new(text)
+                                                    .monospace()
+                                                    .color(colors::FOREGROUND),
+                                            );
                                         },
                                     );
                                 }
@@ -317,6 +343,51 @@ mod tests {
             }
             _ => {}
         }
+    }
+    #[shoop_test]
+    fn switch_emits_an_immediate_request_and_respects_connection_state() {
+        let context = egui::Context::default();
+        let view = ProfilingView {
+            available: true,
+            ..Default::default()
+        };
+        let click = |enabled: bool| {
+            let mut changed = None;
+            for button in [None, Some(true), Some(false)] {
+                let position = egui::pos2(25., 18.);
+                let mut events = vec![egui::Event::PointerMoved(position)];
+                if let Some(pressed) = button {
+                    events.push(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Default::default(),
+                    });
+                }
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        changed = show(
+                            ui,
+                            &view,
+                            &StatusState::default(),
+                            &mut false,
+                            &mut Units::Microseconds,
+                            enabled,
+                        )
+                        .or(changed);
+                    },
+                );
+                output.textures_delta.clear();
+            }
+            changed
+        };
+        assert_eq!(click(true), Some(true));
+        assert!(!view.requested);
+        assert_eq!(click(false), None);
     }
     #[shoop_test]
     fn table_renders_known_statistics_and_clears_on_generation_reset() {

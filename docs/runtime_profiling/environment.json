@@ -1,0 +1,31 @@
+{
+  "date_utc": "2026-11-04T19:30:33.960770+00:00",
+  "baseline_commit": "3ca192e10552afe9ca9dfe6f4482c8b5081602bc",
+  "implementation_base_commit": "ac4748a44545582b95c5e99e7633902e97d5ee63",
+  "changes_after_base_commit": "disabled graph activation invalidation, presentation alignment, and associated tests",
+  "source_sha256": {
+    "src/rust/rt_profiling/src/recorder.rs": "ce388d67d8695aa5e34491386be0f6643df9f55da6b8fed1027cd796c6c707da",
+    "src/rust/rt_runtime/src/executor.rs": "a216203f61ce3714c7b75a18c5d8b4070f0a27741dc2bca60101fee1f90c8372",
+    "src/rust/shoop_rt_engine/examples/profiling_benchmark.rs": "cb6a5222321c6464596493f7b869d592c377cf865bbe77deadef39ed91d2c0bb",
+    "src/rust/shoop_egui/src/profiling.rs": "f8734c15b8ab054214a26d90358cb14606f0e0341efc71752606de57bcb7c8a6"
+  },
+  "platform": "Linux x86_64, KVM VM",
+  "cpu": "AMD EPYC 9V74 80-Core Processor; 5 visible virtual CPUs; cgroup quota 4 CPU cores",
+  "toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1",
+  "profile": "cargo release, optimized, no debug symbols",
+  "node": "22.22.2",
+  "chrome": "147.0.7727.117",
+  "callbacks_per_run": 128,
+  "warmup_callbacks": 32,
+  "repetitions": 3,
+  "shuffle_seed": 4321,
+  "sample_rate": 48000,
+  "worklet_clock_capability": {
+    "performance": "undefined",
+    "performance_now": "undefined",
+    "date": "function"
+  },
+  "baseline_binary_sha256": "01eb5867c6febf9640dd234fbb9528b00eea432b97c07790604fcde040df2075",
+  "current_binary_sha256": "08a591a4d428aafb77eb355e70e496670b423db394740e1dda959870a47f2b45",
+  "common_workload_sha256": "ffe32df4d0889b642c38c6e8babf62a2c21fb023e7c834a787b84549620553ac"
+}
