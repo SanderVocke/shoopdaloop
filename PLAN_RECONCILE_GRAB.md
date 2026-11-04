@@ -213,6 +213,13 @@ commands are not required for completion.
 
 Goals and these criteria require explicit user approval to change.
 
+User-approved delivery qualification, 2026-11-04: macOS checks may be ignored and
+work may proceed as though they finished. Queued macOS jobs are therefore waived
+for this delivery, not reported as passing. Linux, Windows, Wasm/browser, portable
+and policy checks remain required. The main platform matrix now starts
+independently of process inspection, preserving every inspection and platform job
+while preventing a queued macOS runner from blocking independent validation.
+
 1. **Sole fixed execution:** all integrated proofs use the current production
    fixed kernel/domain hooks, at Q=16/32/64/128 and with a fixed Q=1 reference.
    Existing fixed-engine recording, sync/program, routing, slot, recovery and
@@ -506,7 +513,8 @@ substitutes for evidence.
   native builds and Rust suite on supported platforms, required Node and Chrome
   library suites, production app/codec/worklet builds and browser workflows,
   portable bare-metal builds, Docs/CodeQL, formatting, test attributes, tracing,
-  parity and dependency boundaries. Keep test execution separate from builds
+  parity and dependency boundaries, with the user-approved macOS waiver above.
+  Keep test execution separate from builds
   that overwrite test-enabled host executables. Record real skips/facility limits.
 - [x] Run the mixed fixed-runtime end-to-end sequence: continuous history -> two
   overlapping grabs -> ordinary loop selection/playback -> delayed private wrapped

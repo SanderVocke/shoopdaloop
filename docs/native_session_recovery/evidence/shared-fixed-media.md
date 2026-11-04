@@ -4,7 +4,10 @@ The shared foundation uses the sole production graph and domain at
 Q=1/16/32/64/128. Application P04/P05 remain open. The
 [implementation plan](../../../PLAN_RECONCILE_GRAB.md) tracks final-head delivery;
 [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927) records the delivered
-head/base, full matrix and latest artifacts. Parent delivery is #930; this branch
+head/base, applicable matrix and latest artifacts. The user waived macOS checks
+on 2026-11-04 after runner queues blocked independent validation; queued macOS
+jobs are not represented as passes. Other validation requirements remain in force.
+Parent delivery is #930; this branch
 also includes the audio foundation from #909.
 
 ## Functional evidence

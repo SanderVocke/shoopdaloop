@@ -374,7 +374,6 @@ jobs:
           retention-days: 14
 
   build_and_test:
-    needs: host_process_inspection
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
