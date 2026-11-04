@@ -62,15 +62,17 @@ impl Cut {
         }
     }
     fn port(&self, id: PortId) -> Result<image::Port> {
+        let mut state = self
+            .state
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == id)
+            .ok_or_else(|| anyhow!("capture omitted port {id}"))?
+            .clone();
+        state.publication = None;
         Ok(image::Port {
-            state: self
-                .state
-                .connections
-                .application_ports
-                .iter()
-                .find(|port| port.id == id)
-                .ok_or_else(|| anyhow!("capture omitted port {id}"))?
-                .clone(),
+            state,
             external_connections: self
                 .external
                 .get(&id)

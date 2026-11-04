@@ -126,7 +126,7 @@ fn ui_peer() {
         state.tracks[1].loops[0].mode == LoopMode::Recording
     });
     std::fs::write(
-        root.join("ready"),
+        root.join("ready.tmp"),
         serde_json::to_vec(&(
             state.tracks[1].id.raw(),
             state.tracks[1].loops[0].id.raw(),
@@ -135,6 +135,7 @@ fn ui_peer() {
         .unwrap(),
     )
     .unwrap();
+    std::fs::rename(root.join("ready.tmp"), root.join("ready")).unwrap();
     loop {
         std::thread::sleep(Duration::from_millis(50));
     }

@@ -15,6 +15,9 @@ impl Service {
             .filter_map(|id| self.tracks.get(id))
             .map(|track| {
                 let mut view = track.view.clone();
+                if self.pending.values().any(|pending| matches!(pending.effect, Effect::TrackCreated(id, _) if id == view.id)) && view.structural_state == StructuralState::Confirmed {
+                    view.structural_state = StructuralState::Creating;
+                }
                 view.loops = track
                     .loops
                     .iter()
@@ -35,6 +38,12 @@ impl Service {
             .filter_map(|id| self.buses.get(id))
             .map(|bus| {
                 let mut view = bus.view.clone();
+                if self.pending.values().any(
+                    |pending| matches!(pending.effect, Effect::BusCreated(id) if id == view.id),
+                ) && view.structural_state == StructuralState::Confirmed
+                {
+                    view.structural_state = StructuralState::Creating;
+                }
                 view.control_pending = self.pending.values().any(|p| {
                     matches!(p.effect, Effect::BusControl(id) if id == view.id)
                         || matches!(&p.effect, Effect::BusControls(ids) if ids.contains(&view.id))
@@ -76,6 +85,7 @@ impl Service {
                 caps.with(capability, self.backend.capabilities().supports(capability))
             }),
             connections: Arc::new(connections),
+            host_graph: self.host_graph.clone(),
             track_processors: Arc::from([]),
             bus_processors: Arc::from([]),
             pending: self
@@ -92,9 +102,10 @@ impl Service {
 
     fn connections(&self) -> ConnectionViewState {
         let observed = &self.observed.connections;
-        let confirmed_links = observed
+        let mut confirmed_links = observed
             .confirmed_links
             .iter()
+            .filter(|link| observed.host_ports.contains_key(&link.host_port_id))
             .filter_map(|link| {
                 Some(ConfirmedConnectionState {
                     application_port_id: self.app_port(link.application_port_id)?,
@@ -102,6 +113,55 @@ impl Service {
                 })
             })
             .collect::<Vec<_>>();
+        let mut host_ports: Vec<_> = observed
+            .host_ports
+            .values()
+            .map(|port| HostPortState {
+                id: HostPortId::new(&port.id),
+                name: port.name.clone(),
+                data_type: data_type(port.data_type),
+                direction: direction(port.direction),
+            })
+            .collect();
+        if self.dynamic_ports() {
+            host_ports = self
+                .host_graph
+                .ports
+                .iter()
+                .filter_map(|port| {
+                    Some(HostPortState {
+                        id: HostPortId::new(port.locator.as_ref()?),
+                        name: port.name.clone(),
+                        data_type: port.data_type,
+                        direction: port.direction,
+                    })
+                })
+                .collect();
+            for (id, _) in &self.ports {
+                let Some(local) = self.graph_endpoint(*id) else {
+                    continue;
+                };
+                for link in &self.host_graph.links {
+                    let peer = if link.source == local {
+                        link.destination
+                    } else if link.destination == local {
+                        link.source
+                    } else {
+                        continue;
+                    };
+                    if let Some(host) = self
+                        .host_graph
+                        .port(peer)
+                        .and_then(|port| port.locator.as_ref())
+                    {
+                        confirmed_links.push(ConfirmedConnectionState {
+                            application_port_id: *id,
+                            host_port_id: HostPortId::new(host),
+                        });
+                    }
+                }
+            }
+        }
         let mixer_links: Vec<_> = self
             .observed
             .mixer
@@ -121,12 +181,13 @@ impl Service {
                 let matches = confirmed_links.iter().any(|link| {
                     link.application_port_id == *port && link.host_port_id.as_str() == host
                 });
-                (matches != intent.connected && intent.pending.is_some()).then(|| {
-                    PendingConnectionState {
-                        application_port_id: *port,
-                        host_port_id: HostPortId::new(host),
-                        desired_connected: intent.connected,
-                    }
+                (matches != intent.connected
+                    && (intent.pending.is_some()
+                        || (self.dynamic_ports() && intent.error.is_none())))
+                .then(|| PendingConnectionState {
+                    application_port_id: *port,
+                    host_port_id: HostPortId::new(host),
+                    desired_connected: intent.connected,
                 })
             })
             .collect::<Vec<_>>();
@@ -144,24 +205,18 @@ impl Service {
         ConnectionViewState {
             revision: self.revision.0,
             loading: !self.is_ready(),
-            backend_available: observed.available,
+            backend_available: if self.dynamic_ports() {
+                self.host_graph.status == shoop_port_graph::Status::Ready
+            } else {
+                observed.available
+            },
             application_ports: self
                 .ports
                 .values()
                 .map(|port| port.view.clone())
                 .collect::<Vec<_>>()
                 .into(),
-            host_ports: observed
-                .host_ports
-                .values()
-                .map(|port| HostPortState {
-                    id: HostPortId::new(&port.id),
-                    name: port.name.clone(),
-                    data_type: data_type(port.data_type),
-                    direction: direction(port.direction),
-                })
-                .collect::<Vec<_>>()
-                .into(),
+            host_ports: host_ports.into(),
             confirmed_links: confirmed_links.into(),
             pending_links: pending_links.into(),
             mixer_links: mixer_links.into(),
@@ -193,7 +248,7 @@ impl Service {
         }
     }
 
-    fn app_port(&self, backend: BackendPortId) -> Option<PortId> {
+    pub(super) fn app_port(&self, backend: BackendPortId) -> Option<PortId> {
         self.ports
             .iter()
             .find_map(|(id, port)| (port.backend == backend).then_some(*id))
@@ -253,7 +308,11 @@ impl Service {
                 BackendPortDescriptor {
                     id: channel.output_port_id,
                     owner: BackendPortOwner::Bus(created.bus_id),
-                    name: format!("bus_{}_out_{}", created.bus_id.raw(), index + 1),
+                    name: if created.bus_id == MASTER_BUS_ID {
+                        format!("master_out_{}", index + 1)
+                    } else {
+                        format!("bus_{}_out_{}", created.bus_id.raw(), index + 1)
+                    },
                     data_type: BackendPortDataType::Audio,
                     direction: BackendPortDirection::Output,
                     role: BackendPortRole::AudioOutput,
@@ -289,7 +348,7 @@ impl Service {
         self.bus_order.push(id);
         Ok(id)
     }
-    fn forget_bus(&mut self, id: BusId) {
+    pub(super) fn forget_bus(&mut self, id: BusId) {
         if let Some(bus) = self.buses.remove(&id) {
             if self.preview_bus == Some(id) {
                 self.preview_bus = None;
@@ -330,6 +389,7 @@ impl Service {
             Port {
                 backend: descriptor.id,
                 view: ApplicationPortState {
+                    publication: None,
                     id,
                     owner,
                     name: descriptor.name,
@@ -490,7 +550,12 @@ impl Service {
             }
         }
         for port in self.ports.values_mut() {
-            if let Some(descriptor) = observed.connections.application_ports.get(&port.backend) {
+            if let Some(descriptor) = observed
+                .connections
+                .application_ports
+                .get(&port.backend)
+                .filter(|_| port.view.publication.is_none())
+            {
                 port.view.name = descriptor.name.clone();
             }
         }
@@ -580,7 +645,7 @@ impl Service {
         }
     }
 
-    fn forget_track(&mut self, id: TrackId) {
+    pub(super) fn forget_track(&mut self, id: TrackId) {
         self.tracks.remove(&id);
         self.track_order.retain(|track| *track != id);
         self.loops.retain(|_, entry| entry.track != id);

@@ -4781,6 +4781,7 @@ dependencies = [
  "shoop_app_client",
  "shoop_app_protocol",
  "shoop_backend",
+ "shoop_port_graph",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_protocol",
@@ -4798,6 +4799,7 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "shoop_latency",
+ "shoop_port_graph",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -5031,6 +5033,7 @@ dependencies = [
  "shoop_host",
  "shoop_host_processes",
  "shoop_persistence_codec",
+ "shoop_port_graph",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
@@ -5082,6 +5085,7 @@ name = "shoop_jack"
 version = "0.3.0"
 dependencies = [
  "jack",
+ "jack-sys",
 ]
 
 [[package]]
@@ -5138,6 +5142,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_port_graph"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "shoop_port_graph",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_rt_backend"
 version = "0.3.0"
 dependencies = [
@@ -5171,11 +5185,13 @@ name = "shoop_rt_host_native"
 version = "0.3.0"
 dependencies = [
  "cpal 0.18.2",
+ "getrandom 0.4.3",
  "jack",
  "midir",
  "rt_runtime",
  "rtrb",
  "shoop_jack",
+ "shoop_port_graph",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",

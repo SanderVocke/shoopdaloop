@@ -463,7 +463,7 @@ impl ControlEndpoint {
                     return Staged::Refused(Refusal::InvalidId);
                 };
                 let mask = entry.outputs.current()[channel];
-                if (mask & (1 << host) != 0) == connected {
+                if mask.contains(host) == connected {
                     Staged::Done
                 } else {
                     Staged::Change(Change::ConnectMaster {
@@ -501,7 +501,7 @@ impl ControlEndpoint {
                     PortKind::MidiIn => strip.midi_inputs,
                     PortKind::MidiOut => strip.midi_outputs,
                 };
-                if (mask & (1 << host) != 0) == connected {
+                if mask.contains(host) == connected {
                     Staged::Done
                 } else {
                     Staged::Change(Change::Connect {

@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 16;
+pub const VERSION: u16 = 18;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -117,6 +117,7 @@ pub enum Command {
     Control(ControlOperation),
     NewSession,
     CommitPersistence(persistence::Key),
+    SetHostGraphConnected(HostGraphRequest),
 }
 
 impl Command {
@@ -126,6 +127,7 @@ impl Command {
         match self {
             Self::Preview(command) => command.valid(),
             Self::CommitPersistence(key) => key.valid(),
+            Self::SetHostGraphConnected(request) => request.valid(),
             Self::Control(operation) => operation.bounded(),
             Self::AddTrack(spec) => {
                 name(&spec.name)
@@ -239,6 +241,7 @@ pub struct SessionSnapshot {
     pub audio_drivers: AudioDriverRuntimeState,
     pub capabilities: BackendCapabilities,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub bus_processors: Arc<[TrackProcessorDescriptor]>,
     pub pending: Vec<PendingOperation>,
@@ -247,7 +250,17 @@ pub struct SessionSnapshot {
 
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
-        self.persistence_epoch != 0
+        let mut bindings = alloc::collections::BTreeSet::new();
+        self.connections.application_ports.iter().all(|port| {
+            port.publication.is_none_or(|key| {
+                key.0 != 0
+                    && bindings.insert(key)
+                    && self.host_graph.publication(key).is_none_or(|p| {
+                        p.spec.data_type == port.data_type && p.spec.direction == port.direction
+                    })
+            })
+        }) && self.host_graph.valid()
+            && self.persistence_epoch != 0
             && self.pending.len() <= MAX_PENDING_OPERATIONS
             && self.results.len() <= MAX_RETAINED_RESULTS
             && self

@@ -2913,3 +2913,342 @@ fn observe_host_result(
     }
     panic!("host operation did not finish");
 }
+
+#[shoop_test]
+fn graph_commands_wait_for_host_observation_and_reconcile_after_ui_detach() {
+    use shoop_port_graph::{
+        self as graph,
+        testing::{perform, FakeProvider},
+    };
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut provider = FakeProvider::new(4);
+        let mut control = provider.control();
+        let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+        let logical = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.data_type == PortDataType::Audio && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        let key = graph::LocalPortKey(1001);
+        let graph::Outcome::Published { port: local, .. } = perform(
+            &mut control,
+            graph::Operation::Publish {
+                key,
+                spec: graph::PortSpec {
+                    name: "shared label".into(),
+                    data_type: PortDataType::Audio,
+                    direction: PortDirection::Output,
+                },
+            },
+            || provider.advance(),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        let peer = provider.peer(graph::PortSpec {
+            name: "shared label".into(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Input,
+        });
+        f.service
+            .set_host_graph_controller(Box::new(control))
+            .unwrap();
+        f.service.bind_host_publication(logical, Some(key)).unwrap();
+        assert!(f
+            .service
+            .set_host_graph_controller(Box::new(provider.control()))
+            .is_err());
+        let other = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.id != logical
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        assert!(f.service.bind_host_publication(other, Some(key)).is_err());
+
+        let request = HostGraphRequest {
+            epoch: 4,
+            local,
+            peer,
+            connected: true,
+        };
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::SetHostGraphConnected(request.clone()),
+        );
+        for _ in 0..4 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(client
+            .snapshot()
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p.id == id));
+        assert!(!client.results().contains_key(&id));
+        assert!(client.snapshot().unwrap().host_graph.links.is_empty());
+        let stale_message = client
+            .command(Command::SetHostGraphConnected(request.clone()), None)
+            .unwrap();
+        f.service.detach(ConnectionId(1));
+        provider.advance();
+        assert!(!provider.control().snapshot().connected(local, peer));
+        provider.advance();
+        f.service.tick(STEP);
+        let mut client = attach(&mut f.service, 2, ConnectionId(2), encoded);
+        let state = client.snapshot().unwrap();
+        assert!(state.host_graph.valid());
+        assert_eq!(state.host_graph.links.len(), 1);
+        assert!(state.pending.is_empty());
+        assert!(state
+            .results
+            .iter()
+            .any(|r| r.id == id && matches!(r.outcome, Outcome::Confirmed { .. })));
+        let binding = state
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == logical)
+            .unwrap()
+            .publication
+            .unwrap();
+        assert!(
+            matches!(state.host_graph.publication(binding).unwrap().state, HostGraphPublicationState::Published(port) if port == local)
+        );
+        assert_eq!(
+            f.service.handle(ConnectionId(1), stale_message),
+            Err(Refusal::StaleAuthority)
+        );
+        provider.fail_next(graph::Error::new(
+            graph::ErrorKind::Backend,
+            "connection refused by provider",
+        ));
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(2),
+            Command::SetHostGraphConnected(HostGraphRequest {
+                connected: false,
+                ..request
+            }),
+        );
+        provider.advance();
+        provider.advance();
+        assert!(matches!(
+            complete(&mut f.service, &mut client, ConnectionId(2), id, encoded),
+            Outcome::Refused {
+                reason: Refusal::Engine,
+                ..
+            }
+        ));
+        assert_eq!(client.snapshot().unwrap().host_graph.links.len(), 1);
+        f.service.bind_host_publication(logical, None).unwrap();
+    }
+}
+#[shoop_test]
+fn graph_control_is_explicitly_unsupported_without_a_host_adapter() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1, ConnectionId(1), false);
+    assert_eq!(
+        client.snapshot().unwrap().host_graph.status,
+        HostGraphStatus::Unsupported
+    );
+    let outcome = command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::SetHostGraphConnected(HostGraphRequest {
+            epoch: 1,
+            local: HostGraphPortId(1),
+            peer: HostGraphPortId(2),
+            connected: true,
+        }),
+    );
+    assert!(matches!(
+        outcome,
+        Outcome::Refused {
+            reason: Refusal::Unsupported,
+            ..
+        }
+    ));
+}
+
+struct BoundProvider(shoop_port_graph::Control);
+impl shoop_port_graph::Controller for BoundProvider {
+    fn supports_io_binding(&self) -> bool {
+        true
+    }
+    fn io_binding(
+        &self,
+        key: shoop_port_graph::LocalPortKey,
+    ) -> Option<shoop_port_graph::IoBinding> {
+        use shoop_port_graph::{DataType, Direction, PublicationState};
+        let snapshot = self.0.snapshot();
+        let publication = snapshot.publication(key)?;
+        if !matches!(publication.state, PublicationState::Published(_)) {
+            return None;
+        }
+        let port = match (publication.spec.data_type, publication.spec.direction) {
+            (DataType::Audio, Direction::Input) => "audio_in_1",
+            (DataType::Audio, Direction::Output) => "audio_out_1",
+            (DataType::Midi, Direction::Input) => "midi_in_1",
+            (DataType::Midi, Direction::Output) => "midi_out_1",
+        };
+        Some(shoop_port_graph::IoBinding { port: port.into() })
+    }
+    fn snapshot(&mut self) -> std::sync::Arc<shoop_port_graph::Snapshot> {
+        self.0.snapshot()
+    }
+    fn submit(
+        &mut self,
+        request: shoop_port_graph::Request,
+    ) -> Result<shoop_port_graph::OperationId, shoop_port_graph::Error> {
+        self.0.submit(request)
+    }
+    fn take_result(&mut self) -> Option<shoop_port_graph::Completion> {
+        self.0.take_result()
+    }
+}
+#[shoop_test]
+fn application_publication_is_provider_independent_and_failed_creation_rolls_back() {
+    use shoop_port_graph::{self as graph, testing::FakeProvider};
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let mut provider = FakeProvider::new(9);
+        f.service
+            .set_host_graph_controller(Box::new(BoundProvider(provider.control())))
+            .unwrap();
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+        }
+        assert!(f.service.is_ready());
+        let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+        let initial = client.snapshot().unwrap().host_graph.publications.len();
+        assert_eq!(initial, 4);
+        let spec = TrackSpec {
+            name: "Published".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: true,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: Vec::new(),
+            creation_request_id: None,
+        };
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddTrack(spec.clone()),
+        );
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(
+            !client.results().contains_key(&id),
+            "engine acknowledgement alone cannot finish creation"
+        );
+        provider.fail_next(graph::Error::new(
+            graph::ErrorKind::Backend,
+            "publication failed",
+        ));
+        for _ in 0..64 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        assert!(matches!(
+            client.results()[&id],
+            Outcome::Refused {
+                reason: Refusal::Engine,
+                ..
+            }
+        ));
+        assert_eq!(client.snapshot().unwrap().tracks.len(), 1);
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial
+        );
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::AddTrack(spec),
+        );
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        let Outcome::TrackCreated { track, .. } = client.results()[&id] else {
+            panic!("{:?}", client.results()[&id])
+        };
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial + 4
+        );
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Track {
+                track,
+                action: TrackAction::Remove,
+            },
+        );
+        for _ in 0..8 {
+            f.service.tick(STEP);
+        }
+        drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        assert!(
+            !client.results().contains_key(&id),
+            "removal waits for provider reclamation"
+        );
+        if encoded {
+            provider.fail_next(graph::Error::new(
+                graph::ErrorKind::Backend,
+                "retirement failed",
+            ));
+        }
+        for _ in 0..32 {
+            provider.advance();
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, ConnectionId(1), encoded);
+        }
+        if encoded {
+            assert!(matches!(
+                client.results()[&id],
+                Outcome::Refused {
+                    reason: Refusal::Engine,
+                    ..
+                }
+            ));
+        } else {
+            assert!(matches!(client.results()[&id], Outcome::Confirmed { .. }));
+        }
+        assert_eq!(
+            client.snapshot().unwrap().host_graph.publications.len(),
+            initial
+        );
+        assert_eq!(f.waits.get(), f.initial_waits);
+    }
+}

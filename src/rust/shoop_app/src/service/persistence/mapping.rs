@@ -159,6 +159,7 @@ impl Candidate {
         identities.insert(source.state.id, id);
         let mut view = source.state.clone();
         view.id = id;
+        view.publication = None;
         view.owner = owner;
         self.ports.insert(
             id,
@@ -168,11 +169,12 @@ impl Candidate {
             },
         );
         for external in &source.external_connections {
-            let error = (!service
-                .observed
-                .connections
-                .host_ports
-                .contains_key(external))
+            let error = (!service.dynamic_ports()
+                && !service
+                    .observed
+                    .connections
+                    .host_ports
+                    .contains_key(external))
             .then(|| {
                 format!("external port {external} is unavailable; connection intent retained")
             });
@@ -575,6 +577,21 @@ impl Candidate {
         } else {
             BTreeMap::new()
         };
+        if service.dynamic_ports() {
+            for port in tracks
+                .iter_mut()
+                .flat_map(|track| track.ports.iter_mut())
+                .chain(buses.iter_mut().flat_map(|bus| {
+                    bus.channels
+                        .iter_mut()
+                        .map(|channel| &mut channel.output_port)
+                }))
+                .chain(global_ports.iter_mut())
+            {
+                port.external_connections
+                    .retain(|host| service.observed.connections.host_ports.contains_key(host));
+            }
+        }
         Ok((
             candidate,
             BackendSessionData {
@@ -645,6 +662,7 @@ impl Candidate {
         service.ports = self.ports;
         service.channels = self.channels;
         service.connection_intent = self.connections;
+        service.master_bank_routes_migrated = false;
         service.route_intent = self.routes;
         service.global = self.global;
         service.channel_annotations = self.annotations;

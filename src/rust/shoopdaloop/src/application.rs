@@ -433,14 +433,18 @@ mod native {
         pub fn start_with_options(
             backend: Box<dyn Backend + Send>,
             options: ApplicationStartOptions,
+            graph: Option<Box<dyn shoop_app::HostGraphController>>,
         ) -> Result<Self> {
             Self::start_thread(true, move || {
-                CooperativeApplicationRuntime::start_with_options_and_midi(
+                let mut runtime = CooperativeApplicationRuntime::start_with_options_and_midi(
                     backend,
                     options,
                     Box::new(shoop_scripting::NativeMidiService::new()),
-                )
-                .map(SessionRuntime::Local)
+                )?;
+                if let Some(graph) = graph {
+                    runtime.service.set_host_graph_controller(graph)?;
+                }
+                Ok(SessionRuntime::Local(runtime))
             })
         }
         pub fn attach(

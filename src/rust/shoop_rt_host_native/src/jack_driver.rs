@@ -1,16 +1,19 @@
+use crate::jack_graph::{self as graph, Generations};
+use crate::jack_ports;
+use shoop_port_graph::{self as contract, DataType, Direction, Snapshot, Status};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jack::{AudioIn, AudioOut, MidiIn, MidiOut, Port};
 use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, Name};
 
 use crate::cycle::{Cycle, DirectIo};
-use crate::status::{Shared, StreamFailure};
+use crate::status::{RenderPhase, Shared, StreamFailure};
 use crate::{assemble, reset_wait, Driver, Prepared, Running, StartError, Started};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,7 +53,7 @@ impl JackConfig {
             &self.midi_inputs,
             &self.midi_outputs,
         ] {
-            if ports.len() > MAX_HOST_PORTS {
+            if ports.len() > 64 {
                 return Err(StartError::InvalidConfig("too many JACK ports"));
             }
             for name in ports {
@@ -80,8 +83,25 @@ impl JackConfig {
     }
 }
 
-struct Notifications(Arc<Shared>);
+struct Notifications(Arc<Shared>, Arc<AtomicU64>, Arc<Generations>);
 impl jack::NotificationHandler for Notifications {
+    fn port_registration(&mut self, _: &jack::Client, id: jack::PortId, _: bool) {
+        self.2.changed(id);
+        self.1.fetch_add(1, Ordering::Release);
+    }
+    fn port_rename(
+        &mut self,
+        _: &jack::Client,
+        _: jack::PortId,
+        _: &str,
+        _: &str,
+    ) -> jack::Control {
+        self.1.fetch_add(1, Ordering::Release);
+        jack::Control::Continue
+    }
+    fn ports_connected(&mut self, _: &jack::Client, _: jack::PortId, _: jack::PortId, _: bool) {
+        self.1.fetch_add(1, Ordering::Release);
+    }
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
         self.0.xrun(&self.0.counters.stream_underruns);
         jack::Control::Continue
@@ -101,37 +121,40 @@ impl Notifications {
 
 struct Process {
     cycle: Cycle,
-    audio_inputs: Vec<Port<AudioIn>>,
-    audio_outputs: Vec<Port<AudioOut>>,
-    midi_inputs: Vec<Port<MidiIn>>,
-    midi_outputs: Vec<Port<MidiOut>>,
+    ports: jack_ports::Callback,
     shared: Arc<Shared>,
 }
 struct Io<'a> {
     scope: &'a jack::ProcessScope,
-    inputs: &'a [Port<AudioIn>],
-    outputs: &'a mut [Port<AudioOut>],
-    midi: &'a [Port<MidiIn>],
+    inputs: &'a [Option<Port<AudioIn>>],
+    outputs: &'a mut [Option<Port<AudioOut>>],
+    midi: &'a [Option<Port<MidiIn>>],
     writers: [Option<jack::MidiWriter<'a>>; MAX_HOST_PORTS],
 }
 impl DirectIo for Io<'_> {
     fn begin(&mut self) {}
     fn input(&self, port: usize, offset: usize, samples: &mut [f32]) {
-        samples.copy_from_slice(
-            &self.inputs[port].as_slice(self.scope)[offset..offset + samples.len()],
-        );
+        if let Some(input) = &self.inputs[port] {
+            samples.copy_from_slice(&input.as_slice(self.scope)[offset..offset + samples.len()]);
+        } else {
+            samples.fill(0.);
+        }
     }
     fn output(&mut self, port: usize, offset: usize, samples: &[f32]) {
-        self.outputs[port].as_mut_slice(self.scope)[offset..offset + samples.len()]
-            .copy_from_slice(samples);
+        if let Some(output) = &mut self.outputs[port] {
+            output.as_mut_slice(self.scope)[offset..offset + samples.len()]
+                .copy_from_slice(samples);
+        }
     }
     fn midi_input(&self, port: usize, receive: &mut dyn FnMut(u32, &[u8])) {
-        for event in self.midi[port].iter(self.scope) {
-            receive(event.time, event.bytes);
+        if let Some(input) = &self.midi[port] {
+            for event in input.iter(self.scope) {
+                receive(event.time, event.bytes);
+            }
         }
     }
     fn midi_output(&mut self, port: usize, offset: u32, bytes: &[u8]) -> bool {
-        self.writers[port].as_mut().is_some_and(|writer| {
+        self.writers[port].as_mut().is_none_or(|writer| {
             writer
                 .write(&jack::RawMidi {
                     time: offset,
@@ -143,25 +166,31 @@ impl DirectIo for Io<'_> {
 }
 impl jack::ProcessHandler for Process {
     fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        self.ports.begin(scope);
         let mut writers = std::array::from_fn(|_| None);
-        for (slot, port) in writers.iter_mut().zip(&mut self.midi_outputs) {
-            *slot = Some(port.writer(scope));
+        for (slot, port) in writers.iter_mut().zip(&mut self.ports.midi_outputs) {
+            if let Some(port) = port {
+                *slot = Some(port.writer(scope));
+            }
         }
         if self.shared.failure().is_some() {
-            for port in &mut self.audio_outputs {
+            for port in self.ports.outputs.iter_mut().flatten() {
                 port.as_mut_slice(scope).fill(0.);
             }
+            drop(writers);
+            self.ports.finish();
             return jack::Control::Continue;
         }
         let mut io = Io {
             scope,
-            inputs: &self.audio_inputs,
-            outputs: &mut self.audio_outputs,
-            midi: &self.midi_inputs,
+            inputs: &self.ports.inputs,
+            outputs: &mut self.ports.outputs,
+            midi: &self.ports.midi_inputs,
             writers,
         };
         self.cycle
             .process_direct(scope.n_frames() as usize, &mut io);
+        self.ports.finish();
         self.shared.set_state(DriverRunState::Running);
         jack::Control::Continue
     }
@@ -172,18 +201,14 @@ impl jack::ProcessHandler for Process {
 }
 
 pub(crate) struct Client {
-    active: jack::AsyncClient<shoop_jack::Notifications<Notifications>, Process>,
+    pub graph: contract::Control,
     monitor_stop: Arc<AtomicBool>,
-    monitor: JoinHandle<()>,
+    monitor: JoinHandle<Option<Cycle>>,
 }
 impl Client {
     pub fn stop(self) -> Option<Cycle> {
         self.monitor_stop.store(true, Ordering::Release);
-        let _ = self.monitor.join();
-        self.active
-            .deactivate()
-            .ok()
-            .map(|(_, _, process)| process.cycle)
+        self.monitor.join().ok().flatten()
     }
 }
 fn error(error: impl std::fmt::Display) -> StartError {
@@ -206,12 +231,52 @@ pub(crate) fn start(
             .map(|name| Name::new(&format!("jack:{name}")).expect("validated port name"))
             .collect()
     };
-    let ports = HostPorts {
+    let mut ports = HostPorts {
         audio_inputs: names(&config.audio_inputs),
         audio_outputs: names(&config.audio_outputs),
         midi_inputs: names(&config.midi_inputs),
         midi_outputs: names(&config.midi_outputs),
     };
+    let capacities = [
+        config.audio_inputs.len() + engine.strips() * engine.strip_channels as usize,
+        config.audio_outputs.len()
+            + engine.strips() * engine.strip_channels as usize
+            + engine.buses as usize * engine.bus_channels as usize,
+        config.midi_inputs.len() + engine.strips(),
+        config.midi_outputs.len() + engine.strips(),
+    ];
+    for (kind, bank) in [
+        &mut ports.audio_inputs,
+        &mut ports.audio_outputs,
+        &mut ports.midi_inputs,
+        &mut ports.midi_outputs,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if capacities[kind] > MAX_HOST_PORTS {
+            return Err(StartError::InvalidConfig(
+                "prepared session exceeds host I/O capacity",
+            ));
+        }
+        while bank.len() < capacities[kind] {
+            bank.push(
+                Name::new(&format!(
+                    "{}{kind}/{}",
+                    shoop_rt_protocol::HOST_IO_PREFIX,
+                    bank.len()
+                ))
+                .expect("bounded private port name"),
+            );
+        }
+    }
+    let slot_names: [Vec<String>; 4] = [
+        &ports.audio_inputs,
+        &ports.audio_outputs,
+        &ports.midi_inputs,
+        &ports.midi_outputs,
+    ]
+    .map(|ports| ports.iter().map(|p| p.as_str().to_owned()).collect());
     let audio_inputs = config
         .audio_inputs
         .iter()
@@ -251,25 +316,92 @@ pub(crate) fn start(
         render,
         shared,
         layout,
-    } = Prepared::new(
+    } = Prepared::with_output_count(
         engine,
         ports,
         DriverKind::Jack,
         sample_rate,
         Some(buffer_frames),
+        config.audio_outputs.len(),
     )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
     let shutdown = Arc::new(AtomicBool::new(false));
+    let dirty = Arc::new(AtomicU64::new(1));
+    let generations = Arc::new(Generations::new());
+    let mut epoch = [0; 8];
+    getrandom::fill(&mut epoch).map_err(error)?;
+    let (control, mut worker) = contract::channel(
+        u64::from_ne_bytes(epoch).max(1),
+        "jack",
+        graph::CAPABILITIES,
+    )
+    .map_err(error)?;
+    worker.enable_io_bindings();
+    let mut graph = graph::Graph::new();
+    for port in &audio_inputs {
+        graph
+            .own(&client, port, DataType::Audio, Direction::Input)
+            .map_err(error)?;
+    }
+    for port in &audio_outputs {
+        graph
+            .own(&client, port, DataType::Audio, Direction::Output)
+            .map_err(error)?;
+    }
+    for port in &midi_inputs {
+        graph
+            .own(&client, port, DataType::Midi, Direction::Input)
+            .map_err(error)?;
+    }
+    for port in &midi_outputs {
+        graph
+            .own(&client, port, DataType::Midi, Direction::Output)
+            .map_err(error)?;
+    }
+    let mut bank_key = 1;
+    for (kind, count) in [
+        config.audio_inputs.len(),
+        config.audio_outputs.len(),
+        config.midi_inputs.len(),
+        config.midi_outputs.len(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for name in slot_names[kind].iter().take(count) {
+            worker.bind_io(
+                contract::LocalPortKey(bank_key),
+                Some(contract::IoBinding { port: name.clone() }),
+            );
+            bank_key += 1;
+        }
+    }
+    let (callback_ports, io_control) = jack_ports::prepare(
+        audio_inputs,
+        audio_outputs,
+        midi_inputs,
+        midi_outputs,
+        slot_names,
+    );
+    let mut publications = crate::jack_publication::Publications::new(
+        io_control,
+        [
+            config.audio_inputs.len(),
+            config.audio_outputs.len(),
+            config.midi_inputs.len(),
+            config.midi_outputs.len(),
+        ],
+    );
     let active = client
         .activate_async(
-            shoop_jack::Notifications::new(Notifications(shared.clone()), shutdown.clone()),
+            shoop_jack::Notifications::new(
+                Notifications(shared.clone(), dirty.clone(), generations.clone()),
+                shutdown.clone(),
+            ),
             Process {
                 cycle,
-                audio_inputs,
-                audio_outputs,
-                midi_inputs,
-                midi_outputs,
+                ports: callback_ports,
                 shared: shared.clone(),
             },
         )
@@ -295,16 +427,142 @@ pub(crate) fn start(
     let monitor_stop = Arc::new(AtomicBool::new(false));
     let finished = monitor_stop.clone();
     let observed = shared.clone();
+    let replies = control.clone();
     let monitor = thread::Builder::new()
-        .name("jack-status".into())
+        .name("jack-control".into())
         .spawn(move || {
+            let client = active.as_client();
+            let mut seen = 0;
+            let mut last_scan = Instant::now();
+            let refresh =
+                |graph: &mut graph::Graph, worker: &mut contract::Worker, seen: &mut u64| {
+                    for _ in 0..3 {
+                        let before = dirty.load(Ordering::Acquire);
+                        let snapshot = graph.read(client, &generations);
+                        if before != dirty.load(Ordering::Acquire) {
+                            continue;
+                        }
+                        let snapshot = snapshot.unwrap_or_else(|error| Snapshot {
+                            status: Status::Unavailable,
+                            error: Some(error),
+                            ..Default::default()
+                        });
+                        worker.publish(snapshot)?;
+                        *seen = before;
+                        return Ok(());
+                    }
+                    Err(contract::Error::new(
+                        contract::ErrorKind::Busy,
+                        "JACK graph is changing",
+                    ))
+                };
+            let confirm = |graph: &mut graph::Graph,
+                           worker: &mut contract::Worker,
+                           seen: &mut u64,
+                           request: &contract::Request| {
+                let deadline = Instant::now() + Duration::from_millis(100);
+                loop {
+                    let result = refresh(graph, worker, seen).and_then(|()| {
+                        let snapshot = replies.snapshot();
+                        snapshot.check(request)?;
+                        let outcome = graph::Graph::outcome(&snapshot, request)?;
+                        graph::Graph::confirm(&snapshot, request, outcome)
+                    });
+                    match result {
+                        Err(error)
+                            if Instant::now() < deadline
+                                && !shutdown.load(Ordering::Acquire)
+                                && !finished.load(Ordering::Acquire)
+                                && matches!(
+                                    error.kind,
+                                    contract::ErrorKind::Backend | contract::ErrorKind::Busy
+                                ) =>
+                        {
+                            thread::sleep(Duration::from_millis(1))
+                        }
+                        result => return result,
+                    }
+                }
+            };
             while !finished.load(Ordering::Acquire) {
                 if shutdown.load(Ordering::Acquire) {
                     observed.fail(StreamFailure::DeviceNotAvailable);
                     break;
                 }
-                thread::sleep(Duration::from_millis(5));
+                if seen != dirty.load(Ordering::Acquire)
+                    || last_scan.elapsed() >= Duration::from_secs(1)
+                {
+                    let _ = refresh(&mut graph, &mut worker, &mut seen);
+                    last_scan = Instant::now();
+                }
+                if let Some((id, request, result)) =
+                    publications.poll(client, &mut graph, &mut worker)
+                {
+                    let result =
+                        result.and_then(|()| confirm(&mut graph, &mut worker, &mut seen, &request));
+                    worker.complete(id, result);
+                }
+                if !publications.busy() {
+                    if let Some((id, request)) = worker.next_request() {
+                        let refreshed = refresh(&mut graph, &mut worker, &mut seen);
+                        if matches!(
+                            request.operation,
+                            contract::Operation::Publish { .. }
+                                | contract::Operation::Unpublish { .. }
+                        ) {
+                            let result = refreshed.and_then(|()| {
+                                publications.start(
+                                    client,
+                                    &mut graph,
+                                    &replies.snapshot(),
+                                    &mut worker,
+                                    id,
+                                    request.clone(),
+                                )
+                            });
+                            let _ = refresh(&mut graph, &mut worker, &mut seen);
+                            match result {
+                                Ok(true) => {}
+                                Ok(false) => {
+                                    let result =
+                                        confirm(&mut graph, &mut worker, &mut seen, &request);
+                                    worker.complete(id, result);
+                                }
+                                Err(error) => worker.complete(id, Err(error)),
+                            }
+                        } else {
+                            let result = refreshed.and_then(|()| {
+                                graph.apply(client, &generations, &replies.snapshot(), &request)
+                            });
+                            let result = result.and_then(|_| {
+                                confirm(&mut graph, &mut worker, &mut seen, &request)
+                            });
+                            worker.complete(id, result);
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(1));
             }
+            worker.close();
+            if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
+                // Let the reset block cross the graph, including feedback edges, before removing ports.
+                let through = observed.stats().callbacks.saturating_add(2);
+                let deadline = Instant::now()
+                    + reset_wait(observed.driver().buffer_frames, observed.sample_rate());
+                while observed.stats().callbacks < through
+                    && !shutdown.load(Ordering::Acquire)
+                    && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }
+            if shutdown.load(Ordering::Acquire) {
+                observed.fail(StreamFailure::DeviceNotAvailable);
+            }
+            active
+                .deactivate()
+                .ok()
+                .map(|(_, _, process)| process.cycle)
         })
         .map_err(|failure| StartError::Thread(failure.to_string()))?;
     Ok(assemble(
@@ -313,7 +571,7 @@ pub(crate) fn start(
         Running {
             shared,
             driver: Driver::Jack(Client {
-                active,
+                graph: control,
                 monitor_stop,
                 monitor,
             }),
@@ -353,7 +611,11 @@ mod tests {
                 buffer_frames: 128,
             },
         ));
-        let notifications = Notifications(shared.clone());
+        let notifications = Notifications(
+            shared.clone(),
+            Arc::new(AtomicU64::new(0)),
+            Arc::new(Generations::new()),
+        );
         notifications.observe_sample_rate(48000);
         assert!(shared.failure().is_none());
         notifications.observe_sample_rate(44100);
