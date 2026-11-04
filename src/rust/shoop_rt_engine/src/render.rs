@@ -84,6 +84,10 @@ impl Render {
     pub fn resource_usage(&self) -> rt_runtime::resource::PoolUsage {
         self.runtime.resource_usage()
     }
+    /// Work from the last complete host callback; reading it changes no budgets.
+    pub fn resource_work(&self) -> (rt_runtime::resource::Work, rt_runtime::resource::RenderWork) {
+        (self.runtime.resource_work(), self.runtime.render_work())
+    }
     fn report(&self) -> Report {
         Report {
             next_frame: self.next_frame(),
@@ -235,7 +239,17 @@ impl Stopped {
     }
     /// Finite, repeatable cleanup; it does not settle unrendered time.
     pub fn cleanup(&mut self) -> Result<(), Error> {
-        self.planner.cleanup(&mut self.resources)?;
+        match self.planner.cleanup(&mut self.resources) {
+            Ok(()) => {}
+            Err(Error::Busy) => {
+                for _ in 0..self.reclaim_bound {
+                    self.resources.begin_callback();
+                    self.resources.reclaim();
+                }
+                self.planner.cleanup(&mut self.resources)?;
+            }
+            Err(error) => return Err(error),
+        }
         for _ in 0..self.reclaim_bound {
             self.resources.begin_callback();
             self.resources.reclaim();
@@ -243,3 +257,7 @@ impl Stopped {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "shared_tests.rs"]
+mod shared_tests;

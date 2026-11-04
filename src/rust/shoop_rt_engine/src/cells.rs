@@ -76,6 +76,8 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 
 pub(crate) struct Cells {
     pub profiling: Option<rt_runtime::profiling::Control>,
+    #[cfg(test)]
+    pub fail_reader_tick: AtomicBool,
     pub next_frame: AtomicU64,
     pub preview_finished: AtomicU64,
     pub preview_playing: AtomicU64,
@@ -104,6 +106,8 @@ impl Cells {
     ) -> Arc<Self> {
         let cells = Self {
             profiling: None,
+            #[cfg(test)]
+            fail_reader_tick: AtomicBool::new(false),
             next_frame: AtomicU64::new(0),
             preview_finished: AtomicU64::new(0),
             preview_playing: AtomicU64::new(0),

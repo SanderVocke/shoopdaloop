@@ -1066,6 +1066,22 @@ impl ControlEndpoint {
                     EngineOp::Crossfade,
                 );
             }
+            if job.graph.is_some() && self.model.strip(strip.id).is_some() {
+                let Ok(epoch) = self.graph_epoch.checked_next() else {
+                    job.fail(Refusal::Capacity);
+                    return true;
+                };
+                self.submit_job_op(
+                    job,
+                    Frame(activation),
+                    self.pool.strip_input(slot),
+                    EngineOp::InputSource {
+                        epoch,
+                        changed: self.model.strips[slot]
+                            .is_none_or(|old| old.midi_inputs != strip.midi_inputs),
+                    },
+                );
+            }
             if strip.outputs.swapped {
                 self.submit_job_op(
                     job,

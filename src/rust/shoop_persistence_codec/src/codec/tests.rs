@@ -45,7 +45,7 @@ fn session_files_preserve_ordinary_bus_shapes_order_and_an_empty_bus_set() {
         crate::document::from_bundle(reloaded).unwrap();
     }
 }
-fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
+pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {
         object: Some(object),
         frames,
@@ -56,7 +56,7 @@ fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
         recording_started_at: None,
     }
 }
-fn content() -> image::Loop {
+pub(super) fn content() -> image::Loop {
     image::Loop {
         id: LoopId::from_raw(1),
         name: "User take/?".into(),
@@ -67,6 +67,256 @@ fn content() -> image::Loop {
         audio: Vec::new(),
         midi: Vec::new(),
     }
+}
+
+pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image::Session {
+    image::Session {
+        sample_rate: 48000,
+        global: GlobalControlState::default(),
+        tracks: vec![image::Track {
+            id: TrackId::from_raw(1),
+            name: "Track".into(),
+            port_name_base: "track".into(),
+            sync: false,
+            audio_channels: channels,
+            midi,
+            ports: vec![],
+            loops: vec![content.clone()],
+            controls: image::Controls {
+                input_gain_db: 0.,
+                input_balance: 0.,
+                monitoring: false,
+                output_gain_db: 0.,
+                output_balance: 0.,
+                muted: false,
+            },
+        }],
+        buses: vec![image::Bus {
+            id: BusId::from_raw(1),
+            name: "Master".into(),
+            gain_db: 0.,
+            balance: 0.,
+            muted: false,
+            channels: ["Left", "Right"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, label)| image::BusChannel {
+                    id: BusChannelId::from_raw(index as u64 + 1),
+                    label: label.into(),
+                    port: image::Port {
+                        state: ApplicationPortState {
+                            publication: None,
+                            id: PortId::from_raw(index as u64 + 1),
+                            owner: ApplicationPortOwner::Bus {
+                                bus_id: BusId::from_raw(1),
+                            },
+                            name: label.into(),
+                            data_type: PortDataType::Audio,
+                            direction: PortDirection::Output,
+                            role: PortRole::AudioOutput,
+                            connection_policy: ConnectionPolicy::OwnerManaged,
+                        },
+                        external_connections: vec![],
+                    },
+                })
+                .collect(),
+        }],
+        bus_display_order: vec![BusId::from_raw(1)],
+        preview_bus: None,
+        global_ports: vec![],
+        routes: vec![],
+        selected: vec![],
+        target: None,
+    }
+}
+
+#[shoop_test]
+fn session_and_audio_files_round_trip_pinned_shared_audio_then_reload_into_editable_pcm() {
+    use rt_runtime::{
+        resource::{shared_audio, ResourceStore},
+        Config, Frame, Revision,
+    };
+    let mut resources = ResourceStore::new(
+        Config {
+            max_frames: 8,
+            resource_pages: 160,
+            resource_slots: 24,
+            page_bytes: 24,
+            ..Config::default()
+        }
+        .prepare()
+        .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap();
+    let audio = resources
+        .prepare_audio_store(
+            shared_audio::Config {
+                channels: 2,
+                history_frames: 4,
+                views: 16,
+                pages: 140,
+            },
+            Frame(0),
+        )
+        .unwrap();
+    resources.begin_callback();
+    resources
+        .render_io()
+        .append_audio_history(audio, Frame(0), &[1., -1., 2., -2., 3., -3., 4., -4.])
+        .unwrap();
+    let editable = resources.grab_audio(audio, Frame(1)..Frame(4)).unwrap();
+    let old = resources.snapshot(editable, Frame(4)).unwrap();
+    resources
+        .render_io()
+        .replace_audio(editable, Revision(1), 2, &[9., -9., 8., -8.])
+        .unwrap();
+    let changed = resources.snapshot(editable, Frame(4)).unwrap();
+    resources.remove(editable).unwrap();
+
+    for (snapshot, expected) in [
+        (old, [2., -2., 3., -3., 4., -4.]),
+        (changed, [8., -8., 3., -3., 9., -9.]),
+    ] {
+        let mut cursor = resources.cursor(snapshot.id).unwrap();
+        let mut bytes = [0; 24];
+        let mut filled = 0;
+        while filled < bytes.len() {
+            resources.begin_callback();
+            let count = resources
+                .read(&mut cursor, &mut bytes[filled..(filled + 7).min(24)])
+                .unwrap();
+            filled += count;
+        }
+        let samples: Vec<_> = bytes
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
+        assert_eq!(samples, expected);
+        let mut content = content();
+        content.frames = 3;
+        content.audio = vec![channel(1, 3, 0), channel(2, 3, 0)];
+        let payloads = (0..2)
+            .map(|c| {
+                image::Payload::Audio(Arc::new(
+                    samples.iter().skip(c).step_by(2).copied().collect(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        let session = session(content.clone(), 2, false);
+        let captured = Arc::new(image::Image {
+            manifest: image::Manifest::Session(session),
+            payloads: payloads.clone(),
+        });
+        let Value::File { bytes, .. } = (Work::Encode {
+            image: captured,
+            kind: IoTaskKind::SaveSession,
+            wav: false,
+            standard: false,
+            channels: vec![],
+        })
+        .run()
+        .unwrap() else {
+            panic!("session file");
+        };
+        let Value::Decoded(decoded) = (Work::Decode {
+            kind: IoTaskKind::LoadSession,
+            bytes,
+            rate: 48000,
+        })
+        .run()
+        .unwrap() else {
+            panic!("decoded session");
+        };
+        let Value::Image(restored) = (Work::Prepare {
+            decoded,
+            mapping: vec![],
+            update_length: false,
+        })
+        .run()
+        .unwrap() else {
+            panic!("prepared session");
+        };
+        assert_eq!(restored.payloads, payloads);
+        let image::Manifest::Session(session) = &restored.manifest else {
+            panic!("session");
+        };
+        assert_eq!(session.tracks[0].loops[0].gain, content.gain);
+
+        for wav in [false, true] {
+            let Value::File { bytes, .. } = (Work::Encode {
+                image: Arc::new(image::Image {
+                    manifest: image::Manifest::Loop {
+                        sample_rate: 48000,
+                        content: content.clone(),
+                    },
+                    payloads: payloads.clone(),
+                }),
+                kind: IoTaskKind::ExportLoopAudio,
+                wav,
+                standard: false,
+                channels: vec![0, 1],
+            })
+            .run()
+            .unwrap() else {
+                panic!("audio file");
+            };
+            let Value::Decoded(decoded) = (Work::Decode {
+                kind: IoTaskKind::ImportLoopAudio,
+                bytes,
+                rate: 48000,
+            })
+            .run()
+            .unwrap() else {
+                panic!("decoded audio");
+            };
+            let Value::Image(loaded) = (Work::Prepare {
+                decoded,
+                mapping: vec![0, 1],
+                update_length: true,
+            })
+            .run()
+            .unwrap() else {
+                panic!("prepared audio");
+            };
+            assert_eq!(loaded.payloads, payloads);
+        }
+
+        let loaded = resources.create().unwrap();
+        let data: Vec<_> = samples.iter().copied().flat_map(f32::to_le_bytes).collect();
+        let upload = resources
+            .begin_upload(loaded, Revision(0), snapshot.description)
+            .unwrap();
+        resources.begin_callback();
+        resources.write_upload(upload, 0, &data).unwrap();
+        resources.finish_upload(upload).unwrap();
+        resources.commit(upload).unwrap();
+        let loaded_snapshot = resources.snapshot(loaded, Frame(0)).unwrap();
+        let cow = resources.fork_audio(audio, loaded_snapshot.id).unwrap();
+        resources
+            .render_io()
+            .replace_audio(cow, Revision(1), 0, &[7., -7.])
+            .unwrap();
+        let mut cursor = resources.cursor(loaded_snapshot.id).unwrap();
+        resources.begin_callback();
+        let mut original = [0; 24];
+        assert_eq!(resources.read(&mut cursor, &mut original).unwrap(), 24);
+        assert_eq!(original.as_slice(), data);
+        resources.release_snapshot(loaded_snapshot.id).unwrap();
+        resources.release_snapshot(snapshot.id).unwrap();
+        resources.remove(cow).unwrap();
+        resources.remove(loaded).unwrap();
+    }
+    for _ in 0..1024 {
+        resources.begin_callback();
+        resources.reclaim();
+    }
+    resources.cleanup_audio_store(audio).unwrap();
+    for _ in 0..1024 {
+        resources.begin_callback();
+        resources.reclaim();
+    }
+    assert_eq!(resources.usage().free_pages, 160);
 }
 #[shoop_test]
 fn standard_midi_export_places_all_initial_state_before_frame_zero_events() {
