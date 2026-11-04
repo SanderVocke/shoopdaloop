@@ -22,7 +22,7 @@ const INJECTED: usize = 16;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeConfiguration {
     pub token: u64,
-    pub midi_inputs: u64,
+    pub midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
     pub epoch: rt_runtime::Epoch,
     pub inputs: u8,
     pub outputs: u8,
@@ -41,7 +41,7 @@ pub enum EngineOp {
     Configure(NodeConfiguration),
     InputSource {
         epoch: rt_runtime::Epoch,
-        midi_inputs: u64,
+        midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
     },
     DiscardConfiguration {
         token: u64,
@@ -175,9 +175,9 @@ impl Gains {
 /// A strip's input stage: two connection banks of host inputs, input gain and
 /// balance, a capture feed for its loops and a monitoring feed.
 pub struct StripInput {
-    pending_history: Option<(rt_runtime::Epoch, u64)>,
+    pending_history: Option<(rt_runtime::Epoch, [u64; crate::MAX_HOST_PORTS / 64])>,
     history_token: u64,
-    history_midi_inputs: u64,
+    history_midi_inputs: [u64; crate::MAX_HOST_PORTS / 64],
     configuration: Option<NodeConfiguration>,
     slot: usize,
     cells: Arc<Cells>,
@@ -284,7 +284,7 @@ impl StripInput {
         Self {
             history_token: 1,
             pending_history: None,
-            history_midi_inputs: 0,
+            history_midi_inputs: [0; crate::MAX_HOST_PORTS / 64],
             configuration: None,
             slot,
             cells: settings.cells.clone(),
@@ -1114,7 +1114,7 @@ mod tests {
         let at = host.endpoint().at();
         let configuration = NodeConfiguration {
             token: 1,
-            midi_inputs: 0,
+            midi_inputs: [0; crate::MAX_HOST_PORTS / 64],
             epoch: epoch.checked_next().unwrap(),
             inputs: 1,
             outputs: 1,
