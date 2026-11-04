@@ -136,6 +136,14 @@ maintenance; they are not claimed as intra-callback high-water marks. The prepar
 reservations and multi-tick maximum-host workload establish the finite capacity
 bound separately.
 
+Run 6212 passed the refreshed native functional/policy suites, JACK and bare-metal.
+Its expanded release fixture found a stimulus-count mistake: a 64-event burst had
+not subtracted regular packets elsewhere in the same larger-Q tick. The fixture
+now counts the entire tick before choosing its burst, preserving the 64/65-event
+expectations. Persistence additionally saves and retains the loaded-and-reedited
+third revision through subsequent family and full replacement. Both updates need
+fresh CI; no failed measurement is accepted as evidence.
+
 | Criteria | Implementation/proof owner |
 | --- | --- |
 | 1 | R1/R2/R5: production fixed hooks; fixed shared-media integration fixture |

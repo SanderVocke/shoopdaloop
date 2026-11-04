@@ -92,12 +92,19 @@ fn fixed_shared_callback_measurements() {
             for (phase, count) in [("midi_density_limit", 64), ("midi_density_refusal", 65)] {
                 h.measure_phase = phase;
                 let at = h.aligned_future(128);
-                h.burst = Some((at, count - packets(at, q).len()));
+                let regular: usize = (0..q)
+                    .map(|offset| packets(at + offset as u64, q).len())
+                    .sum();
+                h.burst = Some((at, count - regular));
                 let check = h.send(at + q as u64, Operation::HistoryStatus { source: 0 });
                 let Reply::History(status) = h.result(check) else {
                     panic!("density history")
                 };
-                assert_eq!(status.failure, (count > 64).then_some(Error::Capacity));
+                assert_eq!(
+                    status.failure,
+                    (count > 64).then_some(Error::Capacity),
+                    "Q={q} partition={partition} count={count}"
+                );
                 let Reply::History(recovered) = h.op(Operation::HistoryStatus { source: 0 }) else {
                     panic!("density recovery")
                 };
