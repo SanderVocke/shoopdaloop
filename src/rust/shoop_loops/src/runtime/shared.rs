@@ -107,6 +107,7 @@ pub(super) struct Shared {
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
+    building: usize,
     turn: usize,
     callback: Option<Frame>,
     allowance: usize,
@@ -217,6 +218,7 @@ impl Shared {
                     value: None,
                 })
                 .collect(),
+            building: 0,
             turn: 0,
             callback: None,
             allowance: settings.edit_steps_per_callback,
@@ -677,6 +679,7 @@ impl Shared {
             &initial.state,
         )?);
         job.dirty = true;
+        self.building += 1;
         self.jobs[id.slot as usize].value = Some(job);
         Ok(())
     }
@@ -686,7 +689,7 @@ impl Shared {
             self.remaining = self.allowance;
             self.work = SharedWork::default();
         }
-        while self.remaining > 0 && !self.jobs.is_empty() {
+        while self.remaining > 0 && self.building > 0 {
             let mut selected = None;
             for _ in 0..self.jobs.len() {
                 let slot = self.turn;
@@ -717,6 +720,9 @@ impl Shared {
                 Err(error) => job.failure = Some(error),
             }
             self.jobs[slot].value = Some(job);
+            if job.midi_edit.is_none() || job.failure.is_some() {
+                self.building -= 1;
+            }
         }
         Ok(())
     }
@@ -736,6 +742,9 @@ impl Shared {
     }
     pub fn take(&mut self, id: CandidateId) -> Result<Candidate, Error> {
         let value = self.candidate(id)?;
+        if value.midi_edit.is_some() && value.failure.is_none() {
+            self.building -= 1;
+        }
         self.jobs[id.slot as usize].value = None;
         self.jobs[id.slot as usize].generation = self.jobs[id.slot as usize]
             .generation

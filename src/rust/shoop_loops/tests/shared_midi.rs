@@ -274,6 +274,9 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
         )
         .unwrap();
         let mut resolver = Resolver::prepare(topology).unwrap();
+        resolver
+            .enable_fixed(rt_runtime::fixed::Quantum::new(1).unwrap())
+            .unwrap();
         for (sequence, (voice, at, transition)) in [
             (
                 0,
@@ -385,7 +388,8 @@ fn resolver_capture_grabs_prepared_replacement_and_mixed_playback_match_partitio
                     .into_iter()
                     .find(|&cut| cut > now)
                     .unwrap();
-                    let interval = resolver.preview(Frame(host_end.min(forced)), &[]).unwrap();
+                    let interval = resolver.preview_fixed(&[]).unwrap();
+                    assert!(interval.end <= Frame(host_end.min(forced)));
                     let decisions = [
                         resolver.decisions().unwrap()[0],
                         resolver.decisions().unwrap()[1],

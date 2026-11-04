@@ -178,6 +178,9 @@ fn resolver_driven_grab_replace_export_and_history_are_partition_independent() {
             )
             .unwrap();
             let mut resolver = Resolver::prepare(topology).unwrap();
+            resolver
+                .enable_fixed(rt_runtime::fixed::Quantum::new(1).unwrap())
+                .unwrap();
             let mut renderers = [
                 AudioRenderer::prepare(2, FRAMES, Smoothing::None).unwrap(),
                 AudioRenderer::prepare(2, FRAMES, Smoothing::None).unwrap(),
@@ -267,7 +270,8 @@ fn resolver_driven_grab_replace_export_and_history_are_partition_independent() {
                     assert_eq!(store.read(&mut cursor, &mut [0; 24]), Ok(24));
                     assert_eq!(store.copy_remaining(), 0);
                     loop {
-                        let interval = resolver.preview(Frame(ceiling), &[]).unwrap();
+                        let interval = resolver.preview_fixed(&[]).unwrap();
+                        assert!(interval.end <= Frame(ceiling));
                         let decisions = [
                             resolver.decisions().unwrap()[0],
                             resolver.decisions().unwrap()[1],

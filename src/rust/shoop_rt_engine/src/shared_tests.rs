@@ -1,6 +1,7 @@
 use super::*;
 use crate::{prepare_with_shared, Engine, EngineDescription, HostPorts, Segment};
 use alloc::vec::Vec;
+use rt_runtime::midi_state::MidiState;
 use rt_runtime::{
     executor::Command,
     resource::{self, Request as ResourceRequest, ResourceCommand, Snapshot},
@@ -453,6 +454,70 @@ fn midi_events(data: &[u8]) -> Vec<(u64, Vec<u8>)> {
         at += 12 + n;
     }
     events
+}
+
+fn input_state(start: u64, end: u64, q: usize) -> MidiState {
+    let mut state = MidiState::default();
+    for frame in start..end {
+        for packet in packets(frame, q) {
+            state.apply_packet(&packet, 1024).unwrap();
+        }
+    }
+    state
+}
+fn rendered_midi(
+    old: &[(u64, Vec<u8>)],
+    new: &[(u64, Vec<u8>)],
+    initial: MidiState,
+    new_initial: MidiState,
+    play: u64,
+    publish: u64,
+    end: u64,
+    length: u64,
+    q: usize,
+) -> Vec<(u64, Vec<u8>)> {
+    let latency = if q == 1 { 0 } else { q as u64 };
+    let mut output = Vec::new();
+    let mut state = MidiState::default();
+    let mut active = false;
+    for tick in (play..end - latency).step_by(q) {
+        let position = (tick - play) % length;
+        let events = if tick < publish { old } else { new };
+        if tick == play || tick == publish || position == 0 {
+            if active {
+                assert_eq!(
+                    shoop_loops::midi_restore::cleanup(&state, |p| {
+                        output.push((tick + latency, p.to_vec()));
+                        Ok::<(), Error>(())
+                    })
+                    .first_error,
+                    None
+                );
+            }
+            state = if tick < publish { initial } else { new_initial };
+            for (frame, packet) in events.iter().take_while(|e| e.0 < position) {
+                let _ = frame;
+                state.apply_packet(packet, 1024).unwrap();
+            }
+            assert_eq!(
+                shoop_loops::midi_restore::restore(&state, |p| {
+                    output.push((tick + latency, p.to_vec()));
+                    Ok::<(), Error>(())
+                })
+                .first_error,
+                None
+            );
+            active = true;
+        }
+        for (frame, packet) in events
+            .iter()
+            .filter(|e| e.0 >= position && e.0 < position + q as u64)
+        {
+            output.push((tick + latency + frame - position, packet.clone()));
+            state.apply_packet(packet, 1024).unwrap();
+        }
+    }
+    output
 }
 
 #[shoop_test]
@@ -910,6 +975,35 @@ fn shared_grabs_private_wrapping_edits_and_fixed_playback_preserve_old_owners() 
                 events.push(((position + frame) % length, packet));
             }
             events.sort_by_key(|e| e.0);
+            let old_initial = input_state(h.stimulus.unwrap(), start, q);
+            let mut new_initial = input_state(h.stimulus.unwrap(), patch_start, q);
+            for (_, packet) in expected_midi(patch_start, 2 * q as u64, q)
+                .iter()
+                .take_while(|e| e.0 < 1)
+            {
+                new_initial.apply_packet(packet, 1024).unwrap();
+            }
+            let expected_packets = rendered_midi(
+                &expected_midi(start, length, q),
+                &events,
+                old_initial,
+                new_initial,
+                play,
+                publish,
+                end,
+                length,
+                q,
+            );
+            let actual_packets: Vec<_> = h
+                .packets
+                .iter()
+                .filter(|(frame, _)| *frame >= play + latency && *frame < end)
+                .cloned()
+                .collect();
+            assert_eq!(
+                actual_packets, expected_packets,
+                "MIDI Q={q}, partition={partition}"
+            );
             assert_eq!(
                 midi_events(&bytes(
                     &mut stopped.resources,
