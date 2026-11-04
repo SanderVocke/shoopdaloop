@@ -36,6 +36,7 @@ pub(crate) enum Purpose {
     InjectMidi(BackendTrackId),
     Smoothing(u32),
     Profiling,
+    Preview,
     Persistence,
     CancelReads,
 }
@@ -85,7 +86,7 @@ impl Requests {
         self.outgoing
             .iter()
             .chain(self.in_flight.values())
-            .all(|pending| pending.sequence > sequence)
+            .all(|pending| pending.purpose == Purpose::Preview || pending.sequence > sequence)
     }
 
     pub fn clear(&mut self) {

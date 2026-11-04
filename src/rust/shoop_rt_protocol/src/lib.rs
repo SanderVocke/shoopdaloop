@@ -23,7 +23,9 @@ pub use replacement::{ReplacementEdit, StripPreset};
 pub use schema::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
+/// Reserved names for prepared I/O slots that are addressable by the host only.
+pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.
 pub const MAX_NAME_BYTES: usize = 64;
 /// Most audio channels per strip direction reported in telemetry.

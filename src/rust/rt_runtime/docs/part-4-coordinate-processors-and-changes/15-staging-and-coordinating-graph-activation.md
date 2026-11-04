@@ -16,7 +16,7 @@ The [staged routes example](../../examples/staged_routes.rs) starts with two con
 cargo run -p rt_runtime --example staged_routes
 ```
 
-Initially each consumer has its own decision slot/output route, producing 0.5/0.25. The candidate swaps both bindings and routes; the domain publishes values 0.75/0.125 at the same cut. Independent output and producer-observation assertions detect mismatched bindings or routes.
+Initially each consumer reads its own domain value and output route, producing 0.5/0.25. The candidate swaps routes; the domain publishes values 0.75/0.125 at the same cut. Independent output and per-node completion assertions detect mismatched domain state or routes.
 
 It checks unused/refused/stale permits, whole/split/irregular/one-frame callbacks and a zero call at the cut. It releases every Ready/Taken owner explicitly, including a separate no-previous-graph case. All callbacks are heap-guarded; compilation, owning-result disposal and destruction stay off-render.
 
@@ -24,9 +24,9 @@ It checks unused/refused/stale permits, whole/split/irregular/one-frame callback
 
 Opt in with `runtime.prepare_graph_staging(candidate_count)` once, while `next_frame()` is still zero. The example prepares one stage slot. Zero slots, re-preparation or preparation after rendering are refused.
 
-This reserves fixed owner metadata and checks a compatible per-plan storage envelope. It does not compile future plans or allocate their descriptor vectors. Compile the candidate off-render with `compile_planned`, including its decision bindings.
+This reserves fixed owner metadata and checks a compatible per-plan storage envelope. It does not compile future plans or allocate their descriptor vectors. Compile the candidate off-render with `compile`.
 
-Runtime admission accounts for **retained vector capacities**, not just populated rows. `PreparedPlan::storage_bytes()` includes descriptor storage, steps, connections, membership and bindings, excluding allocator overhead. A valid small description backed by oversized vectors can still be refused; so can an oversized displaced active plan at activation. [Chapter 17](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) separates these costs from compiler/validator scratch and other queued owners.
+Runtime admission accounts for **retained vector capacities**, not just populated rows. `PreparedPlan::storage_bytes()` includes descriptor storage, steps, connections and membership, excluding allocator overhead. A valid small description backed by oversized vectors can still be refused; so can an oversized displaced active plan at activation. [Chapter 17](../part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) separates these costs from compiler/validator scratch and other queued owners.
 
 ## 2. Stage an owner, not an active graph
 
@@ -79,7 +79,7 @@ Both branches leave graph/domain state and output unchanged. The next attempt su
 
 ## 4. Finish fallible preflight, then publish both halves
 
-The successful preflight checks candidate membership, both new decision bindings and both signal routes. All refusals occur before changing domain values or consuming the graph permit.
+The successful preflight checks candidate membership and both signal routes. All refusals occur before changing domain values or consuming the graph permit.
 
 Only then does it publish simple preflighted assignments and commit:
 
@@ -99,7 +99,7 @@ Dropping an unused permit changes nothing; it does not undo arbitrary applicatio
 
 ## 5. Retain a pending request without locking the candidate
 
-For the main cut, an operation retains only its receipt, StageId, expected epoch and target frame, then returns Pending. At that frame, `plan` rechecks the permit and resolves the receipt using the result. It does not trust the earlier Ready observation as a lock.
+For the main cut, an operation retains only its receipt, StageId, expected epoch and target frame, then returns Pending. At that frame, `begin_tick` rechecks the permit and resolves the receipt using the result. It does not trust the earlier Ready observation as a lock.
 
 The test cut is three samples after the subsequent rendering batch starts. Every partition yields 0.5/0.25 before it and 0.75/0.125 from it onward. The terminal result records the actual cut:
 
@@ -110,7 +110,7 @@ The test cut is three samples after the subsequent rendering batch starts. Every
     assert_eq!(execution.operation_result, Some(Reply::Activated(Epoch(2))));
 ```
 
-A zero callback at that boundary neither activates nor resolves the request; the next nonempty callback does. Operation-time publication happens during action delivery; plan-time publication happens after due actions and before processing the chosen interval. The new routes and bindings serve that interval.
+A zero callback at that boundary neither activates nor resolves the request; the next nonempty callback does. Operation-time publication happens during action delivery; plan-time publication happens after due actions and before processing the chosen interval. The new routes and domain state serve that whole tick.
 
 The context's copied `graph_epoch` describes entry. Commit returns the new epoch; later contexts/final diagnostics observe it. Pending tokens and Ready graph owners have independent lifetimes: release/reuse/another activation may invalidate the pending reference. Recheck at publication, and resolve refusal without losing the domain outcome.
 
@@ -128,7 +128,7 @@ Release does not undo the new active graph. Nor does disconnect release hidden a
 
 A planner's permit is not the only way to change the graph. `prepare_with_initial_graph` and normal `Command::Commit` publish graphs, and `Command::Remove`/`Install` change processors, without involving the planner's operations. A planner that depends on particular consumers protects them through two hooks, which run before anything changes:
 
-- `Planner::admit_graph(candidate)` refuses a published graph that lacks a required consumer or binding;
+- `Planner::admit_graph(candidate)` refuses a published graph that lacks a required consumer;
 - `Planner::admit_processor_change(node)` refuses removing that node's processor, or installing into its slot.
 
 A refusal fails preparation, or rejects the command with the planner's error while the active graph, epoch and slots stay unchanged. Both hooks default to admitting everything. `admit_graph` also runs off-render in `prepare_with_initial_graph`; otherwise both run during callback ingress, so they obey the same no-heap, nonblocking contract as the rest of the planner.
@@ -153,7 +153,7 @@ Output capacity and recovery delivery remain runtime responsibilities. It does
 not relax pending-injection checks or reset arbitrary application state. Ordinary
 route edits retain `commit()`; the loop library uses the reset variant only after
 preflighting its complete fresh-owner replacement. See its
-[configuration chapter](../../../shoop_loops/docs-new/part-6-content-and-graph/12-editing-the-graph-around-loops.md)
+[configuration chapter](../../../shoop_loops/docs/topology-activation.md)
 for that larger transaction.
 
 [Next: Recording resources together](16-recording-resources-together.md)

@@ -728,6 +728,12 @@ impl Mirror {
     pub fn host_descriptors(&self) -> BTreeMap<String, BackendHostPortDescriptor> {
         self.host_ports
             .iter()
+            .filter(|port| {
+                !port
+                    .name
+                    .as_str()
+                    .starts_with(shoop_rt_protocol::HOST_IO_PREFIX)
+            })
             .map(|port| {
                 let id = port.name.as_str().to_owned();
                 (

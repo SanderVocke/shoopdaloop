@@ -5,7 +5,6 @@ use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired
 use rt_runtime::graph::{
     Catalog, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan,
 };
-use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::{
     CaptureGroupConfig, Cursor, Reply as ResourceReply, Request, ResourceStore,
@@ -61,12 +60,6 @@ impl Processor<LoopPlanner> for Node {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Half(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Half(node) => node.planning(),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -397,6 +390,7 @@ fn run(parts: &[usize]) {
     .unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 2,
@@ -411,6 +405,7 @@ fn run(parts: &[usize]) {
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology(1, 0),
         &mut resources,
         Settings {
@@ -455,11 +450,11 @@ fn run(parts: &[usize]) {
         .collect();
     let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
         resources,
         &initial,
-        &client.bindings_for(&initial),
     )
     .unwrap();
     let mut control = Controls {

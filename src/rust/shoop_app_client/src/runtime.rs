@@ -18,6 +18,9 @@ pub trait Delivery {
 /// session client or service to file formats or platform APIs.
 pub trait PersistenceIo {
     fn click_track(&self) -> ClickTrackState;
+    fn take_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        None
+    }
     fn handles(&self, intent: &AppIntent) -> bool;
     fn complete_platform(&mut self, intent: AppIntent);
     fn apply(
@@ -192,13 +195,16 @@ impl Runtime {
     pub fn take_file_request(&mut self) -> Option<ApplicationFileRequest> {
         self.persistence_io.as_mut()?.take_request()
     }
-    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-        None
+    pub fn take_audio_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        self.persistence_io.as_mut()?.take_preview()
     }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
         if matches!(
             intent,
-            AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+            AppIntent::CompleteIoOutput { .. }
+                | AppIntent::FailIoTask { .. }
+                | AppIntent::CompleteClickTrackPreview { .. }
+                | AppIntent::ClickTrackPreviewStarted { .. }
         ) {
             let handled = self
                 .persistence_io
@@ -604,6 +610,7 @@ impl Runtime {
                 audio_drivers: state.audio_drivers.clone(),
                 capabilities: state.capabilities,
                 connections: Arc::clone(&state.connections),
+                host_graph: Arc::clone(&state.host_graph),
                 ..Default::default()
             })
             .unwrap_or_default();
@@ -699,6 +706,7 @@ impl Runtime {
                         | u64::from(registration.saturating_add(1)),
                 );
                 ports.push(ApplicationPortState {
+                    publication: None,
                     id: port,
                     owner: ApplicationPortOwner::LuaControl {
                         script_id: script.id,
@@ -938,6 +946,7 @@ impl Runtime {
             AppIntent::AddLoop { track_id } => Command::AddLoop { track: track_id },
             AppIntent::Global(action) => Command::Global(action),
             AppIntent::Piano(action) => Command::Piano(action),
+            AppIntent::SetHostGraphConnected(request) => Command::SetHostGraphConnected(request),
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,

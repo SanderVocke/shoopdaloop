@@ -662,7 +662,8 @@ Node/browser execution. Full workspace tests, release/measurement collection,
 Node/browser/worklet/Miri and final-head CI/review were **not rerun**, as requested.
 The old dependency wait is historical; original full final acceptance is unclaimed.
 Detailed contracts/probes and complete earlier stage history are in the archived
-integration notes; usage remains in the [service README](src/rust/shoop_engine_service/README.md).
+integration notes. The demonstrator was subsequently retired; its useful composition
+and latency scenarios now live in the [shared test support](src/rust/shoop_loops_test_support/README.md).
 
 Historical release source `c2734153` retains 21 processes / 43008 callback rows and
 complete raw-bundle validation under

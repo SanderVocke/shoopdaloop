@@ -68,11 +68,6 @@ pub fn native_config(
         AudioDriverConfig::Jack(jack) => {
             let config = shoop_rt_host_native::JackConfig {
                 client_name: jack.client_name.clone(),
-                audio_inputs: jack.audio_inputs.clone(),
-                audio_outputs: jack.audio_outputs.clone(),
-                midi_inputs: jack.midi_inputs.clone(),
-                midi_outputs: jack.midi_outputs.clone(),
-                connections: jack.connections.clone(),
             };
             (DriverConfig::Jack(config), 1024)
         }

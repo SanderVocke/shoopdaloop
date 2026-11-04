@@ -90,8 +90,12 @@ fn main() {
     .prepare()
     .unwrap();
     let node = NodeId::from_parts(0, 1).unwrap();
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare(config, vec![PreparedNode::new(node, Gain(0.5))]).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![PreparedNode::new(node, Gain(0.5))],
+    )
+    .unwrap();
     let description = GraphDescription {
         nodes: vec![node],
         connections: vec![

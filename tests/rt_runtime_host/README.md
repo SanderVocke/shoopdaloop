@@ -63,4 +63,9 @@ JavaScript message delivery, structured cloning, object creation, and GC are **n
 2. `u32` return mask, followed by increasing-slot replies in the same length/bytes format.
 3. `u32` FNV-style hash of the 128 actual sample bit patterns.
 
-Only five mask bits are valid; packet lengths are 48–512 bytes. The native reader rejects truncated/trailing data and limits journal size to 64 MiB. Generation of the golden artifact is reproducible with `gzip -n -c target/rt-runtime-host/reports/journal.bin`; update it only after an actual successful browser run and review the corresponding source/evidence changes. Its uncompressed SHA-256 is `fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237`. Checked-in stage-6 results are in `docs/rt_runtime/evidence/hosts-stage6.json`.
+Only five mask bits are valid; packet lengths are 48–512 bytes. The native reader rejects truncated/trailing data and limits journal size to 64 MiB. Generation of the golden artifact is reproducible with `gzip -n -c target/rt-runtime-host/reports/journal.bin`; update it only after an actual successful browser run and review the corresponding source/evidence changes. Its uncompressed SHA-256, current reference counters and recording provenance are
+in [data/offline.json](data/offline.json). The current journal preserves every
+request, rendered sample hash, MIDI event and non-revision response byte from the
+historical recording. Four capture metadata responses now publish revisions per
+whole Q=1 tick; the sidecar records those exact changes. Historical stage-6 results
+remain in `docs/rt_runtime/evidence/hosts-stage6.json`.

@@ -237,6 +237,9 @@ pub extern "C" fn shoop_rt_worklet_profiling_clock(resolution_ns: u32) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
         with_host(false, |host| {
+            if let Some(control) = host.profiling() {
+                control.use_outer_callback_budget();
+            }
             host.set_profiling_clock(rt_runtime::profiling::Clock {
                 now: profiling_now,
                 resolution_ns: u64::from(resolution_ns),

@@ -1,6 +1,9 @@
 #![no_std]
 extern crate alloc;
 
+mod host_graph;
+pub use host_graph::*;
+
 #[cfg(test)]
 extern crate std;
 
@@ -736,25 +739,15 @@ impl Default for DummyAudioDriverConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(default))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
-    pub audio_inputs: Vec<String>,
-    pub audio_outputs: Vec<String>,
-    pub midi_inputs: Vec<String>,
-    pub midi_outputs: Vec<String>,
-    pub connections: Vec<(String, String)>,
 }
 
 impl Default for JackAudioDriverConfig {
     fn default() -> Self {
         Self {
             client_name: "ShoopDaLoop".to_owned(),
-            audio_inputs: vec!["audio_in_1".to_owned(), "audio_in_2".to_owned()],
-            audio_outputs: vec!["audio_out_1".to_owned(), "audio_out_2".to_owned()],
-            midi_inputs: vec!["midi_in_1".to_owned()],
-            midi_outputs: vec!["midi_out_1".to_owned()],
-            connections: Vec::new(),
         }
     }
 }
@@ -768,35 +761,6 @@ impl JackAudioDriverConfig {
             return Err(
                 "JACK client name must contain 1 to 63 bytes without a colon or NUL".to_owned(),
             );
-        }
-        let mut names = alloc::collections::BTreeSet::new();
-        for ports in [
-            &self.audio_inputs,
-            &self.audio_outputs,
-            &self.midi_inputs,
-            &self.midi_outputs,
-        ] {
-            if ports.len() > 64 {
-                return Err("JACK supports at most 64 ports per kind and direction".to_owned());
-            }
-            for name in ports {
-                if name.trim().is_empty()
-                    || name.len() > 59
-                    || name.contains([':', ',', '\0'])
-                    || !names.insert(name)
-                {
-                    return Err("JACK port names must be unique, nonempty, at most 59 bytes, without colons, commas or NUL".to_owned());
-                }
-            }
-        }
-        if self.connections.len() > 256
-            || self.connections.iter().any(|(source, target)| {
-                [source, target]
-                    .iter()
-                    .any(|name| name.trim().is_empty() || name.len() > 256 || name.contains('\0'))
-            })
-        {
-            return Err("invalid JACK startup connections".to_owned());
         }
         Ok(())
     }
@@ -1116,20 +1080,6 @@ impl Default for LoopState {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDataType {
-    Audio,
-    Midi,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDirection {
-    Input,
-    Output,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1198,6 +1148,8 @@ pub enum ConnectionPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub publication: Option<HostGraphLocalKey>,
     pub id: PortId,
     pub owner: ApplicationPortOwner,
     pub name: String,
@@ -1814,12 +1766,14 @@ impl Default for ScriptingState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewOutput {
     System,
     MasterBus,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewStatus {
     Cancelled,
     #[default]
@@ -1831,12 +1785,14 @@ pub enum ClickTrackPreviewStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickSoundDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackState {
     pub preview_output: Option<ClickTrackPreviewOutput>,
     pub master_preview_available: bool,
@@ -2068,6 +2024,7 @@ pub struct AppSnapshot {
     pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
@@ -2597,6 +2554,7 @@ pub enum AppIntent {
         dialog_id: ScriptDialogId,
         button_id: ScriptDialogButtonId,
     },
+    SetHostGraphConnected(HostGraphRequest),
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -2889,6 +2847,7 @@ impl AppIntent {
             Self::ConvertScriptKind { .. } => "scripting.convert_kind",
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
+            Self::SetHostGraphConnected(_) => "host_graph.set",
             Self::SetPortConnected { .. } => "connection.set",
             Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
@@ -3543,6 +3502,7 @@ mod tests {
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
         let port = ApplicationPortState {
+            publication: None,
             id: port_id,
             owner: ApplicationPortOwner::Track {
                 track_id,

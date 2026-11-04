@@ -66,9 +66,8 @@ outside this implementation.
 ## Design rules
 
 - Instrument the production fixed-tick kernel first. At this baseline it is
-  `GraphRuntime::{process,run_fixed_tick,run_fixed_graph}` in `rt_runtime`, reached
-  through `shoop_rt_engine::Render`. Standalone `rt_runtime::fixed::Runtime` and its
-  migration comments are not the authoritative production integration path.
+  `GraphRuntime::{process,run_tick,run_graph}` in `rt_runtime`, reached
+  through `shoop_rt_engine::Render`. The prior standalone runtime prototypes have been removed by the refreshed base.
 - Keep the core `no_std` and preserve dependency boundaries and unsafe-code policy.
   Hosts supply a monotonic clock with documented resolution and bounded call cost.
   Native and worklet clocks may have different origins; compare only calibrated
@@ -126,7 +125,7 @@ Reconcile these against the current base before implementation.
 
 | Area | Current code |
 | --- | --- |
-| Production kernel and graph descriptors | `rt_runtime/src/executor.rs`, `graph.rs`, `graph/activation.rs`, `fixed/host_buffer.rs` |
+| Production kernel and graph descriptors | `rt_runtime/src/executor.rs`, `graph.rs`, `graph/activation.rs`, `host_buffer.rs` |
 | Engine graph builds and render ownership | `shoop_rt_engine/src/{graph,jobs,replacement,render,cells,node,pool}.rs` |
 | Host timing, bridges and xrun causes | `shoop_rt_host_native/src/{cycle,direct,status,cpal_driver,jack_driver,dummy}.rs`; `shoop_rt_host_worklet/src/{host,abi}.rs`; `shoopdaloop/rt_audio_worklet.js` |
 | Engine messages and bounded carriers | `shoop_rt_protocol/src/{schema,message,codec}.rs`; `shoop_rt_transport/src/{client,carrier}.rs`; record carrier implementations |
@@ -365,3 +364,25 @@ draft PR opened while the larger cross-platform CI matrix and automated review r
 benchmark evidence and final browser validation follow in a separate validation
 milestone before marking delivery complete. This overlaps independent verification
 without changing any goals or acceptance criteria.
+
+Base reconciliation: while this task ran, the target advanced to
+`3ca192e10552afe9ca9dfe6f4482c8b5081602bc`, including quantum API cleanup, wide host
+I/O, host graph control and previews. Merge both sets of functionality, preserve
+its new wire tags, append profiling request tag 35, and fence engine/app protocols
+as versions 8/21. The matching uninstrumented benchmark baseline is now that
+refreshed base; the earlier 2,645-test result describes the initial baseline and
+will be superseded by fresh validation. The target also independently fixed the
+same final-callback shutdown acknowledgement race.
+
+Refreshed-base acceptance: warning-denying workspace build and all **2,682/2,682**
+native tests pass (6 facility-dependent skips), in 155 seconds. All 15 profiling
+integration tests and the production worklet artifact contract pass after the
+protocol/API reconciliation. An additional recorder regression verifies that split
+engine callbacks cannot create fictitious device deadlines: native/worklet hosts
+use the complete outer callback budget; standalone offline callbacks retain their
+own complete budget. Four-target dependency audits and the 395-module tracing
+inventory remain clean.
+
+Draft delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 . No automated
+review has appeared yet. The refreshed-base merge is ready for remote CI; final
+release measurements and the complete Wasm/browser checks remain in progress.

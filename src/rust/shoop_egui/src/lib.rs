@@ -14,6 +14,7 @@ mod details_pane;
 mod dial;
 mod fonts;
 mod global_controls;
+mod host_controls;
 mod key_input;
 mod loop_widget;
 mod meter_ballistics;
@@ -48,8 +49,7 @@ pub use app_widget::{
     CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
     DEFAULT_NEW_TRACK_DRY_MIDI, DEFAULT_NEW_TRACK_MIDI, DEFAULT_NEW_TRACK_MODE,
     DEFAULT_NEW_TRACK_PROCESSOR, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, ENGINE_TRANSPORT,
-    JACK_AUDIO_INPUTS, JACK_AUDIO_OUTPUTS, JACK_CLIENT_NAME, JACK_CONNECTIONS, JACK_MIDI_INPUTS,
-    JACK_MIDI_OUTPUTS, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT,
+    JACK_CLIENT_NAME, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT,
     NEW_ENGINE_CHANNELS, NEW_ENGINE_LOOPS, NEW_ENGINE_LOOP_MEMORY_MB, NEW_ENGINE_QUANTUM,
     NEW_ENGINE_TRACKS, RUNTIME_PROFILING, SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR,
     USER_SCRIPTS,
@@ -60,6 +60,7 @@ pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
 pub(crate) use details_pane::MediaView;
 pub use global_controls::GlobalControls;
+pub use host_controls::{HostAction, HostConnectionState, HostLocation, HostUiState};
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};

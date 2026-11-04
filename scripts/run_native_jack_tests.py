@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -19,7 +20,12 @@ def main() -> int:
     args = parser.parse_args()
     if not shutil.which("jackd"):
         raise RuntimeError("strict JACK acceptance requires jackd with its dummy driver")
+    args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
+    preview_config = args.output / "preview-driver.json"
+    preview_config.write_text(json.dumps({"Jack": {
+        "client_name": "ShoopPreviewAcceptance",
+    }}))
     cargo_args = ["--release"] if args.profile == "release" else []
     env = os.environ.copy()
     env.pop("SHOOP_ALLOW_MISSING_BACKENDS", None)
@@ -27,11 +33,14 @@ def main() -> int:
     env["SHOOP_JACK_TEST_BUFFER_CHANGES"] = "1"
     env["SHOOP_JACK_TEST_SERVER_LOSS"] = "1"
     env["RUST_BACKTRACE"] = "1"
+    env["SHOOP_PREVIEW_DRIVER_CONFIG"] = str(preview_config)
+    env["SHOOP_PREVIEW_LOG_DIR"] = str(args.output)
     commands = [
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_native", "--no-default-features", "--features", "jack", "--test", "jack", "native_jack_server_readiness", *cargo_args],
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_native", "--no-default-features", "--features", "jack", "--lib", *cargo_args],
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_native", "--no-default-features", "--features", "jack", "--test", "jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "jack", *cargo_args, "--", "--test-threads=1"],
+        ["cargo", "test", "--locked", "-p", "shoop_host", "--test", "recovery", "native_master_preview_device_acceptance", *cargo_args, "--", "--ignored", "--exact", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoop_rt_host_process", "native_jack", *cargo_args, "--", "--test-threads=1"],
         ["cargo", "test", "--locked", "-p", "shoopdaloop", "native_jack_application_start", *cargo_args, "--", "--test-threads=1"],
     ]

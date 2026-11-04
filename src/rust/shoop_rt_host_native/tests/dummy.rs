@@ -105,7 +105,7 @@ fn controlled_mode_renders_exactly_the_requested_frames() {
 }
 
 #[shoop_test(no_wasm = "native driver and threads")]
-fn fixed_quantum_native_startup_handles_partial_callbacks_and_returns_all_owners() {
+fn quantum_native_startup_handles_partial_callbacks_and_returns_all_owners() {
     for q in [16, 32, 64, 128] {
         let mut settings = config(DummyConfig {
             buffer_frames: 7,

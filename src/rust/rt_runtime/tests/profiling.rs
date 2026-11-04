@@ -2,13 +2,12 @@ mod support;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{Control, GraphRuntime, PreparedNode},
-    fixed::Quantum,
     graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType},
     planner::NoPlanner,
     processor::{ProcessBlock, Processor},
     profiling::{self, Clock, Collector, Reader},
     resource::ResourceStore,
-    Config, Error, NodeId,
+    Config, Error, NodeId, Quantum,
 };
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
@@ -101,13 +100,13 @@ fn prepare(
             },
         ),
     ];
-    let (control, mut runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+    let (control, mut runtime) = GraphRuntime::prepare_for_host(
         config,
         256,
         Quantum::new(q).unwrap(),
         nodes,
         NoPlanner,
-        ResourceStore::new(config).unwrap(),
+        ResourceStore::new(config, Quantum::new(q).unwrap()).unwrap(),
     )
     .unwrap();
     let mut edges = Vec::new();
@@ -128,13 +127,10 @@ fn prepare(
         ]);
     }
     runtime
-        .prepare_initial_graph(
-            &GraphDescription {
-                nodes: vec![id(0), id(1)],
-                connections: edges,
-            },
-            &[],
-        )
+        .prepare_initial_graph(&GraphDescription {
+            nodes: vec![id(0), id(1)],
+            connections: edges,
+        })
         .unwrap();
     runtime.prepare_host_buffering().unwrap();
     let (profile, mut recorder, reader) = profiling::prepare(2).unwrap();

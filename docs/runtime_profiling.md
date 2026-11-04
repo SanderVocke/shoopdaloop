@@ -39,6 +39,9 @@ early and marking it incomplete. Changing the graph invalidates the capture.
 Native hosts supply nanoseconds from a primed `Instant` epoch. A browser worklet
 imports `shoop_profiling.now`, using its realm's `performance.now()` when present.
 The observed positive clock step is shown; zero means resolution is unknown.
+Complete native/worklet driver callbacks supply the deadline budget; split engine
+parts are never treated as independent device deadlines. Offline hosts without
+outer callback timing use their complete engine callback budget.
 Clock origins differ by host instance and cannot be compared across connections.
 Logical sample frames identify audio intervals, not elapsed execution time. Raw
 host records preserve both engine stream frames and the external AudioContext
@@ -74,8 +77,8 @@ unavailable rather than failing audio preparation.
 
 The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
-bulk, metering and profiling rotate fairly. Engine protocol version 7, application
-protocol version 15, and SDM2 shared-memory descriptors reject incompatible peers.
+bulk, metering and profiling rotate fairly. Engine protocol version 8, application
+protocol version 21, and SDM2 shared-memory descriptors reject incompatible peers.
 The application backend collects and computes Welford statistics outside rendering;
 live reports refresh at most five times per second. The worklet endpoint performs
 bounded forwarding on the audio thread, including the existing record encoding

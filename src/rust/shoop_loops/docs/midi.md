@@ -18,7 +18,7 @@ Selecting no source cleans up once and clears the projection/cursor, even if the
 
 Prepare `MidiCapture` with matching interval/event/byte bounds. `process(..., capture: None)` still tracks connected input while stopped. Invalid input ranges/capacity leave its projection unchanged. Copy `state()` at the capture-start boundary before observing the current interval: that is the initial state of the new take, not a history scan or prerecording.
 
-With a reserved `(CaptureIntervalId, member)`, the operation additionally stages the original input buffer. The planner still owns activation, group commit and freeze. Valid input remains observed even if later staging fails; a staging refusal is not retroactive input rollback. The reserved input buffer's recovery form is handled separately from ordinary event/byte limits, so all 32 CC120/CC123 packets remain visible even to a small ordinary-input configuration. Capture-group producer declarations must provision for that recovery data as well as normal output.
+With a reserved `(CaptureTickId, member)`, the operation additionally stages the original input buffer. The planner still owns activation, group commit and freeze. Valid input remains observed even if later staging fails; a staging refusal is not retroactive input rollback. The reserved input buffer's recovery form is handled separately from ordinary event/byte limits, so all 32 CC120/CC123 packets remain visible even to a small ordinary-input configuration. Capture-group producer declarations must provision for that recovery data as well as normal output.
 
 ## Verification boundary
 

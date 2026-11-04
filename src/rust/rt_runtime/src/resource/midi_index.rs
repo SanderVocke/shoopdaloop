@@ -323,10 +323,11 @@ mod tests {
 impl ResourceStore {
     pub fn with_midi_indexing(
         config: PreparedConfig,
+        quantum: Quantum,
         indexing: MidiIndexConfig,
     ) -> Result<Self, Error> {
         let pool = MidiPool::new(indexing)?;
-        let mut store = Self::new(config)?;
+        let mut store = Self::new(config, quantum)?;
         store.midi_indexes = pool;
         Ok(store)
     }

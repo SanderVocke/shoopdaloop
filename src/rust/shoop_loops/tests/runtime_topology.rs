@@ -305,6 +305,7 @@ impl Harness {
         .unwrap();
         let mut resources = ResourceStore::with_capture_groups(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             Some(MidiIndexConfig {
                 versions: 4,
                 checkpoints_per_version: 4,
@@ -3066,19 +3067,11 @@ fn graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_witho
             .compile_graph(&routes(false, true, false))
             .unwrap();
         let mut descriptor = plan.descriptor().clone();
-        let mut planning = plan.planning().clone();
-        if missing {
-            descriptor.steps.retain(|s| s.node != node(1));
-            planning.bindings.retain(|b| b.consumer != node(1));
-        } else {
-            planning.bindings[0].decision_slot = 2;
-        }
-        let bad = rt_runtime::graph::PreparedPlan::from_planned_descriptor(
-            plan.config(),
-            descriptor.clone(),
-            planning.clone(),
-        )
-        .unwrap();
+        let removed = node(if missing { 1 } else { 3 });
+        descriptor.steps.retain(|s| s.node != removed);
+        let bad =
+            rt_runtime::graph::PreparedPlan::from_descriptor(plan.config(), descriptor.clone())
+                .unwrap();
         let staged = h.graph_plan(1, 1, bad);
         let at = h.engine.next_frame().0;
         let rejected = h.op(at, pair(topology, staged, 1, 0));
@@ -3108,7 +3101,6 @@ fn graph_pair_preflight_rejects_node_pair_scope_epoch_and_cancelled_owners_witho
             panic!("candidate owner")
         };
         assert_eq!(owner.descriptor(), &descriptor);
-        assert_eq!(owner.planning(), &planning);
     }
     let at = h.engine.next_frame();
     let ticket = assert_no_heap(|| {

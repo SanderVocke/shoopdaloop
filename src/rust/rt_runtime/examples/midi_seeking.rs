@@ -71,8 +71,8 @@ fn remove_all(
 
 fn event_copies() -> Result<(), Error> {
     let config = config(16)?;
-    let mut store = ResourceStore::new(config)?;
-    let mut foreign = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
+    let mut foreign = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let mut sysex = [0; 37];
     sysex[0] = 0xf0;
     sysex[1] = 0x7d;
@@ -170,6 +170,7 @@ fn event_copies() -> Result<(), Error> {
 fn checkpoint_states() -> Result<(), Error> {
     let mut store = ResourceStore::with_midi_indexing(
         config(128)?,
+        rt_runtime::Quantum::new(1).unwrap(),
         MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 3,

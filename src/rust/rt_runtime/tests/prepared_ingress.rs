@@ -102,7 +102,7 @@ fn prepared_executor_ingress_recycles_owning_chunk_buffers_without_heap_operatio
     }
     .prepare()
     .unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let resource = store.create().unwrap();
     let upload = store
         .begin_upload(
@@ -115,8 +115,13 @@ fn prepared_executor_ingress_recycles_owning_chunk_buffers_without_heap_operatio
             },
         )
         .unwrap();
-    let (mut control, mut runtime) =
-        GraphRuntime::<Empty>::prepare_with_resources(config, vec![], store).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::<Empty>::prepare_with_resources(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![],
+        store,
+    )
+    .unwrap();
     control.prepare_submissions().unwrap();
     let mut bytes = vec![0; 4].into_boxed_slice();
     let pointer = bytes.as_ptr();

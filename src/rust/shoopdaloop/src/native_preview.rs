@@ -9,20 +9,20 @@ fn complete(handle: &ApplicationHandle, request_id: u64, success: bool, message:
     });
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "system-preview")]
 pub use system::{is_available, NativePreviewPlayer};
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 pub fn is_available() -> bool {
     false
 }
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 pub struct NativePreviewPlayer {
     handle: ApplicationHandle,
 }
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 impl NativePreviewPlayer {
     pub fn new(handle: ApplicationHandle) -> anyhow::Result<Self> {
         Ok(Self { handle })
@@ -40,7 +40,7 @@ impl NativePreviewPlayer {
     }
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "system-preview")]
 mod system {
     use super::*;
     use std::cell::Cell;

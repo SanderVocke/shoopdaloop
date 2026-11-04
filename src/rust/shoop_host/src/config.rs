@@ -1,4 +1,3 @@
-use crate::registry::AppTransport;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 pub use shoop_app_api::HostSettings;
@@ -56,36 +55,51 @@ mod tests {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppTransport {
+    #[default]
+    Socket,
+    SharedMemory,
+}
+
 #[cfg(test)]
 mod jack_tests {
     use shoop_app_api::{AudioDriverConfig, JackAudioDriverConfig};
     use shoop_wasm_test_support::shoop_test;
 
     #[shoop_test(no_wasm = "native host configuration")]
-    fn old_jack_profiles_receive_stable_ports_and_new_profiles_round_trip() {
+    fn jack_profiles_only_accept_the_dynamic_port_format() {
         let config: super::HostConfig =
             serde_json::from_str(r#"{"driver":{"Jack":{"client_name":"Looper"}}}"#).unwrap();
         let AudioDriverConfig::Jack(mut jack) = config.settings.driver else {
-            panic!("JACK profile changed kind")
+            panic!("JACK profile changed kind");
         };
-        assert_eq!(jack.audio_inputs, ["audio_in_1", "audio_in_2"]);
-        assert_eq!(jack.audio_outputs, ["audio_out_1", "audio_out_2"]);
-        assert_eq!(jack.midi_inputs, ["midi_in_1"]);
-        assert_eq!(jack.midi_outputs, ["midi_out_1"]);
-        jack.connections
-            .push(("system:capture_1".into(), "audio_in_1".into()));
+        assert_eq!(jack.client_name, "Looper");
+        assert_eq!(
+            serde_json::to_value(&jack).unwrap(),
+            serde_json::json!({"client_name":"Looper"})
+        );
         assert_eq!(
             serde_json::from_slice::<JackAudioDriverConfig>(&serde_json::to_vec(&jack).unwrap())
                 .unwrap(),
             jack
         );
+        for obsolete in [
+            "audio_inputs",
+            "audio_outputs",
+            "midi_inputs",
+            "midi_outputs",
+            "connections",
+        ] {
+            let mut old = serde_json::json!({"driver":{"Jack":{"client_name":"Looper"}}});
+            old["driver"]["Jack"][obsolete] = serde_json::json!([]);
+            assert!(
+                serde_json::from_value::<super::HostConfig>(old).is_err(),
+                "obsolete field accepted: {obsolete}"
+            );
+        }
         assert!(jack.validate().is_ok());
-        jack.midi_inputs.push("audio_in_1".into());
-        assert!(jack.validate().is_err());
-        jack = JackAudioDriverConfig::default();
-        jack.audio_outputs = vec!["out".into(); 65];
-        assert!(jack.validate().is_err());
-        jack = JackAudioDriverConfig::default();
         jack.client_name.push('\0');
         assert!(jack.validate().is_err());
     }

@@ -41,10 +41,13 @@ Standalone formats are the existing loop-audio archive, WAV, exact-MIDI archive
 and Standard MIDI File. Include channel selection/mapping, existing resampling
 confirmation, optional loop-length update and format-loss warnings.
 
-This is a partial parity slice. Content duplication and generated click insertion
-remain explicitly tracked under P11; click generation/preview remains P15. FX,
-dry/wet, composites, additional buses, latency/take-alignment controls, live driver
-switching and session-owned script/resource workflows remain their existing rows.
+This is a partial parity slice. Content duplication and the remaining MIDI
+initial/preroll state cases stay under P11. Audio/MIDI click generation and
+insertion are supported, and System/Master preview is COMPLETE under P15; see the
+[preview completion evidence](docs/native_session_recovery/preview.md).
+Ordinary output buses are COMPLETE under P13. FX, dry/wet, composites,
+latency/take-alignment controls, live driver switching and session-owned
+script/resource workflows remain their existing rows.
 Do not silently discard these features from loaded files or saved live state.
 Machine-local settings and script runtimes remain client-owned. Multi-UI support,
 remote deployment, host-crash recovery, automatic script restart and shared-memory
@@ -478,8 +481,9 @@ still pending.
 - [x] Upload/stage media through the service and commit one validated replacement.
   Preserve opposite media, loop identity and unaffected metadata; apply only the
   reference-prescribed offset resets and requested loop-length update.
-- [x] Separate restored import support from still-refused duplication/click actions
-  when exposing capabilities. Leave their explicit ledger follow-ups intact.
+- [x] Separate import, click-insertion and duplication capabilities. Import and
+  click generation/insertion are restored; duplication remains tracked under P11.
+  System/Master preview is complete under P15.
 
 Verification: actual client -> service -> adapter -> RT imports, exact export/import
 round-trips, standard MIDI warnings, channel reorder/subset mapping, resampling
@@ -652,10 +656,11 @@ service/AudioWorklet scenarios, including actual file output/input, URL failure,
 cancel/failed-save/retry and Lua completion/refusal behavior. Run the parity checker
 and workflow/config checks; confirm feature-branch PRs run checks without deployment.
 
-Public-admission milestone: production file menus now expose session capture/load
+Public-admission milestone: production file menus expose session capture/load
 and standalone loop import/export. Separate duplication and click-insertion flags
-keep those P11 actions explicitly unavailable. The ledger preserves every open
-row and names restored core behavior and remaining dependencies.
+allow restored click generation/insertion while duplication remains unavailable
+under P11. System/Master preview is complete under P15. The ledger preserves every
+open row and names restored core behavior and remaining dependencies.
 
 Platform callbacks use process-wide file task identities. Native codecs share a
 bounded two-worker/eight-queued-job pool; dropped runtimes cancel queued work and

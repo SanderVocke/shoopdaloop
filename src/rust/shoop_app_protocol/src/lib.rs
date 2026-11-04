@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 15;
+pub const VERSION: u16 = 21;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -72,6 +72,7 @@ pub struct OperationId {
 /// Shared operations only. Platform dialogs, script VMs and UI drafts are local.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Command {
+    Preview(PreviewCommand),
     AddTrack(TrackSpec),
     AddLoop {
         track: TrackId,
@@ -116,6 +117,7 @@ pub enum Command {
     Control(ControlOperation),
     NewSession,
     CommitPersistence(persistence::Key),
+    SetHostGraphConnected(HostGraphRequest),
     SetProfiling(bool),
 }
 
@@ -124,7 +126,9 @@ impl Command {
         let name = |text: &str| text.len() <= 128;
         let detail = |text: &str| text.len() <= 512;
         match self {
+            Self::Preview(command) => command.valid(),
             Self::CommitPersistence(key) => key.valid(),
+            Self::SetHostGraphConnected(request) => request.valid(),
             Self::Control(operation) => operation.bounded(),
             Self::AddTrack(spec) => {
                 name(&spec.name)
@@ -225,6 +229,8 @@ pub struct OperationResult {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
     pub profiling: ProfilingView,
+    pub preview: ClickTrackState,
+    pub preview_bus: Option<BusId>,
     pub bus_limits: BusLimits,
     pub persistence_epoch: u64,
     pub sync_sources: Vec<(LoopId, LoopId)>,
@@ -238,6 +244,7 @@ pub struct SessionSnapshot {
     pub audio_drivers: AudioDriverRuntimeState,
     pub capabilities: BackendCapabilities,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub bus_processors: Arc<[TrackProcessorDescriptor]>,
     pub pending: Vec<PendingOperation>,
@@ -246,7 +253,17 @@ pub struct SessionSnapshot {
 
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
-        self.persistence_epoch != 0
+        let mut bindings = alloc::collections::BTreeSet::new();
+        self.connections.application_ports.iter().all(|port| {
+            port.publication.is_none_or(|key| {
+                key.0 != 0
+                    && bindings.insert(key)
+                    && self.host_graph.publication(key).is_none_or(|p| {
+                        p.spec.data_type == port.data_type && p.spec.direction == port.direction
+                    })
+            })
+        }) && self.host_graph.valid()
+            && self.persistence_epoch != 0
             && self.pending.len() <= MAX_PENDING_OPERATIONS
             && self.results.len() <= MAX_RETAINED_RESULTS
             && self
@@ -751,6 +768,61 @@ impl ManagementReply {
                     && result.id.client == authority.client
                     && result.outcome.bounded()
             }
+        }
+    }
+}
+
+/// Ephemeral PCM staging, fenced by the ordinary session authority and operation IDs.
+pub const MAX_PREVIEW_FRAMES: usize = 4_000_000;
+pub const PREVIEW_CHUNK_FRAMES: usize = 256;
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub enum PreviewCommand {
+    Begin {
+        request_id: u64,
+        bus: BusId,
+        sample_rate: u32,
+        frames: u32,
+    },
+    Chunk {
+        request_id: u64,
+        offset: u32,
+        samples: Vec<f32>,
+    },
+    Play {
+        request_id: u64,
+    },
+    Stop,
+}
+impl PreviewCommand {
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Begin {
+                request_id,
+                bus,
+                sample_rate,
+                frames,
+            } => {
+                *request_id != 0
+                    && bus.is_valid()
+                    && *sample_rate != 0
+                    && *frames > 0
+                    && *frames as usize <= MAX_PREVIEW_FRAMES
+            }
+            Self::Chunk {
+                request_id,
+                offset,
+                samples,
+            } => {
+                *request_id != 0
+                    && !samples.is_empty()
+                    && samples.len() <= PREVIEW_CHUNK_FRAMES
+                    && (*offset as usize)
+                        .checked_add(samples.len())
+                        .is_some_and(|n| n <= MAX_PREVIEW_FRAMES)
+                    && samples.iter().all(|v| v.is_finite())
+            }
+            Self::Play { request_id } => *request_id != 0,
+            Self::Stop => true,
         }
     }
 }

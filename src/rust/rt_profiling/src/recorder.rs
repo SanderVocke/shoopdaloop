@@ -27,6 +27,7 @@ struct Shared {
     host_frame: AtomicU64,
     host_callback_frame: AtomicU64,
     host_open: AtomicBool,
+    outer_budget: AtomicBool,
     host_frames: AtomicU32,
     host_start: AtomicU64,
     host_input: AtomicU64,
@@ -44,6 +45,10 @@ struct Shared {
 pub struct Control(Arc<Shared>);
 
 impl Control {
+    /// Configure during host preparation when complete driver callbacks supply budgets.
+    pub fn use_outer_callback_budget(&self) {
+        self.0.outer_budget.store(true, Ordering::Relaxed);
+    }
     pub fn recording(&self) -> bool {
         self.0.active.load(Ordering::Relaxed)
     }
@@ -330,6 +335,7 @@ pub fn prepare(max_nodes: usize) -> Option<(Control, Recorder, Reader)> {
         host_frame: AtomicU64::new(0),
         host_callback_frame: AtomicU64::new(0),
         host_open: AtomicBool::new(false),
+        outer_budget: AtomicBool::new(false),
         host_frames: AtomicU32::new(0),
         host_start: AtomicU64::new(0),
         host_input: AtomicU64::new(0),
@@ -498,7 +504,15 @@ impl Recorder {
         self.callback_frame = frame;
         self.callback_frames = frames;
         self.epoch = epoch;
-        self.budget = budget_ns;
+        self.budget = if self
+            .storage
+            .as_ref()
+            .is_some_and(|storage| storage.control.0.outer_budget.load(Ordering::Relaxed))
+        {
+            0
+        } else {
+            budget_ns
+        };
         self.callback_at = self.now();
         let mut header = self.header(frame, self.callback_at, CALLBACK);
         header.frames = frames;
@@ -907,6 +921,32 @@ mod tests {
             }
         }
         assert!(complete);
+    }
+
+    #[shoop_test]
+    fn split_engine_parts_do_not_create_independent_driver_deadlines() {
+        let (control, mut recorder, _reader) = prepare(4).unwrap();
+        recorder.set_clock(Clock {
+            now,
+            resolution_ns: 10,
+        });
+        control.use_outer_callback_budget();
+        control.set_enabled(true);
+        render(&mut recorder, 0);
+        control.host_begin(1, 2, now());
+        for frame in [1, 2] {
+            recorder.begin_callback(frame, 0, 1, 1);
+            recorder.begin_tick(frame, 1);
+            recorder.graph_start(0, frame);
+            recorder.node_ready(3);
+            recorder.end_tick(true);
+            recorder.end_callback(true);
+        }
+        control.host_end(now(), 10_000);
+        assert_eq!(control.0.trigger.load(Ordering::Relaxed), 0);
+        control.host_begin(3, 1, now());
+        control.host_end(now() + 100, 10);
+        assert_eq!(control.0.trigger.load(Ordering::Relaxed), DEADLINE);
     }
 
     #[shoop_test]

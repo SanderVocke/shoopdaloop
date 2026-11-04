@@ -2310,7 +2310,7 @@ mod tests {
             .draft_mut()
             .unwrap()
             .set(crate::SELECTED_AUDIO_DRIVER, "jack".to_owned());
-        assert_eq!(frame(&mut dialog, Vec::new()), 8);
+        assert_eq!(frame(&mut dialog, Vec::new()), 3);
         assert!(dialog
             .driver_choice_rects
             .iter()
@@ -2318,7 +2318,7 @@ mod tests {
         dialog
             .draft_mut()
             .unwrap()
-            .set(crate::JACK_MIDI_INPUTS, "keys,controllers".to_owned());
+            .set(crate::JACK_CLIENT_NAME, "Studio".to_owned());
         let Some(SettingsAction::Save(saved)) = dialog.save_action() else {
             panic!("expected JACK settings save")
         };
@@ -2327,7 +2327,7 @@ mod tests {
         else {
             panic!("JACK profile changed kind")
         };
-        assert_eq!(config.midi_inputs, ["keys", "controllers"]);
+        assert_eq!(config.client_name, "Studio");
     }
 
     #[shoop_wasm_test_support::shoop_test(

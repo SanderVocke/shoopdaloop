@@ -123,7 +123,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 7;
+const engineProtocolVersion = 8;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
@@ -181,7 +181,7 @@ function profilingRequest(enabled, correlation) {
   view.setUint16(0, bytes.length, true);
   bytes[2] = 1;
   view.setBigUint64(3, BigInt(correlation), true);
-  bytes[11] = 33;
+  bytes[11] = 35;
   bytes[12] = enabled ? 1 : 0;
   node.port.deliver({ kind: 'records', bytes });
 }

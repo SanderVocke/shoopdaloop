@@ -2182,6 +2182,9 @@ impl ApplicationModel {
                 dialog_id,
                 button_id,
             } => self.invoke_script_dialog_button(backend, script_id, dialog_id, button_id),
+            AppIntent::SetHostGraphConnected(_) => {
+                Err("live host graph control requires a session host adapter".to_owned())
+            }
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
@@ -10760,6 +10763,7 @@ impl ApplicationModel {
             .connection_ports
             .values()
             .map(|port| ApplicationPortState {
+                publication: None,
                 id: port.id,
                 owner: port.owner.clone(),
                 name: port.name.clone(),
@@ -10794,6 +10798,7 @@ impl ApplicationModel {
                 };
                 let port_id = script_connection_port_id(script.id, registration);
                 application_ports.push(ApplicationPortState {
+                    publication: None,
                     id: port_id,
                     owner: ApplicationPortOwner::LuaControl {
                         script_id: script.id,
@@ -11421,6 +11426,7 @@ impl ApplicationModel {
             .collect::<Result<Vec<_>, String>>()?;
         let (script_documents, scripts) = self.session_script_documents();
         let document = SessionDocument {
+            preview_bus: Default::default(),
             sample_rate: capture.sample_rate,
             connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {
@@ -11959,6 +11965,7 @@ impl ApplicationModel {
             .collect::<BTreeMap<_, _>>();
         AppSnapshot {
             profiling: Default::default(),
+            host_graph: Arc::default(),
             bus_limits: Default::default(),
             revision: self.revision,
             tracks: self

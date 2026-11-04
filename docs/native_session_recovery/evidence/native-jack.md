@@ -1,7 +1,7 @@
 # Native JACK restoration evidence
 
 Native JACK now drives audio and MIDI directly in the replacement engine. The
-fixed startup port bank is shared by application and independent-host launches;
+dynamic track/audio-bus ports are shared by application and independent-host launches;
 CPAL's JACK host remains a separate CPAL option. Live driver switching remains
 open under P14.
 
@@ -13,8 +13,8 @@ open under P14.
   destruction. Capacity refusals and output-write failures are counted.
 - Real JACK peer clients verify the production callback carries audio and MIDI,
   preserves offsets through split callbacks, and delivers recovery before normal
-  stop. Further scenarios cover invalid/duplicate port names, failed startup
-  connection cleanup, resolved client-name collisions, buffer-size changes,
+  stop. Further scenarios cover invalid publication rollback, startup without
+  public ports, resolved client-name collisions, buffer-size changes,
   missing runtime libraries/server, and bounded cleanup after server shutdown.
 - A sample-rate notification test verifies that the initial matching rate is
   accepted and a changed rate invalidates the prepared host. The callback
@@ -59,8 +59,8 @@ policy for unrelated hardware; it does not replace strict JACK acceptance.
 
 ## Compatibility and scope
 
-The engine protocol is version 4, host setup is version 3, and the application
-protocol is version 13. These versions combine native JACK with output-bus
+The engine protocol is version 5, host setup is version 5, and the application
+protocol is now version 19 for dynamic external ports. The basic restoration checkpoint used version 14. These versions combine native JACK with output-bus
 parity from the target branch. Existing driver tags remain unchanged. Version checks
 reject older peers before exchanging the expanded JACK configuration and
 instance metadata. Existing JSON JACK profiles receive backward-compatible port
@@ -70,15 +70,39 @@ The native host keeps `forbid(unsafe_code)`. A small native-only notification
 adapter isolates the JACK trait's required unsafe shutdown declaration; its body
 only stores an atomic flag. A control thread publishes server-loss status.
 
-Names in the engine projection use a stable `jack:` prefix, independent of a
-resolved JACK client-name suffix. The host registers the configured port bank
-once, and Master initially routes to its first audio outputs. External
-connections are configured startup pairs or JACK patchbay connections. Port-bank
-and sample-rate changes require host restart. Dynamic per-track port publishing,
-live driver switching, JACK transport/timebase, and JACK session management remain
-outside this restoration.
+Prepared engine slots have private host-only identities; public names and connection
+selectors belong to the port graph. No public JACK ports are registered at host
+startup. The service publishes track/audio-bus ports and restores saved connections.
+JACK profiles contain only `client_name`; the fixed-port and startup-connection
+fields and CLI controls are removed and rejected. Device/sample-rate and prepared
+capacity changes require host restart. Live driver switching, JACK transport/timebase
+and JACK session management remain outside this port feature.
 
-## Local validation results
+## Dynamic port feature validation
+
+- Complete retained native workspace suite after fixed-bank removal:
+  2,637 passed; six intentional skips.
+- Strict isolated JACK acceptance: dynamic track/audio-bus publication, live system
+  connections, audio/MIDI recording/playback, session restoration with missing peers,
+  hotplug reconnection and reclamation over local, socket, shared-memory and TCP
+  delivery. Socket/TCP detachment preserves playback; shared memory retains its
+  existing one-attachment limit.
+- Master auto-connect retains one signal path; session connection edits preserve
+  swapped channels over all four delivery modes before and after save/load.
+- Master click preview produces the expected signal through published outputs over
+  socket/shared-memory IPC and becomes silent after Stop.
+- Prepared pool exhaustion and audio routing past 64 output slots are covered.
+  MIDI removal drains reset messages across small server buffers before reclamation.
+  Actual callback handoff/retirement is guarded against heap operations.
+- A non-JACK fake provider verifies deferred aggregate confirmation, publication
+  failure rollback and cleanup retry after unpublication failure.
+- Warning-denying workspace, driver feature combinations, ARMv7-A/AArch64 service
+  builds without std and the Cortex-M shared contract build passed.
+- Pinned Node/Wasm graph/app/API/protocol suites: 80 passed.
+
+Remote CI cleanup and merging are deferred until feature work is complete.
+
+## Basic restoration validation checkpoint
 
 - Full warning-denying native workspace build passed.
 - Full retained workspace suite after merging output-bus target `e68b15ac`:

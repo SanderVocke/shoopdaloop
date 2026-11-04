@@ -68,6 +68,13 @@ enum Step {
     LargeLoaded,
     LargeResaving,
     LargePlayback,
+    PreviewReady,
+    PreviewDenied,
+    PreviewSystem,
+    PreviewMaster,
+    PreviewSwitchSystem,
+    PreviewStopped,
+    PreviewCompleted,
     Passed,
     Failed,
 }
@@ -81,6 +88,8 @@ struct Ids {
 }
 
 pub struct NewEngineSelfTest {
+    preview_only: bool,
+    preview_denied: bool,
     stress: bool,
     large: bool,
     step: Step,
@@ -104,7 +113,12 @@ impl NewEngineSelfTest {
             Step::Disabled
         };
         report(&format!("{step:?}"));
+        let query = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .unwrap_or_default();
         Self {
+            preview_only: query.contains("preview-only=1"),
+            preview_denied: query.contains("preview-denied=1"),
             stress,
             large,
             step,
@@ -252,6 +266,11 @@ impl NewEngineSelfTest {
                 }
                 if snapshot.tracks.len() != 1 || !snapshot.tracks[0].is_sync {
                     return Err("a new session has only the sync track".to_owned());
+                }
+                if self.preview_only {
+                    self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
+                    self.ids.master = snapshot.buses.first().map(|b| b.id);
+                    return Ok(Some(Step::PreviewReady));
                 }
                 for (name, channel_count) in [("Cue", 1), ("Wide", 8)] {
                     send(AppIntent::AddBus(shoop_egui::BusSpec {
@@ -949,6 +968,123 @@ impl NewEngineSelfTest {
                 send(AppIntent::RequestNewSession)?;
                 Step::BusNewSession
             }
+            Step::PreviewReady => {
+                if waiting < Duration::from_secs(1) {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                if self.preview_denied {
+                    Step::PreviewDenied
+                } else {
+                    Step::PreviewSystem
+                }
+            }
+            Step::PreviewDenied => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Playing
+                {
+                    return Err("suspended System preview falsely reported Playing".into());
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Ok(None);
+                }
+                if !(snapshot.click_track.preview_message.contains("resume")
+                    || snapshot.click_track.preview_message.contains("suspended"))
+                {
+                    return Err(format!(
+                        "unexpected preview error: {:?}",
+                        snapshot.click_track
+                    ));
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                Step::PreviewSystem
+            }
+            Step::PreviewSystem | Step::PreviewSwitchSystem => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Err(format!("System preview failed: {:?}", snapshot.click_track));
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Playing
+                    || waiting < Duration::from_millis(400)
+                {
+                    return Ok(None);
+                }
+                if self.step == Step::PreviewSystem {
+                    send(preview_intent(
+                        ids.sync,
+                        shoop_egui::ClickTrackPreviewOutput::MasterBus,
+                        16,
+                    )?)?;
+                    Step::PreviewMaster
+                } else {
+                    send(AppIntent::StopClickTrackPreview)?;
+                    Step::PreviewStopped
+                }
+            }
+            Step::PreviewMaster => {
+                if snapshot.click_track.preview_status
+                    == shoop_egui::ClickTrackPreviewStatus::Failed
+                {
+                    return Err(format!("Master preview failed: {:?}", snapshot.click_track));
+                }
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Playing
+                    || !snapshot
+                        .buses
+                        .iter()
+                        .any(|b| b.output_peaks_db.iter().any(|p| *p > SIGNAL_DB))
+                {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    16,
+                )?)?;
+                Step::PreviewSwitchSystem
+            }
+            Step::PreviewStopped => {
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Cancelled
+                    || waiting < Duration::from_millis(500)
+                {
+                    return Ok(None);
+                }
+                send(preview_intent(
+                    ids.sync,
+                    shoop_egui::ClickTrackPreviewOutput::System,
+                    2,
+                )?)?;
+                Step::PreviewCompleted
+            }
+            Step::PreviewCompleted => {
+                if snapshot.click_track.preview_status
+                    != shoop_egui::ClickTrackPreviewStatus::Completed
+                {
+                    return Ok(None);
+                }
+                if snapshot
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .any(|l| l.length_frames != 0 || l.mode != LoopMode::Stopped)
+                {
+                    return Err("preview changed loop media or transport".into());
+                }
+                Step::Passed
+            }
             Step::BusNewSession => {
                 if snapshot.buses.len() != 1
                     || snapshot.buses[0].name != "Master"
@@ -1089,4 +1225,19 @@ fn output_completed(snapshot: &AppSnapshot) -> Result<bool, String> {
         ));
     }
     Ok(true)
+}
+
+fn preview_intent(
+    ids: Option<(TrackId, shoop_egui::LoopId)>,
+    output: shoop_egui::ClickTrackPreviewOutput,
+    click_count: u32,
+) -> Result<AppIntent, String> {
+    Ok(AppIntent::PreviewClickTrack {
+        loop_id: ids.ok_or("missing preview target")?.1,
+        request: shoop_egui::ClickTrackRequest {
+            click_count,
+            ..Default::default()
+        },
+        output,
+    })
 }

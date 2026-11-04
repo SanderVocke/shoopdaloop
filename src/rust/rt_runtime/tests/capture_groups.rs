@@ -29,6 +29,7 @@ fn config() -> rt_runtime::PreparedConfig {
 fn store(midi_versions: usize) -> ResourceStore {
     ResourceStore::with_capture_groups(
         config(),
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: midi_versions,
             checkpoints_per_version: 4,
@@ -418,6 +419,7 @@ fn group_storage_shape_and_legacy_opt_in_are_explicit() {
     assert!(matches!(
         ResourceStore::with_capture_groups(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             None,
             CaptureGroupConfig {
                 groups: 0,
@@ -430,6 +432,7 @@ fn group_storage_shape_and_legacy_opt_in_are_explicit() {
     assert!(matches!(
         ResourceStore::with_capture_groups(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             None,
             CaptureGroupConfig {
                 groups: 1,
@@ -439,9 +442,10 @@ fn group_storage_shape_and_legacy_opt_in_are_explicit() {
         ),
         Err(Error::Capacity)
     ));
-    let mut legacy = ResourceStore::new(cfg).unwrap();
+    let mut legacy = ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let mut no_staging = ResourceStore::with_capture_groups(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 1,

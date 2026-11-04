@@ -9,11 +9,12 @@ workspace = true
 
 [features]
 default = ["cpal", "jack"]
-jack = ["dep:jack", "dep:shoop_jack"]
+jack = ["dep:jack", "dep:shoop_jack", "dep:getrandom"]
 # CPAL audio and midir MIDI are independent of native JACK.
 cpal = ["dep:cpal", "dep:midir"]
 
 [dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 rt_runtime = { path = "../rt_runtime" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
@@ -25,8 +26,10 @@ cpal = { workspace = true, optional = true }
 midir = { workspace = true, optional = true }
 
 [dev-dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { version = "0.4", optional = true }
 jack = { workspace = true, optional = true }
 shoop_jack = { path = "../shoop_jack", optional = true }

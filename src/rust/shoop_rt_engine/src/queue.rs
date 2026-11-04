@@ -190,7 +190,8 @@ impl ControlEndpoint {
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
             Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
-            Request::CancelBulk | Request::Profiling(_) => false,
+            Request::PreviewStart { bus: id, .. } => bus(id, HARD),
+            Request::Profiling(_) | Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -272,7 +273,10 @@ impl ControlEndpoint {
                 }
             }
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
-            Request::CancelBulk | Request::Profiling(_) => {}
+            Request::PreviewStart { .. }
+            | Request::Profiling(_)
+            | Request::PreviewStop
+            | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -485,7 +489,7 @@ impl ControlEndpoint {
                     return Staged::Refused(Refusal::InvalidId);
                 };
                 let mask = entry.outputs.current()[channel];
-                if (mask & (1 << host) != 0) == connected {
+                if mask.contains(host) == connected {
                     Staged::Done
                 } else {
                     Staged::Change(Change::ConnectMaster {
@@ -523,7 +527,7 @@ impl ControlEndpoint {
                     PortKind::MidiIn => strip.midi_inputs,
                     PortKind::MidiOut => strip.midi_outputs,
                 };
-                if (mask & (1 << host) != 0) == connected {
+                if mask.contains(host) == connected {
                     Staged::Done
                 } else {
                     Staged::Change(Change::Connect {

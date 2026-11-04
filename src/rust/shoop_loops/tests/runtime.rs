@@ -186,6 +186,7 @@ fn setup_with(
     let config = cfg.prepare().unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: if options.one_sample { 2 } else { 8 },
             checkpoints_per_version: if options.one_sample {

@@ -1251,7 +1251,7 @@ fn lightweight(
     LoopRuntime::prepare(
         cfg,
         topology,
-        ResourceStore::new(cfg).unwrap(),
+        ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         settings,
         bindings,
         imports,
