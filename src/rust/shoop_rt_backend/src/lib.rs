@@ -139,6 +139,7 @@ pub struct RtBackend<C, K> {
     profiling_groups: (
         Option<alloc::sync::Arc<shoop_rt_protocol::profiling::Topology>>,
         alloc::sync::Arc<[shoop_rt_protocol::profiling::Group]>,
+        bool,
     ),
     client: ProtocolClient<C>,
     clock: K,

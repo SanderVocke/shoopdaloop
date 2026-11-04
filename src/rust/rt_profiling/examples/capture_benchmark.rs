@@ -20,6 +20,10 @@ fn main() {
             key,
             at: start + (key + 1) * 100,
         }))
+        .chain(core::iter::once(Sample {
+            key: PHASE | Phase::OutputRouting as u64,
+            at: start + 12_800,
+        }))
         .collect();
         for (i, chunk) in samples.chunks(CHUNK_SAMPLES).enumerate() {
             let mut packet = Packet {
@@ -49,6 +53,7 @@ fn main() {
             start_ns: start - 50,
             end_ns: start + 12_850,
             budget_ns: 666_667,
+            graphs: 1,
             flags: CALLBACK | HOST | if tick + 1 == ticks { CAPTURE_END } else { 0 },
             ..Packet::default()
         });

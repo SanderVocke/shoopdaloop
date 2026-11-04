@@ -1349,6 +1349,7 @@ impl Wire for rt_profiling::Packet {
         w.u64(self.start_ns)?;
         w.u64(self.end_ns)?;
         w.u64(self.budget_ns)?;
+        w.u32(self.graphs)?;
         w.u32(self.frames)?;
         w.u32(self.index)?;
         w.u32(self.total)?;
@@ -1373,6 +1374,7 @@ impl Wire for rt_profiling::Packet {
             start_ns: r.u64()?,
             end_ns: r.u64()?,
             budget_ns: r.u64()?,
+            graphs: r.u32()?,
             frames: r.u32()?,
             index: r.u32()?,
             total: r.u32()?,
@@ -1437,7 +1439,8 @@ impl Wire for rt_profiling::GraphRecord {
                 w.u32(*index)?;
                 w.u64(node.key)?;
                 w.u8(node.group)?;
-                w.u32(node.slot)
+                w.u32(node.slot)?;
+                w.u32(node.owner_generation)
             }
             Edge { index, edge } => {
                 w.u8(2)?;
@@ -1472,15 +1475,22 @@ impl Wire for rt_profiling::GraphRecord {
                 let key = r.u64()?;
                 let group = r.u8()?;
                 let slot = r.u32()?;
+                let owner_generation = r.u32()?;
                 if index as usize >= rt_profiling::MAX_GRAPH_NODES
                     || key >= rt_profiling::MAX_SAMPLES as u64
                     || group > 3
+                    || (group != 0 && owner_generation == 0)
                 {
                     return Err(CodecError::Invalid);
                 }
                 Self::Node {
                     index,
-                    node: GraphNode { key, group, slot },
+                    node: GraphNode {
+                        key,
+                        group,
+                        slot,
+                        owner_generation,
+                    },
                 }
             }
             2 => Self::Edge {

@@ -42,7 +42,11 @@ struct VisualNode {
     inputs: BTreeMap<(u8, u32), usize>,
     outputs: BTreeMap<(u8, u32), usize>,
 }
+const ENTRY: u64 = (1 << 61) | 1;
+const EXIT: u64 = (1 << 61) | 2;
+
 struct VisualEdge {
+    context: bool,
     source: (NodeId, usize),
     destination: (NodeId, usize),
     members: Vec<usize>,
@@ -165,6 +169,24 @@ impl State {
                 .or_default()
                 .push(i);
         }
+        let processors: Vec<_> = self.nodes.keys().copied().collect();
+        for id in processors {
+            let incoming = edges
+                .keys()
+                .any(|&(a, b, ..)| b == id && self.nodes.contains_key(&a));
+            let outgoing = edges
+                .keys()
+                .any(|&(a, b, ..)| a == id && self.nodes.contains_key(&b));
+            if !incoming {
+                edges.insert((ENTRY, id, 2, 0, 2, 0), Vec::new());
+            }
+            if !outgoing {
+                edges.insert((id, EXIT, 2, 0, 2, 0), Vec::new());
+            }
+        }
+        for id in [ENTRY, EXIT] {
+            self.nodes.entry(id).or_default().id = id;
+        }
         for &(a, b, ak, ac, bk, bc) in edges.keys() {
             let node = self.nodes.entry(a).or_default();
             node.id = a;
@@ -183,6 +205,7 @@ impl State {
         }
         for ((a, b, ak, ac, bk, bc), members) in edges {
             self.edges.push(VisualEdge {
+                context: ak == 2,
                 source: (NodeId(a), self.nodes[&a].outputs[&(ak, ac)]),
                 destination: (NodeId(b), self.nodes[&b].inputs[&(bk, bc)]),
                 members,
@@ -215,7 +238,31 @@ impl State {
         self.routes = routes;
         self.fit = true;
     }
-    fn value(&self, key: u64, _report: &Report, ready: bool) -> Option<f64> {
+    fn value(&self, key: u64, report: &Report, ready: bool) -> Option<f64> {
+        if key == ENTRY || key == EXIT {
+            if ready {
+                return None;
+            }
+            if self.callback != 0 {
+                let envelope = self.page.as_ref()?.wrapping?;
+                return if key == ENTRY {
+                    envelope.before_ns
+                } else {
+                    envelope.after_ns
+                }
+                .map(|v| v as f64);
+            }
+            let stats = if key == ENTRY {
+                &report.wrapping.before
+            } else {
+                &report.wrapping.after
+            };
+            return (stats.count != 0).then(|| match self.metric {
+                Metric::Average => stats.mean,
+                Metric::Worst => stats.worst as f64,
+                Metric::Stddev => stats.stddev(),
+            });
+        }
         if self.callback != 0 {
             self.actual.get(&key).map(|n| if ready { n.ready_ns } else { n.end_ns - n.start_ns } as f64)
         } else {
@@ -255,6 +302,12 @@ impl State {
             .map_or(fallback.clone(), |name| format!("{name} · {fallback}"))
     }
     fn label(&self, node: &VisualNode, _report: &Report) -> String {
+        if node.id == ENTRY {
+            return "Callback entry".into();
+        }
+        if node.id == EXIT {
+            return "Callback exit".into();
+        }
         if node.id & (1 << 63) != 0 {
             format!(
                 "Host {} {} {}",
@@ -321,6 +374,10 @@ impl State {
         budget: Option<f64>,
     ) {
         ui.strong(self.label(node, report));
+        if node.id == ENTRY || node.id == EXIT {
+            self.wrapper_details(ui, node.id, report, units, budget);
+            return;
+        }
         if node.members.is_empty() {
             ui.label("Host boundary; processor duration unavailable.");
         }
@@ -351,6 +408,45 @@ impl State {
         }
         ui.small("Elapsed step includes incoming routing, recovery and preemption.");
     }
+    fn wrapper_details(
+        &self,
+        ui: &mut egui::Ui,
+        id: u64,
+        report: &Report,
+        units: Units,
+        budget: Option<f64>,
+    ) {
+        ui.label(if id == ENTRY {
+            "Callback entry to first graph start, including input preparation."
+        } else {
+            "Last processor completion to callback exit, including final output routing."
+        });
+        if self.callback != 0 {
+            ui.label(format!(
+                "Actual whole callback: {}",
+                self.value(id, report, false)
+                    .map_or_else(|| "unavailable".into(), |v| units.format(v, budget))
+            ));
+        } else {
+            let s = if id == ENTRY {
+                &report.wrapping.before
+            } else {
+                &report.wrapping.after
+            };
+            if s.count == 0 {
+                ui.label("No complete callback samples");
+            } else {
+                ui.label(format!(
+                    "Avg {} · Worst {} · Stddev {} · {} callbacks",
+                    units.format(s.mean, budget),
+                    units.format(s.worst as f64, budget),
+                    units.format(s.stddev(), budget),
+                    s.count
+                ));
+            }
+        }
+        ui.small("Wrapper durations are per callback; processor durations are per graph execution. Between-execution work is accounted separately. Missing graph boundaries remain unknown.");
+    }
     fn edge_details(
         &self,
         ui: &mut egui::Ui,
@@ -360,6 +456,22 @@ impl State {
         units: Units,
         budget: Option<f64>,
     ) {
+        if edge.context {
+            ui.strong("Callback context · dotted dependency");
+            ui.label("Connects the callback envelope to graph execution; carries no audio or MIDI and has no source-readiness measurement.");
+            self.wrapper_details(
+                ui,
+                if edge.source.0 .0 == ENTRY {
+                    ENTRY
+                } else {
+                    EXIT
+                },
+                report,
+                units,
+                budget,
+            );
+            return;
+        }
         let endpoint = |port: Port| {
             port.node.map_or_else(
                 || "Host".into(),
@@ -477,7 +589,9 @@ impl State {
                                 c.sequence,
                                 c.frame,
                                 (c.end_ns - c.start_ns) as f64 / 1000.,
-                                if c.budget_ns != 0 && c.end_ns - c.start_ns > c.budget_ns {
+                                if c.flags & profiling::PART != 0 {
+                                    " · partial callback"
+                                } else if c.budget_ns != 0 && c.end_ns - c.start_ns > c.budget_ns {
                                     " · over budget"
                                 } else {
                                     ""
@@ -659,7 +773,7 @@ impl State {
         let mut rebuild = self
             .topology
             .as_ref()
-            .is_none_or(|old| !std::sync::Arc::ptr_eq(old, &t));
+            .is_none_or(|old| !std::sync::Arc::ptr_eq(old, &t) && old.as_ref() != t.as_ref());
         let budget = t.budget_ns();
         ui.horizontal(|ui| {
             for (value, name) in [
@@ -705,13 +819,22 @@ impl State {
         });
         if rebuild {
             self.rebuild(&t, ui.style());
-            self.topology = Some(t.clone());
         }
+        self.topology = Some(t.clone());
         let duration_max = self
             .nodes
             .values()
-            .filter(|n| n.members.len() == 1)
-            .filter_map(|n| self.value(n.members[0], report, false))
+            .filter_map(|n| {
+                self.value(
+                    if n.members.len() == 1 {
+                        n.members[0]
+                    } else {
+                        n.id
+                    },
+                    report,
+                    false,
+                )
+            })
             .fold(0., f64::max);
         let ready_max = self
             .edges
@@ -720,7 +843,7 @@ impl State {
             .fold(0., f64::max);
         ui.horizontal_wrapped(|ui| {
             for (label, max) in [
-                ("Nodes: step duration", duration_max),
+                ("Nodes: elapsed duration", duration_max),
                 ("Links: source readiness", ready_max),
             ] {
                 ui.label(label);
@@ -740,6 +863,21 @@ impl State {
             }
             ui.weak("Gray: unavailable");
         });
+        let between = if self.callback != 0 {
+            self.page
+                .as_ref()
+                .and_then(|p| p.wrapping)
+                .and_then(|e| e.between_ns)
+                .map(|v| v as f64)
+        } else {
+            let s = &report.wrapping.between;
+            (s.count != 0).then(|| match self.metric {
+                Metric::Average => s.mean,
+                Metric::Worst => s.worst as f64,
+                Metric::Stddev => s.stddev(),
+            })
+        };
+        ui.small(format!("Dotted: callback context · wrappers per callback · processors per tick · between graph executions: {}", between.map_or_else(|| "unavailable".into(), |v| units.format(v, budget))));
         ui.small("Readiness is elapsed since graph start. Hover traces influence; click pins details. Ctrl/Cmd+scroll to zoom; middle-drag to pan.");
         if let Some(focus) = self.pinned {
             egui::CollapsingHeader::new("Pinned details")
@@ -790,11 +928,15 @@ impl State {
                             .layer_transform_to_global(ui.layer_id())
                             .is_none_or(|t| t.scaling >= 0.35);
                         for node in self.nodes.values() {
-                            let value = if node.members.len() == 1 {
-                                self.value(node.members[0], report, false)
-                            } else {
-                                None
-                            };
+                            let value = self.value(
+                                if node.members.len() == 1 {
+                                    node.members[0]
+                                } else {
+                                    node.id
+                                },
+                                report,
+                                false,
+                            );
                             let stroke = if related.contains(&node.id) {
                                 egui::Stroke::new(2.5, colors::FOREGROUND)
                             } else {
@@ -870,7 +1012,7 @@ impl State {
                                 },
                                 color(value, ready_max),
                             );
-                            let response = Edge::new(edge.source, edge.destination, &mut selected)
+                            let widget = Edge::new(edge.source, edge.destination, &mut selected)
                                 .distance_per_point(2. / scale)
                                 .waypoints(
                                     self.routes
@@ -879,8 +1021,19 @@ impl State {
                                 )
                                 .stroke(stroke)
                                 .hovered_stroke(egui::Stroke::new(4., stroke.color))
-                                .selected_stroke(egui::Stroke::new(4., stroke.color))
-                                .show(ctx, ui);
+                                .selected_stroke(egui::Stroke::new(4., stroke.color));
+                            let response = if edge.context {
+                                widget.show_with(ctx, ui, |ui, cx| {
+                                    ui.painter().extend(egui::Shape::dotted_line(
+                                        cx.points,
+                                        cx.stroke.color,
+                                        5. / scale,
+                                        cx.stroke.width / 2.,
+                                    ));
+                                })
+                            } else {
+                                widget.show(ctx, ui)
+                            };
                             if response.hovered() {
                                 hovered = Some(Focus::Edge(i));
                             }
@@ -917,11 +1070,16 @@ fn timeline(
 ) {
     let c = page.callback;
     let duration = c.end_ns.saturating_sub(c.start_ns);
+    let deadline = if c.flags & profiling::PART == 0 {
+        c.budget_ns
+    } else {
+        0
+    };
     ui.label(format!(
         "Callback {} · {:.3} µs · {}",
         c.sequence,
         duration as f64 / 1000.,
-        if c.budget_ns == 0 {
+        if deadline == 0 {
             "deadline unavailable / incomplete outer context".into()
         } else {
             format!("budget {:.3} µs", c.budget_ns as f64 / 1000.)
@@ -935,7 +1093,7 @@ fn timeline(
     }
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 72.), egui::Sense::hover());
-    let max = duration.max(c.budget_ns).max(1) as f64;
+    let max = duration.max(deadline).max(1) as f64;
     let x =
         |at: u64| rect.left() + (at.saturating_sub(c.start_ns) as f64 / max) as f32 * rect.width();
     ui.painter()
@@ -1009,8 +1167,8 @@ fn timeline(
             phase.at.saturating_sub(c.start_ns) as f64 / 1000.
         ));
     }
-    if c.budget_ns != 0 {
-        let px = x(c.start_ns.saturating_add(c.budget_ns));
+    if deadline != 0 {
+        let px = x(c.start_ns.saturating_add(deadline));
         ui.painter().line_segment(
             [egui::pos2(px, rect.top()), egui::pos2(px, rect.bottom())],
             egui::Stroke::new(2., colors::ERROR),
@@ -1052,6 +1210,7 @@ mod tests {
                     key,
                     group: if key <= 2 { 1 } else { 2 },
                     slot: 0,
+                    owner_generation: 1,
                 })
                 .collect(),
             edges: [
@@ -1097,6 +1256,52 @@ mod tests {
             },
             ..ProfilingView::default()
         }
+    }
+
+    #[shoop_test]
+    fn callback_virtual_nodes_use_whole_callback_costs_and_dotted_context_links() {
+        let mut view = fixture();
+        view.live.wrapping.before.add(20);
+        view.live.wrapping.before.add(80);
+        view.live.wrapping.after.add(30);
+        let context = egui::Context::default();
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        assert_eq!(state.value(ENTRY, &view.live, false), Some(50.));
+        state.metric = Metric::Stddev;
+        assert_eq!(state.value(ENTRY, &view.live, false), Some(30.));
+        assert_eq!(state.value(EXIT, &view.live, false), Some(0.));
+        assert_eq!(state.value(ENTRY, &view.live, true), None);
+        let links: Vec<_> = state.edges.iter().filter(|e| e.context).collect();
+        assert_eq!(links.len(), 4);
+        assert!(links.iter().all(|e| e.members.is_empty()));
+        assert!(links
+            .iter()
+            .any(|e| e.source.0 .0 == ENTRY && e.destination.0 .0 == 1));
+        assert!(links
+            .iter()
+            .any(|e| e.source.0 .0 == 3 && e.destination.0 .0 == EXIT));
+        state.callback = 91;
+        state.tick = 52;
+        state.page = Some(Arc::new(CapturePage {
+            wrapping: Some(profiling::Envelope {
+                before_ns: Some(11),
+                after_ns: Some(17),
+                between_ns: Some(42),
+                graphs: 3,
+                ..profiling::Envelope::default()
+            }),
+            ..CapturePage::default()
+        }));
+        assert_eq!(state.value(ENTRY, &view.live, false), Some(11.));
+        assert_eq!(state.value(EXIT, &view.live, false), Some(17.));
+        state.tick = 53;
+        assert_eq!(state.value(ENTRY, &view.live, false), Some(11.));
+        state.page = Some(Arc::new(CapturePage::default()));
+        assert_eq!(state.value(ENTRY, &view.live, false), None);
+        assert_eq!(state.value(EXIT, &view.live, false), None);
     }
 
     #[shoop_test]
@@ -1166,8 +1371,8 @@ mod tests {
             .clear();
         assert_eq!(state.nodes[&group_id(1, 0)].members, [1, 2]);
         assert!(state.nodes.contains_key(&4));
-        assert_eq!(state.edges.len(), 3);
-        assert_eq!(state.related(Some(Focus::Node(group_id(1, 0)))).len(), 4);
+        assert_eq!(state.edges.iter().filter(|e| !e.context).count(), 3);
+        assert_eq!(state.related(Some(Focus::Node(group_id(1, 0)))).len(), 6);
         assert!(state.edges.iter().any(|e| e.members == [2]));
     }
 
@@ -1182,6 +1387,7 @@ mod tests {
         let positions = state.view.layout.clone();
         view.live.interval.end_ns += 1;
         view.live.rows[0].avg_ns = 90000.;
+        view.topology = view.topology.as_ref().map(|t| Arc::new(t.as_ref().clone()));
         state.pinned = Some(Focus::Node(1));
         render(&mut state, &view, &context, vec![])
             .textures_delta
@@ -1388,7 +1594,11 @@ mod tests {
         let edge = state
             .edges
             .iter()
-            .find(|e| topology.edges[e.members[0]].source.node.is_none())
+            .find(|e| {
+                e.members
+                    .first()
+                    .is_some_and(|&i| topology.edges[i].source.node.is_none())
+            })
             .unwrap();
         assert_eq!(state.edge_value(edge, topology, &view.live), Some(0.));
         state.callback = 99;

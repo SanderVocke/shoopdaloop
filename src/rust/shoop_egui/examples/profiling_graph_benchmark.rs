@@ -69,6 +69,10 @@ fn fixture(nodes: usize, dense: bool) -> (Collector, ProfilingView) {
             };
             samples.push(Sample { key, at });
         }
+        samples.push(Sample {
+            key: PHASE | Phase::OutputRouting as u64,
+            at,
+        });
         for (i, chunk) in samples.chunks(CHUNK_SAMPLES).enumerate() {
             let mut packet = Packet {
                 generation: 1,
@@ -98,9 +102,10 @@ fn fixture(nodes: usize, dense: bool) -> (Collector, ProfilingView) {
             frame: tick * 32,
             callback_frame: tick * 32,
             frames: 32,
-            start_ns: start - 1000,
+            start_ns: start - if tick == 31 { 250_000 } else { 10_000 },
             end_ns: at + 1000,
             budget_ns: 666_667,
+            graphs: 1,
             total: 2,
             len: 2,
             flags: CALLBACK | HOST | if tick == 31 { CAPTURE_END } else { 0 },
@@ -116,6 +121,9 @@ fn fixture(nodes: usize, dense: bool) -> (Collector, ProfilingView) {
             at: at + 1000,
         };
         collector.receive(callback);
+        callback.capture = 0;
+        callback.flags = CALLBACK | HOST;
+        collector.receive(callback);
     }
     let mut view = collector.view();
     view.topology = Some(Arc::new(Topology {
@@ -128,6 +136,7 @@ fn fixture(nodes: usize, dense: bool) -> (Collector, ProfilingView) {
                 key,
                 group: 1,
                 slot: (key / 3) as u32,
+                owner_generation: 1,
             })
             .collect(),
         edges,

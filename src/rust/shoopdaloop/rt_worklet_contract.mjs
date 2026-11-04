@@ -124,7 +124,7 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 9;
+const engineProtocolVersion = 10;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
@@ -235,9 +235,9 @@ for (const record of profileRecords) {
   const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
   const start = view.getBigUint64(59, true);
   const end = view.getBigUint64(67, true);
-  for (let index = 0; index < record[95]; index += 1) {
-    const key = view.getBigUint64(104 + index * 16, true);
-    const at = view.getBigUint64(112 + index * 16, true);
+  for (let index = 0; index < record[99]; index += 1) {
+    const key = view.getBigUint64(108 + index * 16, true);
+    const at = view.getBigUint64(116 + index * 16, true);
     if (at < start || at > end) throw new Error('node timing escaped its measured interval');
     if ((key & ((1n << 63n) | (1n << 62n))) === 0n) timedNodes += 1;
   }
@@ -252,10 +252,10 @@ for (let index = 0; index < 64; index += 1) {
 }
 const captureRecords = captureMessages.filter(record => record[2] === 9).map(record =>
   new DataView(record.buffer, record.byteOffset, record.byteLength));
-if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(96, true) & 4))) {
+if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(100, true) & 4))) {
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
-if (!captureRecords.some(view => (view.getUint32(96, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
+if (!captureRecords.some(view => (view.getUint32(100, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
 let stalledRecords = 0;
 for (let index = 0; index < 512; index += 1) {
   quantum(node, 0.25);

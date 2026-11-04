@@ -15,10 +15,31 @@ pub struct TraceSummary {
     pub start_ns: u64,
     pub end_ns: u64,
     pub budget_ns: u64,
+    pub graphs: u32,
+    pub graph_start_ns: Option<u64>,
+    pub graph_end_ns: Option<u64>,
     pub flags: u32,
 }
 impl TraceSummary {
-    pub(crate) fn from_packet(p: crate::Packet) -> Self {
+    pub(crate) fn from_packet(p: crate::Packet, samples: &[crate::Sample]) -> Self {
+        let start = samples
+            .iter()
+            .find(|s| s.key == crate::PHASE | crate::Phase::GraphStart as u64)
+            .map(|s| s.at);
+        let complete = p.flags & (crate::FAULT | crate::TRUNCATED | crate::CALLBACK) == 0
+            && samples
+                .iter()
+                .any(|s| s.key == crate::PHASE | crate::Phase::OutputRouting as u64);
+        let end = complete
+            .then(|| {
+                samples
+                    .iter()
+                    .filter(|s| s.key < crate::MAX_SAMPLES as u64)
+                    .last()
+                    .map(|s| s.at)
+                    .or(start)
+            })
+            .flatten();
         Self {
             sequence: p.sequence,
             callback: p.callback,
@@ -29,6 +50,9 @@ impl TraceSummary {
             start_ns: p.start_ns,
             end_ns: p.end_ns,
             budget_ns: p.budget_ns,
+            graphs: p.graphs,
+            graph_start_ns: start,
+            graph_end_ns: end,
             flags: p.flags,
         }
     }
@@ -70,4 +94,5 @@ pub struct CapturePage {
     pub phases: Vec<Boundary>,
     pub total: u32,
     pub incomplete: bool,
+    pub wrapping: Option<crate::Envelope>,
 }

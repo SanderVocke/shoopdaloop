@@ -425,3 +425,4 @@ src/rust/rt_profiling/src/graph.rs,portable_profiling,excluded,Bounded metadata 
 src/rust/rt_profiling/src/capture.rs,portable_profiling,excluded,Pure capture value types and clock-domain containment with no side effects or tracing dependency.
 src/rust/shoop_egui/src/profiling/graph.rs,egui_ui,excluded,Frame-rate graph drawing and hover rendering use profiling data directly; avoid per-frame tracing overhead.
 src/rust/shoop_rt_engine/src/buffered_tests.rs,test_support,excluded,Test-only processor composition and heap guards.
+src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.

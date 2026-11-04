@@ -194,7 +194,15 @@ impl NewEngineSelfTest {
                     } else {
                         STEP_TIMEOUT
                     } => {}
-            Ok(None) => self.fail(format!("timed out; file task: {:?}", snapshot.io_task)),
+            Ok(None) => self.fail(format!(
+                "timed out; file task: {:?}; profiling requested={} generation={} epoch={} topology={:?} groups={:?}",
+                snapshot.io_task,
+                snapshot.profiling.requested,
+                snapshot.profiling.generation,
+                snapshot.profiling.live.epoch,
+                snapshot.profiling.topology.as_ref().map(|t| (t.generation, t.epoch, t.nodes.iter().filter(|n| n.group == 1).count())),
+                snapshot.profiling.groups.iter().map(|g| (g.kind, g.slot, g.name.as_str())).collect::<Vec<_>>()
+            )),
             Err(reason) => self.fail(reason),
         }
     }

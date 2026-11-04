@@ -18,6 +18,7 @@ mod recorder;
 #[cfg(not(target_has_atomic = "64"))]
 #[path = "unsupported.rs"]
 mod recorder;
+mod wrapping;
 pub use capture::{
     Boundary, CapturePage, CaptureRequest, NodeTiming, TraceSummary, DETAIL_NODES,
     MAX_CAPTURE_TRACES,
@@ -27,6 +28,7 @@ pub use graph::{
     GraphEdge, GraphNode, GraphRecord, Port, Topology, MAX_GRAPH_EDGES, MAX_GRAPH_NODES,
 };
 pub use recorder::{prepare, Control, Reader, Recorder};
+pub use wrapping::{Envelope, WrappingStats};
 
 #[derive(Clone, Copy)]
 pub struct Clock {
@@ -43,6 +45,7 @@ pub const FAULT: u32 = 2;
 pub const CAPTURE_END: u32 = 4;
 pub const TRUNCATED: u32 = 8;
 pub const HOST: u32 = 16;
+pub const PART: u32 = 32;
 pub const HOST_XRUN: u32 = 1;
 pub const DEADLINE: u32 = 2;
 
@@ -93,6 +96,7 @@ pub struct Packet {
     pub start_ns: u64,
     pub end_ns: u64,
     pub budget_ns: u64,
+    pub graphs: u32,
     pub index: u32,
     pub total: u32,
     pub len: u8,

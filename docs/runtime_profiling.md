@@ -75,7 +75,8 @@ Processor names include the current UI track label and, for loop processors, the
 loop label (`Drums / Verse · Loop 3 playback`). The processor role and prepared
 slot remain visible to distinguish duplicate names. Group menus and collapsed
 nodes use these same names. Renaming a track or loop updates the graph and table
-without resetting measurements or layout. Names are resolved through structured
+without resetting measurements or layout. Prepared slot generations prevent old
+records from acquiring a reused slot's new name. Names are resolved through structured
 backend identities, not inferred from the numeric slot or display text; unresolved
 or mismatched topology retains the generic processor label.
 
@@ -95,7 +96,7 @@ interval. The callback selector switches to a recorded callback; the tick select
 chooses one of its retained ticks. The graph then displays **actual** values for
 that tick, and interval statistic selectors are disabled. Return to **Capture
 interval** for Avg/Worst/Stddev. Maxima in an interval graph need not come from the
-same tick. A callback with no retained tick has unavailable node timings.
+same tick. A callback with no retained tick has unavailable node and link timings.
 
 The timeline shows retained ticks, the selected tick's node spans and recorded
 phase boundaries. Its red line uses the complete callback's original budget;
@@ -168,8 +169,8 @@ unavailable rather than failing audio preparation.
 
 The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
-bulk, metering and profiling rotate fairly. Engine protocol version 9, application
-protocol version 23, and SDM2 shared-memory descriptors reject incompatible peers.
+bulk, metering and profiling rotate fairly. Engine protocol version 10, application
+protocol version 24, and SDM2 shared-memory descriptors reject incompatible peers.
 The browser MessagePort additionally allows at most 256 unconsumed profiling
 records. The main thread returns credits after decoding consumption, coalesced
 into one asynchronous flush. Status, names, topology and timestamp chunks share that
@@ -210,3 +211,26 @@ projection and UI loss while recording. The browser core workflow checks request
 state, available/unavailable acknowledgement, graph resets and toggles through the
 same application intents as the UI. The worklet artifact contract checks the raw
 ABI and JavaScript processor together.
+
+### Callback wrapper nodes
+
+The graph includes **Callback entry** and **Callback exit** virtual nodes. Dotted
+connections link them to graph roots and sinks; these are callback context,
+not audio/MIDI connections or extra measured readiness links. Entry measures
+callback entry to the first graph start. Exit measures the last processor's
+completion to callback exit, including final output routing. Their Avg, Worst
+and population Stddev use complete callbacks; ordinary processor statistics
+use individual graph executions. Work between graph executions is shown
+separately above the graph, so multiple ticks cannot inflate entry/exit costs.
+Selected-callback entry/exit values cover the whole callback even when a middle
+tick is selected. Percentages retain the displayed quantum-budget denominator;
+the timeline uses the selected callback's original deadline budget.
+
+The callback hooks cover native host preparation/render/output work and the
+worklet's input preparation through output copying/MIDI publication. They do not
+measure device/OS scheduling outside those hooks, or every instruction before
+entry and after exit. Partial engine callback records are labeled partial and
+receive no independent driver deadline. Missing/unfinished graph records leave
+wrapper attribution unknown. A callback without graph execution retains its
+measured total, but has no artificial entry/exit split. An unavailable elapsed
+clock leaves measurements unavailable, including these virtual nodes.

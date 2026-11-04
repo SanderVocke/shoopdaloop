@@ -71,6 +71,7 @@ pub struct Report {
     pub rows: Vec<Row>,
     pub incomplete: bool,
     pub complete: bool,
+    pub wrapping: crate::WrappingStats,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -137,7 +138,8 @@ impl View {
 
     pub fn valid(&self) -> bool {
         let report = |r: &Report| {
-            r.rows.len() <= MAX_SAMPLES
+            r.wrapping.valid()
+                && r.rows.len() <= MAX_SAMPLES
                 && r.rows.iter().all(|n| {
                     n.key < MAX_SAMPLES as u64
                         && n.name.len() <= 128
@@ -183,6 +185,7 @@ struct Measured {
     order: Vec<u64>,
     values: BTreeMap<u64, Statistics>,
     readiness: BTreeMap<u64, Statistics>,
+    wrapping: crate::wrapping::Wrapping,
     epoch: u64,
     incomplete: bool,
 }
@@ -196,6 +199,8 @@ impl Measured {
             self.incomplete = true;
             return false;
         }
+        self.wrapping
+            .accept(TraceSummary::from_packet(packet, samples));
         self.epoch = packet.epoch;
         let interval = self.interval.get_or_insert(Interval {
             start_ns: packet.start_ns,
@@ -255,6 +260,7 @@ impl Measured {
     ) -> Report {
         Report {
             generation,
+            wrapping: self.wrapping.stats.clone(),
             epoch: self.epoch,
             capture,
             trigger,
@@ -350,6 +356,7 @@ impl Assembly {
             || header.total != packet.total
             || header.start_ns != packet.start_ns
             || header.end_ns != packet.end_ns
+            || header.graphs != packet.graphs
             || header.budget_ns != packet.budget_ns
             || self.samples.len() != packet.index as usize
         {
@@ -458,7 +465,7 @@ impl Collector {
             if let Some((header, samples)) = assembled {
                 if self.capture.accept(header, &samples) {
                     if self.index.len() < MAX_CAPTURE_TRACES {
-                        self.index.push(TraceSummary::from_packet(header));
+                        self.index.push(TraceSummary::from_packet(header, &samples));
                     } else {
                         self.index_incomplete = true;
                     }
@@ -564,6 +571,7 @@ impl Collector {
         };
         let mut page = CapturePage {
             request,
+            wrapping: crate::Envelope::from_traces(callback, self.index.iter()),
             callback,
             tick,
             incomplete: self.capture.incomplete || self.index_incomplete,
@@ -772,6 +780,7 @@ mod tests {
                         key: u64::from(i) + 1,
                         group: 1,
                         slot: 0,
+                        owner_generation: 1,
                     },
                 },
             );

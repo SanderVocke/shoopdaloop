@@ -184,7 +184,7 @@ impl Layouts {
             quantum,
         }
     }
-    pub fn stage(&mut self, plan: &rt_runtime::graph::PlanDescriptor) {
+    pub fn stage(&mut self, plan: &rt_runtime::graph::PlanDescriptor, model: &crate::model::Model) {
         use rt_runtime::profiling::{GraphEdge, Port};
         let t = &mut self.staged;
         t.valid = plan.steps.len() <= t.nodes.len() && plan.connections.len() <= t.edges.len();
@@ -196,6 +196,15 @@ impl Layouts {
         t.edge_count = plan.connections.len();
         for (slot, step) in plan.steps.iter().enumerate() {
             t.nodes[slot] = self.groups[step.node.slot() as usize];
+            let node = &mut t.nodes[slot];
+            let slot = node.slot as usize;
+            node.owner_generation = match node.group {
+                1 => model.strips[slot].map_or(0, |s| s.id.0.generation),
+                2 => model.loops[slot].map_or(0, |s| s.id.0.generation),
+                3 => model.buses[slot].map_or(0, |s| s.id.0.generation),
+                _ => 0,
+            };
+            t.valid &= node.group == 0 || node.owner_generation != 0;
         }
         let port = |p: rt_runtime::graph::Endpoint| Port {
             node: p.node.map(|n| u64::from(n.slot())),
@@ -324,10 +333,26 @@ mod tests {
             }],
         };
         let mut layouts = Layouts::new(&pool, 4, 48000, 32);
-        layouts.stage(&descriptor);
+        let mut model = crate::model::Model::new(1, 1, 1, 2, Default::default());
+        model.strips[0] = Some(crate::model::Strip {
+            id: shoop_rt_protocol::StripId(shoop_rt_protocol::SlotId::new(0, 7)),
+            shape: shoop_rt_protocol::StripShape {
+                audio_inputs: 0,
+                audio_outputs: 0,
+                midi_input: true,
+                midi_output: true,
+            },
+            controls: Default::default(),
+            inputs: Default::default(),
+            outputs: Default::default(),
+            midi_inputs: Default::default(),
+            midi_outputs: Default::default(),
+        });
+        layouts.stage(&descriptor, &model);
         assert_eq!(layouts.active.node_count, 0);
         layouts.activate();
         assert_eq!(layouts.active.node_count, descriptor.steps.len());
+        assert_eq!(layouts.active.nodes[0].owner_generation, 7);
         assert_eq!(layouts.active.nodes[0].key, u64::from(node.slot()));
         assert_eq!(
             layouts.active.edges[0].source,

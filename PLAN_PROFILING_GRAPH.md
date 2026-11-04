@@ -71,6 +71,13 @@ labels; resolve through backend identities and update names without relayout.
    unbounded publication, or traffic that starves commands/recovery/media/meters.
    Preserve explicit timing-unavailable behavior and production audio/MIDI output.
 
+9. Include callback entry/exit virtual nodes with dotted context dependencies to
+   the first/last processors. Measure entry to the first graph start and final
+   processor completion to callback exit per complete callback. Account for work
+   between graph executions separately. Retain original callback budgets, mark
+   partial callbacks, and leave missing boundaries unknown. This addition was
+   explicitly approved for this PR by the user.
+
 ## Design rules and constraints
 
 - Use the executable `PlanDescriptor.steps/connections`, not a reconstruction of
@@ -297,11 +304,21 @@ Depends on Stages 3–4.
 Verification: an injected spike is visible in the independently known callback/tick
 and processor; delayed host notifications never falsely identify an offender.
 
+### Callback envelope addition — approved for this PR
+
+- [x] Preserve the exact graph-execution count across split engine parts, mark
+  partial callback records, and derive complete callback prefix/suffix/between
+  costs outside rendering. Missing boundaries remain unknown.
+- [x] Add virtual entry/exit nodes and dotted context dependencies, with interval
+  statistics and actual whole-callback selection independent of selected tick.
+- [x] Cover multiple ticks, split host callbacks, missing records and clockless
+  selection with collector/recorder/UI checks; document the measured envelope.
+
 ### Stage 6 — Deliver and complete end-to-end validation
 
 Depends on Stages 1–5; this is the final implementation/validation stage.
 
-- [ ] Extend user docs with readiness origins, separate color meanings, aggregation
+- [x] Extend user docs with readiness origins, separate color meanings, aggregation
   versus actual selection, grouping, units, unavailable timing and xrun limits.
 - [ ] Run affected collector/runtime/engine/backend/protocol/transport/app/UI tests,
   RT no-heap/lock and dependency-boundary guards, then the complete suite prescribed
@@ -362,7 +379,7 @@ steps and 64 phase boundaries per page. Topology/index/detail use immutable shar
 ownership in app snapshots, not copies of the complete raw capture. Requests and
 responses carry generation/capture/callback/tick/page identity; the existing app
 connection authority fences reconnects. Switching selection logically cancels old
-pages by rejecting responses that no longer match. Engine/app versions are 9/23;
+pages by rejecting responses that no longer match. Engine/app versions are 10/24;
 the shared-memory descriptor layout and its independent profiling lane are unchanged.
 
 Core evidence: 14 recorder/collector tests and the profiling wire codec test pass.
@@ -423,3 +440,38 @@ The MessagePort consumption test now exercises graph records explicitly, and
 the worklet artifact's normal and stalled credit accounting includes topology.
 The earlier native merge passed 2,703 tests; the refreshed full native, affected
 Wasm/browser and release comparisons are being rerun against this base.
+
+
+Final identity and delivery corrections: newly decoded but semantically identical
+topology must preserve the cached layout, pan/zoom and pins. The pointer-input
+refresh fixture now uses a new topology allocation to cover encoded boundaries.
+A zero-tick callback has no graph-start baseline; its host links stay unavailable
+until a retained selected tick supplies that boundary.
+
+The full browser gate exposed a missing `consumed` delegation in the audio-side
+MessagePort wrapper. Forwarding it returns the profiling credits and unblocks
+metadata after the 256-record window fills. Ownership metadata now additionally
+carries each prepared strip/loop/bus slot generation from the staged model. The
+backend resolves only matching generations and retries incomplete mappings after
+creation acknowledgements, preventing reused slots from acquiring old names.
+Engine/app protocols advance to 10/24 for this complete wire contract. Final
+validation is in progress; the browser failure is not passing evidence.
+
+
+### Callback envelope and identity validation (2026-11-04)
+
+The user approved virtual callback entry/exit nodes for this PR. They now use
+complete callback prefix/suffix measurements, with separate between-execution
+accounting and exact graph counts across engine parts. Partial callback records
+carry no independent device deadline. Existing timestamp hooks are reused.
+Track/loop ownership includes prepared slot generations; incomplete name mappings
+are retried, and identical serialized topologies preserve layout and selection.
+The browser audio wrapper forwards consumed-record credits to prevent a long
+profiling session from exhausting its metadata window.
+
+The warning-denying workspace build passes. The full native CI-profile command
+passes 2,781 tests with seven skips; the final graph cache adjustment and nonzero
+wire-count fixture receive focused reruns. All 134 Python checks and the test
+attribute, tracing (427 modules), parity and dependency-boundary gates pass.
+Fresh Wasm/browser, final release measurements, screenshots and delivery checks
+remain in progress; Stage 6 stays open until their evidence is recorded.

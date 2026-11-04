@@ -1,4 +1,7 @@
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_GRAPH_NODES: usize = 4096;
@@ -10,6 +13,7 @@ pub struct GraphNode {
     /// 0: ungrouped, 1: strip, 2: loop, 3: bus.
     pub group: u8,
     pub slot: u32,
+    pub owner_generation: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -62,11 +66,17 @@ impl Topology {
             return false;
         }
         let keys: BTreeSet<_> = self.nodes.iter().map(|n| n.key).collect();
+        let mut owners = BTreeMap::new();
         keys.len() == self.nodes.len()
-            && self
-                .nodes
-                .iter()
-                .all(|n| n.key < crate::MAX_SAMPLES as u64 && n.group <= 3)
+            && self.nodes.iter().all(|n| {
+                n.key < crate::MAX_SAMPLES as u64
+                    && n.group <= 3
+                    && (n.group == 0
+                        || n.owner_generation != 0
+                            && owners
+                                .insert((n.group, n.slot), n.owner_generation)
+                                .is_none_or(|old| old == n.owner_generation))
+            })
             && self.edges.iter().all(|e| {
                 [e.source, e.destination].iter().all(|p| {
                     p.kind <= 1
