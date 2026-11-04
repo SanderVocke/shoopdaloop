@@ -126,6 +126,23 @@ timeline is deliberately linear; the bounded persistent production store and
 callback work accounting are not implemented by that oracle. CI must validate
 the semantic reconstruction before the writer uses it.
 
+The audio kernel now prepares multiple independent source histories in one shared
+page/index/owner pool. Scoped source handles preserve separate coverage and reset
+lifetimes; ordinary resource/snapshot interfaces retain the resulting takes. New
+tests saturate global owner and unrelated upload credits while both sources keep
+capturing, reset one source, verify old/current exports and recover all credits.
+Allocation-free sizing covers sixteen 30-second stereo histories and 512 views
+with one retained-page budget, plus refusal of the largest combined shape beyond
+the portable arena limit. This is kernel pooling only; normal host policy and the
+loop coordinator still need integration and production measurement.
+
+Focused shared-media CI passed on `beb092e498fd3b6340098013bd21eecab956873a`:
+[run 41925068783](https://github.com/SanderVocke/shoopdaloop/actions/runs/41925068783),
+job 126908066169. That head includes the compact projection, clipped ownership,
+separate MIDI finalization and interval-summary tests. Full matrix jobs were still
+running at inspection. It does not validate the later complete semantic query or
+multi-source audio pool, and is not application acceptance evidence.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

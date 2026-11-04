@@ -32,6 +32,13 @@ capacity failures preserve published content and existing owners.
 ## Capacity and required work
 
 Prepare channel count, history duration, owner slots and a physical-page budget.
+`Config::capacity(prepared_runtime, source_count)` validates and sizes the pool
+without allocating. Preparation also checks its reservation against remaining
+arena pages. `prepare_histories` creates independent source slots sharing one
+global owner, node, page and scratch budget. Each scoped `HistoryId` has its own
+coverage/root; resetting one source preserves the others and all retained takes.
+The single-history methods use slot zero for compatibility. Capacity reports the
+source count and total history-page reservation.
 The ring size is the next power of two above the history's covering page count
 plus boundary slack. Each page contains complete interleaved frames; unused page
 padding is excluded from reads. Transaction scratch covers the largest prepared
@@ -84,6 +91,12 @@ drop or automatic budget reset.
 ## Ordinary resource and persistence integration
 
 `ResourceStore::prepare_audio_store` prepares a lifetime-scoped `AudioStoreId`.
+`prepare_audio_pool` prepares several sources in that same store. `audio_history`
+returns a scoped `AudioHistoryId`; `append_audio_source`, `grab_audio_source`,
+`audio_source_coverage` and `audio_source_discontinuity` address that source.
+All resulting resources, exports and edits use the same ordinary ownership
+interface. One source can use available retained-page credits without reserving
+an unused take budget independently for every other source.
 `RenderIo::append_audio_history` writes its history. `grab_audio` returns a new
 ordinary `ResourceId`; `fork_audio` returns a new editable resource from an
 existing immutable snapshot. Both have `ResourceCommand` equivalents. Prepared

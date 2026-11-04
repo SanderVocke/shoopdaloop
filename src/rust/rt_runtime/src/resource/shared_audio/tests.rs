@@ -230,6 +230,55 @@ fn prepared_audio_index_budget_tracks_retained_pages_instead_of_full_rings_per_v
 }
 
 #[shoop_test]
+fn pooled_production_shape_can_be_sized_before_allocating_and_oversized_shapes_refuse() {
+    let config = RuntimeConfig {
+        max_frames: 32,
+        page_bytes: 4096,
+        resource_pages: 65536 + 81923,
+        ..RuntimeConfig::default()
+    }
+    .prepare()
+    .unwrap();
+    let audio = Config {
+        channels: 2,
+        history_frames: 48_000 * 30,
+        views: 512,
+        pages: 81923,
+    };
+    assert_no_heap(|| {
+        let capacity = audio.capacity(config, 16).unwrap();
+        assert_eq!(
+            (
+                capacity.histories,
+                capacity.history_pages,
+                capacity.transaction_pages
+            ),
+            (16, 65536, 3)
+        );
+        assert!(capacity.metadata_bytes < 40 * 1024 * 1024);
+        assert_eq!(audio.capacity(config, 0), Err(Error::InvalidConfig));
+        assert_eq!(audio.capacity(config, usize::MAX), Err(Error::Capacity));
+    });
+    let largest = RuntimeConfig {
+        resource_pages: i32::MAX as usize / 4096,
+        ..config.limits()
+    }
+    .prepare()
+    .unwrap();
+    assert_no_heap(|| {
+        assert_eq!(
+            Config {
+                channels: 16,
+                pages: largest.limits().resource_pages,
+                ..audio
+            }
+            .capacity(largest, 64),
+            Err(Error::Capacity)
+        );
+    });
+}
+
+#[shoop_test]
 fn partial_stereo_history_forks_and_cross_boundary_edits_preserve_exports() {
     let mut store = store(80, 24, 32);
     let baseline = store.usage();

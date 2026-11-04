@@ -125,6 +125,187 @@ fn generic_snapshots_pin_grabs_across_edits_upload_commits_and_resource_removal(
 }
 
 #[shoop_test]
+fn shared_source_pool_keeps_histories_independent_and_live_under_global_owner_pressure() {
+    let mut store = resources();
+    let baseline = store.usage();
+    let pool = store
+        .prepare_audio_pool(
+            shared_audio::Config {
+                channels: 2,
+                history_frames: 3,
+                views: 8,
+                pages: 10,
+            },
+            Frame(0),
+            2,
+        )
+        .unwrap();
+    let a = store.audio_history(pool, 0).unwrap();
+    let b = store.audio_history(pool, 1).unwrap();
+    assert_eq!(store.audio_history(pool, 2), Err(Error::InvalidId));
+    let capacity = store.audio_store_capacity(pool).unwrap();
+    assert_eq!((capacity.histories, capacity.history_pages), (2, 4));
+    let mut foreign = resources();
+    let foreign_pool = audio(&mut foreign, 2, 3);
+    let foreign_source = foreign.audio_history(foreign_pool, 0).unwrap();
+    let first = [1f32, -1., 2., -2., 3., -3.];
+    let second = [10001f32, -10001., 10002., -10002., 10003., -10003.];
+    let first_bytes: [u8; 24] = core::array::from_fn(|i| first[i / 4].to_le_bytes()[i % 4]);
+    let second_bytes: [u8; 24] = core::array::from_fn(|i| second[i / 4].to_le_bytes()[i % 4]);
+    assert_no_heap(|| {
+        store.begin_callback();
+        assert_eq!(
+            store
+                .render_io()
+                .append_audio_source(foreign_source, Frame(0), &first),
+            Err(Error::InvalidId)
+        );
+        store
+            .render_io()
+            .append_audio_source(a, Frame(0), &first)
+            .unwrap();
+        store
+            .render_io()
+            .append_audio_source(b, Frame(0), &second)
+            .unwrap();
+        let take_a = store.grab_audio_source(a, Frame(0)..Frame(3)).unwrap();
+        let take_b = store.grab_audio_source(b, Frame(0)..Frame(3)).unwrap();
+        let old_a = store.snapshot(take_a, Frame(3)).unwrap();
+        let old_b = store.snapshot(take_b, Frame(3)).unwrap();
+        let before = store.usage();
+        assert_eq!(
+            store.grab_audio_source(b, Frame(0)..Frame(3)),
+            Err(Error::Capacity)
+        );
+        assert_eq!(store.usage(), before);
+
+        let unrelated = store.create().unwrap();
+        let free = store.usage().free_pages - store.usage().reserved_pages;
+        assert_eq!(free, baseline.free_pages - 10);
+        let upload = store
+            .begin_upload(
+                unrelated,
+                Revision(0),
+                Description {
+                    format: Format::Audio { channels: 2 },
+                    frames: (free * 3) as u64,
+                    bytes: free * 24,
+                },
+            )
+            .unwrap();
+        assert_eq!(store.usage().free_pages, store.usage().reserved_pages);
+        store
+            .render_io()
+            .replace_audio(take_a, Revision(1), 1, &[99., -99.])
+            .unwrap();
+        for tick in 1..64 {
+            let frame = Frame(tick * 3);
+            store.begin_callback();
+            store.charge_external(24, 0).unwrap();
+            if tick == 10 {
+                let unchanged = store.audio_source_coverage(b).unwrap();
+                store
+                    .render_io()
+                    .audio_source_discontinuity(a, frame)
+                    .unwrap();
+                assert_eq!(store.audio_source_coverage(a), Ok(frame..frame));
+                assert_eq!(store.audio_source_coverage(b), Ok(unchanged));
+            }
+            let base = tick as f32 * 100.;
+            let input_a = [
+                base + 1.,
+                -base - 1.,
+                base + 2.,
+                -base - 2.,
+                base + 3.,
+                -base - 3.,
+            ];
+            let input_b = input_a.map(|sample| {
+                if sample > 0. {
+                    sample + 10000.
+                } else {
+                    sample - 10000.
+                }
+            });
+            store
+                .render_io()
+                .append_audio_source(a, frame, &input_a)
+                .unwrap();
+            store
+                .render_io()
+                .append_audio_source(b, frame, &input_b)
+                .unwrap();
+            assert_eq!(store.copy_remaining(), 0);
+        }
+        assert_eq!(read::<24>(&mut store, old_a), first_bytes);
+        assert_eq!(read::<24>(&mut store, old_b), second_bytes);
+        store.release_snapshot(old_a.id).unwrap();
+        store.release_snapshot(old_b.id).unwrap();
+        drain(&mut store);
+        let changed = store.snapshot(take_a, Frame(192)).unwrap();
+        let mut expected = first_bytes;
+        expected[8..12].copy_from_slice(&99f32.to_le_bytes());
+        expected[12..16].copy_from_slice(&(-99f32).to_le_bytes());
+        assert_eq!(read::<24>(&mut store, changed), expected);
+        store.release_snapshot(changed.id).unwrap();
+        drain(&mut store);
+        for (source, offset) in [(a, 0f32), (b, 10000f32)] {
+            let resource = store
+                .grab_audio_source(source, Frame(189)..Frame(192))
+                .unwrap();
+            let snapshot = store.snapshot(resource, Frame(192)).unwrap();
+            let samples = [
+                6301. + offset,
+                -6301. - offset,
+                6302. + offset,
+                -6302. - offset,
+                6303. + offset,
+                -6303. - offset,
+            ];
+            let bytes: [u8; 24] = core::array::from_fn(|i| samples[i / 4].to_le_bytes()[i % 4]);
+            assert_eq!(read::<24>(&mut store, snapshot), bytes);
+            store.release_snapshot(snapshot.id).unwrap();
+            store.remove(resource).unwrap();
+            drain(&mut store);
+        }
+        store.cancel_upload(upload).unwrap();
+        store.remove(unrelated).unwrap();
+        store.remove(take_a).unwrap();
+        store.remove(take_b).unwrap();
+        drain(&mut store);
+        store.cleanup_audio_store(pool).unwrap();
+        drain(&mut store);
+        assert_eq!(store.audio_source_coverage(a), Err(Error::InvalidState));
+        assert_eq!(store.usage(), baseline);
+        foreign.cleanup_audio_store(foreign_pool).unwrap();
+        drain(&mut foreign);
+        assert_eq!(foreign.usage().free_pages, 128);
+    });
+}
+
+#[shoop_test]
+fn source_pool_preparation_refuses_without_reserving_an_incomplete_pool() {
+    let mut store = resources();
+    let before = store.usage();
+    let config = shared_audio::Config {
+        channels: 2,
+        history_frames: 3,
+        views: 8,
+        pages: 5,
+    };
+    assert_eq!(
+        store.prepare_audio_pool(config, Frame(0), 2),
+        Err(Error::Capacity)
+    );
+    assert_eq!(store.usage(), before);
+    assert_eq!(
+        store.prepare_audio_pool(config, Frame(0), 0),
+        Err(Error::InvalidConfig)
+    );
+    assert_eq!(store.usage(), before);
+}
+
+#[shoop_test]
 fn loaded_pcm_longer_than_history_is_a_zero_copy_base_with_isolated_wrapping_edits() {
     let mut store = resources();
     let baseline = store.usage();

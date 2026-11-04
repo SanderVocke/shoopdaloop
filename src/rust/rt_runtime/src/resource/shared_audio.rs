@@ -12,6 +12,8 @@ use crate::{Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
 
+mod layout;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
     pub channels: u32,
@@ -42,6 +44,12 @@ pub struct ExportId(Handle);
 pub struct ReadIndex(Handle);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HistoryId {
+    scope: u32,
+    slot: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Info {
     pub channels: u32,
     pub frames: u64,
@@ -50,6 +58,7 @@ pub struct Info {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capacity {
+    pub histories: usize,
     pub history_pages: usize,
     pub transaction_pages: usize,
     pub index_nodes: usize,
@@ -95,14 +104,19 @@ struct Plan {
     page: usize,
 }
 
+#[derive(Clone, Copy)]
+struct History {
+    origin: Frame,
+    next: Frame,
+    root: Option<usize>,
+}
+
 pub struct AudioStore {
     scope: u32,
     store_scope: u32,
     channels: usize,
     keep: usize,
-    origin: Frame,
-    next: Frame,
-    history: Option<usize>,
+    histories: Box<[History]>,
     ring_pages: usize,
     page_frames: usize,
     page_bytes: usize,
@@ -136,115 +150,42 @@ impl AudioStore {
         config: Config,
         origin: Frame,
     ) -> Result<Self, Error> {
-        let channels = config.channels as usize;
-        let page_bytes = store.config.limits().page_bytes;
-        if channels == 0
-            || config.history_frames == 0
-            || config.views == 0
-            || page_bytes / 4 < channels
-        {
-            return Err(Error::InvalidConfig);
-        }
-        let page_frames = page_bytes / 4 / channels;
-        store
-            .config
-            .limits()
-            .max_frames
-            .checked_mul(channels)
-            .and_then(|n| n.checked_mul(4))
-            .filter(|&n| n <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
-        let ring_pages = config
-            .history_frames
-            .div_ceil(page_frames)
-            .checked_add(1)
-            .and_then(usize::checked_next_power_of_two)
-            .ok_or(Error::Capacity)?;
-        let max_frames = store.config.limits().max_frames;
-        let transaction_pages = ring_pages.min(
-            max_frames
-                .div_ceil(page_frames)
-                .checked_add(2)
-                .ok_or(Error::Capacity)?,
-        );
-        let baseline = ring_pages
-            .checked_add(transaction_pages)
-            .ok_or(Error::Capacity)?;
-        if config.pages < baseline || config.pages > store.free_pages.len() - store.reserved_pages {
+        Self::prepare_histories(store, config, origin, 1)
+    }
+
+    /// Prepare independent source histories sharing one page/index/owner budget.
+    pub fn prepare_histories(
+        store: &mut ResourceStore,
+        config: Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<Self, Error> {
+        let layout = layout::Layout::new(store.config, config, histories)?;
+        if config.pages > store.free_pages.len() - store.reserved_pages {
             return Err(Error::Capacity);
         }
-        let index_pages = (store.config.resource_bytes() / (channels * 4))
-            .div_ceil(page_frames)
-            .max(ring_pages)
-            .checked_next_power_of_two()
-            .ok_or(Error::Capacity)?;
-        let depth = index_pages.trailing_zeros() as usize;
-        let debt_limit = config.pages - baseline;
-        let owner_limit = config.views.min(debt_limit);
-        // Clipping leaves at most two intervals: at most two nodes per covered
-        // page plus four boundary paths. Keep a displaced history and write scratch.
-        let history_nodes = ring_pages
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(depth.checked_mul(4)?))
-            .ok_or(Error::Capacity)?;
-        let node_limit = history_nodes
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(debt_limit.checked_mul(2)?))
-            .and_then(|n| n.checked_add(owner_limit.checked_mul(depth.checked_mul(4)?)?))
-            .and_then(|n| {
-                n.checked_add(
-                    transaction_pages
-                        .checked_mul(depth + 1)?
-                        .max(4 * (depth + 1)),
-                )
-            })
-            .ok_or(Error::Capacity)?;
-        let scratch_bytes = transaction_pages
-            .checked_mul(page_bytes)
-            .ok_or(Error::Capacity)?;
-        let lease_limit = config
-            .pages
-            .checked_add(transaction_pages)
-            .ok_or(Error::Capacity)?;
-        let metadata_bytes = node_limit
-            .checked_mul(size_of::<Option<Node>>() + size_of::<usize>() * 4)
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .views
-                        .checked_mul(size_of::<Slot<View>>() + size_of::<usize>() * 2)?,
-                )
-            })
-            .and_then(|n| n.checked_add(index_pages.checked_mul(size_of::<(u64, usize)>())?))
-            .and_then(|n| {
-                n.checked_add(
-                    config
-                        .views
-                        .checked_mul(size_of::<Option<Base>>() + size_of::<usize>())?,
-                )
-            })
-            .and_then(|n| n.checked_add(scratch_bytes))
-            .and_then(|n| n.checked_add(transaction_pages.checked_mul(size_of::<Plan>())?))
-            .and_then(|n| n.checked_add(size_of::<usize>()))
-            .and_then(|n| n.checked_add(store.pages.len().checked_mul(size_of::<usize>())?))
-            .and_then(|n| {
-                n.checked_add(
-                    lease_limit.checked_mul(size_of::<Slot<usize>>() + size_of::<usize>())?,
-                )
-            })
-            .filter(|&n| n <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
-        ring_pages
-            .checked_mul(page_frames)
-            .filter(|&n| n <= i32::MAX as usize)
-            .ok_or(Error::Capacity)?;
+        let layout::Layout {
+            channels,
+            page_bytes,
+            page_frames,
+            ring_pages,
+            max_frames,
+            depth,
+            node_limit,
+            scratch_bytes,
+            lease_limit,
+            index_pages,
+            transaction_pages,
+            debt_limit,
+            capacity,
+        } = layout;
         let mut scratch = vec![0; scratch_bytes].into_boxed_slice();
         let mut nodes = vec![None; node_limit];
         let mut marks = vec![(0, 0); index_pages].into_boxed_slice();
         let mut views = slots(config.views);
         let mut plans = vec![Plan::default(); transaction_pages];
         let mut retired = vec![(0, 0); node_limit];
-        let mut pending = vec![0; config.views + 1].into_boxed_slice();
+        let mut pending = vec![0; config.views + histories].into_boxed_slice();
         for byte in &mut scratch {
             *core::hint::black_box(byte) = 0;
         }
@@ -283,20 +224,21 @@ impl AudioStore {
             store_scope: store.scope,
             channels,
             keep: config.history_frames,
-            origin,
-            next: origin,
-            history: None,
+            histories: vec![
+                History {
+                    origin,
+                    next: origin,
+                    root: None
+                };
+                histories
+            ]
+            .into_boxed_slice(),
             ring_pages,
             page_frames,
             page_bytes,
             max_frames,
             depth,
-            capacity: Capacity {
-                history_pages: ring_pages,
-                transaction_pages,
-                index_nodes: node_limit,
-                metadata_bytes,
-            },
+            capacity,
             nodes,
             free_nodes: (0..node_limit).rev().collect(),
             views,
@@ -338,27 +280,63 @@ impl AudioStore {
     }
 
     pub fn coverage(&self) -> Result<Range<Frame>, Error> {
+        self.history_coverage(self.history_id(0)?)
+    }
+
+    pub fn history_id(&self, slot: usize) -> Result<HistoryId, Error> {
         if self.closed {
             return Err(Error::InvalidState);
         }
+        if slot >= self.histories.len() {
+            return Err(Error::InvalidId);
+        }
+        Ok(HistoryId {
+            scope: self.scope,
+            slot,
+        })
+    }
+    fn history(&self, id: HistoryId) -> Result<History, Error> {
+        if self.closed {
+            return Err(Error::InvalidState);
+        }
+        if id.scope != self.scope {
+            return Err(Error::InvalidId);
+        }
+        self.histories.get(id.slot).copied().ok_or(Error::InvalidId)
+    }
+    pub fn history_coverage(&self, id: HistoryId) -> Result<Range<Frame>, Error> {
+        let history = self.history(id)?;
         Ok(Frame(
-            self.next
+            history
+                .next
                 .0
                 .saturating_sub(self.keep as u64)
-                .max(self.origin.0),
-        )..self.next)
+                .max(history.origin.0),
+        )..history.next)
     }
 
     /// Start a new complete input segment; retained owners keep their old roots.
     pub fn discontinuity(&mut self, io: &mut RenderIo<'_>, next: Frame) -> Result<(), Error> {
+        self.history_discontinuity(io, self.history_id(0)?, next)
+    }
+
+    pub fn history_discontinuity(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        id: HistoryId,
+        next: Frame,
+    ) -> Result<(), Error> {
         self.check(io.store)?;
-        if next < self.next {
+        let history = self.history(id)?;
+        if next < history.next {
             return Err(Error::InvalidFrame);
         }
-        let root = self.history.take();
-        self.queue(root, self.views.len());
-        self.origin = next;
-        self.next = next;
+        self.queue(history.root, self.views.len() + id.slot);
+        self.histories[id.slot] = History {
+            origin: next,
+            next,
+            root: None,
+        };
         Ok(())
     }
 
@@ -415,8 +393,18 @@ impl AudioStore {
     }
 
     pub fn grab(&mut self, io: &mut RenderIo<'_>, range: Range<Frame>) -> Result<TakeId, Error> {
+        self.grab_history(io, self.history_id(0)?, range)
+    }
+
+    pub fn grab_history(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        id: HistoryId,
+        range: Range<Frame>,
+    ) -> Result<TakeId, Error> {
         self.check(io.store)?;
-        let coverage = self.coverage()?;
+        let history = self.history(id)?;
+        let coverage = self.history_coverage(id)?;
         if range.start < coverage.start || range.end > coverage.end || range.start >= range.end {
             return Err(Error::InvalidFrame);
         }
@@ -440,7 +428,7 @@ impl AudioStore {
         for _ in 0..steps {
             io.store.index_step(WorkClass::Render);
         }
-        let root = self.clip(self.history, 0, self.marks.len(), &ranges);
+        let root = self.clip(history.root, 0, self.marks.len(), &ranges);
         Ok(TakeId(self.insert_view(
             View {
                 root,
@@ -772,8 +760,19 @@ impl AudioStore {
         frame: Frame,
         samples: &[f32],
     ) -> Result<(), Error> {
+        self.append_history(io, self.history_id(0)?, frame, samples)
+    }
+
+    pub fn append_history(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        id: HistoryId,
+        frame: Frame,
+        samples: &[f32],
+    ) -> Result<(), Error> {
         self.check(io.store)?;
-        if frame != self.next {
+        let history = self.history(id)?;
+        if frame != history.next {
             return Err(Error::InvalidFrame);
         }
         if samples.len() % self.channels != 0 || samples.len() / self.channels > self.max_frames {
@@ -786,7 +785,7 @@ impl AudioStore {
         let next = frame.checked_add(frames)?;
         let root = self.stage(
             io.store,
-            self.history,
+            history.root,
             (frame.0 % self.ring_frames() as u64) as usize,
             frames,
             0,
@@ -795,9 +794,9 @@ impl AudioStore {
             self.ring_frames(),
             None,
         )?;
-        let old = core::mem::replace(&mut self.history, root);
-        self.release_immediate(io.store, old);
-        self.next = next;
+        self.release_immediate(io.store, history.root);
+        self.histories[id.slot].root = root;
+        self.histories[id.slot].next = next;
         Ok(())
     }
 
@@ -1061,8 +1060,10 @@ impl AudioStore {
             return Err(Error::Busy);
         }
         self.closed = true;
-        let root = self.history.take();
-        self.queue(root, self.views.len());
+        for slot in 0..self.histories.len() {
+            let root = self.histories[slot].root.take();
+            self.queue(root, self.views.len() + slot);
+        }
         Ok(())
     }
 }

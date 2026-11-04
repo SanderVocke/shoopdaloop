@@ -370,6 +370,7 @@ src/rust/rt_runtime/src/midi_state/interval.rs,generic_realtime_library,excluded
 src/rust/rt_runtime/src/midi_state/interval/tests.rs,test_support,excluded,Heap-guarded interval composition and protocol-state oracles; no production boundary.
 src/rust/rt_runtime/src/midi_state/indexed.rs,generic_realtime_library,excluded,Ordered semantic MIDI state queries; no execution or ownership boundary.
 src/rust/rt_runtime/src/midi_state/indexed/tests.rs,test_support,excluded,Linear packet oracles for complete indexed projection semantics; no production boundary.
+src/rust/rt_runtime/src/resource/shared_audio/layout.rs,generic_realtime_library,excluded,Allocation-free shared source pool sizing and capacity validation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/storage.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/history.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/read.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.

@@ -9,6 +9,12 @@ pub struct AudioStoreId {
     slot: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AudioHistoryId {
+    store: AudioStoreId,
+    history: shared_audio::HistoryId,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Take {
     pub store: AudioStoreId,
@@ -36,11 +42,20 @@ impl ResourceStore {
         config: shared_audio::Config,
         origin: Frame,
     ) -> Result<AudioStoreId, Error> {
+        self.prepare_audio_pool(config, origin, 1)
+    }
+
+    pub fn prepare_audio_pool(
+        &mut self,
+        config: shared_audio::Config,
+        origin: Frame,
+        histories: usize,
+    ) -> Result<AudioStoreId, Error> {
         let slot = self.audio_stores.len();
         if slot == self.config.limits().resource_slots {
             return Err(Error::Capacity);
         }
-        let audio = shared_audio::AudioStore::prepare(self, config, origin)?;
+        let audio = shared_audio::AudioStore::prepare_histories(self, config, origin, histories)?;
         self.audio_stores.push(Some(Box::new(audio)));
         Ok(AudioStoreId {
             scope: self.scope,
@@ -67,14 +82,24 @@ impl ResourceStore {
     }
 
     pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
+        self.audio(id)?.coverage()
+    }
+    fn audio(&self, id: AudioStoreId) -> Result<&shared_audio::AudioStore, Error> {
         if id.scope != self.scope {
             return Err(Error::InvalidId);
         }
         self.audio_stores
             .get(id.slot)
             .and_then(Option::as_ref)
-            .ok_or(Error::InvalidId)?
-            .coverage()
+            .map(Box::as_ref)
+            .ok_or(Error::InvalidId)
+    }
+    pub fn audio_history(&self, store: AudioStoreId, slot: usize) -> Result<AudioHistoryId, Error> {
+        let history = self.audio(store)?.history_id(slot)?;
+        Ok(AudioHistoryId { store, history })
+    }
+    pub fn audio_source_coverage(&self, id: AudioHistoryId) -> Result<Range<Frame>, Error> {
+        self.audio(id.store)?.history_coverage(id.history)
     }
 
     fn audio_resource(&mut self, audio: Take) -> Result<ResourceId, Error> {
@@ -137,11 +162,21 @@ impl ResourceStore {
         store: AudioStoreId,
         range: Range<Frame>,
     ) -> Result<ResourceId, Error> {
+        self.grab_audio_source(self.audio_history(store, 0)?, range)
+    }
+    pub fn grab_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        range: Range<Frame>,
+    ) -> Result<ResourceId, Error> {
         self.audio_resource_credit()?;
-        let take = self.with_audio(store, |resources, audio| {
-            audio.grab(&mut resources.render_io(), range)
+        let take = self.with_audio(id.store, |resources, audio| {
+            audio.grab_history(&mut resources.render_io(), id.history, range)
         })?;
-        self.audio_resource(Take { store, take })
+        self.audio_resource(Take {
+            store: id.store,
+            take,
+        })
     }
 
     /// Loaded PCM remains an immutable base. Only edited pages are copied. A
@@ -290,6 +325,25 @@ impl ResourceStore {
 }
 
 impl RenderIo<'_> {
+    pub fn audio_source_discontinuity(
+        &mut self,
+        id: AudioHistoryId,
+        next: Frame,
+    ) -> Result<(), Error> {
+        self.store.with_audio(id.store, |store, audio| {
+            audio.history_discontinuity(&mut store.render_io(), id.history, next)
+        })
+    }
+    pub fn append_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        frame: Frame,
+        samples: &[f32],
+    ) -> Result<(), Error> {
+        self.store.with_audio(id.store, |store, audio| {
+            audio.append_history(&mut store.render_io(), id.history, frame, samples)
+        })
+    }
     pub fn audio_history_discontinuity(
         &mut self,
         id: AudioStoreId,
@@ -342,6 +396,16 @@ impl RenderIo<'_> {
 }
 
 impl ResourceIo<'_> {
+    pub fn audio_source_coverage(&self, id: AudioHistoryId) -> Result<Range<Frame>, Error> {
+        self.store.audio_source_coverage(id)
+    }
+    pub fn grab_audio_source(
+        &mut self,
+        id: AudioHistoryId,
+        range: Range<Frame>,
+    ) -> Result<ResourceId, Error> {
+        self.store.grab_audio_source(id, range)
+    }
     pub fn audio_coverage(&self, id: AudioStoreId) -> Result<Range<Frame>, Error> {
         self.store.audio_coverage(id)
     }
