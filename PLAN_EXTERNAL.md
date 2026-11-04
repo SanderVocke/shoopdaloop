@@ -301,3 +301,12 @@ builds or implementation tests.
   test attributes, tracing inventory, and the 14 existing boundary-policy tests
   pass. Existing CI filters omitted the target branch, so build/docs/CodeQL
   workflows now include `feat/fixed-quantum-runtime`.
+
+- Regression investigation: the initial complete native run passed 2605 tests
+  and failed four existing live session recovery tests (four host-facility skips).
+  All four failures repeated in isolation at Q=1 with the small recording pools.
+  Changing only live recovery fixture quanta to production Q=32 makes all four
+  pass with their recovery/media/shutdown assertions unchanged. Runtime/reference
+  Q=1 tests and the startup-only fixture remain. This is a verification-fixture
+  adjustment; no production recovery or recording behavior was modified. Initial
+  and isolated logs are retained under work/. Full regression will be repeated.

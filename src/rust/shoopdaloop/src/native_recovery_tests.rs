@@ -76,7 +76,7 @@ fn host_peer() {
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: shoop_egui::NewEnginePools {
-                quantum: 1,
+                quantum: 32,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 4,
