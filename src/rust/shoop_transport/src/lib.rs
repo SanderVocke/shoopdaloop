@@ -21,6 +21,8 @@ pub const MAX_RECORD_BYTES: usize = 1280;
 /// Capacity class of a message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Lane {
+    /// Bounded diagnostic traffic with independent admission.
+    Profiling,
     /// Requests, results, lifecycle and state: never dropped.
     Reliable,
     /// Latest values: a newer record supersedes an undelivered older one.

@@ -190,7 +190,7 @@ impl ControlEndpoint {
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
             Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
-            Request::CancelBulk => false,
+            Request::CancelBulk | Request::Profiling(_) => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -272,7 +272,7 @@ impl ControlEndpoint {
                 }
             }
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => {}
-            Request::CancelBulk => {}
+            Request::CancelBulk | Request::Profiling(_) => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }

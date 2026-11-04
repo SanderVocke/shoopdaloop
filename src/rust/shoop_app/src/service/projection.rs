@@ -45,6 +45,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            profiling: self.observed.profiling.clone(),
             bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
             sync_sources: self
@@ -432,6 +433,7 @@ impl Service {
 
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
+            || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {
             self.bump();

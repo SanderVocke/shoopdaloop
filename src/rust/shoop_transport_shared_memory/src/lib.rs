@@ -33,8 +33,8 @@ impl Descriptor {
     }
     pub fn encode(&self) -> [u8; DESCRIPTOR_BYTES] {
         let mut out = [0; DESCRIPTOR_BYTES];
-        out[..4].copy_from_slice(b"SDM1");
-        out[4..6].copy_from_slice(&1u16.to_le_bytes());
+        out[..4].copy_from_slice(b"SDM2");
+        out[4..6].copy_from_slice(&2u16.to_le_bytes());
         out[6..8].copy_from_slice(&(MAX_RECORD_BYTES as u16).to_le_bytes());
         for (i, n) in self.slots.iter().enumerate() {
             out[8 + 4 * i..12 + 4 * i].copy_from_slice(&n.to_le_bytes());
@@ -44,8 +44,8 @@ impl Descriptor {
     }
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() != DESCRIPTOR_BYTES
-            || &bytes[..4] != b"SDM1"
-            || bytes[4..6] != 1u16.to_le_bytes()
+            || &bytes[..4] != b"SDM2"
+            || bytes[4..6] != 2u16.to_le_bytes()
             || bytes[6..8] != (MAX_RECORD_BYTES as u16).to_le_bytes()
             || bytes[36..40] != [0; 4]
         {
@@ -83,6 +83,7 @@ fn index(lane: Lane) -> usize {
         Lane::Reliable => 0,
         Lane::Telemetry => 1,
         Lane::Bulk => 2,
+        Lane::Profiling => 3,
     }
 }
 impl Port {
@@ -102,10 +103,11 @@ impl Port {
             .config(&config)
             .create::<Service>()
             .map_err(io_error)?;
-        let mut publishers = Vec::with_capacity(3);
-        let mut subscribers = Vec::with_capacity(3);
+        let mut publishers = Vec::with_capacity(4);
+        let mut subscribers = Vec::with_capacity(4);
         for direction in 0..2 {
-            for lane in 0..3 {
+            for lane in 0..4 {
+                let capacity = descriptor.slots.get(lane).copied().unwrap_or(64) as usize;
                 let name: ServiceName = format!("shoop/{prefix}/{direction}/{lane}")
                     .as_str()
                     .try_into()
@@ -114,7 +116,7 @@ impl Port {
                     .service_builder(&name)
                     .publish_subscribe::<Payload>()
                     .enable_safe_overflow(lane == 1)
-                    .subscriber_max_buffer_size(descriptor.slots[lane] as usize)
+                    .subscriber_max_buffer_size(capacity)
                     .max_publishers(1)
                     .max_subscribers(1)
                     .max_nodes(2);
@@ -123,8 +125,7 @@ impl Port {
                 } else {
                     builder.open().map_err(io_error)?
                 };
-                if service.static_config().subscriber_max_buffer_size()
-                    != descriptor.slots[lane] as usize
+                if service.static_config().subscriber_max_buffer_size() != capacity
                     || service.static_config().has_safe_overflow() != (lane == 1)
                 {
                     return Err(io::Error::other("shared-memory layout mismatch"));
@@ -224,7 +225,7 @@ impl RecordPort for Port {
         if self.failure.is_some() {
             return None;
         }
-        for lane in [0, 2, 1] {
+        for lane in [0, 2, 1, 3] {
             match self.subscribers[lane].receive() {
                 Ok(Some(sample)) => {
                     let bytes = sample.payload();

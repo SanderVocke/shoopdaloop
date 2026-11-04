@@ -107,6 +107,7 @@ pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scriptin
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
+pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
 pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
@@ -384,6 +385,11 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(2)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(RUNTIME_PROFILING, false, "Developer", "Runtime profiling",
+            "Measure graph node durations and automatically retain recent timing when an xrun occurs.")
+            .category_order(100).setting_order(0).effect(SettingEffect::Immediate),
     )?;
     builder.register_draft_validator(validate_track_default_latency);
     Ok(())
@@ -1864,6 +1870,7 @@ impl AppWidget {
             &state.scripting.dialogs,
             script_paths,
         ));
+        self.settings.set_profiling(state.profiling.clone());
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,

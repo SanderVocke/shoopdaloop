@@ -110,6 +110,8 @@ pub struct SettingsDialog {
     markdown_cache: CommonMarkCache,
     tracing_status: TracingStatus,
     tracing_engine_detail: bool,
+    profiling: crate::ProfilingView,
+    profiling_capture: bool,
     #[cfg(test)]
     tracing_start_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -166,6 +168,8 @@ impl SettingsDialog {
             markdown_cache: CommonMarkCache::default(),
             tracing_status: TracingStatus::default(),
             tracing_engine_detail: false,
+            profiling: Default::default(),
+            profiling_capture: false,
             #[cfg(test)]
             tracing_start_rect: None,
             #[cfg(test)]
@@ -214,6 +218,10 @@ impl SettingsDialog {
         if let Some(draft) = &mut self.draft {
             configuration.write_to_settings_draft(draft);
         }
+    }
+
+    pub fn set_profiling(&mut self, profiling: crate::ProfilingView) {
+        self.profiling = profiling;
     }
 
     pub fn set_tracing_status(&mut self, status: TracingStatus) {
@@ -532,6 +540,17 @@ impl SettingsDialog {
     }
 
     fn show_developer(&mut self, ui: &mut egui::Ui, response: &mut SettingsDialogResponse) {
+        ui.heading("Runtime profiling");
+        if let Some(definition) = self
+            .registry
+            .definition(crate::RUNTIME_PROFILING.id())
+            .cloned()
+        {
+            self.show_definition_cards(ui, vec![definition], None);
+        }
+        crate::profiling::show(ui, &self.profiling, &mut self.profiling_capture);
+        ui.separator();
+        ui.heading("Tracing");
         ui.label(
             "Capture performance data or investigate UI/audio bugs. Tracing can be stopped again, but capturing may degrade performance.",
         );

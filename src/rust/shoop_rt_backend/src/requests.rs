@@ -35,6 +35,7 @@ pub(crate) enum Purpose {
     BusControl(BackendBusId, BackendBusControl),
     InjectMidi(BackendTrackId),
     Smoothing(u32),
+    Profiling,
     Persistence,
     CancelReads,
 }

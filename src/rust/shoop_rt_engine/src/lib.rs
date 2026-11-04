@@ -40,6 +40,7 @@ mod jobs;
 mod model;
 mod node;
 mod pool;
+mod profiling;
 mod queue;
 mod render;
 mod replacement;
@@ -304,13 +305,21 @@ pub fn prepare(
         journal_events: 0,
     };
     let topology = compile(loop_limits, &TopologyDescription::default())?;
-    let cells = Cells::new(
+    let profile = rt_runtime::profiling::prepare(pool.nodes());
+    let (profile_control, profile_recorder, profile_reader) = match profile {
+        Some((control, recorder, reader)) => (Some(control), Some(recorder), Some(reader)),
+        None => (None, None, None),
+    };
+    let mut cells = Cells::new(
         strips,
         loops,
         buses,
         stream::RING_PAGES * description.page_bytes,
         driver,
     );
+    if let Some(cells) = alloc::sync::Arc::get_mut(&mut cells) {
+        cells.profiling = profile_control;
+    }
     let smoothing = match description.smoothing_frames {
         0 => Smoothing::None,
         frames => Smoothing::LinearRestart { frames },
@@ -386,6 +395,9 @@ pub fn prepare(
         planner,
         resources,
     )?;
+    if let Some(recorder) = profile_recorder {
+        runtime.set_profiling(recorder);
+    }
     if quantum.frames() > 1 {
         runtime.prepare_host_buffering()?;
     }
@@ -449,6 +461,11 @@ pub fn prepare(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        profiling: profile_reader,
+        profile_named: vec![false; pool.nodes()].into_boxed_slice(),
+        profile_names: pool.profiling_names(),
+        profile_generation: 0,
+        profile_status: None,
         control,
         loops: client,
         shape: Shape {

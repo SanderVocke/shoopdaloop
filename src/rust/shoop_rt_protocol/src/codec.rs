@@ -398,6 +398,10 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Profiling(enabled) => {
+                w.u8(33)?;
+                w.bool(enabled)
+            }
             Self::ContentFamilyBegin {
                 id,
                 root,
@@ -594,6 +598,7 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            33 => Self::Profiling(r.bool()?),
             29 => Self::ContentFamilyBegin {
                 id: r.u64()?,
                 root: LoopSlotId::get(r)?,
@@ -1302,9 +1307,109 @@ impl Wire for ClientMessage {
     }
 }
 
+impl Wire for rt_profiling::Packet {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.generation)?;
+        w.u64(self.capture)?;
+        w.u64(self.sequence)?;
+        w.u64(self.callback)?;
+        w.u64(self.callback_frame)?;
+        w.u64(self.frame)?;
+        w.u64(self.epoch)?;
+        w.u64(self.start_ns)?;
+        w.u64(self.end_ns)?;
+        w.u32(self.frames)?;
+        w.u32(self.index)?;
+        w.u32(self.total)?;
+        w.u8(self.len)?;
+        w.u32(self.flags)?;
+        w.u32(self.trigger)?;
+        for sample in &self.samples[..usize::from(self.len)] {
+            w.u64(sample.key)?;
+            w.u64(sample.at)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut packet = Self {
+            generation: r.u64()?,
+            capture: r.u64()?,
+            sequence: r.u64()?,
+            callback: r.u64()?,
+            callback_frame: r.u64()?,
+            frame: r.u64()?,
+            epoch: r.u64()?,
+            start_ns: r.u64()?,
+            end_ns: r.u64()?,
+            frames: r.u32()?,
+            index: r.u32()?,
+            total: r.u32()?,
+            len: r.u8()?,
+            flags: r.u32()?,
+            trigger: r.u32()?,
+            ..Self::default()
+        };
+        if !packet.valid() {
+            return Err(CodecError::Invalid);
+        }
+        for sample in &mut packet.samples[..usize::from(packet.len)] {
+            sample.key = r.u64()?;
+            sample.at = r.u64()?;
+        }
+        Ok(packet)
+    }
+}
+impl Wire for rt_profiling::Status {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.generation)?;
+        w.bool(self.requested)?;
+        w.bool(self.active)?;
+        w.bool(self.available)?;
+        w.u64(self.resolution_ns)?;
+        w.u64(self.dropped)?;
+        w.u64(self.skipped_captures)?;
+        w.u64(self.high_water)?;
+        w.u64(self.storage_bytes)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            generation: r.u64()?,
+            requested: r.bool()?,
+            active: r.bool()?,
+            available: r.bool()?,
+            resolution_ns: r.u64()?,
+            dropped: r.u64()?,
+            skipped_captures: r.u64()?,
+            high_water: r.u64()?,
+            storage_bytes: r.u64()?,
+        })
+    }
+}
+
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ProfilingStatus(status) => {
+                w.u8(8)?;
+                status.put(w)
+            }
+            Self::Profiling(packet) => {
+                w.u8(9)?;
+                packet.put(w)
+            }
+            Self::ProfilingNode {
+                generation,
+                key,
+                name,
+            } => {
+                w.u8(10)?;
+                w.u64(*generation)?;
+                w.u64(*key)?;
+                name.put(w)
+            }
             Self::Welcome {
                 version,
                 capabilities,
@@ -1353,6 +1458,13 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            8 => Self::ProfilingStatus(rt_profiling::Status::get(r)?),
+            9 => Self::Profiling(rt_profiling::Packet::get(r)?),
+            10 => Self::ProfilingNode {
+                generation: r.u64()?,
+                key: r.u64()?,
+                name: Name::get(r)?,
+            },
             0 => Self::Welcome {
                 version: r.u16()?,
                 capabilities: Capabilities(r.u32()?),

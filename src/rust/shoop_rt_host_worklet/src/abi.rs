@@ -1,7 +1,7 @@
 //! The module's exports, called by the processor script on the audio thread.
 //! Each module instance holds one host in a module-global cell. Pointers are
 //! byte offsets into the instance's memory; nothing here dereferences them.
-#![allow(unsafe_code)] // `no_mangle` only.
+#![allow(unsafe_code)] // ABI attributes and the host clock import.
 
 use std::cell::RefCell;
 
@@ -218,4 +218,74 @@ pub extern "C" fn shoop_rt_worklet_counter(id: u32) -> u32 {
             _ => 0,
         }
     })
+}
+
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "shoop_profiling")]
+extern "C" {
+    #[link_name = "now"]
+    fn profiling_time() -> f64;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn profiling_now() -> u64 {
+    unsafe { profiling_time() }.max(0.) as u64
+}
+
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_profiling_clock(resolution_ns: u32) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        with_host(false, |host| {
+            host.set_profiling_clock(rt_runtime::profiling::Clock {
+                now: profiling_now,
+                resolution_ns: u64::from(resolution_ns),
+            });
+            true
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = resolution_ns;
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_profiling_active() -> bool {
+    with_host(false, |host| {
+        host.profiling().is_some_and(|control| control.recording())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_profiling_begin(
+    frame: f64,
+    started_ns: f64,
+    input_ns: f64,
+    frames: u32,
+) {
+    with_host((), |host| {
+        if let Some(control) = host.profiling() {
+            control.host_begin_external(
+                host.engine_frame(),
+                frame as u64,
+                frames,
+                started_ns as u64,
+            );
+            control.host_input(input_ns as u64);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_profiling_end(ended_ns: f64, frames: u32) {
+    with_host((), |host| {
+        if let Some(control) = host.profiling() {
+            control.host_end(
+                ended_ns as u64,
+                u64::from(frames) * 1_000_000_000 / u64::from(host.sample_rate()),
+            );
+        }
+    });
 }

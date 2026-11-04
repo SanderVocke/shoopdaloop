@@ -75,6 +75,7 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 }
 
 pub(crate) struct Cells {
+    pub profiling: Option<rt_runtime::profiling::Control>,
     pub next_frame: AtomicU64,
     pub endpoint_alive: AtomicBool,
     /// Rendering faulted; the engine no longer executes control work.
@@ -100,6 +101,7 @@ impl Cells {
         driver: DriverStatus,
     ) -> Arc<Self> {
         let cells = Self {
+            profiling: None,
             next_frame: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
@@ -171,11 +173,19 @@ impl Cells {
 pub struct HostStatus(pub(crate) Arc<Cells>);
 
 impl HostStatus {
+    pub fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
+        self.0.profiling.as_ref()
+    }
     pub fn set_driver(&self, driver: DriverStatus) {
         self.0.set_driver(driver);
     }
     pub fn add_xruns(&self, count: u32) {
         self.0.xruns.fetch_add(count, Ordering::Relaxed);
+        if count != 0 {
+            if let Some(control) = &self.0.profiling {
+                control.trigger(rt_runtime::profiling::HOST_XRUN);
+            }
+        }
     }
     /// Callback time as a share of the callback period.
     pub fn set_load(&self, load: f32) {

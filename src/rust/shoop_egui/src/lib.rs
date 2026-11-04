@@ -21,6 +21,7 @@ mod midi_sequence_widget;
 mod optimistic_value;
 mod oxisynth_editor;
 mod piano_pane;
+mod profiling;
 mod script_dialogs;
 mod script_resource_loader;
 mod settings_dialog;
@@ -50,7 +51,8 @@ pub use app_widget::{
     JACK_AUDIO_INPUTS, JACK_AUDIO_OUTPUTS, JACK_CLIENT_NAME, JACK_CONNECTIONS, JACK_MIDI_INPUTS,
     JACK_MIDI_OUTPUTS, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT,
     NEW_ENGINE_CHANNELS, NEW_ENGINE_LOOPS, NEW_ENGINE_LOOP_MEMORY_MB, NEW_ENGINE_QUANTUM,
-    NEW_ENGINE_TRACKS, SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
+    NEW_ENGINE_TRACKS, RUNTIME_PROFILING, SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR,
+    USER_SCRIPTS,
 };
 pub use bus_controls::BusControls;
 pub use composite_loop_widget::CompositeLoopWidget;

@@ -20,6 +20,8 @@ pub struct Outbox {
     reliable: VecDeque<EngineMessage>,
     telemetry: VecDeque<EngineMessage>,
     bulk: VecDeque<EngineMessage>,
+    profiling: VecDeque<EngineMessage>,
+    low_lane: usize,
     capacity: [usize; 3],
     dropped_telemetry: u64,
 }
@@ -30,6 +32,8 @@ impl Outbox {
             reliable: VecDeque::with_capacity(reliable),
             telemetry: VecDeque::with_capacity(telemetry),
             bulk: VecDeque::with_capacity(bulk),
+            profiling: VecDeque::with_capacity(256),
+            low_lane: 0,
             capacity: [reliable, telemetry, bulk],
             dropped_telemetry: 0,
         }
@@ -42,6 +46,7 @@ impl Outbox {
             Lane::Reliable => (&mut self.reliable, self.capacity[0]),
             Lane::Telemetry => (&mut self.telemetry, self.capacity[1]),
             Lane::Bulk => (&mut self.bulk, self.capacity[2]),
+            Lane::Profiling => (&mut self.profiling, 256),
         };
         if queue.len() == capacity {
             if message.lane() != Lane::Telemetry || capacity == 0 {
@@ -60,15 +65,28 @@ impl Outbox {
             Lane::Reliable => self.capacity[0] - self.reliable.len(),
             Lane::Telemetry => self.capacity[1] - self.telemetry.len(),
             Lane::Bulk => self.capacity[2] - self.bulk.len(),
+            Lane::Profiling => 256 - self.profiling.len(),
         }
     }
 
-    /// Next message: reliable first, then bulk, then telemetry.
+    /// Reliable first, then fair rotation over bulk, telemetry and profiling.
     pub fn pop(&mut self) -> Option<EngineMessage> {
-        self.reliable
-            .pop_front()
-            .or_else(|| self.bulk.pop_front())
-            .or_else(|| self.telemetry.pop_front())
+        if let Some(message) = self.reliable.pop_front() {
+            return Some(message);
+        }
+        for _ in 0..3 {
+            let lane = self.low_lane;
+            self.low_lane = (self.low_lane + 1) % 3;
+            let message = match lane {
+                0 => self.bulk.pop_front(),
+                1 => self.telemetry.pop_front(),
+                _ => self.profiling.pop_front(),
+            };
+            if message.is_some() {
+                return message;
+            }
+        }
+        None
     }
 
     fn unpop(&mut self, message: EngineMessage) {
@@ -76,11 +94,15 @@ impl Outbox {
             Lane::Reliable => self.reliable.push_front(message),
             Lane::Telemetry => self.telemetry.push_front(message),
             Lane::Bulk => self.bulk.push_front(message),
+            Lane::Profiling => self.profiling.push_front(message),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.reliable.is_empty() && self.telemetry.is_empty() && self.bulk.is_empty()
+        self.reliable.is_empty()
+            && self.telemetry.is_empty()
+            && self.bulk.is_empty()
+            && self.profiling.is_empty()
     }
 
     pub fn dropped_telemetry(&self) -> u64 {

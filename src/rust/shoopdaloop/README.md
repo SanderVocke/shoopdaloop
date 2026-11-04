@@ -119,6 +119,14 @@ packages omit it and carry built-ins beside the executable on Linux/Windows or i
 inside `Contents/MacOS`. Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
+## Runtime profiling
+
+Settings → Developer provides a persisted runtime on/off control and a plain
+Node / Avg / Worst / Stddev table, in microseconds. Every graph rebuild resets the
+interval. Xruns automatically retain bounded recent timing while profiling is on;
+Live and Latest xrun use the same table. See the [profiling guide](../../../docs/runtime_profiling.md)
+for timing semantics, overhead measurements and browser clock availability.
+
 ## Output buses
 
 The mixer supports ordinary named buses, persisted display order, gain/mute,

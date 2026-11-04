@@ -139,6 +139,7 @@ impl Loop {
             let started = Instant::now();
             Shared::count(&shared.counters.callbacks, 1);
             let first = cycle.next_frame();
+            shared.begin_profiling(first, frames);
             for (port, samples) in cycle.inputs_mut().iter_mut().enumerate() {
                 let samples = &mut samples[..frames];
                 match input {

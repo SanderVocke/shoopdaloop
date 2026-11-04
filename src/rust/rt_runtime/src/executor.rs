@@ -278,6 +278,7 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+    profiling: rt_profiling::Recorder,
     quantum: crate::fixed::Quantum,
     tick_frame: Frame,
     boundary_at: Option<(Sequence, Frame)>,
@@ -476,6 +477,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 config,
             },
             Self {
+                profiling: rt_profiling::Recorder::default(),
                 quantum,
                 tick_frame: Frame(0),
                 boundary_at: None,
@@ -590,6 +592,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.resources.usage()
     }
 
+    pub fn set_profiling(&mut self, recorder: rt_profiling::Recorder) {
+        self.profiling = recorder;
+    }
+
+    pub fn set_profiling_clock(&mut self, clock: rt_profiling::Clock) {
+        self.profiling.set_clock(clock);
+    }
+
     pub fn process(
         &mut self,
         mut audio: AudioBlock<'_, '_>,
@@ -628,12 +638,21 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         }
         let frame = audio.frame;
         let frames = audio.frames;
-        self.clock.process(AudioBlock {
+        self.profiling.begin_callback(
+            frame.0,
+            self.epoch.0,
+            frames as u32,
+            (frames as u64).saturating_mul(1_000_000_000) / u64::from(limits.sample_rate),
+        );
+        if let Err(error) = self.clock.process(AudioBlock {
             frame,
             frames,
             inputs: audio.inputs,
             outputs: audio.outputs,
-        })?;
+        }) {
+            self.profiling.end_callback(false);
+            return Err(error);
+        }
         self.diagnostics = Diagnostics {
             frame,
             epoch: self.epoch,
@@ -649,6 +668,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.ingress.begin_cycle(frame, self.epoch);
         self.apply_commands();
         self.resources.control_phase(false);
+        self.profiling.callback_phase(rt_profiling::Phase::Commands);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_fixed(&mut audio, &mut midi, self.quantum);
         self.diagnostics.epoch = self.epoch;
@@ -695,6 +715,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             | self.diagnostics.resource_index_work.counter_overflow
             | self.diagnostics.midi_index_work.counter_overflow;
         let _ = self.ingress.publish(self.diagnostics);
+        self.profiling.end_callback(result.is_ok());
         result
     }
 
@@ -1181,6 +1202,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     ) -> Result<(), Error> {
         let frame = audio.frame.checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
+        self.profiling.begin_tick(frame.0, quantum.frames() as u32);
         self.deliver_actions(frame, callback_start, remaining)?;
         self.planner.fixed_begin(PlanContext {
             graph_epoch: self.epoch,
@@ -1209,6 +1231,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Err(Error::InvalidShape);
         }
         self.observations.clear();
+        self.profiling.phase(rt_profiling::Phase::StateSettled);
+        self.profiling.graph_start(self.epoch.0, frame.0);
         self.run_fixed_graph(audio, midi, start, callback_start, quantum)?;
         self.planner.fixed_finish(FinishContext {
             interval: Interval { start: frame, end },
@@ -1216,6 +1240,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             resources: self.resources.planner_io(end, end),
             receipts: self.scheduler.receipts(end),
         })?;
+        self.profiling.phase(rt_profiling::Phase::StateAdvanced);
+        self.profiling.end_tick(true);
         self.tick_frame = end;
         increment(
             &mut self.diagnostics.subranges,
@@ -1237,6 +1263,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let q = quantum.frames();
         let frame = audio.frame.checked_add(start)?;
         let mut first = 0;
+        if self.profiling.needs_layout() {
+            for step in &plan.descriptor().steps {
+                self.profiling.layout_node(u64::from(step.node.slot()));
+            }
+            self.profiling.layout_done();
+        }
         for step in &plan.descriptor().steps {
             self.slots[step.node.slot() as usize]
                 .as_mut()
@@ -1340,6 +1372,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 &mut self.diagnostics.nodes_processed,
                 &mut self.diagnostics.counter_overflow,
             );
+            self.profiling.node_ready(u64::from(step.node.slot()));
             first = step.input_end;
         }
         for edge in &plan.descriptor().connections[first..] {
@@ -1352,6 +1385,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 &mut self.diagnostics.counter_overflow,
             );
         }
+        self.profiling.phase(rt_profiling::Phase::OutputRouting);
         Ok(())
     }
 }

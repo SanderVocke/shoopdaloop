@@ -593,6 +593,7 @@ impl Runtime {
             .client
             .snapshot()
             .map(|state| AppSnapshot {
+                profiling: state.profiling.clone(),
                 bus_limits: state.bus_limits,
                 tracks: state.tracks.clone(),
                 buses: Arc::clone(&state.buses),
@@ -955,6 +956,7 @@ impl Runtime {
                 destination: destination_channel_id,
                 connected,
             },
+            AppIntent::SetProfiling(value) => Command::SetProfiling(value),
             AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
             AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
             AppIntent::ResetXruns => Command::ResetXruns,

@@ -222,11 +222,12 @@ impl Running {
         {
             std::thread::sleep(Duration::from_millis(1));
         }
+        let cycle = self.driver.stop();
+        // The final callback may finish while joining the driver.
         let mut midi_reset = shared.phase() != RenderPhase::Running;
         if shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
         }
-        let cycle = self.driver.stop();
         drop(self.pump);
         drop(self.connections);
         shared.set_state(DriverRunState::Stopped);
@@ -389,7 +390,10 @@ impl Prepared {
             sample_rate,
             buffer_frames,
         };
-        let engine = prepare(&description, driver)?;
+        let mut engine = prepare(&description, driver)?;
+        engine
+            .render
+            .set_profiling_clock(crate::status::profiling_clock());
         let outbox = engine.outbox();
         let shared = Arc::new(Shared::new(engine.host, driver));
         Ok(Self {

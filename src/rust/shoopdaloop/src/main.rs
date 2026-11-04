@@ -2371,6 +2371,19 @@ fn builtin_script_settings(
     )
 }
 
+fn reconcile_profiling_settings(
+    settings: &shoop_settings::SettingsSnapshot,
+    applied: &mut Option<bool>,
+    mut dispatch: impl FnMut(AppIntent) -> Result<(), application::DispatchError>,
+) -> anyhow::Result<()> {
+    let enabled = settings.get(shoop_egui::RUNTIME_PROFILING).unwrap_or(false);
+    if *applied != Some(enabled) {
+        dispatch(AppIntent::SetProfiling(enabled))?;
+        *applied = Some(enabled);
+    }
+    Ok(())
+}
+
 fn reconcile_loop_smoothing_settings(
     settings: &shoop_settings::SettingsSnapshot,
     applied_revision: &mut u64,
@@ -2418,6 +2431,7 @@ struct Runtime {
     pending_preview: Option<application::ApplicationAudioPreview>,
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
+    applied_profiling_preference: Option<bool>,
     applied_settings_revision: u64,
     applied_builtin_settings: (String, shoop_settings::StringToggleList),
     applied_user_scripts: shoop_settings::StringToggleList,
@@ -2526,6 +2540,7 @@ impl Runtime {
             pending_preview: None,
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
             applied_settings_revision: settings.revision(),
             applied_builtin_settings: builtin_script_settings(settings),
             applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
@@ -2576,6 +2591,7 @@ impl Runtime {
             pending_preview: None,
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
             applied_settings_revision: settings.revision(),
             applied_builtin_settings: builtin_script_settings(settings),
             applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
@@ -2673,6 +2689,12 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
+        let handle = self.handle.clone();
+        reconcile_profiling_settings(
+            settings,
+            &mut self.applied_profiling_preference,
+            move |intent| handle.dispatch(intent),
+        )?;
         if self.remote_entry.is_some() {
             self.applied_audio_settings_revision = settings.revision();
             return Ok(());
@@ -3162,6 +3184,7 @@ struct Runtime {
     catalog_scan_generation: u64,
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_audio_settings_revision: u64,
+    applied_profiling_preference: Option<bool>,
     applied_settings_revision: u64,
     applied_builtin_settings: (String, shoop_settings::StringToggleList),
 }
@@ -3239,6 +3262,7 @@ impl Runtime {
             catalog_scan_generation: 0,
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
             applied_settings_revision: settings.revision(),
             applied_builtin_settings: builtin_script_settings(settings),
         };
@@ -3440,6 +3464,9 @@ impl Runtime {
         let Some(runtime) = self.runtime.as_mut() else {
             return Ok(());
         };
+        reconcile_profiling_settings(settings, &mut self.applied_profiling_preference, |intent| {
+            runtime.dispatch(intent)
+        })?;
         reconcile_loop_smoothing_settings(
             settings,
             &mut self.applied_audio_settings_revision,
@@ -4446,6 +4473,48 @@ mod tests {
             embedded_builtin_key("././builtins/catalog.json"),
             "builtins/catalog.json"
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn profiling_settings_persist_default_off_and_retry_failed_dispatch() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(defaults.get(shoop_egui::RUNTIME_PROFILING), Ok(false));
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&defaults);
+        draft.set(shoop_egui::RUNTIME_PROFILING, true);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let saved = shoop_settings::encode_settings(&document).unwrap();
+        let restored = registry
+            .resolve(&shoop_settings::decode_settings(&saved).unwrap(), 2)
+            .snapshot;
+        assert_eq!(restored.get(shoop_egui::RUNTIME_PROFILING), Ok(true));
+        let mut applied = None;
+        assert!(reconcile_profiling_settings(&restored, &mut applied, |_| {
+            Err(application::DispatchError::Full)
+        })
+        .is_err());
+        assert_eq!(applied, None);
+        reconcile_profiling_settings(&restored, &mut applied, |intent| {
+            assert_eq!(intent, AppIntent::SetProfiling(true));
+            Ok(())
+        })
+        .unwrap();
+        reconcile_profiling_settings(&restored, &mut applied, |_| panic!("duplicate control"))
+            .unwrap();
+        reconcile_profiling_settings(&defaults, &mut applied, |intent| {
+            assert_eq!(intent, AppIntent::SetProfiling(false));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, Some(false));
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -154,6 +154,7 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    Profiling(bool),
     ContentFamilyBegin {
         id: u64,
         root: LoopSlotId,
@@ -355,6 +356,7 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
+    pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);

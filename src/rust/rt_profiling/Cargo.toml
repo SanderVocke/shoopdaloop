@@ -1,0 +1,26 @@
+[package]
+name = "rt_profiling"
+version.workspace = true
+edition = "2021"
+description = "Bounded real-time timing capture and off-thread statistics"
+
+[lints]
+workspace = true
+
+[dependencies]
+rtrb.workspace = true
+libm.workspace = true
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[features]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

@@ -379,3 +379,8 @@ src/rust/shoop_app/src/service/persistence/family.rs,app_session,instrumented_in
 src/rust/shoop_rt_backend/src/family.rs,application_ui_and_control,instrumented_indirect,Prepared content and read progression run within traced adapter requests/outcomes and application polling; no per-sample tracing.
 src/rust/shoop_persistence_codec/src/codec/family.rs,client_codec_worker,excluded,Pure portable codecs and bounded worker ABI; import-free Wasm worker has no tracing host dependency. Frontend persistence task/codec boundaries track orchestration.
 src/rust/shoopdaloop/src/persistence_io/family.rs,application_ui_and_control,instrumented_indirect,"Client input leases and worker/transfer progress run within traced frontend file intents, persistence pumping and codec task boundaries."
+src/rust/rt_profiling/src/lib.rs,generic_realtime_library,excluded,Portable timing records and finite capture contracts must not depend on application tracing.
+src/rust/rt_profiling/src/recorder.rs,generic_realtime_library,excluded,The bounded recorder is itself instrumentation; tracing it would perturb capture and recurse.
+src/rust/rt_profiling/src/collector.rs,control,excluded,Off-thread statistics consume profiling records; extra tracing would perturb collector overhead measurements.
+src/rust/shoop_rt_engine/src/profiling.rs,realtime_engine,excluded,Bounded profiling forwarding can run on the audio thread and exposes its own sequence and loss diagnostics.
+src/rust/shoop_egui/src/profiling.rs,frontend,instrumented_indirect,The profiling table renders within the existing traced application widget boundary.

@@ -1,8 +1,7 @@
 # New engine backend: browser host (worklet half)
 
 `shoop_rt_host_worklet` runs the new engine inside the browser's AudioWorklet. It
-is a raw Wasm module for `wasm32-unknown-unknown` with no Wasm imports, like the
-legacy worklet, and contains no engine or application semantics: it owns the
+is a raw Wasm module for `wasm32-unknown-unknown` with one elapsed-time import, `shoop_profiling.now`, and contains no engine or application semantics: it owns the
 [`shoop_rt_engine`](../shoop_rt_engine) owners, serves the engine's control
 endpoint through the shared transport's `RecordServer` and copies audio, records and MIDI
 between module memory and the processor script. It depends only on the engine,
@@ -22,7 +21,7 @@ cargo build --target wasm32-unknown-unknown -p shoop_rt_host_worklet --release
 python3 src/rust/shoopdaloop/build_worklet.py --profile release --output-dir <dir>
 ```
 
-`build_worklet.py` (Trunk's pre-build hook) builds this import-free module with
+`build_worklet.py` (Trunk's pre-build hook) builds this raw module with
 Cargo and the client codec worker with `wasm-pack` 0.15.0. Their Cargo feature
 sets remain separate. It copies `shoop_rt_host_worklet.wasm` and the codec's
 JavaScript bindings and `_bg.wasm` into `generated/`. Trunk also copies
@@ -32,10 +31,10 @@ bundle. The application depends on this crate without `exports`; build it with
 `-p shoopdaloop` so rendering exports stay out of the application module.
 
 `src/rust/shoopdaloop/rt_worklet_contract.mjs <wasm>` is the committed artifact
-check that CI runs on the built module: no imports, the expected exports, and the
+check that CI runs on the built module: only the clock import, the expected exports, and the
 processor script driven over a simulated `MessagePort` (preparation, a split Hello
 answered by a Welcome, silence without strips, MIDI counters, no memory growth
-after preparation, stop and refused configurations).
+after preparation, runtime profiling clocks/timestamps/xrun capture, stop and refused configurations).
 
 ## Lifecycle
 
@@ -179,8 +178,23 @@ The processor script uses these; pointers are byte offsets into `memory`.
 | `shoop_rt_worklet_counter(id) -> u32` | 0 discontinuities, 1 overruns, 2 MIDI-in dropped, 3 MIDI-in late, 4 MIDI-out dropped, 5 framing errors |
 
 The crate is `#![deny(unsafe_code)]`; the exports module allows it only for
-`no_mangle` and dereferences no pointers. The module holds one host per instance
+`no_mangle` and the host clock import, and dereferences no pointers. The module holds one host per instance
 in a module-global cell.
+
+## Profiling clock
+
+The processor supplies `shoop_profiling.now() -> f64` in nanoseconds and installs
+it only when a monotonic `performance.now()` is available in its own realm.
+`shoop_rt_worklet_profiling_clock(resolution_ns)` installs it; `_profiling_active()`
+reads acknowledged state, and `_profiling_begin(frame, start_ns, input_ns, frames)` /
+`_profiling_end(end_ns, frames)` add complete outer callback spans. No extra clock
+reads occur while off. Missing clocks report timing unavailable. See the
+[profiling guide](../../../docs/runtime_profiling.md) for Chromium limitations.
+
+Wasm-bindgen component tests use this crate without raw exports because their
+runner does not supply the raw ABI import. Native ABI tests and the production
+artifact contract cover the exports and import together. This does not change the
+production artifact or introduce a profiling feature flag.
 
 ## Main thread
 

@@ -149,6 +149,18 @@ impl WorkletHost {
         })
     }
 
+    pub fn set_profiling_clock(&mut self, clock: rt_runtime::profiling::Clock) {
+        self.render.set_profiling_clock(clock);
+    }
+    pub fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
+        self.status.profiling()
+    }
+    pub fn engine_frame(&self) -> u64 {
+        self.render.next_frame().0
+    }
+    pub fn sample_rate(&self) -> u32 {
+        self.driver.sample_rate
+    }
     pub fn max_frames(&self) -> usize {
         self.max_frames
     }

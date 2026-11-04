@@ -63,6 +63,10 @@ impl Render {
             reclaim_bound,
         })
     }
+    pub fn set_profiling_clock(&mut self, clock: rt_runtime::profiling::Clock) {
+        self.runtime.set_profiling_clock(clock);
+    }
+
     pub fn next_frame(&self) -> Frame {
         self.runtime.next_frame()
     }

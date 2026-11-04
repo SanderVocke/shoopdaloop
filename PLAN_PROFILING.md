@@ -1,6 +1,6 @@
 # Runtime profiling implementation plan
 
-Status: implementation in progress; Stage 0 complete.
+Status: recording, transport, settings and table implemented; end-to-end validation and overhead measurements in progress.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -155,15 +155,15 @@ production kernel and all reset entry points. Commit the planning milestone.
 
 Depends on Stage 0.
 
-- [ ] Specify dense timestamp layouts, step/phase boundaries, stable current-graph
+- [x] Specify dense timestamp layouts, step/phase boundaries, stable current-graph
   names, generation/reset acknowledgement, incomplete-step handling and clock units.
-- [ ] Specify toggle acknowledgement, final report on disable, cumulative live
+- [x] Specify toggle acknowledgement, final report on disable, cumulative live
   interval, captured interval, fixed memory/publication budgets, capture replacement
   and loss reporting. Preserve audio when timing is unavailable.
-- [ ] Define coherent descriptor/report/capture chunks and capability negotiation
+- [x] Define coherent descriptor/report/capture chunks and capability negotiation
   across engine and app protocols; include generation, interval and sequence IDs.
   Append wire tags and update version/compatibility handling where required.
-- [ ] Add independent synthetic-data tests for mean/max/population standard
+- [x] Add independent synthetic-data tests for mean/max/population standard
   deviation, empty/singleton samples and large-baseline numerical stability, plus
   codec bounds, stale generations, resets and partial report assembly.
 
@@ -174,15 +174,15 @@ intervals or partial row sets. Commit the contract milestone.
 
 Depends on Stage 1.
 
-- [ ] Add host-injected clocks and a prepared recorder to the production kernel.
+- [x] Add host-injected clocks and a prepared recorder to the production kernel.
   Record callback/tick, node-ready and non-node phase boundaries, including host
   adaptation, commands, planning/state settlement, final routing and reclamation.
-- [ ] Cache enable/reset controls per callback; invalidate at graph-build requests
+- [x] Cache enable/reset controls per callback; invalidate at graph-build requests
   and at tick-aligned activation. Support a graph change inside a multi-tick callback
   without mixing layouts or dropping owning objects on RT.
-- [ ] Implement batch ownership/publication and reserved circular history with
+- [x] Implement batch ownership/publication and reserved circular history with
   explicit saturation, sequence, fault and truncation counters.
-- [ ] Test with an injected deterministic clock and independently prescribed node
+- [x] Test with an injected deterministic clock and independently prescribed node
   work. Cover direct/buffered partitions, zero-tick and multi-tick callbacks,
   audio/MIDI recovery, all supported quanta, faults, toggling and stalled consumers.
   Assert zero profiling clock calls/storage activity while off and no heap/locks
@@ -196,16 +196,16 @@ Commit the recorder milestone.
 
 Depends on Stage 2.
 
-- [ ] Implement bounded non-RT draining and Welford accumulation over the current
+- [x] Implement bounded non-RT draining and Welford accumulation over the current
   interval; retain only current-generation metadata and reject delayed batches.
-- [ ] Wire native host and worklet overrun/xrun causes to bounded trigger signals.
+- [x] Wire native host and worklet overrun/xrun causes to bounded trigger signals.
   Retain preceding history and bounded following work, then freeze/rotate ownership
   without RT copying. Attribute delayed notifications conservatively.
-- [ ] Produce live and latest-capture reports with interval bounds, sample/loss
+- [x] Produce live and latest-capture reports with interval bounds, sample/loss
   counts and timing capability. Reset all data on every rebuild, activation,
   re-enable and engine replacement; retain the final report on disable unless a
   later graph reset invalidates it.
-- [ ] Test fake-clock outliers, simultaneous/delayed triggers, collector stalls,
+- [x] Test fake-clock outliers, simultaneous/delayed triggers, collector stalls,
   capture leases, insufficient history, repeated xruns and generation invalidation.
 
 Verification: exact known statistics and retained raw boundaries match the test
@@ -216,12 +216,12 @@ Commit the collector/capture milestone.
 
 Depends on Stages 1–3.
 
-- [ ] Connect controls, descriptors, reports and capture reads through native,
+- [x] Connect controls, descriptors, reports and capture reads through native,
   process/socket, shared-memory and worklet carriers, as supported by current hosts.
   Give profiling independent bounded admission and forwarding work.
-- [ ] Complete backend, service, app protocol/client and `AppSnapshot` projection.
+- [x] Complete backend, service, app protocol/client and `AppSnapshot` projection.
   Reassemble reports atomically and reject stale/reset-generation data at each hop.
-- [ ] Implement the worklet elapsed-time import and bounded forwarding; drain and
+- [x] Implement the worklet elapsed-time import and bounded forwarding; drain and
   aggregate outside the audio realm. Report missing or coarse clocks honestly.
 - [ ] Verify runtime toggle outcomes, reconnect/resync and host replacement,
   incompatible peers, malformed/oversized chunks and transport saturation alongside
@@ -235,16 +235,16 @@ traffic. Commit the integration milestone.
 
 Depends on Stage 4.
 
-- [ ] Register the default-off immediate preference and connect it to the runtime
+- [x] Register the default-off immediate preference and connect it to the runtime
   control. Expose acknowledged state and unavailable/error feedback through the
   existing settings/application flow.
-- [ ] Add a profiling view with the four required columns, execution-order names,
+- [x] Add a profiling view with the four required columns, execution-order names,
   microsecond formatting, interval metadata and a simple Live/Latest xrun selector.
   Do not add profiling levels or an arm action.
-- [ ] Clear the view on graph-reset generation changes, show pending/empty rows
+- [x] Clear the view on graph-reset generation changes, show pending/empty rows
   truthfully and preserve the final table while off. Display incomplete/lost-data
   and trigger attribution outside the table.
-- [ ] Test settings persistence/defaults, runtime acknowledgement, duplicate node
+- [x] Test settings persistence/defaults, runtime acknowledgement, duplicate node
   labels, known table values, rebuild/reordering/slot reuse, capture selection,
   unavailable timing and late reports after reset.
 
@@ -317,3 +317,51 @@ environment is activated with `source /workspace/.setup/activate.sh`; it supplie
 Rust 1.99.1, cargo-nextest 0.9.116 and native dependencies. Production profiling
 will use the fixed execution kernel, with collection in the application backend
 so worklet endpoint pumping performs only bounded forwarding.
+
+Core/native milestone: added the portable recorder/collector, production fixed-kernel
+node and phase boundaries, current-generation node metadata, bounded raw transport,
+settings control and plain statistics table. Engine protocol is version 7, app
+protocol is version 15 and shared-memory descriptors are SDM2 with an independent
+profiling queue. Six focused native tests pass, including production round trips
+at Q=1/16/32/64/128, exact average/worst/stddev, no disabled clock reads and automatic
+xrun capture/reset. Runtime and engine dependency audits pass on all four targets.
+The first warning-denying workspace build passed. Full native/browser verification
+is ongoing; full-suite debug linking exhausted the environment disk, so subsequent
+validation disables debug symbols and incremental artifacts through the task environment.
+
+Production integration evidence: both packaged socket and shared-memory probes pass
+runtime enable/disable/re-enable, live names/statistics, recording/playback,
+UI reconnect, media reads and graceful shutdown. Settings persistence/default-off
+and retry-on-full dispatch pass. The worklet artifact contract passes with a real
+stereo/MIDI graph, exact clock-call checks, successful request completion,
+completion timestamps, automatic xrun capture and no Wasm memory growth.
+
+Browser capability finding: Chrome 147's actual AudioWorklet realm has no
+`performance` object. The implementation acknowledges the requested setting and
+reports timing unavailable there. It does not substitute logical audio time or
+wall-clock time. Production imports are exercised separately with a monotonic
+clock in the artifact contract; this is a platform capability limit anticipated
+by acceptance criterion 8. No production profiling build flags were introduced.
+
+Validation exposed a native shutdown reporting race: reset confirmation was read
+before joining the driver, missing a reset completed by the final callback during
+that join. The result is now read after ownership returns. Slow debug Q=1 callbacks
+under competing builds made this visible; isolated shutdown tests pass. Native,
+Node and Chromium suites and browser persistence smoke are being completed with
+resource contention controlled. CI PR filters now include the requested base branch.
+
+Native milestone: the complete CI-profile suite passes **2,645/2,645** tests
+(4 facility-dependent skips) in 143 seconds. The latest focused recorder/runtime/UI/
+backend run passes 13/13, including independent prescribed node work, rejection of
+inconsistent chunk headers and oversized keys on 32-bit Wasm, capture selection,
+clock-unavailable presentation and zero-heap saturation/reset/fault paths.
+Warning-denying workspace builds, formatting, test attributes, tracing inventory
+and four-target runtime/engine dependency audits pass. The profiling request now
+returns its explicit successful completion; actual active state remains separately
+acknowledged at the callback boundary.
+
+Delivery ordering refinement: the implementation milestone can be committed and a
+draft PR opened while the larger cross-platform CI matrix and automated review run;
+benchmark evidence and final browser validation follow in a separate validation
+milestone before marking delivery complete. This overlaps independent verification
+without changing any goals or acceptance criteria.
