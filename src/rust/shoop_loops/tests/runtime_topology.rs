@@ -294,7 +294,6 @@ impl Harness {
                 commands: 32,
                 events: 32,
                 publications: 32,
-                subranges: 0,
                 transfer_bytes: (staging.records_per_callback * 64).max(64),
                 validation_steps: 128,
                 ..Budgets::default()

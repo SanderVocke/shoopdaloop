@@ -158,8 +158,7 @@ a domain refusal. Reserve reliable outcome/return storage before promises; unrea
 results retain credits but cannot halt admitted autonomous music.
 
 Normal external event capacity is `min(scheduled_events, budgets.events)`, plus
-independent declared recovery capacity; legacy `budgets.subranges` does not limit
-internal musical intervals. Scheduler order is effective frame, target/category/
+independent declared recovery capacity. Internal graph ticks have no quota. Scheduler order is effective frame, target/category/
 subkey, sequence. Planner targets precede processor actions; per processor,
 parameters precede MIDI then typed operations. Recovery priority at transport
 admission does not rewrite that scheduler order.

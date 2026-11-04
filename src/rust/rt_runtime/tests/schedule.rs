@@ -16,7 +16,6 @@ fn config(capacity: usize) -> rt_runtime::PreparedConfig {
         midi_bytes_per_port: 16,
         budgets: Budgets {
             events: capacity,
-            subranges: capacity + 1,
             ..Budgets::default()
         },
         ..Config::default()
@@ -248,7 +247,6 @@ fn conservative_reservations_guarantee_work_for_arbitrary_block_partitions() {
             scheduled_events: 64,
             budgets: Budgets {
                 events: event_budget,
-                subranges: 0,
                 ..Budgets::default()
             },
             ..Config::default()

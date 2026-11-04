@@ -134,7 +134,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
             scheduled_events: 1024,
             budgets: rt_runtime::Budgets {
                 events: 1024,
-                subranges: 1025,
                 ..base.budgets
             },
             ..base
@@ -150,7 +149,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
             scheduled_events: 128,
             budgets: rt_runtime::Budgets {
                 events: 128,
-                subranges: 129,
                 ..base.budgets
             },
             ..base
@@ -164,7 +162,6 @@ fn configuration_rejects_zeros_overflows_and_indivisible_work() {
                 scheduled_events: 1024,
                 budgets: rt_runtime::Budgets {
                     events: 1024,
-                    subranges: 1025,
                     ..base.budgets
                 },
                 ..base

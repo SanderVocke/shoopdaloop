@@ -125,7 +125,6 @@ fn config() -> PreparedConfig {
         budgets: Budgets {
             commands: 32,
             events: 32,
-            subranges: 0,
             transfer_bytes: 64,
             validation_steps: 128,
             publications: 32,

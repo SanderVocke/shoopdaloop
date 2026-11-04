@@ -173,7 +173,6 @@ impl BrowserPlannerCanary {
             budgets: Budgets {
                 commands: 1,
                 events: 1,
-                subranges: 0,
                 transfer_bytes: 64,
                 validation_steps: 1,
                 publications: 1,
