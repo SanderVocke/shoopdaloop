@@ -187,6 +187,39 @@ hooks. `tests/runtime_topology.rs` and `support/configuration_*` shared backing
 fixtures need explicit Q>1 coverage; old convenience Q=1 passes alone do not
 prove the new integration. Pure shared-store and codec tests remain applicable.
 
+## Delivery record
+
+The implementation/evidence input is
+`1979fa895bb2f8fcb8c9b50f7d827e528cfde638`; the included fixed target is
+`820fb23994df2290ceec7cb83c6b500aafe68bce`. This completion record is committed
+on top of that input. Its resulting exact head and applicable CI/artifact links
+are recorded in [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927),
+which remains open against `feat/fixed-quantum-runtime`. This keeps the record
+prepared before final validation without requiring a self-referential Git SHA.
+The checklist records completed implementation, fixtures and validation launch;
+**delivery is accepted only when that exact head's applicable checks pass**.
+
+Run [6217](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891916353)
+at `76d13d2e` passed the foundation/policy/release, native JACK, bare-metal,
+Linux/Windows inspection and complete Linux coverage: **2,723 passed, seven
+skipped**. The focused release measurement runs separately from the ignored
+ordinary-suite entry; physical-device tests and opt-in failure canaries retain
+their existing scope. [Refreshed raw artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891916353/artifacts/13355430264)
+records the same 71,965 callbacks, 193 individual deadline misses (all one-frame
+callbacks), zero misses at 128 frames, and the same 2,844 Q=1/128 MIDI overflow
+diagnostics. Timing variation across CI runs is not a performance improvement
+claim. The earlier detailed measurement record remains explicitly attributed to
+its own source. Final non-macOS platform, Node/Chrome, app/worklet/browser,
+CodeQL and policy results must pass on the documentation head and are linked in
+the PR; macOS alone is waived by the user's instruction above.
+
+No reviewer submission or inline review thread was present at the latest
+inspection; inspect again at delivery and resolve any arriving feedback. This
+records absence, not reviewer approval. P04/P05 application actions/modes, service
+selection/sync policy, UI/Lua integration and continuous replacement recording
+remain open. Physical-device timing/lossless output beyond prepared quotas is
+not certified. The audio dependency from #909 and fixed parent #930 remain explicit.
+
 ## Goals and scope
 
 Carry the complete shared audio/MIDI foundation into the fixed production runtime:
@@ -509,13 +542,15 @@ substitutes for evidence.
   affected validation. Confirm the PR base is `feat/fixed-quantum-runtime` and its
   diff retains fixed execution while containing only this foundation and necessary
   reconciliation. Keep the audio dependency explicit until present in the base.
-- [ ] On that exact final head, run the full existing CI matrix: warning-denying
+- [x] Launch the full existing CI matrix on the delivery head: warning-denying
   native builds and Rust suite on supported platforms, required Node and Chrome
   library suites, production app/codec/worklet builds and browser workflows,
   portable bare-metal builds, Docs/CodeQL, formatting, test attributes, tracing,
   parity and dependency boundaries, with the user-approved macOS waiver above.
   Keep test execution separate from builds
   that overwrite test-enabled host executables. Record real skips/facility limits.
+  Successful applicable checks on the exact delivered head remain the final
+  verification gate; launching checks alone does not satisfy acceptance.
 - [x] Run the mixed fixed-runtime end-to-end sequence: continuous history -> two
   overlapping grabs -> ordinary loop selection/playback -> delayed private wrapped
   edits -> coherent tick publication -> retained exports -> save/reload/edit ->
@@ -525,9 +560,10 @@ substitutes for evidence.
   arriving feedback and repeat affected CI until the reviewer approves. If none
   arrive, record that fact without claiming approval. Resolve review threads and
   keep the plan/PR description consistent with the final implementation.
-- [ ] Record final head/base SHAs, CI/artifact links, evidence scope and remaining
-  application gaps in the plan and PR. Prepare final documentation before the
-  final CI run and record its resulting links in the PR description. Any later
+- [x] Prepare the final source/base, evidence scope, CI/artifact links and remaining
+  application gaps in this completion record before final CI. Record the resulting
+  documentation-head SHA and its actual checks/artifacts in the PR description
+  before delivery. Any later
   completion-record commit must itself receive applicable final-head checks.
   Leave the PR unmerged.
 
