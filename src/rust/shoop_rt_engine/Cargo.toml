@@ -23,6 +23,7 @@ shoop_loops = { path = "../shoop_loops" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 
 [dev-dependencies]
+rt_buffered = { path = "../rt_buffered" }
 shoop_rt_engine = { path = ".", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 shoop_persistence_codec = { path = "../shoop_persistence_codec" }

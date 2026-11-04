@@ -4490,6 +4490,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_buffered"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
@@ -5162,6 +5171,7 @@ dependencies = [
 name = "shoop_rt_engine"
 version = "0.3.0"
 dependencies = [
+ "rt_buffered",
  "rt_runtime",
  "shoop_app_api",
  "shoop_app_protocol",
