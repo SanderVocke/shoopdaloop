@@ -1,20 +1,23 @@
 {
-  "method": "Complete Node suite plus application and egui rerun after test import/layout fixes",
+  "method": "Complete Node suite plus affected-package reruns after MIDI base reconciliation, application/UI fixes and browser flow control",
   "packages": {
     "rt_profiling": {
       "exit": 0,
       "tests": 11,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "rt_runtime": {
       "exit": 0,
-      "tests": 197,
-      "failures": 0
+      "tests": 198,
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_app": {
       "exit": 0,
-      "tests": 34,
-      "failures": 0
+      "tests": 35,
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_app_api": {
       "exit": 0,
@@ -24,7 +27,8 @@
     "shoop_app_client": {
       "exit": 0,
       "tests": 11,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_app_protocol": {
       "exit": 0,
@@ -54,7 +58,8 @@
     "shoop_egui": {
       "exit": 0,
       "tests": 234,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_engine": {
       "exit": 0,
@@ -74,7 +79,8 @@
     "shoop_loops": {
       "exit": 0,
       "tests": 175,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_loops_test_support": {
       "exit": 0,
@@ -99,17 +105,20 @@
     "shoop_rt_backend": {
       "exit": 0,
       "tests": 39,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_rt_engine": {
       "exit": 0,
       "tests": 48,
-      "failures": 0
+      "failures": 0,
+      "source_commit": "eedbc09f"
     },
     "shoop_rt_host_worklet": {
       "exit": 0,
       "tests": 17,
-      "failures": 0
+      "failures": 0,
+      "source": "final browser credit window"
     },
     "shoop_rt_protocol": {
       "exit": 0,
@@ -119,12 +128,14 @@
     "shoop_rt_transport": {
       "exit": 0,
       "tests": 6,
-      "failures": 0
+      "failures": 0,
+      "source": "final browser credit window"
     },
     "shoop_rt_transport_message_port": {
       "exit": 0,
-      "tests": 5,
-      "failures": 0
+      "tests": 7,
+      "failures": 0,
+      "source": "final browser credit window"
     },
     "shoop_script_resources": {
       "exit": 0,
@@ -169,7 +180,8 @@
     "shoopdaloop": {
       "exit": 0,
       "tests": 45,
-      "failures": 0
+      "failures": 0,
+      "source": "final browser credit window"
     }
   }
 }

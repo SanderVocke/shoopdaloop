@@ -1,7 +1,7 @@
 # Runtime profiling implementation plan
 
 Status: dedicated profiling window and RT/transport integration implemented;
-release measurements and final cross-platform validation in progress.
+all local acceptance gates pass; remote CI and automated-review checks in progress.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -275,7 +275,7 @@ Depends on Stages 2–5.
   and real host xruns where available, latest-capture statistics, disable/re-enable,
   disconnect/reconnect, host replacement and shutdown in native and browser UI flows.
   Verify unchanged audio/MIDI and no old-generation rows returning after resets.
-- [ ] Run affected package suites, no-heap/lock and dependency-boundary gates,
+- [x] Run affected package suites, no-heap/lock and dependency-boundary gates,
   formatting, warning-denying workspace build, test-attribute and tracing inventory
   checks, the complete native suite and applicable Node/Chromium/Wasm/app smokes
   from current repository guidance. Record genuinely unavailable device facilities.
@@ -321,7 +321,9 @@ automated-review feedback is resolved through approval where a reviewer exists.
 The implementation branch began at `cb79706e95350539638368bcca9f50b1601795ae`.
 The target subsequently advanced; merge `3ca192e10552afe9ca9dfe6f4482c8b5081602bc`
 and preserve its graph API, wide host ports, previews, host manager and wire tags.
-That refreshed commit is the matching uninstrumented measurement baseline.
+A further clean merge includes the final MIDI recovery fixes at
+`df4683527dbde0ec7483c3e522fc3873e39a81c8`, now the matching uninstrumented
+measurement baseline. Both release binaries use those fixes.
 Production profiling instruments `GraphRuntime::{process,run_tick,run_graph}`.
 Engine/app protocol versions are 8/21; SDM2 adds independent profiling admission.
 
@@ -349,22 +351,24 @@ clock and final-window CPU timings. The baseline/current workload source matches
 exactly after removing profiling setup and collection. Ordinary collection has no
 live-batch drops; stalled readers demonstrate bounded loss without blocking audio.
 Small-quantum/large-graph workloads already exceed deadlines on the baseline and
-have explicit throughput/collection limits. The paired disabled check is +0.26%
-relative DSP time (+0.055 callback-budget percentage points) on this VM. These are
-observations, not target-device guarantees.
+have explicit throughput/collection limits. The refreshed paired disabled check is −2.29%
+relative DSP time (−0.421 callback-budget percentage points) on this VM. Negative
+deltas demonstrate variation, not acceleration. These observations provide no
+universal zero-cost or target-device guarantee.
 
 Validation completed:
 
-- Warning-denying workspace build and full native suite: **2,685 passed**, six
-  ignored canary/device tests. The 16 focused recorder/runtime/window tests include
+- Warning-denying workspace build and full native suite: **2,689 passed**, six
+  skipped tests. One legacy-engine output-peak timeout passed in isolation and
+  the complete rerun passed all tests. The 16 focused recorder/runtime/window tests include
   no-heap saturation/reset/fault paths, independent prescribed node work and all
   five quanta with arbitrary host partitions and unchanged audio/MIDI.
 - Packaged socket and shared-memory probes: default off, enable, current names and
   statistics, recording/playback, media reads, reconnect, disable/re-enable and
   graceful shutdown pass.
-- Node/Wasm: **34 packages, 2,207 tests passed**. The complete suite passed its 33
-  library packages; an application test-only import gate was corrected, then all
-  application and egui tests rerun successfully. [Results](docs/runtime_profiling/node-validation.json).
+- Node/Wasm: **34 packages, 2,211 tests passed**. The complete suite passed its 33
+  library packages; an application test-only import gate was corrected, then affected packages
+  rerun after the MIDI recovery merge and browser flow control; all pass. [Results](docs/runtime_profiling/node-validation.json).
 - Optimized Trunk browser bundle builds. The hosted production browser workflow
   passes audio/MIDI recording/playback, waveforms/details, controls, cancellation,
   save/reload/resave, restored playback, bus removal/recreation, generation resets
@@ -378,7 +382,9 @@ Validation completed:
   versions, and pass locked resolution/build checks.
 - Formatting, test-attribute policy, 396-module tracing inventory, four-target
   runtime/engine dependency boundaries and the new crate's Wasm test dependency
-  audit pass. Final Chromium package checks are in progress.
+  audit pass. Chromium verification passes **610 tests across eleven packages**, including
+  the new MessagePort credit tests in a real browser. The optimized regular and
+  large-media workflows both pass after the final merge and acknowledgement guard.
 
 Platform limits: this environment has no physical audio/MIDI devices. Native
 integration uses the dummy host, prescribed/injected xruns and observed dummy-host
@@ -391,5 +397,16 @@ clock. These limits are anticipated by acceptance criterion 8.
 
 Delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 targets
 `feat/fixed-quantum-runtime`. Implementation and release evidence are pushed;
-final Chromium verification, CI and applicable automated review remain in progress.
+all local validation passes; remote CI and applicable automated review remain in progress.
+The release CI large-media workflow exposed a startup race; the self-test now
+waits for queued and accepted operation acknowledgements before requesting a new
+session, including after profiling acknowledgement and bus recreation.
+The browser MessagePort has a separate 256-record consumption-credit window,
+including status, names and data. Credits return after client decoding and are
+coalesced into one main-thread microtask. Saturation blocks only profiling
+publication, preserves bounded RT history/stream ownership and permits reliable
+controls. Native flow/saturation tests pass. The final artifact verifies 512 callbacks
+without returned credits stay within the 256-record window and that reliable
+disable still succeeds. No Wasm memory growth occurs. Regular and large-media
+workflows both pass with zero reported xruns.
 The PR remains unmerged. No automated review has appeared at the latest check.

@@ -1,0 +1,60 @@
+{
+  "method": "Complete affected Chromium suite and MessagePort unit rerun with browser test configuration",
+  "packages": {
+    "rt_profiling": {
+      "exit": 0,
+      "tests": 11,
+      "failures": 0
+    },
+    "rt_runtime": {
+      "exit": 0,
+      "tests": 198,
+      "failures": 0
+    },
+    "shoop_app": {
+      "exit": 0,
+      "tests": 35,
+      "failures": 0
+    },
+    "shoop_app_client": {
+      "exit": 0,
+      "tests": 11,
+      "failures": 0
+    },
+    "shoop_egui": {
+      "exit": 0,
+      "tests": 234,
+      "failures": 0
+    },
+    "shoop_rt_backend": {
+      "exit": 0,
+      "tests": 36,
+      "failures": 0
+    },
+    "shoop_rt_host_worklet": {
+      "exit": 0,
+      "tests": 17,
+      "failures": 0
+    },
+    "shoop_rt_protocol": {
+      "exit": 0,
+      "tests": 6,
+      "failures": 0
+    },
+    "shoop_rt_transport": {
+      "exit": 0,
+      "tests": 6,
+      "failures": 0
+    },
+    "shoop_rt_transport_message_port": {
+      "exit": 0,
+      "tests": 7,
+      "failures": 0
+    },
+    "shoopdaloop": {
+      "exit": 0,
+      "tests": 49,
+      "failures": 0
+    }
+  }
+}

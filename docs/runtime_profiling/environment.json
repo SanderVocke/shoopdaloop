@@ -1,11 +1,9 @@
 {
-  "date_utc": "2026-11-04T19:30:33.960770+00:00",
-  "baseline_commit": "3ca192e10552afe9ca9dfe6f4482c8b5081602bc",
-  "implementation_base_commit": "ac4748a44545582b95c5e99e7633902e97d5ee63",
-  "changes_after_base_commit": "disabled graph activation invalidation, presentation alignment, and associated tests",
+  "date_utc": "2026-11-04T20:21:36.857519+00:00",
+  "baseline_commit": "df4683527dbde0ec7483c3e522fc3873e39a81c8",
   "source_sha256": {
     "src/rust/rt_profiling/src/recorder.rs": "ce388d67d8695aa5e34491386be0f6643df9f55da6b8fed1027cd796c6c707da",
-    "src/rust/rt_runtime/src/executor.rs": "a216203f61ce3714c7b75a18c5d8b4070f0a27741dc2bca60101fee1f90c8372",
+    "src/rust/rt_runtime/src/executor.rs": "864ef15462cd5e0ed01ccabacfbc98765d9a5eb3326f10cceba23aa22784099d",
     "src/rust/shoop_rt_engine/examples/profiling_benchmark.rs": "cb6a5222321c6464596493f7b869d592c377cf865bbe77deadef39ed91d2c0bb",
     "src/rust/shoop_egui/src/profiling.rs": "e682fc2248edded46e82b0134189b5494a0345d379f6ca9c1e9542e299aafc22"
   },
@@ -25,10 +23,10 @@
     "performance_now": "undefined",
     "date": "function"
   },
-  "baseline_binary_sha256": "01eb5867c6febf9640dd234fbb9528b00eea432b97c07790604fcde040df2075",
-  "current_binary_sha256": "08a591a4d428aafb77eb355e70e496670b423db394740e1dda959870a47f2b45",
+  "baseline_binary_sha256": "83bf9ae324469bcc5cd57ed1d8d42c7e752542d08f8bc30c2f423f8b4517d2c2",
+  "current_binary_sha256": "ee9c967603fc6e210e72955f33f661b7dd5326a184814cfcb4ab1177b505e222",
   "common_workload_sha256": "ffe32df4d0889b642c38c6e8babf62a2c21fb023e7c834a787b84549620553ac",
-  "runtime_implementation_commit": "af44ae10b945692e6f1ac847b306b976656606d6",
+  "runtime_implementation_commit": "eedbc09f2a975933be19f27c231ed4e6b7a89518",
   "ui_measurement_changes": "Minimum column widths enforce the final responsive table layout; runtime benchmark code unchanged",
   "paired_disabled_check": {
     "nodes": 502,
@@ -38,5 +36,6 @@
     "pinned_cpu": 0,
     "order": "baseline/off, then off/baseline, alternating",
     "other_heavy_work": "stopped"
-  }
+  },
+  "browser_flow_control": "Added after native measurement: 256 unconsumed profiling records, credits returned by the main-thread decoder; no native render changes"
 }

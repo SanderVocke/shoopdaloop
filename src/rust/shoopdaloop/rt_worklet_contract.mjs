@@ -40,6 +40,7 @@ for (const name of [
   'shoop_rt_worklet_counter',
   'shoop_rt_worklet_profiling_clock',
   'shoop_rt_worklet_profiling_active',
+  'shoop_rt_worklet_profiling_credit',
   'shoop_rt_worklet_profiling_begin',
   'shoop_rt_worklet_profiling_end',
 ]) {
@@ -185,7 +186,7 @@ function profilingRequest(enabled, correlation) {
   bytes[12] = enabled ? 1 : 0;
   node.port.deliver({ kind: 'records', bytes });
 }
-function takeEngineRecords() {
+function takeEngineRecords(returnCredits = true) {
   const records = [];
   for (const { bytes } of node.port.take('records')) {
     const view = new DataView(bytes);
@@ -195,6 +196,10 @@ function takeEngineRecords() {
       records.push(new Uint8Array(bytes, offset, length));
       offset += length;
     }
+  }
+  if (returnCredits) {
+    const count = records.filter(record => record[2] >= 8 && record[2] <= 10).length;
+    if (count) node.port.deliver({ kind: 'profiling-credit', count });
   }
   return records;
 }
@@ -239,14 +244,29 @@ for (const record of profileRecords) {
 }
 if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
 node.load = 2;
-for (let index = 0; index < 64; index += 1) quantum(node, 0.25);
-const captureRecords = takeEngineRecords().filter(record => record[2] === 9).map(record =>
+const captureMessages = [];
+for (let index = 0; index < 64; index += 1) {
+  quantum(node, 0.25);
+  captureMessages.push(...takeEngineRecords());
+}
+const captureRecords = captureMessages.filter(record => record[2] === 9).map(record =>
   new DataView(record.buffer, record.byteOffset, record.byteLength));
 if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(88, true) & 4))) {
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
+let stalledRecords = 0;
+for (let index = 0; index < 512; index += 1) {
+  quantum(node, 0.25);
+  stalledRecords += takeEngineRecords(false).filter(record => record[2] >= 8 && record[2] <= 10).length;
+}
+if (!stalledRecords || stalledRecords > 256) throw new Error('profiling exceeded its browser credit window');
 profilingRequest(false, 992);
 quantum(node, 0.25);
+if (!takeEngineRecords(false).some(record => record[2] === 2 &&
+    new DataView(record.buffer, record.byteOffset, record.byteLength).getBigUint64(3, true) === 992n && record[11] === 0)) {
+  throw new Error('stalled profiling blocked a reliable runtime control');
+}
+node.port.deliver({ kind: 'profiling-credit', count: stalledRecords });
 const stoppedClockCalls = clockCalls;
 quantum(node, 0.25);
 if (clockCalls - stoppedClockCalls !== 2 || node.wasm.shoop_rt_worklet_profiling_active()) {

@@ -34,6 +34,9 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       this.wasm = new WebAssembly.Instance(wasmModule, {
         shoop_profiling: { now: () => timer ? timer.now() * 1e6 : 0 },
       }).exports;
+      if (typeof this.wasm.shoop_rt_worklet_profiling_credit !== 'function') {
+        throw new TypeError('the worklet module lacks profiling flow control');
+      }
       const record = bytesOf(config);
       const pointer = this.wasm.shoop_rt_worklet_config_buffer(record.length) >>> 0;
       if (!pointer) throw new RangeError('the configuration record is empty or too large');
@@ -87,6 +90,9 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         break;
       case 'midi':
         this.inbound[MIDI_IN].push(bytesOf(data.bytes));
+        break;
+      case 'profiling-credit':
+        this.wasm.shoop_rt_worklet_profiling_credit(data.count >>> 0);
         break;
       case 'status':
         this.port.postMessage({ kind: 'status', counters: this.counters() });

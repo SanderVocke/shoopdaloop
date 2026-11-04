@@ -262,6 +262,11 @@ pub extern "C" fn shoop_rt_worklet_profiling_active() -> bool {
 }
 
 #[no_mangle]
+pub extern "C" fn shoop_rt_worklet_profiling_credit(count: u32) {
+    with_host((), |host| host.grant_profiling(count));
+}
+
+#[no_mangle]
 pub extern "C" fn shoop_rt_worklet_profiling_begin(
     frame: f64,
     started_ns: f64,

@@ -95,6 +95,11 @@ The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
 bulk, metering and profiling rotate fairly. Engine protocol version 8, application
 protocol version 21, and SDM2 shared-memory descriptors reject incompatible peers.
+The browser MessagePort additionally allows at most 256 unconsumed profiling
+records. The main thread returns credits after decoding consumption, coalesced
+into one asynchronous flush. Status, names and timestamp chunks share that
+profiling-only window. When it fills, existing bounded queues absorb the backlog
+and live recording eventually reports drops; reliable controls still progress.
 The application backend collects and computes Welford statistics outside rendering;
 live reports refresh at most five times per second. The worklet endpoint performs
 bounded forwarding on the audio thread, including the existing record encoding
