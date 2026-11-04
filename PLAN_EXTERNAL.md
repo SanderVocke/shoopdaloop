@@ -310,3 +310,10 @@ builds or implementation tests.
   Q=1 tests and the startup-only fixture remain. This is a verification-fixture
   adjustment; no production recovery or recording behavior was modified. Initial
   and isolated logs are retained under work/. Full regression will be repeated.
+
+- Wasm investigation: all eleven processor/engine cases and the API doctest
+  passed in Node, but report validation rejected the native Rustdoc summary
+  (`0 measured`) mixed into wasm-pack output. The report parser now accounts for
+  the optional measured field and native `FAILED` spelling; a regression test
+  preserves successful, failed and ignored doctest accounting. All 14 report
+  policy tests pass, and the retained first-run logs reparse without errors.
