@@ -79,6 +79,9 @@ without resetting measurements or layout. Names are resolved through structured
 backend identities, not inferred from the numeric slot or display text; unresolved
 or mismatched topology retains the generic processor label.
 
+Zoom in to read inline node labels; very small overview nodes retain their colors
+and full hover details.
+
 Node colors represent step duration; link colors represent readiness. Their
 separate numeric legends use the selected Avg/Worst/Stddev metric and µs or
 percentage of the original quantum period. Gray means unavailable. A bundled

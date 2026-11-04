@@ -771,6 +771,10 @@ impl State {
                 .zoom_range(0.0001..=4.)
                 .show(&mut widget_view, ui, |ui, show| {
                     show.nodes(ui, |ctx, ui| {
+                        let labels_visible = ui
+                            .ctx()
+                            .layer_transform_to_global(ui.layer_id())
+                            .is_none_or(|t| t.scaling >= 0.35);
                         for node in self.nodes.values() {
                             let value = if node.members.len() == 1 {
                                 self.value(node.members[0], report, false)
@@ -793,30 +797,32 @@ impl State {
                                     ctx.framed_with(frame, |ui, _| {
                                         ui.set_opacity(1.);
                                         ui.set_min_size(node_size(node) - egui::vec2(12., 12.));
-                                        ui.spacing_mut().item_spacing.y = 1.;
-                                        let name = self.label(node, report);
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(&name)
-                                                    .color(colors::FOREGROUND),
-                                            )
-                                            .truncate(),
-                                        );
-                                        if let Some(role) =
-                                            self.roles.get(&node.id).filter(|r| **r != name)
-                                        {
+                                        if labels_visible {
+                                            ui.spacing_mut().item_spacing.y = 1.;
+                                            let name = self.label(node, report);
                                             ui.add(
                                                 egui::Label::new(
-                                                    egui::RichText::new(role)
+                                                    egui::RichText::new(&name)
                                                         .color(colors::FOREGROUND),
                                                 )
                                                 .truncate(),
                                             );
+                                            if let Some(role) =
+                                                self.roles.get(&node.id).filter(|r| **r != name)
+                                            {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(role)
+                                                            .color(colors::FOREGROUND),
+                                                    )
+                                                    .truncate(),
+                                                );
+                                            }
+                                            ui.monospace(value.map_or_else(
+                                                || "—".into(),
+                                                |v| units.format(v, budget),
+                                            ));
                                         }
-                                        ui.monospace(value.map_or_else(
-                                            || "—".into(),
-                                            |v| units.format(v, budget),
-                                        ));
                                     })
                                 });
                             if response.hovered() {
