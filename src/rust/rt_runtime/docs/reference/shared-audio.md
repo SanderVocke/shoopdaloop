@@ -48,16 +48,23 @@ tradeoffs; this is not a final application memory policy.
 Capture, grabs and edits use render accounting rather than background transfer credits.
 A grab preflights owner and boundary-node credits, then visits a bounded number
 of index paths independent of history duration. It never walks every retained page.
+The prepared index budget follows retained page credits and each owner's boundary
+paths, with separate live/displaced-history and transaction headroom. Increasing
+view slots does not reserve another complete history index for each slot.
 A write copies the touched pages and their index paths; it never clones the whole
 history map. Reads position once per page span. Work scales with touched pages,
 index depth, frame count and channels. Transaction-local garbage can only contain
 changed paths, because unchanged branches remain owned by the new root. Its cleanup
 is part of required write work and does not depend on background maintenance.
 
-On the native sizing fixture, 30 seconds at 48 kHz stereo with 4096-byte pages,
+The original native sizing fixture, 30 seconds at 48 kHz stereo with 4096-byte pages,
 32-frame operations and four owner slots uses a 4096-page ring. The configured
 20483-page reservation is 83,898,368 payload bytes (about 80.01 MiB), with 4,898,856
-additional bytes of index, lease and scratch arrays (about 4.67 MiB). Common arena
+additional bytes of index, lease and scratch arrays (about 4.67 MiB). This was
+measured before clipped ownership and the retained-page index budget. Current
+tests print the prepared size and separately check a 512-view, 30-second stereo
+shape stays below 8 MiB of additional metadata within an 8195-page reservation.
+Common arena
 metadata and allocator overhead are additional. Small edits copy one data page
 and a logarithmic index path. These measurements describe this conservative
 configuration, not every host or target layout.

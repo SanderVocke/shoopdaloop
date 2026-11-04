@@ -193,6 +193,43 @@ fn short_wrapping_grabs_pin_only_visible_pages_and_preserve_live_capture_at_owne
 }
 
 #[shoop_test]
+fn prepared_audio_index_budget_tracks_retained_pages_instead_of_full_rings_per_view() {
+    let mut store = store(8200, 4096, 32);
+    let mut media = AudioStore::prepare(
+        &mut store,
+        Config {
+            channels: 2,
+            history_frames: 48_000 * 30,
+            views: 512,
+            pages: 8195,
+        },
+        Frame(0),
+    )
+    .unwrap();
+    assert_eq!(media.capacity().history_pages, 4096);
+    assert!(media.capacity().metadata_bytes < 8 * 1024 * 1024);
+    assert_no_heap(|| {
+        store.begin_callback();
+        media
+            .append(&mut store.render_io(), Frame(0), &[1., 2.])
+            .unwrap();
+        let mut takes = [None; 512];
+        for take in &mut takes {
+            *take = Some(
+                media
+                    .grab(&mut store.render_io(), Frame(0)..Frame(1))
+                    .unwrap(),
+            );
+        }
+        for take in takes.into_iter().flatten() {
+            media.release_take(take).unwrap();
+        }
+        cleanup(&mut media, &mut store);
+        assert_eq!(store.usage().free_pages, 8200);
+    });
+}
+
+#[shoop_test]
 fn partial_stereo_history_forks_and_cross_boundary_edits_preserve_exports() {
     let mut store = store(80, 24, 32);
     let baseline = store.usage();

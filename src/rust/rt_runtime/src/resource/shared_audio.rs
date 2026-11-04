@@ -179,11 +179,25 @@ impl AudioStore {
             .checked_next_power_of_two()
             .ok_or(Error::Capacity)?;
         let depth = index_pages.trailing_zeros() as usize;
-        let node_limit = config
-            .views
-            .checked_add(2)
-            .and_then(|n| n.checked_mul(ring_pages.checked_mul(2)?.checked_sub(1)?))
-            .and_then(|n| n.checked_add(transaction_pages.checked_mul(depth + 1)?))
+        let debt_limit = config.pages - baseline;
+        let owner_limit = config.views.min(debt_limit);
+        // Clipping leaves at most two intervals: at most two nodes per covered
+        // page plus four boundary paths. Keep a displaced history and write scratch.
+        let history_nodes = ring_pages
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(depth.checked_mul(4)?))
+            .ok_or(Error::Capacity)?;
+        let node_limit = history_nodes
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(debt_limit.checked_mul(2)?))
+            .and_then(|n| n.checked_add(owner_limit.checked_mul(depth.checked_mul(4)?)?))
+            .and_then(|n| {
+                n.checked_add(
+                    transaction_pages
+                        .checked_mul(depth + 1)?
+                        .max(4 * (depth + 1)),
+                )
+            })
             .ok_or(Error::Capacity)?;
         let scratch_bytes = transaction_pages
             .checked_mul(page_bytes)
@@ -288,7 +302,7 @@ impl AudioStore {
             views,
             free_views: (0..config.views).rev().collect(),
             debt: 0,
-            debt_limit: config.pages - baseline,
+            debt_limit,
             reserved: config.pages,
             pages,
             marks,

@@ -63,6 +63,12 @@ ring's budget, edits them independently across wrap, retains an old export and
 keeps live capture running at the owner limit. Production global metadata limits
 and writer integration are still open.
 
+Audio index preparation is now bounded by retained page credits and per-owner
+boundary paths rather than a full history tree per view. A 30-second stereo
+512-view sizing scenario asserts a sub-8-MiB metadata budget and acquires/releases
+every handle without a sample copy. CI must validate that assertion and the
+updated lifetime tests; ordinary loop-memory capacity is unchanged.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |
