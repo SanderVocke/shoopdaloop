@@ -4,7 +4,7 @@ The native application and independent `shoop_host` expose the external audio/MI
 graph through `SessionSnapshot.host_graph` and `AppSnapshot.host_graph`. Clients send
 `Command::SetHostGraphConnected(HostGraphRequest)` or the matching `AppIntent`.
 The same command/result/snapshot path works in process, over socket/shared-memory
-IPC, and over trusted-LAN TCP. Application protocol version 18 is required at both
+IPC, and over trusted-LAN TCP. Application protocol version 19 is required at both
 ends. Engine and carrier protocols are unchanged.
 
 The shared [port graph contract](port-graph.md) defines identities, capabilities,
@@ -37,10 +37,8 @@ Oversized/unreadable graphs become unavailable with diagnostics instead of being
 reported as complete partial inventories. Worker shutdown refuses outstanding work.
 
 Track audio/MIDI, sync audio and audio-bus output ports are published dynamically.
-The configured bank remains for compatible startup profiles. Initial Master wiring
-is migrated to the published bus outputs, preserving channel order and avoiding
-a second Master path through the bank. Private prepared slot
-counts derive from session pool capacity, with up to 1024 slots per media type and
+JACK starts without public ports; the session owns every public endpoint. Private
+prepared slot counts derive from session pool capacity, with up to 1024 slots per media type and
 direction. Slots are reused only after callback retirement and native unregistration.
 Creation/removal results aggregate engine and provider acknowledgements; publication
 failure rolls back creation.
@@ -60,7 +58,7 @@ Run `python3 scripts/run_native_jack_tests.py` for strict acceptance against an
 isolated JACK dummy server. It includes shared provider conformance, rapid port
 replacement, audio/MIDI hotplug, graph control/observation and UI reconnect during
 playback over the existing native session carriers. The dynamic workflow starts
-with an empty configured bank, creates a track and bus, records/replays audio and
+without a fixed port bank, creates a track and bus, records/replays audio and
 MIDI, restores a session while peers are absent, reconnects them after hotplug and
 removes the published ports. Additional tests cover prepared capacity, routing past
 64 ports, MIDI reset, callback heap guards and provider-independent rollback.

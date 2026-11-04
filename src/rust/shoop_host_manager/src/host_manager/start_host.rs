@@ -82,8 +82,6 @@ pub(super) struct Dialog {
     name: String,
     driver: AudioDriverKind,
     jack_client_name: String,
-    jack_ports: [String; 4],
-    jack_connections: Vec<(String, String)>,
     device_defaults: bool,
     sample_rate: u32,
     buffer_size: u32,
@@ -123,14 +121,6 @@ impl Default for Dialog {
                 AudioDriverKind::Dummy
             },
             jack_client_name: jack.client_name,
-            jack_ports: [
-                jack.audio_inputs,
-                jack.audio_outputs,
-                jack.midi_inputs,
-                jack.midi_outputs,
-            ]
-            .map(|ports| ports.join(", ")),
-            jack_connections: jack.connections,
             device_defaults: true,
             sample_rate: 48000,
             buffer_size: 256,
@@ -253,22 +243,8 @@ impl Dialog {
         let driver = match self.driver {
             AudioDriverKind::Jack => {
                 ensure!(cfg!(feature = "jack"), "JACK is unavailable in this build");
-                let [audio_inputs, audio_outputs, midi_inputs, midi_outputs] =
-                    self.jack_ports.each_ref().map(|value| {
-                        value
-                            .split(',')
-                            .map(str::trim)
-                            .filter(|name| !name.is_empty())
-                            .map(str::to_owned)
-                            .collect()
-                    });
                 let jack = JackAudioDriverConfig {
                     client_name: self.jack_client_name.clone(),
-                    audio_inputs,
-                    audio_outputs,
-                    midi_inputs,
-                    midi_outputs,
-                    connections: self.jack_connections.clone(),
                 };
                 jack.validate().map_err(anyhow::Error::msg)?;
                 AudioDriverConfig::Jack(jack)
@@ -493,43 +469,7 @@ impl Dialog {
             });
         }
         if self.driver == AudioDriverKind::Jack {
-            ui.collapsing("JACK ports and connections", |ui| {
-                egui::Grid::new("new_host_jack_ports")
-                    .num_columns(2)
-                    .spacing([10.0, 6.0])
-                    .show(ui, |ui| {
-                        for (label, value) in ["Audio inputs", "Audio outputs", "MIDI inputs", "MIDI outputs"]
-                            .into_iter().zip(&mut self.jack_ports) {
-                            ui.label(label);
-                            ui.text_edit_singleline(value)
-                                .on_hover_text("Comma-separated local port names. Empty means no ports.");
-                            ui.end_row();
-                        }
-                    });
-                ui.label("Startup connections").on_hover_text(
-                    "Use local short names or external client:port names. Connections can also be made in a JACK patchbay.",
-                );
-                let mut remove = None;
-                egui::Grid::new("new_host_jack_connections")
-                    .num_columns(4)
-                    .show(ui, |ui| {
-                        for (index, (source, target)) in self.jack_connections.iter_mut().enumerate() {
-                            ui.add_sized([190.0, ui.spacing().interact_size.y], egui::TextEdit::singleline(source).hint_text("Source"));
-                            ui.label("to");
-                            ui.add_sized([190.0, ui.spacing().interact_size.y], egui::TextEdit::singleline(target).hint_text("Destination"));
-                            if ui.small_button("Remove").clicked() {
-                                remove = Some(index);
-                            }
-                            ui.end_row();
-                        }
-                    });
-                if let Some(index) = remove {
-                    self.jack_connections.remove(index);
-                }
-                if ui.small_button("Add connection").clicked() {
-                    self.jack_connections.push(Default::default());
-                }
-            });
+            ui.label("Audio and MIDI ports follow the tracks and buses in the session.");
         }
         ui.separator();
         ui.collapsing("Logging", |ui| {
@@ -778,7 +718,7 @@ mod tests {
 
     #[cfg(feature = "jack")]
     #[shoop_wasm_test_support::shoop_test]
-    fn jack_selection_exposes_ports_and_connections_without_device_rate_controls() {
+    fn jack_selection_only_configures_client_name_and_explains_dynamic_ports() {
         let root = tempfile::tempdir().unwrap();
         let mut dialog = form(root.path());
         let mut screen = Screen::new(egui::vec2(800.0, 1000.0));
@@ -787,42 +727,33 @@ mod tests {
         screen.click("JACK", |ui| dialog.fields(ui));
         assert_eq!(dialog.driver, AudioDriverKind::Jack);
         assert!(screen.contains("JACK client name") && screen.contains("Set by JACK server"));
-        assert!(!screen.contains("Sample rate") && !screen.contains("Buffer size"));
-        assert!(!screen.contains("Audio API") && !screen.contains("Channels and MIDI"));
-        screen.click("JACK ports and connections", |ui| dialog.fields(ui));
-        assert!(screen.contains("Audio inputs") && screen.contains("MIDI outputs"));
-        screen.click("Add connection", |ui| dialog.fields(ui));
-        assert!(dialog.request().is_err());
+        assert!(screen.contains("Audio and MIDI ports follow the tracks and buses in the session."));
+        for label in [
+            "Sample rate",
+            "Buffer size",
+            "Audio API",
+            "Channels and MIDI",
+            "JACK ports and connections",
+            "Startup connections",
+            "Add connection",
+        ] {
+            assert!(!screen.contains(label), "obsolete JACK control: {label}");
+        }
         dialog.jack_client_name = "Studio".into();
-        dialog.jack_ports =
-            ["capture_l, capture_r", "main_l,main_r", "", "events"].map(str::to_owned);
-        dialog.jack_connections[0] = ("main_l".into(), "system:playback_1".into());
         let request = dialog.request().unwrap();
         let AudioDriverConfig::Jack(jack) = &request.config.driver else {
             panic!("direct JACK expected");
         };
         assert_eq!(jack.client_name, "Studio");
-        assert_eq!(jack.audio_inputs, ["capture_l", "capture_r"]);
-        assert_eq!(jack.audio_outputs, ["main_l", "main_r"]);
-        assert!(jack.midi_inputs.is_empty());
-        assert_eq!(jack.midi_outputs, ["events"]);
+        let json = serde_json::to_value(&request.config).unwrap();
         assert_eq!(
-            jack.connections[0],
-            ("main_l".into(), "system:playback_1".into())
+            json["driver"]["Jack"],
+            serde_json::json!({"client_name":"Studio"})
         );
-        let decoded: HostConfig =
-            serde_json::from_slice(&serde_json::to_vec(&request.config).unwrap()).unwrap();
+        let decoded: HostConfig = serde_json::from_value(json).unwrap();
         assert_eq!(decoded.settings, request.config.settings);
-        screen.frame(vec![], |ui| dialog.fields(ui));
-        screen.click("Remove", |ui| dialog.fields(ui));
-        assert!(dialog.jack_connections.is_empty());
-        dialog.jack_ports[0] = "main_l".into();
-        assert!(dialog
-            .request()
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("unique"));
+        dialog.jack_client_name = "bad:name".into();
+        assert!(dialog.request().is_err());
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
 

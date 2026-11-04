@@ -29,26 +29,6 @@ pub struct AudioArgs {
     /// JACK client-name hint.
     #[arg(long, requires = "audio_driver", help_heading = "JACK")]
     pub jack_client_name: Option<String>,
-    /// Comma-separated local audio input names; an empty value disables inputs.
-    #[arg(long, requires = "audio_driver", help_heading = "JACK")]
-    pub jack_audio_inputs: Option<String>,
-    /// Comma-separated local audio output names; an empty value disables outputs.
-    #[arg(long, requires = "audio_driver", help_heading = "JACK")]
-    pub jack_audio_outputs: Option<String>,
-    /// Comma-separated local MIDI input names; an empty value disables inputs.
-    #[arg(long, requires = "audio_driver", help_heading = "JACK")]
-    pub jack_midi_inputs: Option<String>,
-    /// Comma-separated local MIDI output names; an empty value disables outputs.
-    #[arg(long, requires = "audio_driver", help_heading = "JACK")]
-    pub jack_midi_outputs: Option<String>,
-    /// Startup connection, SOURCE->DESTINATION. Repeat for multiple connections.
-    #[arg(
-        long,
-        requires = "audio_driver",
-        help_heading = "JACK",
-        value_name = "SOURCE->DESTINATION"
-    )]
-    pub jack_connect: Vec<String>,
 }
 impl AudioArgs {
     pub fn apply(&self, base: AudioDriverConfig) -> Result<AudioDriverConfig> {
@@ -74,46 +54,10 @@ impl AudioArgs {
                 AudioDriverKind::WebAudio => unreachable!(),
             }
         };
-        let has_jack_options = self.jack_client_name.is_some()
-            || self.jack_audio_inputs.is_some()
-            || self.jack_audio_outputs.is_some()
-            || self.jack_midi_inputs.is_some()
-            || self.jack_midi_outputs.is_some()
-            || !self.jack_connect.is_empty();
+        let has_jack_options = self.jack_client_name.is_some();
         if let AudioDriverConfig::Jack(jack) = &mut config {
             if let Some(name) = &self.jack_client_name {
                 jack.client_name = name.clone();
-            }
-            for (value, ports) in [
-                (&self.jack_audio_inputs, &mut jack.audio_inputs),
-                (&self.jack_audio_outputs, &mut jack.audio_outputs),
-                (&self.jack_midi_inputs, &mut jack.midi_inputs),
-                (&self.jack_midi_outputs, &mut jack.midi_outputs),
-            ] {
-                if let Some(value) = value {
-                    *ports = value
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|port| !port.is_empty())
-                        .map(str::to_owned)
-                        .collect();
-                }
-            }
-            if !self.jack_connect.is_empty() {
-                jack.connections = self
-                    .jack_connect
-                    .iter()
-                    .map(|entry| {
-                        let (source, target) = entry.split_once("->").ok_or_else(|| {
-                            anyhow::anyhow!("JACK connections require SOURCE->DESTINATION")
-                        })?;
-                        ensure!(
-                            !target.contains("->"),
-                            "JACK connections require one SOURCE->DESTINATION pair"
-                        );
-                        Ok((source.trim().to_owned(), target.trim().to_owned()))
-                    })
-                    .collect::<Result<_>>()?;
             }
             jack.validate().map_err(anyhow::Error::msg)?;
         } else if has_jack_options {
@@ -164,72 +108,40 @@ mod tests {
 
     #[cfg(feature = "jack")]
     #[shoop_test]
-    fn jack_cli_overrides_preserve_unspecified_json_fields_and_validate_ports() {
+    fn jack_cli_only_configures_the_client_name() {
         let cli = Cli::parse_from([
             "host",
             "--audio-driver",
             "jack",
             "--jack-client-name",
             "Studio",
-            "--jack-audio-inputs",
-            "capture_l, capture_r",
-            "--jack-midi-inputs=",
-            "--jack-connect",
-            "system:capture_1->capture_l",
-            "--jack-connect",
-            "audio_out_1->system:playback_1",
         ]);
-        let mut base = shoop_app_api::JackAudioDriverConfig::default();
-        base.audio_outputs = vec!["main_l".into(), "main_r".into()];
-        let AudioDriverConfig::Jack(jack) = cli.audio.apply(AudioDriverConfig::Jack(base)).unwrap()
-        else {
+        let AudioDriverConfig::Jack(jack) = cli.audio.apply(Default::default()).unwrap() else {
             panic!("direct JACK expected");
         };
         assert_eq!(jack.client_name, "Studio");
-        assert_eq!(jack.audio_inputs, ["capture_l", "capture_r"]);
-        assert_eq!(jack.audio_outputs, ["main_l", "main_r"]);
-        assert!(jack.midi_inputs.is_empty());
-        assert_eq!(jack.connections.len(), 2);
-        assert_eq!(
-            jack.connections[0],
-            ("system:capture_1".into(), "capture_l".into())
-        );
-        for arguments in [
-            vec![
-                "host",
-                "--audio-driver",
-                "jack",
-                "--jack-audio-inputs",
-                "duplicate,duplicate",
-            ],
-            vec![
-                "host",
-                "--audio-driver",
-                "jack",
-                "--jack-connect",
-                "missing-arrow",
-            ],
-            vec![
-                "host",
-                "--audio-driver",
-                "jack",
-                "--jack-connect",
-                "a->b->c",
-            ],
-            vec!["host", "--audio-driver", "jack", "--jack-connect", "a->"],
-            vec![
-                "host",
-                "--audio-driver",
-                "jack",
-                "--jack-client-name",
-                "bad:name",
-            ],
+        for option in [
+            "--jack-audio-inputs",
+            "--jack-audio-outputs",
+            "--jack-midi-inputs",
+            "--jack-midi-outputs",
+            "--jack-connect",
         ] {
-            assert!(Cli::parse_from(arguments)
-                .audio
-                .apply(Default::default())
-                .is_err());
+            assert!(
+                Cli::try_parse_from(["host", "--audio-driver", "jack", option, "obsolete"])
+                    .is_err()
+            );
         }
+        assert!(Cli::parse_from([
+            "host",
+            "--audio-driver",
+            "jack",
+            "--jack-client-name",
+            "bad:name"
+        ])
+        .audio
+        .apply(Default::default())
+        .is_err());
     }
 
     #[shoop_test]
@@ -267,10 +179,6 @@ mod tests {
             "--audio-driver=jack",
             "--jack-client-name",
             "Studio",
-            "--jack-connect",
-            "out->system:playback_1",
-            "--jack-connect=a->b",
-            "--jack-midi-inputs=",
             "--session",
             "path with spaces.shoop",
             "--tracing",

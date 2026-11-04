@@ -25,10 +25,10 @@ pub fn driver(config: &NativeConfig) -> Result<DriverSettings> {
                 output: DeviceSelection::None,
                 sample_rate: 0,
                 buffer_frames: 0,
-                audio_inputs: jack.audio_inputs.len() as u16,
-                audio_outputs: jack.audio_outputs.len() as u16,
-                midi_inputs: jack.midi_inputs.len() as u16,
-                midi_outputs: jack.midi_outputs.len() as u16,
+                audio_inputs: 0,
+                audio_outputs: 0,
+                midi_inputs: 0,
+                midi_outputs: 0,
                 client_name: text(&jack.client_name)?,
                 dummy_input_ramp: false,
             }
@@ -82,46 +82,27 @@ fn native_selection(value: DeviceSelection) -> shoop_rt_host_native::DeviceSelec
         }
     }
 }
-#[derive(Default)]
-pub(crate) struct JackSetup {
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
-    pub connections: Vec<(String, String)>,
-}
 pub fn native_driver(
     settings: DriverSettings,
     inputs: Vec<String>,
     outputs: Vec<String>,
-    jack: JackSetup,
 ) -> Result<DriverConfig> {
-    if settings.kind != DriverKind::Jack
-        && (!jack.inputs.is_empty() || !jack.outputs.is_empty() || !jack.connections.is_empty())
-    {
-        bail!("JACK setup supplied for a different driver");
-    }
     Ok(match settings.kind {
         #[cfg(feature = "jack")]
         DriverKind::Jack => {
             if [
-                jack.inputs.len(),
-                jack.outputs.len(),
-                inputs.len(),
-                outputs.len(),
-            ] != [
-                settings.audio_inputs as usize,
-                settings.audio_outputs as usize,
-                settings.midi_inputs as usize,
-                settings.midi_outputs as usize,
-            ] {
-                bail!("JACK port counts do not match setup");
+                settings.audio_inputs,
+                settings.audio_outputs,
+                settings.midi_inputs,
+                settings.midi_outputs,
+            ] != [0; 4]
+                || !inputs.is_empty()
+                || !outputs.is_empty()
+            {
+                bail!("JACK ports are published dynamically by the session");
             }
             let config = shoop_rt_host_native::JackConfig {
                 client_name: settings.client_name.as_str().into(),
-                audio_inputs: jack.inputs,
-                audio_outputs: jack.outputs,
-                midi_inputs: inputs,
-                midi_outputs: outputs,
-                connections: jack.connections,
             };
             config.validate()?;
             DriverConfig::Jack(config)

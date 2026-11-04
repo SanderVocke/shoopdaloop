@@ -80,6 +80,12 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 
 ## Preserved evidence and retirement record
 
+- The temporary fixed JACK startup bank is superseded by dynamic session-owned
+  track/audio-bus publication. CLI, settings, profile fields and host setup messages
+  for that bank are removed. Profiles containing the obsolete fields are rejected;
+  no migration is provided for this development branch. Native signal, graph,
+  lifecycle, capacity and session-restoration tests exercise dynamic publication.
+
 - `shoop_app_reference` retains the old model and its executable behavioral tests,
   including its RT adapter contract tests. It is excluded from production dependency
   graphs. `shoop_backend`'s legacy feature and the independent old engine/worklet
