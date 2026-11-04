@@ -645,9 +645,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 recovery.request();
             }
         }
-        for (output, recovery) in midi.outputs.iter_mut().zip(&self.recovery) {
+        for (port, (output, recovery)) in midi.outputs.iter_mut().zip(&self.recovery).enumerate() {
             if recovery.pending() {
                 output.clear();
+                if let Some(buffer) = &mut self.host_buffer {
+                    buffer.clear_midi_output(port);
+                }
             }
         }
         self.resources.reclaim();
