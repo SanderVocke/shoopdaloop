@@ -7,12 +7,22 @@ use alloc::vec::Vec;
 use super::*;
 
 mod control;
+mod timing;
 
 type CommandResult = core::result::Result<Effect, CommandError>;
 
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => self.set_loop_timeline(loop_id, start_offset, preplay_samples, loop_length),
+            Command::SetLoopChannelTimings { loop_id, updates } => {
+                self.set_loop_channel_timings(loop_id, &updates)
+            }
             Command::SetHostGraphConnected(request) => {
                 let controller =
                     self.host_graph_controller

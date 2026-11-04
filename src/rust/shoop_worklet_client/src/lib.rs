@@ -1292,6 +1292,8 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        timing_revision: 0,
+                        channel_timings: Vec::new(),
                         sync_source: None,
                         content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),

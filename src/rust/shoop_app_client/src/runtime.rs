@@ -873,6 +873,16 @@ impl Runtime {
         })
     }
     fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
+        if matches!(
+            intent,
+            AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. }
+        ) && !self.client.snapshot().is_some_and(|state| {
+            state
+                .capabilities
+                .supports(BackendCapability::LoopTimingEdits)
+        }) {
+            anyhow::bail!(BackendCapability::LoopTimingEdits.unavailable_reason());
+        }
         if matches!(intent, AppIntent::RequestNewSession) {
             if self
                 .scripts
@@ -1048,6 +1058,20 @@ impl Runtime {
                     .replace_user_source(script_id, source.to_string())?;
                 return Ok(());
             }
+            AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => Command::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            },
+            AppIntent::SetLoopChannelTimings { loop_id, updates } => {
+                Command::SetLoopChannelTimings { loop_id, updates }
+            }
             AppIntent::StopScript { script_id } => {
                 self.scripts.stop(script_id)?;
                 return Ok(());
@@ -1112,9 +1136,6 @@ impl Runtime {
                     | AppIntent::RequestLoopMidiImportPicker { .. }
                     | AppIntent::ImportLoopMidiBytes { .. } => BackendCapability::LoopContentImport,
                     AppIntent::GenerateClickTrack { .. } => BackendCapability::ClickTrackInsertion,
-                    AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. } => {
-                        BackendCapability::LoopTimingEdits
-                    }
                     AppIntent::SetTrackLatency { .. } => BackendCapability::LatencyCompensation,
                     AppIntent::SetTakeAlignment { .. }
                     | AppIntent::SetTakeProcessorAlignment { .. } => {

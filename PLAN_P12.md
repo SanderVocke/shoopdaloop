@@ -167,6 +167,11 @@ Goals and these criteria require explicit user approval to change.
   Seventeen runtime scenarios (including three new integration oracles), library
   unit tests, warning-denying workspace check/build and test-attribute checks pass.
   Production commands, persistence and capability enablement remain unfinished.
+- Application contract milestone: app protocol version 21 carries both timing
+  commands and bounded channel batches. The service validates channel identity and
+  alignment, and snapshots have independent timing revisions/metadata. Client and
+  service capability gates remain enforced. All 28 app-client/protocol tests and
+  warning-denying workspace check/build pass; RT wire/execution remains next.
 - Ordering refinement: implement the core window semantics before fixing the wire
   layout, then finish Stage 1 alongside production integration. The accepted
   behavior matrix and completion criteria are unchanged.
