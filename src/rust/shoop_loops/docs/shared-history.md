@@ -14,6 +14,15 @@ event/packet limits and transaction credits. Audio scratch covers the core quant
 Q; maximum host callback size is a separate bound. The tap appends once per source
 and tick, even when every loop is stopped. Independent loops share these pages.
 
+`SharedSettings::audio_pool` optionally supplies one common audio page/index/owner
+budget. Each audio source receives an independent scoped history slot in that
+pool; its source configuration must match the pool's channels and horizon.
+Per-source page/view budgets are then replaced by the common budget. Coverage,
+generation fences and signal routes remain independent. Preparation reports the
+pool once, and shutdown closes it once after every owner has retired. Without a
+common pool, explicit per-source fixture configurations retain their behavior.
+This pooling interface still requires normal production host policy integration.
+
 The history MIDI tracker observes input once before storage admission. A loop's
 own recording tracker is a separate observer. Storage refusal leaves this tracker
 advanced. The next accepted input starts a new segment from the observed state;

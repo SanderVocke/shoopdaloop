@@ -143,6 +143,14 @@ separate MIDI finalization and interval-summary tests. Full matrix jobs were sti
 running at inspection. It does not validate the later complete semantic query or
 multi-source audio pool, and is not application acceptance evidence.
 
+The loop coordinator can now install a common audio pool while keeping source
+slots, complete-cut coverage, generation fences and resets independent. Shared
+capacity reporting and shutdown account for that pool once. New engine scenarios
+capture two differently scaled input routes into ordinary resources at the same
+fixed cut for Q=1/32/128 and partial/whole host callbacks, then reclaim all owners.
+Existing explicit per-source fixtures retain their preparation policy. The normal
+host constructor is still unchanged pending production MIDI/writer integration.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

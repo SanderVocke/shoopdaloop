@@ -13,6 +13,8 @@ pub struct HistorySettings {
 #[derive(Debug, Default)]
 pub struct SharedSettings {
     pub histories: Vec<HistorySettings>,
+    /// Source audio configurations describe shape; this pool owns their common budget.
+    pub audio_pool: Option<shared_audio::Config>,
     pub candidates: usize,
     pub edit_steps_per_callback: usize,
 }
@@ -79,6 +81,7 @@ struct History {
     committed_graph: Option<Epoch>,
     settings: HistorySettings,
     audio: Option<AudioStoreId>,
+    audio_source: Option<AudioHistoryId>,
     midi: Option<MidiStoreId>,
     tracker: Option<midi::MidiCapture>,
     audio_scratch: Box<[f32]>,
@@ -122,6 +125,7 @@ struct Job {
 pub(super) struct Shared {
     scope: u32,
     histories: Vec<History>,
+    audio_pool: Option<(AudioStoreId, bool)>,
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
@@ -165,6 +169,35 @@ impl Shared {
         let scope = NEXT_SCOPE
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| Error::Exhausted)?;
+        for (index, setting) in settings.histories.iter().enumerate() {
+            if setting.source as usize >= c.max_nodes
+                || settings.histories[..index]
+                    .iter()
+                    .any(|other| other.source == setting.source)
+                || (setting.audio.is_none() && setting.midi.is_none())
+            {
+                return Err(Error::InvalidConfig);
+            }
+            if let (Some(pool), Some(audio)) = (settings.audio_pool, setting.audio) {
+                if pool.channels != audio.channels || pool.history_frames != audio.history_frames {
+                    return Err(Error::InvalidConfig);
+                }
+            }
+        }
+        let audio_pool = settings
+            .audio_pool
+            .map(|config| {
+                let count = settings
+                    .histories
+                    .iter()
+                    .filter(|setting| setting.audio.is_some())
+                    .count();
+                resources
+                    .prepare_audio_pool(config, Frame(0), count)
+                    .map(|id| (id, false))
+            })
+            .transpose()?;
+        let mut audio_slot = 0;
         let mut histories = Vec::with_capacity(settings.histories.len());
         let mut lookup = vec![None; c.max_nodes].into_boxed_slice();
         let mut channels = 0;
@@ -184,9 +217,24 @@ impl Shared {
             }
             let count = setting.audio.map_or(0, |a| a.channels as usize);
             channels = channels.max(count);
-            let audio = setting
-                .audio
-                .map(|a| resources.prepare_audio_store(a, Frame(0)))
+            let audio = match setting.audio {
+                Some(config) => Some(match audio_pool {
+                    Some((id, _)) => id,
+                    None => resources.prepare_audio_store(config, Frame(0))?,
+                }),
+                None => None,
+            };
+            let audio_source = audio
+                .map(|id| {
+                    let slot = if audio_pool.is_some() {
+                        let slot = audio_slot;
+                        audio_slot += 1;
+                        slot
+                    } else {
+                        0
+                    };
+                    resources.audio_history(id, slot)
+                })
                 .transpose()?;
             let midi = setting
                 .midi
@@ -214,6 +262,7 @@ impl Shared {
                 committed_graph: None,
                 settings: setting,
                 audio,
+                audio_source,
                 midi,
                 tracker,
                 audio_scratch: vec![0.; samples].into_boxed_slice(),
@@ -236,6 +285,7 @@ impl Shared {
         let mut result = Self {
             scope,
             histories,
+            audio_pool,
             lookup,
             max_frames: c.max_frames,
             jobs: (0..settings.candidates)
@@ -287,7 +337,7 @@ impl Shared {
         ] {
             add(&mut capacity.coordinator_bytes, count, bytes)?;
         }
-        for history in &result.histories {
+        for (index, history) in result.histories.iter().enumerate() {
             add(
                 &mut capacity.coordinator_bytes,
                 history.audio_scratch.len(),
@@ -296,7 +346,11 @@ impl Shared {
             if history.tracker.is_some() {
                 add(&mut capacity.coordinator_bytes, 1, size_of::<MidiState>())?;
             }
-            if let Some(id) = history.audio {
+            if let Some(id) = history.audio.filter(|id| {
+                !result.histories[..index]
+                    .iter()
+                    .any(|other| other.audio == Some(*id))
+            }) {
                 let c = resources.audio_store_capacity(id)?;
                 add(&mut capacity.store_metadata_bytes, 1, c.metadata_bytes)?;
                 add(
@@ -306,7 +360,10 @@ impl Shared {
                 )?;
                 add(
                     &mut capacity.reserved_payload_bytes,
-                    history.settings.audio.expect("audio settings").pages,
+                    settings
+                        .audio_pool
+                        .unwrap_or(history.settings.audio.expect("audio settings"))
+                        .pages,
                     resources.config().limits().page_bytes,
                 )?;
             }
@@ -369,7 +426,9 @@ impl Shared {
         let mut start = h.completed;
         let mut any = false;
         for range in [
-            h.audio.map(|id| io.audio_coverage(id)).transpose()?,
+            h.audio_source
+                .map(|id| io.audio_source_coverage(id))
+                .transpose()?,
             h.midi.map(|id| io.midi_coverage(id)).transpose()?,
         ]
         .into_iter()
@@ -439,8 +498,8 @@ impl Shared {
         }
         if changed || h.restart || h.observed != frame {
             h.generation = h.generation.checked_add(1).ok_or(Error::Exhausted)?;
-            if let Some(audio) = h.audio {
-                io.render().audio_history_discontinuity(audio, frame)?;
+            if let Some(audio) = h.audio_source {
+                io.render().audio_source_discontinuity(audio, frame)?;
             }
             if let (Some(store), Some(tracker)) = (h.midi, &h.tracker) {
                 io.render()
@@ -458,7 +517,7 @@ impl Shared {
             if let Some(tracker) = &mut h.tracker {
                 tracker.process(&mut io.render(), midi.ok_or(Error::InvalidShape)?, q, None)?;
             }
-            if let Some(store) = h.audio {
+            if let Some(source) = h.audio_source {
                 let channels = h.settings.audio.expect("audio settings").channels as usize;
                 for channel in 0..channels {
                     let input = ports.output(channel).ok_or(Error::InvalidShape)?;
@@ -470,7 +529,7 @@ impl Shared {
                     }
                 }
                 io.render()
-                    .append_audio_history(store, frame, &h.audio_scratch[..q * channels])?;
+                    .append_audio_source(source, frame, &h.audio_scratch[..q * channels])?;
             }
             if let Some(store) = h.midi {
                 io.render().append_midi_history(
@@ -524,8 +583,8 @@ impl Shared {
         }
         let h = self.source(id.source)?;
         let audio = h
-            .audio
-            .map(|store| io.grab_audio(store, start..end))
+            .audio_source
+            .map(|source| io.grab_audio_source(source, start..end))
             .transpose()?;
         let midi = match h
             .midi
@@ -935,8 +994,22 @@ impl Shared {
         let mut busy = false;
         for h in &mut self.histories {
             if let Some(audio) = h.audio.filter(|_| !h.audio_closed) {
-                match resources.cleanup_audio_store(audio) {
-                    Ok(()) => h.audio_closed = true,
+                let closed = self
+                    .audio_pool
+                    .is_some_and(|(id, closed)| id == audio && closed);
+                match if closed {
+                    Ok(())
+                } else {
+                    resources.cleanup_audio_store(audio)
+                } {
+                    Ok(()) => {
+                        h.audio_closed = true;
+                        if let Some((id, closed)) = &mut self.audio_pool {
+                            if *id == audio {
+                                *closed = true;
+                            }
+                        }
+                    }
                     Err(Error::Busy) => busy = true,
                     Err(e) => return Err(e),
                 }

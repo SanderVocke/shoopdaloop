@@ -36,8 +36,10 @@ Use a persistent ordered event tree plus category indexes for note on/off, key
 pressure, individual controllers, program/channel pressure/pitch and channel/global
 resets. A COW radix table can hold category roots: retaining a complete root is
 constant work and changing a category copies only a bounded path. Ordered trees
-should mutate exclusive staging paths after their initial copy, with one complete
-rollback root per in-flight tick. A failed graph tick must preserve the previous
+should mutate exclusive staging paths after their initial copy. Stage owned input
+and reserve the whole write before graph execution, then commit after all other
+fallible tick work succeeds. If mutation happens earlier, retain a complete
+rollback root for that in-flight tick. A failed graph tick must preserve the previous
 complete audio/MIDI cut, not merely the content before writer entry.
 
 Preparation globally bounds descriptors, payload slabs, tree/table nodes, roots,

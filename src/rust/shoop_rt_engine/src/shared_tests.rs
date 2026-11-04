@@ -113,13 +113,27 @@ impl Fixture {
         Self::new_shapes(q, partition, rate, true, true)
     }
     fn new_shapes(q: usize, partition: usize, rate: u32, audio: bool, midi: bool) -> Self {
+        Self::new_prepared_shapes(q, partition, rate, audio, midi, false)
+    }
+    fn new_pooled(q: usize, partition: usize) -> Self {
+        Self::new_prepared_shapes(q, partition, 1000, true, false, true)
+    }
+    fn new_prepared_shapes(
+        q: usize,
+        partition: usize,
+        rate: u32,
+        audio: bool,
+        midi: bool,
+        pooled: bool,
+    ) -> Self {
+        let history_frames = if pooled { 32 * q } else { 8 * q };
         let d = EngineDescription {
             quantum: q,
             sample_rate: rate,
             max_frames: 128,
             host: HostPorts::numbered(2, 2, 1),
             segments: vec![Segment {
-                strips: 1,
+                strips: if pooled { 2 } else { 1 },
                 loops: 2,
             }],
             resource_pages: 12288,
@@ -140,26 +154,34 @@ impl Fixture {
                 buffer_frames: 128,
             },
             SharedSettings {
-                histories: vec![HistorySettings {
-                    source: 0,
-                    audio: audio.then_some(resource::shared_audio::Config {
-                        channels: 2,
-                        history_frames: 8 * q,
-                        views: 24,
-                        pages: 1024,
-                    }),
-                    midi: midi.then_some(resource::shared_midi::Config {
-                        history_frames: (8 * q) as u64,
-                        chunks: 8,
-                        views: 24,
-                        pages: 8192,
-                        max_events: 64,
-                        max_bytes: 2048,
-                        max_packet: 1024,
-                        transactions: 2,
-                        edit_steps: 8,
-                    }),
-                }],
+                audio_pool: pooled.then_some(resource::shared_audio::Config {
+                    channels: 2,
+                    history_frames,
+                    views: 48,
+                    pages: 2048,
+                }),
+                histories: (0..if pooled { 2 } else { 1 })
+                    .map(|source| HistorySettings {
+                        source,
+                        audio: audio.then_some(resource::shared_audio::Config {
+                            channels: 2,
+                            history_frames,
+                            views: 24,
+                            pages: 1024,
+                        }),
+                        midi: (midi && source == 0).then_some(resource::shared_midi::Config {
+                            history_frames: (8 * q) as u64,
+                            chunks: 8,
+                            views: 24,
+                            pages: 8192,
+                            max_events: 64,
+                            max_bytes: 2048,
+                            max_packet: 1024,
+                            transactions: 2,
+                            edit_steps: 8,
+                        }),
+                    })
+                    .collect(),
                 candidates: 2,
                 edit_steps_per_callback: 8,
             },
@@ -609,6 +631,99 @@ fn stopped_sources_support_audio_only_and_midi_only_completed_grabs() {
             (sibling.audio.is_some(), sibling.midi.is_some()),
             (audio, midi)
         );
+        let mut stopped = h.engine.render.into_stopped();
+        recover_all(&mut stopped, 12288);
+    }
+}
+
+#[shoop_test]
+fn pooled_sources_capture_distinct_signal_paths_at_one_fixed_cut_and_cleanup_once() {
+    for (q, partition) in [(1, 1), (32, 7), (128, 128)] {
+        let mut h = Fixture::new_pooled(q, partition);
+        let strip = protocol::StripId(protocol::SlotId::new(1, 1));
+        h.request(protocol::Request::CreateStrip {
+            strip,
+            shape: protocol::StripShape {
+                audio_inputs: 2,
+                audio_outputs: 2,
+                midi_input: false,
+                midi_output: false,
+            },
+        });
+        h.request(protocol::Request::StripControl {
+            strip,
+            control: protocol::StripControl::InputGain(3.),
+        });
+        for channel in 0..2 {
+            h.request(protocol::Request::Connect {
+                port: protocol::EnginePort::Strip(protocol::StripPort {
+                    strip,
+                    kind: protocol::PortKind::AudioIn,
+                    index: channel,
+                }),
+                host: protocol::HostPortId(u32::from(channel)),
+                connected: true,
+            });
+        }
+        let Reply::SharedCapacity(capacity) = h.op(Operation::SharedCapacity) else {
+            panic!("capacity")
+        };
+        assert_eq!(
+            (
+                capacity.sources,
+                capacity.reserved_payload_bytes,
+                capacity.midi_state_bytes
+            ),
+            (2, 2048 * 256, 0)
+        );
+        let Reply::History(a) = h.op(Operation::HistoryStatus { source: 0 }) else {
+            panic!("source a")
+        };
+        let Reply::History(b) = h.op(Operation::HistoryStatus { source: 1 }) else {
+            panic!("source b")
+        };
+        let at = h.aligned_future((128 + 8 * q) as u64);
+        let start = at - 2 * q as u64;
+        let a = h.send(
+            at,
+            Operation::HistoryGrab {
+                source: a.id,
+                start: Frame(start),
+                end: Frame(at),
+            },
+        );
+        let b = h.send(
+            at,
+            Operation::HistoryGrab {
+                source: b.id,
+                start: Frame(start),
+                end: Frame(at),
+            },
+        );
+        let Reply::Grabbed(a) = h.result(a) else {
+            panic!("grab a")
+        };
+        let Reply::Grabbed(b) = h.result(b) else {
+            panic!("grab b")
+        };
+        assert_eq!(a.audio_store, b.audio_store);
+        assert_ne!(a.audio, b.audio);
+        for (take, gain) in [(a, 1f32), (b, 3f32)] {
+            let snapshot = h.snapshot(take.audio.unwrap());
+            let bytes = h.read(snapshot);
+            assert_eq!(bytes.len(), 2 * q * 2 * 4);
+            for (local, frame) in bytes.chunks_exact(8).enumerate() {
+                let value = (start + local as u64 + 1) as f32 * gain;
+                assert_eq!(f32::from_le_bytes(frame[..4].try_into().unwrap()), value);
+                assert_eq!(
+                    f32::from_le_bytes(frame[4..].try_into().unwrap()),
+                    -2. * value
+                );
+            }
+            h.resource(ResourceRequest::ReleaseSnapshot {
+                snapshot: snapshot.id,
+            });
+        }
         let mut stopped = h.engine.render.into_stopped();
         recover_all(&mut stopped, 12288);
     }
