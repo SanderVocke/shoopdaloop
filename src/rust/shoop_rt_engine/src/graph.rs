@@ -26,8 +26,8 @@ fn audio(node: NodeId, port: usize) -> Endpoint {
 fn midi(node: NodeId, port: usize) -> Endpoint {
     Endpoint::node(node, PortType::Midi, port as u32)
 }
-fn bits(mask: u64) -> impl Iterator<Item = usize> {
-    (0..64).filter(move |bit| mask & (1 << bit) != 0)
+fn bits(mask: crate::model::HostMask) -> impl Iterator<Item = usize> {
+    mask.bits()
 }
 fn link(source: Endpoint, destination: Endpoint) -> Connection {
     Connection {

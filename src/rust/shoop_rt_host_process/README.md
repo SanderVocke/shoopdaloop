@@ -6,14 +6,14 @@
 # Native engine process host
 
 `shoop_rt_host_process` supplies a headless companion executable and parent launch/
-supervision library. `Pending` authenticates the launched process, sends paginated
+supervision library. `Pending` negotiates compatibility with the launched process, sends paginated
 discovery/configuration through `shoop_rt_protocol::host`, then starts the existing
 native engine/device host over socket or shared-memory records. `Started` returns
 a common protocol client, startup warnings and a separately owned `Supervisor`.
 Drop the backend before the supervisor for graceful endpoint/MIDI/render cleanup.
 
 The executable is resolved beside the app using an absolute path, independently
-of cwd/PATH. A private stdin bootstrap carries authentication and mapping setup;
+of cwd/PATH. A private stdin bootstrap carries mapping setup;
 an independent stop signal remains available after data-channel failure. Startup
 rollback and bounded shutdown reap incomplete/stopped launches. `cpal` (default)
 adds native audio/MIDI; disabling it leaves the dummy host.

@@ -1,8 +1,9 @@
 # shoop_loops
 
-The [fixed-tick primitive loop bank](docs/fixed-quantum.md) implements direct
-audio/MIDI playback and grouped recording for the fixed-quantum redesign.
-Application cutover, sync/program execution and live editing remain in progress.
+Production loop processing uses `runtime::LoopPlanner`, including sync/program
+settlement, media ownership and grouped recording at quantum boundaries. The
+[standalone primitive bank](docs/processing.md) remains available for experiments
+and benchmarks.
 
 This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
 It works in ordinary `std` applications using their allocator and panic handling.

@@ -12,7 +12,9 @@ mod management;
 mod media;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
+mod preview;
 mod projection;
+mod publication;
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::sync::Arc;
@@ -81,6 +83,9 @@ enum Effect {
     TrackRemoved(TrackId),
     Shutdown,
     Persistence(persistence::Key),
+    HostGraph(shoop_port_graph::OperationId),
+    Connection(PortId, String),
+    SessionPublished,
 }
 
 struct Pending {
@@ -91,6 +96,9 @@ struct Pending {
     completed: BTreeSet<u64>,
     error: Option<CommandError>,
     effect: Effect,
+    publications: Vec<HostGraphLocalKey>,
+    retiring: bool,
+    rollback: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +115,21 @@ impl From<anyhow::Error> for CommandError {
     }
 }
 impl CommandError {
+    fn graph(error: shoop_port_graph::Error) -> Self {
+        use shoop_port_graph::ErrorKind::*;
+        let reason = match error.kind {
+            Unsupported => Refusal::Unsupported,
+            Unavailable => Refusal::NotReady,
+            WrongEpoch | StalePort => Refusal::RevisionConflict,
+            Invalid | Incompatible => Refusal::Invalid,
+            Capacity | Busy => Refusal::Overloaded,
+            Backend => Refusal::Engine,
+        };
+        Self {
+            reason,
+            message: error.message,
+        }
+    }
     fn invalid(message: impl Into<String>) -> Self {
         Self {
             reason: Refusal::Invalid,
@@ -123,7 +146,16 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
+    host_graph: Arc<HostGraphState>,
+    publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
+    graph_connections: BTreeMap<shoop_port_graph::OperationId, (PortId, String)>,
+    master_graph_auto_done: bool,
+    master_bank_routes_migrated: bool,
     backend: Box<dyn Backend>,
+    preview: ClickTrackState,
+    preview_bus: Option<BusId>,
+    preview_stage: Option<preview::Stage>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
     host_diagnostics: Vec<String>,
@@ -179,7 +211,16 @@ impl Service {
             return Err(anyhow!("a fresh service cannot adopt an existing session"));
         }
         let mut service = Self {
+            host_graph_controller: None,
+            host_graph: Arc::default(),
+            publications: BTreeMap::new(),
+            graph_connections: BTreeMap::new(),
+            master_graph_auto_done: false,
+            master_bank_routes_migrated: false,
             backend,
+            preview: ClickTrackState::default(),
+            preview_bus: None,
+            preview_stage: None,
             options,
             host_settings: None,
             host_diagnostics: Vec::new(),
@@ -247,6 +288,88 @@ impl Service {
         Ok(service)
     }
 
+    pub fn set_host_graph_controller(
+        &mut self,
+        controller: Box<dyn crate::HostGraphController>,
+    ) -> Result<()> {
+        if self.host_graph_controller.is_some() {
+            return Err(anyhow!("a port graph controller is already installed"));
+        }
+        self.host_graph_controller = Some(controller);
+        self.poll_host_graph();
+        self.advance_publications();
+        if self.dynamic_ports() && self.options.master_auto_connect && !self.master_graph_auto_done
+        {
+            self.connect_master()?;
+        }
+        Ok(())
+    }
+
+    pub fn bind_host_publication(
+        &mut self,
+        port: PortId,
+        key: Option<HostGraphLocalKey>,
+    ) -> Result<()> {
+        let target = self
+            .ports
+            .get(&port)
+            .ok_or_else(|| anyhow!("unknown application port"))?;
+        if let Some(key) = key {
+            if self
+                .ports
+                .values()
+                .any(|p| p.view.id != port && p.view.publication == Some(key))
+            {
+                return Err(anyhow!(
+                    "publication is already bound to another application port"
+                ));
+            }
+            let publication = self
+                .host_graph
+                .publication(key)
+                .ok_or_else(|| anyhow!("unknown host publication"))?;
+            if publication.spec.data_type != target.view.data_type
+                || publication.spec.direction != target.view.direction
+            {
+                return Err(anyhow!(
+                    "publication does not match application port format"
+                ));
+            }
+        }
+        self.ports.get_mut(&port).unwrap().view.publication = key;
+        self.bump();
+        Ok(())
+    }
+
+    fn poll_host_graph(&mut self) {
+        let Some(controller) = &mut self.host_graph_controller else {
+            return;
+        };
+        while let Some(shoop_port_graph::Completion { id, result }) = controller.take_result() {
+            publication::complete(&mut self.publications, id, &result);
+            if let Some(key) = self.graph_connections.remove(&id) {
+                if let Some(intent) = self.connection_intent.get_mut(&key) {
+                    intent.pending = None;
+                    intent.error = result.as_ref().err().map(|e| e.message.clone());
+                }
+            }
+            for pending in self.pending.values_mut() {
+                if matches!(pending.effect, Effect::HostGraph(candidate) if candidate == id) {
+                    pending.effect = Effect::None;
+                    if let Err(error) = &result {
+                        pending.error = Some(CommandError::graph(error.clone()));
+                    }
+                }
+            }
+        }
+        let graph = controller.snapshot();
+        if graph != self.host_graph {
+            self.reconcile_graph(&graph);
+            self.host_graph = graph;
+            self.bump();
+        }
+    }
+
     pub fn set_host_settings(
         &mut self,
         settings: HostSettings,
@@ -295,6 +418,7 @@ impl Service {
             && self.init_error.is_none()
             && self.revision.0 != u64::MAX
             && !self.backend.mutations_pending_through(self.init_through)
+            && self.initial_publications_ready()
             && self
                 .bootstrap_track
                 .is_none_or(|id| self.observed.tracks.contains_key(&id))
@@ -479,6 +603,7 @@ impl Service {
             .as_ref()
             .is_some_and(|lease| lease.connection == connection)
         {
+            self.stop_preview();
             self.lease = None;
             for (note, tracks) in core::mem::take(&mut self.piano_notes) {
                 for track in tracks {
@@ -617,6 +742,9 @@ impl Service {
                 completed: BTreeSet::new(),
                 error: None,
                 effect: Effect::None,
+                publications: Vec::new(),
+                retiring: false,
+                rollback: false,
             },
         );
         self.emit(ServiceMessage::Accepted {
@@ -644,6 +772,8 @@ impl Service {
             }
             Err(error) => pending.error = Some(error),
         }
+        let keys = self.effect_publications(&self.pending[&id].effect);
+        self.pending.get_mut(&id).unwrap().publications = keys;
         self.bump();
         if before == after {
             self.tick(Duration::ZERO);
@@ -656,7 +786,8 @@ impl Service {
     fn request_budget(&self, command: Option<&Command>) -> usize {
         match command {
             Some(
-                Command::SelectLoops { .. }
+                Command::SetHostGraphConnected(_)
+                | Command::SelectLoops { .. }
                 | Command::SetTarget(_)
                 | Command::Track {
                     action: TrackAction::NameChanged(_) | TrackAction::MoveBefore(_),
@@ -743,6 +874,7 @@ impl Service {
             pending = self.pending.len()
         )
         .entered();
+        self.poll_host_graph();
         for _ in 0..MAX_MESSAGES_PER_TURN {
             if self.backend.mutation_capacity() == 0 {
                 break;
@@ -771,7 +903,11 @@ impl Service {
             let done: Vec<_> = self
                 .pending
                 .values()
-                .filter(|pending| pending.first > pending.last && !self.shutdown_ready)
+                .filter(|pending| {
+                    pending.first > pending.last
+                        && !self.shutdown_ready
+                        && !matches!(pending.effect, Effect::HostGraph(_))
+                })
                 .map(|pending| pending.id)
                 .collect();
             for id in done {
@@ -781,11 +917,13 @@ impl Service {
             return;
         }
         self.backend.advance(elapsed);
+        self.advance_preview();
         match self.backend.poll() {
             Ok(mut observed) => {
                 let completions = core::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
                 for completion in completions {
+                    publication::engine_complete(&mut self.publications, &completion);
                     for track in self.tracks.values_mut() {
                         if track
                             .monitoring_intent
@@ -821,20 +959,9 @@ impl Service {
                         }
                     }
                 }
-                let done: Vec<_> = self
-                    .pending
-                    .values()
-                    .filter(|pending| {
-                        !matches!(pending.effect, Effect::Persistence(_))
-                            && pending.completed.len() as u64
-                                == pending
-                                    .last
-                                    .checked_sub(pending.first)
-                                    .map_or(0, |count| count + 1)
-                            && !(self.shutdown_ready && self.shutdown == Some(pending.id))
-                    })
-                    .map(|pending| pending.id)
-                    .collect();
+                self.advance_publications();
+                self.advance_graph_connections();
+                let done = self.completed_operations();
                 for id in done {
                     self.finish(id);
                 }

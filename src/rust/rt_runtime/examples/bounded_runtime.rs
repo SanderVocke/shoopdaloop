@@ -271,10 +271,10 @@ impl Fixture {
                 )
             })
             .collect();
-        let (mut control, runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+        let (mut control, runtime) = GraphRuntime::prepare_with_quantum_and_resources(
             prepared,
             FRAMES,
-            rt_runtime::fixed::Quantum::new(32).unwrap(),
+            rt_runtime::processing::Quantum::new(32).unwrap(),
             processors,
             rt_runtime::planner::NoPlanner,
             store,

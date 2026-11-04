@@ -9,7 +9,7 @@ impl LoopPlanner {
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         if initial.is_some_and(|i| {
-            self.fixed_quantum
+            self.quantum
                 .is_some_and(|q| i.frames % q.frames() as u64 != 0)
         }) {
             return Err(Error::InvalidFrame);

@@ -1,8 +1,9 @@
 # rt_runtime
 
-The [fixed-quantum migration core](docs/fixed-quantum.md) provides configurable
-Q-sized graph execution and host adapters. Production hosts continue using the
-existing executor until the migration's feature and lifecycle gates are complete.
+Production `GraphRuntime` processes whole configurable quanta, with direct domain
+access for loop consumers. The [standalone processing API](docs/processing.md)
+provides the lower-level graph and host-adapter composition used by experiments
+and benchmarks. Both follow the same quantum alignment policy.
 
 A prepared-storage audio/MIDI graph runtime for Rust hosts. Prepare storage before rendering, submit changes from a control context, and process borrowed buffers in your audio callback.
 
@@ -24,8 +25,8 @@ flowchart LR
 |---|---|
 | Typed audio/MIDI graphs | Deterministic DAG execution; audio fan-in sums without clipping |
 | Live graph edits | Old graph keeps rendering during validation; legacy commits activate at callback boundaries, opt-in staged permits coordinate exact domain boundaries |
-| Sample-frame scheduling | Parameter changes and MIDI injections split rendering at their target frames |
-| Generic interval planning | Explicit shared decision bindings and per-consumer observations; no internal subdivision quota |
+| Sample-frame scheduling | Graph changes occur at quantum boundaries; MIDI retains offsets inside each quantum |
+| Planner compatibility | Shared decisions and observations remain available to existing processors; production loop consumers access their domain directly |
 | Required resource data access | Explicit `RenderIo` read/capture capability with saturating work counters, independent of background quotas; indexed byte/event/state positioning; opt-in reserved capture groups and staged commits |
 | Bounded ownership transfer | Accepted commands reserve completion space; replaced objects return for non-RT disposal |
 | Revisioned resources | Fixed-page uploads, recording, immutable snapshots, and incremental reads |

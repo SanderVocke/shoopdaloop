@@ -14,6 +14,7 @@ pub(in crate::service) struct Candidate {
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
     buses: BTreeMap<BusId, Bus>,
     bus_order: Vec<BusId>,
+    preview_bus: Option<BusId>,
     connections: BTreeMap<(PortId, String), Intent>,
     routes: BTreeMap<MixerRouteState, Intent>,
     global: GlobalControlState,
@@ -161,6 +162,7 @@ impl Candidate {
         identities.insert(source.state.id, id);
         let mut view = source.state.clone();
         view.id = id;
+        view.publication = None;
         view.owner = owner;
         self.ports.insert(
             id,
@@ -170,11 +172,12 @@ impl Candidate {
             },
         );
         for external in &source.external_connections {
-            let error = (!service
-                .observed
-                .connections
-                .host_ports
-                .contains_key(external))
+            let error = (!service.dynamic_ports()
+                && !service
+                    .observed
+                    .connections
+                    .host_ports
+                    .contains_key(external))
             .then(|| {
                 format!("external port {external} is unavailable; connection intent retained")
             });
@@ -215,6 +218,7 @@ impl Candidate {
             channels: BTreeMap::new(),
             buses: BTreeMap::new(),
             bus_order: Vec::new(),
+            preview_bus: None,
             connections: BTreeMap::new(),
             routes: BTreeMap::new(),
             global: session.global.clone(),
@@ -518,6 +522,15 @@ impl Candidate {
                     .ok_or_else(|| anyhow!("unknown bus order identity"))?,
             );
         }
+        candidate.preview_bus = session
+            .preview_bus
+            .map(|id| {
+                bus_ids
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| anyhow!("unknown preview bus identity"))
+            })
+            .transpose()?;
         let mut global_ports = Vec::new();
         for port in &session.global_ports {
             if port.state.owner != ApplicationPortOwner::GlobalFxControl {
@@ -567,6 +580,21 @@ impl Candidate {
         } else {
             BTreeMap::new()
         };
+        if service.dynamic_ports() {
+            for port in tracks
+                .iter_mut()
+                .flat_map(|track| track.ports.iter_mut())
+                .chain(buses.iter_mut().flat_map(|bus| {
+                    bus.channels
+                        .iter_mut()
+                        .map(|channel| &mut channel.output_port)
+                }))
+                .chain(global_ports.iter_mut())
+            {
+                port.external_connections
+                    .retain(|host| service.observed.connections.host_ports.contains_key(host));
+            }
+        }
         Ok((
             candidate,
             BackendSessionData {
@@ -630,12 +658,14 @@ impl Candidate {
         }
         service.buses = self.buses;
         service.bus_order = self.bus_order;
+        service.preview_bus = self.preview_bus;
         service.tracks = self.tracks;
         service.track_order = self.order;
         service.loops = self.loops;
         service.ports = self.ports;
         service.channels = self.channels;
         service.connection_intent = self.connections;
+        service.master_bank_routes_migrated = false;
         service.route_intent = self.routes;
         service.global = self.global;
         service.channel_annotations = self.annotations;

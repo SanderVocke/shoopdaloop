@@ -122,10 +122,12 @@ fn bounded_queues_retry_without_losing_or_growing_records() {
 }
 
 #[shoop_test]
-fn token_handshake_handles_partial_io_and_remaining_deadlines() {
-    let token = [9; 32];
-    let mut server = Handshake::new(token, true, Duration::from_secs(1));
-    let mut io = Scripted::new(&token);
+fn compatibility_handshake_handles_partial_io_and_remaining_deadlines() {
+    use shoop_transport::handshake::{Intent, MAGIC};
+    let mut request = MAGIC.to_vec();
+    request.push(1);
+    let mut server = Handshake::new(true, Duration::from_secs(1));
+    let mut io = Scripted::new(&request);
     io.interrupt = true;
     for _ in 0..16 {
         if server.advance(&mut io, Duration::from_millis(1)).unwrap() {
@@ -133,32 +135,27 @@ fn token_handshake_handles_partial_io_and_remaining_deadlines() {
         }
     }
     assert!(server.advance(&mut io, Duration::ZERO).unwrap());
-    assert_eq!(&io.output[..io.written], &[1]);
-    let mut client = Handshake::new(token, false, Duration::from_secs(1));
-    let mut io = Scripted::new(&[1]);
+    assert_eq!(server.intent(), Intent::Inspect);
+    assert_eq!(&io.output[..io.written], &MAGIC);
+    let mut client = Handshake::inspect(Duration::from_secs(1));
+    let mut io = Scripted::new(&MAGIC);
     for _ in 0..16 {
         if client.advance(&mut io, Duration::from_millis(1)).unwrap() {
             break;
         }
     }
     assert!(client.advance(&mut io, Duration::ZERO).unwrap());
-    assert_eq!(&io.output[..io.written], &token);
-    let mut timeout = Handshake::new(token, true, Duration::from_millis(10));
+    assert_eq!(&io.output[..io.written], &request);
+    let mut timeout = Handshake::new(true, Duration::from_millis(10));
     assert_eq!(
         timeout.advance(&mut Scripted::new(&[]), Duration::from_millis(10)),
         Err(Error::Timeout)
     );
-    let mut wrong = Handshake::new(token, true, Duration::from_secs(1));
-    let mut io = Scripted::new(&[0; 32]);
-    io.fragment = 32;
-    assert_eq!(
-        wrong.advance(&mut io, Duration::ZERO),
-        Err(Error::Credential)
-    );
-    assert_eq!(
-        wrong.advance(&mut io, Duration::ZERO),
-        Err(Error::Credential)
-    );
+    let mut wrong = Handshake::new(true, Duration::from_secs(1));
+    let mut io = Scripted::new(&[0; 9]);
+    io.fragment = 9;
+    assert_eq!(wrong.advance(&mut io, Duration::ZERO), Err(Error::Protocol));
+    assert_eq!(wrong.advance(&mut io, Duration::ZERO), Err(Error::Protocol));
 }
 
 #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]

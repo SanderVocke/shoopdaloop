@@ -187,8 +187,8 @@ comparison aggregates. Raw callbacks and all validation logs remain in the local
 were hash-checked while generating this report; no artifacts are uploaded here.
 
 ```sh
-cargo build --locked --release -p shoop_loops --example fixed_quantum_benchmark
-python3 scripts/benchmark_fixed_core.py --output work/new-sweep --cpu 2
+cargo build --locked --release -p shoop_loops --example quantum_benchmark
+python3 scripts/benchmark_quantum_core.py --output work/new-sweep --cpu 2
 ```
 
 Choose an allowed CPU for the execution environment. Construction of Q=64/128 is

@@ -53,7 +53,7 @@ pub struct PreparedTopology {
 }
 
 impl PreparedTopology {
-    pub fn validate_quantum(&self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
+    pub fn validate_quantum(&self, quantum: rt_runtime::processing::Quantum) -> Result<(), Error> {
         let q = quantum.frames() as u64;
         if self.nodes.iter().any(|n| n.length % q != 0)
             || self.programs.iter().any(|p| p.nominal_unit_frames % q != 0)

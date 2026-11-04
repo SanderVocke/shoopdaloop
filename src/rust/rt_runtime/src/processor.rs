@@ -26,11 +26,11 @@ pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 /// A complete fixed tick with direct access to the render-owned domain.
-pub struct FixedProcessBlock<'a, L: Planner = NoPlanner> {
+pub struct TickProcessBlock<'a, L: Planner = NoPlanner> {
     pub graph_epoch: crate::Epoch,
     pub callback_start: Frame,
     pub frame: Frame,
-    pub quantum: crate::fixed::Quantum,
+    pub quantum: crate::processing::Quantum,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
@@ -39,7 +39,7 @@ pub struct FixedProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 pub struct OperationContext<'a> {
-    pub quantum: crate::fixed::Quantum,
+    pub quantum: crate::processing::Quantum,
     pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,
@@ -61,10 +61,10 @@ impl ProcessorOperation for () {
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
 pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         false
     }
-    fn process_fixed(&mut self, _block: &mut FixedProcessBlock<'_, L>) -> Result<(), Error> {
+    fn process_tick(&mut self, _block: &mut TickProcessBlock<'_, L>) -> Result<(), Error> {
         Err(Error::InvalidState)
     }
     /// Queried during preparation, never by the render callback.
@@ -89,11 +89,11 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
 }
 
 impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
-    fn supports_fixed(&self) -> bool {
-        (**self).supports_fixed()
+    fn uses_direct_domain(&self) -> bool {
+        (**self).uses_direct_domain()
     }
-    fn process_fixed(&mut self, block: &mut FixedProcessBlock<'_, L>) -> Result<(), Error> {
-        (**self).process_fixed(block)
+    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, L>) -> Result<(), Error> {
+        (**self).process_tick(block)
     }
     fn operation(
         &mut self,

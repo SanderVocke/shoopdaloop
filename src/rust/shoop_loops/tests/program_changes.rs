@@ -285,7 +285,7 @@ fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
             prepared(&d, 1024)
         };
         let mut r = Resolver::prepare(scaled(false)).unwrap();
-        r.enable_fixed(rt_runtime::fixed::Quantum::new(q as usize).unwrap())
+        r.set_quantum(rt_runtime::processing::Quantum::new(q as usize).unwrap())
             .unwrap();
         start(&mut r);
         let candidate = scaled(true);
@@ -293,7 +293,7 @@ fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
             assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
                 .unwrap();
         for tick in 0..20 {
-            let interval = assert_no_heap(|| r.preview_fixed(&[])).unwrap();
+            let interval = assert_no_heap(|| r.preview_tick(&[])).unwrap();
             assert_eq!(interval.end, Frame((tick + 1) * q));
             for d in r.decisions().unwrap() {
                 let s = d.state;

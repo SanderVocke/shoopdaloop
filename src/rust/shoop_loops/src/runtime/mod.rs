@@ -108,6 +108,9 @@ pub enum Operation {
         root: LoopId,
         topology_epoch: Epoch,
     },
+    NodePairSourceCursor {
+        id: NodePairSourceId,
+    },
     NodePairSnapshot {
         resource: rt_runtime::ResourceId,
     },
@@ -480,7 +483,7 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
-    fixed_quantum: Option<rt_runtime::fixed::Quantum>,
+    quantum: Option<rt_runtime::processing::Quantum>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -833,7 +836,7 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
-            fixed_quantum: None,
+            quantum: None,
             observer,
             settings,
             resolver,

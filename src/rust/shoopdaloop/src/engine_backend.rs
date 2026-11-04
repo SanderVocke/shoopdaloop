@@ -30,6 +30,9 @@ pub(crate) struct NewEngine {
 /// client leave and resets MIDI before the driver stops.
 pub(crate) struct EngineHost(Option<NativeHost>);
 impl EngineHost {
+    pub fn graph_controller(&self) -> Option<Box<dyn shoop_app::HostGraphController>> {
+        shoop_host::host_graph::controller(self.0.as_ref()?)
+    }
     #[cfg(test)]
     pub fn stop(mut self) -> Vec<String> {
         self.stop_host()
@@ -71,7 +74,7 @@ pub(crate) fn start_selected(
     transport: shoop_egui::EngineTransportKind,
 ) -> Result<NewEngine> {
     anyhow::ensure!(transport == shoop_egui::EngineTransportKind::InProcess,
-        "external sessions must be launched as independent host/UI roles or attached with --host-file");
+        "external sessions must be launched as independent host/UI roles or attached with --host-profile");
     start(driver, pools)
 }
 

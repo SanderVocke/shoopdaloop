@@ -11,7 +11,7 @@ use crate::planner::{
     ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
     Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
 };
-use crate::processor::{FixedProcessBlock, ProcessBlock, Processor, ProcessorOperation};
+use crate::processor::{ProcessBlock, Processor, ProcessorOperation, TickProcessBlock};
 use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
@@ -26,7 +26,7 @@ pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     ports: PortCounts,
     access: ConsumerAccess,
     processor: P,
-    fixed: bool,
+    direct_domain: bool,
     marker: PhantomData<fn() -> (L, Q)>,
 }
 impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q> {
@@ -35,7 +35,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q
             id,
             ports: processor.ports(),
             access: processor.planning(),
-            fixed: processor.supports_fixed(),
+            direct_domain: processor.uses_direct_domain(),
             processor,
             marker: PhantomData,
         }
@@ -256,7 +256,7 @@ impl Buffers {
     }
 }
 struct Slot<P> {
-    fixed: bool,
+    direct_domain: bool,
     id: NodeId,
     ports: PortCounts,
     access: ConsumerAccess,
@@ -278,10 +278,10 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
-    quantum: crate::fixed::Quantum,
+    quantum: crate::processing::Quantum,
     tick_frame: Frame,
     boundary_at: Option<(Sequence, Frame)>,
-    host_buffer: Option<crate::fixed::host_buffer::HostBuffer>,
+    host_buffer: Option<crate::processing::host_buffer::HostBuffer>,
     fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
@@ -381,7 +381,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             nodes,
             planner,
             resources,
-            crate::fixed::Quantum::new(1)?,
+            crate::processing::Quantum::new(1)?,
         )
     }
 
@@ -390,9 +390,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         nodes: Vec<PreparedNode<P, L, Q>>,
         mut planner: L,
         resources: ResourceStore,
-        quantum: crate::fixed::Quantum,
+        quantum: crate::processing::Quantum,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
-        planner.enable_fixed(quantum)?;
+        planner.set_quantum(quantum)?;
         if resources.config() != config {
             return Err(Error::InvalidConfig);
         }
@@ -436,7 +436,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             }
             Catalog::new(config, &specs)?
         };
-        let observations = Observations::new(if nodes.iter().all(|n| n.fixed) {
+        let observations = Observations::new(if nodes.iter().all(|n| n.direct_domain) {
             0
         } else {
             signature.map_or(0, |spec| spec.observation_capacity)
@@ -450,7 +450,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         for node in nodes {
             let buffers = Buffers::new(config, node.ports, quantum.frames())?;
             slots[node.id.slot() as usize] = Some(Slot {
-                fixed: node.fixed,
+                direct_domain: node.direct_domain,
                 id: node.id,
                 ports: node.ports,
                 access: node.access,
@@ -503,7 +503,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         ))
     }
 
-    /// Allocate fixed graph-owner slots before the first nonempty callback.
+    /// Allocate graph-owner slots before the first nonempty callback.
     /// May be called once; validation and later activation never allocate storage.
     pub fn prepare_graph_staging(&mut self, candidates: usize) -> Result<(), Error> {
         if self.clock.next_frame() != Frame(0) || self.graph_stages.enabled() {
@@ -538,7 +538,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }
-    pub fn quantum(&self) -> crate::fixed::Quantum {
+    pub fn quantum(&self) -> crate::processing::Quantum {
         self.quantum
     }
     pub fn buffering_latency(&self) -> usize {
@@ -550,16 +550,16 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if self.next_frame() != Frame(0) || self.host_buffer.is_some() {
             return Err(Error::InvalidState);
         }
-        self.host_buffer = Some(crate::fixed::host_buffer::HostBuffer::prepare(
+        self.host_buffer = Some(crate::processing::host_buffer::HostBuffer::prepare(
             self.resources.config(),
             self.quantum,
         )?);
         Ok(())
     }
-    pub fn prepare_fixed_with_planner_and_resources(
+    pub fn prepare_with_quantum_and_resources(
         config: PreparedConfig,
         max_host_frames: usize,
-        quantum: crate::fixed::Quantum,
+        quantum: crate::processing::Quantum,
         nodes: Vec<PreparedNode<P, L, Q>>,
         domain: L,
         resources: ResourceStore,
@@ -650,7 +650,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         self.apply_commands();
         self.resources.control_phase(false);
         self.diagnostics.epoch = self.epoch;
-        let result = self.run_fixed(&mut audio, &mut midi, self.quantum);
+        let result = self.run_ticks(&mut audio, &mut midi, self.quantum);
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
@@ -965,7 +965,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             // No other publication uses terminal budget while it is borrowed.
             if let Err(error) = self.ingress.complete(outcome, retired) {
                 // This cannot occur under the above protocol. Preserve any owning
-                // error bundle in a fixed emergency slot rather than drop it.
+                // error bundle in a reserved emergency slot rather than drop it.
                 self.emergency_retirement(error.retired);
                 break;
             }
@@ -1060,7 +1060,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                             resources: self.resources.planner_io(at, at),
                             receipts: event.receipts.planner(),
                         };
-                        self.planner.fixed_operation(operation, context)
+                        self.planner.tick_operation(operation, context)
                     };
                     match result {
                         Ok(Disposition::Complete(value)) => {
@@ -1144,17 +1144,17 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         }
         Ok(())
     }
-    fn run_fixed(
+    fn run_ticks(
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
-        quantum: crate::fixed::Quantum,
+        quantum: crate::processing::Quantum,
     ) -> Result<(), Error> {
         let mut remaining = self.scheduler.delivery_limit();
         let callback_start = audio.frame;
         if let Some(mut buffer) = self.host_buffer.take() {
             let result = buffer.process(audio, midi, |a, m| {
-                self.run_fixed_tick(a, m, 0, callback_start, quantum, &mut remaining)
+                self.run_tick(a, m, 0, callback_start, quantum, &mut remaining)
             });
             for _ in 0..buffer.overflows() {
                 increment(
@@ -1166,23 +1166,23 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return result;
         }
         for start in (0..audio.frames).step_by(quantum.frames()) {
-            self.run_fixed_tick(audio, midi, start, callback_start, quantum, &mut remaining)?;
+            self.run_tick(audio, midi, start, callback_start, quantum, &mut remaining)?;
         }
         Ok(())
     }
-    fn run_fixed_tick(
+    fn run_tick(
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
-        quantum: crate::fixed::Quantum,
+        quantum: crate::processing::Quantum,
         remaining: &mut usize,
     ) -> Result<(), Error> {
         let frame = audio.frame.checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
         self.deliver_actions(frame, callback_start, remaining)?;
-        self.planner.fixed_begin(PlanContext {
+        self.planner.begin_tick(PlanContext {
             graph_epoch: self.epoch,
             graphs: GraphAccess::new(
                 &mut self.graph_stages,
@@ -1209,8 +1209,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Err(Error::InvalidShape);
         }
         self.observations.clear();
-        self.run_fixed_graph(audio, midi, start, callback_start, quantum)?;
-        self.planner.fixed_finish(FinishContext {
+        self.run_graph(audio, midi, start, callback_start, quantum)?;
+        self.planner.finish_tick(FinishContext {
             interval: Interval { start: frame, end },
             observations: self.observations.values(),
             resources: self.resources.planner_io(end, end),
@@ -1223,13 +1223,13 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         );
         Ok(())
     }
-    fn run_fixed_graph(
+    fn run_graph(
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
-        quantum: crate::fixed::Quantum,
+        quantum: crate::processing::Quantum,
     ) -> Result<(), Error> {
         let Some(plan) = &self.active else {
             return Ok(());
@@ -1271,8 +1271,8 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 }
             }
             let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
-            let result = if slot.fixed {
-                processor.process_fixed(&mut FixedProcessBlock {
+            let result = if slot.direct_domain {
+                processor.process_tick(&mut TickProcessBlock {
                     graph_epoch: self.epoch,
                     callback_start,
                     frame,
@@ -1424,7 +1424,10 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
     if slot.id != node.id || slot.processor.is_some() {
         return Err(Error::InvalidId);
     }
-    if slot.ports != node.ports || slot.access != node.access || slot.fixed != node.fixed {
+    if slot.ports != node.ports
+        || slot.access != node.access
+        || slot.direct_domain != node.direct_domain
+    {
         return Err(Error::InvalidShape);
     }
     let next_epoch = epoch.checked_next()?;
@@ -1433,7 +1436,7 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
         ports: node.ports,
     })?;
     let node = prepared.take().ok_or(Error::InvalidState)?;
-    slot.fixed = node.fixed;
+    slot.direct_domain = node.direct_domain;
     slot.processor = Some(node.processor);
     *epoch = next_epoch;
     Ok(())

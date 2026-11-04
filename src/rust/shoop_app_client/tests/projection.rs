@@ -17,6 +17,8 @@ const AUTHORITY: Authority = Authority {
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
         sync_sources: Vec::new(),
+        preview: Default::default(),
+        preview_bus: None,
         bus_limits: Default::default(),
         persistence_epoch: 1,
         revision: Revision(revision),
@@ -32,6 +34,7 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         status: Default::default(),
         audio_drivers: Default::default(),
         capabilities: BackendCapabilities::NONE,
+        host_graph: Arc::default(),
         connections: Default::default(),
         track_processors: Arc::from([]),
         bus_processors: Arc::from([]),

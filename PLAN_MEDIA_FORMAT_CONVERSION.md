@@ -240,6 +240,23 @@ Evidence: `work/retiming-complete-native.log`,
 `work/retiming-live-family-workspace-build.log`. Stages 1–7 are complete;
 push, CI, incoming automated review and human acceptance remain stage 8.
 
+Consolidation and pause: the target branch advanced to `51fe3bad` while conversion
+was implemented. Merge that target into this branch, retaining its JACK graph,
+host controls and preview work. The combined schemas use app protocol 19 and RT
+protocol 7; preview tags 29/30 are retained and family tags move to 31–34.
+Redundant `fixed` module/API/file names now use `processing`, `quantum` and `tick`.
+The standalone experimental bank/composition and generic compatibility APIs remain
+separate from production integration and are documented as such.
+
+At the user's request, stop after this local merge/consolidation, before further
+CI checks or pushes that would trigger CI. The earlier conversion milestone was
+pushed as `cb79706e`; this consolidation is local. Local warning-denying workspace
+build, all-target compilation, formatting, test-attribute, tracing and book checks
+cover consolidation. The complete pre-merge conversion results above do not imply
+that every newly merged workflow has been validated; a recovery readiness failure
+was observed during the initial merged native run and remains for the deferred
+CI stage. CI-only investigation artifacts remain under `work/`.
+
 Timing field classification: loop lengths, channel offsets, combined playback
 origin, capture alignment, preplay, raw audio/MIDI extents and event frames follow
 the musical map. Track/processor manual latency and port history capacities follow

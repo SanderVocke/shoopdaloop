@@ -107,7 +107,7 @@ impl ProgramBoundary {
 }
 
 pub struct Resolver {
-    quantum: Option<rt_runtime::fixed::Quantum>,
+    quantum: Option<rt_runtime::processing::Quantum>,
     topology: PreparedTopology,
     epoch: Epoch,
     frame: Frame,
@@ -157,7 +157,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
 }
 
 impl Resolver {
-    pub fn enable_fixed(&mut self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
+    pub fn set_quantum(&mut self, quantum: rt_runtime::processing::Quantum) -> Result<(), Error> {
         if self.frame != Frame(0)
             || self.committed
             || self.preview.is_some()
@@ -634,7 +634,7 @@ impl Resolver {
     }
 
     /// Whole-tick transactional settlement. No future boundary search is performed.
-    pub fn preview_fixed(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
+    pub fn preview_tick(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
         let quantum = self.quantum.ok_or(Error::InvalidState)?;
         let end = self
             .frame

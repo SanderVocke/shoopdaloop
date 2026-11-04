@@ -112,9 +112,12 @@ when another client uses the hint; runtime metadata reports the resolved name.
 Engine port identities use `jack:<short name>`, independent of that suffix, so
 session connection intent survives restart. Master initially uses the first
 configured audio outputs; external playback connections are explicit startup
-pairs or JACK patchbay connections. Track-to-host routing uses the existing
+pairs, live graph commands, or JACK patchbay connections. Track-to-host routing uses the existing
 application connection UI. The port bank is fixed for the host lifetime; changing
-it requires restart, rather than dynamically registering per-track JACK ports.
+it requires restart. Dynamic per-track JACK registration is not yet implemented.
+`NativeHost::graph_control` exposes an optional provider-independent control handle
+for every driver build. JACK supports discovery, connections and rename; dynamic
+publication/removal remain unsupported until callback bindings can change safely. See the [session graph contract](../../../docs/native_session_recovery/jack-graph.md).
 
 The server determines sample rate and callback size. A callback above the engine
 maximum is rendered in parts without an extra duplex buffer. MIDI offsets are
@@ -131,9 +134,9 @@ deactivates JACK, and cleans up the render owner off the callback thread.
 JACK and CPAL are independently selectable at build time:
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features jack
-cargo build -p shoopdaloop -p shoop_host --no-default-features --features cpal
-cargo build -p shoopdaloop -p shoop_host --no-default-features
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features jack
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --features cpal
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
 ```
 
 Native distribution defaults enable both. JACK is loaded at runtime; browser

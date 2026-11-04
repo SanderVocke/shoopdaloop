@@ -209,7 +209,7 @@ impl Job {
         }
         self.completed += 1;
     }
-    fn next(
+    pub(crate) fn next(
         &mut self,
         chunk_bytes: usize,
         callbacks: u64,

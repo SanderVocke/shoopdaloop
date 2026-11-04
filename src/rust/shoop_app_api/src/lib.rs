@@ -1,6 +1,9 @@
 #![no_std]
 extern crate alloc;
 
+mod host_graph;
+pub use host_graph::*;
+
 #[cfg(test)]
 extern crate std;
 
@@ -1116,20 +1119,6 @@ impl Default for LoopState {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDataType {
-    Audio,
-    Midi,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDirection {
-    Input,
-    Output,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1198,6 +1187,8 @@ pub enum ConnectionPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub publication: Option<HostGraphLocalKey>,
     pub id: PortId,
     pub owner: ApplicationPortOwner,
     pub name: String,
@@ -1814,12 +1805,14 @@ impl Default for ScriptingState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewOutput {
     System,
     MasterBus,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewStatus {
     Cancelled,
     #[default]
@@ -1831,12 +1824,14 @@ pub enum ClickTrackPreviewStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickSoundDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackState {
     pub preview_output: Option<ClickTrackPreviewOutput>,
     pub master_preview_available: bool,
@@ -2065,6 +2060,7 @@ pub struct AppSnapshot {
     pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
@@ -2593,6 +2589,7 @@ pub enum AppIntent {
         dialog_id: ScriptDialogId,
         button_id: ScriptDialogButtonId,
     },
+    SetHostGraphConnected(HostGraphRequest),
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -2884,6 +2881,7 @@ impl AppIntent {
             Self::ConvertScriptKind { .. } => "scripting.convert_kind",
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
+            Self::SetHostGraphConnected(_) => "host_graph.set",
             Self::SetPortConnected { .. } => "connection.set",
             Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
@@ -3538,6 +3536,7 @@ mod tests {
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
         let port = ApplicationPortState {
+            publication: None,
             id: port_id,
             owner: ApplicationPortOwner::Track {
                 track_id,

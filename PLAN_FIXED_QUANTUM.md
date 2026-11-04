@@ -164,7 +164,7 @@ Initial branch: `6de0b7a18f04caf43f8cb76f81b1b2c040e089e2`.
 The earlier experiments are in `/workspace/work/fixed-quantum`; no experimental
 source edits were copied into this branch.
 
-Fixed-core milestone: `rt_runtime::fixed` implements immutable prepared routing,
+Fixed-core milestone: `rt_runtime::processing` implements immutable prepared routing,
 Q-sized buffers, direct state hooks, terminal faults and MIDI reset output, a
 bounded copy-command SPSC queue with reserved cancellation, and a constant-latency
 audio/MIDI host adapter. Command ingress obeys a callback-wide budget, including
@@ -174,7 +174,7 @@ returns retired/rejected routing to control; publication is tick-aligned and
 validates namespace, expected epoch and bounded state requirements. Atomic
 graph/media/owner transactions remain incomplete.
 
-Primitive-loop milestone: `shoop_loops::fixed` owns cached sources and tick state,
+Primitive-loop milestone: `shoop_loops::processing` owns cached sources and tick state,
 reusing capture/lease primitives without resolver preview/commit or consumer
 observations. It supports audio/MIDI playback, seeks, gain, stop, state queries,
 whole-tick recording, previous-content monitoring, coherent take publication,
@@ -185,7 +185,7 @@ requests exactly once while holding both endpoints. It also reclaims a take
 after a fault during partial-tick staging without replaying that tick.
 Sync/program arbitration and production integration remain incomplete. At this earlier milestone the production application still selected the interval path.
 
-Production-composition continuation: `shoop_rt_engine::fixed` prepares the real
+Production-composition continuation: `shoop_rt_engine::processing` prepares the real
 engine processors next to the direct loop bank and reuses capacity calculations.
 Typed operations bind targets off-render, execute before same-tick route changes,
 and share normal callback ingress capacity with loop commands. Engine DSP render
@@ -227,7 +227,7 @@ Validation completed:
   permission and failed IPC tests. The final correctly permitted full run is
   green. No existing test was weakened or removed.
 
-The checked `fixed_quantum_benchmark` example and `benchmark_fixed_core.py` driver
+The checked `quantum_benchmark` example and `benchmark_quantum_core.py` driver
 retain every callback, verify every sample and graph visit count outside timing,
 and report full-128-frame callback means, p99/p99.9, maxima and deadline misses.
 The initial sweep observed two missed deadlines and the final-source repeat

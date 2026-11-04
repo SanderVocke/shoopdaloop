@@ -34,12 +34,13 @@ mod content;
 mod description;
 mod endpoint;
 mod family;
-pub mod fixed;
 mod graph;
 mod jobs;
 mod model;
 mod node;
 mod pool;
+mod preview;
+pub mod processing;
 mod queue;
 mod render;
 mod replacement;
@@ -120,7 +121,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + limits.buses as usize + 1,
+            limits.strips as usize + limits.loops as usize + limits.buses as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -275,7 +276,7 @@ pub fn prepare(
     let credits = usize::from(description.reliable_credits);
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let quantum = rt_runtime::fixed::Quantum::new(description.quantum)?;
+    let quantum = rt_runtime::processing::Quantum::new(description.quantum)?;
     let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
@@ -378,7 +379,7 @@ pub fn prepare(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
-    let (mut control, mut runtime) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_quantum_and_resources(
         config,
         description.max_frames,
         quantum,
@@ -395,9 +396,9 @@ pub fn prepare(
         .catalog()
         .planner()
         .ok_or(rt_runtime::Error::InvalidState)?;
-    let mut master_outputs = [0u64; shoop_rt_protocol::MAX_STRIP_CHANNELS];
+    let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
-        master_outputs[channel as usize] |= 1 << host;
+        master_outputs[channel as usize].set(host as usize, true);
     }
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();
@@ -528,6 +529,7 @@ pub fn prepare(
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
         protocol_error: false,
+        preview: None,
         pool,
     };
     let render = Render::new(

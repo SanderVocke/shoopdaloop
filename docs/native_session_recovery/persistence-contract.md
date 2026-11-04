@@ -110,7 +110,9 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence, duplication and generated click insertion remain named follow-ups.
+  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  and insertion use the restored bounded import path. System/Master audio preview
+  is complete under P15; see the [preview contract](preview.md).
 
 ## Engine integration boundary
 
@@ -131,8 +133,8 @@ engine's single tick publication. Audio, MIDI, periods and mapped dependent
 playheads change together. Current gains, names and routes are preserved.
 Affected active/prepared captures or stale preparation refuse the entire cut.
 Cancelled preparation releases staged owners; an admitted commit remains engine
-owned across controller loss. Application protocol version 14 carries resolved
-sync links and target format, and RT protocol version 6 carries bounded family
+owned across controller loss. Application protocol version 19 carries resolved
+sync links and target format, and RT protocol version 7 carries bounded family
 staging and authoritative content revisions. Typed local and encoded transports
 use the same operations.
 

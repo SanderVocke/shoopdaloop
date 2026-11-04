@@ -44,7 +44,7 @@ fn prepare_inner(
     if config.max_frames == 0 || config.max_frames > 64 || config.export_slots == 0 {
         return Err(Error::InvalidConfig.into());
     }
-    let quantum = rt_runtime::fixed::Quantum::new(config.quantum)?;
+    let quantum = rt_runtime::processing::Quantum::new(config.quantum)?;
     let mut dsp_config = config.dsp;
     dsp_config.max_frames = quantum.frames();
     let prepared_dsp = dsp::prepare(dsp_config, presets, initial)?;
@@ -152,7 +152,7 @@ fn prepare_inner(
             ServiceNode::Dsp(prepared_dsp.processor),
         )])
         .collect();
-    let (mut control, mut engine) = GraphRuntime::prepare_fixed_with_planner_and_resources(
+    let (mut control, mut engine) = GraphRuntime::prepare_with_quantum_and_resources(
         runtime,
         config.max_frames,
         quantum,

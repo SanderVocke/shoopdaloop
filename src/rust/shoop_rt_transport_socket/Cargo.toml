@@ -2,7 +2,7 @@
 name = "shoop_rt_transport_socket"
 version.workspace = true
 edition = "2021"
-description = "Authenticated socket endpoints for the common engine record transport"
+description = "Compatible socket endpoints for the common engine record transport"
 [lints]
 workspace = true
 [dependencies]

@@ -13,7 +13,7 @@ pub(crate) struct SignalBlock<'a, 'b> {
 }
 impl<'a, 'b> SignalBlock<'a, 'b> {
     pub fn integrated<L: Planner>(
-        b: &'a mut rt_runtime::processor::FixedProcessBlock<'b, L>,
+        b: &'a mut rt_runtime::processor::TickProcessBlock<'b, L>,
     ) -> Self {
         Self {
             frames: b.quantum.frames(),
@@ -34,7 +34,7 @@ impl<'a, 'b> SignalBlock<'a, 'b> {
             resources: &mut b.resources,
         }
     }
-    pub fn fixed(b: &'a mut rt_runtime::fixed::Block<'b>) -> Self {
+    pub fn direct(b: &'a mut rt_runtime::processing::Block<'b>) -> Self {
         Self {
             frames: b.tick.quantum.frames(),
             callback: Some(b.callback_frame),

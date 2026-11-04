@@ -126,17 +126,17 @@ pub trait Planner: Send {
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
 
-    fn enable_fixed(&mut self, _quantum: crate::fixed::Quantum) -> Result<(), Error> {
+    fn set_quantum(&mut self, _quantum: crate::processing::Quantum) -> Result<(), Error> {
         Ok(())
     }
-    fn fixed_operation(
+    fn tick_operation(
         &mut self,
         operation: Self::Operation,
         context: OperationContext<'_, Self::Operation, Self::Result>,
     ) -> Result<Disposition<Self::Result>, Error> {
         self.operation(operation, context)
     }
-    fn fixed_begin(
+    fn begin_tick(
         &mut self,
         context: PlanContext<'_, Self::Operation, Self::Result>,
     ) -> Result<(), Error> {
@@ -146,7 +146,7 @@ pub trait Planner: Send {
         }
         Ok(())
     }
-    fn fixed_finish(
+    fn finish_tick(
         &mut self,
         context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
     ) -> Result<(), Error> {
@@ -197,13 +197,13 @@ impl Planner for NoPlanner {
     type Observation = ();
     type Operation = ();
     type Result = ();
-    fn enable_fixed(&mut self, _: crate::fixed::Quantum) -> Result<(), Error> {
+    fn set_quantum(&mut self, _: crate::processing::Quantum) -> Result<(), Error> {
         Ok(())
     }
-    fn fixed_begin(&mut self, _: PlanContext<'_>) -> Result<(), Error> {
+    fn begin_tick(&mut self, _: PlanContext<'_>) -> Result<(), Error> {
         Ok(())
     }
-    fn fixed_finish(&mut self, _: FinishContext<'_, ()>) -> Result<(), Error> {
+    fn finish_tick(&mut self, _: FinishContext<'_, ()>) -> Result<(), Error> {
         Ok(())
     }
     fn spec(&self) -> Option<PlannerSpec> {

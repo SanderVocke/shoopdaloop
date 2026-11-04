@@ -80,6 +80,7 @@ pub(crate) enum Purpose {
         delayed: bool,
         slot: usize,
     },
+    Preview,
     Silent,
     Job(Step),
     Bulk,
@@ -196,6 +197,7 @@ pub struct ControlEndpoint {
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
     pub(crate) protocol_error: bool,
+    pub(crate) preview: Option<crate::preview::Preview>,
 }
 
 fn runtime_refusal(error: rt_runtime::Error) -> Refusal {
@@ -473,6 +475,7 @@ impl ControlEndpoint {
             self.family.cancel_requested = true;
         }
         self.bulk.disconnect();
+        self.disconnect_preview();
         self.uploads.disconnect();
     }
 
@@ -537,6 +540,7 @@ impl ControlEndpoint {
                 sequence,
                 result,
             ),
+            Purpose::Preview => self.preview_result(finished, result),
             Purpose::Silent => {
                 if let RuntimeResult::Completion(_, command, retired) = result {
                     self.reclaim(command);
@@ -748,6 +752,16 @@ impl ControlEndpoint {
     /// Handle a request that is not structural. `Err` keeps it queued.
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
+            Request::PreviewStart {
+                request_id,
+                bus,
+                content,
+                frames,
+            } => self.start_preview(correlation, request_id, bus, content, frames),
+            Request::PreviewStop => {
+                self.cancel_preview();
+                Ok(Some(Outcome::Done))
+            }
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
             Request::ContentFamilyBegin { .. }
             | Request::ContentFamilyEdit { .. }
@@ -762,12 +776,27 @@ impl ControlEndpoint {
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
-            | Request::ReplacementCancel { .. } => self.replacement_request(correlation, request),
+            | Request::ReplacementCancel { .. } => {
+                if matches!(request, Request::ReplacementBegin { .. }) {
+                    self.cancel_preview();
+                }
+                if self.preview.is_some() {
+                    return Err(());
+                }
+                self.replacement_request(correlation, request)
+            }
             Request::ContentBegin(_)
             | Request::ContentWrite { .. }
             | Request::ContentInitial { .. }
             | Request::ContentFinish { .. }
-            | Request::ContentRelease { .. } => self.content_request(correlation, request),
+            | Request::ContentRelease { .. } => {
+                if matches!(request, Request::ContentRelease { id } if self.preview.as_ref().is_some_and(|p| p.content == id))
+                {
+                    Err(Refusal::Busy)
+                } else {
+                    self.content_request(correlation, request)
+                }
+            }
             Request::ContentApply {
                 loop_id: id,
                 frames,
@@ -1035,6 +1064,9 @@ impl ControlEndpoint {
             .is_none_or(|last| frame >= last.saturating_add(interval));
         if periodic {
             self.telemetry_frame = Some(frame);
+            let _ = out.push(EngineMessage::Telemetry(Telemetry::Preview {
+                request_id: self.cells.preview_playing.load(Ordering::Acquire),
+            }));
             let peaks = self.cells.host_peaks.take(2);
             let _ = out.push(EngineMessage::Telemetry(Telemetry::Engine {
                 frame,
@@ -1199,6 +1231,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_job();
         self.process_queue(true);
         self.advance_bulk();
+        self.advance_preview();
         self.advance_content();
         self.flush(out);
         self.telemetry(out);

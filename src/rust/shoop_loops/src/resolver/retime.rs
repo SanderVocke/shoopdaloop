@@ -37,12 +37,12 @@ mod tests {
         .unwrap();
         let mut resolver = Resolver::prepare(topology).unwrap();
         resolver
-            .enable_fixed(rt_runtime::fixed::Quantum::new(32).unwrap())
+            .set_quantum(rt_runtime::processing::Quantum::new(32).unwrap())
             .unwrap();
         resolver
     }
     fn tick(resolver: &mut Resolver) {
-        let interval = resolver.preview_fixed(&[]).unwrap();
+        let interval = resolver.preview_tick(&[]).unwrap();
         resolver.commit().unwrap();
         resolver.finish(interval.end).unwrap();
     }
@@ -96,7 +96,7 @@ mod tests {
         assert_eq!(resolver.state(id(0)).unwrap().position, 128);
         assert_eq!(resolver.state(id(1)).unwrap().position, 128);
         assert_eq!(resolver.state(id(2)).unwrap(), unrelated);
-        let interval = resolver.preview_fixed(&[]).unwrap();
+        let interval = resolver.preview_tick(&[]).unwrap();
         let source = resolver
             .decisions()
             .unwrap()

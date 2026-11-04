@@ -324,3 +324,38 @@ fn a_final_system_reset_makes_prior_parameter_history_restorable() {
         Ok(Value::Image(_))
     ));
 }
+
+#[shoop_test]
+fn preview_destination_survives_names_and_order_and_rejects_missing_identity() {
+    use shoop_session::PreviewBusDocument;
+    for designation in [
+        PreviewBusDocument::Bus(1),
+        PreviewBusDocument::Disabled,
+        PreviewBusDocument::Automatic,
+    ] {
+        let mut bundle = SessionBundle::new(SessionDocument::empty(48000));
+        bundle.document.preview_bus = designation;
+        bundle.document.buses[0].name = "Main output".into();
+        let image = crate::document::from_bundle(bundle).unwrap();
+        let image::Manifest::Session(session) = &image.manifest else {
+            panic!()
+        };
+        assert_eq!(
+            session.preview_bus,
+            (designation == PreviewBusDocument::Bus(1)).then_some(BusId::from_raw(1))
+        );
+        let saved = crate::document::to_bundle(&image).unwrap();
+        let bytes = encode_session(&saved, "preview").unwrap();
+        let restored = crate::document::from_bundle(decode_session(&bytes).unwrap()).unwrap();
+        assert_eq!(image, restored);
+    }
+    let mut bundle = SessionBundle::new(SessionDocument::empty(48000));
+    bundle.document.preview_bus = PreviewBusDocument::Bus(999);
+    assert!(crate::document::from_bundle(bundle).is_err());
+    let bundle = SessionBundle::new(SessionDocument::empty(48000));
+    let image = crate::document::from_bundle(bundle).unwrap();
+    let image::Manifest::Session(session) = &image.manifest else {
+        panic!()
+    };
+    assert_eq!(session.preview_bus, Some(BusId::from_raw(1)));
+}

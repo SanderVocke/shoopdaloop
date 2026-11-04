@@ -63,6 +63,13 @@ pub enum EngineOp {
         bytes: u64,
     },
     ReadStop,
+    PreviewStart {
+        cursor: Cursor,
+        frames: u64,
+        request_id: u64,
+        source_channels: u8,
+    },
+    PreviewStop,
 }
 impl ProcessorOperation for EngineOp {
     type Result = ();
@@ -216,6 +223,9 @@ pub struct LoopFader {
 /// The Master bus: the sum of routed strips; gain, balance, mute and meters,
 /// written to two connection banks.
 pub struct BusMixer {
+    preview: Option<(Cursor, u64, u64, usize)>,
+    preview_bytes: Box<[u8]>,
+    preview_samples: Box<[f32]>,
     slot: usize,
     active_channels: u8,
     presence: Ramp,
@@ -332,6 +342,9 @@ impl LoopFader {
 impl BusMixer {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            preview: None,
+            preview_bytes: vec![0; settings.frames * settings.channels * 4].into_boxed_slice(),
+            preview_samples: vec![0.; settings.frames].into_boxed_slice(),
             slot,
             active_channels: if slot == 0 { 2 } else { 0 },
             presence: Ramp::at(1.),
@@ -468,16 +481,16 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
+    fn process_tick(
         &mut self,
-        block: &mut rt_runtime::processor::FixedProcessBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::processor::TickProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
         self.apply_configuration(block.graph_epoch);
         match self {
-            Self::Loop(node) => node.process_fixed(block),
+            Self::Loop(node) => node.process_tick(block),
             _ => self.render_signal(&mut SignalBlock::integrated(block)),
         }
     }
@@ -630,7 +643,9 @@ impl StripInput {
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Presence(_)
             | EngineOp::ReadStart { .. }
-            | EngineOp::ReadStop => return Err(Error::InvalidParameter),
+            | EngineOp::ReadStop
+            | EngineOp::PreviewStart { .. }
+            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -705,7 +720,9 @@ impl StripOutput {
             | EngineOp::DiscardConfiguration { .. }
             | EngineOp::Inject(_)
             | EngineOp::ReadStart { .. }
-            | EngineOp::ReadStop => return Err(Error::InvalidParameter),
+            | EngineOp::ReadStop
+            | EngineOp::PreviewStart { .. }
+            | EngineOp::PreviewStop => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -755,6 +772,49 @@ impl BusMixer {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.active_channels == 2;
+        self.preview_samples[..frames].fill(0.);
+        if let Some((mut cursor, remaining, request_id, source_channels)) = self.preview {
+            let count = frames.min(remaining as usize);
+            let bytes = count * source_channels * 4;
+            if bytes > self.preview_bytes.len() {
+                return Err(Error::InvalidShape);
+            }
+            let mut read = 0;
+            while read < bytes {
+                let count = block
+                    .resources
+                    .render()
+                    .read(&mut cursor, &mut self.preview_bytes[read..bytes])?;
+                if count == 0 {
+                    return Err(Error::InvalidState);
+                }
+                read += count;
+            }
+            for i in 0..count {
+                let offset = i * source_channels * 4;
+                self.preview_samples[i] = f32::from_le_bytes(
+                    self.preview_bytes[offset..offset + 4]
+                        .try_into()
+                        .map_err(|_| Error::InvalidShape)?,
+                );
+            }
+            self.preview = if remaining == count as u64 {
+                self.cells
+                    .preview_finished
+                    .store(request_id, core::sync::atomic::Ordering::Release);
+                self.cells
+                    .preview_playing
+                    .store(0, core::sync::atomic::Ordering::Release);
+                None
+            } else {
+                Some((
+                    cursor,
+                    remaining - count as u64,
+                    request_id,
+                    source_channels,
+                ))
+            };
+        }
         self.gains.fill(frames, &mut self.mute);
         for i in 0..frames {
             self.weights[i] = self.bank.next();
@@ -766,7 +826,8 @@ impl BusMixer {
                 let gains = self.gains.channel(channel, stereo);
                 let mut peak = 0f32;
                 for i in 0..frames {
-                    let value = input[i] * gains[i] * self.presence_weights[i];
+                    let value =
+                        (input[i] + self.preview_samples[i]) * gains[i] * self.presence_weights[i];
                     self.scratch[i] = value;
                     peak = peak.max(value.abs());
                 }
@@ -791,7 +852,31 @@ impl BusMixer {
 impl BusMixer {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
+            EngineOp::PreviewStart {
+                cursor,
+                frames,
+                request_id,
+                source_channels,
+            } => {
+                if frames == 0 || request_id == 0 || source_channels == 0 {
+                    return Err(Error::InvalidParameter);
+                }
+                self.preview = Some((cursor, frames, request_id, source_channels as usize));
+                self.cells
+                    .preview_finished
+                    .store(0, core::sync::atomic::Ordering::Release);
+                self.cells
+                    .preview_playing
+                    .store(request_id, core::sync::atomic::Ordering::Release);
+            }
+            EngineOp::PreviewStop => {
+                self.preview = None;
+                self.cells
+                    .preview_playing
+                    .store(0, core::sync::atomic::Ordering::Release);
+            }
             EngineOp::Reset { outputs, .. } => {
+                self.preview = None;
                 self.active_channels = outputs;
                 self.bank = Ramp::at(0.);
                 self.mute = Ramp::at(1.);
@@ -882,11 +967,11 @@ impl EngineNode {
         }
     }
 }
-impl rt_runtime::fixed::Processor<shoop_loops::fixed::Bank, EngineOp> for EngineNode {
+impl rt_runtime::processing::Processor<shoop_loops::processing::Bank, EngineOp> for EngineNode {
     fn validate_state(
         &self,
         _: rt_runtime::NodeId,
-        _: &shoop_loops::fixed::Bank,
+        _: &shoop_loops::processing::Bank,
     ) -> Result<(), Error> {
         if matches!(self, Self::Loop(_)) {
             Err(Error::InvalidState)
@@ -900,18 +985,18 @@ impl rt_runtime::fixed::Processor<shoop_loops::fixed::Bank, EngineOp> for Engine
     fn operation(
         &mut self,
         operation: EngineOp,
-        context: rt_runtime::fixed::OperationContext<'_>,
-        _: &mut shoop_loops::fixed::Bank,
+        context: rt_runtime::processing::OperationContext<'_>,
+        _: &mut shoop_loops::processing::Bank,
     ) -> Result<(), Error> {
         self.apply_signal(operation, context.graph_epoch)
     }
     fn process(
         &mut self,
-        block: &mut rt_runtime::fixed::Block<'_>,
-        _: &mut shoop_loops::fixed::Bank,
+        block: &mut rt_runtime::processing::Block<'_>,
+        _: &mut shoop_loops::processing::Bank,
     ) -> Result<(), Error> {
         self.apply_configuration(block.graph_epoch);
-        self.render_signal(&mut SignalBlock::fixed(block))
+        self.render_signal(&mut SignalBlock::direct(block))
     }
 }
 

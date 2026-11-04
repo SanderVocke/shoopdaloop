@@ -26,6 +26,12 @@ mod cycle;
 mod dummy;
 #[cfg(feature = "jack")]
 mod jack_driver;
+#[cfg(feature = "jack")]
+mod jack_graph;
+#[cfg(feature = "jack")]
+mod jack_ports;
+#[cfg(feature = "jack")]
+mod jack_publication;
 mod midi;
 #[cfg(feature = "cpal")]
 mod midir_ports;
@@ -223,10 +229,10 @@ impl Running {
             std::thread::sleep(Duration::from_millis(1));
         }
         let mut midi_reset = shared.phase() != RenderPhase::Running;
+        let cycle = self.driver.stop();
         if shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
         }
-        let cycle = self.driver.stop();
         drop(self.pump);
         drop(self.connections);
         shared.set_state(DriverRunState::Stopped);
@@ -265,6 +271,13 @@ fn cleanup(render: Render) -> Result<Stopped, StopError> {
 }
 
 impl NativeHost {
+    pub fn graph_control(&self) -> Option<shoop_port_graph::Control> {
+        match &self.running.as_ref()?.driver {
+            #[cfg(feature = "jack")]
+            Driver::Jack(client) => Some(client.graph.clone()),
+            _ => None,
+        }
+    }
     fn running(&self) -> &Running {
         self.running
             .as_ref()
@@ -364,6 +377,17 @@ impl Prepared {
         sample_rate: u32,
         buffer: Option<u32>,
     ) -> Result<Self, StartError> {
+        let outputs = ports.audio_outputs.len();
+        Self::with_output_count(template, ports, kind, sample_rate, buffer, outputs)
+    }
+    pub fn with_output_count(
+        template: &EngineDescription,
+        ports: HostPorts,
+        kind: DriverKind,
+        sample_rate: u32,
+        buffer: Option<u32>,
+        outputs: usize,
+    ) -> Result<Self, StartError> {
         let max = u32::try_from(template.max_frames).unwrap_or(u32::MAX);
         // JACK splits server periods into bounded render blocks. Its actual
         // period still determines how far ahead control commands must arrive.
@@ -371,7 +395,6 @@ impl Prepared {
             return Err(StartError::BufferTooLarge { requested, max });
         }
         let buffer_frames = buffer.unwrap_or(max);
-        let outputs = ports.audio_outputs.len();
         let master_connections: Vec<(u8, u16)> = (0..usize::from(template.master_channels)
             .min(outputs))
             .map(|channel| (channel as u8, channel as u16))

@@ -2,7 +2,7 @@
 
 [Book](../README.md) · [Reference](README.md)
 
-These rules describe generic GraphRuntime. There is one fixed execution kernel. Convenience constructors use Q=1; `prepare_fixed_with_planner_and_resources` selects an explicit Q. Buffered hosts declare a constant Q-frame stream delay. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
+These rules describe generic GraphRuntime. There is one fixed execution kernel. Convenience constructors use Q=1; `prepare_with_quantum_and_resources` selects an explicit Q. Buffered hosts declare a constant Q-frame stream delay. Musical precedence, source/node-pair/media ownership and loop cleanup belong to the separate loop library's planner.
 
 ## Callback envelope and half-open time
 

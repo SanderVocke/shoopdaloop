@@ -1181,6 +1181,18 @@ pub trait Backend {
     fn cancel_media_reads(&mut self) {}
     fn close_connection(&mut self) {}
 
+    fn start_bus_audio_preview_async(
+        &mut self,
+        _bus: BackendBusId,
+        _request_id: u64,
+        _sample_rate: u32,
+        _samples: Arc<Vec<f32>>,
+    ) -> Result<BackendAsyncResult<()>> {
+        Err(anyhow!("Master bus preview is unavailable in this backend"))
+    }
+    fn audio_preview_playing(&self) -> bool {
+        false
+    }
     fn supports_audio_preview(&self) -> bool {
         false
     }

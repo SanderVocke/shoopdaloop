@@ -1,7 +1,7 @@
 use super::*;
 use rt_runtime::{
     graph::PortCounts,
-    processor::{FixedProcessBlock, ProcessBlock},
+    processor::{ProcessBlock, TickProcessBlock},
 };
 
 /// A loop's playback or capture node, for wrapping in an application's node type.
@@ -82,16 +82,13 @@ const CONSUMER: ConsumerAccess = ConsumerAccess {
     operation_bytes: 0,
 };
 impl Processor<LoopPlanner> for LoopNode {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
-        &mut self,
-        block: &mut FixedProcessBlock<'_, LoopPlanner>,
-    ) -> Result<(), Error> {
+    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         match self {
-            Self::Playback(node) => node.process_fixed(block),
-            Self::Capture(node) => node.process_fixed(block),
+            Self::Playback(node) => node.process_tick(block),
+            Self::Capture(node) => node.process_tick(block),
         }
     }
     fn ports(&self) -> PortCounts {
@@ -111,13 +108,10 @@ impl Processor<LoopPlanner> for LoopNode {
     }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
-        &mut self,
-        block: &mut FixedProcessBlock<'_, LoopPlanner>,
-    ) -> Result<(), Error> {
+    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
         if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture
@@ -214,13 +208,10 @@ impl Processor<LoopPlanner> for PlaybackNode {
     }
 }
 impl Processor<LoopPlanner> for CaptureNode {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
-        &mut self,
-        block: &mut FixedProcessBlock<'_, LoopPlanner>,
-    ) -> Result<(), Error> {
+    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
         if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture

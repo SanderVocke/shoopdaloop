@@ -4,7 +4,7 @@
 
 [Contents](../README.md) · [Previous: MIDI state and checkpointed seeking](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md) · [Next: Application-specific operations](14-application-specific-operations.md)
 
-A domain settles changes at a fixed tick before processors render its whole quantum. This chapter demonstrates the compatibility decision/observation interface with Q=1. Production loop consumers use `FixedProcessBlock::domain` directly, without decision lookup or observation acknowledgements. Consumers borrow its immutable decisions, then report bounded observations about the work they performed. They do not advance another authoritative clock.
+A domain settles changes at a fixed tick before processors render its whole quantum. This chapter demonstrates the compatibility decision/observation interface with Q=1. Production loop consumers use `TickProcessBlock::domain` directly, without decision lookup or observation acknowledgements. Consumers borrow its immutable decisions, then report bounded observations about the work they performed. They do not advance another authoritative clock.
 
 ```text
 at current frame:

@@ -31,7 +31,7 @@ impl Render {
             phase: Phase::Running,
         })
     }
-    pub fn quantum(&self) -> rt_runtime::fixed::Quantum {
+    pub fn quantum(&self) -> rt_runtime::processing::Quantum {
         self.engine.quantum()
     }
     pub fn buffering_latency(&self) -> usize {

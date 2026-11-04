@@ -76,6 +76,8 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 
 pub(crate) struct Cells {
     pub next_frame: AtomicU64,
+    pub preview_finished: AtomicU64,
+    pub preview_playing: AtomicU64,
     pub endpoint_alive: AtomicBool,
     /// Rendering faulted; the engine no longer executes control work.
     pub faulted: AtomicBool,
@@ -101,6 +103,8 @@ impl Cells {
     ) -> Arc<Self> {
         let cells = Self {
             next_frame: AtomicU64::new(0),
+            preview_finished: AtomicU64::new(0),
+            preview_playing: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
             strips: (0..strips).map(|_| StripCells::default()).collect(),

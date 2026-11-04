@@ -97,12 +97,12 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
             preset,
         }))
     }
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
+    fn process_tick(
         &mut self,
-        block: &mut rt_runtime::processor::FixedProcessBlock<'_, L>,
+        block: &mut rt_runtime::processor::TickProcessBlock<'_, L>,
     ) -> Result<(), Error> {
         self.render(
             block.quantum.frames(),

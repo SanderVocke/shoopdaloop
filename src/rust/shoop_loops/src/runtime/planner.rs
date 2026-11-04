@@ -643,24 +643,24 @@ impl LoopPlanner {
     }
 }
 impl Planner for LoopPlanner {
-    fn enable_fixed(&mut self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
-        if self.fixed_quantum.is_some() {
+    fn set_quantum(&mut self, quantum: rt_runtime::processing::Quantum) -> Result<(), Error> {
+        if self.quantum.is_some() {
             return Err(Error::InvalidState);
         }
-        self.resolver.enable_fixed(quantum).map_err(runtime_error)?;
-        self.fixed_quantum = Some(quantum);
+        self.resolver.set_quantum(quantum).map_err(runtime_error)?;
+        self.quantum = Some(quantum);
         Ok(())
     }
-    fn fixed_operation(
+    fn tick_operation(
         &mut self,
         operation: Operation,
         context: OperationContext<'_, Operation, Reply>,
     ) -> Result<Disposition<Reply>, Error> {
-        self.fixed_quantum.ok_or(Error::InvalidState)?;
+        self.quantum.ok_or(Error::InvalidState)?;
         self.execute_operation(operation, context)
     }
-    fn fixed_begin(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
-        let q = self.fixed_quantum.ok_or(Error::InvalidState)?;
+    fn begin_tick(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+        let q = self.quantum.ok_or(Error::InvalidState)?;
         if context.frame.checked_add(q.frames())? != context.ceiling {
             return Err(Error::InvalidFrame);
         }
@@ -670,11 +670,11 @@ impl Planner for LoopPlanner {
         }
         Ok(())
     }
-    fn fixed_finish(
+    fn finish_tick(
         &mut self,
         context: FinishContext<'_, Observed, Operation, Reply>,
     ) -> Result<(), Error> {
-        self.fixed_quantum.ok_or(Error::InvalidState)?;
+        self.quantum.ok_or(Error::InvalidState)?;
         self.finish_boundary(context)
     }
     type Decision = View;
@@ -730,14 +730,14 @@ impl Planner for LoopPlanner {
     }
     fn plan(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<Frame, Error> {
         let end = context.ceiling;
-        self.fixed_begin(context)?;
+        self.begin_tick(context)?;
         Ok(end)
     }
     fn finish(
         &mut self,
         context: FinishContext<'_, Observed, Operation, Reply>,
     ) -> Result<(), Error> {
-        self.fixed_finish(context)
+        self.finish_tick(context)
     }
 }
 
@@ -773,6 +773,12 @@ impl LoopPlanner {
                         &mut context.resources,
                     )?;
                     return Ok(Disposition::Complete(Reply::Done));
+                }
+                Operation::NodePairSourceCursor { id } => {
+                    let source = self.node_pairs.source(id)?;
+                    return Ok(Disposition::Complete(Reply::Cursor(
+                        context.resources.cursor(source.snapshot.id)?,
+                    )));
                 }
                 Operation::NodePairSnapshot { resource } => {
                     let (id, snapshot) = self.node_pairs.snapshot(
@@ -857,7 +863,7 @@ impl LoopPlanner {
                     topology_epoch,
                 } => {
                     if matches!(operation, Operation::ConfigurationReplace { .. })
-                        && self.fixed_quantum.is_none()
+                        && self.quantum.is_none()
                         && context.frame != context.callback_start
                     {
                         return Err(Error::InvalidState.into());
@@ -1156,7 +1162,7 @@ impl LoopPlanner {
                     midi,
                 } => {
                     if self
-                        .fixed_quantum
+                        .quantum
                         .is_some_and(|q| frames % q.frames() as u64 != 0)
                     {
                         return Err(Error::InvalidFrame.into());
@@ -1280,7 +1286,8 @@ impl LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::NodePairSnapshot { .. }
+                Operation::NodePairSourceCursor { .. }
+                | Operation::NodePairSnapshot { .. }
                 | Operation::NodePairSourceStatus { .. }
                 | Operation::NodePairSourceValidate { .. }
                 | Operation::NodePairSourceRelease { .. }
@@ -1348,7 +1355,7 @@ impl LoopPlanner {
             self.cancel_intervals(&mut context.resources)?;
             let interval = self
                 .resolver
-                .preview_fixed(&self.failures)
+                .preview_tick(&self.failures)
                 .map_err(runtime_error)?;
             for decision in self.resolver.decisions().map_err(runtime_error)? {
                 self.views[decision.state.id.slot() as usize].decision = *decision;

@@ -129,16 +129,16 @@ pub enum ServiceNode {
     Dsp(dsp::Dsp),
 }
 impl Processor<LoopPlanner, dsp::Operation> for ServiceNode {
-    fn supports_fixed(&self) -> bool {
+    fn uses_direct_domain(&self) -> bool {
         true
     }
-    fn process_fixed(
+    fn process_tick(
         &mut self,
-        block: &mut rt_runtime::processor::FixedProcessBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::processor::TickProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
         match self {
-            Self::Loop(node) => node.process_fixed(block),
-            Self::Dsp(node) => node.process_fixed(block),
+            Self::Loop(node) => node.process_tick(block),
+            Self::Dsp(node) => node.process_tick(block),
         }
     }
     fn ports(&self) -> PortCounts {
