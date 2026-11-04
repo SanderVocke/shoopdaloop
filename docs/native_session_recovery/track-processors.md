@@ -125,4 +125,43 @@ backends over Q=1/16/32/64/128 and M/S=1/0,3/0,3/7.
 `cargo check --locked -p rt_buffered --target wasm32-unknown-unknown` and the
 production/build dependency audit for native/Wasm pass; the warning-denying
 workspace build, tracing inventory and test-attribute audit pass. Wasm execution
-is pending installation of the repository-pinned runner tools in this environment.
+passes all 17 adapter tests using wasm-pack 0.15.0, wasm-bindgen 0.2.127 and Node
+22.22.2 (`scripts/run_wasm_tests.py --runtime node --profile dev --package rt_buffered`).
+
+### Extracted DSP and real buffered backends
+
+`shoop_dsp` provides independent `builtin-fx` / `oxisynth` features (neither by
+its own default). The old engine reexports the moved code and shares the inline
+MIDI value type, so reference application/engine fixtures remain executable.
+The original DSP tests moved with the implementation and now use allocation AND
+deallocation guards. A test-only counter feature retains legacy instrumentation.
+The real `FxBackend` and `SynthBackend` implement the portable buffered seam;
+source-relative controls and MIDI split rendering at event boundaries. Rack slots
+prepare stereo and isolated channel processing for any active width up to their
+fixed maximum. Applied values/mappings are readable without allocating snapshots.
+
+Pinned source patches under `third_party/oxisynth*` document archive hashes and
+licenses. They reserve/touch voices, eagerly initialize lookup tables, remove a
+per-note temporary Vec, suppress dependency logging locally under the realtime
+feature, and provide allocation-free clearing of voices, cached output and tails.
+Ordinary Panic retains its reference tail semantics. Slot activation also resets
+FX smoothers and mappings, avoiding state leakage across owners.
+
+Validation on this milestone:
+
+- 39 moved DSP unit tests and five new real buffered integration tests pass.
+  A cold guarded test exercises every embedded preset, increasing polyphony,
+  saturation/stealing, Panic and activation reset. FX golden comparisons cover
+  every width 1 through 8 in a prepared eight-channel slot. MIDI mapping/state,
+  nonaligned synth events, dry-audio independence and unsupported rates are covered.
+- The retained reference application (134 tests) and engine (701 tests) pass.
+- The Wasm/Node DSP run passes 42 tests before the additional rate-preflight case;
+  the final delivery suite will include that case too.
+- Neither/FX/synth/both isolated checks compile. `check_host_dsp_boundary.py`
+  passes all four feature combinations for Linux, Windows, macOS and Wasm;
+  it verifies absence of disabled DSP normal/build dependencies and legacy/app/device
+  imports. Engine production/build audits pass for native and Wasm. The full
+  warning-denying workspace build, formatting, tracing and test-attribute checks pass.
+
+Host configuration, graph admission and public production capabilities remain
+unimplemented at this milestone; no parity row is closed by this library evidence.

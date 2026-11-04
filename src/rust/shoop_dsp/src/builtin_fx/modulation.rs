@@ -50,6 +50,7 @@ struct AllpassState {
 #[derive(Debug)]
 pub(super) struct ModulationProcessor {
     sample_rate: f32,
+    stereo: bool,
     phases: Vec<f32>,
     flanger_delays: Vec<DelayLine>,
     flanger_feedback: Vec<f32>,
@@ -65,6 +66,7 @@ impl ModulationProcessor {
         let delay_length = ((7.0 * 0.001 * sample_rate).ceil() as usize + 2).max(2);
         Self {
             sample_rate,
+            stereo: audio_channels == 2,
             phases: (0..audio_channels)
                 .map(|channel| {
                     if audio_channels == 2 {
@@ -85,8 +87,12 @@ impl ModulationProcessor {
         }
     }
 
+    pub(super) fn set_audio_channels(&mut self, channels: usize) {
+        self.stereo = channels == 2;
+    }
+
     pub(super) fn reset(&mut self) {
-        let stereo = self.phases.len() == 2;
+        let stereo = self.stereo;
         for (channel, phase) in self.phases.iter_mut().enumerate() {
             *phase = if stereo {
                 0.0

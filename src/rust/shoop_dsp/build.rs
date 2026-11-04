@@ -1,9 +1,15 @@
+#[cfg(feature = "oxisynth")]
 use std::collections::BTreeSet;
+#[cfg(feature = "oxisynth")]
 use std::env;
+#[cfg(feature = "oxisynth")]
 use std::fmt::Write as _;
+#[cfg(feature = "oxisynth")]
 use std::fs;
+#[cfg(feature = "oxisynth")]
 use std::path::PathBuf;
 
+#[cfg(feature = "oxisynth")]
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let soundfont_path = manifest_dir.join("../../../third_party/timgm6mb/TimGM6mb.sf2");
@@ -38,3 +44,6 @@ fn main() {
     let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("oxisynth_presets.rs");
     fs::write(output, generated).unwrap();
 }
+
+#[cfg(not(feature = "oxisynth"))]
+fn main() {}

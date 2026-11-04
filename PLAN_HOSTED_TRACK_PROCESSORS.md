@@ -236,7 +236,7 @@ Each stage includes its own verification and a commit before moving on.
 - [x] Preserve exact source-time release for M/S, MIDI cleanup and all existing
   overflow/error semantics. Reject arithmetic/shape/storage limits before mutation.
   Keep lifecycle work bounded and distinguish ordinary graph epochs from resets.
-- [ ] Verify Q=1/16/32/64/128, M=1/2/3, S=0/1/>M; mono/N/asymmetric/zero-port
+- [x] Verify Q=1/16/32/64/128, M=1/2/3, S=0/1/>M; mono/N/asymmetric/zero-port
   shapes; Q/B boundary MIDI and control events; startup/tail; mute/bypass; sleep/wake;
   removal/reuse; exact-fit/overflow; callback partitions and zero-length callbacks.
   Compare direct and unified paths to independent sample/event expectations under
@@ -245,18 +245,18 @@ Each stage includes its own verification and a commit before moving on.
 
 ### 3. Extract and prepare both real DSP backends
 
-- [ ] Extract FX, synth, processor-owned mapping/state and resource recipes without
+- [x] Extract FX, synth, processor-owned mapping/state and resource recipes without
   pulling `shoop_engine` into production. Keep legacy tests/imports functional and
   serialization/preset IDs compatible. Separate host-only assets from client metadata.
-- [ ] Implement both synchronous buffered backends and bounded sample-relative
+- [x] Implement both synchronous buffered backends and bounded sample-relative
   controls. Preallocate FunDSP units/delay lines for every admitted rack width and
   stage/type change. Fix OxiSynth voice allocation/lazy initialization through the
   preparation API; document/pin any upstream or local patch and its build provenance.
-- [ ] Verify rack stage order, bypass/no-disabled-DSP calls, types/smoothing, stereo
+- [x] Verify rack stage order, bypass/no-disabled-DSP calls, types/smoothing, stereo
   and independent N-channel behavior, mapping values; synth preset differences,
   dry-audio independence, filtered MIDI, sends and Panic. Compare to reference DSP
   with declared buffering delay, including non-block-aligned note offsets.
-- [ ] Guard the first post-preparation note, increasing/saturated polyphony and voice
+- [x] Guard the first post-preparation note, increasing/saturated polyphony and voice
   stealing, all presets, control changes, reset/reuse and error paths from a cold
   process. Count frees as well as allocations; prevent third-party render logging
   from reaching blocking sinks. Test unsupported sample rates explicitly. Verify

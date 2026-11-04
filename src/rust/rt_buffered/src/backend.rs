@@ -42,6 +42,10 @@ pub trait Backend: Send {
     fn validate_parameter(&self, _parameter: u32, _value: f32) -> Result<(), Error> {
         Err(Error::InvalidParameter)
     }
+    /// Read an applied scalar or encoded mapping without allocating a snapshot.
+    fn parameter(&self, _parameter: u32) -> Option<f32> {
+        None
+    }
     fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error>;
     /// Reset only an inactive backend; implementations must bound their work.
     fn reset(&mut self) -> Result<(), Error>;
@@ -56,6 +60,9 @@ impl<B: Backend + ?Sized> Backend for Box<B> {
     }
     fn validate_parameter(&self, parameter: u32, value: f32) -> Result<(), Error> {
         (**self).validate_parameter(parameter, value)
+    }
+    fn parameter(&self, parameter: u32) -> Option<f32> {
+        (**self).parameter(parameter)
     }
     fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
         (**self).process(batch)

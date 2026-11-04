@@ -3753,8 +3753,6 @@ dependencies = [
 [[package]]
 name = "oxisynth"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68d089fc07e074f57ac6698292ce3da05eac1d282b821eb4156d4c7d8e36c6ec"
 dependencies = [
  "bitflags 2.13.1",
  "log",
@@ -3766,8 +3764,6 @@ dependencies = [
 [[package]]
 name = "oxisynth-chorus"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755d6ea336fc37043b00a1b54198e24cb4537c509435c7aca2d837d36185703b"
 dependencies = [
  "log",
 ]
@@ -3775,8 +3771,6 @@ dependencies = [
 [[package]]
 name = "oxisynth-reverb"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdbb2d72d399b03dc7546c1087fabcdba68402f987bea903fe284c946fcca7aa"
 
 [[package]]
 name = "parking"
@@ -4942,6 +4936,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_dsp"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "fundsp",
+ "oxisynth",
+ "rt_buffered",
+ "rt_runtime",
+ "sha2",
+ "shoop_tracing",
+ "shoop_wasm_test_support",
+ "soundfont",
+ "thiserror 2.0.20",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_egui"
 version = "0.3.0"
 dependencies = [
@@ -4970,7 +4981,6 @@ dependencies = [
  "base64",
  "cpal 0.18.2",
  "enum-iterator",
- "fundsp",
  "jack",
  "jack-sys",
  "libc",
@@ -4979,20 +4989,18 @@ dependencies = [
  "memmap2",
  "midir",
  "num_enum",
- "oxisynth",
  "regex",
  "rfd",
  "rtrb",
  "rubato",
  "serde_json",
- "sha2",
  "shoop_common",
+ "shoop_dsp",
  "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
  "shoop_wasm_test_support",
- "soundfont",
  "tempfile",
  "thiserror 2.0.20",
  "tracing",

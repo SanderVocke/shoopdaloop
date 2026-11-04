@@ -47,6 +47,7 @@ impl DelayLine {
 #[derive(Debug)]
 pub(super) struct ChorusProcessor {
     sample_rate: f32,
+    stereo: bool,
     delay_lines: Vec<[DelayLine; VOICES]>,
     phases: Vec<f32>,
 }
@@ -57,6 +58,7 @@ impl ChorusProcessor {
         let maximum_delay = ((31.0 * 0.001 * sample_rate).ceil() as usize + 2).max(2);
         Self {
             sample_rate,
+            stereo: audio_channels == 2,
             delay_lines: (0..audio_channels)
                 .map(|_| std::array::from_fn(|_| DelayLine::new(maximum_delay)))
                 .collect(),
@@ -72,13 +74,17 @@ impl ChorusProcessor {
         }
     }
 
+    pub(super) fn set_audio_channels(&mut self, channels: usize) {
+        self.stereo = channels == 2;
+    }
+
     pub(super) fn reset(&mut self) {
         for channel in &mut self.delay_lines {
             for voice in channel {
                 voice.reset();
             }
         }
-        let stereo = self.phases.len() == 2;
+        let stereo = self.stereo;
         for (channel, phase) in self.phases.iter_mut().enumerate() {
             *phase = if stereo {
                 0.0

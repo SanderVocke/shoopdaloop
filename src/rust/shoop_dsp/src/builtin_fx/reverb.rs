@@ -42,8 +42,11 @@ impl ReverbProcessor {
                 prepare(make_reverb(reverb_type_from_index(index)), sample_rate)
             })
         };
-        let (stereo_units, mono_units) = if audio_channels == AUDIO_CHANNELS {
-            (Some(make_units()), Vec::new())
+        let (stereo_units, mono_units) = if audio_channels >= AUDIO_CHANNELS {
+            (
+                Some(make_units()),
+                (0..audio_channels).map(|_| make_units()).collect(),
+            )
         } else {
             (None, (0..audio_channels).map(|_| make_units()).collect())
         };
@@ -93,7 +96,11 @@ impl ReverbProcessor {
         smoothers: &mut [ParameterSmoother; 23],
     ) {
         let type_index = reverb_type_index(reverb_type);
-        if let Some(units) = &mut self.stereo_units {
+        if let Some(units) = self
+            .stereo_units
+            .as_mut()
+            .filter(|_| input.len() == AUDIO_CHANNELS)
+        {
             let unit = &mut units[type_index];
             let mut start = 0;
             while start < frames {

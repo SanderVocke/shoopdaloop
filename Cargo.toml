@@ -72,3 +72,8 @@ fundsp = { version = "=0.23.0", default-features = false, features = ["std"] }
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+oxisynth = { path = "third_party/oxisynth" }
+oxisynth-reverb = { path = "third_party/oxisynth-reverb" }
+oxisynth-chorus = { path = "third_party/oxisynth-chorus" }
