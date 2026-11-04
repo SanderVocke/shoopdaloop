@@ -860,7 +860,7 @@ impl Shared {
     pub fn capacity(&self) -> SharedCapacity {
         self.capacity
     }
-    pub fn validate_original(job: Candidate, io: &ResourceIo<'_>) -> Result<(), Error> {
+    pub fn validate_original(job: Candidate, io: &mut ResourceIo<'_>) -> Result<(), Error> {
         for (resource, revision) in [
             (job.original.audio, job.original_audio),
             (job.original.midi, job.original_midi),
@@ -919,7 +919,7 @@ impl Shared {
         for slot in 0..self.owned.len() {
             if let Some(resource) = self.owned[slot] {
                 match resources.info(resource) {
-                    Ok(_) => resources.remove(resource)?,
+                    Ok(_) => resources.remove_with_uploads(resource)?,
                     Err(Error::InvalidId) => {}
                     Err(error) => return Err(error),
                 }

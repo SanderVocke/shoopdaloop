@@ -365,6 +365,23 @@ impl ResourceStore {
         );
         Ok(())
     }
+    /// Permanent owner teardown outside rendering. Pending uploads are cancelled
+    /// before the resource is removed; independent immutable leases remain valid.
+    pub fn remove_with_uploads(&mut self, id: ResourceId) -> Result<(), Error> {
+        self.check_writer(id, None)?;
+        for slot in 0..self.versions.len() {
+            if self.versions[slot].value.is_some_and(|version| {
+                version.resource == id
+                    && matches!(version.state, State::Receiving | State::Complete)
+            }) {
+                self.cancel_upload(UploadId {
+                    slot: slot as u32,
+                    generation: self.versions[slot].generation,
+                })?;
+            }
+        }
+        self.remove(id)
+    }
 
     pub fn begin_upload(
         &mut self,

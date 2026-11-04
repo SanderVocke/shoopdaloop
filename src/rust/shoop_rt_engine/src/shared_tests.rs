@@ -719,9 +719,20 @@ fn candidate_fences_preserve_controls_and_refuse_superseded_content_and_writers(
 #[shoop_test]
 fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() {
     let mut h = Fixture::new(32, 32);
-    let (take, _, _) = h.grabs();
+    let (take, sibling, _) = h.grabs();
     h.adopt(0, take);
     let id = h.audio_candidate(take);
+    let resource = sibling.audio.unwrap();
+    let resource::Reply::Info(info) = h.resource(ResourceRequest::Info { resource }) else {
+        panic!("info")
+    };
+    let resource::Reply::Upload(upload) = h.resource(ResourceRequest::BeginUpload {
+        resource,
+        expected_revision: info.revision,
+        description: info.description,
+    }) else {
+        panic!("pending upload")
+    };
     let at = h.aligned_future(128);
     let seq = h.send(at, Operation::CandidatePublish { id });
     while h.now() < at + 32 {
@@ -730,6 +741,10 @@ fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() 
     let mut stopped = h.engine.render.into_stopped();
     stopped.cleanup().unwrap();
     assert_eq!(stopped.resource_usage().free_pages, 12288);
+    assert_eq!(
+        stopped.resources.cancel_upload(upload),
+        Err(Error::InvalidId)
+    );
     let mut found = false;
     while let Some(executed) = h.engine.endpoint.control.try_execution() {
         if executed.sequence == seq {

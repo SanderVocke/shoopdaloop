@@ -280,10 +280,35 @@ impl ResourceIo<'_> {
     pub fn remove(&mut self, resource: ResourceId) -> Result<(), Error> {
         self.store.remove(resource)
     }
-    pub fn validate_writer(&self, resource: ResourceId, revision: Revision) -> Result<(), Error> {
+    pub fn validate_writer(
+        &mut self,
+        resource: ResourceId,
+        revision: Revision,
+    ) -> Result<(), Error> {
         let owner = self.store.check_writer(resource, None)?;
         if owner.revision != revision {
             return Err(Error::StaleRevision);
+        }
+        self.store.note_operation(WorkClass::Render);
+        self.store
+            .charge_work(WorkClass::Render, 0, self.store.versions.len())?;
+        if self
+            .store
+            .versions
+            .iter()
+            .filter_map(|slot| slot.value)
+            .any(|version| {
+                version.resource == resource
+                    && matches!(
+                        version.state,
+                        State::Receiving
+                            | State::Complete
+                            | State::PreparedCapture
+                            | State::Capturing
+                    )
+            })
+        {
+            return Err(Error::Busy);
         }
         Ok(())
     }
