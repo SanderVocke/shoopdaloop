@@ -21,13 +21,7 @@ use shoop_loops::{
     Limits, TopologyDescription,
 };
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
-use shoop_wasm_test_support::{
-    heap::{assert_no_heap, TrackingAllocator},
-    shoop_test,
-};
-
-#[global_allocator]
-static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
 enum Node {
     Engine(StripOutput),
