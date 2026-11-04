@@ -45,6 +45,7 @@ fn composite_description() -> CompositeDescription {
     CompositeDescription {
         id: 42,
         loop_id: loop_id(3),
+        sync: None,
         previous: Some(loop_id(2)),
         expected_version: 0,
         version: 1,
@@ -375,6 +376,21 @@ fn engine_samples() -> Vec<EngineMessage> {
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
     vec![
         EngineMessage::State(StateRecord::CompositeStageFloor { id: 42 }),
+        EngineMessage::State(StateRecord::CompositePending {
+            description: composite_description(),
+            received: 1,
+            committed: true,
+            admitted: true,
+        }),
+        EngineMessage::State(StateRecord::CompositeStagedSpan {
+            id: 42,
+            index: 0,
+            span: composite_span(),
+        }),
+        EngineMessage::Result {
+            correlation: 777,
+            outcome: Outcome::ContentApplied { revision: 9 },
+        },
         EngineMessage::Telemetry(Telemetry::Composite {
             loop_id: loop_id(3),
             frame: u64::MAX,
@@ -383,6 +399,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             length: 512,
             active_version: 8,
             pending_version: Some(9),
+            pending_admitted: true,
             iteration: 5,
             passes: 3,
             waiting_repeat: true,
@@ -417,7 +434,10 @@ fn engine_samples() -> Vec<EngineMessage> {
         },
         EngineMessage::Result {
             correlation: 8,
-            outcome: Outcome::ContentApplied { revision: 9 },
+            outcome: Outcome::CompositeApplied {
+                version: 9,
+                frame: 1234,
+            },
         },
         EngineMessage::Result {
             correlation: u64::MAX,

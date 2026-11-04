@@ -6584,6 +6584,10 @@ impl Backend for EngineBackend {
                     (
                         *id,
                         BackendCompositeState {
+                            prepared_unit_frames: 0,
+                            waiting_repeat: false,
+                            pending_stage: None,
+                            active_applied_frame: None,
                             mode: from_engine_mode(state.mode),
                             next_mode: state.next_mode.map(from_engine_mode),
                             next_transition_delay: state.next_mode_delay,
@@ -6600,6 +6604,7 @@ impl Backend for EngineBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_receipts: Vec::new(),
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
@@ -10417,6 +10422,7 @@ impl Backend for FakeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         Ok(BackendSnapshot {
+            composite_receipts: Vec::new(),
             status: self.status,
             audio_drivers: self.audio_driver_state()?,
             tracks: self

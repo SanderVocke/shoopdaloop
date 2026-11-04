@@ -128,7 +128,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
-        let channels = self.mirror.tracks[&entry.track].audio_channels as usize;
+        let channels = self.mirror.tracks[&entry
+            .track
+            .ok_or_else(|| anyhow!("composites have no media channels"))?]
+            .audio_channels as usize;
         if entry.view.mode == LoopMode::Recording {
             return Ok(None);
         }
@@ -186,10 +189,18 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn mutations_pending_through(&self, sequence: u64) -> bool {
         !self.requests.answered_through(sequence)
+            || self
+                .composites
+                .jobs
+                .iter()
+                .any(|job| job.sequence <= sequence)
     }
     fn mutation_capacity(&self) -> usize {
-        crate::MAX_TRACKED_MUTATIONS
-            .saturating_sub(self.requests.outstanding() + self.mutation_completions.len())
+        crate::MAX_TRACKED_MUTATIONS.saturating_sub(
+            self.requests.outstanding()
+                + self.mutation_completions.len()
+                + self.composites.jobs.len(),
+        )
     }
 
     fn close_connection(&mut self) {
@@ -291,35 +302,77 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
         Err(unavailable(BackendCapability::CompositeLoops))
     }
-
+    fn convert_empty_loop_to_prepared_composite(
+        &mut self,
+        id: BackendLoopId,
+        plan: &shoop_backend::BackendPreparedCompositePlan,
+    ) -> Result<(BackendCompositeId, u64)> {
+        if self
+            .mirror
+            .live_loop(id)
+            .is_none_or(|entry| entry.program.is_some())
+        {
+            return Err(anyhow!("target is not an empty primitive"));
+        }
+        let version = self.queue_composite(id, plan)?;
+        Ok((BackendCompositeId::from_raw(id.raw()), version))
+    }
+    fn clear_composite_loop(&mut self, id: BackendCompositeId) -> Result<BackendLoopId> {
+        self.reset_composite(id)
+    }
+    fn composite_limits(&self) -> Option<shoop_backend::BackendCompositeLimits> {
+        self.composite_limits_core()
+    }
+    fn convert_empty_loop_to_composite(&mut self, id: BackendLoopId) -> Result<BackendCompositeId> {
+        self.convert_composite(id)
+    }
+    fn configure_prepared_composite_loop(
+        &mut self,
+        id: BackendCompositeId,
+        plan: &shoop_backend::BackendPreparedCompositePlan,
+    ) -> Result<u64> {
+        self.queue_composite(BackendLoopId::from_raw(id.raw()), plan)
+    }
+    fn cancel_composite_plan(&mut self, id: BackendCompositeId, version: u64) -> Result<()> {
+        self.cancel_composite(id, version)
+    }
+    fn set_loop_repeat_sync(&mut self, id: BackendLoopId, enabled: bool) -> Result<()> {
+        self.repeat_sync_core(id, enabled)
+    }
+    fn set_composite_repeat_sync(&mut self, id: BackendCompositeId, enabled: bool) -> Result<()> {
+        self.repeat_sync_core(BackendLoopId::from_raw(id.raw()), enabled)
+    }
     fn configure_composite_loop(
         &mut self,
-        _composite_id: BackendCompositeId,
-        _config: &BackendCompositeConfig,
+        id: BackendCompositeId,
+        config: &BackendCompositeConfig,
     ) -> Result<u64> {
-        Err(unavailable(BackendCapability::CompositeLoops))
+        let plan = self.legacy_composite_plan(id, config)?;
+        self.queue_composite(BackendLoopId::from_raw(id.raw()), &plan)
     }
-
     fn transition_composite_loop(
         &mut self,
-        _composite_id: BackendCompositeId,
-        _mode: BackendLoopMode,
-        _cycles_delay: Option<u32>,
-        _align_to_iteration: Option<i64>,
+        id: BackendCompositeId,
+        mode: BackendLoopMode,
+        delay: Option<u32>,
+        align: Option<i64>,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::CompositeLoops))
+        self.transition_composite(id, mode, delay, align)
     }
-
     fn set_composite_play_after_record(
         &mut self,
-        _composite_id: BackendCompositeId,
-        _enabled: bool,
+        _id: BackendCompositeId,
+        enabled: bool,
     ) -> Result<()> {
-        Err(unavailable(BackendCapability::CompositeLoops))
+        if enabled {
+            return Err(anyhow!(
+                "play-after-record requires an authored follow-up plan"
+            ));
+        }
+        Ok(())
     }
-
-    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<Option<u64>> {
-        Err(unavailable(BackendCapability::CompositeLoops))
+    fn remove_composite_loop(&mut self, id: BackendCompositeId) -> Result<Option<u64>> {
+        self.remove_composite(id)
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -567,7 +620,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .mirror
             .live_loop(loop_id)
             .ok_or_else(|| anyhow!("unknown loop {loop_id:?}"))?;
-        let midi = self.mirror.tracks[&entry.track].midi;
+        let midi = self.mirror.tracks[&entry
+            .track
+            .ok_or_else(|| anyhow!("composites have no media channels"))?]
+            .midi;
         if entry.view.mode != LoopMode::Recording && self.canonical_imports.contains(&loop_id) {
             let (version, slot) = (entry.content, entry.slot);
             if let Outcome::Done(data) = self.reads.midi(loop_id, version, slot) {
@@ -935,6 +991,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             output_peak: self.status.output_peak,
             ..Default::default()
         };
+        let composites = self.composite_states();
         let mirror = &mut self.mirror;
         let mut tracks = alloc::collections::BTreeMap::new();
         for (id, track) in mirror.tracks.iter_mut() {
@@ -944,10 +1001,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         }
         let mut loops = alloc::collections::BTreeMap::new();
         for (id, entry) in mirror.loops.iter_mut() {
-            let Some(track) = mirror.tracks.get(&entry.track) else {
+            let Some(track) = entry.track.and_then(|track| mirror.tracks.get(&track)) else {
                 continue;
             };
-            if entry.confirmed && track.confirmed {
+            if entry.program.is_none() && entry.confirmed && track.confirmed {
                 loops.insert(*id, Mirror::loop_state(entry, track.audio_channels));
             }
         }
@@ -967,12 +1024,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             failures: core::mem::take(&mut self.mixer_failures),
         };
         Ok(BackendSnapshot {
+            composite_receipts: core::mem::take(&mut self.composites.receipts),
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,
             loops,
-            composites: Default::default(),
-            removed_composites: Vec::new(),
+            composites,
+            removed_composites: core::mem::take(&mut self.composites.removed),
             connections,
             mixer,
             mutation_failures: core::mem::take(&mut self.mutation_failures),

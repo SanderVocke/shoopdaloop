@@ -106,7 +106,8 @@ impl Resolver {
     /// Retain one owning program change until its eligible boundary and result collection.
     ///
     /// Only this composite's program/compiled nominal length may change. Logical identities,
-    /// sync/trigger relations and other programs stay fixed. Future-only edits may
+    /// trigger relations and other programs stay fixed. A source reassignment in the
+    /// same owning transaction waits for stopped/restart eligibility. Future-only edits may
     /// preserve the protected prefix; other running changes await a real restart.
     /// Admission reserves a normal request slot and the displaced owner's return slot.
     pub fn stage_program(
@@ -147,7 +148,7 @@ impl Resolver {
             for (new, old) in candidate.nodes().iter().zip(self.topology.nodes()) {
                 if new.id != old.id
                     || new.kind != old.kind
-                    || new.sync_source != old.sync_source
+                    || new.id != target && new.sync_source != old.sync_source
                     || (new.id != target
                         && (new.length != old.length
                             || candidate.program(new.id) != self.topology.program(old.id)))
@@ -165,13 +166,22 @@ impl Resolver {
         })();
         match result {
             Ok(id) => {
+                let future_only = self
+                    .topology
+                    .node(target)
+                    .expect("validated target")
+                    .sync_source
+                    == candidate
+                        .node(target)
+                        .expect("validated target")
+                        .sync_source;
                 self.program_change = Some(ProgramChange {
                     id,
                     target,
                     expected,
                     candidate,
                     activated_epoch: None,
-                    future_only: true,
+                    future_only,
                 });
                 Ok(id)
             }

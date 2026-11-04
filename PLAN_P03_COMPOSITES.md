@@ -338,10 +338,10 @@ callback-size-dependent expected values or unexplained media rebaselines are all
 - [x] Generalize primitive-only model/encoder assumptions and binding/configuration
   preparation. Use timing-only composite slots and actual action/sync dependency
   validation; handle empty-slot conversion, removal and generation reuse atomically.
-- [ ] Connect existing program/configuration/graph transactions to composite jobs,
+- [x] Connect existing program/configuration/graph transactions to composite jobs,
   effective-frame execution and owning returns. Preserve unrelated request progress
   while an edit waits, and reclaim failed/retired candidates off-render.
-- [ ] Publish coherent playheads, active children, repeat waits, active/pending plan
+- [x] Publish coherent playheads, active children, repeat waits, active/pending plan
   versions, scheduled transitions and complete resync state. Extend private session
   replacement preparation without publishing partial plans or graphs.
 
@@ -356,7 +356,7 @@ delivery. Confirm unchanged callback-wide budgets and generic dependency boundar
 - [ ] Implement composite creation/configuration/transport/options/removal methods
   currently returning `CompositeLoops` unavailable. Reserve app IDs and generational
   slots until confirmation, and map primitive/composite targets without ambiguity.
-- [ ] Extend request/result accounting, mirror/resync and active/pending plan metadata;
+- [x] Extend request/result accounting, mirror/resync and active/pending plan metadata;
   retain scheduled/accepted work and return terminal supersession/refusal correctly.
 - [ ] Implement conversion rollback, clear/removal/track-removal cleanup, source
   disappearance handling and capture/replacement mappings without stale references.
@@ -364,6 +364,30 @@ delivery. Confirm unchanged callback-wide budgets and generic dependency boundar
 Verification: adapter tests through typed and encoded delivery for delayed activation,
 refusal, out-of-order observations, resync, slot reuse, cancellation racing activation,
 displaced-owner reclamation and preservation of unrelated loops/media/controls.
+
+Adapter milestone: negotiated prepared-plan admission/conversion, stable public IDs,
+fresh runtime generations, bounded 32-record streaming, logical mutation tickets,
+exact activation-frame receipts, confirmed version projection, cancellation,
+supersession, resync, independent repeat alignment and composite-to-primitive Clear
+are implemented. An accepted waiting edit yields its RT owner for structural work,
+then restages its unchanged spans against the confirmed topology; source
+reassignment updates the relation without recompiling or retiming those spans.
+Stop cancels scheduled transport but preserves accepted owning plan edits. A plan
+that atomically changes its own source may install while stopped or at a restart;
+it cannot use early future-only adoption. Complete pending ingress metadata/spans
+and RT admission state are included in reliable resync.
+
+Milestone verification: warning-denying full-feature workspace build and native
+suite passed (2,767 tests, 7 skipped). The independent Node/Wasm run passed loop
+191, adapter 47, engine 80, worklet host 18 and protocol 5 tests. Chrome passed the
+same counts, after adapter unit-test browser registration was made explicit so
+its three assembly/refusal helpers run in Chrome too.
+Test-policy/parity/tracing and the four-target dependency boundaries passed.
+
+Public `CompositeLoops` capability and the legacy creation entry point remain gated
+until service/editor/monitoring/persistence support is complete. The negotiated
+prepared-plan API is exercised directly; this is not yet public P03 restoration.
+Lifecycle dependency cleanup and session capture/replacement integration remain.
 
 ### Stage 5 — service documents, editor operations and admission
 

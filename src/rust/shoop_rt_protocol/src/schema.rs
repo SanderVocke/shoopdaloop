@@ -254,6 +254,10 @@ pub enum Request {
         loop_id: LoopSlotId,
         strip: StripId,
     },
+    ResetComposite {
+        previous: LoopSlotId,
+        loop_id: LoopSlotId,
+    },
     RemoveLoop {
         loop_id: LoopSlotId,
     },
@@ -318,6 +322,7 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    CompositeApplied { version: u64, frame: u64 },
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
     Done,
@@ -434,6 +439,7 @@ pub enum Telemetry {
         length: u64,
         active_version: u64,
         pending_version: Option<u64>,
+        pending_admitted: bool,
         iteration: u64,
         passes: u64,
         waiting_repeat: bool,
@@ -480,6 +486,17 @@ pub enum Telemetry {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    CompositePending {
+        description: crate::CompositeDescription,
+        received: u32,
+        committed: bool,
+        admitted: bool,
+    },
+    CompositeStagedSpan {
+        id: u64,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
     CompositeStageFloor {
         id: u64,
     },

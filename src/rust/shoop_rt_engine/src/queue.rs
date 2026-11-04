@@ -36,6 +36,7 @@ fn structural(request: &Request) -> bool {
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
+            | Request::ResetComposite { .. }
             | Request::CreateComposite { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -251,9 +252,11 @@ impl ControlEndpoint {
             Request::CreateLoop { loop_id, strip: id } => {
                 loop_(loop_id.0.index, WAITING) || strip(id.0.index, WAITING)
             }
-            Request::RemoveLoop { loop_id } | Request::LoopSync { loop_id, .. } => {
-                loop_(loop_id.0.index, WAITING)
+            Request::ResetComposite {
+                previous: loop_id, ..
             }
+            | Request::RemoveLoop { loop_id }
+            | Request::LoopSync { loop_id, .. } => loop_(loop_id.0.index, WAITING),
             Request::Connect {
                 port: EnginePort::Strip(port),
                 ..
@@ -339,7 +342,10 @@ impl ControlEndpoint {
                     *blocked = true;
                 }
             }
-            Request::CreateLoop { loop_id, .. }
+            Request::ResetComposite {
+                previous: loop_id, ..
+            }
+            | Request::CreateLoop { loop_id, .. }
             | Request::CreateComposite { loop_id, .. }
             | Request::RemoveLoop { loop_id }
             | Request::LoopSync { loop_id, .. }
@@ -376,6 +382,12 @@ impl ControlEndpoint {
             }
             Change::CreateLoop { loop_id, .. } | Change::CreateComposite { loop_id, .. } => {
                 self.touched_loops[loop_id.0.index as usize] = HARD
+            }
+            Change::ResetComposite {
+                previous: loop_id, ..
+            } => {
+                raise(&mut self.touched_loops[loop_id.0.index as usize], HARD);
+                self.touch_followers(loop_id);
             }
             Change::RemoveLoop { loop_id } => {
                 self.touched_loops[loop_id.0.index as usize] = HARD;
@@ -480,6 +492,7 @@ impl ControlEndpoint {
                         program: shoop_rt_protocol::CompositeDescription {
                             id: 0,
                             loop_id,
+                            sync: None,
                             previous: None,
                             expected_version: 0,
                             version: 0,
@@ -510,6 +523,23 @@ impl ControlEndpoint {
                     Staged::Change(Change::CreateLoop { loop_id, strip })
                 }
             }
+            Request::ResetComposite { previous, loop_id } => match next.find_loop(previous) {
+                Some(entry)
+                    if entry.program.is_some()
+                        && entry.strip.is_some()
+                        && previous.0.index == loop_id.0.index
+                        && loop_id.0.generation
+                            > next.loop_generations[loop_id.0.index as usize]
+                        && !next
+                            .spans
+                            .iter()
+                            .flatten()
+                            .any(|span| span.span.target == previous) =>
+                {
+                    Staged::Change(Change::ResetComposite { previous, loop_id })
+                }
+                _ => Staged::Refused(Refusal::InvalidId),
+            },
             Request::RemoveLoop { loop_id } => match next.find_loop(loop_id) {
                 None => Staged::Refused(Refusal::InvalidId),
                 Some(_) if self.model.find_loop(loop_id).is_none() => Staged::Wait,

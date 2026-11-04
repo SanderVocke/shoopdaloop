@@ -237,10 +237,18 @@ pub(crate) fn execution_outcome(execution: &EngineExecution) -> Outcome {
     match execution.operation_result {
         Some(Reply::Failed(failure)) => Outcome::Refused(failure_refusal(failure)),
         Some(
-            Reply::Transition(completion)
-            | Reply::ProgramChanged { completion, .. }
+            Reply::ProgramChanged { completion, .. }
             | Reply::ProgramGraphChanged { completion, .. },
         ) => match completion.outcome {
+            shoop_loops::Outcome::Applied { .. } => Outcome::Done,
+            shoop_loops::Outcome::Superseded { .. } | shoop_loops::Outcome::Cancelled { .. } => {
+                Outcome::Refused(Refusal::Busy)
+            }
+            shoop_loops::Outcome::Failed { reason, .. } => {
+                Outcome::Refused(timeline_refusal(reason))
+            }
+        },
+        Some(Reply::Transition(completion)) => match completion.outcome {
             shoop_loops::Outcome::Applied { .. } | shoop_loops::Outcome::Superseded { .. } => {
                 Outcome::Done
             }
@@ -912,6 +920,7 @@ impl ControlEndpoint {
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::RemoveStrip { .. }
+            | Request::ResetComposite { .. }
             | Request::CreateComposite { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -1154,6 +1163,7 @@ impl ControlEndpoint {
                     self.composite.committed && d.loop_id == entry.id && d.version > program.version
                 })
                 .map(|d| d.version),
+            pending_admitted: self.composite.admitted,
             iteration: state.iteration,
             passes: state.passes,
             waiting_repeat: state.waiting_repeat,

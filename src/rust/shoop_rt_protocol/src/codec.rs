@@ -410,6 +410,11 @@ impl Wire for Request {
                 w.bool(retrigger)?;
                 w.bool(seek)
             }
+            Self::ResetComposite { previous, loop_id } => {
+                w.u8(39)?;
+                previous.put(w)?;
+                loop_id.put(w)
+            }
             Self::CreateComposite { loop_id, strip } => {
                 w.u8(37)?;
                 loop_id.put(w)?;
@@ -633,6 +638,10 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            39 => Self::ResetComposite {
+                previous: LoopSlotId::get(r)?,
+                loop_id: LoopSlotId::get(r)?,
+            },
             38 => Self::LoopIteration {
                 loop_id: LoopSlotId::get(r)?,
                 iteration: r.u64()?,
@@ -922,6 +931,11 @@ impl Wire for crate::ReplacementEdit {
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::CompositeApplied { version, frame } => {
+                w.u8(4)?;
+                w.u64(*version)?;
+                w.u64(*frame)
+            }
             Self::Done => w.u8(0),
             Self::ContentApplied { revision } => {
                 w.u8(2)?;
@@ -939,6 +953,10 @@ impl Wire for Outcome {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            4 => Self::CompositeApplied {
+                version: r.u64()?,
+                frame: r.u64()?,
+            },
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
@@ -1044,6 +1062,7 @@ impl Wire for Telemetry {
                 length,
                 active_version,
                 pending_version,
+                pending_admitted,
                 iteration,
                 passes,
                 waiting_repeat,
@@ -1056,6 +1075,7 @@ impl Wire for Telemetry {
                 w.u64(*length)?;
                 w.u64(*active_version)?;
                 pending_version.put(w)?;
+                w.bool(*pending_admitted)?;
                 w.u64(*iteration)?;
                 w.u64(*passes)?;
                 w.bool(*waiting_repeat)
@@ -1133,6 +1153,7 @@ impl Wire for Telemetry {
                 length: r.u64()?,
                 active_version: r.u64()?,
                 pending_version: Option::get(r)?,
+                pending_admitted: r.bool()?,
                 iteration: r.u64()?,
                 passes: r.u64()?,
                 waiting_repeat: r.bool()?,
@@ -1178,6 +1199,24 @@ impl Wire for Telemetry {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::CompositePending {
+                description,
+                received,
+                committed,
+                admitted,
+            } => {
+                w.u8(16)?;
+                description.put(w)?;
+                w.u32(*received)?;
+                w.bool(*committed)?;
+                w.bool(*admitted)
+            }
+            Self::CompositeStagedSpan { id, index, span } => {
+                w.u8(17)?;
+                w.u64(*id)?;
+                w.u32(*index)?;
+                span.put(w)
+            }
             Self::CompositeStageFloor { id } => {
                 w.u8(15)?;
                 w.u64(*id)
@@ -1282,6 +1321,17 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            16 => Self::CompositePending {
+                description: crate::CompositeDescription::get(r)?,
+                received: r.u32()?,
+                committed: r.bool()?,
+                admitted: r.bool()?,
+            },
+            17 => Self::CompositeStagedSpan {
+                id: r.u64()?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
             15 => Self::CompositeStageFloor { id: r.u64()? },
             12 => Self::Composite {
                 description: crate::CompositeDescription::get(r)?,

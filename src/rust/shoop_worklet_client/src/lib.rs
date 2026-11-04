@@ -1325,6 +1325,10 @@ impl RemoteWorkletBackend {
                 (
                     BackendCompositeId::from_raw(composite.id),
                     BackendCompositeState {
+                        prepared_unit_frames: 0,
+                        waiting_repeat: false,
+                        pending_stage: None,
+                        active_applied_frame: None,
                         mode: from_wire_loop_mode(composite.mode),
                         next_mode: composite.next_mode.map(from_wire_loop_mode),
                         next_transition_delay: composite.next_transition_delay,

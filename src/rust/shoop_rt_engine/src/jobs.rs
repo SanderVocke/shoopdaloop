@@ -118,6 +118,7 @@ pub(crate) struct Job {
     graph: Option<GraphStageId>,
     faded: bool,
     activated: bool,
+    applied_frame: Option<u64>,
     configured: bool,
     committed: bool,
     cancelled: bool,
@@ -146,6 +147,7 @@ impl Job {
             graph: None,
             faded: false,
             activated: false,
+            applied_frame: None,
             configured: false,
             committed: false,
             cancelled: false,
@@ -373,6 +375,7 @@ impl ControlEndpoint {
                 }
                 if matches!(job.kind, Kind::Composite { .. }) {
                     self.composite.clear();
+                    self.model.revision += 1;
                 }
                 self.clear_touched();
                 if self.family.id.is_some()
@@ -1106,7 +1109,7 @@ impl ControlEndpoint {
             let quantum = rt_runtime::Quantum::new(self.limits.quantum as usize)?;
             let base = quantum.ceil(Frame(self.at().0.max(self.quiet_until)))?;
             let stop = quantum.ceil(base.checked_add(self.settings.ramp as usize)?)?;
-            let activation = if faded == 0 {
+            let activation = if faded == 0 && stopping == 0 {
                 base
             } else if stopping == 0 {
                 stop
@@ -1164,6 +1167,23 @@ impl ControlEndpoint {
                     Frame(stop),
                     Operation::Transition {
                         target: loop_id(id),
+                        timing: Timing::At,
+                        transition: Transition::Stop,
+                    },
+                    Step::Prelude,
+                );
+            }
+        }
+        for slot in 0..self.model.loops.len() {
+            if let Some(entry) = self.model.loops[slot]
+                .filter(|entry| entry.program.is_some() && removed(slot, &self.model, &self.next))
+            {
+                self.cancel_planned(slot, None, Frame(base));
+                self.submit_job_loop(
+                    job,
+                    Frame(stop),
+                    Operation::Transition {
+                        target: loop_id(entry.id),
                         timing: Timing::At,
                         transition: Transition::Stop,
                     },
@@ -1295,7 +1315,20 @@ impl ControlEndpoint {
                 after.is_some() && after != self.next.loops[slot].map(|l| l.id)
             })
             .count();
-        if !self.room(3 * created + 3) {
+        let controls: usize = self
+            .model
+            .loops
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, entry)| {
+                entry.filter(|entry| {
+                    entry.program.is_none()
+                        && self.next.loops[slot].map(|old| old.id) != Some(entry.id)
+                })
+            })
+            .map(|entry| usize::from(entry.gain != 1.0) + usize::from(entry.balance != 0.0))
+            .sum();
+        if !self.room(3 * created + controls + 3) {
             core::mem::swap(&mut self.model, &mut self.next);
             return false;
         }
@@ -1306,7 +1339,21 @@ impl ControlEndpoint {
                 self.dirty[slot] = true;
             }
         }
-        self.answer_job(job, Outcome::Done);
+        let outcome = if let Kind::Composite { target, .. } = job.kind {
+            match (
+                self.model.find_loop(target).and_then(|entry| entry.program),
+                job.applied_frame,
+            ) {
+                (Some(program), Some(frame)) => Outcome::CompositeApplied {
+                    version: program.version,
+                    frame,
+                },
+                _ => Outcome::Refused(Refusal::Internal),
+            }
+        } else {
+            Outcome::Done
+        };
+        self.answer_job(job, outcome);
         let at = self.at();
         for slot in 0..self.model.loops.len() {
             let Some(entry) = self.model.loops[slot] else {
@@ -1330,6 +1377,28 @@ impl ControlEndpoint {
                 continue;
             }
             let target = loop_id(entry.id);
+            if entry.gain != 1.0 {
+                self.submit_job_loop(
+                    job,
+                    at,
+                    Operation::Gain {
+                        target,
+                        value: entry.gain,
+                    },
+                    Step::Prelude,
+                );
+            }
+            if entry.balance != 0.0 {
+                self.submit_job_loop(
+                    job,
+                    at,
+                    Operation::Balance {
+                        target,
+                        value: entry.balance,
+                    },
+                    Step::Prelude,
+                );
+            }
             let operation = Operation::Smoothing {
                 target,
                 smoothing: smoothing(self.settings.smoothing),
@@ -1473,6 +1542,12 @@ impl ControlEndpoint {
                 }
             }
         }
+        let applied_frame = match &result {
+            RuntimeResult::Execution(execution) if step == Step::Activation => {
+                Some(execution.actual_frame.0)
+            }
+            _ => None,
+        };
         let (refusal, reply, done, graph) = match result {
             RuntimeResult::Completion(outcome, command, retired) => {
                 let graph = match &command {
@@ -1483,6 +1558,15 @@ impl ControlEndpoint {
                 self.reclaim(command);
                 self.retire(retired);
                 let refusal = completion_refusal(outcome);
+                if step == Step::Activation
+                    && refusal.is_none()
+                    && self.composite.description.is_some()
+                {
+                    self.composite.admitted = true;
+                    self.model.revision += 1;
+                    let slot = self.composite.description.unwrap().loop_id.0.index as usize;
+                    self.dirty[slot] = true;
+                }
                 (refusal, None, refusal.is_some() || !schedule, graph)
             }
             RuntimeResult::Execution(execution) => {
@@ -1490,9 +1574,12 @@ impl ControlEndpoint {
                     (Step::Prelude | Step::Cleanup | Step::Retire | Step::ClearStop, _) => None,
                     (_, Outcome::Refused(refusal)) => Some(refusal),
                     (_, Outcome::Done) => None,
-                    (_, Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. }) => {
-                        Some(Refusal::Internal)
-                    }
+                    (
+                        _,
+                        Outcome::CompositeApplied { .. }
+                        | Outcome::ContentApplied { .. }
+                        | Outcome::ContentPrepared { .. },
+                    ) => Some(Refusal::Internal),
                 };
                 (refusal, execution.operation_result, true, None)
             }
@@ -1566,6 +1653,7 @@ impl ControlEndpoint {
                     ),
                 ) => {
                     job.activated = true;
+                    job.applied_frame = applied_frame;
                     epochs = Some((graph_epoch, topology_epoch));
                 }
                 (Step::Query, Some(Reply::State(cut))) => media = cut.playback,

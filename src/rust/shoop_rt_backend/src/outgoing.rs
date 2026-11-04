@@ -201,7 +201,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 composite: None,
                 repeat_sync: false,
                 slot,
-                track: track_id,
+                track: Some(track_id),
                 confirmed: false,
                 sync: None,
                 gain: 1.0,

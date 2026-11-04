@@ -27,6 +27,7 @@ pub(crate) struct Stage {
     pub received: usize,
     pub committed: bool,
     pub activation: Option<Sequence>,
+    pub admitted: bool,
     pub(crate) last_id: u64,
 }
 impl Stage {
@@ -37,6 +38,7 @@ impl Stage {
             received: 0,
             committed: false,
             activation: None,
+            admitted: false,
             last_id: 0,
         }
     }
@@ -45,6 +47,7 @@ impl Stage {
         self.received = 0;
         self.committed = false;
         self.activation = None;
+        self.admitted = false;
     }
 }
 
@@ -79,6 +82,11 @@ impl ControlEndpoint {
         } else if previous.id != d.loop_id
             || previous.program.map(|p| p.version) != Some(d.expected_version)
         {
+            return Err(Refusal::InvalidId);
+        }
+        if d.sync.is_some_and(|id| {
+            id == d.loop_id || d.previous == Some(id) || self.model.find_loop(id).is_none()
+        }) {
             return Err(Refusal::InvalidId);
         }
         if d.id == 0
@@ -134,6 +142,7 @@ impl ControlEndpoint {
                 self.composite.description = Some(d);
                 self.composite.received = 0;
                 self.composite.last_id = d.id;
+                self.model.revision += 1;
                 Ok(Some(Outcome::Done))
             }
             CompositeCommand::Span { id, index, span } => {
@@ -172,6 +181,7 @@ impl ControlEndpoint {
                 }
                 self.composite.spans[index as usize] = span;
                 self.composite.received += 1;
+                self.model.revision += 1;
                 Ok(Some(Outcome::Done))
             }
             CompositeCommand::Commit { id } => {
@@ -208,6 +218,10 @@ impl ControlEndpoint {
                         }
                     }
                 }
+                self.next.loops[d.loop_id.0.index as usize]
+                    .as_mut()
+                    .unwrap()
+                    .sync = d.sync;
                 self.next
                     .install_program(d, &self.composite.spans[..self.composite.received]);
                 self.touched_loops[d.loop_id.0.index as usize] = if d.previous.is_some() {
@@ -216,6 +230,7 @@ impl ControlEndpoint {
                     crate::queue::SOFT
                 };
                 self.composite.committed = true;
+                self.model.revision += 1;
                 let mut job = Job::composite(d.loop_id, d.previous.is_some());
                 job.correlation = Some(correlation);
                 self.job = Some(job);
@@ -243,6 +258,7 @@ impl ControlEndpoint {
                     Ok(Some(Outcome::Done))
                 } else {
                     self.composite.clear();
+                    self.model.revision += 1;
                     Ok(Some(Outcome::Done))
                 }
             }

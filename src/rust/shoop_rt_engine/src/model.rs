@@ -206,6 +206,10 @@ pub(crate) enum Change {
         strip: Option<StripId>,
         program: CompositeDescription,
     },
+    ResetComposite {
+        previous: LoopSlotId,
+        loop_id: LoopSlotId,
+    },
     RemoveLoop {
         loop_id: LoopSlotId,
     },
@@ -410,6 +414,20 @@ impl Model {
                     balance: 0.,
                 });
             }
+            Change::ResetComposite { previous, loop_id } => {
+                let entry = self.loops[previous.0.index as usize]
+                    .as_mut()
+                    .expect("validated composite");
+                entry.id = loop_id;
+                entry.program = None;
+                self.loop_generations[loop_id.0.index as usize] = loop_id.0.generation;
+                self.remove_spans(previous);
+                for entry in self.loops.iter_mut().flatten() {
+                    if entry.sync == Some(previous) {
+                        entry.sync = Some(loop_id);
+                    }
+                }
+            }
             Change::RemoveLoop { loop_id } => {
                 self.loops[loop_id.0.index as usize] = None;
                 self.remove_spans(loop_id);
@@ -418,6 +436,9 @@ impl Model {
             Change::Sync { loop_id, source } => {
                 if let Some(entry) = self.loops[loop_id.0.index as usize].as_mut() {
                     entry.sync = source;
+                    if let Some(program) = &mut entry.program {
+                        program.sync = source;
+                    }
                 }
             }
             Change::Connect {

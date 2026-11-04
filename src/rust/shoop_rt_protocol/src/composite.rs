@@ -13,6 +13,7 @@ pub enum CompositeKind {
 pub struct CompositeDescription {
     pub id: u64,
     pub loop_id: LoopSlotId,
+    pub sync: Option<LoopSlotId>,
     /// An empty primitive being converted in the same physical slot. Conversion
     /// uses a fresh generation; ordinary edits leave this absent.
     pub previous: Option<LoopSlotId>,

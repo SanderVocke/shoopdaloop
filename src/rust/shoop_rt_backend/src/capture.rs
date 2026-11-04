@@ -90,7 +90,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             if !self.canonical_content.contains_key(&id) {
                 let entry = &self.mirror.loops[&id];
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
-                let track = &self.mirror.tracks[&entry.track];
+                let track = &self.mirror.tracks[&entry
+                    .track
+                    .ok_or_else(|| anyhow!("composites have no media channels"))?];
                 let (channels, midi) = (track.audio_channels as usize, track.midi);
                 let audio_bytes = u64::from(length)
                     .checked_mul(channels as u64 * 4)

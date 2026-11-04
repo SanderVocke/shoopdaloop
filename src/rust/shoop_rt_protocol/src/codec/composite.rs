@@ -7,6 +7,7 @@ impl Wire for CompositeDescription {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u64(self.id)?;
         self.loop_id.put(w)?;
+        self.sync.put(w)?;
         self.previous.put(w)?;
         w.u64(self.expected_version)?;
         w.u64(self.version)?;
@@ -22,6 +23,7 @@ impl Wire for CompositeDescription {
         Ok(Self {
             id: r.u64()?,
             loop_id: LoopSlotId::get(r)?,
+            sync: Option::get(r)?,
             previous: Option::get(r)?,
             expected_version: r.u64()?,
             version: r.u64()?,

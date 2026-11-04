@@ -351,7 +351,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 id,
                 edit: ReplacementEdit::Loop {
                     loop_id: entry.slot,
-                    strip: candidate.tracks[&entry.track].strip,
+                    strip: candidate.tracks
+                        [&entry.track.ok_or_else(|| anyhow!("missing loop owner"))?]
+                        .strip,
                     sync: sync_slots.get(&loop_id).copied(),
                     frames: entry.view.length,
                     audio: pair[0],

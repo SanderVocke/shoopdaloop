@@ -56,6 +56,7 @@ fn plan(id: u64, version: u64) -> CompositeDescription {
     CompositeDescription {
         id,
         loop_id: loop_id(3, 2),
+        sync: Some(loop_id(0, 1)),
         previous: (version == 1).then_some(loop_id(3, 1)),
         expected_version: version - 1,
         version,
@@ -446,7 +447,10 @@ fn an_at_limit_sparse_plan_larger_than_the_command_window_stages_in_bounded_batc
         }
         h.run(16, 16);
     }
-    assert_eq!(h.results.get(&commit), Some(&Outcome::Done));
+    assert!(matches!(
+        h.results.get(&commit),
+        Some(Outcome::CompositeApplied { version: 1, .. })
+    ));
     h.settle();
     h.done(transition(loop_id(3, 2), LoopMode::Playing));
     assert!(h.telemetry.iter().any(|(_,t)|matches!(t,Telemetry::Composite {active_version:1,length,..} if *length==d.iterations*2)));
@@ -502,6 +506,7 @@ fn private_replacement_prepares_composites_inaudibly_and_loads_them_stopped_with
         ReplacementEdit::Composite(CompositeDescription {
             id: 1,
             loop_id: parent,
+            sync: None,
             previous: None,
             expected_version: 0,
             version: 1,
@@ -699,4 +704,44 @@ fn nested_starts_and_iteration_seeks_apply_child_snapshots_in_the_same_quantum()
         _ => None,
     });
     assert_eq!(state, Some(7));
+}
+
+#[shoop_test]
+fn clearing_a_composite_restores_primitive_controls_and_ends_child_occurrences() {
+    let mut h = setup();
+    h.done(Request::LoopGain {
+        loop_id: loop_id(3, 1),
+        gain: 0.25,
+    });
+    let d = plan(1, 1);
+    stage(&mut h, d, &spans());
+    h.done(Request::Composite(CompositeCommand::Commit { id: 1 }));
+    h.done(transition(loop_id(3, 2), LoopMode::Playing));
+    h.run(2, 1);
+    h.done(Request::ResetComposite {
+        previous: loop_id(3, 2),
+        loop_id: loop_id(3, 3),
+    });
+    h.settle();
+    assert!(matches!(
+        h.last_loop(loop_id(1, 1)).unwrap().1,
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            ..
+        }
+    ));
+    h.input = Box::new(|_, _| 1.0);
+    h.send(transition(loop_id(3, 3), LoopMode::Recording));
+    h.run(4, 1);
+    h.done(transition(loop_id(3, 3), LoopMode::Stopped));
+    h.done(transition(loop_id(3, 3), LoopMode::Playing));
+    let first = h.outputs[0].len();
+    h.run(4, 1);
+    assert!(
+        h.outputs[0][first..]
+            .iter()
+            .all(|sample| (*sample - 0.25).abs() < 1e-6),
+        "{:?}",
+        &h.outputs[0][first..]
+    );
 }

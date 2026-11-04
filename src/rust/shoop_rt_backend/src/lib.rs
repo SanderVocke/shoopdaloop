@@ -26,6 +26,9 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
@@ -35,6 +38,7 @@ use alloc::vec::Vec;
 mod backend;
 mod capture;
 mod clock;
+mod composites;
 mod family;
 mod import;
 mod incoming;
@@ -159,6 +163,7 @@ pub struct RtBackend<C, K> {
     prepared_content:
         alloc::collections::BTreeMap<shoop_backend::BackendLoopId, prepared::Prepared>,
     capture_validation: Option<prepared::Validation>,
+    composites: composites::Composites,
 }
 
 pub(crate) fn unavailable(capability: BackendCapability) -> anyhow::Error {
@@ -206,6 +211,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             canonical_imports: Default::default(),
             prepared_content: Default::default(),
             capture_validation: None,
+            composites: Default::default(),
         })
     }
 
@@ -238,6 +244,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub fn clock(&self) -> &K {
         &self.clock
     }
+    /// Refresh reliable configuration while preserving accepted operations and live playback.
+    pub fn request_resync(&mut self) -> Result<()> {
+        self.ready()?;
+        self.client
+            .resync()
+            .map_err(|error| anyhow!("resynchronization failed: {error:?}"))?;
+        self.link = Link::Resyncing;
+        self.resync = Some(Vec::new());
+        Ok(())
+    }
+
     /// The confirmed synchronization source of a live loop.
     pub fn loop_sync_source(
         &self,
@@ -285,6 +302,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 self.read_cancel_needed = false;
             }
+            self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
             let sent = self.send();
@@ -313,7 +331,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn require_mutation_capacity(&self, count: usize) -> Result<()> {
-        let used = self.requests.outstanding() + self.mutation_completions.len();
+        let used = self.requests.outstanding()
+            + self.mutation_completions.len()
+            + self.composites.jobs.len();
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
                 .requests
@@ -333,7 +353,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn idle(&self) -> bool {
         match self.link {
             Link::Ready => {
-                self.requests.is_empty()
+                self.composites.jobs.is_empty()
+                    && self.requests.is_empty()
                     && !self.read_cancel_needed
                     && self.reads.idle()
                     && self.telemetry_fresh
@@ -437,11 +458,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter()
             .chain(self.requests.in_flight.values())
         {
+            if pending.sequence == 0 {
+                continue;
+            }
             self.mutation_completions.push(BackendMutationCompletion {
                 sequence: pending.sequence,
                 result: Err(reason.clone()),
             });
         }
+        self.disconnect_composites();
         self.requests.clear();
         self.reads.clear();
         if let Some(preview) = &mut self.preview {

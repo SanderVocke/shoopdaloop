@@ -66,7 +66,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 {
                     bail!("stop affected recording before replacing family content");
                 }
-                let track = &self.mirror.tracks[&entry.track];
+                let track = &self.mirror.tracks[&entry
+                    .track
+                    .ok_or_else(|| anyhow!("composites have no media channels"))?];
                 if image.source_id != member.loop_id.raw()
                     || image.length % update.quantum_frames != 0
                     || image.audio.len() != track.audio_channels as usize

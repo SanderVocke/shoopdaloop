@@ -141,3 +141,25 @@ Resync carries the complete active spans, source, ownership and repeat policy.
 Retain old-stack fixtures as historical evidence. New-library and production tests
 must describe the new contract explicitly, including source stop/restart/resize,
 repeat waiting, transactional preflight and callback-partition invariance.
+
+### Adapter transactions
+
+Prepared edits reserve one logical mutation ticket. Begin/span/commit/cancel wire
+requests do not consume application mutation sequences. Uploads retain a bounded
+32-record window, including plans larger than the mutation-result pool. Reliable
+receipts carry the actual render activation frame; projection publishes a new
+version only with matching generation/version telemetry. Reliable resync includes
+active spans, the ingress ID floor, candidate header/spans and admission phase.
+
+When a pending plan would block a structural change, the production adapter
+cancels the retained RT candidate, allows that structural transaction to finish,
+and restages the accepted immutable spans against the new topology. This changes
+no musical time. Later explicit source reassignment wins over the earlier edit's
+source selection. Stop clears transport requests while preserving owning plan
+edits so they can publish after Stop. A combined program/source update is atomic
+and uses stopped/restart eligibility instead of early future-only adoption.
+
+Clear retires a track-owned composite's timing identity, stops its authored child
+occurrences, and installs an empty primitive with a fresh runtime generation. Its
+public backend identity remains stable. Public feature publication remains gated
+until the service, editor, monitoring and persistence paths are complete.

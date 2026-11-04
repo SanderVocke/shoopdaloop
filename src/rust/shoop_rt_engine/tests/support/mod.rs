@@ -235,7 +235,15 @@ impl Harness {
     }
     pub fn done(&mut self, request: Request) {
         let outcome = self.apply(request);
-        if matches!(request, Request::ContentApply { .. }) {
+        if matches!(
+            request,
+            Request::Composite(shoop_rt_protocol::CompositeCommand::Commit { .. })
+        ) {
+            assert!(
+                matches!(outcome, Outcome::CompositeApplied { .. }),
+                "{request:?}: {outcome:?}"
+            );
+        } else if matches!(request, Request::ContentApply { .. }) {
             assert!(
                 matches!(outcome, Outcome::ContentApplied { .. }),
                 "{request:?}: {outcome:?}"

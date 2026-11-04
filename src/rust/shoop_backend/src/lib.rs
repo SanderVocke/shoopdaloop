@@ -32,6 +32,11 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::sync::Arc;
 use anyhow::{anyhow, Result};
 use core::time::Duration;
+mod composite;
+pub use composite::{
+    BackendCompositeLimits, BackendCompositeOutcome, BackendCompositePending,
+    BackendCompositeReceipt, BackendCompositeSpan, BackendPreparedCompositePlan,
+};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverRuntimeState, ResolvedAudioDriverConfig, TrackFxState,
@@ -751,6 +756,10 @@ pub struct BackendActiveCompositeChild {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BackendCompositeState {
+    pub prepared_unit_frames: u64,
+    pub waiting_repeat: bool,
+    pub pending_stage: Option<BackendCompositePending>,
+    pub active_applied_frame: Option<u64>,
     pub mode: BackendLoopMode,
     pub next_mode: Option<BackendLoopMode>,
     pub next_transition_delay: Option<u32>,
@@ -1150,6 +1159,7 @@ pub struct BackendMutationCompletion {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
+    pub composite_receipts: Vec<BackendCompositeReceipt>,
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
@@ -1260,6 +1270,63 @@ pub trait Backend {
     fn create_loop(&mut self) -> Result<BackendLoopId>;
     fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
         Err(anyhow!("composite loops are unavailable"))
+    }
+    fn composite_limits(&self) -> Option<BackendCompositeLimits> {
+        None
+    }
+    fn convert_empty_loop_to_composite(
+        &mut self,
+        _loop_id: BackendLoopId,
+    ) -> Result<BackendCompositeId> {
+        Err(anyhow!(
+            "this backend cannot convert an empty loop to a prepared composite"
+        ))
+    }
+    fn convert_empty_loop_to_prepared_composite(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _plan: &BackendPreparedCompositePlan,
+    ) -> Result<(BackendCompositeId, u64)> {
+        Err(anyhow!(
+            "this backend cannot atomically convert an empty slot with a prepared plan"
+        ))
+    }
+    fn clear_composite_loop(&mut self, _composite: BackendCompositeId) -> Result<BackendLoopId> {
+        Err(anyhow!(
+            "this backend cannot restore a composite slot to an empty loop"
+        ))
+    }
+    fn configure_prepared_composite_loop(
+        &mut self,
+        _composite: BackendCompositeId,
+        _plan: &BackendPreparedCompositePlan,
+    ) -> Result<u64> {
+        Err(anyhow!(
+            "this backend cannot install a prepared frame program"
+        ))
+    }
+    fn cancel_composite_plan(
+        &mut self,
+        _composite: BackendCompositeId,
+        _version: u64,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot cancel a prepared frame program"
+        ))
+    }
+    fn set_loop_repeat_sync(&mut self, _loop_id: BackendLoopId, _enabled: bool) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot set repeat alignment independently of its source"
+        ))
+    }
+    fn set_composite_repeat_sync(
+        &mut self,
+        _composite: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "this backend cannot set composite repeat alignment independently of its source"
+        ))
     }
     /// Installs a composite configuration and returns its backend-wide plan version.
     fn configure_composite_loop(

@@ -163,7 +163,7 @@ pub(crate) struct Loop {
     pub program_spans: Vec<shoop_rt_protocol::CompositeSpan>,
     pub composite: Option<shoop_rt_protocol::Telemetry>,
     pub repeat_sync: bool,
-    pub track: BackendTrackId,
+    pub track: Option<BackendTrackId>,
     pub confirmed: bool,
     pub sync: Option<BackendLoopId>,
     pub gain: f32,
@@ -251,6 +251,16 @@ impl Slots {
         self.used[index] = true;
         self.generations[index] = self.generations[index].max(self.floor) + 1;
         Some(SlotId::new(index as u32, self.generations[index]))
+    }
+
+    pub fn bump_generation(&mut self, current: SlotId) -> Option<SlotId> {
+        let index = current.index as usize;
+        if !self.used.get(index).copied().unwrap_or(false) {
+            return None;
+        }
+        let generation = self.generations[index].max(self.floor).checked_add(1)?;
+        self.generations[index] = generation;
+        Some(SlotId::new(current.index, generation))
     }
 
     /// The engine used no generation above `floor` on any slot.
@@ -450,9 +460,11 @@ impl Mirror {
 
     /// A loop whose track exists and is not being removed.
     pub fn live_loop(&self, id: BackendLoopId) -> Option<&Loop> {
-        self.loops
-            .get(&id)
-            .filter(|entry| self.live_track(entry.track).is_some())
+        self.loops.get(&id).filter(|entry| {
+            entry
+                .track
+                .is_none_or(|track| self.live_track(track).is_some())
+        })
     }
 
     /// A port whose owner exists and is not being removed.
@@ -542,7 +554,7 @@ impl Mirror {
         if self.slot_loops.get(&entry.slot) == Some(&id) {
             self.slot_loops.remove(&entry.slot);
         }
-        if let Some(track) = self.tracks.get_mut(&entry.track) {
+        if let Some(track) = entry.track.and_then(|track| self.tracks.get_mut(&track)) {
             track.loops.retain(|candidate| *candidate != id);
         }
         for other in self.loops.values_mut() {

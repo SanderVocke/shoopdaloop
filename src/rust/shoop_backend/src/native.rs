@@ -5134,6 +5134,10 @@ impl Backend for NativeBackend {
                 Some((
                     *id,
                     BackendCompositeState {
+                        prepared_unit_frames: 0,
+                        waiting_repeat: false,
+                        pending_stage: None,
+                        active_applied_frame: None,
                         mode: from_native_mode(state.mode),
                         next_mode: state.maybe_next_mode.map(from_native_mode),
                         next_transition_delay: state.maybe_next_mode_delay,
@@ -5149,6 +5153,7 @@ impl Backend for NativeBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_receipts: Vec::new(),
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,
                 xruns: driver.xruns_since_last,

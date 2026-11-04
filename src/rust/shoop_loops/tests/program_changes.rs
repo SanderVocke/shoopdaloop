@@ -482,7 +482,7 @@ fn source_stop_cancellation_staleness_and_owner_backpressure_preserve_frame_publ
                 advance(&mut r, 13);
                 assert_eq!(
                     r.completion(change).unwrap().unwrap().outcome,
-                    Outcome::Cancelled { frame: Frame(2) }
+                    Outcome::Applied { frame: Frame(2) }
                 );
             }
             _ => {
@@ -506,7 +506,11 @@ fn source_stop_cancellation_staleness_and_owner_backpressure_preserve_frame_publ
             .unwrap();
         assert_eq!(
             result.activated_epoch,
-            if case == 0 { Some(Epoch(1)) } else { None }
+            if case == 0 || case == 2 {
+                Some(Epoch(1))
+            } else {
+                None
+            }
         );
         drop(result);
     }
@@ -565,7 +569,7 @@ fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut
         assert_no_heap(|| r.finish()).unwrap();
         advance(&mut r, 10);
         let expected = match case {
-            3 | 7 => Outcome::Cancelled { frame: Frame(4) },
+            7 => Outcome::Cancelled { frame: Frame(4) },
             2 => Outcome::Applied { frame: Frame(8) },
             5 | 6 => Outcome::Applied { frame: Frame(6) },
             _ => Outcome::Applied { frame: Frame(4) },
@@ -575,7 +579,7 @@ fn same_frame_stop_seek_restart_and_cancelled_preview_keep_one_configuration_cut
             expected,
             "case {case}"
         );
-        assert_eq!(r.epoch(), Epoch(if case == 3 || case == 7 { 0 } else { 1 }));
+        assert_eq!(r.epoch(), Epoch(if case == 7 { 0 } else { 1 }));
         assert_eq!(
             r.state(id(5)).unwrap().mode,
             if case == 3 || case == 4 {
@@ -778,7 +782,7 @@ fn invalid_candidate_shapes_epochs_and_raw_program_tags_return_owners_without_mu
         let mut candidate_limits = limits(0);
         match case {
             0 => new.loops[4].id = LoopId::from_parts(4, 2).unwrap(),
-            1 => new.loops[5].sync_source = None,
+            1 => new.loops[4].sync_source = Some(id(0)),
             2 => new.triggers.push(Trigger {
                 source: id(0),
                 target: id(4),
@@ -1066,4 +1070,37 @@ fn permanent_quiescence_recovers_pending_speculative_and_committed_owners_withou
         assert_eq!(error, Error::InvalidState);
         drop(candidate);
     }
+}
+
+#[shoop_test]
+fn a_paired_program_source_update_waits_for_a_real_restart_without_changing_pass_timing() {
+    let old = description(false, false);
+    let mut new = old.clone();
+    new.loops[5].sync_source = None;
+    let mut r =
+        Resolver::prepare(prepared(&old, 1024), rt_runtime::Quantum::new(1).unwrap()).unwrap();
+    start(&mut r);
+    advance(&mut r, 1);
+    let candidate = prepared(&new, 1024);
+    let change =
+        assert_no_heap(|| r.stage_program(Epoch(0), id(5), Sequence(3), Frame(1), candidate))
+            .unwrap();
+    advance(&mut r, 6);
+    assert_eq!(r.epoch(), Epoch(0));
+    assert_eq!(r.state(id(5)).unwrap().position, 6);
+    assert_eq!(r.topology().node(id(5)).unwrap().sync_source, Some(id(0)));
+    advance(&mut r, 7);
+    assert_eq!(r.epoch(), Epoch(1));
+    assert_eq!(r.state(id(5)).unwrap().position, 1);
+    assert_eq!(r.state(id(5)).unwrap().content_length, 6);
+    assert_eq!(r.topology().node(id(5)).unwrap().sync_source, None);
+    let returned = assert_no_heap(|| r.take_program_change(change))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        returned.completion.outcome,
+        Outcome::Applied { frame: Frame(6) }
+    );
+    assert_eq!(returned.activated_epoch, Some(Epoch(1)));
+    drop(returned);
 }

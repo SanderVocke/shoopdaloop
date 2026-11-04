@@ -1023,6 +1023,7 @@ impl Boundary<'_> {
                         for record in self.scratch.records.iter_mut().flatten() {
                             if record.terminal.is_none()
                                 && record.request.target == state.id
+                                && record.request.transition != Transition::Program
                                 && record.request.sequence < sequence
                             {
                                 record.terminal = Some(Outcome::Cancelled { frame: self.frame });
