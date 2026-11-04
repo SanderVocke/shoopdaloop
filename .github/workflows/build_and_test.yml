@@ -97,6 +97,8 @@ jobs:
       - name: Test direct audio and MIDI through production host paths
         run: python3 scripts/run_native_jack_tests.py
       - name: Build and test native driver feature combinations
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: "1"
         run: |
           for features in jack cpal jack,cpal; do
             cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features --features "$features"
@@ -414,11 +416,20 @@ jobs:
         with:
           tool: wasm-pack@0.15.0
 
+      - name: Bound Linux debug symbol storage
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        shell: bash
+        run: |
+          printf '%s\n' \
+            'CARGO_PROFILE_DEV_DEBUG=line-tables-only' \
+            'CARGO_PROFILE_TEST_DEBUG=line-tables-only' \
+            'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
+
       - name: Cache Rust builds
         if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: app-v1
+          prefix-key: ${{ matrix.target == 'linux' && matrix.profile == 'debug' && 'app-v2-line-tables' || 'app-v1' }}
           shared-key: ${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}
           cache-targets: "true"
           cache-all-crates: "true"
