@@ -78,6 +78,16 @@ check growth, full erasure, old exports and exact credit recovery. These sizing
 changes retain the library checkpoint representation and do not implement the
 continuous MIDI writer or enable application capabilities.
 
+Musical gesture settlement now has a checked portable policy resolver as well as
+window arithmetic: authoritative target cycle/period, apply-N clamping, synced
+post-mode, unsynced prefix Recording and completion delay (including pending
+target transitions). Unit scenarios cover both play-after-record settings,
+non-integral target periods, absent sync and overflowing musical intent. Service
+target selection and actual RT settlement still need wiring. A reference audit
+also found that legacy Control Grab expands selected targets while raw
+AdoptRingbuffers uses the exact list; the initial plan conflated them. This
+behavior choice has been raised with the user before service integration.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

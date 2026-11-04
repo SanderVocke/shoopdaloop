@@ -43,6 +43,14 @@ Available samples start at logical zero in the legacy adoption path; missing
 requested duration is explicitly empty at the end. An unavailable/faulted source
 range is not silently reclassified as startup padding.
 
+`GestureSpec` resolves the musical portion using the authoritative sync period
+and targeted state at that cut. It returns the initial mode and, for unsynced
+grabs, the completion mode/delay. Target membership, solo peers and atomic
+admission remain service/engine responsibilities. The target-membership audit
+found that legacy Control Grab expands selection while raw AdoptRingbuffers is
+exact-list; the initial combined row above is awaiting reconciliation with that
+reference behavior before the service route is enabled.
+
 ## Replacing and continuation contracts
 
 Replacing uses fixed-period overwrite and cursor repetition, without ordinary
