@@ -4376,6 +4376,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_external"
+version = "0.3.0"
+dependencies = [
+ "rt_runtime",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "rt_runtime"
 version = "0.3.0"
 dependencies = [

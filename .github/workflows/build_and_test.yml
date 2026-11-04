@@ -97,7 +97,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p rt_external -p shoop_loops --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -765,7 +765,7 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
-            --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
+            --package rt_runtime --package rt_external --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
             --package shoop_app_protocol --package shoop_app_client \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \

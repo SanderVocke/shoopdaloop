@@ -368,3 +368,5 @@ src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile reso
 src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
 src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
+src/rust/rt_external/src/lib.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
+src/rust/rt_external/src/timing.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.

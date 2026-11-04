@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Planning only; do not implement as part of writing this document. Base the work
+Implementation authorized by the user; execute the stages below. Base the work
 on `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
@@ -129,15 +129,15 @@ preceding stage. Keep fixes and verification within their owning milestone.
 
 ### 1. Branch, crate, and timing contract
 
-- [ ] Create `feat/external-inline-processor` from `feat/fixed-quantum-runtime`,
+- [x] Create `feat/external-inline-processor` from `feat/fixed-quantum-runtime`,
   retaining this plan and recording the actual base revision.
-- [ ] Add the portable crate, standard workspace metadata, shared Wasm test
+- [x] Add the portable crate, standard workspace metadata, shared Wasm test
   registration, and validated timing/capacity preparation. Update the lockfile
   and tracing inventory as required by the new source modules.
-- [ ] Add a focused production/build dependency audit for the new crate, reusing
+- [x] Add a focused production/build dependency audit for the new crate, reusing
   existing audit machinery so engine/host/application or OS dependencies cannot
   enter it. Keep dev-only engine composition dependencies outside this boundary.
-- [ ] Verify timing with one table-driven group: Q=1/16/32/64/128; representative
+- [x] Verify timing with one table-driven group: Q=1/16/32/64/128; representative
   M=1/2/3 and S=0/1/>M cases; exact B/L; zero M and overflow/limit refusals before
   allocation. Check the crate and its Wasm target. Commit the milestone.
 
@@ -267,3 +267,12 @@ builds or implementation tests.
   validation/storage/recovery, engine composition, portable test runner, and
   dependency audits on `3ed8ff11`. No implementation or implementation checks
   have been performed. All implementation stages remain unchecked.
+
+- Implementation started on `feat/external-inline-processor` from `3ed8ff11`.
+  The managed Debian workspace has no Rust toolchain; validation uses a Docker
+  Rust toolchain with the session proxy and read-only trusted CA bundle.
+
+- Stage 1: timing test passes natively; warning-denying native build and Wasm
+  library check pass. The extended portable dependency audit passes on all four
+  targets; existing audit unit tests, test-attribute policy and tracing inventory
+  pass. Rust 1.99.1 is used in the build container.
