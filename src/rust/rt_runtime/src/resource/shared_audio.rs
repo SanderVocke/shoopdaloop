@@ -369,7 +369,7 @@ impl AudioStore {
         Ok(())
     }
 
-    fn own(&mut self, mut view: View, writable: bool) -> Result<Handle, Error> {
+    fn own(&mut self, view: View, writable: bool) -> Result<Handle, Error> {
         if self.closed {
             return Err(Error::InvalidState);
         }
@@ -385,38 +385,62 @@ impl AudioStore {
         if let Some(base) = view.base {
             self.bases[base].as_mut().expect("owned base").references += 1;
         }
+        Ok(self.insert_view(view, writable))
+    }
+
+    fn insert_view(&mut self, mut view: View, writable: bool) -> Handle {
         let slot = self.free_views.pop().expect("prepared view credit");
         view.writable = writable;
         self.views[slot].value = Some(view);
         self.debt += view.credit;
-        Ok(Handle {
+        Handle {
             scope: self.scope,
             slot: slot as u32,
             generation: self.views[slot].generation,
-        })
+        }
     }
 
-    pub fn grab(&mut self, range: Range<Frame>) -> Result<TakeId, Error> {
+    pub fn grab(&mut self, io: &mut RenderIo<'_>, range: Range<Frame>) -> Result<TakeId, Error> {
+        self.check(io.store)?;
         let coverage = self.coverage()?;
         if range.start < coverage.start || range.end > coverage.end || range.start >= range.end {
             return Err(Error::InvalidFrame);
         }
         let first = (range.start.0 % self.ring_frames() as u64) as usize;
-        self.own(
+        let frames = (range.end.0 - range.start.0) as usize;
+        let last_page = (first + frames - 1) / self.page_frames;
+        let ranges = [
+            first / self.page_frames..(last_page + 1).min(self.ring_pages),
+            0..(last_page + 1).saturating_sub(self.ring_pages),
+        ];
+        let credit = ranges.iter().map(|range| range.end - range.start).sum();
+        if self.free_views.is_empty()
+            || credit > self.debt_limit - self.debt
+            || self.free_nodes.len() < 4 * (self.depth + 1)
+        {
+            return Err(Error::Capacity);
+        }
+        let steps = 8 * (self.depth + 1);
+        io.store.charge_work(WorkClass::Render, 0, steps)?;
+        io.store.note_operation(WorkClass::Render);
+        for _ in 0..steps {
+            io.store.index_step(WorkClass::Render);
+        }
+        let root = self.clip(self.history, 0, self.marks.len(), &ranges);
+        Ok(TakeId(self.insert_view(
             View {
-                root: self.history,
+                root,
                 first,
-                frames: (range.end.0 - range.start.0) as usize,
+                frames,
                 revision: Revision(0),
                 writable: true,
                 retiring: false,
                 base: None,
                 modulus: self.ring_frames(),
-                credit: self.ring_pages,
+                credit,
             },
             true,
-        )
-        .map(TakeId)
+        )))
     }
 
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
@@ -462,7 +486,7 @@ impl AudioStore {
         {
             return Err(Error::Capacity);
         }
-        let credit = self.ring_pages.max(frames.div_ceil(self.page_frames));
+        let credit = frames.div_ceil(self.page_frames);
         if self.free_views.is_empty() || credit > self.debt_limit - self.debt {
             return Err(Error::Capacity);
         }
@@ -540,6 +564,37 @@ impl AudioStore {
             kind,
         });
         index
+    }
+
+    fn clip(
+        &mut self,
+        root: Option<usize>,
+        low: usize,
+        high: usize,
+        ranges: &[Range<usize>; 2],
+    ) -> Option<usize> {
+        let root = root?;
+        if ranges
+            .iter()
+            .all(|range| range.end <= low || range.start >= high)
+        {
+            return None;
+        }
+        if ranges
+            .iter()
+            .any(|range| range.start <= low && range.end >= high)
+        {
+            self.retain_root(Some(root))
+                .expect("prepared reference bound");
+            return Some(root);
+        }
+        let Kind::Branch(children) = self.nodes[root].expect("history branch").kind else {
+            unreachable!("partial page-index interval")
+        };
+        let middle = low + (high - low) / 2;
+        let left = self.clip(children[0], low, middle, ranges);
+        let right = self.clip(children[1], middle, high, ranges);
+        Some(self.allocate(Kind::Branch([left, right])))
     }
 
     fn set(&mut self, root: Option<usize>, depth: usize, page: usize, lease: LeaseId) -> usize {

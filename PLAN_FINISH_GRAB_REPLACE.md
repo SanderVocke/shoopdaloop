@@ -55,6 +55,14 @@ The engine test allocator is now defined once at crate scope so both sets retain
 their heap guards. This repairs a target-integration compile failure; fresh CI
 must confirm it before either milestone is called validated.
 
+Audio grabs now clip persistent roots at the requested page boundaries, sharing
+interior branches without copying samples. Owner credits cover the visible pages,
+including partial boundaries, rather than pinning the whole history ring. A
+heap-guarded scenario admits several short users within less than one additional
+ring's budget, edits them independently across wrap, retains an old export and
+keeps live capture running at the owner limit. Production global metadata limits
+and writer integration are still open.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

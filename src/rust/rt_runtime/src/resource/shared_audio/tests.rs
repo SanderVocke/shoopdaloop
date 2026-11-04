@@ -66,7 +66,9 @@ fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
         media
             .append(&mut store.render_io(), Frame(0), &[1., 2., 3., 4.])
             .unwrap();
-        let take = media.grab(Frame(0)..Frame(4)).unwrap();
+        let take = media
+            .grab(&mut store.render_io(), Frame(0)..Frame(4))
+            .unwrap();
         let old = media.export(take).unwrap();
         media
             .discontinuity(&mut store.render_io(), Frame(8))
@@ -80,7 +82,10 @@ fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
             .append(&mut store.render_io(), Frame(8), &[9., 10., 11., 12.])
             .unwrap();
         assert_eq!(media.coverage(), Ok(Frame(8)..Frame(12)));
-        assert_eq!(media.grab(Frame(4)..Frame(12)), Err(Error::InvalidFrame));
+        assert_eq!(
+            media.grab(&mut store.render_io(), Frame(4)..Frame(12)),
+            Err(Error::InvalidFrame)
+        );
         assert_eq!(
             values::<4>(&media, &mut store, media.export_index(old).unwrap()),
             [1., 2., 3., 4.]
@@ -89,7 +94,9 @@ fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
             media.discontinuity(&mut store.render_io(), Frame(11)),
             Err(Error::InvalidFrame)
         );
-        let fresh = media.grab(Frame(8)..Frame(12)).unwrap();
+        let fresh = media
+            .grab(&mut store.render_io(), Frame(8)..Frame(12))
+            .unwrap();
         assert_eq!(
             values::<4>(&media, &mut store, media.take_index(fresh).unwrap()),
             [9., 10., 11., 12.]
@@ -101,6 +108,88 @@ fn discontinuity_retains_exports_and_starts_truthful_coverage_without_replay() {
     });
     cleanup(&mut media, &mut store);
     assert_eq!(store.usage().free_pages, 80);
+}
+
+#[shoop_test]
+fn short_wrapping_grabs_pin_only_visible_pages_and_preserve_live_capture_at_owner_limit() {
+    let mut store = store(48, 16, 8);
+    let baseline = store.usage();
+    let mut media = AudioStore::prepare(
+        &mut store,
+        Config {
+            channels: 1,
+            history_frames: 64,
+            views: 8,
+            pages: 48,
+        },
+        Frame(0),
+    )
+    .unwrap();
+    assert_no_heap(|| {
+        for tick in 0..20 {
+            let input: [f32; 8] = core::array::from_fn(|i| (tick * 8 + i) as f32);
+            store.begin_callback();
+            media
+                .append(&mut store.render_io(), Frame(tick as u64 * 8), &input)
+                .unwrap();
+        }
+        let before = store.usage();
+        let take = media
+            .grab(&mut store.render_io(), Frame(127)..Frame(131))
+            .unwrap();
+        assert_eq!(store.usage(), before);
+        let view = media.view(take.0).unwrap();
+        assert_eq!(view.credit, 2);
+        for page in 0..media.ring_pages {
+            assert_eq!(
+                media.find(view.root, page).is_some(),
+                page == 0 || page == 31
+            );
+        }
+        let old = media.export(take).unwrap();
+        let peers: [TakeId; 4] = core::array::from_fn(|_| media.fork(take).unwrap());
+        assert_eq!(media.fork(take), Err(Error::Capacity));
+        let nodes = media.free_nodes.len();
+        assert_eq!(
+            media.grab(&mut store.render_io(), Frame(127)..Frame(131)),
+            Err(Error::Capacity)
+        );
+        assert_eq!(media.free_nodes.len(), nodes);
+        assert_eq!(media.debt, media.debt_limit);
+
+        for (i, peer) in peers.iter().enumerate() {
+            store.begin_callback();
+            media
+                .replace(&mut store.render_io(), *peer, 3, &[10. + i as f32; 8])
+                .unwrap();
+        }
+        for tick in 20..148 {
+            let input: [f32; 8] = core::array::from_fn(|i| (tick * 8 + i) as f32);
+            store.begin_callback();
+            media
+                .append(&mut store.render_io(), Frame(tick as u64 * 8), &input)
+                .unwrap();
+        }
+        assert_eq!(
+            values::<4>(&media, &mut store, media.export_index(old).unwrap()),
+            [127., 128., 129., 130.]
+        );
+        assert_eq!(
+            values::<4>(&media, &mut store, media.take_index(take).unwrap()),
+            [127., 128., 129., 130.]
+        );
+        for (i, peer) in peers.iter().enumerate() {
+            assert_eq!(
+                values::<4>(&media, &mut store, media.take_index(*peer).unwrap()),
+                [10. + i as f32; 4]
+            );
+            media.release_take(*peer).unwrap();
+        }
+        media.release_take(take).unwrap();
+        media.release_export(old).unwrap();
+        cleanup(&mut media, &mut store);
+        assert_eq!(store.usage(), baseline);
+    });
 }
 
 #[shoop_test]
@@ -141,7 +230,9 @@ fn partial_stereo_history_forks_and_cross_boundary_edits_preserve_exports() {
             next += frames;
             assert_eq!(store.copy_remaining(), 0);
         }
-        let a = media.grab(Frame(1)..Frame(8)).unwrap();
+        let a = media
+            .grab(&mut store.render_io(), Frame(1)..Frame(8))
+            .unwrap();
         let b = media.fork(a).unwrap();
         let export = media.export(a).unwrap();
         let a_index = media.take_index(a).unwrap();
@@ -206,7 +297,9 @@ fn multichannel_write_preflight_refuses_without_publishing_or_consuming_credits(
         media
             .append(&mut store.render_io(), Frame(0), &[1.; 22])
             .unwrap();
-        let take = media.grab(Frame(1)..Frame(8)).unwrap();
+        let take = media
+            .grab(&mut store.render_io(), Frame(1)..Frame(8))
+            .unwrap();
         let index = media.take_index(take).unwrap();
         let before = media.info(index).unwrap();
         let quota = store.usage();
@@ -284,7 +377,9 @@ fn realistic_history_sizing_keeps_small_write_work_logarithmic() {
             media
                 .append(&mut store.render_io(), Frame(0), &[1., 2.])
                 .unwrap();
-            let take = media.grab(Frame(0)..Frame(1)).unwrap();
+            let take = media
+                .grab(&mut store.render_io(), Frame(0)..Frame(1))
+                .unwrap();
             store.begin_callback();
             media
                 .replace(&mut store.render_io(), take, 0, &[3., 4.])
@@ -335,7 +430,9 @@ fn public_audio_handles_and_invalid_boundaries_preserve_sources_and_output() {
         media
             .append(&mut store.render_io(), Frame(17), &[1.; 22])
             .unwrap();
-        let take = media.grab(Frame(18)..Frame(25)).unwrap();
+        let take = media
+            .grab(&mut store.render_io(), Frame(18)..Frame(25))
+            .unwrap();
         let index = media.take_index(take).unwrap();
         let export = media.export(take).unwrap();
         let mut output = [0xa5; 16];
@@ -361,7 +458,9 @@ fn public_audio_handles_and_invalid_boundaries_preserve_sources_and_output() {
             Err(Error::InvalidId)
         );
         assert_eq!(media.info(stale), Err(Error::InvalidId));
-        let newer = media.grab(Frame(19)..Frame(26)).unwrap();
+        let newer = media
+            .grab(&mut store.render_io(), Frame(19)..Frame(26))
+            .unwrap();
         assert_eq!(media.info(stale), Err(Error::InvalidId));
         assert_eq!(
             values::<14>(&media, &mut store, media.export_index(export).unwrap()),
@@ -395,7 +494,9 @@ fn non_divisible_multichannel_pages_keep_frames_coherent_through_large_callbacks
         media
             .append(&mut store.render_io(), Frame(0), &input)
             .unwrap();
-        let take = media.grab(Frame(1)..Frame(6)).unwrap();
+        let take = media
+            .grab(&mut store.render_io(), Frame(1)..Frame(6))
+            .unwrap();
         let saved = media.export(take).unwrap();
         let original: [f32; 25] = core::array::from_fn(|i| (10 * (1 + i / 5) + i % 5) as f32);
         let patch: [f32; 15] = core::array::from_fn(|i| 100. + i as f32);
@@ -416,7 +517,9 @@ fn non_divisible_multichannel_pages_keep_frames_coherent_through_large_callbacks
         media
             .append(&mut store.render_io(), Frame(7), &later)
             .unwrap();
-        let newest = media.grab(Frame(16)..Frame(23)).unwrap();
+        let newest = media
+            .grab(&mut store.render_io(), Frame(16)..Frame(23))
+            .unwrap();
         let expected_history: [f32; 35] =
             core::array::from_fn(|i| (10 * (16 + i / 5) + i % 5) as f32);
         assert_eq!(

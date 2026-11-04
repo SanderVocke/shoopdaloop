@@ -279,8 +279,16 @@ fn resolver_driven_grab_replace_export_and_history_are_partition_independent() {
                         let start = interval.start.0 as usize;
                         let end = interval.end.0 as usize;
                         if start == 13 {
-                            a = Some(media.grab(Frame(4)..Frame(11)).unwrap());
-                            b = Some(media.grab(Frame(6)..Frame(13)).unwrap());
+                            a = Some(
+                                media
+                                    .grab(&mut store.render_io(), Frame(4)..Frame(11))
+                                    .unwrap(),
+                            );
+                            b = Some(
+                                media
+                                    .grab(&mut store.render_io(), Frame(6)..Frame(13))
+                                    .unwrap(),
+                            );
                             old = Some(media.export(a.unwrap()).unwrap());
                         }
                         if start == 23 {
@@ -369,7 +377,7 @@ fn resolver_driven_grab_replace_export_and_history_are_partition_independent() {
                         .frames,
                     7
                 );
-                let latest = media.grab(Frame(37)..Frame(48));
+                let latest = media.grab(&mut store.render_io(), Frame(37)..Frame(48));
                 if limited {
                     assert_eq!(latest, Err(Error::Capacity));
                 } else {

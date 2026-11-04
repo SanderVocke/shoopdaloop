@@ -14,8 +14,9 @@ Zero input at the expected frame changes neither content nor time.
 
 `grab(start..end)` returns an owned editable take within committed history coverage.
 `fork(take)` acquires another editable owner. `export(take)` acquires an immutable
-owner of that revision. These operations retain an index root without walking or
-copying history pages. Tokens check store scope and lease generation. Copying a
+owner of that revision. Grab clips the persistent index along its boundary paths;
+it shares complete interior branches and retains only pages touched by the window.
+Fork and export retain that clipped root. No sample data is copied. Tokens check store scope and lease generation. Copying a
 token acquires nothing; release each independent owner exactly once.
 
 A borrowed read index follows its take's current revision. Export first when a
@@ -37,14 +38,16 @@ padding is excluded from reads. Transaction scratch covers the largest prepared
 interval's distinct touched pages.
 
 The store reserves its configured pages so unrelated uploads cannot consume them.
-Owner admission conservatively charges a whole history root, including pages
-outside a requested window. This guarantees room for live capture, retained owners
+Owner admission charges the window's covering pages, including partial boundary
+pages. This guarantees room for live capture, retained owners
 and an edit transaction. Owner admission can refuse before every metadata slot is
-occupied. Imported takes charge the larger of a history root and their logical
-page count. Whole-root charging and power-of-two padding are explicit capacity
+occupied. Imported takes charge their logical page count.
+Conservative per-owner charging and power-of-two padding are explicit capacity
 tradeoffs; this is not a final application memory policy.
 
-Capture and edits use render accounting rather than background transfer credits.
+Capture, grabs and edits use render accounting rather than background transfer credits.
+A grab preflights owner and boundary-node credits, then visits a bounded number
+of index paths independent of history duration. It never walks every retained page.
 A write copies the touched pages and their index paths; it never clones the whole
 history map. Reads position once per page span. Work scales with touched pages,
 index depth, frame count and channels. Transaction-local garbage can only contain

@@ -138,7 +138,9 @@ impl ResourceStore {
         range: Range<Frame>,
     ) -> Result<ResourceId, Error> {
         self.audio_resource_credit()?;
-        let take = self.with_audio(store, |_, audio| audio.grab(range))?;
+        let take = self.with_audio(store, |resources, audio| {
+            audio.grab(&mut resources.render_io(), range)
+        })?;
         self.audio_resource(Take { store, take })
     }
 
