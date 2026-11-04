@@ -3,7 +3,7 @@
 ## Status, baseline and delivery
 
 R0–R7 are implemented with passing native functional and release evidence at
-`480a77a6`. Target refresh through `820fb239` is consolidated. R8 delivery requires
+`480a77a6`. Target refresh through `bbf027e9` is consolidated. R8 delivery requires
 green checks on the resulting head; [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927)
 records its exact final SHA and validation results. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
@@ -190,12 +190,14 @@ prove the new integration. Pure shared-store and codec tests remain applicable.
 ## Delivery record
 
 The implementation/evidence input is
-`1979fa895bb2f8fcb8c9b50f7d827e528cfde638`; the included fixed target is
-`820fb23994df2290ceec7cb83c6b500aafe68bce`. This completion record is committed
+`cec6cf26b15eab2d6e1493b1e821ec15ee37e4eb`; the included fixed target is
+`bbf027e98c4d1449f775019585acafd44728bd71`. This completion record is committed
 on top of that input. Its resulting exact head and applicable CI/artifact links
 are recorded in [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927),
 which remains open against `feat/fixed-quantum-runtime`. This keeps the record
 prepared before final validation without requiring a self-referential Git SHA.
+The latest target independently removes the same CI dependency on inspection
+runner queues; its merge changes no runtime source or fixture behavior.
 The checklist records completed implementation, fixtures and validation launch;
 **delivery is accepted only when that exact head's applicable checks pass**.
 
