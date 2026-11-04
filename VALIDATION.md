@@ -18,6 +18,13 @@ also pass. The tested merge candidate `cea197b2` includes base `820fb239`;
 its full native and coverage runs each pass 2677 tests with six expected skips.
 The branch-local result above uses integrated base `3ca192e1`.
 
+The subsequent documentation-closeout Node runner at `d3012734` exhausted its
+disk; GitHub reports `System.IO.IOException: No space left on device` in the
+runner diagnostic log. The existing unused Android/.NET SDK cleanup now also
+runs for web jobs before restoring caches, with all test settings unchanged.
+That run's coverage job passed 2678 tests with six expected skips on the merge
+candidate including base `17df278e`. Final delivery results are linked from the PR.
+
 The PR's `ci:skip-macos` label excludes macOS from the preflight and build
 matrices so contended macOS runners cannot hold up other platforms. Actionlint
 passes, and both generated matrix variants match the original entries exactly

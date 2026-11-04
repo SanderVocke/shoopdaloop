@@ -270,6 +270,14 @@ builds or implementation tests.
 
 ## Progress and evidence
 
+- Delivery-run infrastructure fix: the Node runner for documentation closeout
+  `d3012734` exhausted its disk while running the full Wasm suite. GitHub's failure
+  annotation reports `System.IO.IOException: No space left on device` in the
+  runner's own diagnostic log, rather than a test assertion failure. Extend the
+  existing unused Android/.NET SDK cleanup to both web profiles before cache
+  restoration. Test commands, assertions, capacities and deadlines are unchanged.
+  Final delivery results remain linked from the PR checks page.
+
 - Final implementation checkpoint: revision `7c214af6` passes
   [CI run 41891267327](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891267327),
   covering Linux and Windows debug/release, both web profiles, full Node tests,

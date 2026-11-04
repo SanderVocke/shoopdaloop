@@ -386,7 +386,7 @@ jobs:
             'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
 
       - name: Reclaim unused Linux runner SDKs
-        if: matrix.target == 'linux' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: (matrix.target == 'web' || (matrix.target == 'linux' && matrix.profile == 'debug')) && env.ACT != 'true'
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet
           df -h .
