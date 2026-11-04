@@ -607,6 +607,9 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     else {
         panic!("loaded edit")
     };
+    let reedited_export = h.export_owned(0);
+    let reedited_data = Pinned::capture(&mut h, reedited_export);
+    reedited_data.round_trip();
     assert_eq!(
         h.read(final_export.1.view.audio.unwrap().snapshot),
         final_data.audio
@@ -712,6 +715,14 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
         final_data.audio
     );
     assert_eq!(h.read(original.1.view.midi.unwrap().snapshot), old.midi);
+    assert_eq!(
+        h.read(reedited_export.1.view.audio.unwrap().snapshot),
+        reedited_data.audio
+    );
+    assert_eq!(
+        h.read(reedited_export.1.view.midi.unwrap().snapshot),
+        reedited_data.midi
+    );
     for resource in [loaded.audio, loaded.midi].into_iter().flatten() {
         h.resource(ResourceRequest::Remove { resource });
     }
