@@ -668,6 +668,7 @@ impl Service {
         let targets: BTreeSet<_> = ids.into_iter().collect();
         let mut tracks = BTreeSet::new();
         for id in &targets {
+            self.require_restored_composite(*id, mode)?;
             tracks.insert(self.loop_entry(*id)?.track);
             if self.composites.contains_key(id)
                 && mode != BackendLoopMode::Stopped

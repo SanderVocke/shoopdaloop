@@ -11,6 +11,7 @@ pub(super) struct Owner {
     pub active: Option<Versioned>,
     pub candidates: BTreeMap<u64, Versioned>,
     pub latest: Option<u64>,
+    retained: Option<shoop_app_protocol::composite::Content>,
     revisions: BTreeMap<LoopId, u64>,
     candidate_revisions: BTreeMap<u64, BTreeMap<LoopId, u64>>,
     error: Option<String>,
@@ -69,8 +70,19 @@ impl Service {
                 "the sync loop cannot become a composite",
             ));
         }
-        if let Some(owner) = self.composites.get(&target).and_then(Owner::authored) {
-            return Ok(owner.document.clone());
+        if let Some(owner) = self.composites.get(&target) {
+            if let Some(pending) = owner
+                .latest
+                .and_then(|version| owner.candidates.get(&version))
+            {
+                return Ok(pending.document.clone());
+            }
+            if let Some(retained) = &owner.retained {
+                return Ok(retained.document.clone());
+            }
+            if let Some(active) = &owner.active {
+                return Ok(active.document.clone());
+            }
         }
         if !allow_convert
             || !entry.view.empty
@@ -287,6 +299,11 @@ impl Service {
         for event in &document.instances {
             self.loop_entry(event.loop_id)?;
             match event.mode {
+                Some(LoopMode::Recording) if self.composites.contains_key(&event.loop_id) => {
+                    return Err(CommandError::invalid(
+                        "a composite event targeting another composite must use Play or Stop",
+                    ));
+                }
                 Some(LoopMode::Replacing) => {
                     return Err(CommandError::unsupported(BackendCapability::ReplacingMode))
                 }
@@ -305,7 +322,8 @@ impl Service {
                 .composite_limits()
                 .ok_or_else(|| anyhow!("prepared composites unavailable"))?,
             |id| Ok(self.loops[&id].view.length_frames),
-        )?;
+        )
+        .map_err(|error| CommandError::invalid(error.to_string()))?;
         self.submit_prepared_composite(target, document, prepared)
     }
 
@@ -399,6 +417,7 @@ impl Service {
         owner.latest = Some(version);
         owner.candidate_revisions.insert(version, revisions);
         owner.error = None;
+        self.bump();
         Ok(())
     }
 
@@ -454,6 +473,8 @@ impl Service {
     }
 
     pub(super) fn observe_composites(&mut self, observed: &BackendSnapshot) {
+        let structural = self.composite_structure.is_some();
+        let mut changed = false;
         for receipt in &observed.composite_receipts {
             let Some((&id, _)) = self
                 .loops
@@ -466,11 +487,20 @@ impl Service {
                 continue;
             };
             if let Some(candidate) = owner.candidates.remove(&receipt.version) {
+                changed = true;
                 let revisions = owner
                     .candidate_revisions
                     .remove(&receipt.version)
                     .unwrap_or_default();
                 if matches!(receipt.outcome, BackendCompositeOutcome::Applied { .. }) {
+                    if !structural
+                        || owner.retained.as_ref().is_some_and(|retained| {
+                            retained.document == candidate.document
+                                && retained.prepared == candidate.prepared
+                        })
+                    {
+                        owner.retained = None;
+                    }
                     owner.active = Some(candidate);
                     owner.revisions = revisions;
                     owner.error = None;
@@ -488,8 +518,11 @@ impl Service {
                 .iter()
                 .find(|(_, entry)| entry.backend.raw() == removed.raw())
             {
-                self.composites.remove(&id);
+                changed |= self.composites.remove(&id).is_some();
             }
+        }
+        if changed {
+            self.bump();
         }
         self.composites.retain(|id, owner| {
             self.loops.contains_key(id) && (owner.active.is_some() || !owner.candidates.is_empty())
@@ -530,6 +563,25 @@ impl Service {
         ))
     }
 
+    pub(super) fn require_restored_composite(
+        &self,
+        id: LoopId,
+        mode: BackendLoopMode,
+    ) -> Result<(), CommandError> {
+        if mode != BackendLoopMode::Stopped
+            && self
+                .composites
+                .get(&id)
+                .is_some_and(|owner| owner.retained.is_some())
+        {
+            return Err(CommandError {
+                reason: Refusal::Busy,
+                message: "restore the retained arrangement with an editor change before playing it"
+                    .into(),
+            });
+        }
+        Ok(())
+    }
     pub(super) fn transition_authored_composite(
         &mut self,
         id: LoopId,
@@ -561,7 +613,7 @@ impl Service {
             .iter()
             .filter_map(|(&id, owner)| {
                 let active = owner.active.as_ref()?;
-                if !owner.candidates.is_empty() {
+                if !owner.candidates.is_empty() || owner.retained.is_some() {
                     return None;
                 }
                 active
@@ -659,7 +711,8 @@ impl Service {
                     working: self
                         .composite_structure
                         .as_ref()
-                        .and_then(|job| job.working(loop_id)),
+                        .and_then(|job| job.working(loop_id))
+                        .or_else(|| owner.retained.clone()),
                     error: owner.error.clone(),
                     loop_id,
                     active: owner.active.clone(),

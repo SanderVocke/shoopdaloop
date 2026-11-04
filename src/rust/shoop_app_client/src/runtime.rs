@@ -816,6 +816,11 @@ impl Runtime {
             .find(|view| view.loop_id == entry.id)
             .and_then(|view| {
                 let plan = view.pending.as_ref().or(view.active.as_ref())?;
+                let (document, prepared) = view
+                    .working
+                    .as_ref()
+                    .map(|content| (&content.document, &content.prepared))
+                    .unwrap_or((&plan.document, &plan.prepared));
                 let tracks = state
                     .tracks
                     .iter()
@@ -825,11 +830,10 @@ impl Runtime {
                         name: track.name.clone(),
                     })
                     .collect();
-                let events = plan
-                    .document
+                let events = document
                     .instances
                     .iter()
-                    .zip(&plan.prepared.instances)
+                    .zip(&prepared.instances)
                     .filter_map(|(event, geometry)| {
                         let (track, child) = state.tracks.iter().find_map(|track| {
                             track
@@ -863,12 +867,12 @@ impl Runtime {
                     })
                     .collect();
                 Some(CompositeDetailsState {
-                    kind: plan.document.kind,
+                    kind: document.kind,
                     timing: Some(CompositeTimingState {
-                        basis_sample_rate: plan.document.basis.sample_rate,
-                        basis_frames: plan.document.basis.unit_frames,
-                        render_sample_rate: plan.prepared.sample_rate,
-                        quantum_frames: plan.prepared.quantum,
+                        basis_sample_rate: document.basis.sample_rate,
+                        basis_frames: document.basis.unit_frames,
+                        render_sample_rate: prepared.sample_rate,
+                        quantum_frames: prepared.quantum,
                     }),
                     execution: CompositeExecutionState {
                         active_version: view.active.as_ref().map(|active| active.version),
@@ -894,13 +898,12 @@ impl Runtime {
                         error: view.error.clone(),
                     },
                     cycle_length_frames: u64::try_from(
-                        u128::from(plan.document.basis.unit_frames)
-                            * u128::from(plan.prepared.sample_rate)
-                            / u128::from(plan.document.basis.sample_rate),
+                        u128::from(document.basis.unit_frames) * u128::from(prepared.sample_rate)
+                            / u128::from(document.basis.sample_rate),
                     )
                     .unwrap_or(u64::MAX)
                     .max(1),
-                    timeline_length_frames: plan.prepared.unit_frames * plan.prepared.iterations,
+                    timeline_length_frames: prepared.unit_frames * prepared.iterations,
                     played_frame: (view.mode == LoopMode::Playing).then_some(view.position_frames),
                     tracks,
                     events,

@@ -384,7 +384,11 @@ impl CompositeLoopWidget {
         }
         let execution = &details.execution;
         if execution.restoring {
-            ui.label("Restoring arrangement after loop cleanup…");
+            ui.label(if execution.error.is_some() {
+                "Working arrangement retained · edit it to retry restoration"
+            } else {
+                "Restoring arrangement after loop cleanup…"
+            });
         } else if let Some(version) = execution.pending_version {
             ui.horizontal_wrapped(|ui| {
                 ui.label(format!(

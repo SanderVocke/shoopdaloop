@@ -273,6 +273,13 @@ impl SessionSnapshot {
                 view.valid()
                     && loops.contains(&view.loop_id)
                     && composites.insert(view.loop_id)
+                    && view.working.as_ref().is_none_or(|content| {
+                        content
+                            .document
+                            .instances
+                            .iter()
+                            .all(|event| loops.contains(&event.loop_id))
+                    })
                     && view
                         .active
                         .iter()

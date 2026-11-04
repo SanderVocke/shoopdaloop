@@ -969,3 +969,270 @@ fn production_client_projects_frozen_composite_geometry_without_media_spinner_an
     );
     assert_eq!(f.waits.get(), f.initial_waits);
 }
+
+#[shoop_test]
+fn failed_parent_restoration_keeps_working_geometry_and_an_editor_retry_can_recover_it() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    for (target, sources) in [(loops[2], vec![loops[0]]), (loops[3], vec![loops[2]])] {
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(target, sources, false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    let original = f
+        .service
+        .snapshot()
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[3])
+        .unwrap()
+        .active
+        .clone()
+        .unwrap();
+    f.refuse_composite_after.set(Some(0));
+    let result = command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Control(ControlOperation::ClearLoops {
+            loops: vec![loops[2]],
+        }),
+    );
+    assert!(matches!(result, Outcome::Refused { .. }), "{result:?}");
+    let snapshot = f.service.snapshot();
+    assert!(snapshot.valid());
+    let parent = snapshot
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[3])
+        .unwrap();
+    assert!(parent
+        .active
+        .as_ref()
+        .unwrap()
+        .document
+        .instances
+        .is_empty());
+    assert_eq!(parent.working.as_ref().unwrap().document, original.document);
+    assert_eq!(parent.working.as_ref().unwrap().prepared, original.prepared);
+    assert!(parent.error.is_some());
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Composite(arrangement::Edit::Kind {
+                target: loops[3],
+                kind: CompositeKind::Script
+            })
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let snapshot = f.service.snapshot();
+    let parent = snapshot
+        .composites
+        .iter()
+        .find(|view| view.loop_id == loops[3])
+        .unwrap();
+    assert!(parent.working.is_none());
+    assert_eq!(parent.active.as_ref().unwrap().document.instances.len(), 1);
+    assert_eq!(
+        parent.active.as_ref().unwrap().document.kind,
+        CompositeKind::Script
+    );
+}
+
+#[shoop_test]
+fn new_session_retires_composite_owners_and_fresh_slots_remain_usable() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            edit(loops[2], vec![loops[0]], false)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            transition(vec![loops[2]], LoopMode::Playing)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::NewSession
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let snapshot = f.service.snapshot();
+    assert!(snapshot.valid());
+    assert!(snapshot.composites.is_empty());
+    assert!(snapshot
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .all(|entry| !loops.contains(&entry.id)));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            new_track("After composite", false)
+        ),
+        Outcome::TrackCreated { .. }
+    ));
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn unrelated_recording_can_be_admitted_during_owned_composite_cleanup() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    for (target, sources) in [(loops[2], vec![loops[0]]), (loops[3], vec![loops[2]])] {
+        assert!(matches!(
+            command(
+                &mut f.service,
+                &mut client,
+                ConnectionId(1),
+                edit(target, sources, false)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    let clear = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Control(ControlOperation::ClearLoops {
+            loops: vec![loops[2]],
+        }),
+    );
+    let record = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        transition(vec![loops[4]], LoopMode::Recording),
+    );
+    assert!(matches!(
+        complete(&mut f.service, &mut client, ConnectionId(1), record, false),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        complete(&mut f.service, &mut client, ConnectionId(1), clear, false),
+        Outcome::AncestorsStopped { .. }
+    ));
+    assert_eq!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|entry| entry.id == loops[4])
+            .unwrap()
+            .mode,
+        LoopMode::Recording
+    );
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            transition(vec![loops[4]], LoopMode::Stopped)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+}
+
+#[shoop_test]
+fn shutdown_settles_a_waiting_owned_edit_after_stopping_the_composite() {
+    let (mut f, mut client, _, loops) = setup_composites(false);
+    let target = loops[2];
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            edit(target, vec![loops[0]], false)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let event = f.service.snapshot().composites[0]
+        .active
+        .as_ref()
+        .unwrap()
+        .document
+        .instances[0]
+        .instance_id;
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            Command::Composite(arrangement::Edit::Duration {
+                target,
+                event,
+                n_cycles: Some(1000)
+            })
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    assert!(matches!(
+        command(
+            &mut f.service,
+            &mut client,
+            ConnectionId(1),
+            transition(vec![target], LoopMode::Playing)
+        ),
+        Outcome::Confirmed { .. }
+    ));
+    let edit = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::Composite(arrangement::Edit::Duration {
+            target,
+            event,
+            n_cycles: Some(2000),
+        }),
+    );
+    let request = client.shutdown().unwrap();
+    f.service.handle(ConnectionId(1), request).unwrap();
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.service.shutdown_ready()
+            && f.service
+                .snapshot()
+                .results
+                .iter()
+                .any(|result| result.id == edit)
+        {
+            break;
+        }
+    }
+    assert!(f.service.shutdown_ready());
+    let snapshot = f.service.snapshot();
+    assert!(snapshot.valid());
+    assert!(snapshot
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .all(|entry| entry.mode == LoopMode::Stopped));
+    assert!(snapshot
+        .results
+        .iter()
+        .any(|result| result.id == edit && matches!(result.outcome, Outcome::Confirmed { .. })));
+    f.service.complete_shutdown(Ok(()));
+    assert_eq!(f.waits.get(), f.initial_waits);
+}

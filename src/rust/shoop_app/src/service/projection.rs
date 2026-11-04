@@ -601,6 +601,7 @@ impl Service {
                 let view = &mut entry.view;
                 view.structural_state = StructuralState::Confirmed;
                 view.composite_kind = CompositeKind::None;
+                view.selected_composite_kind = CompositeKind::None;
                 view.composite_iteration = None;
                 view.composite_cycle_count = 0;
                 view.active_composite_children = Arc::from([]);

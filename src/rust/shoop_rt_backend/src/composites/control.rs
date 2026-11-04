@@ -31,7 +31,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
     pub(crate) fn queue_clear(&mut self, id: BackendLoopId) {
         for job in &mut self.composites.jobs {
-            if job.id == id {
+            if job.id == id && job.cancel.is_none() {
                 job.cancel = Some(BackendCompositeOutcome::Cancelled);
             }
         }

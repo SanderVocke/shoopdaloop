@@ -730,7 +730,12 @@ impl Service {
         } else if command.as_ref().is_some_and(|command| !command.bounded()) {
             Some((Refusal::Invalid, "the command exceeds protocol bounds"))
         } else if self.pending.len() == MAX_PENDING_OPERATIONS
-            || self.backend.mutation_capacity() < self.request_budget(command.as_ref())
+            || self.backend.mutation_capacity()
+                < self.request_budget(command.as_ref()).saturating_add(
+                    self.composite_structure
+                        .as_ref()
+                        .map_or(0, |job| job.reserve()),
+                )
         {
             Some((Refusal::Overloaded, "operation tracking is full"))
         } else {
@@ -869,6 +874,14 @@ impl Service {
         self.bump();
         let is_shutdown = matches!(pending.effect, Effect::Shutdown);
         let outcome = match pending.error {
+            Some(error) if !stopped_ancestors.is_empty() => {
+                let message = alloc::format!(
+                    "{} ({} dependent arrangements were stopped.)",
+                    error.message.chars().take(400).collect::<String>(),
+                    stopped_ancestors.len()
+                );
+                refused_outcome(error.reason, &message)
+            }
             Some(error) => refused_outcome(error.reason, &error.message),
             None => match pending.effect {
                 Effect::TrackCreated(track, loops) => Outcome::TrackCreated {

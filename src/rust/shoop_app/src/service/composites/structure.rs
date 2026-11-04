@@ -24,12 +24,25 @@ pub(in crate::service) struct Job {
     error: Option<CommandError>,
 }
 impl Job {
+    pub fn reserve(&self) -> usize {
+        self.original.len() + self.final_plans.len() + self.targets.len() + 16
+    }
+    fn locked(&self, id: &LoopId) -> bool {
+        self.targets.contains(id) || self.stopped.contains(id)
+    }
     pub fn done(&self) -> bool {
         self.phase == Phase::Done
     }
-    pub fn working(&self, id: LoopId) -> Option<Document> {
+    pub fn working(&self, id: LoopId) -> Option<shoop_app_protocol::composite::Content> {
         (!self.done())
-            .then(|| self.final_plans.get(&id).map(|plan| plan.document.clone()))
+            .then(|| {
+                self.final_plans
+                    .get(&id)
+                    .map(|plan| shoop_app_protocol::composite::Content {
+                        document: plan.document.clone(),
+                        prepared: plan.prepared.clone(),
+                    })
+            })
             .flatten()
     }
     fn settled(&self) -> bool {
@@ -43,26 +56,60 @@ impl Job {
 
 impl Service {
     pub(in crate::service) fn composite_structure_busy(&self, command: Option<&Command>) -> bool {
-        if self.composite_structure.is_none() {
+        let Some(job) = &self.composite_structure else {
             return false;
-        }
-        !matches!(
-            command,
+        };
+        match command {
             Some(
                 Command::SelectLoops { .. }
-                    | Command::SetTarget(_)
-                    | Command::Control(
-                        ControlOperation::Transition {
-                            mode: LoopMode::Stopped,
-                            ..
-                        } | ControlOperation::Trigger {
-                            mode: LoopMode::Stopped,
-                            ..
-                        }
-                    )
-                    | Command::Global(GlobalControlAction::StopAll)
-            )
-        )
+                | Command::SetTarget(_)
+                | Command::Global(GlobalControlAction::StopAll)
+                | Command::Loop {
+                    action:
+                        LoopAction::NameChanged(_)
+                        | LoopAction::IconClicked(_)
+                        | LoopAction::IconDoubleClicked
+                        | LoopAction::GainChanged(_)
+                        | LoopAction::BalanceChanged(_)
+                        | LoopAction::StopClicked,
+                    ..
+                },
+            ) => false,
+            Some(Command::Control(
+                ControlOperation::Transition {
+                    mode: LoopMode::Stopped,
+                    ..
+                }
+                | ControlOperation::Trigger {
+                    mode: LoopMode::Stopped,
+                    ..
+                },
+            )) => false,
+            Some(Command::Control(
+                ControlOperation::Transition { loops, .. }
+                | ControlOperation::Trigger { loops, .. }
+                | ControlOperation::TriggerDefaultPlayback { loops }
+                | ControlOperation::RecordN { loops, .. }
+                | ControlOperation::SetRepeatSync { loops, .. },
+            )) => loops.iter().any(|id| job.locked(id)),
+            Some(Command::Loop {
+                loop_id,
+                action:
+                    LoopAction::PlayClicked | LoopAction::RecordClicked | LoopAction::DefaultClicked,
+                ..
+            }) => job.locked(loop_id),
+            Some(Command::Track {
+                action:
+                    TrackAction::NameChanged(_)
+                    | TrackAction::OutputGainChanged(_)
+                    | TrackAction::OutputBalanceChanged(_)
+                    | TrackAction::OutputMuteChanged(_)
+                    | TrackAction::InputGainChanged(_)
+                    | TrackAction::InputBalanceChanged(_),
+                ..
+            }) => false,
+            _ => true,
+        }
     }
     pub(in crate::service) fn clear_composite_slots(
         &mut self,
@@ -217,12 +264,19 @@ impl Service {
         let Some(mut job) = self.composite_structure.take() else {
             return;
         };
-        if job.done() || !job.settled() {
+        let failed = self.observed.status.driver_state == BackendDriverState::Failed;
+        if job.done()
+            || !failed && (!job.settled() || self.backend.mutation_capacity() < job.reserve())
+        {
             self.composite_structure = Some(job);
             return;
         }
         let first = self.backend.mutation_cursor().saturating_add(1);
-        let next = if self.observed.status.driver_state == BackendDriverState::Failed {
+        let next = if failed {
+            job.error.get_or_insert(CommandError {
+                reason: Refusal::Engine,
+                message: "the engine failed before composite cleanup was confirmed".into(),
+            });
             Phase::Done
         } else {
             match job.phase {
@@ -251,6 +305,15 @@ impl Service {
                     } else {
                         &job.final_plans
                     };
+                    let mut refused = None;
+                    for (&id, plan) in plans {
+                        if let Some(owner) = self.composites.get_mut(&id) {
+                            owner.retained = Some(shoop_app_protocol::composite::Content {
+                                document: plan.document.clone(),
+                                prepared: plan.prepared.clone(),
+                            });
+                        }
+                    }
                     for (&id, plan) in plans {
                         if self
                             .observed
@@ -259,15 +322,36 @@ impl Service {
                                 self.loops[&id].backend.raw(),
                             ))
                         {
-                            self.submit_prepared_composite(
+                            if let Err(error) = self.submit_prepared_composite(
                                 id,
                                 plan.document.clone(),
                                 plan.prepared.clone(),
-                            )?;
+                            ) {
+                                refused.get_or_insert(error);
+                            }
                         }
+                    }
+                    if let Some(error) = refused {
+                        return Err(error);
                     }
                 }
                 Phase::Done => {
+                    for owner in self
+                        .composites
+                        .values_mut()
+                        .filter(|owner| owner.retained.is_some())
+                    {
+                        if owner.active.as_ref().is_some_and(|active| {
+                            owner.retained.as_ref().is_some_and(|retained| {
+                                active.document == retained.document
+                                    && active.prepared == retained.prepared
+                            })
+                        }) {
+                            owner.retained = None;
+                        } else {
+                            owner.error.get_or_insert_with(|| "Arrangement restoration was refused; the working document is retained for editing.".into());
+                        }
+                    }
                     if let Some(id) = job.operation {
                         if let Some(pending) = self.pending.get_mut(&id) {
                             if let Some(error) = &job.error {

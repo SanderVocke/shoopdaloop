@@ -15,6 +15,7 @@ impl Service {
                 let mode = control_mode(mode)?;
                 for id in &loops {
                     self.loop_entry(*id)?;
+                    self.require_restored_composite(*id, mode)?;
                     if self.composites.contains_key(id) {
                         if mode != BackendLoopMode::Stopped && mode != BackendLoopMode::Playing {
                             return Err(CommandError::invalid(

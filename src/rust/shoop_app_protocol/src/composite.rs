@@ -78,6 +78,12 @@ pub struct Prepared {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Content {
+    pub document: Document,
+    pub prepared: Prepared,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Versioned {
     pub version: u64,
     pub document: Document,
@@ -105,7 +111,7 @@ pub struct View {
     pub observed_frame: Option<u64>,
     pub repeat_sync: bool,
     pub error: Option<String>,
-    pub working: Option<Document>,
+    pub working: Option<Content>,
     pub loop_id: LoopId,
     pub active: Option<Versioned>,
     pub pending: Option<Versioned>,
@@ -201,64 +207,74 @@ impl Edit {
 
 impl Versioned {
     pub fn valid(&self) -> bool {
-        let p = &self.prepared;
-        if self.version == 0
-            || !self.document.valid()
-            || !(shoop_app_api::ConversionTarget {
-                sample_rate: p.sample_rate,
-                quantum_frames: p.quantum,
-            })
-            .is_valid()
-            || p.unit_frames == 0
-            || p.unit_frames % u64::from(p.quantum) != 0
-            || p.unit_frames.checked_mul(p.iterations).is_none()
-            || p.spans.len() > MAX_EVENTS * 2
-            || p.instances.len() != self.document.instances.len()
-            || (p.iterations == 0) != p.spans.is_empty()
-        {
-            return false;
-        }
-        let total = p.unit_frames * p.iterations;
-        if !p
-            .instances
-            .iter()
-            .zip(&self.document.instances)
-            .all(|(effective, authored)| {
-                effective.instance_id == authored.instance_id
-                    && effective.start_frame < effective.end_frame
-                    && effective.end_frame <= total
-                    && effective.start_frame % p.unit_frames == 0
-                    && effective.end_frame % p.unit_frames == 0
-            })
-        {
-            return false;
-        }
-        let mut previous = None;
-        p.spans.iter().all(|span| {
-            let event = self.document.instances.get(span.ordinal as usize);
-            let valid = span.start < span.end
-                && span.end <= p.iterations
-                && span.occurrence_start == span.start
-                && event.is_some_and(|event| {
-                    event.loop_id == span.target
-                        && event.mode.unwrap_or(LoopMode::Playing) == span.mode
-                })
-                && previous.is_none_or(|(target, end, mode)| {
-                    target < span.target
-                        || target == span.target
-                            && end <= span.start
-                            && !(end == span.start && mode == span.mode)
-                });
-            previous = Some((span.target, span.end, span.mode));
-            valid
-        })
+        self.version != 0 && valid_content(&self.document, &self.prepared)
     }
+}
+impl Content {
+    pub fn valid(&self) -> bool {
+        valid_content(&self.document, &self.prepared)
+    }
+}
+fn valid_content(document: &Document, p: &Prepared) -> bool {
+    if !document.valid()
+        || !(shoop_app_api::ConversionTarget {
+            sample_rate: p.sample_rate,
+            quantum_frames: p.quantum,
+        })
+        .is_valid()
+        || p.unit_frames == 0
+        || p.unit_frames % u64::from(p.quantum) != 0
+        || p.unit_frames.checked_mul(p.iterations).is_none()
+        || p.spans.len() > MAX_EVENTS * 2
+        || p.instances.len() != document.instances.len()
+        || (p.iterations == 0) != p.spans.is_empty()
+    {
+        return false;
+    }
+    let total = p.unit_frames * p.iterations;
+    if !p
+        .instances
+        .iter()
+        .zip(&document.instances)
+        .all(|(effective, authored)| {
+            effective.instance_id == authored.instance_id
+                && effective.start_frame < effective.end_frame
+                && effective.end_frame <= total
+                && effective.start_frame % p.unit_frames == 0
+                && effective.end_frame % p.unit_frames == 0
+        })
+    {
+        return false;
+    }
+    let mut previous = None;
+    p.spans.iter().all(|span| {
+        let event = document.instances.get(span.ordinal as usize);
+        let valid = span.start < span.end
+            && span.end <= p.iterations
+            && span.occurrence_start == span.start
+            && event.is_some_and(|event| {
+                event.loop_id == span.target && event.mode.unwrap_or(LoopMode::Playing) == span.mode
+            })
+            && previous.is_none_or(|(target, end, mode)| {
+                target < span.target
+                    || target == span.target
+                        && end <= span.start
+                        && !(end == span.start && mode == span.mode)
+            });
+        previous = Some((span.target, span.end, span.mode));
+        valid
+    })
 }
 
 impl View {
     pub fn valid(&self) -> bool {
         self.loop_id.is_valid()
-            && self.working.as_ref().is_none_or(Document::valid)
+            && self.position_frames <= self.length_frames
+            && (!self.waiting_repeat
+                || self.mode == LoopMode::Playing
+                    && self.position_frames == self.length_frames
+                    && self.length_frames > 0)
+            && self.working.as_ref().is_none_or(Content::valid)
             && (self.active.is_some() || self.pending.is_some())
             && self
                 .active

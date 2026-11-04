@@ -401,7 +401,7 @@ Lifecycle dependency cleanup and session capture/replacement integration remain.
 - [x] Prepare immutable plans from admitted service data; distinguish authored/pending
   changes from active execution. Coalesce/supersede only through explicit outcomes
   and owning cancellation/collection. Keep results through UI connection loss.
-- [ ] Restore selection/target/default-action and explicit transport behavior,
+- [x] Restore selection/target/default-action and explicit transport behavior,
   clear/removal/reference protection, New Session and shutdown. Project coherent
   details, playheads, waits, next operations and active children for UI and Lua.
 
@@ -646,3 +646,13 @@ and retain the normal/full test groups required before behavioral commits/pushes
   allocator for engine unit modules. Warning-denying full-feature build passed;
   focused app/protocol/adapter/engine integration tests **203 passed / 1 skipped**.
   The complete integrated-head gates are still pending.
+
+- Lifecycle follow-up: New Session clears retired service owners before publishing
+  fresh identities. Shutdown settles an accepted waiting edit after Stop. Refused
+  parent restoration retains an unversioned working document plus its frozen
+  effective geometry; transport refuses until an editor retry installs it. Snapshot
+  validation checks retained references and end-wait coherence. Other loops may
+  accept transport/recording while restoration headroom remains reserved.
+- Focused production service composite checks: **16 passed**, covering these
+  lifecycle paths, refusal/retry, UI loss and unrelated recording. The full
+  integrated-head regression gates follow this checkpoint.
