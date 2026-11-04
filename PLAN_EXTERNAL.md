@@ -191,7 +191,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
   follows the existing runtime's silent terminal audio fault and MIDI recovery
   behavior, including an already emitted rotated-channel note. Verify recovery
   packets rather than adding node-specific panic/drop behavior.
-- [ ] Run focused crate/engine tests, boundary audits, test-attribute checks,
+- [x] Run focused crate/engine tests, boundary audits, test-attribute checks,
   formatting, tracing inventory, and a warning-denying build. Resolve failures
   and commit. Do not expand into asynchronous fault-injection or timing benchmarks.
 
@@ -292,3 +292,12 @@ builds or implementation tests.
 - The warning-denying full workspace build passes. Full native regression,
   Node/Chromium tests, and dependency/format gates are now running. Validation
   disables debug information to bound build storage; this is not a benchmark.
+
+- Stage 5: all focused native checks pass, including maximum-MIDI heap guards,
+  independent direct/integrated callback references, atomic event/byte refusal,
+  quiescent reset of pending and partially collected blocks, and terminal MIDI
+  recovery without resuming ordinary output. Runtime/External and engine boundary
+  audits pass on all four targets; Wasm test dependency isolation, formatting,
+  test attributes, tracing inventory, and the 14 existing boundary-policy tests
+  pass. Existing CI filters omitted the target branch, so build/docs/CodeQL
+  workflows now include `feat/fixed-quantum-runtime`.
