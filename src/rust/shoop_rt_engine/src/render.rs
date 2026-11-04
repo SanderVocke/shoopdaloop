@@ -231,7 +231,17 @@ impl Stopped {
     }
     /// Finite, repeatable cleanup; it does not settle unrendered time.
     pub fn cleanup(&mut self) -> Result<(), Error> {
-        self.planner.cleanup(&mut self.resources)?;
+        match self.planner.cleanup(&mut self.resources) {
+            Ok(()) => {}
+            Err(Error::Busy) => {
+                for _ in 0..self.reclaim_bound {
+                    self.resources.begin_callback();
+                    self.resources.reclaim();
+                }
+                self.planner.cleanup(&mut self.resources)?;
+            }
+            Err(error) => return Err(error),
+        }
         for _ in 0..self.reclaim_bound {
             self.resources.begin_callback();
             self.resources.reclaim();
@@ -239,3 +249,7 @@ impl Stopped {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "shared_tests.rs"]
+mod shared_tests;

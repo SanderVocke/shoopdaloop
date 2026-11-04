@@ -2,7 +2,7 @@
 
 ## Status, baseline and delivery
 
-R0 complete; R1 source reconciliation is prepared for CI. Written using
+R0 complete; R1 merged/pushed and PR #927 now targets fixed execution. R2–R5 implementation and proofs are in progress. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -39,7 +39,9 @@ R0: both heads were refreshed at execution start on 2026-11-04. Shared head
 The real Git merge found one tracing-inventory conflict; codec test registration
 merged automatically. Both inventories and shared codec tests are retained.
 The integrated engine uses `GraphRuntime::prepare_fixed_with_planner_and_resources`
-and direct `process_fixed` loop consumers. The experimental `shoop_loops::fixed`
+and direct `process_fixed` loop consumers.
+The merged baseline is `8c810ef8`; fixed-base workflow filters are enabled and
+PR #927 has been retargeted. Actual validation is pending fresh CI. The experimental `shoop_loops::fixed`
 bank is not a replacement production path for this reconciliation.
 
 | Criteria | Implementation/proof owner |

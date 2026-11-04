@@ -835,14 +835,14 @@ jobs:
           chrome-version: 147.0.7727.117
           install-chromedriver: true
 
-      - name: Run runtime, loop and codec browser suites
+      - name: Run runtime, loop, engine and codec browser suites
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
           CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
         run: >-
           python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
-          --package rt_runtime --package shoop_loops --package shoop_persistence_codec
+          --package rt_runtime --package shoop_loops --package shoop_rt_engine --package shoop_persistence_codec
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
