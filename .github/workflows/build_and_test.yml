@@ -67,6 +67,29 @@ jobs:
           python3 scripts/check_shoop_test_usage.py
           python3 scripts/check_feature_parity.py
 
+      - name: Measure production fixed shared media callbacks
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
+          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
+          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
+          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
+          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
+          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
+
+      - name: Upload production shared media callback measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
   host_process_inspection:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Host process inspection (${{ matrix.os }})
@@ -703,30 +726,6 @@ jobs:
           python3 scripts/check_loops_boundary.py
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
-
-      - name: Measure production fixed shared media callbacks
-        if: matrix.target == 'linux' && matrix.profile == 'release'
-        env:
-          RUSTFLAGS: -D warnings
-          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
-          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
-          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
-          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
-          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
-          sha256sum src/rust/shoop_rt_engine/src/shared_measurements.rs src/rust/shoop_rt_engine/src/shared_tests.rs > "$SHOOP_SHARED_REPORT_DIR/configuration-source.sha256"
-          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
-          cat "$SHOOP_SHARED_REPORT_DIR/summary.txt"
-
-      - name: Upload production shared media callback measurements
-        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
-        uses: actions/upload-artifact@v7
-        with:
-          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Upload rt_runtime native evidence
         if: always() && matrix.target != 'web'

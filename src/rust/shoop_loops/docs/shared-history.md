@@ -123,8 +123,12 @@ in the engine are development dependencies only; production dependency boundarie
 and file formats are unchanged.
 
 The release CI measurement retains every full guarded `Render::process` duration,
-pool/work reading and deadline miss, plus prepared capacity, aggregate MIDI work,
+pool/work reading and deadline miss, plus work maxima, callback-end pool extrema,
+prepared capacity, aggregate MIDI work,
 source SHA and toolchain/runner metadata. It includes stopped capture, two playing
 loops, private audio edits, MIDI preparation and publication with old exports alive.
+Admitted maximum-density and refused MIDI ticks check truthful recovery. Pool
+extrema are sampled after callback maintenance; prepared reservations bound
+intra-callback storage separately.
 Means, tails and maxima describe that CI workload, not a physical-device guarantee.
 Application P04/P05 admission, selection/sync policy and UI remain open.

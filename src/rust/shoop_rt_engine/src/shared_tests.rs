@@ -52,7 +52,7 @@ struct Fixture {
     completions: Vec<Completion>,
     executions: Vec<Executed>,
     stimulus: Option<u64>,
-    burst: Option<u64>,
+    burst: Option<(u64, usize)>,
     last_execution: Option<Executed>,
     midi_overflows: usize,
     transfer_bytes: usize,
@@ -262,10 +262,10 @@ impl Fixture {
                 for packet in packets(frame, self.q) {
                     self.midi_input.push(i as u32, frames, &packet).unwrap();
                 }
-                if self.burst == Some(frame) {
-                    for value in 0..65 {
+                if let Some((_, count)) = self.burst.filter(|(at, _)| *at == frame) {
+                    for value in 0..count {
                         self.midi_input
-                            .push(i as u32, frames, &[0xbf, 7, value])
+                            .push(i as u32, frames, &[0xbf, 7, (value % 128) as u8])
                             .unwrap();
                     }
                 }
@@ -1099,7 +1099,7 @@ fn midi_storage_refusal_keeps_observation_and_recovers_a_truthful_segment() {
     let (old, sibling, start) = h.grabs();
     let retained = h.snapshot(old.midi.unwrap());
     let at = h.aligned_future(128);
-    h.burst = Some(at);
+    h.burst = Some((at, 65));
     let failed = h.send(at + 32, Operation::HistoryStatus { source: 0 });
     let Reply::History(gap) = h.result(failed) else {
         panic!("gap status")

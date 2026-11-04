@@ -2,8 +2,9 @@
 
 ## Status, baseline and delivery
 
-R0 complete; R1 is reconciled with the target cleanup through `d43871fb`.
-R2–R7 implementation and proofs are under CI validation. Written using
+R0–R6 source and native foundation proofs pass at `9f5f5886`; the target is
+now refreshed through `3ca192e1`. R7 measurements and R8 final matrix/review
+remain under CI validation. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -115,6 +116,25 @@ capture/playback, private MIDI progress and ready publication in later ticks of
 the same callback. `SharedWork` exposes remaining background credits for that
 assertion. Release measurement artifacts retain per-callback MIDI overflow counts,
 configuration source hashes and their complete timing/pool/work observations.
+
+The consolidated foundation job in [run 6210](https://github.com/SanderVocke/shoopdaloop/actions/runs/41887790851/job/126776831485)
+passed all four packages with warnings denied and repository policies. Its engine
+binary passed **21 tests, zero failures, one explicitly ignored release
+measurement**. This includes the complete persistence/family/configuration
+sequence, all-credit shutdown assertions, identical admitted-cut oracles and the
+background-copy exhaustion proof. Native JACK, bare-metal and all three process
+inspection platforms passed on that head. These are native functional proofs;
+the broader matrix, release observations and latest target merge need fresh checks.
+
+Target `3ca192e10552afe9ca9dfe6f4482c8b5081602bc` adds delayed MIDI-output
+invalidation during recovery, plus regressions at larger quanta. It is merged
+without changing that behavior. The release measurement now runs in the focused
+foundation job, includes admitted 64-event and refused 65-event MIDI ticks,
+checks truthful recovery, and records work maxima and callback-end pool extrema
+in addition to every raw callback. Those extrema are observations after callback
+maintenance; they are not claimed as intra-callback high-water marks. The prepared
+reservations and multi-tick maximum-host workload establish the finite capacity
+bound separately.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |
@@ -319,9 +339,10 @@ Verification through CI: the source builds with warnings denied, storage/codec
 and existing fixed tests compile/run, and checks belong to the reconciled head
 and intended base. A base edit or old status alone is not CI evidence.
 
-Implementation checkboxes in R1–R5 record completed source/fixture work. Their
-verification gates remain pending the consolidated CI run; they do not claim
-passing behavioral evidence. R6–R8 remain open until execution/artifacts pass.
+Implementation checkboxes in R1–R6 record completed source/fixture work. Their
+native verification gates passed in run 6210 at `9f5f5886`. Portable/native JACK
+checks also passed. Browser and final refreshed-head gates remain in R8; R7
+requires retained release observations before its remaining items close.
 
 ### R2 — Small fixed-runtime compatibility proof
 
@@ -403,17 +424,17 @@ recording conflicts, same-tick ordering and callbacks with no complete tick.
 
 ### R6 — Persistence, conversion and existing lifecycle integration
 
-- [ ] Round-trip pinned original/intermediate/final shared media through ordinary
+- [x] Round-trip pinned original/intermediate/final shared media through ordinary
   exports, session archives, exact MIDI and audio/WAV; reload immutable indexed
   bases and edit them without changing the saved owners. Preserve SMF warnings.
-- [ ] Exercise the target's rate/Q conversion with shared-backed retained media,
+- [x] Exercise the target's rate/Q conversion with shared-backed retained media,
   initial/preroll MIDI and sync dependents. Verify identity conversion separately
   from explicitly changed samples/timing; do not weaken unsupported-state checks.
-- [ ] Exercise NodePairSnapshot/Adopt/Select, bulk reads/MIDI initial queries,
+- [x] Exercise NodePairSnapshot/Adopt/Select, bulk reads/MIDI initial queries,
   SelectFamily and ConfigurationReplace through the reconciled engine paths.
   Preserve unrelated playback/recording, current controls and accepted-operation
   ownership across cancellation, detach/reconnect and controller loss.
-- [ ] Complete source/tap removal, pending edit/import cancellation, saturated
+- [x] Complete source/tap removal, pending edit/import cancellation, saturated
   result handling and shutdown after a partial-tick fault. Drain ordinary/audio/
   MIDI retirement fairly and recover every reserved page/owner/transaction credit.
   Released handles/cursors invalidate immediately, before physical reclamation.

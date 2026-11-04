@@ -89,6 +89,22 @@ fn fixed_shared_callback_measurements() {
                 let end = h.aligned_future(128 + current.frames * 3);
                 h.run_to(end);
             }
+            for (phase, count) in [("midi_density_limit", 64), ("midi_density_refusal", 65)] {
+                h.measure_phase = phase;
+                let at = h.aligned_future(128);
+                h.burst = Some((at, count - packets(at, q).len()));
+                let check = h.send(at + q as u64, Operation::HistoryStatus { source: 0 });
+                let Reply::History(status) = h.result(check) else {
+                    panic!("density history")
+                };
+                assert_eq!(status.failure, (count > 64).then_some(Error::Capacity));
+                let Reply::History(recovered) = h.op(Operation::HistoryStatus { source: 0 }) else {
+                    panic!("density recovery")
+                };
+                assert_eq!(recovered.failure, None);
+                assert_eq!(h.engine.render.phase(), Phase::Running);
+            }
+            h.burst = None;
             h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
             let data = h.timings.take().unwrap();
             let mut stopped = h.engine.render.into_stopped();
@@ -103,6 +119,10 @@ fn fixed_shared_callback_measurements() {
                 .filter(|row| row.nanos * 48000 > row.frames as u128 * 1_000_000_000)
                 .count();
             let total: u128 = times.iter().sum();
+            let peak = |read: fn(&Callback) -> usize| data.iter().map(read).max().unwrap();
+            let floor = |read: fn(&Callback) -> usize| data.iter().map(read).min().unwrap();
+            writeln!(summary, "Q={q} partition={partition} peak_ticks={} peak_render_operations={} peak_render_copied_bytes={} peak_render_validation_steps={} peak_background_copied_bytes={} peak_background_validation_steps={} peak_reclaimed_pages={} peak_reclaimed_versions={} min_free_pages={} max_reserved_pages={} min_free_versions={} min_free_snapshots={} max_retired_versions={} max_retired_pages={}",
+                peak(|r| r.ticks), peak(|r| r.work.1.operations), peak(|r| r.work.1.copied_bytes), peak(|r| r.work.1.validation_steps), peak(|r| r.work.0.copied_bytes), peak(|r| r.work.0.validation_steps), peak(|r| r.work.0.reclaimed_pages), peak(|r| r.work.0.reclaimed_versions), floor(|r| r.usage.free_pages), peak(|r| r.usage.reserved_pages), floor(|r| r.usage.free_versions), floor(|r| r.usage.free_snapshots), peak(|r| r.usage.retired_versions), peak(|r| r.usage.retired_pages)).unwrap();
             let midi_overflows: usize = data.iter().map(|row| row.midi_overflows).sum();
             writeln!(summary, "Q={q} partition={partition} callbacks={} mean_ns={} p50_ns={} p95_ns={} p99_ns={} max_ns={} misses={misses} midi_overflows={midi_overflows} capacity={capacity:?} midi={midi_work:?}",
                 data.len(), total / times.len() as u128, times[times.len()/2], times[(times.len()-1)*95/100], times[(times.len()-1)*99/100], times[times.len()-1]).unwrap();
