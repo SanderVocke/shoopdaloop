@@ -117,6 +117,8 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 }
 
 pub(crate) struct Cells {
+    #[cfg(test)]
+    pub fail_reader_tick: AtomicBool,
     pub next_frame: AtomicU64,
     pub preview_finished: AtomicU64,
     pub preview_playing: AtomicU64,
@@ -144,6 +146,8 @@ impl Cells {
         driver: DriverStatus,
     ) -> Arc<Self> {
         let cells = Self {
+            #[cfg(test)]
+            fail_reader_tick: AtomicBool::new(false),
             next_frame: AtomicU64::new(0),
             preview_finished: AtomicU64::new(0),
             preview_playing: AtomicU64::new(0),

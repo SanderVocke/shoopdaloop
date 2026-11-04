@@ -21,7 +21,12 @@ use rt_runtime::{
 };
 mod configuration;
 mod family;
+mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
+pub use shared::{
+    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedCapacity,
+    SharedSettings, SharedTake, SharedWork,
+};
 mod node_pairs;
 mod planner;
 mod processor;
@@ -104,6 +109,41 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    SharedWork,
+    SharedCapacity,
+    HistoryStatus {
+        source: u32,
+    },
+    HistoryGrab {
+        source: HistoryId,
+        start: Frame,
+        end: Frame,
+    },
+    CandidateBegin {
+        target: LoopId,
+        take: SharedTake,
+    },
+    CandidateAudio {
+        id: CandidateId,
+        position: u64,
+        input: SnapshotId,
+        offset: u64,
+        frames: usize,
+    },
+    CandidateMidi {
+        id: CandidateId,
+        position: u64,
+        input: SnapshotId,
+    },
+    CandidateStatus {
+        id: CandidateId,
+    },
+    CandidateCancel {
+        id: CandidateId,
+    },
+    CandidatePublish {
+        id: CandidateId,
+    },
     SelectFamily {
         root: LoopId,
         topology_epoch: Epoch,
@@ -307,6 +347,21 @@ pub struct Cut {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
+    History(HistoryStatus),
+    Grabbed(SharedTake),
+    Candidate {
+        id: CandidateId,
+        status: CandidateStatus,
+        steps: usize,
+    },
+    CandidatePublished {
+        id: CandidateId,
+        take: SharedTake,
+        media: media::MediaId,
+        frame: Frame,
+    },
+    SharedWork(SharedWork),
+    SharedCapacity(SharedCapacity),
     NodePairSource {
         id: NodePairSourceId,
         snapshot: Snapshot,
@@ -483,6 +538,7 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
+    shared: Option<shared::Shared>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -815,6 +871,7 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
+            shared: None,
             observer,
             settings,
             resolver,

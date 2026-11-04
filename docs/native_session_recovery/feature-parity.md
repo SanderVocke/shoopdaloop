@@ -83,6 +83,14 @@ what is missing rather than assume the whole feature needs a new engine primitiv
 | P15 COMPLETE | System/Master audio click preview is supported. System uses client-local native/Web Audio output; Master uses bounded service staging and transient RT bus playback, including split hosts. Master identity survives rename, reorder and save/load; Stop, switching and recovery preserve loop media and transport. | `shoopdaloop/persistence_io/preview`, native/browser players and production application mailbox; service/adapter/engine preview handlers. [Preview contract and completion evidence](preview.md) records output, cancellation, resource, wire-transport and persistence tests, Linux System/CPAL/JACK measurements and hosted Chromium acceptance. | Complete under the user-approved scope and existing evidence. No additional physical-platform or multi-machine testing is required for closure. Bus FX stays P08; audio/MIDI generation and insertion are already supported under P11. |
 | P16 OPEN | Session/filesystem script ownership conversion and related session resource workflows are unavailable. Script source export, fresh scripts, local dialogs, timers, controller MIDI and explicit starts are available. | `shoop_scripting`, `shoop_script_resources`, `shoop_egui/script_dialogs`; reference tests `scripts_export_exact_source_and_convert_session_ownership`, `filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal`, `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`. | Restore client-local file/resource workflows and explicit session-owned script data through service commands, without moving VM execution to the host. Respect the recovery no-auto-restart rule. |
 
+The P04/P05 storage foundations have library evidence for both
+[shared audio](../../src/rust/rt_runtime/docs/reference/shared-audio.md) and
+[shared MIDI](../../src/rust/rt_runtime/docs/reference/shared-midi.md), including
+immutable overlapping grabs, independent edits, ordinary loop-resource playback
+and persistence round trips. MIDI replacement prepares a complete private state
+index before an explicit publication cut. The [fixed integration contract](../../src/rust/shoop_loops/docs/shared-history.md) covers completed input watermarks, bounded private preparation and ordinary media publication; final-head validation is tracked in [PLAN_RECONCILE_GRAB.md](../../PLAN_RECONCILE_GRAB.md). These foundations do not enable the
+application grab policies or Replacing mode; both rows remain open.
+
 ## Preserved evidence and retirement record
 
 - The temporary fixed JACK startup bank is superseded by dynamic session-owned

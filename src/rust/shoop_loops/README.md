@@ -32,6 +32,7 @@ processor construction or hard-deadline certification.
 | Prepare and install the parts, submit/cancel work, export and stop | [Runtime](docs/runtime.md) |
 | Execute audio conversion, gain and discontinuity smoothing | [Audio](docs/audio.md) |
 | Render/index/track/capture original packets | [MIDI](docs/midi.md) |
+| Retain input history and publish private shared-media edits on fixed ticks | [Shared history](docs/shared-history.md) |
 | Emit cleanup → projected restoration → original events | [MIDI restoration](docs/midi-restore.md) |
 | Retain media and publish logical-owner batches | [Media ownership](docs/media.md) |
 | Borrow flat/sparse compiled timing metadata | [Topology](docs/topology.md) |

@@ -23,8 +23,13 @@ shoop_loops = { path = "../shoop_loops" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 
 [dev-dependencies]
+rt_buffered = { path = "../rt_buffered" }
 shoop_rt_engine = { path = ".", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+shoop_persistence_codec = { path = "../shoop_persistence_codec" }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_app_api = { path = "../shoop_app_api" }
+shoop_session = { path = "../shoop_session" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

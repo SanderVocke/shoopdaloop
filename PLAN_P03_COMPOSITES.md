@@ -574,5 +574,10 @@ and retain the normal/full test groups required before behavioral commits/pushes
   or of full P03 is claimed at this checkpoint.
 - The target was refreshed during this checkpoint: `2e19210b` adds shared-media/
   replace foundations and buffered processors after the original `bbf027e9` base.
-  Integrate that head and rerun the affected/final checks before adapter work and
-  publication. The results above identify the pre-integration checkpoint.
+  The target is integrated in the current tree. Its buffered/shared unit modules
+  declared two global allocators; one crate-level tracking allocator now covers
+  both, preserving heap guards. Native integration verification: **2756 passed /
+  7 skipped**; Node engine **79**, worklet host **18**, protocol **5**, all passed.
+  Warning-denying workspace build and dependency/tracing/parity audits passed.
+  Chrome and independent loop-host rechecks are in progress. Earlier results
+  above identify the pre-integration checkpoints (`47add1c9`, `1a170847`).
