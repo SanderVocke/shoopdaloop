@@ -142,7 +142,10 @@ not subtracted regular packets elsewhere in the same larger-Q tick. The fixture
 now counts the entire tick before choosing its burst, preserving the 64/65-event
 expectations. Persistence additionally saves and retains the loaded-and-reedited
 third revision through subsequent family and full replacement. Both updates need
-fresh CI; no failed measurement is accepted as evidence.
+fresh CI; no failed measurement is accepted as evidence. Capacity review also
+removed a double count of the MIDI store value: its own metadata report already
+includes that inline storage, unlike the audio report. Reservations and actual
+allocations are unchanged.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |

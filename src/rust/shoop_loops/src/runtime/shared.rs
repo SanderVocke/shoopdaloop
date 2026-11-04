@@ -313,11 +313,6 @@ impl Shared {
             if let Some(id) = history.midi {
                 let c = resources.midi_store_capacity(id)?;
                 add(&mut capacity.store_metadata_bytes, 1, c.metadata_bytes)?;
-                add(
-                    &mut capacity.store_metadata_bytes,
-                    1,
-                    size_of::<shared_midi::MidiStore>(),
-                )?;
                 add(&mut capacity.midi_state_bytes, 1, c.state_bytes)?;
                 add(
                     &mut capacity.reserved_payload_bytes,
