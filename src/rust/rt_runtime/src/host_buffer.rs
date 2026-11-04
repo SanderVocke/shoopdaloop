@@ -18,7 +18,7 @@ pub(crate) struct HostBuffer {
     overflows: usize,
 }
 impl HostBuffer {
-    pub fn prepare(config: PreparedConfig, quantum: super::Quantum) -> Result<Self, Error> {
+    pub fn prepare(config: PreparedConfig, quantum: crate::Quantum) -> Result<Self, Error> {
         let c = config.limits();
         if c.audio_inputs > PORTS || c.audio_outputs > PORTS {
             return Err(Error::InvalidConfig);

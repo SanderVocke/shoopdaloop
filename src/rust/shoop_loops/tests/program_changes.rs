@@ -285,7 +285,7 @@ fn fixed_program_replacement_preserves_phase_and_exact_boundary_journals() {
             prepared(&d, 1024)
         };
         let mut r = Resolver::prepare(scaled(false)).unwrap();
-        r.set_quantum(rt_runtime::processing::Quantum::new(q as usize).unwrap())
+        r.set_quantum(rt_runtime::Quantum::new(q as usize).unwrap())
             .unwrap();
         start(&mut r);
         let candidate = scaled(true);

@@ -79,8 +79,7 @@ fn prepare(q: usize) -> Resolver {
         .unwrap(),
     )
     .unwrap();
-    r.set_quantum(rt_runtime::processing::Quantum::new(q).unwrap())
-        .unwrap();
+    r.set_quantum(rt_runtime::Quantum::new(q).unwrap()).unwrap();
     r
 }
 

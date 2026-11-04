@@ -1,9 +1,7 @@
 # shoop_loops
 
-Production loop processing uses `runtime::LoopPlanner`, including sync/program
-settlement, media ownership and grouped recording at quantum boundaries. The
-[standalone primitive bank](docs/processing.md) remains available for experiments
-and benchmarks.
+Loop processing uses `runtime::LoopPlanner`, including sync/program settlement,
+media ownership and grouped recording at quantum boundaries.
 
 This library is unconditionally `no_std` with `alloc`; it has no `std` feature.
 It works in ordinary `std` applications using their allocator and panic handling.
@@ -51,7 +49,7 @@ cargo run --locked -p shoop_loops --example configuration_cut
 cargo run --locked -p shoop_loops --example program_graph_cut
 ```
 
-Each example assembles its own runtime from the parts. Tests and the benchmark use
+Each example assembles its own runtime from the parts. Tests use
 the dev-only `shoop_loops_test_support` crate instead, which is not part of the API.
 
 Add `--release` for the optimized profile. `coordinated_loop` asserts stereo/MIDI
@@ -82,10 +80,6 @@ stage/activate/release and recycle owners through bounded results. Actual offlin
 graph worklets now transfer descriptors/commands/returns and check downstream output
 against native replay using an explicit audible Ready checkpoint. That test-driver
 pause is not continuous wall-clock live-edit/deadline evidence.
-The separate [native benchmark](docs/performance.md) now measures fourteen guarded
-loop workloads with full correctness checks and raw timing/work/credit data;
-it does not measure browser/device deadlines. A production browser adapter is
-still outside this milestone.
 
 ## Timing and ownership contracts
 
@@ -158,13 +152,6 @@ The resolver owns authoritative timing; separate render operations execute
 supplied interval decisions without their own playback clock. Native and browser hosts use the same semantics;
 transport, devices, UI, and AudioWorklet bindings stay outside this crate.
 
-Native callback measurements are available through
-[`scripts/benchmark_loops.py`](../../../scripts/benchmark_loops.py)
-and the guarded `benchmark_loop` example. [Measuring native callbacks](docs/performance.md)
-explains the fourteen workloads, full scalar/packet checks, raw distributions,
-resource samples, deliberate heap failures and limits. Dense deadline misses are
-reported, never hidden or used as a brittle success threshold.
-
 ## Adversarial regression models
 
 ```sh
@@ -189,8 +176,3 @@ The implementation contract and remaining work are tracked in
 [Earlier plans and evidence narratives](../../../docs/history/README.md) are
 historical. No full legacy backend compatibility, unlimited recording, or
 hard-real-time deadline guarantee is promised.
-
-## Fixed-quantum redesign evidence
-
-The [implementation and timing report](../../../docs/fixed_quantum/README.md)
-records the current migration status, callback tails and historical comparisons.

@@ -278,10 +278,10 @@ fn activation_compatible<P>(
 }
 
 pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
-    quantum: crate::processing::Quantum,
+    quantum: crate::Quantum,
     tick_frame: Frame,
     boundary_at: Option<(Sequence, Frame)>,
-    host_buffer: Option<crate::processing::host_buffer::HostBuffer>,
+    host_buffer: Option<crate::host_buffer::HostBuffer>,
     fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
@@ -376,13 +376,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         planner: L,
         resources: ResourceStore,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
-        Self::prepare_owned(
-            config,
-            nodes,
-            planner,
-            resources,
-            crate::processing::Quantum::new(1)?,
-        )
+        Self::prepare_owned(config, nodes, planner, resources, crate::Quantum::new(1)?)
     }
 
     fn prepare_owned(
@@ -390,7 +384,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         nodes: Vec<PreparedNode<P, L, Q>>,
         mut planner: L,
         resources: ResourceStore,
-        quantum: crate::processing::Quantum,
+        quantum: crate::Quantum,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
         planner.set_quantum(quantum)?;
         if resources.config() != config {
@@ -538,7 +532,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }
-    pub fn quantum(&self) -> crate::processing::Quantum {
+    pub fn quantum(&self) -> crate::Quantum {
         self.quantum
     }
     pub fn buffering_latency(&self) -> usize {
@@ -550,7 +544,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if self.next_frame() != Frame(0) || self.host_buffer.is_some() {
             return Err(Error::InvalidState);
         }
-        self.host_buffer = Some(crate::processing::host_buffer::HostBuffer::prepare(
+        self.host_buffer = Some(crate::host_buffer::HostBuffer::prepare(
             self.resources.config(),
             self.quantum,
         )?);
@@ -559,7 +553,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn prepare_with_quantum_and_resources(
         config: PreparedConfig,
         max_host_frames: usize,
-        quantum: crate::processing::Quantum,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P, L, Q>>,
         domain: L,
         resources: ResourceStore,
@@ -1148,7 +1142,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
-        quantum: crate::processing::Quantum,
+        quantum: crate::Quantum,
     ) -> Result<(), Error> {
         let mut remaining = self.scheduler.delivery_limit();
         let callback_start = audio.frame;
@@ -1176,7 +1170,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
-        quantum: crate::processing::Quantum,
+        quantum: crate::Quantum,
         remaining: &mut usize,
     ) -> Result<(), Error> {
         let frame = audio.frame.checked_add(start)?;
@@ -1229,7 +1223,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
-        quantum: crate::processing::Quantum,
+        quantum: crate::Quantum,
     ) -> Result<(), Error> {
         let Some(plan) = &self.active else {
             return Ok(());

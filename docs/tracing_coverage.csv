@@ -7,15 +7,6 @@ src/rust/rt_runtime/src/buffer.rs,generic_realtime_library,excluded,Independent 
 src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent capacity validation; no application tracing dependency.
 src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.
 src/rust/rt_runtime/src/executor.rs,generic_realtime_library,excluded,Independent bounded renderer; no application tracing dependency. Hosts can observe Copy work and fault diagnostics outside rendering.
-src/rust/rt_runtime/src/processing/graph.rs,generic_realtime_library,excluded,Prepared fixed-tick execution; hosts observe Copy tick and route counts and terminal fault diagnostics outside rendering.
-src/rust/rt_runtime/src/processing/host.rs,generic_realtime_library,excluded,Partition adaptation exposes core and host clocks and constant latency without callback tracing.
-src/rust/rt_runtime/src/processing/host_buffer.rs,generic_realtime_library,excluded,Prepared tick staging exposes declared latency and bounded MIDI overflow counters through its owning runtime.
-src/rust/rt_runtime/src/processing/mod.rs,generic_realtime_library,excluded,Portable fixed-core module declarations; no execution boundary to instrument.
-src/rust/rt_runtime/src/processing/operation.rs,generic_realtime_library,excluded,Typed node operations and terminal receipts; direct bound targets without host tracing dependencies.
-src/rust/rt_runtime/src/processing/publication.rs,generic_realtime_library,excluded,Owning route publication exposes terminal timing and epoch receipts; retirement stays off-render without application tracing.
-src/rust/rt_runtime/src/processing/queue.rs,generic_realtime_library,excluded,Bounded copy-command transport exposes timing and terminal receipts without application tracing dependencies.
-src/rust/rt_runtime/src/processing/routing.rs,generic_realtime_library,excluded,Control-side fixed-catalog graph compiler; typed validation results without application tracing dependencies.
-src/rust/rt_runtime/src/processing/timing.rs,generic_realtime_library,excluded,Validated quantum and checked clock values; no execution boundary to instrument.
 src/rust/rt_runtime/src/graph.rs,generic_realtime_library,excluded,Independent graph compiler and bounded validator; no application tracing dependency.
 src/rust/rt_runtime/src/graph/activation.rs,generic_realtime_library,excluded,Generic scoped graph activation capabilities; bounded stage status and authoritative epochs expose outcomes without application tracing.
 src/rust/rt_runtime/src/ids.rs,generic_realtime_library,excluded,Identity and clock value types; no execution boundary to instrument.
@@ -43,7 +34,6 @@ src/rust/shoop_loops/src/audio.rs,portable_loop_library,excluded,Prepared domain
 src/rust/shoop_loops/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
 src/rust/shoop_loops/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
 src/rust/shoop_loops/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
-src/rust/shoop_loops/src/processing.rs,portable_loop_library,excluded,Prepared direct loop execution exposes state and capture failures and terminal request receipts without callback tracing.
 src/rust/shoop_loops/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
 src/rust/shoop_loops/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
 src/rust/shoop_loops/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
@@ -253,7 +243,6 @@ src/rust/shoop_rt_engine/src/endpoint.rs,realtime_engine,excluded,Bounded alloca
 src/rust/shoop_rt_engine/src/graph.rs,realtime_engine,excluded,Allocation-free graph descriptor construction for staged activation; no execution boundary to instrument.
 src/rust/shoop_rt_engine/src/jobs.rs,realtime_engine,excluded,Structural transactions over prepared slots run by the control endpoint; the adapter traces their outcomes.
 src/rust/shoop_rt_engine/src/lib.rs,realtime_engine,excluded,Engine preparation and declarations; the host traces preparation failures.
-src/rust/shoop_rt_engine/src/processing.rs,realtime_engine,excluded,Fixed composition of production DSP and direct loop state; copy telemetry cells and reliable receipts without callback tracing.
 src/rust/shoop_rt_engine/src/model.rs,realtime_engine,excluded,Plain confirmed engine state on the control side.
 src/rust/shoop_rt_engine/src/node.rs,realtime_engine,excluded,Real-time strip stage and fader and Master processors; rendering must not trace.
 src/rust/shoop_rt_engine/src/pool.rs,realtime_engine,excluded,Prepared slot and node identity layout.
@@ -404,3 +393,5 @@ src/rust/shoop_app/src/service/preview.rs,app_session,instrumented_indirect,Prev
 src/rust/shoop_rt_backend/src/preview.rs,application_ui_and_control,instrumented_indirect,Preview uploads use traced adapter requests and outcomes without media payload tracing.
 src/rust/shoop_rt_engine/src/preview.rs,realtime_engine,excluded,Prepared bounded preview control may run on the audio thread; host and adapter trace request boundaries.
 src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,instrumented_indirect,Preview generation uses the codec worker and runs within the frontend persistence pump boundary.
+src/rust/rt_runtime/src/quantum.rs,generic_realtime_library,excluded,Validated processing quantum and checked frame alignment have no execution boundary.
+src/rust/rt_runtime/src/host_buffer.rs,generic_realtime_library,excluded,Prepared quantum buffering and bounded MIDI recovery must not trace during rendering.

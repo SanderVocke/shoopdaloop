@@ -38,7 +38,7 @@ snapshot-status paragraphs there do not describe the current tree.
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
 | `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
-| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests, benchmarks and test hosts | Not used by production crates; not part of the loop library's API |
+| `shoop_loops_test_support` | Dev-only assembly of the loop parts with optional effects, for tests and test hosts | Not used by production crates; not part of the loop library's API |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
 | `shoop_engine_service` | Native composition owning one runtime with the loop parts and independent DSP; typed loop/DSP controls through one ordered path, telemetry and media access | Narrow headless service, not the production application backend or general protocol framework |
 | Independent test hosts | Native direct/wire/two-thread and actual non-isolated AudioWorklets for runtime/loop scenarios | Test fixtures, not production adapters or the proposed general service protocol |
@@ -71,9 +71,17 @@ The new engine backend's [engine](src/rust/shoop_rt_engine/README.md),
 
 The generic runtime owns authoritative engine frames and execution mechanics.
 One render-owned resolver owns logical loop modes, positions, synchronization,
-composite cursors and request precedence. Playback/capture processors consume
-borrowed immutable decisions and return observations; they do not discover timing
-by reading mutable peer state or running another musical clock.
+composite cursors and request precedence. Each graph iteration processes one whole
+configured quantum. The loop planner settles changes at its start, playback/capture
+processors borrow the prepared per-loop views through the render-owned domain,
+and capture completion updates that domain at its end. Processors do not run a
+separate musical clock. Host callback sizes are adapted outside graph execution;
+callback-wide work budgets are not renewed at internal tick boundaries.
+
+The generic processor/planner API also retains decision-slot and observation
+interfaces used by standalone examples and test hosts. Production loop nodes use
+direct domain access; these compatibility interfaces are a remaining consolidation
+opportunity, not a second production execution strategy.
 
 Timing relations (sync, state-changing actions and composite containment), signal
 routes and generic planner/consumer bindings are distinct structures. Do not use

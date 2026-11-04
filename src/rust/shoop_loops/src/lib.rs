@@ -35,7 +35,6 @@ pub mod ids;
 pub mod media;
 pub mod midi;
 pub mod midi_restore;
-pub mod processing;
 pub mod program;
 pub mod resolver;
 pub mod runtime;

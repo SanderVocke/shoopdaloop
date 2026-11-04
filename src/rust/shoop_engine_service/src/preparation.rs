@@ -44,7 +44,7 @@ fn prepare_inner(
     if config.max_frames == 0 || config.max_frames > 64 || config.export_slots == 0 {
         return Err(Error::InvalidConfig.into());
     }
-    let quantum = rt_runtime::processing::Quantum::new(config.quantum)?;
+    let quantum = rt_runtime::Quantum::new(config.quantum)?;
     let mut dsp_config = config.dsp;
     dsp_config.max_frames = quantum.frames();
     let prepared_dsp = dsp::prepare(dsp_config, presets, initial)?;

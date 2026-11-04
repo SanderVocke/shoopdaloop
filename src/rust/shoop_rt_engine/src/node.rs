@@ -967,38 +967,6 @@ impl EngineNode {
         }
     }
 }
-impl rt_runtime::processing::Processor<shoop_loops::processing::Bank, EngineOp> for EngineNode {
-    fn validate_state(
-        &self,
-        _: rt_runtime::NodeId,
-        _: &shoop_loops::processing::Bank,
-    ) -> Result<(), Error> {
-        if matches!(self, Self::Loop(_)) {
-            Err(Error::InvalidState)
-        } else {
-            Ok(())
-        }
-    }
-    fn ports(&self) -> PortCounts {
-        <Self as Processor<LoopPlanner, EngineOp>>::ports(self)
-    }
-    fn operation(
-        &mut self,
-        operation: EngineOp,
-        context: rt_runtime::processing::OperationContext<'_>,
-        _: &mut shoop_loops::processing::Bank,
-    ) -> Result<(), Error> {
-        self.apply_signal(operation, context.graph_epoch)
-    }
-    fn process(
-        &mut self,
-        block: &mut rt_runtime::processing::Block<'_>,
-        _: &mut shoop_loops::processing::Bank,
-    ) -> Result<(), Error> {
-        self.apply_configuration(block.graph_epoch);
-        self.render_signal(&mut SignalBlock::direct(block))
-    }
-}
 
 #[cfg(test)]
 mod tests {

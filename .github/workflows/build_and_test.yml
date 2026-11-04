@@ -680,38 +680,13 @@ jobs:
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest scripts.tests.test_rt_runtime_boundary scripts.tests.test_loops_boundary scripts.tests.test_rt_engine_boundary
 
-      - name: Measure guarded rt_runtime release workloads
-        if: matrix.target == 'linux' && matrix.profile == 'release'
-        env:
-          RUSTFLAGS: -D warnings
-        run: python3 scripts/benchmark_rt_runtime.py --iterations 4096 --trials 1
-
-      - name: Measure guarded loop release workloads
-        if: matrix.target == 'linux' && matrix.profile == 'release'
-        env:
-          RUSTFLAGS: -D warnings
-          RUSTDOCFLAGS: -D warnings
-        run: |
-          python3 scripts/benchmark_loops.py --iterations 1024 --trials 3 \
-            --report-dir '${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}'
-
-      - name: Upload guarded loop measurement evidence
-        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
-        uses: actions/upload-artifact@v7
-        with:
-          name: loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload rt_runtime native and benchmark evidence
+      - name: Upload rt_runtime native evidence
         if: always() && matrix.target != 'web'
         uses: actions/upload-artifact@v7
         with:
           name: rt-runtime-${{ matrix.target }}-${{ matrix.profile }}-${{ github.run_id }}
           path: |
             target/rt-runtime-host/reports
-            target/rt-runtime-bench
           if-no-files-found: warn
           retention-days: 14
 
@@ -785,7 +760,7 @@ jobs:
           python3 scripts/check_tracing_coverage.py --require-closed
           python3 scripts/check_shoop_test_usage.py
           python3 scripts/check_feature_parity.py
-          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner scripts.tests.test_loop_benchmark
+          python3 -m unittest scripts.tests.test_rt_runtime_miri scripts.tests.test_rt_runtime_miri_jobs scripts.tests.test_rt_runtime_miri_batches scripts.tests.test_loops_hosts scripts.tests.test_loop_host_native_runner
 
       - name: Validate native and multirealm Perfetto traces
         if: matrix.target == 'linux' && matrix.profile == 'debug'

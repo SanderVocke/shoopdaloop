@@ -28,12 +28,8 @@ crate; `scripts/check_rt_engine_boundary.py` enforces that.
 
 ## Owners
 
-The standalone `processing::prepare(..., Quantum)` composition is retained for
-experiments and benchmarks using the primitive loop bank. It shares production
-strip/fader/bus/reader DSP and capacity calculations. Application/native/worklet
-startup uses the full endpoint and loop-domain composition below, including
-logical slots, sync/programs, transactions, exports and recovery. Both process
-whole prepared quanta. Changing Q requires stop/reprepare.
+All hosts use the complete endpoint and loop-domain composition. Graph calls
+process whole prepared quanta; changing Q requires stop/reprepare.
 
 `prepare(&EngineDescription, DriverStatus)` allocates everything and returns an
 `Engine` with three owners:

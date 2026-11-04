@@ -1,9 +1,8 @@
 # rt_runtime
 
-Production `GraphRuntime` processes whole configurable quanta, with direct domain
-access for loop consumers. The [standalone processing API](docs/processing.md)
-provides the lower-level graph and host-adapter composition used by experiments
-and benchmarks. Both follow the same quantum alignment policy.
+`executor::GraphRuntime` processes whole configurable quanta, with direct domain
+access for loop consumers and buffered adaptation to arbitrary host callback sizes.
+`Quantum` validates frame alignment and is immutable after preparation.
 
 A prepared-storage audio/MIDI graph runtime for Rust hosts. Prepare storage before rendering, submit changes from a control context, and process borrowed buffers in your audio callback.
 
@@ -60,7 +59,7 @@ cargo run -p rt_runtime --release --example gain_graph
 cargo test -p rt_runtime
 ```
 
-The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal. The [bounded runtime example](examples/bounded_runtime.rs) measures seven synthetic offline workloads with legacy quota-based capture, not required/group/loop throughput. See [capacity and measurement limits](docs/part-5-configure-and-operate-the-runtime/17-capacity-work-budgets-and-diagnostics.md) and [repository performance evidence](../../../VALIDATION.md#performance-observations).
+The [gain graph example](examples/gain_graph.rs) checks output samples, exact-frame parameter changes, allocation-free render scopes, and processor removal.
 
 ## Current boundaries
 

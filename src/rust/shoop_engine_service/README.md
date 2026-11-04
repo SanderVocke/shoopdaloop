@@ -169,54 +169,6 @@ or session graph. Neither that comparison nor checked `shoop_latency` arithmetic
 adds history, postroll, render advance or playback-window support to this service.
 See [findings and raw evidence](../../../docs/history/pre-consolidation-fffc1faa/docs/integration/MILESTONE_1.md#stage-5-fixed-delay-physical-evidence-and-compatibility-findings).
 
-## Native measurement host and release observations
-
-```sh
-cargo run --locked --release -p shoop_engine_service --example measure_service -- service steady 128 2
-cargo run --locked --release -p shoop_engine_service --example measure_service -- current steady 128 2
-```
-
-Arguments are `service|current WORKLOAD SAMPLES WARMUP`. Service workloads are
-`idle`, `steady`, `preset`, `poll`, `export`; the current-engine comparison supports
-`idle` and `steady`. All use 64-frame callbacks and constant inputs; the common
-idle/steady graphs retain a 4,096-frame stereo take and check identical stereo
-samples. Export load instead starts an empty, continuously growing recording.
-MIDI packet counts expose restoration-policy differences rather than filtering
-them away.
-CSV goes to stdout only after processing; clock/RSS/resource metadata goes to
-stderr outside callbacks. Input adaptation, callback processing and handoff are
-heap/free guarded. Timing/result storage and the owning read buffer are prepared.
-
-The repeatable collector defaults to three fresh-process repetitions, 2,048 samples
-and 128 warm-up callbacks. Build first, use a clean source checkout for evidence,
-and choose an unused output directory:
-
-```sh
-cargo build --locked --release -p shoop_engine_service --example measure_service
-python3 src/rust/shoop_engine_service/examples/measure_service/collect.py target/milestone-1/release-capture --dependency-revision d038c208f46c98ac8d7561ddcf09ff7c8e7a9d94
-python3 src/rust/shoop_engine_service/examples/measure_service/collect.py target/milestone-1/release-capture --audit
-python3 -m unittest discover -s src/rust/shoop_engine_service/examples/measure_service -p test_collect.py
-```
-
-The revision above is the initial tested dependency, not an agreed final upstream
-revision. `--cpu N` restricts only this collector and its children to an allowed CPU;
-affinity is recorded and restored. No governor or other process is changed. Every
-raw row is kept in `.csv.gz`, complete stderr in `.meta.txt`, and source/binary/tool/
-configuration/environment provenance in `manifest.json`. `summary.json` reports
-pooled observations; each manifest run also has its own summary. The auditor
-recomputes all statistics from raw artifacts. `--allow-dirty` is explicitly validation-only and fails a normal final
-audit. The 60-second child timeout is a test-host safeguard, not an audio deadline.
-
-Seven debug/release host cases and nine parser/statistics/auditor unit cases pass.
-The [initial-pin release report](../../../docs/history/pre-consolidation-fffc1faa/docs/integration/MILESTONE_1.md#stage-6-release-measurements-on-the-initial-dependency-pin)
-retains **43,008 observations**, source/binary/environment provenance and per-run/
-pooled statistics. Observed service idle/steady medians were **4.048/4.278 µs**,
-versus the matched current-engine **2.185/2.385 µs**. Higher costs, MIDI restoration
-work differences, variation, all tails, control/meter costs, prefix-copy rates and
-RSS/pool observations are explicit; these are not performance-parity or device-
-deadline results. Final integrated-head reruns remain required. Full protocol,
-device and plugin costs are not modeled by this native host.
-
 ## Verification
 
 Run inside the repository development environment (on Nix: `nix develop`):

@@ -483,7 +483,7 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
-    quantum: Option<rt_runtime::processing::Quantum>,
+    quantum: Option<rt_runtime::Quantum>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,

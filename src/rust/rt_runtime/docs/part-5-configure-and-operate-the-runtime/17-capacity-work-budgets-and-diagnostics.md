@@ -69,7 +69,7 @@ Diagnostic additions saturate and report overflow where exposed. Semantic identi
 
 ## Measure separately from capacity
 
-The existing [bounded runtime example](../../examples/bounded_runtime.rs) is a synthetic seven-workload smoke with heap guards and exact checks. Its capture workload intentionally uses legacy quota-based I/O; its historical timings do not measure required/group/loop throughput. See [historical repository performance evidence](../../../../../docs/history/pre-consolidation-fffc1faa/docs/rt_runtime/PERFORMANCE.md) for actual setup, distributions and limits.
+The resource and coordinated-capture tests verify work counters, prepared storage limits and explicit exhaustion under heap guards. These checks do not establish device callback deadlines.
 
 Prepared storage and heap guards do not certify locks, third-party DSP, browser JavaScript, cold-cache behavior, platform deadlines or independent loop-host performance. Keep measurements and their conditions separate from the capacity/refusal contract.
 

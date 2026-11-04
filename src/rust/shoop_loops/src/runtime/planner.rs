@@ -643,7 +643,7 @@ impl LoopPlanner {
     }
 }
 impl Planner for LoopPlanner {
-    fn set_quantum(&mut self, quantum: rt_runtime::processing::Quantum) -> Result<(), Error> {
+    fn set_quantum(&mut self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
         if self.quantum.is_some() {
             return Err(Error::InvalidState);
         }

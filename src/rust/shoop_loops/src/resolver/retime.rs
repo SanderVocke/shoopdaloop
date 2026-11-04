@@ -37,7 +37,7 @@ mod tests {
         .unwrap();
         let mut resolver = Resolver::prepare(topology).unwrap();
         resolver
-            .set_quantum(rt_runtime::processing::Quantum::new(32).unwrap())
+            .set_quantum(rt_runtime::Quantum::new(32).unwrap())
             .unwrap();
         resolver
     }

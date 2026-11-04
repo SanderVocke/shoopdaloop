@@ -40,7 +40,6 @@ mod model;
 mod node;
 mod pool;
 mod preview;
-pub mod processing;
 mod queue;
 mod render;
 mod replacement;
@@ -276,7 +275,7 @@ pub fn prepare(
     let credits = usize::from(description.reliable_credits);
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
-    let quantum = rt_runtime::processing::Quantum::new(description.quantum)?;
+    let quantum = rt_runtime::Quantum::new(description.quantum)?;
     let config = runtime_capacities(description, &pool, quantum.frames()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;

@@ -126,7 +126,7 @@ pub trait Planner: Send {
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
 
-    fn set_quantum(&mut self, _quantum: crate::processing::Quantum) -> Result<(), Error> {
+    fn set_quantum(&mut self, _quantum: crate::Quantum) -> Result<(), Error> {
         Ok(())
     }
     fn tick_operation(
@@ -197,7 +197,7 @@ impl Planner for NoPlanner {
     type Observation = ();
     type Operation = ();
     type Result = ();
-    fn set_quantum(&mut self, _: crate::processing::Quantum) -> Result<(), Error> {
+    fn set_quantum(&mut self, _: crate::Quantum) -> Result<(), Error> {
         Ok(())
     }
     fn begin_tick(&mut self, _: PlanContext<'_>) -> Result<(), Error> {

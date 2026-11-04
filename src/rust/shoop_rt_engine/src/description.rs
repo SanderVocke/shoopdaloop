@@ -129,7 +129,7 @@ impl EngineDescription {
     pub(crate) fn validate(&self) -> Result<(), rt_runtime::Error> {
         use rt_runtime::Error;
         let host = &self.host;
-        rt_runtime::processing::Quantum::new(self.quantum)?;
+        rt_runtime::Quantum::new(self.quantum)?;
         if self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0

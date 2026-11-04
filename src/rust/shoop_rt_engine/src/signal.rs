@@ -34,14 +34,4 @@ impl<'a, 'b> SignalBlock<'a, 'b> {
             resources: &mut b.resources,
         }
     }
-    pub fn direct(b: &'a mut rt_runtime::processing::Block<'b>) -> Self {
-        Self {
-            frames: b.tick.quantum.frames(),
-            callback: Some(b.callback_frame),
-            audio: &mut b.audio,
-            midi_inputs: b.midi_inputs,
-            midi_outputs: b.midi_outputs,
-            resources: &mut b.resources,
-        }
-    }
 }

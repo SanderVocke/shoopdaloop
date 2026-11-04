@@ -4,11 +4,10 @@ use rt_runtime::{
     executor::{Command, GraphRuntime},
     graph::{self, Connection, Endpoint, GraphDescription, PortCounts, PortType},
     planner::NoPlanner,
-    processing::Quantum,
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
     transport::Lane,
-    Config, Epoch, Error, Frame,
+    Config, Epoch, Error, Frame, Quantum,
 };
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;

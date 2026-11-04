@@ -30,7 +30,7 @@ pub struct TickProcessBlock<'a, L: Planner = NoPlanner> {
     pub graph_epoch: crate::Epoch,
     pub callback_start: Frame,
     pub frame: Frame,
-    pub quantum: crate::processing::Quantum,
+    pub quantum: crate::Quantum,
     pub audio: AudioPorts<'a>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
@@ -39,7 +39,7 @@ pub struct TickProcessBlock<'a, L: Planner = NoPlanner> {
 }
 
 pub struct OperationContext<'a> {
-    pub quantum: crate::processing::Quantum,
+    pub quantum: crate::Quantum,
     pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,
