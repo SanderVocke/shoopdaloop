@@ -156,6 +156,9 @@ impl LoopPlanner {
                 }
             }
             row.assigned = edit.initial.is_some();
+            row.windows = Windows::default();
+            row.timing_revision = 0;
+            row.length_override = None;
             if let Some(initial) = edit.initial {
                 row.binding.target = initial.target;
                 row.binding.gain = initial.gain;

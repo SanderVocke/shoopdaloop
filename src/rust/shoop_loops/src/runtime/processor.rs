@@ -124,26 +124,37 @@ impl Processor<LoopPlanner> for PlaybackNode {
         }
         if let Some(audio) = &mut self.audio {
             audio.set_smoothing(view.smoothing);
-            audio.render_ports(
-                &mut block.resources.render(),
-                audio::Playback {
-                    source: view.audio,
-                    position: view.decision.state.position,
-                    gain: view.gain,
-                    balance: view.balance,
-                    discontinuity: view.decision.playback_discontinuity,
-                },
-                &mut block.audio,
-            )?;
+            let playback = audio::Playback {
+                source: view.audio,
+                position: view.decision.state.position,
+                gain: view.gain,
+                balance: view.balance,
+                discontinuity: view.decision.playback_discontinuity,
+            };
+            if self.binding.channels > crate::windows::MAX_AUDIO_CHANNELS {
+                audio.render_ports(&mut block.resources.render(), playback, &mut block.audio)?;
+            } else {
+                audio.render_windowed_ports(
+                    &mut block.resources.render(),
+                    playback,
+                    view.raw_position,
+                    &view.windows.audio[..self.binding.channels],
+                    view.lead,
+                    &mut block.audio,
+                )?;
+            }
         }
         let error = if let Some(midi) = &mut self.midi {
-            midi.render(
+            midi.render_windowed(
                 &mut block.resources.render(),
                 midi::Playback {
                     source: view.midi,
                     position: view.decision.state.position,
                     discontinuity: view.decision.playback_discontinuity,
                 },
+                view.raw_position,
+                view.windows.midi,
+                view.lead,
                 block.quantum.frames(),
                 block.midi_outputs.first_mut().ok_or(Error::InvalidShape)?,
             )?

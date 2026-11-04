@@ -157,7 +157,7 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut [&mut [f32]],
     ) -> Result<(), Error> {
-        self.render_output(io, playback, Outputs::Slices(outputs))
+        self.render_output(io, playback, Outputs::Slices(outputs), None)
     }
 
     /// Render directly into runtime ports without retaining channel borrows.
@@ -168,7 +168,24 @@ impl AudioRenderer {
         playback: Playback,
         outputs: &mut AudioPorts<'_>,
     ) -> Result<(), Error> {
-        self.render_output(io, playback, Outputs::Ports(outputs))
+        self.render_output(io, playback, Outputs::Ports(outputs), None)
+    }
+
+    pub fn render_windowed_ports(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        playback: Playback,
+        position: i64,
+        windows: &[crate::windows::ChannelWindow],
+        lead: bool,
+        outputs: &mut AudioPorts<'_>,
+    ) -> Result<(), Error> {
+        self.render_output(
+            io,
+            playback,
+            Outputs::Ports(outputs),
+            Some((position, windows, lead)),
+        )
     }
 
     fn render_output(
@@ -176,6 +193,7 @@ impl AudioRenderer {
         io: &mut RenderIo<'_>,
         playback: Playback,
         mut outputs: Outputs<'_, '_>,
+        windows: Option<(i64, &[crate::windows::ChannelWindow], bool)>,
     ) -> Result<(), Error> {
         let channels = outputs.count();
         let frames = shape(
@@ -208,26 +226,65 @@ impl AudioRenderer {
         {
             return Err(Error::InvalidShape);
         }
-        let end = playback
-            .position
-            .checked_add(frames as u64)
-            .ok_or(Error::InvalidFrame)?;
-        if end > description.frames {
-            return Err(Error::InvalidFrame);
-        }
-        let offset = usize::try_from(playback.position)
-            .ok()
-            .and_then(|p| p.checked_mul(self.channels * 4))
-            .ok_or(Error::InvalidOffset)?;
-        let bytes = frames * self.channels * 4;
-        let mut cursor = io.cursor_at(index, offset)?;
-        let mut copied = 0;
-        while copied < bytes {
-            let count = io.read(&mut cursor, &mut self.bytes[copied..bytes])?;
-            if count == 0 {
-                return Err(Error::Incomplete);
+        if let Some((position, windows, lead)) = windows {
+            if windows.len() != channels {
+                return Err(Error::InvalidShape);
             }
-            copied += count;
+            self.bytes[..frames * channels * 4].fill(0);
+            for (channel, window) in windows.iter().enumerate() {
+                let span =
+                    crate::windows::span(position, *window, lead, frames, description.frames);
+                if span.frames == 0 {
+                    continue;
+                }
+                // Read one interleaved source frame at a time. Only this channel's
+                // sample is retained, so independent signed windows need no copy.
+                let mut cursor = io.cursor_at(
+                    index,
+                    usize::try_from(span.position).map_err(|_| Error::InvalidOffset)?
+                        * channels
+                        * 4,
+                )?;
+                for frame in span.offset..span.offset + span.frames {
+                    let mut source = [0; 4];
+                    for source_channel in 0..channels {
+                        let mut copied = 0;
+                        while copied < 4 {
+                            let count = io.read(&mut cursor, &mut source[copied..])?;
+                            if count == 0 {
+                                return Err(Error::Incomplete);
+                            }
+                            copied += count;
+                        }
+                        if source_channel == channel {
+                            let byte = (frame * channels + channel) * 4;
+                            self.bytes[byte..byte + 4].copy_from_slice(&source);
+                        }
+                    }
+                }
+            }
+        } else {
+            let end = playback
+                .position
+                .checked_add(frames as u64)
+                .ok_or(Error::InvalidFrame)?;
+            if end > description.frames {
+                return Err(Error::InvalidFrame);
+            }
+            let offset = usize::try_from(playback.position)
+                .ok()
+                .and_then(|p| p.checked_mul(self.channels * 4))
+                .ok_or(Error::InvalidOffset)?;
+            let bytes = frames * self.channels * 4;
+            let mut cursor = io.cursor_at(index, offset)?;
+            let mut copied = 0;
+            while copied < bytes {
+                let count = io.read(&mut cursor, &mut self.bytes[copied..bytes])?;
+                if count == 0 {
+                    return Err(Error::Incomplete);
+                }
+                copied += count;
+            }
         }
         if playback.discontinuity {
             self.anchor.copy_from_slice(&self.last);

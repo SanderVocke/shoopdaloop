@@ -150,6 +150,50 @@ mod tests {
         .is_err());
         assert_eq!(resolver.states, before);
     }
+    #[shoop_test]
+    fn manual_period_edits_preserve_absolute_position_and_refuse_misalignment_atomically() {
+        let mut resolver = resolver();
+        for slot in 0..2 {
+            resolver
+                .submit(Request {
+                    target: id(slot),
+                    sequence: Sequence(slot as u64),
+                    at: Frame(0),
+                    timing: Timing::At,
+                    transition: Transition::Play {
+                        position: 0,
+                        retrigger: false,
+                    },
+                })
+                .unwrap();
+        }
+        tick(&mut resolver);
+        tick(&mut resolver);
+        tick(&mut resolver);
+        let follower = resolver.state(id(1)).unwrap();
+        assert_no_heap(|| resolver.edit_length(id(0), 128)).unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().position, 96);
+        assert_eq!(resolver.state(id(1)).unwrap(), follower);
+        let before = resolver.state(id(0)).unwrap();
+        assert!(assert_no_heap(|| resolver.edit_length(id(0), 127)).is_err());
+        assert_eq!(resolver.state(id(0)).unwrap(), before);
+        assert_no_heap(|| resolver.edit_length(id(0), 64)).unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().position, 32);
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(5),
+                at: Frame(128),
+                timing: Timing::At,
+                transition: Transition::Record {
+                    monitor_previous: false,
+                },
+            })
+            .unwrap();
+        let before = resolver.state(id(0)).unwrap();
+        assert!(assert_no_heap(|| resolver.edit_length(id(0), 96)).is_err());
+        assert_eq!(resolver.state(id(0)).unwrap(), before);
+    }
 }
 
 fn position(position: u64, previous: u64, length: u64, quantum: u64) -> Result<u64, Error> {
@@ -251,5 +295,93 @@ impl Resolver {
         }
         self.preview = None;
         Ok(())
+    }
+}
+
+impl Resolver {
+    pub fn recording_armed(&self, target: LoopId) -> Result<bool, Error> {
+        let state = self.state(target)?;
+        Ok(state.mode == Mode::Recording
+            || self.records.iter().flatten().any(|record| {
+                record.terminal.is_none()
+                    && record.request.target == target
+                    && matches!(record.request.transition, Transition::Record { .. })
+            }))
+    }
+    /// Manual period edits retain absolute position. Content import/resampling
+    /// uses the separate proportional retiming transaction.
+    pub fn edit_length(&mut self, target: LoopId, length: u64) -> Result<(), Error> {
+        if self.quiescent || self.committed || self.recording_armed(target)? {
+            return Err(Error::InvalidState);
+        }
+        if length % self.quantum.frames() as u64 != 0 {
+            return Err(Error::InvalidFrame);
+        }
+        let mut state = self.state(target)?;
+        if state.composite.is_some() {
+            return Err(Error::InvalidState);
+        }
+        let position = if length == 0 {
+            0
+        } else {
+            state.position % length
+        };
+        if state.position >= length && state.position != position {
+            self.retimed[target.slot() as usize] = Some(Transition::Replace {
+                length,
+                revision: state.content_revision,
+                preserve_position: true,
+            });
+            self.retimed_pending = true;
+        }
+        if length == 0 {
+            state.mode = Mode::Stopped;
+        }
+        state.position = position;
+        state.content_length = length;
+        self.states[target.slot() as usize] = Some(state);
+        self.preview = None;
+        Ok(())
+    }
+
+    /// Prediction from the settled preview only. No renderer advances or guesses
+    /// a clock, and an idle source cannot produce an imminent start.
+    pub(crate) fn preplay_eta(&self, target: LoopId) -> Option<u64> {
+        let state = self.scratch.states.get(target.slot() as usize)?.as_ref()?;
+        if state.mode != Mode::Stopped || state.content_length == 0 {
+            return None;
+        }
+        self.scratch
+            .records
+            .iter()
+            .flatten()
+            .filter(|record| record.terminal.is_none() && record.request.target == target)
+            .filter_map(|record| {
+                if record.effective > self.frame {
+                    return None;
+                }
+                let eta = match record.request.timing {
+                    Timing::At => record.effective.0.saturating_sub(self.frame.0),
+                    Timing::AfterTicks { source, .. } => {
+                        if record.remaining != 0 {
+                            return None;
+                        }
+                        let source = self.scratch.states.get(source.slot() as usize)?.as_ref()?;
+                        if source.mode != Mode::Playing || source.content_length == 0 {
+                            return None;
+                        }
+                        source
+                            .content_length
+                            .checked_sub(source.position)?
+                            .checked_add(record.remaining.checked_mul(source.content_length)?)?
+                    }
+                };
+                Some((eta, record.request.sequence, record.request.transition))
+            })
+            .min_by_key(|(eta, sequence, _)| (*eta, *sequence))
+            .and_then(|(eta, _, transition)| {
+                (eta > 0 && matches!(transition, Transition::Play { position: 0, .. }))
+                    .then_some(eta)
+            })
     }
 }

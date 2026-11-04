@@ -157,6 +157,23 @@ Goals and these criteria require explicit user approval to change.
   Reuse `shoop_session` document fields; introduce a file-format migration only if
   demonstrably needed. P12 does not require undo or new transport modes.
 
+## Implementation checkpoints
+
+- Stage 0 complete: branch/base verified, reference matrix recorded in
+  [loop timing evidence](docs/native_session_recovery/evidence/loop-timing.md),
+  18 baseline fixtures and all runtime/loop/production dependency boundaries pass.
+- First core milestone: bounded per-channel windows, manual absolute/modulo period
+  edits and resolver-owned stopped pre-play are implemented in `shoop_loops`.
+  Seventeen runtime scenarios (including three new integration oracles), library
+  unit tests, warning-denying workspace check/build and test-attribute checks pass.
+  Production commands, persistence and capability enablement remain unfinished.
+- Ordering refinement: implement the core window semantics before fixing the wire
+  layout, then finish Stage 1 alongside production integration. The accepted
+  behavior matrix and completion criteria are unchanged.
+- Window versions are copied into immutable settled/export cuts with their own
+  checked timing revision. Existing ledger/export leases retain raw snapshots;
+  metadata edits do not need a new media allocation or mutate earlier export cuts.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -177,14 +194,14 @@ Each stage's verification must pass before its dependent stage is closed.
 - [x] Fetch the latest `feat/fixed-quantum-runtime`, preserve local work, create
   `feat/p12-loop-timing`, and record the actual base SHA and reference master SHA.
   Reconcile intervening changes before carrying this plan forward.
-- [ ] Add this plan to the work branch. Record a behavior matrix for scalar versus
+- [x] Add this plan to the work branch. Record a behavior matrix for scalar versus
   per-channel edits, recording/armed refusals, zero length, signed offsets,
   alignment, sync-source edits and pre-play cancellation/continuity. Add focused
   reference assertions where behavior is not yet pinned; do not weaken fixtures.
 - [x] Check PR workflow filters: `build_and_test.yml`, `docs.yml` and `codeql.yml`
   currently omit `feat/fixed-quantum-runtime`. Add the target or arrange equivalent
   final-head runs so a PR to the correct base receives actual checks.
-- [ ] Verify: run the relevant existing reference/backend/editor fixtures and
+- [x] Verify: run the relevant existing reference/backend/editor fixtures and
   parity/dependency checks; record baseline failures independently of P12 changes.
 
 ### Stage 1 — timing transaction and projection contracts
