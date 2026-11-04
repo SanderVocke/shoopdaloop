@@ -14,6 +14,7 @@ use std::{
 
 static NEXT_FILE_TASK: AtomicU64 = AtomicU64::new(1 << 32);
 
+mod family;
 mod jobs;
 use jobs::{CodecExecutor, CodecJob};
 struct Read {
@@ -40,7 +41,10 @@ struct Task {
     view: IoTaskState,
     key: transfer::Key,
     target: transfer::Target,
-    rate: u32,
+    format: ConversionTarget,
+    mapping: Option<Vec<u32>>,
+    inspected: bool,
+    family: Option<shoop_persistence_codec::codec::family::FamilyPlan>,
     audio_channels: usize,
     update_length: bool,
     wav: bool,
@@ -56,6 +60,7 @@ pub(super) struct Provider {
     requests: VecDeque<ApplicationFileRequest>,
     output: Option<ApplicationFileOutput>,
     pending_cancel: Option<transfer::Key>,
+    family: Option<family::Context>,
 }
 impl Provider {
     pub fn new() -> Self {
@@ -68,6 +73,7 @@ impl Provider {
             requests: VecDeque::new(),
             output: None,
             pending_cancel: None,
+            family: None,
         }
     }
     fn start(
@@ -126,21 +132,7 @@ impl Provider {
                 0,
             )
         };
-        let mut id = NEXT_FILE_TASK.load(Ordering::Relaxed);
-        loop {
-            let next = id
-                .checked_add(1)
-                .ok_or_else(|| anyhow!("file task identity exhausted"))?;
-            match NEXT_FILE_TASK.compare_exchange_weak(
-                id,
-                next,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => break,
-                Err(current) => id = current,
-            }
-        }
+        let id = family::next_transfer()?.0;
         self.task = Some(Task {
             view: IoTaskState {
                 id: TaskId::from_raw(id),
@@ -148,7 +140,7 @@ impl Provider {
                 status: IoTaskStatus::Running,
                 progress: 0.,
                 message: "Preparing file workflow".into(),
-                sample_rate_warning: None,
+                format_conversion_warning: None,
                 audio_channel_mapping: None,
                 audio_channel_selection: None,
             },
@@ -157,7 +149,13 @@ impl Provider {
                 epoch: state.persistence_epoch,
             },
             target,
-            rate: state.status.sample_rate,
+            format: state
+                .status
+                .conversion_target()
+                .ok_or_else(|| anyhow!("prepared engine format is unavailable"))?,
+            mapping: None,
+            inspected: false,
+            family: None,
             audio_channels,
             update_length: true,
             wav: false,
@@ -171,7 +169,9 @@ impl Provider {
             Work::Assemble(_) => "assemble",
             Work::GenerateClick { .. } => "generate_click",
             Work::Decode { .. } => "decode",
-            Work::Resample { .. } => "resample",
+            Work::Inspect { .. } => "inspect",
+            Work::Convert { .. } => "convert",
+            Work::ConvertFamily { .. } => "convert_family",
             Work::Prepare { .. } => "prepare",
             Work::Encode { .. } => "encode",
         };
@@ -186,6 +186,7 @@ impl Provider {
     }
     fn finish(&mut self, status: IoTaskStatus, message: impl Into<String>) {
         self.codec.reset();
+        self.family = None;
         #[cfg(target_arch = "wasm32")]
         {
             self.worker = None;
@@ -199,7 +200,7 @@ impl Provider {
             task.view.status = status;
             task.view.message = message.into();
             task.view.progress = 1.;
-            task.view.sample_rate_warning = None;
+            task.view.format_conversion_warning = None;
             task.view.audio_channel_mapping = None;
             task.view.audio_channel_selection = None;
             if !matches!(
@@ -215,14 +216,19 @@ impl Provider {
             }
         }
         self.phase = Phase::Idle;
+        self.messages.clear();
         self.requests.clear();
         self.output = None;
     }
     fn current(&self, state: &SessionSnapshot) -> Result<()> {
         let task = self.task.as_ref().ok_or_else(|| anyhow!("no file task"))?;
+        if let Some(family) = &task.family {
+            family.current(state)?;
+        }
         ensure!(
-            state.persistence_epoch == task.key.epoch && state.status.sample_rate == task.rate,
-            "session or sample rate changed while the file task was pending"
+            state.persistence_epoch == task.key.epoch
+                && state.status.conversion_target() == Some(task.format),
+            "session or engine format changed while the file task was pending"
         );
         if let transfer::Target::Loop {
             loop_id,
@@ -242,52 +248,93 @@ impl Provider {
     }
     fn decoded(&mut self, decoded: Decoded) -> Result<()> {
         let task = self.task.as_mut().unwrap();
-        if decoded.rate() != task.rate {
-            task.view.status = IoTaskStatus::AwaitingSampleRateConfirmation;
-            task.view.message =
-                "Confirm conversion to the current audio device's sample rate".into();
-            task.view.sample_rate_warning = Some(SampleRateWarning {
-                source_rate: decoded.rate(),
-                target_rate: task.rate,
-                affected_media: "Session audio, MIDI and frame timing".into(),
-            });
-            self.phase = Phase::Decoded(decoded);
-        } else if task.view.kind == IoTaskKind::GenerateClickTrack {
-            let mapping = vec![0; task.audio_channels];
+        if task.inspected {
+            let mapping = task.mapping.clone().unwrap_or_default();
+            let update_length = task.update_length;
+            task.view.status = IoTaskStatus::Running;
+            task.view.format_conversion_warning = None;
             self.work(Work::Prepare {
                 decoded,
                 mapping,
-                update_length: true,
+                update_length,
             })?;
-        } else if let Some(labels) = decoded.audio_labels() {
+        } else if let Some(labels) = decoded.audio_labels().filter(|_| task.mapping.is_none()) {
             ensure!(!labels.is_empty(), "the audio file has no channels");
+            if task.view.kind == IoTaskKind::GenerateClickTrack {
+                task.mapping = Some(vec![0; task.audio_channels]);
+                return self.inspect(decoded);
+            }
             task.view.status = IoTaskStatus::AwaitingChannelMapping;
-            task.view.sample_rate_warning = None;
             task.view.audio_channel_mapping = Some(AudioChannelMappingState {
                 source_channels: labels.clone(),
                 destination_channels: (0..task.audio_channels)
-                    .map(|i| format!("Audio {}", i + 1))
+                    .map(|index| format!("Audio {}", index + 1))
                     .collect(),
                 default_mapping: (0..task.audio_channels)
-                    .map(|i| (i % labels.len()) as u32)
+                    .map(|index| (index % labels.len()) as u32)
                     .collect(),
             });
             task.view.message = "Map source audio to the loop channels".into();
             self.phase = Phase::Decoded(decoded);
         } else {
-            let update_length = task.update_length;
-            task.view.sample_rate_warning = None;
-            task.view.status = IoTaskStatus::Running;
-            self.work(Work::Prepare {
-                decoded,
-                mapping: Vec::new(),
-                update_length,
-            })?;
+            self.inspect(decoded)?;
         }
         Ok(())
     }
+    fn inspect(&mut self, decoded: Decoded) -> Result<()> {
+        let task = self.task.as_mut().unwrap();
+        let target = task.format;
+        let mapping = task.mapping.clone().unwrap_or_default();
+        let update_length = task.update_length;
+        self.work(Work::Inspect {
+            decoded,
+            target,
+            mapping,
+            update_length,
+        })
+    }
+    fn inspected(
+        &mut self,
+        decoded: Decoded,
+        conversion_required: bool,
+        state: &SessionSnapshot,
+    ) -> Result<()> {
+        let task = self.task.as_mut().unwrap();
+        if task.update_length {
+            if let (transfer::Target::Loop { loop_id, .. }, Some(frames)) =
+                (task.target, decoded.frames())
+            {
+                task.family = shoop_persistence_codec::codec::family::FamilyPlan::new(
+                    state,
+                    loop_id,
+                    frames,
+                    decoded.rate(),
+                )?;
+            }
+        }
+        task.inspected = true;
+        task.mapping = decoded
+            .audio_labels()
+            .map(|labels| (0..labels.len() as u32).collect());
+        if conversion_required {
+            task.view.status = IoTaskStatus::AwaitingFormatConversionConfirmation;
+            task.view.message = "Confirm resampling or retiming to the session format".into();
+            task.view.format_conversion_warning = Some(FormatConversionWarning {
+                source_rate: decoded.rate(),
+                target_rate: task.format.sample_rate,
+                affected_media: "Audio, MIDI timing and synchronized loop lengths".into(),
+            });
+            self.phase = Phase::Decoded(decoded);
+            Ok(())
+        } else {
+            self.decoded(decoded)
+        }
+    }
     fn captured(&mut self, image: Arc<image::Image>) -> Result<()> {
         self.pending_cancel = Some(self.task.as_ref().unwrap().key);
+        if self.family.is_some() {
+            return self.family_captured(image);
+        }
         let task = self.task.as_mut().unwrap();
         if task.view.kind == IoTaskKind::ExportLoopAudio {
             let image::Manifest::Loop { content, .. } = &image.manifest else {
@@ -368,18 +415,18 @@ impl Provider {
                 self.work(Work::GenerateClick { request, rate: state.status.sample_rate })?;
             }
             AppIntent::CompleteIoInput { task_id, bytes, .. } if self.matches(task_id) && matches!(self.phase, Phase::Input) => {
-                self.current(state)?; let t = self.task.as_ref().unwrap(); self.work(Work::Decode { kind: t.view.kind, bytes, rate: t.rate })?;
+                self.current(state)?; let t = self.task.as_ref().unwrap(); self.work(Work::Decode { kind: t.view.kind, bytes, rate: t.format.sample_rate })?;
             }
-            AppIntent::ConfirmSampleRateConversion { task_id, accept } if self.matches(task_id) && self.task.as_ref().unwrap().view.status == IoTaskStatus::AwaitingSampleRateConfirmation => {
-                if !accept { self.finish(IoTaskStatus::Cancelled, "Rate conversion declined; session unchanged"); }
-                else { self.current(state)?; let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle) else { bail!("no decoded media") }; self.task.as_mut().unwrap().view.status = IoTaskStatus::Running; self.work(Work::Resample { decoded, rate: state.status.sample_rate })?; }
+            AppIntent::ConfirmFormatConversion { task_id, accept } if self.matches(task_id) && self.task.as_ref().unwrap().view.status == IoTaskStatus::AwaitingFormatConversionConfirmation => {
+                if !accept { self.finish(IoTaskStatus::Cancelled, "Format conversion declined; session unchanged"); }
+                else { self.current(state)?; let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle) else { bail!("no decoded media") }; self.task.as_mut().unwrap().view.status = IoTaskStatus::Running; self.convert(decoded)?; }
             }
             AppIntent::ConfirmAudioChannelMapping { task_id, source_for_destination } if self.matches(task_id) && self.task.as_ref().unwrap().view.status == IoTaskStatus::AwaitingChannelMapping => {
                 self.current(state)?;
                 ensure!(source_for_destination.len() == self.task.as_ref().unwrap().audio_channels, "map exactly one source for each destination");
                 let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle) else { bail!("no decoded audio") };
                 self.task.as_mut().unwrap().view.status = IoTaskStatus::Running; self.task.as_mut().unwrap().view.audio_channel_mapping = None;
-                self.work(Work::Prepare { decoded, mapping: source_for_destination, update_length: self.task.as_ref().unwrap().update_length })?;
+                self.task.as_mut().unwrap().mapping = Some(source_for_destination); self.inspect(decoded)?;
             }
             AppIntent::ConfirmAudioChannelSelection { task_id, channels } if self.matches(task_id) && matches!(self.phase, Phase::Captured(_)) => {
                 let Phase::Captured(image) = std::mem::replace(&mut self.phase, Phase::Idle) else { unreachable!() }; self.encode(image, channels)?;
@@ -433,7 +480,7 @@ impl PersistenceIo for Provider {
                 | AppIntent::ImportLoopAudioBytes { .. }
                 | AppIntent::ImportLoopMidiBytes { .. }
                 | AppIntent::GenerateClickTrack { .. }
-                | AppIntent::ConfirmSampleRateConversion { .. }
+                | AppIntent::ConfirmFormatConversion { .. }
                 | AppIntent::ConfirmAudioChannelMapping { .. }
                 | AppIntent::ConfirmAudioChannelSelection { .. }
                 | AppIntent::CancelIoTask { .. }

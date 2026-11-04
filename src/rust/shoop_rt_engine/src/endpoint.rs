@@ -33,9 +33,10 @@ use rt_runtime::{Epoch, Frame, NodeId, Sequence};
 use shoop_loops::runtime::{Failure, LoopClient, Operation, Reply};
 use shoop_loops::{LoopId, Mode, Timing, Transition};
 use shoop_rt_protocol::{
-    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, EngineMessage,
-    HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode, LoopSlotId,
-    Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry, PROTOCOL_VERSION,
+    BusControl, BusId, Capabilities, ClientMessage, Direction, DisconnectReason, DriverKind,
+    EngineMessage, HostPort, HostPortId, HostPortKind, Lane as ProtocolLane, Limits, LoopMode,
+    LoopSlotId, Outcome, PortKind, Refusal, Request, StripControl, StripId, Telemetry,
+    PROTOCOL_VERSION,
 };
 use shoop_rt_transport::carrier::{Endpoint, Outbox};
 
@@ -190,6 +191,7 @@ pub struct ControlEndpoint {
     pub(crate) bulk: Bulk,
     pub(crate) uploads: crate::content::Uploads,
     pub(crate) replacement: crate::replacement::Replacement,
+    pub(crate) family: crate::family::Stage,
     pub(crate) telemetry_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
@@ -285,7 +287,13 @@ impl ControlEndpoint {
     }
     /// The earliest frame a newly submitted command can be scheduled at.
     pub(crate) fn at(&self) -> Frame {
-        Frame(self.next_frame().0 + u64::from(self.settings.lead))
+        let driver = self.cells.driver();
+        let lead = if driver.kind == DriverKind::Jack {
+            self.settings.lead.max(driver.buffer_frames)
+        } else {
+            self.settings.lead
+        };
+        Frame(self.next_frame().0 + u64::from(lead))
     }
 
     /// No request, transaction or bulk read is in progress and every ramp of
@@ -404,9 +412,21 @@ impl ControlEndpoint {
                 }
                 _ => {}
             },
-            Command::Schedule { payload, .. } => {
+            Command::Schedule {
+                payload, action, ..
+            } => {
                 if !payload.is_empty() {
-                    self.work.return_payload(payload);
+                    if matches!(
+                        action,
+                        Action::Planner {
+                            operation: Operation::SelectFamily { .. },
+                            ..
+                        }
+                    ) {
+                        self.family.payload = Some(payload);
+                    } else {
+                        self.work.return_payload(payload);
+                    }
                 }
             }
             Command::StageGraph {
@@ -449,6 +469,9 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        if self.family.id.is_some() && !self.family.committing {
+            self.family.cancel_requested = true;
+        }
         self.bulk.disconnect();
         self.uploads.disconnect();
     }
@@ -726,6 +749,15 @@ impl ControlEndpoint {
     pub(crate) fn start(&mut self, correlation: u64, request: Request) -> Result<(), ()> {
         let result = match request {
             Request::CancelBulk => self.bulk.cancel(correlation).map(|()| None),
+            Request::ContentFamilyBegin { .. }
+            | Request::ContentFamilyEdit { .. }
+            | Request::ContentFamilyCommit { .. }
+            | Request::ContentFamilyCancel { .. } => {
+                if self.job.is_some() {
+                    return Err(());
+                }
+                self.family_request(correlation, request)
+            }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -1064,6 +1096,11 @@ impl ControlEndpoint {
             mode: protocol_mode(self.observed_mode(entry.id)),
             next_mode: next.map(|(_, mode)| mode),
             next_delay: next.map(|(remaining, _)| remaining),
+            content_revision: if current {
+                cells.content_revision.load(Ordering::Relaxed)
+            } else {
+                0
+            },
             length: if current {
                 cells.length.load(Ordering::Relaxed)
             } else {

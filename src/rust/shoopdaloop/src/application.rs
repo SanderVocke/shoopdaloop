@@ -658,6 +658,7 @@ mod browser_tests {
     #[shoop_wasm_test_support::shoop_test]
     async fn service_and_client_progress_without_ui_paints_and_release_their_pump() {
         let (render, client) = OfflineRender::new(&EngineDescription {
+            quantum: 1,
             sample_rate: 1000,
             max_frames: 16,
             host: HostPorts::numbered(2, 2, 1),

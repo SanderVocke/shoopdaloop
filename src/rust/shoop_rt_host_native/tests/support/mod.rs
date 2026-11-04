@@ -16,6 +16,7 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 48_000,
         max_frames: 64,
         host: HostPorts::numbered(0, 0, 0),

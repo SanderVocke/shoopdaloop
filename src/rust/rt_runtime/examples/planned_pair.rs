@@ -295,7 +295,7 @@ fn demonstrate(partition: &[usize], quantum: usize, reverse: bool) -> Result<(),
     let (planner, resources) = runtime.into_planner_and_resources();
     assert_eq!(planner.observed, [32; 2]);
     if partition == [32] {
-        assert_eq!(planner.finishes, if quantum == 8 { 5 } else { 32 });
+        assert_eq!(planner.finishes, 32);
     }
     drop(planner);
     drop(resources);

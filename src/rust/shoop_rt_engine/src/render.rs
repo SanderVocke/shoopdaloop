@@ -189,6 +189,9 @@ impl Render {
             .raise(1, peak(&mut audio.outputs.iter().map(|output| &**output)));
         if let Err(error) = result.and(recovery) {
             self.phase = Phase::Faulted(error);
+            for output in &mut self.recovery {
+                output.clear();
+            }
             self.cells.faulted.store(true, Ordering::Relaxed);
             self.request_resets();
             Self::silence(&mut audio, &mut midi, frames);

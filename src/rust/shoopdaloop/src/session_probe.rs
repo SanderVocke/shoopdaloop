@@ -109,6 +109,7 @@ fn launch(
         settings: shoop_host::config::HostSettings {
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
             pools: shoop_egui::NewEnginePools {
+                quantum: 32,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 3,

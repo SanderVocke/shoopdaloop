@@ -6,8 +6,10 @@ use crate::*;
 use alloc::{vec, vec::Vec};
 
 mod program_change;
+mod retime;
 pub use program_change::ProgramChangeResult;
 use program_change::{ProgramChange, Replacement};
+pub use retime::ContentRetime;
 
 #[cfg(test)]
 #[path = "resolver_tests.rs"]
@@ -105,10 +107,13 @@ impl ProgramBoundary {
 }
 
 pub struct Resolver {
+    quantum: Option<rt_runtime::fixed::Quantum>,
     topology: PreparedTopology,
     epoch: Epoch,
     frame: Frame,
     states: Vec<Option<State>>,
+    retimed: Vec<Option<Transition>>,
+    retimed_pending: bool,
     records: Vec<Option<Record>>,
     loop_generations: Vec<u32>,
     request_generations: Vec<u32>,
@@ -134,6 +139,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<Decision>()
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
+                + size_of::<Option<Transition>>()
                 + 4,
         ),
         (
@@ -151,6 +157,18 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
 }
 
 impl Resolver {
+    pub fn enable_fixed(&mut self, quantum: rt_runtime::fixed::Quantum) -> Result<(), Error> {
+        if self.frame != Frame(0)
+            || self.committed
+            || self.preview.is_some()
+            || self.quantum.is_some()
+        {
+            return Err(Error::InvalidState);
+        }
+        self.topology.validate_quantum(quantum)?;
+        self.quantum = Some(quantum);
+        Ok(())
+    }
     /// Preparation may allocate; all execution storage is fixed afterwards.
     pub fn prepare(topology: PreparedTopology) -> Result<Self, Error> {
         let limits = topology.limits().validate()?;
@@ -182,6 +200,7 @@ impl Resolver {
             loop_generations[node.id.slot() as usize] = node.id.generation();
         }
         Ok(Self {
+            quantum: None,
             topology,
             epoch: Epoch(0),
             frame: Frame(0),
@@ -202,6 +221,8 @@ impl Resolver {
                 dropped: 0,
             },
             states,
+            retimed: prepared(limits.loop_slots, None),
+            retimed_pending: false,
             records: prepared(limits.pending_requests, None),
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
@@ -301,6 +322,18 @@ impl Resolver {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
         }
+        if let Some(q) = self.quantum {
+            let aligned = match request.transition {
+                Transition::Play { position, .. } | Transition::Seek { position, .. } => {
+                    position % q.frames() as u64 == 0
+                }
+                Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
+                _ => true,
+            };
+            if !aligned {
+                return Err(Error::InvalidFrame);
+            }
+        }
         let target = self.topology.node(request.target)?;
         if let Timing::AfterTicks { source, .. } = request.timing {
             self.topology.node(source)?;
@@ -326,7 +359,12 @@ impl Resolver {
         self.records[slot] = Some(Record {
             id,
             request,
-            effective: request.at.max(self.frame),
+            effective: match self.quantum {
+                Some(q) => q
+                    .effective(request.at, self.frame)
+                    .map_err(|_| Error::InvalidFrame)?,
+                None => request.at.max(self.frame),
+            },
             remaining: match request.timing {
                 Timing::At => 0,
                 Timing::AfterTicks { skip, .. } => skip,
@@ -497,6 +535,26 @@ impl Resolver {
         scratch.events.clear();
         scratch.decisions.clear();
         scratch.dropped = 0;
+        if self.retimed_pending {
+            for (slot, transition) in self.retimed.iter().enumerate() {
+                let Some(transition) = transition else {
+                    continue;
+                };
+                let Some(state) = self.states[slot] else {
+                    continue;
+                };
+                scratch.playback_discontinuities[slot] = true;
+                if scratch.events.len() < self.topology.limits().journal_events {
+                    scratch.events.push(Event {
+                        frame: self.frame,
+                        target: state.id,
+                        kind: EventKind::Transition(*transition),
+                    });
+                } else {
+                    scratch.dropped = scratch.dropped.saturating_add(1);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -506,6 +564,9 @@ impl Resolver {
         ceiling: Frame,
         observations: &[Observation],
     ) -> Result<Interval, Error> {
+        if self.quantum.is_some() {
+            return Err(Error::InvalidState);
+        }
         self.begin_preview(ceiling, observations)?;
         let replacement = self.select_program(ceiling, observations)?;
         let replaced = replacement.map(|change| {
@@ -572,6 +633,69 @@ impl Resolver {
         Ok(interval)
     }
 
+    /// Whole-tick transactional settlement. No future boundary search is performed.
+    pub fn preview_fixed(&mut self, observations: &[Observation]) -> Result<Interval, Error> {
+        let quantum = self.quantum.ok_or(Error::InvalidState)?;
+        let end = self
+            .frame
+            .checked_add(quantum.frames())
+            .map_err(|_| Error::Exhausted)?;
+        self.begin_preview(end, observations)?;
+        let replacement = self.select_program(end, observations)?;
+        let replaced =
+            replacement.map(|c| self.topology.program(c.target).expect("validated program"));
+        let topology = if replacement.is_some() {
+            &self
+                .program_change
+                .as_ref()
+                .expect("selected owner")
+                .candidate
+        } else {
+            &self.topology
+        };
+        let mut boundary = Boundary {
+            topology,
+            replacement,
+            replaced,
+            scratch: &mut self.scratch,
+            frame: self.frame,
+            observations,
+        };
+        boundary.settle(None)?;
+        let q = quantum.frames() as u64;
+        for node in topology.nodes() {
+            let slot = node.id.slot() as usize;
+            let state = boundary.scratch.states[slot].ok_or(Error::InvalidState)?;
+            if state.content_length % q != 0
+                || state.position % q != 0
+                || state.capture_frames % q != 0
+                || (state.plays()
+                    && state
+                        .position
+                        .checked_add(q)
+                        .is_none_or(|p| p > state.content_length))
+            {
+                return Err(Error::InvalidFrame);
+            }
+            state
+                .capture_frames
+                .checked_add(if state.mode == Mode::Recording { q } else { 0 })
+                .ok_or(Error::Exhausted)?;
+            boundary.scratch.decisions.push(Decision {
+                state,
+                playback_discontinuity: state.plays()
+                    && boundary.scratch.playback_discontinuities[slot],
+                origin: boundary.scratch.origins[slot],
+            });
+        }
+        let interval = Interval {
+            start: self.frame,
+            end,
+        };
+        self.preview = Some(interval);
+        Ok(interval)
+    }
+
     pub fn commit(&mut self) -> Result<Interval, Error> {
         if self.committed {
             return Err(Error::InvalidState);
@@ -591,6 +715,10 @@ impl Resolver {
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
         self.committed = true;
+        if self.retimed_pending {
+            self.retimed.fill(None);
+            self.retimed_pending = false;
+        }
         Ok(interval)
     }
 
@@ -639,6 +767,9 @@ impl Resolver {
         stop_playback: bool,
     ) -> Result<PreparedTopology, (Error, PreparedTopology)> {
         let validation = (|| {
+            if let Some(q) = self.quantum {
+                candidate.validate_quantum(q)?;
+            }
             if self.quiescent || self.committed || expected != self.epoch {
                 return Err(Error::InvalidState);
             }
@@ -685,6 +816,9 @@ impl Resolver {
         self.states.fill(None);
         for node in candidate.nodes() {
             let slot = node.id.slot() as usize;
+            if self.scratch.states[slot].is_none_or(|state| state.id != node.id) {
+                self.retimed[slot] = None;
+            }
             self.states[slot] = Some(
                 self.scratch.states[slot]
                     .filter(|state| state.id == node.id)

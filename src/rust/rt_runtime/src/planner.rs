@@ -126,15 +126,42 @@ pub trait Planner: Send {
     type Operation: Copy + Send + 'static;
     type Result: Copy + Send + 'static;
 
+    fn enable_fixed(&mut self, _quantum: crate::fixed::Quantum) -> Result<(), Error> {
+        Ok(())
+    }
+    fn fixed_operation(
+        &mut self,
+        operation: Self::Operation,
+        context: OperationContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<Disposition<Self::Result>, Error> {
+        self.operation(operation, context)
+    }
+    fn fixed_begin(
+        &mut self,
+        context: PlanContext<'_, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        let end = context.ceiling;
+        if self.plan(context)? != end {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(())
+    }
+    fn fixed_finish(
+        &mut self,
+        context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
+    ) -> Result<(), Error> {
+        self.finish(context)
+    }
+
     /// Queried only during preparation. None selects the signal-only lifecycle.
     fn spec(&self) -> Option<PlannerSpec>;
     fn decisions(&self) -> &[Self::Decision];
-    /// Settle the current boundary and return frame < end <= ceiling.
+    /// Compatibility hook: settle a whole tick and return its supplied ceiling.
     fn plan(
         &mut self,
         context: PlanContext<'_, Self::Operation, Self::Result>,
     ) -> Result<Frame, Error>;
-    /// Consume this interval's observations without settling its end boundary.
+    /// Consume this tick's compatibility observations without settling its end.
     fn finish(
         &mut self,
         context: FinishContext<'_, Self::Observation, Self::Operation, Self::Result>,
@@ -170,6 +197,15 @@ impl Planner for NoPlanner {
     type Observation = ();
     type Operation = ();
     type Result = ();
+    fn enable_fixed(&mut self, _: crate::fixed::Quantum) -> Result<(), Error> {
+        Ok(())
+    }
+    fn fixed_begin(&mut self, _: PlanContext<'_>) -> Result<(), Error> {
+        Ok(())
+    }
+    fn fixed_finish(&mut self, _: FinishContext<'_, ()>) -> Result<(), Error> {
+        Ok(())
+    }
     fn spec(&self) -> Option<PlannerSpec> {
         None
     }

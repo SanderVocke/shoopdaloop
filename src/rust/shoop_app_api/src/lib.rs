@@ -736,15 +736,69 @@ impl Default for DummyAudioDriverConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
+    pub audio_inputs: Vec<String>,
+    pub audio_outputs: Vec<String>,
+    pub midi_inputs: Vec<String>,
+    pub midi_outputs: Vec<String>,
+    pub connections: Vec<(String, String)>,
 }
 
 impl Default for JackAudioDriverConfig {
     fn default() -> Self {
         Self {
             client_name: "ShoopDaLoop".to_owned(),
+            audio_inputs: vec!["audio_in_1".to_owned(), "audio_in_2".to_owned()],
+            audio_outputs: vec!["audio_out_1".to_owned(), "audio_out_2".to_owned()],
+            midi_inputs: vec!["midi_in_1".to_owned()],
+            midi_outputs: vec!["midi_out_1".to_owned()],
+            connections: Vec::new(),
         }
+    }
+}
+
+impl JackAudioDriverConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.client_name.trim().is_empty()
+            || self.client_name.len() > 63
+            || self.client_name.contains([':', '\0'])
+        {
+            return Err(
+                "JACK client name must contain 1 to 63 bytes without a colon or NUL".to_owned(),
+            );
+        }
+        let mut names = alloc::collections::BTreeSet::new();
+        for ports in [
+            &self.audio_inputs,
+            &self.audio_outputs,
+            &self.midi_inputs,
+            &self.midi_outputs,
+        ] {
+            if ports.len() > 64 {
+                return Err("JACK supports at most 64 ports per kind and direction".to_owned());
+            }
+            for name in ports {
+                if name.trim().is_empty()
+                    || name.len() > 59
+                    || name.contains([':', ',', '\0'])
+                    || !names.insert(name)
+                {
+                    return Err("JACK port names must be unique, nonempty, at most 59 bytes, without colons, commas or NUL".to_owned());
+                }
+            }
+        }
+        if self.connections.len() > 256
+            || self.connections.iter().any(|(source, target)| {
+                [source, target]
+                    .iter()
+                    .any(|name| name.trim().is_empty() || name.len() > 256 || name.contains('\0'))
+            })
+        {
+            return Err("invalid JACK startup connections".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -865,6 +919,19 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConversionTarget {
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+impl ConversionTarget {
+    pub fn is_valid(self) -> bool {
+        self.sample_rate > 0 && matches!(self.quantum_frames, 1 | 16 | 32 | 64 | 128)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
@@ -873,6 +940,7 @@ pub struct StatusState {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub audio_driver: AudioDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -887,6 +955,14 @@ pub struct StatusState {
 }
 
 impl StatusState {
+    pub fn conversion_target(&self) -> Option<ConversionTarget> {
+        let target = ConversionTarget {
+            sample_rate: self.sample_rate,
+            quantum_frames: self.quantum_frames,
+        };
+        target.is_valid().then_some(target)
+    }
+
     pub fn latency_ms(&self) -> Option<f32> {
         (self.sample_rate > 0).then(|| self.buffer_size as f32 * 1000.0 / self.sample_rate as f32)
     }
@@ -1458,7 +1534,7 @@ pub enum IoTaskKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IoTaskStatus {
     Running,
-    AwaitingSampleRateConfirmation,
+    AwaitingFormatConversionConfirmation,
     AwaitingChannelMapping,
     AwaitingChannelSelection,
     Completed,
@@ -1474,7 +1550,7 @@ pub enum FileOutputOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SampleRateWarning {
+pub struct FormatConversionWarning {
     pub source_rate: u32,
     pub target_rate: u32,
     pub affected_media: String,
@@ -1500,7 +1576,7 @@ pub struct IoTaskState {
     pub status: IoTaskStatus,
     pub progress: f32,
     pub message: String,
-    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub format_conversion_warning: Option<FormatConversionWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
@@ -2566,7 +2642,7 @@ pub enum AppIntent {
         task_id: TaskId,
         outcome: FileOutputOutcome,
     },
-    ConfirmSampleRateConversion {
+    ConfirmFormatConversion {
         task_id: TaskId,
         accept: bool,
     },
@@ -2823,7 +2899,7 @@ impl AppIntent {
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
-            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmFormatConversion { .. } => "io.confirm_format_conversion",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
             Self::CompleteIoInput { .. } => "io.input_complete",
             Self::RequestLoadSessionSource { .. } => "session.load_source",
@@ -3738,6 +3814,8 @@ impl ControlOperation {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct NewEnginePools {
+    /// Graph tick in frames; immutable during a running session.
+    pub quantum: u32,
     pub buses: u32,
     pub bus_channels: u32,
     /// Tracks, including the sync track.
@@ -3752,6 +3830,7 @@ pub struct NewEnginePools {
 impl Default for NewEnginePools {
     fn default() -> Self {
         Self {
+            quantum: 32,
             buses: 8,
             bus_channels: 8,
             tracks: 16,
@@ -3784,6 +3863,9 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
+        if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
+            return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
+        }
         if !(1..=8).contains(&self.pools.buses)
             || !(2..=8).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
@@ -3792,6 +3874,11 @@ impl HostSettings {
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
+        }
+        if let AudioDriverConfig::Jack(config) = &self.driver {
+            config
+                .validate()
+                .map_err(|_| "invalid JACK driver configuration")?;
         }
         if self.loop_smoothing_ms > 100 {
             return Err("loop smoothing exceeds 100 ms");

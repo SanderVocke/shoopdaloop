@@ -198,8 +198,8 @@ fn main() -> Result<(), Error> {
     assert_eq!(execution.actual_frame, Frame(13));
     assert_eq!(execution.result, Ok(()));
     assert_eq!(execution.processor_result, Some(0.5));
-    assert_eq!(runtime.diagnostics().subranges, 5);
+    assert_eq!(runtime.diagnostics().subranges, 32);
     while control.try_completion().is_some() {}
-    println!("planned gain: 32 checked samples, five intervals, one exact-frame event");
+    println!("planned gain: 32 checked samples, 32 fixed ticks, one exact-frame event");
     Ok(())
 }

@@ -231,9 +231,9 @@ fn prepared_graph_executes_at_frame_zero_and_extraction_retains_the_owner_ledger
         )
     })
     .unwrap();
-    assert_eq!(samples, [7.; 2]);
+    assert_eq!(samples, [7., 8.]);
     assert_eq!(runtime.next_frame(), Frame(2));
-    assert_eq!(counts.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(counts.calls.load(Ordering::Relaxed), 2);
     assert!(control.try_completion().is_none());
     drop(control);
     let (mut owner, mut resources) = runtime.into_planner_and_resources();

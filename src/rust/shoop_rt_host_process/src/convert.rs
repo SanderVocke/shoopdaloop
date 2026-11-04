@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use shoop_rt_engine::EngineDescription;
 use shoop_rt_host_native::{DriverConfig, DummyConfig, DummyMode, NativeConfig};
 use shoop_rt_protocol::{host::*, DriverKind};
-fn text(value: &str) -> Result<Text> {
+pub(crate) fn text(value: &str) -> Result<Text> {
     Text::new(value).ok_or_else(|| anyhow::anyhow!("host name exceeds 256 UTF-8 bytes"))
 }
 #[cfg(feature = "cpal")]
@@ -15,6 +15,24 @@ fn selection(value: &shoop_rt_host_native::DeviceSelection) -> Result<DeviceSele
 }
 pub fn driver(config: &NativeConfig) -> Result<DriverSettings> {
     Ok(match &config.driver {
+        #[cfg(feature = "jack")]
+        DriverConfig::Jack(jack) => {
+            jack.validate()?;
+            DriverSettings {
+                kind: DriverKind::Jack,
+                host: Text::default(),
+                input: DeviceSelection::None,
+                output: DeviceSelection::None,
+                sample_rate: 0,
+                buffer_frames: 0,
+                audio_inputs: jack.audio_inputs.len() as u16,
+                audio_outputs: jack.audio_outputs.len() as u16,
+                midi_inputs: jack.midi_inputs.len() as u16,
+                midi_outputs: jack.midi_outputs.len() as u16,
+                client_name: text(&jack.client_name)?,
+                dummy_input_ramp: false,
+            }
+        }
         DriverConfig::Dummy(dummy) => {
             if dummy.mode != DummyMode::Automatic {
                 bail!("controlled dummy timing is local to a test host");
@@ -64,12 +82,50 @@ fn native_selection(value: DeviceSelection) -> shoop_rt_host_native::DeviceSelec
         }
     }
 }
+#[derive(Default)]
+pub(crate) struct JackSetup {
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub connections: Vec<(String, String)>,
+}
 pub fn native_driver(
     settings: DriverSettings,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    jack: JackSetup,
 ) -> Result<DriverConfig> {
+    if settings.kind != DriverKind::Jack
+        && (!jack.inputs.is_empty() || !jack.outputs.is_empty() || !jack.connections.is_empty())
+    {
+        bail!("JACK setup supplied for a different driver");
+    }
     Ok(match settings.kind {
+        #[cfg(feature = "jack")]
+        DriverKind::Jack => {
+            if [
+                jack.inputs.len(),
+                jack.outputs.len(),
+                inputs.len(),
+                outputs.len(),
+            ] != [
+                settings.audio_inputs as usize,
+                settings.audio_outputs as usize,
+                settings.midi_inputs as usize,
+                settings.midi_outputs as usize,
+            ] {
+                bail!("JACK port counts do not match setup");
+            }
+            let config = shoop_rt_host_native::JackConfig {
+                client_name: settings.client_name.as_str().into(),
+                audio_inputs: jack.inputs,
+                audio_outputs: jack.outputs,
+                midi_inputs: inputs,
+                midi_outputs: outputs,
+                connections: jack.connections,
+            };
+            config.validate()?;
+            DriverConfig::Jack(config)
+        }
         DriverKind::Dummy => DriverConfig::Dummy(DummyConfig {
             sample_rate: settings.sample_rate,
             buffer_frames: settings.buffer_frames,
@@ -110,6 +166,10 @@ fn ramp(port: usize, frame: u64) -> f32 {
 
 pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
     Ok(EngineSettings {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("quantum exceeds wire capacity"))?,
         buses: value.buses.into(),
         bus_channels: value.bus_channels.into(),
         max_frames: value
@@ -176,6 +236,10 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        quantum: value
+            .quantum
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid quantum"))?,
         buses: value
             .buses
             .try_into()

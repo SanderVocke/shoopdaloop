@@ -50,6 +50,7 @@ fn fixture() -> Fixture {
 }
 fn fixture_with_outputs(outputs: usize) -> Fixture {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, outputs, 1),

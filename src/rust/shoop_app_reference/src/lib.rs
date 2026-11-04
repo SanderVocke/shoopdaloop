@@ -24,16 +24,16 @@ use shoop_app_api::{
     CompositeEventDetailsState, CompositeEventId, CompositeTrackDetailsState,
     ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
     ConnectionViewState, DefaultPlaybackMode, DefaultRecordingAction, DirectTrackSpec,
-    GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
-    KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
-    LoopState, MidiEventState, MidiSequenceChannelState, MixerRouteErrorState, MixerRouteState,
-    NotificationLevel, PendingConnectionState, PendingMixerRouteState, PianoAction, PortDataType,
-    PortDirection, PortId, PortRole, ProcessorLatencyAdjustmentState,
-    RecordingOffsetAdjustmentState, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId, TrackLatencyState,
-    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
-    TrackTopology, WaveformChannelState,
+    FormatConversionWarning, GlobalControlAction, HostPortId, HostPortState, IoTaskKind,
+    IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat,
+    LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState,
+    MixerRouteErrorState, MixerRouteState, NotificationLevel, PendingConnectionState,
+    PendingMixerRouteState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
+    ProcessorLatencyAdjustmentState, RecordingOffsetAdjustmentState, ScriptDialogButtonId,
+    ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState,
+    StructuralState, TaskId, TrackAction, TrackControlState, TrackCreationResult, TrackId,
+    TrackLatencyState, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology,
+    TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     canonical_midi_start_state, default_bus_channel_labels, Backend, BackendAsyncResult,
@@ -2232,7 +2232,7 @@ impl ApplicationModel {
             AppIntent::LoadSessionBytes { name, bytes } => self
                 .stop_click_track_preview(backend)
                 .and_then(|()| self.begin_load_session(name, &bytes)),
-            AppIntent::ConfirmSampleRateConversion { task_id, accept } => {
+            AppIntent::ConfirmFormatConversion { task_id, accept } => {
                 self.confirm_sample_rate_conversion(backend, task_id, accept)
             }
             AppIntent::ConfirmAudioChannelMapping {
@@ -4573,7 +4573,7 @@ impl ApplicationModel {
             status: IoTaskStatus::Running,
             progress: 0.05,
             message: "Capturing session".to_owned(),
-            sample_rate_warning: None,
+            format_conversion_warning: None,
             audio_channel_mapping: None,
             audio_channel_selection: None,
         });
@@ -4640,10 +4640,10 @@ impl ApplicationModel {
             self.io_task = Some(IoTaskState {
                 id: task_id,
                 kind: IoTaskKind::LoadSession,
-                status: IoTaskStatus::AwaitingSampleRateConfirmation,
+                status: IoTaskStatus::AwaitingFormatConversionConfirmation,
                 progress: 0.2,
                 message: format!("Resample session from {source_rate} Hz to {target_rate} Hz?"),
-                sample_rate_warning: Some(SampleRateWarning {
+                format_conversion_warning: Some(FormatConversionWarning {
                     source_rate,
                     target_rate,
                     affected_media: "all session audio, MIDI, loops, offsets, and cycle timing"
@@ -4771,7 +4771,7 @@ impl ApplicationModel {
             task.status = IoTaskStatus::AwaitingChannelMapping;
             task.progress = 0.45;
             task.message = "Map source channels to loop channels".to_owned();
-            task.sample_rate_warning = None;
+            task.format_conversion_warning = None;
             task.audio_channel_selection = None;
             task.audio_channel_mapping = Some(AudioChannelMappingState {
                 source_channels: audio
@@ -4913,7 +4913,7 @@ impl ApplicationModel {
             status: IoTaskStatus::Running,
             progress: 0.0,
             message: message.to_owned(),
-            sample_rate_warning: None,
+            format_conversion_warning: None,
             audio_channel_mapping: None,
             audio_channel_selection: None,
         });
@@ -4925,7 +4925,7 @@ impl ApplicationModel {
             task.status = IoTaskStatus::Running;
             task.progress = progress.clamp(0.0, 1.0);
             task.message = message.to_owned();
-            task.sample_rate_warning = None;
+            task.format_conversion_warning = None;
             task.audio_channel_mapping = None;
             task.audio_channel_selection = None;
         }
@@ -4940,7 +4940,7 @@ impl ApplicationModel {
                 task.progress
             };
             task.message = message.to_owned();
-            task.sample_rate_warning = None;
+            task.format_conversion_warning = None;
             task.audio_channel_mapping = None;
             task.audio_channel_selection = None;
         }
@@ -9803,6 +9803,7 @@ impl ApplicationModel {
             .saturating_add(callback_xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
+        self.status.quantum_frames = snapshot.status.quantum_frames;
         self.status.audio_driver = match snapshot.status.driver_state {
             shoop_backend::BackendDriverState::Dummy => AudioDriverState::Dummy,
             shoop_backend::BackendDriverState::AwaitingGesture => AudioDriverState::AwaitingGesture,
@@ -12411,13 +12412,13 @@ impl ApplicationModel {
                 update_loop_length,
             });
             if let Some(task) = &mut self.io_task {
-                task.status = IoTaskStatus::AwaitingSampleRateConfirmation;
+                task.status = IoTaskStatus::AwaitingFormatConversionConfirmation;
                 task.progress = 0.2;
                 task.message = format!(
                     "Resample loop audio from {} Hz to {} Hz?",
                     audio.sample_rate, self.status.sample_rate
                 );
-                task.sample_rate_warning = Some(SampleRateWarning {
+                task.format_conversion_warning = Some(FormatConversionWarning {
                     source_rate: audio.sample_rate,
                     target_rate: self.status.sample_rate,
                     affected_media: "the selected loop audio".to_owned(),
@@ -12474,13 +12475,13 @@ impl ApplicationModel {
                 update_loop_length,
             });
             if let Some(task) = &mut self.io_task {
-                task.status = IoTaskStatus::AwaitingSampleRateConfirmation;
+                task.status = IoTaskStatus::AwaitingFormatConversionConfirmation;
                 task.progress = 0.2;
                 task.message = format!(
                     "Resample loop MIDI from {} Hz to {} Hz?",
                     midi.sample_rate, self.status.sample_rate
                 );
-                task.sample_rate_warning = Some(SampleRateWarning {
+                task.format_conversion_warning = Some(FormatConversionWarning {
                     source_rate: midi.sample_rate,
                     target_rate: self.status.sample_rate,
                     affected_media: "the selected loop MIDI and cycle timing".to_owned(),
@@ -23804,9 +23805,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let task = runtime.snapshot().io_task.clone().unwrap();
-        assert_eq!(task.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        assert_eq!(
+            task.status,
+            IoTaskStatus::AwaitingFormatConversionConfirmation
+        );
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: task.id,
                 accept: false,
             })
@@ -24217,13 +24221,20 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let warning = runtime.snapshot().io_task.clone().unwrap();
-        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
         assert_eq!(
-            warning.sample_rate_warning.as_ref().unwrap().source_rate,
+            warning.status,
+            IoTaskStatus::AwaitingFormatConversionConfirmation
+        );
+        assert_eq!(
+            warning
+                .format_conversion_warning
+                .as_ref()
+                .unwrap()
+                .source_rate,
             32_000
         );
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: TaskId::from_raw(warning.id.raw() + 1),
                 accept: true,
             })
@@ -24231,10 +24242,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime.tick(Duration::ZERO);
         assert_eq!(
             runtime.snapshot().io_task.as_ref().unwrap().status,
-            IoTaskStatus::AwaitingSampleRateConfirmation
+            IoTaskStatus::AwaitingFormatConversionConfirmation
         );
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: warning.id,
                 accept: false,
             })
@@ -24253,7 +24264,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime.tick(Duration::ZERO);
         let warning = runtime.snapshot().io_task.clone().unwrap();
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: warning.id,
                 accept: true,
             })
@@ -24661,9 +24672,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let warning = runtime.snapshot().io_task.clone().unwrap();
-        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        assert_eq!(
+            warning.status,
+            IoTaskStatus::AwaitingFormatConversionConfirmation
+        );
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: warning.id,
                 accept: true,
             })
@@ -24856,9 +24870,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let warning = runtime.snapshot().io_task.clone().unwrap();
-        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        assert_eq!(
+            warning.status,
+            IoTaskStatus::AwaitingFormatConversionConfirmation
+        );
         runtime
-            .dispatch(AppIntent::ConfirmSampleRateConversion {
+            .dispatch(AppIntent::ConfirmFormatConversion {
                 task_id: warning.id,
                 accept: true,
             })

@@ -288,22 +288,7 @@ fn complete_replacement_case(mut h: Harness) {
     assert_eq!(old.state.mode, Mode::Playing);
     assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
     let at = h.engine.next_frame().0;
-    let mid_callback = h.op(
-        at + 1,
-        Operation::ConfigurationReplace {
-            node_pairs,
-            topology,
-            graph,
-            graph_epoch: Epoch(1),
-            topology_epoch: Epoch(0),
-        },
-    );
-    h.step(2);
-    h.drain();
-    assert!(matches!(h.reply(mid_callback), Reply::Failed(_)));
-    assert_eq!(h.engine.epoch(), Epoch(1));
-    assert_eq!(h.engine.midi_recovery_pending(0), Ok(false));
-    let at = h.engine.next_frame().0;
+    let at = at + 1;
     let applied = h.op(
         at,
         Operation::ConfigurationReplace {
@@ -321,7 +306,7 @@ fn complete_replacement_case(mut h: Harness) {
         },
     );
     let stale = h.op(at, Operation::State { target: id(1) });
-    h.step(1);
+    h.step(2);
     h.drain();
     assert!(matches!(
         h.reply(applied),

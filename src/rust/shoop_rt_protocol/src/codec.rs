@@ -121,7 +121,7 @@ tags!(Refusal {
     0 => Refusal::Unsupported, 1 => Refusal::Capacity, 2 => Refusal::InvalidId, 3 => Refusal::InvalidValue,
     4 => Refusal::Busy, 5 => Refusal::Overloaded, 6 => Refusal::NotConnected, 7 => Refusal::Internal,
 });
-tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio });
+tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack });
 tags!(DriverRunState {
     0 => DriverRunState::Starting, 1 => DriverRunState::Running, 2 => DriverRunState::Stopped, 3 => DriverRunState::Failed,
 });
@@ -398,6 +398,42 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::ContentFamilyBegin {
+                id,
+                root,
+                count,
+                sample_rate,
+                quantum,
+            } => {
+                w.u8(29)?;
+                w.u64(id)?;
+                root.put(w)?;
+                w.u32(count)?;
+                w.u32(sample_rate)?;
+                w.u32(quantum)
+            }
+            Self::ContentFamilyEdit { id, edit } => {
+                w.u8(30)?;
+                w.u64(id)?;
+                edit.loop_id.put(w)?;
+                edit.sync_source.put(w)?;
+                w.u64(edit.expected_revision)?;
+                w.u64(edit.expected_frames)?;
+                w.u64(edit.frames)?;
+                edit.audio.put(w)?;
+                edit.midi.put(w)?;
+                w.bool(edit.replace)?;
+                w.bool(edit.restart)?;
+                w.bool(edit.fence_content)
+            }
+            Self::ContentFamilyCommit { id } => {
+                w.u8(31)?;
+                w.u64(id)
+            }
+            Self::ContentFamilyCancel { id } => {
+                w.u8(32)?;
+                w.u64(id)
+            }
             Self::CreateBus { bus, channels } => {
                 w.u8(27)?;
                 bus.put(w)?;
@@ -558,6 +594,30 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            29 => Self::ContentFamilyBegin {
+                id: r.u64()?,
+                root: LoopSlotId::get(r)?,
+                count: r.u32()?,
+                sample_rate: r.u32()?,
+                quantum: r.u32()?,
+            },
+            30 => Self::ContentFamilyEdit {
+                id: r.u64()?,
+                edit: crate::ContentFamilyEdit {
+                    loop_id: LoopSlotId::get(r)?,
+                    sync_source: LoopSlotId::get(r)?,
+                    expected_revision: r.u64()?,
+                    expected_frames: r.u64()?,
+                    frames: r.u64()?,
+                    audio: Option::get(r)?,
+                    midi: Option::get(r)?,
+                    replace: r.bool()?,
+                    restart: r.bool()?,
+                    fence_content: r.bool()?,
+                },
+            },
+            31 => Self::ContentFamilyCommit { id: r.u64()? },
+            32 => Self::ContentFamilyCancel { id: r.u64()? },
             27 => Self::CreateBus {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -773,6 +833,14 @@ impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
             Self::Done => w.u8(0),
+            Self::ContentApplied { revision } => {
+                w.u8(2)?;
+                w.u64(*revision)
+            }
+            Self::ContentPrepared { revision } => {
+                w.u8(3)?;
+                w.u64(*revision)
+            }
             Self::Refused(refusal) => {
                 w.u8(1)?;
                 refusal.put(w)
@@ -782,6 +850,8 @@ impl Wire for Outcome {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
             0 => Self::Done,
+            2 => Self::ContentApplied { revision: r.u64()? },
+            3 => Self::ContentPrepared { revision: r.u64()? },
             1 => Self::Refused(Refusal::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
@@ -838,6 +908,8 @@ impl Wire for Limits {
         w.u16(self.host_midi_inputs)?;
         w.u16(self.host_midi_outputs)?;
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
+        w.u32(self.processing_latency_frames)?;
         w.u32(self.smoothing_limit_frames)?;
         w.u16(self.reliable_credits)?;
         w.u16(self.bulk_credits)
@@ -856,6 +928,8 @@ impl Wire for Limits {
             host_midi_inputs: r.u16()?,
             host_midi_outputs: r.u16()?,
             max_frames: r.u32()?,
+            quantum: r.u32()?,
+            processing_latency_frames: r.u32()?,
             smoothing_limit_frames: r.u32()?,
             reliable_credits: r.u16()?,
             bulk_credits: r.u16()?,
@@ -903,6 +977,7 @@ impl Wire for Telemetry {
                 mode,
                 next_mode,
                 next_delay,
+                content_revision,
                 length,
                 position,
                 peaks,
@@ -912,6 +987,7 @@ impl Wire for Telemetry {
                 mode.put(w)?;
                 next_mode.put(w)?;
                 next_delay.put(w)?;
+                w.u64(*content_revision)?;
                 w.u64(*length)?;
                 w.u64(*position)?;
                 peaks.put(w)
@@ -946,6 +1022,7 @@ impl Wire for Telemetry {
                 mode: LoopMode::get(r)?,
                 next_mode: Option::get(r)?,
                 next_delay: Option::get(r)?,
+                content_revision: r.u64()?,
                 length: r.u64()?,
                 position: r.u64()?,
                 peaks: Peaks::get(r)?,

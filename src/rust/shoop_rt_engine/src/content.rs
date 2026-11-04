@@ -176,6 +176,7 @@ impl ControlEndpoint {
                 if !shape
                     || description.bytes > MAX_CONTENT_BYTES
                     || description.frames > u32::MAX as u64
+                    || description.frames % u64::from(self.limits.quantum) != 0
                     || (description.midi && description.frames == 0 && description.bytes != 0)
                 {
                     return Err(Refusal::InvalidValue);
@@ -491,6 +492,9 @@ impl ControlEndpoint {
             RuntimeResult::Completion(outcome, ..) => completion_refusal(*outcome),
             RuntimeResult::Execution(execution) => match execution_outcome(execution) {
                 Outcome::Done => None,
+                Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. } => {
+                    Some(Refusal::Internal)
+                }
                 Outcome::Refused(reason) => Some(reason),
             },
         };

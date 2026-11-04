@@ -50,6 +50,7 @@ impl Wire for DeviceSelection {
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u32(self.max_frames)?;
+        w.u32(self.quantum)?;
         w.u32(self.strip_channels)?;
         w.u32(self.master_channels)?;
         w.u32(self.buses)?;
@@ -71,6 +72,7 @@ impl Wire for EngineSettings {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
             max_frames: r.u32()?,
+            quantum: r.u32()?,
             strip_channels: r.u32()?,
             master_channels: r.u32()?,
             buses: r.u32()?,
@@ -160,6 +162,22 @@ impl Wire for HostRequest {
             Self::Start => w.u8(7),
             Self::Stop => w.u8(8),
             Self::Status => w.u8(9),
+            Self::AddJackAudioInput(name) => {
+                w.u8(10)?;
+                name.put(w)
+            }
+            Self::AddJackAudioOutput(name) => {
+                w.u8(11)?;
+                name.put(w)
+            }
+            Self::ConnectJack {
+                source,
+                destination,
+            } => {
+                w.u8(12)?;
+                source.put(w)?;
+                destination.put(w)
+            }
         }
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
@@ -184,6 +202,12 @@ impl Wire for HostRequest {
             7 => Self::Start,
             8 => Self::Stop,
             9 => Self::Status,
+            10 => Self::AddJackAudioInput(Text::get(r)?),
+            11 => Self::AddJackAudioOutput(Text::get(r)?),
+            12 => Self::ConnectJack {
+                source: Text::get(r)?,
+                destination: Text::get(r)?,
+            },
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -218,6 +242,10 @@ impl Wire for HostReply {
                 w.u32(*max_buffer)
             }
             Self::End => w.u8(3),
+            Self::InstanceName(name) => {
+                w.u8(9)?;
+                name.put(w)
+            }
             Self::Ready(driver) => {
                 w.u8(4)?;
                 driver.put(w)
@@ -260,6 +288,7 @@ impl Wire for HostReply {
             },
             3 => Self::End,
             4 => Self::Ready(DriverStatus::get(r)?),
+            9 => Self::InstanceName(Text::get(r)?),
             5 => Self::Warning(Text::get(r)?),
             6 => Self::Error(Text::get(r)?),
             7 => Self::Stopped {

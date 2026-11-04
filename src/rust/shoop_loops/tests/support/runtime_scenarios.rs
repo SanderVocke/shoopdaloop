@@ -217,6 +217,99 @@ fn replacement_midi() -> Vec<(u64, Vec<u8>)> {
     out
 }
 #[shoop_test]
+fn family_selection_fences_stale_content_and_publishes_audio_midi_and_period_together() {
+    let (mut control, mut engine, imports) = setup_with(
+        64,
+        true,
+        Options {
+            imports: true,
+            ..Options::default()
+        },
+    );
+    let replacement = control
+        .media()
+        .iter()
+        .find(|media| media.revision == Revision(7))
+        .unwrap()
+        .media;
+    let mut host = Host::new();
+    host.early = false;
+    transition(
+        &mut control,
+        0,
+        Transition::Play {
+            position: 0,
+            retrigger: false,
+        },
+    );
+    host.step(&mut engine, 1);
+    let mut replies = Vec::new();
+    drain(&mut control, &mut replies);
+    let mut entry = ContentFamilyEntry {
+        target: id(),
+        sync_source: id(),
+        expected_revision: Revision(99),
+        expected_length: 4,
+        media: Some(replacement),
+        restart: true,
+        fence_content: true,
+    };
+    for accepted in [false, true] {
+        let mut payload = vec![0; CONTENT_FAMILY_RECORD_BYTES];
+        entry.encode(&mut payload).unwrap();
+        let at = engine.next_frame();
+        let sequence = assert_no_heap(|| {
+            control.submit_payload(
+                Lane::Normal,
+                at,
+                Operation::SelectFamily {
+                    root: id(),
+                    topology_epoch: Epoch(0),
+                },
+                payload.into_boxed_slice(),
+            )
+        })
+        .unwrap_or_else(|error| panic!("family admission: {:?}", error.error))
+        .sequence();
+        let query = submit(&mut control, at.0, Operation::State { target: id() });
+        host.step(&mut engine, 1);
+        replies.clear();
+        drain(&mut control, &mut replies);
+        let reply = &replies
+            .iter()
+            .find(|(token, _)| *token == sequence)
+            .unwrap()
+            .1;
+        if accepted {
+            assert_eq!(*reply, Reply::Done);
+            assert_eq!(host.output[0][0], 10.0);
+            let cut = state(&replies, query);
+            assert_eq!(cut.state.content_length, 3);
+            assert_eq!(cut.state.content_revision, Revision(7));
+            assert_eq!(cut.state.mode, Mode::Playing);
+            assert!((0..host.midi_out[0].len()).any(|index| host.midi_out[0]
+                .get(index)
+                .unwrap()
+                .1
+                == [0x90, 62, 90]));
+        } else {
+            assert!(matches!(reply, Reply::Failed(_)));
+            assert_eq!(host.output[0][0], 4.0);
+            assert_eq!(state(&replies, query).state.content_revision, Revision(0));
+        }
+        entry.expected_revision = Revision(0);
+    }
+    submit(
+        &mut control,
+        engine.next_frame().0,
+        Operation::Retire { media: replacement },
+    );
+    host.step(&mut engine, 1);
+    drain(&mut control, &mut replies);
+    finish(control, engine, &imports, 512);
+}
+
+#[shoop_test]
 fn prepared_replacement_retirement_gain_capture_revisions_and_late_delivery_are_coherent() {
     let expected_midi = replacement_midi();
     for partition in [vec![16], vec![1; 16], vec![2, 5, 1, 4, 4]] {
@@ -715,14 +808,16 @@ fn running_capture_exhaustion_preserves_independently_predicted_common_prefix_an
         let mut prefix = 0usize;
         let mut failed = false;
         for frames in partition {
-            if !failed {
-                let used_audio = prefix.div_ceil(8);
-                let new_audio = (prefix + frames).div_ceil(8) - used_audio;
-                let used_midi = usize::from(prefix > 0);
-                if used_audio + used_midi + new_audio + 128 > 136 {
-                    failed = true;
-                } else {
-                    prefix += frames;
+            for _ in 0..frames {
+                if !failed {
+                    let used_audio = prefix.div_ceil(8);
+                    let new_audio = (prefix + 1).div_ceil(8) - used_audio;
+                    let used_midi = usize::from(prefix > 0);
+                    if used_audio + used_midi + new_audio + 128 > 136 {
+                        failed = true;
+                    } else {
+                        prefix += 1;
+                    }
                 }
             }
             let at = engine.next_frame().0;
@@ -952,7 +1047,7 @@ fn stopped_extraction_recovers_active_and_partially_staged_faulted_capture_owner
             host.input[0][..3].copy_from_slice(&[2., 4., 6.]);
             host.input[1][..3].copy_from_slice(&[20., 40., 60.]);
             host.midi_in[0].push(0, 3, &[0x90, 60, 100]).unwrap();
-            host.midi_in[0].push(2, 3, &[0x80, 60, 45]).unwrap();
+            host.midi_in[0].push(0, 3, &[0x80, 60, 45]).unwrap();
             let [left, right] = &mut host.output;
             assert_eq!(
                 assert_no_heap(|| engine.process(

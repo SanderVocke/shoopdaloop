@@ -16,6 +16,7 @@ pub type Stack = RtBackend<InProcess<ControlEndpoint>, OfflineClock>;
 /// 1 kHz with small callbacks; telemetry after every callback.
 pub fn description() -> EngineDescription {
     EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, 2, 1),

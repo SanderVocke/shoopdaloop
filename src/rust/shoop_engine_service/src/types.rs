@@ -30,6 +30,7 @@ pub enum CaptureTap {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
+    pub quantum: usize,
     pub max_frames: usize,
     pub resource_pages: usize,
     pub export_slots: usize,
@@ -40,6 +41,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             max_frames: 64,
+            quantum: 32,
             resource_pages: 4096,
             export_slots: 4,
             capture: CaptureTap::PostDsp,
@@ -127,6 +129,18 @@ pub enum ServiceNode {
     Dsp(dsp::Dsp),
 }
 impl Processor<LoopPlanner, dsp::Operation> for ServiceNode {
+    fn supports_fixed(&self) -> bool {
+        true
+    }
+    fn process_fixed(
+        &mut self,
+        block: &mut rt_runtime::processor::FixedProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.process_fixed(block),
+            Self::Dsp(node) => node.process_fixed(block),
+        }
+    }
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),

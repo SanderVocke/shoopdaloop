@@ -46,6 +46,7 @@ impl EngineClock for OfflineClock {
 
 fn start() -> CooperativeApplicationRuntime {
     let description = EngineDescription {
+        quantum: 1,
         sample_rate: 1000,
         max_frames: 16,
         host: HostPorts::numbered(2, 2, 1),

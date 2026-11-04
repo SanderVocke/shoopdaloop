@@ -38,6 +38,14 @@ mod tests {
         assert_eq!(config.pools.loop_memory_mb, 32);
         assert_eq!(config.pools.buses, 8);
         assert_eq!(config.pools.bus_channels, 8);
+        assert_eq!(config.pools.quantum, 32);
+        let mut custom = config.clone();
+        custom.settings.pools.quantum = 64;
+        let decoded: super::HostConfig =
+            serde_json::from_slice(&serde_json::to_vec(&custom).unwrap()).unwrap();
+        assert_eq!(decoded.pools.quantum, 64);
+        custom.settings.pools.quantum = 17;
+        assert!(custom.validate().is_err());
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());
         let mut invalid = config.settings.clone();
         invalid.pools.loops = 0;
@@ -45,5 +53,40 @@ mod tests {
         let decoded: super::HostConfig =
             serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
         assert_eq!(decoded.settings, config.settings);
+    }
+}
+
+#[cfg(test)]
+mod jack_tests {
+    use shoop_app_api::{AudioDriverConfig, JackAudioDriverConfig};
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test(no_wasm = "native host configuration")]
+    fn old_jack_profiles_receive_stable_ports_and_new_profiles_round_trip() {
+        let config: super::HostConfig =
+            serde_json::from_str(r#"{"driver":{"Jack":{"client_name":"Looper"}}}"#).unwrap();
+        let AudioDriverConfig::Jack(mut jack) = config.settings.driver else {
+            panic!("JACK profile changed kind")
+        };
+        assert_eq!(jack.audio_inputs, ["audio_in_1", "audio_in_2"]);
+        assert_eq!(jack.audio_outputs, ["audio_out_1", "audio_out_2"]);
+        assert_eq!(jack.midi_inputs, ["midi_in_1"]);
+        assert_eq!(jack.midi_outputs, ["midi_out_1"]);
+        jack.connections
+            .push(("system:capture_1".into(), "audio_in_1".into()));
+        assert_eq!(
+            serde_json::from_slice::<JackAudioDriverConfig>(&serde_json::to_vec(&jack).unwrap())
+                .unwrap(),
+            jack
+        );
+        assert!(jack.validate().is_ok());
+        jack.midi_inputs.push("audio_in_1".into());
+        assert!(jack.validate().is_err());
+        jack = JackAudioDriverConfig::default();
+        jack.audio_outputs = vec!["out".into(); 65];
+        assert!(jack.validate().is_err());
+        jack = JackAudioDriverConfig::default();
+        jack.client_name.push('\0');
+        assert!(jack.validate().is_err());
     }
 }

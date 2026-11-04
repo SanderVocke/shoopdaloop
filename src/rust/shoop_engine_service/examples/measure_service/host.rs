@@ -224,6 +224,7 @@ struct Service {
 impl Service {
     fn new(mode: Mode) -> Self {
         let config = Config {
+            quantum: 1,
             resource_pages: PAGES,
             ..Config::default()
         };

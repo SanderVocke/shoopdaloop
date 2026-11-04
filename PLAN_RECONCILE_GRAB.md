@@ -2,7 +2,7 @@
 
 ## Status, baseline and delivery
 
-Planning only; implementation has not started. Written using
+R0 complete; R1 source reconciliation is prepared for CI. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -30,6 +30,36 @@ This plan supersedes the execution and delivery direction in
 [MIDI](src/rust/rt_runtime/docs/reference/shared-midi.md) ownership contracts.
 Adopt the functional contracts of the target's `PLAN_FIXED_QUANTUM.md` and
 `PLAN_MEDIA_FORMAT_CONVERSION.md`; those files arrive with the target merge.
+
+## Execution record and acceptance coverage
+
+R0: both heads were refreshed at execution start on 2026-11-04. Shared head
+`837a7dd0` is retained as `backup/shared-grab-before-fixed-quantum`; target
+`cb79706e` is the actual fetched head of open PR #930. PR #927 remains open.
+The real Git merge found one tracing-inventory conflict; codec test registration
+merged automatically. Both inventories and shared codec tests are retained.
+The integrated engine uses `GraphRuntime::prepare_fixed_with_planner_and_resources`
+and direct `process_fixed` loop consumers. The experimental `shoop_loops::fixed`
+bank is not a replacement production path for this reconciliation.
+
+| Criteria | Implementation/proof owner |
+| --- | --- |
+| 1 | R1/R2/R5: production fixed hooks; fixed shared-media integration fixture |
+| 2–3 | Existing shared store/resource tests plus R3/R5 mixed history/oracles |
+| 4–5 | R3: input tap, completed watermark, boundary grab and gap fixtures |
+| 6 | R4/R5: private wrapping edits and independent raw media/state oracle |
+| 7 | R5: fenced candidate selection, MIDI discontinuity, replacement races |
+| 8–9 | R4/R6/R7: callback work schedule, RT guards, capacity and retirement |
+| 10 | R6: ordinary resource/media, codec conversion and replacement fixtures |
+| 11 | R5/R8: Q/host-partition mixed end-to-end fixture |
+| 12 | R1/R8: fixed-base CI triggers, final head, review and delivery |
+
+Port inventory: `shoop_loops/tests/shared_audio.rs` and `shared_midi.rs` manually
+compose interval resolver/capture/render operations. Retain their independent
+sample/packet/state expectations while moving integrated execution to fixed
+hooks. `tests/runtime_topology.rs` and `support/configuration_*` shared backing
+fixtures need explicit Q>1 coverage; old convenience Q=1 passes alone do not
+prove the new integration. Pure shared-store and codec tests remain applicable.
 
 ## Goals and scope
 
@@ -181,14 +211,14 @@ the named hooks; do not restore superseded execution to avoid reconciliation.
 
 ### R0 — Refresh the baseline and establish delivery
 
-- [ ] Read current target instructions/plans, refresh both branches and record
+- [x] Read current target instructions/plans, refresh both branches and record
   exact SHAs, merge base, parent PR state and changed-file overlap. Inspect the
   current production preparation and fixed hooks rather than relying on earlier
   prototype documentation.
-- [ ] Continue `feat/shared-midi-persistence` in a clean checkout/worktree; create
+- [x] Continue `feat/shared-midi-persistence` in a clean checkout/worktree; create
   a named backup branch at its pre-reconciliation head. Preserve unrelated edits
   and retain the audio/MIDI foundation commits while merging the current target.
-- [ ] Record a contract-to-fixture matrix for acceptance criteria 1–12 and an
+- [x] Record a contract-to-fixture matrix for acceptance criteria 1–12 and an
   inventory of interval-dependent fixtures/glue to port or remove.
 
 Verification: the recorded base is the actual target head, both foundations are

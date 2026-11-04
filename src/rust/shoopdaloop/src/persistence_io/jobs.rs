@@ -54,9 +54,11 @@ mod native {
                     let result = if cancelled.load(Ordering::Acquire) {
                         Err("file task cancelled".into())
                     } else {
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work.run()))
-                            .map_err(|_| "file codec failed unexpectedly".to_owned())
-                            .and_then(|result| result.map_err(|e| e.to_string()))
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            work.run_with_cancel(|| cancelled.load(Ordering::Acquire))
+                        }))
+                        .map_err(|_| "file codec failed unexpectedly".to_owned())
+                        .and_then(|result| result.map_err(|e| e.to_string()))
                     };
                     let result = if cancelled.load(Ordering::Acquire) {
                         Err("file task cancelled".into())

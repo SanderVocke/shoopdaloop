@@ -117,6 +117,7 @@ impl Host {
         ];
         let prepared = prepare_with_content(
             Config {
+                quantum: 1,
                 resource_pages: 512,
                 ..Config::default()
             },
@@ -523,6 +524,7 @@ pub fn verify_stopped_input() {
     }];
     let prepared = shoop_engine_service::prepare(
         Config {
+            quantum: 1,
             resource_pages: 128,
             ..Config::default()
         },

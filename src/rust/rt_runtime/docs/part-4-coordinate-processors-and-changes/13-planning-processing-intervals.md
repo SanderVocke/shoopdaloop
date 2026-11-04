@@ -4,12 +4,12 @@
 
 [Contents](../README.md) · [Previous: MIDI state and checkpointed seeking](../part-3-work-with-stored-media/12-midi-state-and-checkpointed-seeking.md) · [Next: Application-specific operations](14-application-specific-operations.md)
 
-A planner settles one domain before processors render a positive interval. Consumers borrow its immutable decisions, then report bounded observations about the work they performed. They do not advance another authoritative clock.
+A domain settles changes at a fixed tick before processors render its whole quantum. This chapter demonstrates the compatibility decision/observation interface with Q=1. Production loop consumers use `FixedProcessBlock::domain` directly, without decision lookup or observation acknowledgements. Consumers borrow its immutable decisions, then report bounded observations about the work they performed. They do not advance another authoritative clock.
 
 ```text
 at current frame:
     deliver due external actions
-    plan → choose end and publish decisions
+    settle whole tick → publish state/decisions
     process signal graph over [frame, end)
     finish → consume this interval's observations
 repeat at end, if still inside the host callback
@@ -23,7 +23,7 @@ The [planned pair example](../../examples/planned_pair.rs) shares one alternatin
 cargo run -p rt_runtime --example planned_pair
 ```
 
-It asserts every sample, both producers' observations, callback origins and five intervals in one 32-frame callback. It also runs split/irregular callbacks, a zero call at a cut, reversed consumer declarations, and a one-sample planner. Every callback is heap-guarded; setup/results/destruction are off-render.
+It asserts every sample, both producers' observations, callback origins and 32 fixed ticks in one 32-frame callback. It also runs split/irregular callbacks, a zero call at a cut, reversed consumer declarations, and a one-sample planner. Every callback is heap-guarded; setup/results/destruction are off-render.
 
 The older [planned gain example](../../examples/planned_gain.rs) remains a useful one-consumer variant, but has no heap guard of its own and no pending planner receipt demonstration. Those claims belong to the new examples here and in [Application-specific operations](../part-4-coordinate-processors-and-changes/14-application-specific-operations.md).
 
@@ -42,15 +42,15 @@ Implement `Planner` with Copy decision, observation, operation and result types.
 
 This planner exposes one initialized `f32` decision and reserves two observations. Its decision slice length/signature must remain valid throughout rendering; do not resize or allocate it in `plan`.
 
-The runtime owns absolute frames. `PlanContext::frame` is the boundary now being settled; `ceiling` is the latest permitted end, limited by external events and host callback end. The planner must return `frame < end <= ceiling`.
+The runtime owns absolute frames. `PlanContext::frame` is the boundary now being settled; `ceiling` is the prepared tick end. The compatibility planner must return that exact end; requesting an interior cut fails. A direct domain implements `fixed_begin` and `fixed_finish` instead.
 
-Here gain alternates between 1.0 and 2.0 every eight frames. The planner selects the next eight-frame boundary, clipped to the supplied ceiling. A processor multiplier change at frame 13 forces an additional cut:
+Here gain alternates between 1.0 and 2.0 every eight frames. Each sample is one whole tick, so a processor multiplier change at frame 13 occurs at a tick boundary:
 
 ```text
-[0,8) [8,13) [13,16) [16,24) [24,32)
+[0,1) [1,2) ... [13,14) ... [31,32)
 ```
 
-The scheduled change is an immediate typed processor operation used to expose that cut. The planner itself accepts no operations here, so its operation and result types are `()`; the processors declare their own family. Chapter 14 explains both families.
+The scheduled change is an immediate typed processor operation at its effective tick. The planner itself accepts no operations here, so its operation and result types are `()`; the processors declare their own family. Chapter 14 explains both families.
 
 ## 2. Declare each consumer's access and bind it
 
@@ -86,7 +86,7 @@ Do not retain the borrowed decision or observation slice across mutation/another
 
 For every absolute frame, the expected decision is `(1 + (frame / 8) % 2)`. Left output multiplies it by 1.0 before frame 13 and 0.5 afterward. Right output always multiplies it by 0.25. The example computes these expectations directly, not from the planner's decisions.
 
-One callback produces the five intervals above. Splitting at `[8, 5, 3, 8, 8]` preserves those cuts; irregular `[3, 10, 19]` adds host boundaries without changing samples. A zero call at 13 neither settles that boundary nor changes diagnostics. A valid one-sample planner completes all 32 intervals with the same samples.
+One callback produces 32 ticks. Splitting at `[8, 5, 3, 8, 8]` or irregular `[3, 10, 19]` preserves all tick boundaries and samples. A zero call at 13 neither settles that boundary nor changes diagnostics. A valid one-sample planner completes all 32 intervals with the same samples.
 
 There is no arbitrary internal-subdivision allowance: this example sets `budgets.subranges: 0` and needs only one external event/result slot. Domain structural rules must establish same-frame termination and finite progress. Valid finite work can still be too expensive for a device deadline.
 

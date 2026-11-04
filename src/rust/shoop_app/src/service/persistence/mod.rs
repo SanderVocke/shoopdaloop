@@ -10,6 +10,7 @@ use shoop_app_protocol::{
     persistence_transfer::{Assembly, Source},
 };
 mod capture;
+mod family;
 mod mapping;
 use capture::Cut;
 use mapping::Candidate;
@@ -29,6 +30,7 @@ pub(super) enum Input {
         backend: BackendLoopId,
         update: BackendLoopContentUpdate,
     },
+    Family(BackendLoopFamilyUpdate),
 }
 pub(super) struct Ready {
     authority: Authority,
@@ -194,6 +196,10 @@ impl Service {
             return Err(anyhow!("session epoch exhausted"));
         }
         let input = match (&image.manifest, target) {
+            (
+                image::Manifest::FamilyUpdate { root, .. },
+                persistence::Target::Loop { loop_id, .. },
+            ) if *root == loop_id => Input::Family(self.prepare_family(&image)?),
             (image::Manifest::Session(session), persistence::Target::Session { .. }) => {
                 let (candidate, backend, sync) = Candidate::prepare(self, &image, session)?;
                 Input::Session {
@@ -395,8 +401,11 @@ impl Service {
     }
     pub(super) fn persistence_busy(&self, command: Option<&Command>) -> bool {
         match self.persistence_job {
-            Some(Job::Commit(_)) => true,
-            Some(Job::Capture { .. }) => !matches!(
+            Some(Job::Commit(Ready {
+                input: Input::Family(_),
+                ..
+            }))
+            | Some(Job::Capture { .. }) => !matches!(
                 command,
                 Some(
                     Command::SelectLoops { .. }
@@ -428,6 +437,7 @@ impl Service {
                         }
                 )
             ),
+            Some(Job::Commit(_)) => true,
             _ => false,
         }
     }
@@ -684,8 +694,33 @@ impl Service {
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
+                if !ready.started && matches!(ready.input, Input::Family(_)) {
+                    match self.prepare_family(&ready.image) {
+                        Ok(update) => ready.input = Input::Family(update),
+                        Err(error) => {
+                            self.persistence_closed = Some((ready.authority, ready.key));
+                            let operation = self.pending.iter().find_map(|(id, pending)| matches!(pending.effect, Effect::Persistence(key) if key == ready.key).then_some(*id));
+                            if let Some(id) = operation {
+                                self.pending.get_mut(&id).unwrap().error =
+                                    Some(CommandError::from(error));
+                                self.finish(id);
+                            }
+                            return;
+                        }
+                    }
+                }
                 ready.started = true;
                 let result = match &mut ready.input {
+                    Input::Family(update) => {
+                        self.backend
+                            .replace_loop_family_async(update)
+                            .map(|result| match result {
+                                BackendAsyncResult::Pending(_) => None,
+                                BackendAsyncResult::Ready(()) => {
+                                    Some(BackendSessionReplacement::default())
+                                }
+                            })
+                    }
                     Input::Session { backend, sync, .. } => self
                         .backend
                         .replace_session_with_sync_async(backend, sync)
@@ -711,6 +746,9 @@ impl Service {
                 let outcome = result.and_then(|mapping| {
                     let observed = self.backend.poll()?;
                     match ready.input {
+                        Input::Family(_) => {
+                            self.publish_family_annotations(&ready.image, &observed)
+                        }
                         Input::Session { candidate, .. } => {
                             candidate.publish(self, &mapping.unwrap())?
                         }

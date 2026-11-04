@@ -154,6 +154,23 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    ContentFamilyBegin {
+        id: u64,
+        root: LoopSlotId,
+        count: u32,
+        sample_rate: u32,
+        quantum: u32,
+    },
+    ContentFamilyEdit {
+        id: u64,
+        edit: crate::ContentFamilyEdit,
+    },
+    ContentFamilyCommit {
+        id: u64,
+    },
+    ContentFamilyCancel {
+        id: u64,
+    },
     CreateBus {
         bus: BusId,
         channels: u8,
@@ -279,6 +296,8 @@ pub enum Refusal {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Outcome {
+    ContentPrepared { revision: u64 },
+    ContentApplied { revision: u64 },
     Done,
     Refused(Refusal),
 }
@@ -288,6 +307,7 @@ pub enum DriverKind {
     Dummy,
     Cpal,
     WebAudio,
+    Jack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -367,6 +387,10 @@ pub struct Limits {
     pub host_midi_inputs: u16,
     pub host_midi_outputs: u16,
     pub max_frames: u32,
+    /// Prepared graph tick, independent of host capacity.
+    pub quantum: u32,
+    /// Constant host stream delay introduced by tick buffering.
+    pub processing_latency_frames: u32,
     /// Largest loop boundary smoothing a client may set.
     pub smoothing_limit_frames: u32,
     /// Unanswered reliable requests a client may have.
@@ -402,6 +426,7 @@ pub enum Telemetry {
         mode: LoopMode,
         next_mode: Option<LoopMode>,
         next_delay: Option<u32>,
+        content_revision: u64,
         length: u64,
         position: u64,
         peaks: Peaks,

@@ -533,16 +533,27 @@ impl Processor for RuntimeNode {
                     .note(61)
                     .unwrap()
                     .velocity(),
-                88
+                if block.frame.0 >= 1 { 88 } else { 0 }
             );
-            assert_eq!(report.output_error, Some(Error::Full));
+            assert_eq!(
+                report.output_error,
+                if block.frame == Frame(0) {
+                    Some(Error::Full)
+                } else {
+                    None
+                }
+            );
             self.observed.fetch_add(1, Ordering::Relaxed);
             report.output_error.map_or(Ok(()), Err)
         } else {
             let (input, output) = block.audio.pair(0, 0).unwrap();
             output.copy_from_slice(input);
-            assert!(block.midi_inputs[0].is_recovery());
-            assert_eq!(block.midi_inputs[0].len(), 32);
+            if block.frame == Frame(0) {
+                assert!(block.midi_inputs[0].is_recovery());
+                assert_eq!(block.midi_inputs[0].len(), 32);
+            } else {
+                assert!(block.midi_inputs[0].is_empty());
+            }
             self.tracker.process(
                 &mut block.resources.render(),
                 &block.midi_inputs[0],
@@ -720,7 +731,7 @@ fn runtime_overflow_case(shared: bool) {
             .unwrap();
         assert_eq!(audio, [0.25; 2]);
         assert_eq!(runtime.next_frame(), Frame(2));
-        assert_eq!(observed.load(Ordering::Relaxed), 2);
+        assert_eq!(observed.load(Ordering::Relaxed), 4);
         assert!(runtime.diagnostics().midi_overflows > 0);
         assert_eq!(runtime.drain_midi_recovery(0, &mut reset, 2), Ok(32));
         for i in 0..32 {

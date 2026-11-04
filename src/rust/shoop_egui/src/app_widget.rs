@@ -112,6 +112,11 @@ pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.sel
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
 pub const JACK_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.jack.client_name");
+pub const JACK_AUDIO_INPUTS: SettingKey<String> = SettingKey::new("audio.jack.audio_inputs");
+pub const JACK_AUDIO_OUTPUTS: SettingKey<String> = SettingKey::new("audio.jack.audio_outputs");
+pub const JACK_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.jack.midi_inputs");
+pub const JACK_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.jack.midi_outputs");
+pub const JACK_CONNECTIONS: SettingKey<String> = SettingKey::new("audio.jack.connections");
 pub const CPAL_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.cpal.client_name");
 pub const CPAL_HOST: SettingKey<String> = SettingKey::new("audio.cpal.host");
 pub const CPAL_OUTPUT_DEVICE: SettingKey<String> = SettingKey::new("audio.cpal.output_device");
@@ -126,6 +131,7 @@ pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mid
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
 pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const NEW_ENGINE_QUANTUM: SettingKey<String> = SettingKey::new("audio.new_engine.quantum");
 pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
 pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
     SettingKey::new("audio.new_engine.bus_channels");
@@ -475,6 +481,16 @@ pub fn register_audio_settings_with_default_driver(
         .setting_order(20)
         .effect(effect),
     )?;
+    for (index, (key, value, label, help)) in [
+        (JACK_AUDIO_INPUTS, "audio_in_1,audio_in_2", "JACK audio inputs", "Comma-separated local audio input port names. Empty means no inputs."),
+        (JACK_AUDIO_OUTPUTS, "audio_out_1,audio_out_2", "JACK audio outputs", "Comma-separated local audio output port names. Master uses the first outputs."),
+        (JACK_MIDI_INPUTS, "midi_in_1", "JACK MIDI inputs", "Comma-separated local MIDI input port names."),
+        (JACK_MIDI_OUTPUTS, "midi_out_1", "JACK MIDI outputs", "Comma-separated local MIDI output port names."),
+        (JACK_CONNECTIONS, "", "JACK startup connections", "Semicolon-separated source -> destination pairs. Use local short names or external client:port names."),
+    ].into_iter().enumerate() {
+        builder.register(SettingDefinition::new(key, value.to_owned(), "Audio", label, help)
+            .category_order(5).setting_order(21 + index as u32).effect(effect))?;
+    }
     for definition in [
         SettingDefinition::new(
             CPAL_CLIENT_NAME,
@@ -716,6 +732,17 @@ pub fn register_audio_backend_settings(
 ) -> Result<(), SettingsRegistryError> {
     let defaults = NewEnginePools::default();
     builder.register(
+        SettingDefinition::new(NEW_ENGINE_QUANTUM, defaults.quantum.to_string(),
+            "Audio", "Processing quantum",
+            "Loop lengths and state changes align to this many frames. Stream buffering adds one quantum of latency.")
+            .category_order(5).setting_order(57)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::StringChoice { choices: &[
+                ("16", "16 frames"), ("32", "32 frames"),
+                ("64", "64 frames"), ("128", "128 frames"),
+            ] }),
+    )?;
+    builder.register(
         SettingDefinition::new(
             ENGINE_TRANSPORT, EngineTransportKind::InProcess.id().to_owned(),
             "Audio", "Session delivery",
@@ -785,6 +812,11 @@ pub fn new_engine_pools_from_snapshot(
 ) -> Result<NewEnginePools, String> {
     let get = |key| snapshot.get(key).map_err(|error| error.to_string());
     Ok(NewEnginePools {
+        quantum: snapshot
+            .get(NEW_ENGINE_QUANTUM)
+            .map_err(|error| error.to_string())?
+            .parse::<u32>()
+            .map_err(|error| error.to_string())?,
         buses: get(NEW_ENGINE_BUSES)?,
         bus_channels: get(NEW_ENGINE_BUS_CHANNELS)?,
         tracks: get(NEW_ENGINE_TRACKS)?,
@@ -855,9 +887,38 @@ fn audio_driver_config(
             if client_name.trim().is_empty() {
                 return Err("JACK client name must not be empty".to_owned());
             }
-            Ok(AudioDriverConfig::Jack(JackAudioDriverConfig {
+            let ports = |value: String| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            };
+            let connections = string(JACK_CONNECTIONS)?
+                .split(';')
+                .filter(|entry| !entry.trim().is_empty())
+                .map(|entry| {
+                    entry
+                        .split_once("->")
+                        .map(|(source, target)| {
+                            (source.trim().to_owned(), target.trim().to_owned())
+                        })
+                        .ok_or_else(|| {
+                            "JACK connections must be source -> destination pairs".to_owned()
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let config = JackAudioDriverConfig {
                 client_name,
-            }))
+                audio_inputs: ports(string(JACK_AUDIO_INPUTS)?),
+                audio_outputs: ports(string(JACK_AUDIO_OUTPUTS)?),
+                midi_inputs: ports(string(JACK_MIDI_INPUTS)?),
+                midi_outputs: ports(string(JACK_MIDI_OUTPUTS)?),
+                connections,
+            };
+            config.validate()?;
+            Ok(AudioDriverConfig::Jack(config))
         }
         AudioDriverKind::Cpal => {
             let config = CpalAudioDriverConfig {
@@ -2544,23 +2605,20 @@ impl AppWidget {
                             actions.push(AppAction::CancelIoTask { task_id: task.id });
                         }
                     });
-                } else if let Some(warning) = &task.sample_rate_warning {
+                } else if task.format_conversion_warning.is_some() {
                     ui.colored_label(
                         colors::WARNING,
-                        format!(
-                            "This will resample {} from {} Hz to {} Hz.",
-                            warning.affected_media, warning.source_rate, warning.target_rate
-                        ),
+                        "This import requires resampling or retiming to the session's sample rate and processing quantum. This will slightly affect audio, MIDI timing and synchronized loop lengths.",
                     );
                     ui.horizontal(|ui| {
-                        if ui.button("Resample and load").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                        if ui.button("Convert").clicked() {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: true,
                             });
                         }
                         if ui.button("Cancel").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: false,
                             });
@@ -3908,6 +3966,7 @@ mod tests {
         );
         for key in [
             ENGINE_TRANSPORT.id(),
+            NEW_ENGINE_QUANTUM.id(),
             NEW_ENGINE_TRACKS.id(),
             NEW_ENGINE_LOOPS.id(),
             NEW_ENGINE_CHANNELS.id(),
@@ -3950,6 +4009,7 @@ mod tests {
         assert_eq!(
             new_engine_pools_from_snapshot(&resolved).unwrap(),
             NewEnginePools {
+                quantum: 32,
                 buses: 8,
                 bus_channels: 8,
                 tracks: 4,
@@ -3959,6 +4019,11 @@ mod tests {
             }
         );
 
+        draft.set(NEW_ENGINE_QUANTUM, "64".to_owned());
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
+        assert!(registry.validate_draft(&draft).is_err());
+        draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
         draft.set(NEW_ENGINE_CHANNELS, 9);
         assert!(registry.validate_draft(&draft).is_err());
         for kind in [AudioBackendKind::NewEngine] {
@@ -5100,7 +5165,7 @@ mod tests {
                 status: crate::IoTaskStatus::AwaitingChannelSelection,
                 progress: 0.2,
                 message: "Select channels".to_owned(),
-                sample_rate_warning: None,
+                format_conversion_warning: None,
                 audio_channel_mapping: None,
                 audio_channel_selection: Some(crate::AudioChannelSelectionState {
                     available_channels: vec!["Direct 1".to_owned(), "Direct 2".to_owned()],

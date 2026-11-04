@@ -21,7 +21,7 @@ PACKAGES = (
     "shoop_app_connection", "shoopdaloop", "shoop_persistence_codec", "shoop_host", "shoop_app", "shoop_backend", "shoop_app_protocol", "shoop_app_client",
     "shoop_transport", "shoop_transport_socket", "shoop_transport_shared_memory",
     "shoop_rt_engine", "shoop_rt_protocol", "shoop_rt_transport",
-    "shoop_rt_host_native", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
+    "shoop_rt_host_native", "shoop_jack", "shoop_rt_host_worklet", "shoop_rt_transport_message_port",
     "shoop_rt_transport_socket", "shoop_rt_transport_shared_memory", "shoop_rt_host_process", "shoop_rt_backend",
 )
 FORBIDDEN = {

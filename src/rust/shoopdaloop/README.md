@@ -96,7 +96,10 @@ pools are prepared at startup; exhausted capacity produces a refusal.
 Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard MIDI
 import/export use the session service. Save while playing is supported; active or
 scheduled recording refuses without stopping it. Load starts restored loops stopped
-and asks before sample-rate conversion, leaving the device unchanged. Unsupported
+and asks before resampling or retiming to the prepared sample rate and quantum.
+Live length-changing imports retime retained media and sync dependents in one
+atomic family cut; other playback, recording and controls remain active. Source
+files and the prepared device format are unchanged. Unsupported
 FX/dry-wet/composite/script documents and buses exceeding prepared limits refuse as a whole. Audio mapping, channel
 selection, optional import length changes and SMF loss warnings remain explicit.
 Native output replaces its target atomically; browser completion means download

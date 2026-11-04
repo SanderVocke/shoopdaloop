@@ -34,7 +34,7 @@ The signature is queried during preparation and remains fixed for that slot. Por
     }
 ```
 
-Use `input` and `output` individually when a processor has different input/output shapes. Audio views cover the current processing interval, which can be shorter than the host callback because of scheduled actions or planning. Use `block.frame`, `block.frames`, and the supplied slice lengths; MIDI offsets are relative to this interval, not the original host block. Do not retain borrowed views after the call.
+Use `input` and `output` individually when a processor has different input/output shapes. Audio views cover one whole prepared tick, which can be shorter than the host callback. Scheduled actions and domain changes cannot split it. Use `block.frame`, `block.frames`, and the supplied slice lengths; MIDI offsets are relative to this interval, not the original host block. Do not retain borrowed views after the call.
 
 ## Prepare working storage
 

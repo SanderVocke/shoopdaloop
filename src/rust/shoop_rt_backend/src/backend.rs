@@ -85,7 +85,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }),
             ),
             DriverKind::WebAudio => (AudioDriverKind::WebAudio, AudioDriverConfig::WebAudio),
+            DriverKind::Jack => (
+                AudioDriverKind::Jack,
+                AudioDriverConfig::Jack(Default::default()),
+            ),
         };
+        let mut active = ResolvedAudioDriverConfig {
+            configured,
+            sample_rate: driver.sample_rate,
+            buffer_size: driver.buffer_frames,
+            instance_name: "New engine".to_owned(),
+        };
+        if let Some(profile) = &self.driver_profile {
+            if profile.configured.kind() == kind {
+                active.configured = profile.configured.clone();
+                active.instance_name = profile.instance_name.clone();
+            }
+        }
         AudioDriverRuntimeState {
             supported: false,
             catalog: Arc::from([AudioDriverDescriptor {
@@ -93,12 +109,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 available: true,
                 ..Default::default()
             }]),
-            active: Some(ResolvedAudioDriverConfig {
-                configured,
-                sample_rate: driver.sample_rate,
-                buffer_size: driver.buffer_frames,
-                instance_name: "New engine".to_owned(),
-            }),
+            active: Some(active),
             switch: Default::default(),
         }
     }
@@ -668,6 +679,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn replace_loop_family_async(
+        &mut self,
+        update: &shoop_backend::BackendLoopFamilyUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_family(update)
+    }
+
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
         Err(unavailable(BackendCapability::LoopTimingEdits))
     }
@@ -866,6 +884,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
+            quantum_frames: self.limits.map_or(0, |limits| limits.quantum),
             driver_state: self.driver_state(),
             callback_count: self.status.callbacks,
             processed_frames: self.status.frame,

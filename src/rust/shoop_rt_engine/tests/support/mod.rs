@@ -11,6 +11,7 @@ pub fn description() -> EngineDescription {
     EngineDescription {
         sample_rate: 1000,
         max_frames: 16,
+        quantum: 1,
         host: HostPorts::numbered(2, 2, 1),
         segments: vec![
             Segment {
@@ -230,7 +231,15 @@ impl Harness {
         self.results[&correlation]
     }
     pub fn done(&mut self, request: Request) {
-        assert_eq!(self.apply(request), Outcome::Done, "{request:?}");
+        let outcome = self.apply(request);
+        if matches!(request, Request::ContentApply { .. }) {
+            assert!(
+                matches!(outcome, Outcome::ContentApplied { .. }),
+                "{request:?}: {outcome:?}"
+            );
+        } else {
+            assert_eq!(outcome, Outcome::Done, "{request:?}");
+        }
     }
     pub fn last_loop(&self, id: LoopSlotId) -> Option<(u64, Telemetry)> {
         self.telemetry
