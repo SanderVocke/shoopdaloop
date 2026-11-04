@@ -82,12 +82,14 @@ and JACK session management remain outside this port feature.
 
 ## Dynamic port feature validation
 
-- Complete retained native workspace suite: 2,621 passed; four existing skips.
+- Complete retained native workspace suite: 2,622 passed; four existing skips.
 - Strict isolated JACK acceptance: dynamic track/audio-bus publication, live system
   connections, audio/MIDI recording/playback, session restoration with missing peers,
   hotplug reconnection and reclamation over local, socket, shared-memory and TCP
   delivery. Socket/TCP detachment preserves playback; shared memory retains its
   existing one-attachment limit.
+- Startup playback wiring, including swapped channels, retains one Master signal
+  path over all four delivery modes before and after save/load.
 - Prepared pool exhaustion and audio routing past 64 output slots are covered.
   MIDI removal drains reset messages across small server buffers before reclamation.
   Actual callback handoff/retirement is guarded against heap operations.

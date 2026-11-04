@@ -150,6 +150,7 @@ pub struct Service {
     publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
     graph_connections: BTreeMap<shoop_port_graph::OperationId, (PortId, String)>,
     master_graph_auto_done: bool,
+    master_bank_routes_migrated: bool,
     backend: Box<dyn Backend>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
@@ -211,6 +212,7 @@ impl Service {
             publications: BTreeMap::new(),
             graph_connections: BTreeMap::new(),
             master_graph_auto_done: false,
+            master_bank_routes_migrated: false,
             backend,
             options,
             host_settings: None,
@@ -289,7 +291,8 @@ impl Service {
         self.host_graph_controller = Some(controller);
         self.poll_host_graph();
         self.advance_publications();
-        if self.dynamic_ports() && self.options.master_auto_connect {
+        if self.dynamic_ports() && self.options.master_auto_connect && !self.master_graph_auto_done
+        {
             self.connect_master()?;
         }
         Ok(())

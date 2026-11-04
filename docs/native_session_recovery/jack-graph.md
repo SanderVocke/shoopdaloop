@@ -37,7 +37,9 @@ Oversized/unreadable graphs become unavailable with diagnostics instead of being
 reported as complete partial inventories. Worker shutdown refuses outstanding work.
 
 Track audio/MIDI, sync audio and audio-bus output ports are published dynamically.
-The configured bank remains for compatible startup profiles. Private prepared slot
+The configured bank remains for compatible startup profiles. Initial Master wiring
+is migrated to the published bus outputs, preserving channel order and avoiding
+a second Master path through the bank. Private prepared slot
 counts derive from session pool capacity, with up to 1024 slots per media type and
 direction. Slots are reused only after callback retirement and native unregistration.
 Creation/removal results aggregate engine and provider acknowledgements; publication

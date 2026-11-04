@@ -239,7 +239,7 @@ impl Service {
         }
     }
 
-    fn app_port(&self, backend: BackendPortId) -> Option<PortId> {
+    pub(super) fn app_port(&self, backend: BackendPortId) -> Option<PortId> {
         self.ports
             .iter()
             .find_map(|(id, port)| (port.backend == backend).then_some(*id))

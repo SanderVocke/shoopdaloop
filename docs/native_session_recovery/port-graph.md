@@ -80,6 +80,12 @@ callback; notification callbacks use bounded atomic operations.
 
 Configured JACK bank ports remain available for existing profiles. New track audio
 and MIDI ports, the sync track and audio-bus outputs are published automatically.
+Implicit Master bank routes are retired when the service adopts publication. Peers
+wired to those outputs by startup configuration are reconnected through the new
+Master publications with their channel order preserved, avoiding duplicate playback
+when automatic Master connections are enabled. Configured banks remain available
+for explicit application routes.
+
 The native host reserves bounded private I/O capacity from the configured track,
 channel and bus pools, independently of the configured public bank. Registration
 and unregistration run on the control worker. A bounded queue transfers typed

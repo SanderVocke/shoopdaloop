@@ -650,6 +650,7 @@ impl Candidate {
         service.ports = self.ports;
         service.channels = self.channels;
         service.connection_intent = self.connections;
+        service.master_bank_routes_migrated = false;
         service.route_intent = self.routes;
         service.global = self.global;
         service.channel_annotations = self.annotations;

@@ -43,6 +43,80 @@ pub(super) fn engine_complete(
     }
 }
 impl Service {
+    fn migrate_master_bank_routes(&mut self) {
+        if self.master_bank_routes_migrated || self.host_graph.status != graph::Status::Ready {
+            return;
+        }
+        let controller = self.host_graph_controller.as_ref().unwrap();
+        let routes: Vec<_> = self
+            .observed
+            .connections
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                if !self
+                    .observed
+                    .connections
+                    .host_ports
+                    .contains_key(&link.host_port_id)
+                {
+                    return None;
+                }
+                let port = self.app_port(link.application_port_id)?;
+                let ApplicationPortOwner::Bus { bus_id } = self.ports[&port].view.owner else {
+                    return None;
+                };
+                if !self
+                    .buses
+                    .get(&bus_id)
+                    .is_some_and(|bus| bus.backend == MASTER_BUS_ID)
+                {
+                    return None;
+                }
+                let publication = self.host_graph.publications.iter().find(|publication| {
+                    controller
+                        .io_binding(publication.key)
+                        .is_some_and(|binding| binding.port == link.host_port_id)
+                })?;
+                let graph::PublicationState::Published(endpoint) = publication.state else {
+                    return None;
+                };
+                let peers: Vec<_> = self
+                    .host_graph
+                    .links
+                    .iter()
+                    .filter(|link| link.source == endpoint)
+                    .filter_map(|link| self.host_graph.port(link.destination)?.locator.clone())
+                    .collect();
+                Some((port, link.host_port_id.clone(), peers))
+            })
+            .collect();
+        for (port, bank, peers) in routes {
+            if let Err(error) =
+                self.backend
+                    .set_port_connected(self.ports[&port].backend, &bank, false)
+            {
+                self.init_error = Some(error.to_string());
+                return;
+            }
+            self.init_through = self.backend.mutation_cursor();
+            self.connection_intent.remove(&(port, bank));
+            if !peers.is_empty() {
+                self.master_graph_auto_done = true;
+            }
+            for peer in peers {
+                self.connection_intent.insert(
+                    (port, peer),
+                    Intent {
+                        connected: true,
+                        pending: None,
+                        error: None,
+                    },
+                );
+            }
+        }
+        self.master_bank_routes_migrated = true;
+    }
     pub(super) fn reconcile_graph(&mut self, next: &graph::Snapshot) {
         if !self.dynamic_ports() {
             return;
@@ -149,6 +223,7 @@ impl Service {
         if !self.dynamic_ports() {
             return;
         }
+        self.migrate_master_bank_routes();
         let controller = self.host_graph_controller.as_mut().unwrap();
         let epoch = self.host_graph.epoch;
         let mut retired = Vec::new();

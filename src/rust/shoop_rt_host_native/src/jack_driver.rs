@@ -270,7 +270,7 @@ pub(crate) fn start(
             );
         }
     }
-    let slot_names = [
+    let slot_names: [Vec<String>; 4] = [
         &ports.audio_inputs,
         &ports.audio_outputs,
         &ports.midi_inputs,
@@ -358,6 +358,24 @@ pub(crate) fn start(
         graph
             .own(&client, port, DataType::Midi, Direction::Output)
             .map_err(error)?;
+    }
+    let mut bank_key = 1;
+    for (kind, count) in [
+        config.audio_inputs.len(),
+        config.audio_outputs.len(),
+        config.midi_inputs.len(),
+        config.midi_outputs.len(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for name in slot_names[kind].iter().take(count) {
+            worker.bind_io(
+                contract::LocalPortKey(bank_key),
+                Some(contract::IoBinding { port: name.clone() }),
+            );
+            bank_key += 1;
+        }
     }
     let (callback_ports, io_control) = jack_ports::prepare(
         audio_inputs,

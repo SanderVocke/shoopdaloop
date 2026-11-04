@@ -800,6 +800,21 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
             4
         );
+        let master_output = f
+            .client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Master")
+            .unwrap()
+            .channels[0]
+            .output_port_id;
+        f.command(protocol::Command::SetPortConnected {
+            port: master_output,
+            host_port: HostPortId::new("jack:audio_out_1"),
+            connected: true,
+        });
         f.command(protocol::Command::Global(GlobalControlAction::SetSync(
             false,
         )));
@@ -1252,5 +1267,69 @@ fn native_jack_dynamic_tracks_buses_connections_and_session_restore() {
             action: BusAction::Remove,
         });
         assert!(peer.as_client().port_by_name(&local_bus).is_none());
+    }
+}
+
+#[shoop_test(no_wasm = "real JACK startup playback compatibility")]
+fn native_jack_startup_playback_has_one_master_signal_path() {
+    for mode in [
+        DeliveryMode::Local,
+        DeliveryMode::Socket,
+        DeliveryMode::SharedMemory,
+        DeliveryMode::Tcp,
+    ] {
+        let (probe, _) =
+            match jack::Client::new("startup-route-probe", jack::ClientOptions::NO_START_SERVER) {
+                Ok(probe) => probe,
+                Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
+                Err(error) => panic!("required JACK server unavailable: {error}"),
+            };
+        let sinks = probe.ports(
+            None,
+            Some("32 bit float mono audio"),
+            jack::PortFlags::IS_PHYSICAL | jack::PortFlags::IS_INPUT,
+        );
+        assert!(sinks.len() >= 2);
+        let mut f = Fixture::new_on(
+            AudioDriverConfig::Jack(JackAudioDriverConfig {
+                client_name: format!("startup-master-route-{mode:?}"),
+                connections: vec![
+                    ("audio_out_1".into(), sinks[1].clone()),
+                    ("audio_out_2".into(), sinks[0].clone()),
+                ],
+                ..Default::default()
+            }),
+            mode,
+        );
+        for reload in [false, true] {
+            if reload {
+                let image = f.capture(1);
+                f.load(image);
+            }
+            f.until(|client| {
+                client
+                    .snapshot()
+                    .unwrap()
+                    .connections
+                    .pending_links
+                    .is_empty()
+            });
+            let state = f.client.snapshot().unwrap();
+            let master = state.buses.iter().find(|bus| bus.name == "Master").unwrap();
+            for (channel, sink) in master.channels.iter().zip([&sinks[1], &sinks[0]]) {
+                let links: Vec<_> = state
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .filter(|link| link.application_port_id == channel.output_port_id)
+                    .collect();
+                assert_eq!(
+                    links.len(),
+                    1,
+                    "duplicate Master playback bindings ({mode:?}, reload={reload}): {links:?}"
+                );
+                assert_eq!(links[0].host_port_id.as_str(), sink);
+            }
+        }
     }
 }
