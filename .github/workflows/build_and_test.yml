@@ -50,7 +50,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        # A PR may explicitly waive unavailable macOS runners with this label.
+        os: ${{ fromJSON(contains(github.event.pull_request.labels.*.name, 'ci:skip-macos') && '["ubuntu-24.04","windows-2025"]' || '["ubuntu-24.04","macos-15","windows-2025"]') }}
     env:
       RUSTFLAGS: -D warnings
       CARGO_INCREMENTAL: "0"
@@ -334,72 +335,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: ""
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-debug.tar.gz
-          - target: linux
-            os: ubuntu-24.04
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: ""
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-linux-x86_64-release.tar.gz
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: debug
-            cargo_args: ""
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/debug/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-debug.zip
-          - target: windows
-            os: windows-2025
-            arch: x86_64
-            profile: release
-            cargo_args: --release
-            rust_targets: x86_64-pc-windows-msvc
-            binary: target/release/shoopdaloop.exe
-            artifact: shoopdaloop-windows-x86_64-release.zip
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: debug
-            cargo_args: ""
-            rust_targets: aarch64-apple-darwin
-            binary: target/debug/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-debug.tar.gz
-          - target: macos
-            os: macos-15
-            arch: arm64
-            profile: release
-            cargo_args: --release
-            rust_targets: aarch64-apple-darwin
-            binary: target/release/shoopdaloop
-            artifact: shoopdaloop-macos-arm64-release.tar.gz
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: debug
-            cargo_args: --no-default-features
-            trunk_args: ""
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-debug.zip
-          - target: web
-            os: ubuntu-24.04
-            arch: wasm32
-            profile: release
-            cargo_args: --release --no-default-features
-            trunk_args: --release
-            rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-web-wasm32-release.zip
-            html_artifact: shoopdaloop-web-wasm32-release.html
+        # Keep the complete matrix unless this PR explicitly waives macOS.
+        include: >-
+          ${{ fromJSON(format('[{0}{1},{2}]',
+            '{"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-debug.tar.gz"},
+            {"target":"linux","os":"ubuntu-24.04","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-linux-x86_64-release.tar.gz"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"debug","cargo_args":"","rust_targets":"x86_64-pc-windows-msvc","binary":"target/debug/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-debug.zip"},
+            {"target":"windows","os":"windows-2025","arch":"x86_64","profile":"release","cargo_args":"--release","rust_targets":"x86_64-pc-windows-msvc","binary":"target/release/shoopdaloop.exe","artifact":"shoopdaloop-windows-x86_64-release.zip"}',
+            !contains(github.event.pull_request.labels.*.name, 'ci:skip-macos')
+              && ',{"target":"macos","os":"macos-15","arch":"arm64","profile":"debug","cargo_args":"","rust_targets":"aarch64-apple-darwin","binary":"target/debug/shoopdaloop","artifact":"shoopdaloop-macos-arm64-debug.tar.gz"},
+            {"target":"macos","os":"macos-15","arch":"arm64","profile":"release","cargo_args":"--release","rust_targets":"aarch64-apple-darwin","binary":"target/release/shoopdaloop","artifact":"shoopdaloop-macos-arm64-release.tar.gz"}' || '',
+            '{"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"debug","cargo_args":"--no-default-features","trunk_args":"","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-debug.zip"},
+            {"target":"web","os":"ubuntu-24.04","arch":"wasm32","profile":"release","cargo_args":"--release --no-default-features","trunk_args":"--release","rust_targets":"wasm32-unknown-unknown","artifact":"shoopdaloop-web-wasm32-release.zip","html_artifact":"shoopdaloop-web-wasm32-release.html"}'
+          )) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7

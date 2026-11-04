@@ -9,6 +9,10 @@ buffered-MIDI fixes resolve the earlier lifecycle diagnostics. The complete
 native suite now passes all 2676 tests, with four intentional failure canaries
 and two manual device-acceptance tests skipped. Recovery fixtures and lifecycle
 assertions match the updated base. Final non-macOS CI remains pending.
+The PR's `ci:skip-macos` label excludes macOS from the preflight and build
+matrices so contended macOS runners cannot hold up other platforms. Actionlint
+passes, and both generated matrix variants match the original entries exactly
+(eight builds normally, six with the waiver; three/two preflight platforms).
 
 The API adaptation was validated against base `435eb2a2`.
 The former fixed-processing APIs were consolidated upstream; the node now uses

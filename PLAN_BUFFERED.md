@@ -317,9 +317,13 @@ builds or implementation tests.
   including every renamed processor and engine-composition test.
 - macOS validation is waived by explicit user instruction after repeated jobs
   could not acquire hosted ARM64 runners. The pending targeted retry was
-  cancelled; no macOS pass is claimed. The workflow's normal macOS matrix remains
-  available for future runs. Closeout changes only this plan and validation notes;
-  final non-macOS checks are available through the PR checks page.
+  cancelled; no macOS pass is claimed. The PR has the `ci:skip-macos` label,
+  which excludes macOS from both the process-inspection preflight and main build
+  matrix. This prevents unavailable macOS runners from blocking Linux, Windows
+  and web through the preflight dependency. Runs without the label retain all
+  eight build entries and three preflight platforms. Actionlint and a comparison
+  of both matrix variants pass; all non-macOS entries are unchanged. Final
+  non-macOS checks are available through the PR checks page.
 - Final review check found no submitted reviews or inline threads. No automated
   code reviewer responded, and approval is not claimed. The implementation is
   ready for user review; merging remains outside this plan.
