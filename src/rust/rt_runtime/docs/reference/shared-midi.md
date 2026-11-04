@@ -48,6 +48,12 @@ checkpoints stay shared. Affected suffix checkpoints are rebuilt from the edited
 stream; packet bodies stay shared. Total preparation can scale with that suffix.
 There is no guarantee of readiness at the next callback.
 
+After packet preparation, one separate bounded progress step clips the final root
+along boundary index paths. It consumes no source/inserted records and does not
+replay the suffix. Readiness includes this finalization; its index-work bound is
+independent of suffix length. The immutable source pin keeps discarded original
+subtrees alive, so immediate transaction cleanup visits only the changed paths.
+
 Only `Ready` transactions can commit. Commit checks the expected revision and
 publishes root, initial state, duration, index and revision together. Generic
 resource commits also check that a full-loop upload has not superseded the target

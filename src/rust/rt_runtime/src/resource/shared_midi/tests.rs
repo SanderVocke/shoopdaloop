@@ -346,6 +346,10 @@ fn preparation_sizes_checkpoints_by_admitted_owners_and_keeps_live_append_reserv
     let runtime = RuntimeConfig {
         page_bytes: 16,
         resource_pages: 4096,
+        budgets: Budgets {
+            validation_steps: 1,
+            ..Budgets::default()
+        },
         ..RuntimeConfig::default()
     }
     .prepare()
@@ -664,11 +668,18 @@ fn private_splice_rebuilds_a_long_suffix_in_reserved_bounded_steps() {
             store.charge_external(16, 1).unwrap();
             let before = midi.work();
             let pages = store.usage().free_pages;
-            midi.progress_edit(&mut store.render_io(), edit, 3).unwrap();
+            let status = midi.progress_edit(&mut store.render_io(), edit, 3).unwrap();
             assert_eq!(store.usage().free_pages, pages);
             let work = midi.work();
             assert!(work.records - before.records <= 3);
-            assert!(work.index_steps - before.index_steps <= 2 * (midi.depth + 1));
+            if status == EditStatus::Ready {
+                assert_eq!(work.records, before.records);
+                assert_eq!(work.state_copies, before.state_copies);
+                assert!(work.index_steps - before.index_steps <= 8 * (midi.depth + 1));
+                assert!(work.reclaimed - before.reclaimed <= 4 * (midi.depth + 1));
+            } else {
+                assert!(work.index_steps - before.index_steps <= 2 * (midi.depth + 1));
+            }
             check(
                 &mut store,
                 &mut midi,

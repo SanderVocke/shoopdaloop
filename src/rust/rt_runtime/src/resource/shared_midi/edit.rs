@@ -23,6 +23,7 @@ pub(super) struct Edit {
     pub(super) position: u64,
     pub(super) frames: u64,
     pub(super) ready: bool,
+    pub(super) finalizing: bool,
     pub(super) retiring: bool,
     pub(super) base: Option<usize>,
     pub(super) import_cursor: Option<crate::resource::MidiCursor>,
@@ -251,6 +252,7 @@ impl MidiStore {
             position,
             frames,
             ready: frames == 0,
+            finalizing: false,
             retiring: false,
             base: None,
             import_cursor: None,
@@ -319,6 +321,15 @@ impl MidiStore {
         if edit.ready || quantum == 0 {
             return self.edit_status(id);
         }
+        if edit.finalizing {
+            let clipped = self.clipped_root(io, edit.view)?;
+            self.release_now(io.store, edit.view.root);
+            edit.view.root = clipped;
+            edit.finalizing = false;
+            edit.ready = true;
+            self.edits[slot].value = Some(edit);
+            return Ok(EditStatus::Ready);
+        }
         if edit.base.is_some() {
             return self.progress_import(io, id, quantum);
         }
@@ -377,11 +388,7 @@ impl MidiStore {
             let (bytes, events) = self.between(edit.view.root, edit.view.first, edit.view.last)?;
             edit.view.bytes = bytes;
             edit.view.events = events;
-            self.edits[slot].value = Some(edit);
-            let clipped = self.clipped_root(io, edit.view)?;
-            self.release_now(io.store, edit.view.root);
-            edit.view.root = clipped;
-            edit.ready = true;
+            edit.finalizing = true;
         }
         self.edits[slot].value = Some(edit);
         self.edit_status(id)

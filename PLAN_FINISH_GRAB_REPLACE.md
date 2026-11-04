@@ -85,8 +85,10 @@ target transitions). Unit scenarios cover both play-after-record settings,
 non-integral target periods, absent sync and overflowing musical intent. Service
 target selection and actual RT settlement still need wiring. A reference audit
 also found that legacy Control Grab expands selected targets while raw
-AdoptRingbuffers uses the exact list; the initial plan conflated them. This
-behavior choice has been raised with the user before service integration.
+AdoptRingbuffers uses the exact list; the initial reference description conflated
+them. After discussing the example, the user identified selection-dependent
+explicit scripts as undesirable. Delivery keeps the plan's exact-list behavior
+for Control/Lua Grab as an intentional correction; UI gestures stay selection-aware.
 
 The MIDI projection representation now packs per-note flags and unknown-pressure
 state and uses the existing controller-known mask for byte values. All public
@@ -96,6 +98,15 @@ canonical-reset tests alongside the existing independent pedal/state suites.
 This reduces ordinary as well as shared prepared checkpoint arrays without
 lowering an event/byte limit or seek bound. Global production limits and the
 continuous-writer mechanism remain unresolved and no application flag is enabled.
+
+Fresh Linux coverage on `e63acb0f` exposed two test failures: the new pressure
+fixture used the default maintenance budget against a one-step drain helper, and
+root clipping added work to the final packet-preparation call. The fixture now
+prepares the one-step budget it asserts. MIDI edit readiness now includes a
+separate bounded index-finalization step; tests retain the packet-step limit and
+separately assert no record/state replay and logarithmic index/reclamation work
+in finalization. The remaining suite reached these cases after compilation; no
+full green application run is claimed.
 
 ## Findings that determine the work
 

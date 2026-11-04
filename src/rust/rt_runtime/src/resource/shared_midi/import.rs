@@ -103,6 +103,7 @@ impl MidiStore {
             position: 0,
             frames: 0,
             ready: false,
+            finalizing: false,
             retiring: false,
             base: Some(base),
             import_cursor: Some(position.cursor),

@@ -30,7 +30,8 @@ authoritative state at settlement, not an earlier UI poll.
 | Synced UI Grab with target | Same selection rule | T complete cycles ending before phase P plus C earlier cycles; position C*L+P; same post-mode policy | One coherent batch |
 | Unsynced UI Grab, no target | Initiator only | Prefix (N-1)*L+P ending at the live cut; continue Recording from its end | Finish at the reference next sync boundary into Playing/Stopped |
 | Unsynced UI Grab with target | Initiator only | Prefix C*L+P ending at the live cut; continue Recording | Finish using target-delay policy |
-| Explicit Grab / AdoptRingbuffers | Exactly the explicit list | Explicit window, cycle position and post-mode; no implicit selection expansion | Reliable batch outcome |
+| Control/Lua Grab | Exactly the explicit list | Global musical Grab policy, with no implicit selection expansion | Reliable batch outcome |
+| AdoptRingbuffers | Exactly the explicit list | Explicit window, cycle position and post-mode | Reliable batch outcome |
 | Solo | Peers on affected tracks | Stop only peers outside the admitted target set | Do not stop peers if admission refuses |
 | Missing sync length for UI/default Grab | No mutation | Refuse with an actionable reason | No optimistic completion |
 
@@ -48,8 +49,9 @@ and targeted state at that cut. It returns the initial mode and, for unsynced
 grabs, the completion mode/delay. Target membership, solo peers and atomic
 admission remain service/engine responsibilities. The target-membership audit
 found that legacy Control Grab expands selection while raw AdoptRingbuffers is
-exact-list; the initial combined row above is awaiting reconciliation with that
-reference behavior before the service route is enabled.
+exact-list. The user identified selection-dependent explicit scripts as a bug;
+Control/Lua Grab will intentionally use the exact supplied list. UI gesture
+selection semantics remain as shown above.
 
 ## Replacing and continuation contracts
 
