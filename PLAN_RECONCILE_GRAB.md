@@ -2,9 +2,10 @@
 
 ## Status, baseline and delivery
 
-R0–R6 source and native foundation proofs pass at `9f5f5886`; the target is
-now refreshed through `3ca192e1`. R7 measurements and R8 final matrix/review
-remain under CI validation. Written using
+R0–R7 are implemented with passing native functional and release evidence at
+`480a77a6`. Target refresh through `820fb239` is consolidated. R8 delivery requires
+green checks on the resulting head; [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927)
+records its exact final SHA and validation results. Written using
 [write_plan.md](.agents/prompts/write_plan.md).
 
 - Shared audio/MIDI baseline: `feat/shared-midi-persistence` at
@@ -146,6 +147,26 @@ fresh CI; no failed measurement is accepted as evidence. Capacity review also
 removed a double count of the MIDI store value: its own metadata report already
 includes that inline storage, unlike the audio report. Reservations and actual
 allocations are unchanged.
+
+Run [6214](https://github.com/SanderVocke/shoopdaloop/actions/runs/41890301190)
+at `480a77a669b7e1ea1cf3354cddd14fab238da54a` passed the focused functional,
+policy and release-measurement job, native JACK and bare-metal builds. The
+[measurement/evidence record](docs/native_session_recovery/evidence/shared-fixed-media.md)
+links raw artifact `13353826518`, its source/configuration attribution and complete
+reported limits: 71,965 callbacks, 616 deadline misses, 2,844 MIDI overflow
+diagnostics in the Q=1/128-frame case, and none in the other cases. All 128-frame
+cases had zero deadline misses. Prepared metadata, reservations, work maxima and
+callback-end pool extrema are documented without inferring device acceptance.
+All measured configurations recover every checked credit after teardown.
+
+The final target refresh found `820fb23994df2290ceec7cb83c6b500aafe68bce`,
+merged as `59695256`. Its physical-port retirement ownership fix is preserved;
+the removed ignored `Budgets::subranges` field has no remaining initialization
+in our fixtures. Fixed-tick diagnostics still report tick counts. This merge and
+the completion documentation require fresh final-head checks; the implementation
+and measurement fixture are otherwise unchanged. No PR reviews or inline review
+threads were present at the 2026-11-04 inspection. Check again before delivery;
+absence is not approval. The PR remains open against the fixed target.
 
 | Criteria | Implementation/proof owner |
 | --- | --- |
@@ -457,14 +478,14 @@ normal playback, selection, file conversion or ownership enforcement.
 
 ### R7 — Capacity, performance evidence and documentation
 
-- [ ] Measure prepared memory and worst-case work across Q and maximum host sizes,
+- [x] Measure prepared memory and worst-case work across Q and maximum host sizes,
   active sources/loops, retained exports, page boundaries and MIDI event density.
   Include enough ticks before callback-end maintenance to expose peak pressure.
 - [x] Add reproducible full-callback measurements for history capture, repeated
   audio edits, MIDI preparation/publication and mixed playback with old exports.
   Report copy/state/index/reclamation counters, tails, maxima and every deadline
   miss; simple immutable-playback timings do not establish these costs.
-- [ ] Resolve violations of configured operation/storage bounds; document finite
+- [x] Resolve violations of configured operation/storage bounds; document finite
   capacity/refusal and observed timing limits without claiming device acceptance.
 - [x] Update runtime/loop documentation, tracing inventory, parity/persistence
   evidence and PLAN_SHARED_MIDI.md to link this fixed-only completion. Remove
@@ -477,7 +498,7 @@ substitutes for evidence.
 
 ### R8 — Final end-to-end CI, review and delivery
 
-- [ ] Refresh/merge the latest fixed target, resolve any further changes and repeat
+- [x] Refresh/merge the latest fixed target, resolve any further changes and repeat
   affected validation. Confirm the PR base is `feat/fixed-quantum-runtime` and its
   diff retains fixed execution while containing only this foundation and necessary
   reconciliation. Keep the audio dependency explicit until present in the base.
@@ -487,12 +508,12 @@ substitutes for evidence.
   portable bare-metal builds, Docs/CodeQL, formatting, test attributes, tracing,
   parity and dependency boundaries. Keep test execution separate from builds
   that overwrite test-enabled host executables. Record real skips/facility limits.
-- [ ] Run the mixed fixed-runtime end-to-end sequence: continuous history -> two
+- [x] Run the mixed fixed-runtime end-to-end sequence: continuous history -> two
   overlapping grabs -> ordinary loop selection/playback -> delayed private wrapped
   edits -> coherent tick publication -> retained exports -> save/reload/edit ->
   full replacement and teardown. Assert independent oracles, correct clocks,
   old-owner survival, bounded work and complete credit recovery.
-- [ ] Inspect automated reviews after publication and fixes; address applicable
+- [x] Inspect automated reviews after publication and fixes; address applicable
   arriving feedback and repeat affected CI until the reviewer approves. If none
   arrive, record that fact without claiming approval. Resolve review threads and
   keep the plan/PR description consistent with the final implementation.

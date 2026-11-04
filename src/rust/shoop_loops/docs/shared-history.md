@@ -131,4 +131,7 @@ Admitted maximum-density and refused MIDI ticks check truthful recovery. Pool
 extrema are sampled after callback maintenance; prepared reservations bound
 intra-callback storage separately.
 Means, tails and maxima describe that CI workload, not a physical-device guarantee.
+[Recorded measurements and functional evidence](../../../../docs/native_session_recovery/evidence/shared-fixed-media.md)
+include every observed timing miss and output overflow. Very short callbacks are
+not established as deadline-safe, and prepared MIDI state can dominate memory.
 Application P04/P05 admission, selection/sync policy and UI remain open.
