@@ -2,7 +2,8 @@
 
 Status: implementation and local acceptance complete; final delivery in progress. Baseline: `52f24c02` on
 `feat/fixed-quantum-runtime`, targeting `feat/backend-replacement` through existing
-draft PR #930. Continue that branch and PR rather than opening a parallel migration.
+PR #930 (now ready for review). Continue that branch and PR rather than opening a
+parallel migration.
 
 This plan follows the removal of experimental runtimes, transitional tests,
 temporary plans and benchmark tooling. It covers the four remaining substantial
@@ -262,12 +263,12 @@ Report skips/failures explicitly; a local pass does not substitute for stage 7.
   export, graph publication, recovery and retimed session/import-family workflows.
   Compare full media/results to native replay, including dense transitions, saturated
   results, resource exhaustion and deliberate planner/processor failures.
-- [ ] Complete affected packaged native/browser and transport scenarios: typed local,
+- [x] Complete affected packaged native/browser and transport scenarios: typed local,
   socket/shared-memory and MessagePort paths, arbitrary callback adaptation and
   admitted work surviving controller loss. Run selected existing Miri ownership/
   resource tests appropriate to the changed core paths. Require evidence at larger
   quanta as well as exact-frame fixtures; retain heap guards and recovery assertions.
-- [ ] Resolve remaining validation failures, including previously deferred journal/
+- [x] Resolve remaining validation failures, including previously deferred journal/
   recovery issues, with root-cause evidence. Update fixture journals only for
   explained representation/revision changes; preserve samples, MIDI and semantic
   expectations. Do not replace assertions with retries or weaken them to pass.
@@ -565,3 +566,80 @@ native suite (**2,661 passed, six skips**), **117 affected Node22 tests**, all
 pass. The first protocol check correctly exposed two stale byte tables after the
 version bump; the corrected final full suite above passes. Logs:
 `work/cleanup-delivery-{build,native-final,node,retiming-browser,python}.log`.
+
+
+Review/CI corrections after 435eb2a2 (2026-11-04): Codex review identified the
+HostBuffer 64-port restriction. Default JACK preparation reserves 96 audio outputs;
+the generic runtime must honor prepared counts. Removed that limit and per-tick
+slice-reference arrays. A private borrowed audio interface lends either host slices
+or the contiguous prepared buffers to the same graph traversal. It adds no public
+processor entry point or alternate planner lifecycle. A heap-guarded independent
+128-frame stream oracle verifies all 96/1,025 ports across whole/irregular/zero
+callbacks, exact channel reversal and one-quantum latency. Native, Node and Miri
+pass; the unchanged Miri workload completed in 583.94s, below the existing 900s limit.
+
+Strict local JACK acceptance then reproduced a structural timing error: Stop and
+activation separated by one requested frame could round onto the same tick, making
+removal of playing strips Busy. Structural bases and ramp ends now align, with
+activation one complete quantum after Stop settlement. A new Q16/Q32/Q64 test with
+ramps 4 and Q+3 fails before the fix and passes afterward, retaining every unrelated
+output sample and reusing the removed strip/loop slots. All 13 production/structural
+tests, including Q1 scalar oracles, pass.
+
+Coverage and Windows debug both exposed a UI shutdown failure. Inspected the two
+uploaded Perfetto traces using the pinned repository wrapper/checksum, with its
+cache relocated in an uncommitted workspace copy. Original traces show continued
+UI/client work but do not record the remote host's completion/error; no timing-only
+cause was inferred from them. Improved shutdown assertion diagnostics and reproduced
+ShutdownFailed/MIDI-reset-not-confirmed on the first 2-CPU contention trial with
+detailed tracing. The dummy owner could exit without its final reset callback when
+an in-flight callback exceeded the existing grace period; reset confirmation was
+also read before joining the driver. The dummy now completes that final callback
+on its render owner, and confirmation is sampled after join. A deterministic
+zero-grace/no-sleep regression proves reset completion during join and stopped
+cleanup. Both original UI assertions pass in **10 constrained/traced trials × 2
+cases** after the fix. The grace period and UI deadlines are unchanged.
+
+Fresh strict JACK acceptance passes all seven commands, including all five session
+scenarios through local/socket/shared-memory/TCP, native Master preview, companion
+and UI startup. The portable affected core suite passes **436 Node tests**; the
+wide-port Miri case brings local selected interpreter evidence to **27 tests**.
+Detailed logs: `work/cleanup-review-*`, `work/cleanup-final-review-*`,
+`work/cleanup-ui-stress-final.log` and `work/cleanup-native-jack-final`.
+
+First remote run 41871899675: Linux debug/release, all three platform process
+inspections and bare-metal gates pass. JACK and coverage/Windows shutdown failures
+are addressed above. Both macOS build jobs were canceled without acquiring a runner;
+GitHub annotations explicitly report hosted macOS arm64 capacity constraints. These
+are unfulfilled platform gates, not passes. Restart the full matrix with the fixes
+and obtain fresh automated review before completing stage 7.
+
+
+Final review-fix local gate: warning-denying workspace build and full native suite
+pass (**2,664 passed, six existing skips**). Fresh actual non-isolated loop worklets
+pass in offline/live debug contexts with all six deliberate failure gates. Formatting,
+test policy, tracing, parity/book checks and all 133 Python tooling tests pass.
+
+Automated review follow-up: recovery suppression must clear the delayed MIDI
+output as well as the current callback's packets. Otherwise a short callback can
+acknowledge all resets and then emit an older queued note in the next callback.
+The heap-guarded regression first fails on that exact sequence, then passes for
+explicit reset and host-output overflow, Q16/Q32/Q64, immediate and one-packet
+reset sinks, exact reset ordering, uninterrupted audio and fresh post-reset MIDI.
+Native and Node pass; Miri passes the identical test in 20.13s (28 selected cases
+across this cleanup). Logs: `work/cleanup-midi-{before,after,node,miri}.log`.
+The central pending-port hook invalidates buffered output for every runtime
+recovery source, including scoped graph activation and render errors, without
+altering collected input or recording history.
+
+The CodeQL nonce report points to a deterministic descriptor-model argument used
+only to generate node generations. Renamed that argument to `seed`; retained the
+maximum-epoch/sequence boundary and seeded ownership model unchanged. The model
+passes. The code-scanning alert API is unavailable to the integration (403), so
+resolution is verified through the next CodeQL run and its PR thread rather than
+claiming an administrative dismissal.
+
+Full local validation of the MIDI review fix: warning-denying workspace build and
+**2,665 native tests passed, six existing skips**, with required local-socket and
+shared-memory permissions (`work/cleanup-midi-native-network.log`). The first
+full-suite launch lacked socket permission and is not acceptance evidence.

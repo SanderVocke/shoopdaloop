@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation is integrated with the updated base `435eb2a2`; final non-macOS
+Implementation is integrated with the updated base `3ca192e1`; final non-macOS
 validation is being repeated after upstream API consolidation. The user waived
 macOS validation because hosted ARM64 runners could not be acquired. Work starts from
 `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
@@ -205,7 +205,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
   audio plus timestamped MIDI note pairs, channel wrap, equal-time events and
   SysEx; verify exact output against the independent reference, including startup,
   slack, delayed tail, reset, and a fresh instance. Record the tested revision.
-- [ ] Run the complete native regression gate once the focused checks pass; run
+- [x] Run the complete native regression gate once the focused checks pass; run
   portable BufferedProcessor tests in Node and Chromium and the existing application/
   worklet build gates. Keep environment failures or unavailable facilities visible;
   do not count skips as passes or weaken existing assertions.
@@ -268,6 +268,15 @@ builds or implementation tests.
   that led to the implementation.
 
 ## Progress and evidence
+
+- Latest base 3ca192e1 includes wide host-I/O preservation, structural-tick
+  ordering, final MIDI-reset confirmation and buffered-MIDI recovery fixes.
+  These resolve the lifecycle diagnostics noted below. After integration, the
+  warning-denying workspace build, focused native tests and API doctest pass;
+  the complete native suite passes all 2676 tests with six intentional default
+  skips (four failure canaries and two manual device-acceptance checks). The
+  base's recovery fixtures and assertions remain unchanged. Renewed portability
+  and final non-macOS CI checks follow; macOS remains waived by the user.
 
 - Updated-base local gates: all eleven focused processor/production-DSP cases
   plus the API doctest pass natively and in Node/Chromium. Warning-denying

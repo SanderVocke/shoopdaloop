@@ -45,7 +45,7 @@ enum Event {
     },
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ExitController {
     pub open: bool,
     authorized: bool,

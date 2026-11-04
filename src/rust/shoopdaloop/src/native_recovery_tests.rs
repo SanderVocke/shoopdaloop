@@ -257,7 +257,11 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
             if closed {
                 break;
             }
-            assert!(Instant::now() < deadline, "close-both was not confirmed");
+            assert!(
+                Instant::now() < deadline,
+                "close-both was not confirmed: {:?}",
+                app.exit
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
         drop(app);
@@ -409,7 +413,7 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
         if closed {
             break;
         }
-        assert!(Instant::now() < deadline);
+        assert!(Instant::now() < deadline, "shutdown state: {:?}", app.exit);
         std::thread::sleep(Duration::from_millis(5));
     }
     drop(app);

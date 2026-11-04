@@ -228,8 +228,8 @@ impl Running {
         {
             std::thread::sleep(Duration::from_millis(1));
         }
-        let mut midi_reset = shared.phase() != RenderPhase::Running;
         let cycle = self.driver.stop();
+        let mut midi_reset = shared.phase() != RenderPhase::Running;
         if shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.failure().is_none() && shared.stats().midi_out_failed == 0;
         }

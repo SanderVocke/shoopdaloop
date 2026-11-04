@@ -4,7 +4,13 @@
 
 ## Buffered processor
 
-The implementation is being revalidated against the updated base `435eb2a2`.
+The latest implementation includes base `3ca192e1`, whose final MIDI-reset and
+buffered-MIDI fixes resolve the earlier lifecycle diagnostics. The complete
+native suite now passes all 2676 tests, with four intentional failure canaries
+and two manual device-acceptance tests skipped. Recovery fixtures and lifecycle
+assertions match the updated base. Final non-macOS CI remains pending.
+
+The API adaptation was validated against base `435eb2a2`.
 The former fixed-processing APIs were consolidated upstream; the node now uses
 `Processor::process` and its direct `process_tick` core. The private production
 strip-DSP composition fixture and all focused processor tests pass natively and

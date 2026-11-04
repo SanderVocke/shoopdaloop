@@ -639,9 +639,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 recovery.request();
             }
         }
-        for (output, recovery) in midi.outputs.iter_mut().zip(&self.recovery) {
+        for (port, (output, recovery)) in midi.outputs.iter_mut().zip(&self.recovery).enumerate() {
             if recovery.pending() {
                 output.clear();
+                if let Some(buffer) = &mut self.host_buffer {
+                    buffer.clear_midi_output(port);
+                }
             }
         }
         self.resources.reclaim();
@@ -1143,14 +1146,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
     fn run_tick(
         &mut self,
-        audio: &mut AudioBlock<'_, '_>,
+        audio: &mut impl crate::host_buffer::AudioIo,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
         quantum: crate::Quantum,
         remaining: &mut usize,
     ) -> Result<(), Error> {
-        let frame = audio.frame.checked_add(start)?;
+        let frame = audio.frame().checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
         self.deliver_actions(frame, callback_start, remaining)?;
         self.planner.begin_tick(PlanContext {
@@ -1187,7 +1190,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
     fn run_graph(
         &mut self,
-        audio: &mut AudioBlock<'_, '_>,
+        audio: &mut impl crate::host_buffer::AudioIo,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
@@ -1197,7 +1200,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Ok(());
         };
         let q = quantum.frames();
-        let frame = audio.frame.checked_add(start)?;
+        let frame = audio.frame().checked_add(start)?;
         let mut first = 0;
         for step in &plan.descriptor().steps {
             self.slots[step.node.slot() as usize]
@@ -1374,7 +1377,7 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
 fn route_offset<P>(
     slots: &mut [Option<Slot<P>>],
     edge: Connection,
-    audio: &mut AudioBlock<'_, '_>,
+    audio: &mut impl crate::host_buffer::AudioIo,
     midi: &mut MidiBlock<'_>,
     stride: usize,
     start: usize,
@@ -1419,7 +1422,7 @@ fn route_offset<P>(
                 .buffers;
             match edge.source.kind {
                 PortType::Audio => mix(
-                    &audio.inputs[edge.source.port as usize][start..start + frames],
+                    &audio.input(edge.source.port as usize)[start..start + frames],
                     channel_mut(
                         &mut target.input,
                         edge.destination,
@@ -1445,28 +1448,32 @@ fn route_offset<P>(
             match edge.source.kind {
                 PortType::Audio => mix(
                     channel(&source.output, edge.source, stride, buffer_start, frames),
-                    &mut audio.outputs[edge.destination.port as usize][start..start + frames],
+                    &mut audio.output(edge.destination.port as usize)[start..start + frames],
                 ),
                 PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
                     &source.midi_output[edge.source.port as usize],
                     0,
                     frames,
                     start,
-                    audio.frames,
+                    audio.frames(),
                 )?,
             }
         }
         (None, None) => match edge.source.kind {
-            PortType::Audio => mix(
-                &audio.inputs[edge.source.port as usize][start..start + frames],
-                &mut audio.outputs[edge.destination.port as usize][start..start + frames],
-            ),
+            PortType::Audio => {
+                let (input, output) =
+                    audio.pair(edge.source.port as usize, edge.destination.port as usize);
+                mix(
+                    &input[start..start + frames],
+                    &mut output[start..start + frames],
+                );
+            }
             PortType::Midi => midi.outputs[edge.destination.port as usize].merge_window(
                 &midi.inputs[edge.source.port as usize],
                 start,
                 frames,
                 start,
-                audio.frames,
+                audio.frames(),
             )?,
         },
     }
