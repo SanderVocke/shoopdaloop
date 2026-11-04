@@ -8,7 +8,16 @@ The latest implementation includes base `3ca192e1`, whose final MIDI-reset and
 buffered-MIDI fixes resolve the earlier lifecycle diagnostics. The complete
 native suite now passes all 2676 tests, with four intentional failure canaries
 and two manual device-acceptance tests skipped. Recovery fixtures and lifecycle
-assertions match the updated base. Final non-macOS CI remains pending.
+assertions match the updated base.
+
+At `7c214af6`, [CI run 41891267327](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891267327)
+passes Linux and Windows debug/release, both web profiles, full Node tests,
+browser/session/AudioWorklet checks, independent hosts, coverage, JACK and
+bare-metal gates. Documentation, all CodeQL languages and both Codecov checks
+also pass. The tested merge candidate `cea197b2` includes base `820fb239`;
+its full native and coverage runs each pass 2677 tests with six expected skips.
+The branch-local result above uses integrated base `3ca192e1`.
+
 The PR's `ci:skip-macos` label excludes macOS from the preflight and build
 matrices so contended macOS runners cannot hold up other platforms. Actionlint
 passes, and both generated matrix variants match the original entries exactly
@@ -25,7 +34,8 @@ removed; upstream Q=1 settings and all lifecycle assertions are preserved.
 The broad local run had 2669 passes and three lifecycle failures; a fresh isolated
 run passed those cases but observed a different shutdown-confirmation failure
 (19/20 passed). Six default skips are four canaries and two manual device checks.
-Final non-macOS CI is pending; checkpoints below predate this integration.
+These diagnostics precede the final native and CI passes above; checkpoints
+below also predate this integration.
 macOS remains explicitly waived.
 
 The implementation and focused coverage are tracked in

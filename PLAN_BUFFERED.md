@@ -2,9 +2,10 @@
 
 ## Status and scope
 
-Implementation is integrated with the updated base `3ca192e1`; final non-macOS
-validation is being repeated after upstream API consolidation. The user waived
-macOS validation because hosted ARM64 runners could not be acquired. Work starts from
+Implementation and required verification are complete. All non-macOS CI passes
+on implementation revision `7c214af6`, including the merge candidate with base
+`820fb239`. The user waived macOS validation because hosted ARM64 runners could
+not be acquired. The implementation branch integrates base `3ca192e1`; work starts from
 `feat/fixed-quantum-runtime`, investigated at `3ed8ff11`. Follow
 [write_plan.md](.agents/prompts/write_plan.md), the repository mandates, and the
 build/test guidance when executing the plan.
@@ -214,7 +215,7 @@ preceding stage. Keep fixes and verification within their owning milestone.
 - [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing the final scope and exact latency/MIDI
   behavior.
-- [ ] Ensure required non-macOS CI is green on the final head. The user explicitly
+- [x] Ensure required non-macOS CI is green on the final head. The user explicitly
   waived macOS validation after repeated hosted ARM64 runner acquisition failures.
 - [x] Check for automated review. Repeatedly assess and address incoming feedback,
   rerun affected checks, and continue until the reviewer approves. If no automated
@@ -269,6 +270,19 @@ builds or implementation tests.
 
 ## Progress and evidence
 
+- Final implementation checkpoint: revision `7c214af6` passes
+  [CI run 41891267327](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891267327),
+  covering Linux and Windows debug/release, both web profiles, full Node tests,
+  browser/session/AudioWorklet checks, independent hosts, coverage, JACK and
+  bare-metal builds. Documentation, all CodeQL languages and both Codecov checks
+  also pass. The tested merge candidate `cea197b2` includes base `820fb239`;
+  its full native and coverage runs each pass 2677 tests with six expected skips.
+  The branch-local native run passes 2676 tests against integrated base `3ca192e1`.
+  macOS is explicitly waived, with no macOS pass claimed. No review submissions
+  or inline threads were posted; automated approval is not claimed. The final
+  closeout updates only delivery documents; its checks are linked from
+  [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937).
+
 - Latest base 3ca192e1 includes wide host-I/O preservation, structural-tick
   ordering, final MIDI-reset confirmation and buffered-MIDI recovery fixes.
   These resolve the lifecycle diagnostics noted below. After integration, the
@@ -276,7 +290,7 @@ builds or implementation tests.
   the complete native suite passes all 2676 tests with six intentional default
   skips (four failure canaries and two manual device-acceptance checks). The
   base's recovery fixtures and assertions remain unchanged. Renewed portability
-  and final non-macOS CI checks follow; macOS remains waived by the user.
+  and non-macOS CI checks pass as recorded above; macOS remains waived by the user.
 
 - Updated-base local gates: all eleven focused processor/production-DSP cases
   plus the API doctest pass natively and in Node/Chromium. Warning-denying
@@ -293,7 +307,8 @@ builds or implementation tests.
   assertions or host production code. The earlier Q=32 fixture edits are removed
   after integration; the updated base's Q=1 fixtures are preserved. The six
   default skips are four intentional failure canaries and two manual isolated
-  device-acceptance tests. Final non-macOS CI must validate the merged source.
+  device-acceptance tests. The final native and CI passes above supersede these
+  earlier diagnostics.
 
 - Base synchronization after closeout: refreshed PR state revealed base 435eb2a2
   (fixed-quantum API cleanup and host-manager integration). Its consolidation
@@ -306,7 +321,7 @@ builds or implementation tests.
   The new base's canonical browser journal has the same uncompressed digest as
   our actual browser recording, so its journal, sidecar and runner are retained.
   Earlier CI checkpoints below predate this integration; renewed non-macOS
-  verification remains required. macOS stays waived by explicit user instruction.
+  verification passes as recorded above. macOS stays waived by explicit user instruction.
 
 - Delivery checkpoint: [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937)
   targets `feat/fixed-quantum-runtime`. At `e51fe082`,
