@@ -22,12 +22,9 @@ impl Service {
                             message: "the active host does not support graph control".into(),
                         })?;
                 controller
-                    .submit(request)
+                    .submit(request.into())
                     .map(Effect::HostGraph)
-                    .map_err(|error| CommandError {
-                        reason: error.reason,
-                        message: error.message,
-                    })
+                    .map_err(CommandError::graph)
             }
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),

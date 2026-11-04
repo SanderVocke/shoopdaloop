@@ -430,7 +430,7 @@ mod native {
                     Box::new(shoop_scripting::NativeMidiService::new()),
                 )?;
                 if let Some(graph) = graph {
-                    runtime.service.set_host_graph_controller(graph);
+                    runtime.service.set_host_graph_controller(graph)?;
                 }
                 Ok(SessionRuntime::Local(runtime))
             })

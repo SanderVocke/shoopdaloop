@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -128,7 +128,7 @@ jobs:
       - name: Build libraries without a standard library
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked --lib -p rt_runtime -p shoop_loops --target thumbv7em-none-eabihf
+        run: cargo build --locked --lib -p rt_runtime -p shoop_loops -p shoop_port_graph --target thumbv7em-none-eabihf
 
       - name: Build Cortex-A engine and session service without a standard library
         env:
@@ -800,7 +800,7 @@ jobs:
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_test_dependencies.py \
             --package rt_runtime --package shoop_loops --package shoop_app --package shoop_app_reference --package shoop_app_api \
-            --package shoop_app_protocol --package shoop_app_client \
+            --package shoop_app_protocol --package shoop_app_client --package shoop_port_graph \
             --package shoop_transport --package shoop_transport_socket --package shoop_transport_shared_memory \
             --package shoop_audio_protocol --package shoop_audio_worklet \
             --package shoop_backend --package shoop_egui --package shoop_engine \

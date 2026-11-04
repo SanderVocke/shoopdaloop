@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 15;
+pub const VERSION: u16 = 16;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -246,7 +246,16 @@ pub struct SessionSnapshot {
 
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
-        self.host_graph.valid()
+        let mut bindings = alloc::collections::BTreeSet::new();
+        self.connections.application_ports.iter().all(|port| {
+            port.publication.is_none_or(|key| {
+                key.0 != 0
+                    && bindings.insert(key)
+                    && self.host_graph.publication(key).is_none_or(|p| {
+                        p.spec.data_type == port.data_type && p.spec.direction == port.direction
+                    })
+            })
+        }) && self.host_graph.valid()
             && self.persistence_epoch != 0
             && self.pending.len() <= MAX_PENDING_OPERATIONS
             && self.results.len() <= MAX_RETAINED_RESULTS

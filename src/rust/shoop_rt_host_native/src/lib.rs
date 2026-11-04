@@ -25,9 +25,9 @@ mod cpal_driver;
 mod cycle;
 mod dummy;
 #[cfg(feature = "jack")]
-pub mod graph;
-#[cfg(feature = "jack")]
 mod jack_driver;
+#[cfg(feature = "jack")]
+mod jack_graph;
 mod midi;
 #[cfg(feature = "cpal")]
 mod midir_ports;
@@ -267,9 +267,9 @@ fn cleanup(render: Render) -> Result<Stopped, StopError> {
 }
 
 impl NativeHost {
-    #[cfg(feature = "jack")]
-    pub fn graph_control(&self) -> Option<graph::Control> {
+    pub fn graph_control(&self) -> Option<shoop_port_graph::Control> {
         match &self.running.as_ref()?.driver {
+            #[cfg(feature = "jack")]
             Driver::Jack(client) => Some(client.graph.clone()),
             _ => None,
         }

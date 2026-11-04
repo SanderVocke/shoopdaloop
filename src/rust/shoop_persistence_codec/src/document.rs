@@ -69,6 +69,7 @@ fn port_from_document(port: PortDocument, owner: ApplicationPortOwner) -> Result
     );
     Ok(image::Port {
         state: ApplicationPortState {
+            publication: None,
             id: PortId::from_raw(port.id),
             owner,
             name: port.name,
@@ -648,6 +649,7 @@ pub(super) fn from_bundle(bundle: SessionBundle) -> Result<Arc<image::Image>> {
             .ok_or_else(|| anyhow!("port identity space exhausted"))?;
         global_ports.push(image::Port {
             state: ApplicationPortState {
+                publication: None,
                 id: PortId::from_raw(id),
                 owner: ApplicationPortOwner::GlobalFxControl,
                 name: "Global FX Control MIDI In".into(),

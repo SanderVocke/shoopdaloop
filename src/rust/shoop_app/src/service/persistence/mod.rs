@@ -789,6 +789,7 @@ impl Service {
                          role,
                          external_connections| image::Port {
             state: ApplicationPortState {
+                publication: None,
                 id: PortId::from_raw(id),
                 name,
                 owner,

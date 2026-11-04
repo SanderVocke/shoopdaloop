@@ -14,6 +14,7 @@ cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }
 jack = { workspace = true, optional = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true, features = ["std"] }

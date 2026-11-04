@@ -1097,20 +1097,6 @@ impl Default for LoopState {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDataType {
-    Audio,
-    Midi,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PortDirection {
-    Input,
-    Output,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1179,6 +1165,8 @@ pub enum ConnectionPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub publication: Option<HostGraphLocalKey>,
     pub id: PortId,
     pub owner: ApplicationPortOwner,
     pub name: String,
@@ -3522,6 +3510,7 @@ mod tests {
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
         let port = ApplicationPortState {
+            publication: None,
             id: port_id,
             owner: ApplicationPortOwner::Track {
                 track_id,

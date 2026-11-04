@@ -50,3 +50,13 @@ impl<N: jack::NotificationHandler> jack::NotificationHandler for Notifications<N
         self.handler.xrun(client)
     }
 }
+
+/// Reads the native registration index used by JACK port notifications, off the callback thread.
+#[allow(unsafe_code)]
+pub fn port_id<Spec>(client: &jack::Client, port: &jack::Port<Spec>) -> Option<jack::PortId> {
+    if port.client_ptr() != client.raw() {
+        return None;
+    }
+    // The matching borrowed client keeps JACK's shared port metadata mapped during these reads.
+    Some(unsafe { jack_sys::jack_uuid_to_index(jack_sys::jack_port_uuid(port.raw())) })
+}

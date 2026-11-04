@@ -315,6 +315,7 @@ impl Service {
             Port {
                 backend: descriptor.id,
                 view: ApplicationPortState {
+                    publication: None,
                     id,
                     owner,
                     name: descriptor.name,

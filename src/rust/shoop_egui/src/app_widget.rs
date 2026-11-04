@@ -4507,6 +4507,7 @@ mod tests {
             }],
             connections: Arc::new(crate::ConnectionViewState {
                 application_ports: Arc::from([crate::ApplicationPortState {
+                    publication: None,
                     id: port_id,
                     owner: crate::ApplicationPortOwner::Track {
                         track_id,
@@ -4606,6 +4607,7 @@ mod tests {
             connections: Arc::new(crate::ConnectionViewState {
                 application_ports: Arc::from([
                     crate::ApplicationPortState {
+                        publication: None,
                         id: midi_port,
                         owner: crate::ApplicationPortOwner::Track {
                             track_id: first_id,
@@ -4618,6 +4620,7 @@ mod tests {
                         connection_policy: crate::ConnectionPolicy::UserManaged,
                     },
                     crate::ApplicationPortState {
+                        publication: None,
                         id: output_port,
                         owner: crate::ApplicationPortOwner::Track {
                             track_id: muted_id,

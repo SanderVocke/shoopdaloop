@@ -230,7 +230,7 @@ impl Fixture {
             )
             .unwrap();
             if let Some(controller) = shoop_host::host_graph::controller(&started.host) {
-                service.set_host_graph_controller(controller);
+                service.set_host_graph_controller(controller).unwrap();
             }
             service.set_host_settings(settings, Vec::new()).unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -610,9 +610,18 @@ fn graph_request(f: &Fixture, local: &str, peer: &str, connected: bool) -> HostG
     let state = &f.client.snapshot().unwrap().host_graph;
     HostGraphRequest {
         epoch: state.epoch,
-        revision: state.revision,
-        local: local.into(),
-        peer: peer.into(),
+        local: state
+            .ports
+            .iter()
+            .find(|port| port.name == local)
+            .unwrap()
+            .id,
+        peer: state
+            .ports
+            .iter()
+            .find(|port| port.name == peer)
+            .unwrap()
+            .id,
         connected,
     }
 }
@@ -621,10 +630,19 @@ fn graph_link(f: &mut Fixture, local: &str, peer: &str, connected: bool) {
     f.command(protocol::Command::SetHostGraphConnected(request));
     f.until(|client| {
         let state = &client.snapshot().unwrap().host_graph;
-        state.links.iter().any(|link| {
-            (link.source == local && link.destination == peer)
-                || (link.source == peer && link.destination == local)
-        }) == connected
+        let local = state
+            .ports
+            .iter()
+            .find(|port| port.name == local)
+            .unwrap()
+            .id;
+        let peer = state
+            .ports
+            .iter()
+            .find(|port| port.name == peer)
+            .unwrap()
+            .id;
+        state.connected(local, peer) == connected
     });
 }
 
@@ -648,10 +666,17 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             ..Default::default()
         };
         let mut f = Fixture::new_on(AudioDriverConfig::Jack(driver), mode);
-        f.until(|client| client.snapshot().unwrap().host_graph.available);
+        f.until(|client| client.snapshot().unwrap().host_graph.status == HostGraphStatus::Ready);
         let initial = f.client.snapshot().unwrap().host_graph.clone();
         assert!(initial.valid());
-        assert_eq!(initial.ports.iter().filter(|port| port.owned).count(), 6);
+        assert_eq!(
+            initial
+                .ports
+                .iter()
+                .filter(|port| port.local.is_some())
+                .count(),
+            6
+        );
         let owner = f
             .client
             .snapshot()
@@ -711,15 +736,6 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
         wrong_epoch.epoch = wrong_epoch.epoch.wrapping_add(1).max(1);
         assert!(matches!(
             f.outcome(protocol::Command::SetHostGraphConnected(wrong_epoch)),
-            Outcome::Refused {
-                reason: Refusal::RevisionConflict,
-                ..
-            }
-        ));
-        let mut stale = graph_request(&f, &local("audio_in_1"), &source_name, true);
-        stale.revision = initial.revision;
-        assert!(matches!(
-            f.outcome(protocol::Command::SetHostGraphConnected(stale)),
             Outcome::Refused {
                 reason: Refusal::RevisionConflict,
                 ..
@@ -828,6 +844,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             audio.load(Ordering::Relaxed) > disconnected.0 + 3
                 && midi.load(Ordering::Relaxed) > disconnected.1 + 6
         });
+        let before_rename = graph_request(&f, &local("audio_in_1"), &source_name, true);
         let mut renamed = peer.as_client().port_by_name(&source_name).unwrap();
         renamed.set_name("source_renamed").unwrap();
         let renamed_name = format!("{peer_name}:source_renamed");
@@ -835,8 +852,20 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             let graph = &client.snapshot().unwrap().host_graph;
             graph.ports.iter().any(|port| port.name == renamed_name)
                 && !graph.ports.iter().any(|port| port.name == source_name)
-                && graph.links.iter().any(|link| link.source == renamed_name)
+                && graph
+                    .links
+                    .iter()
+                    .any(|link| link.source == before_rename.peer)
         });
+        assert!(f
+            .client
+            .snapshot()
+            .unwrap()
+            .host_graph
+            .ports
+            .iter()
+            .any(|port| port.id == before_rename.peer && port.name == renamed_name));
+        f.command(protocol::Command::SetHostGraphConnected(before_rename));
         renamed.set_name("source").unwrap();
         f.until(|client| {
             client

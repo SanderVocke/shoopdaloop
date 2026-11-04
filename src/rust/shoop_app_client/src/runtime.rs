@@ -699,6 +699,7 @@ impl Runtime {
                         | u64::from(registration.saturating_add(1)),
                 );
                 ports.push(ApplicationPortState {
+                    publication: None,
                     id: port,
                     owner: ApplicationPortOwner::LuaControl {
                         script_id: script.id,

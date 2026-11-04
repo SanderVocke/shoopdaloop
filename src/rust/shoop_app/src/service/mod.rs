@@ -81,7 +81,7 @@ enum Effect {
     TrackRemoved(TrackId),
     Shutdown,
     Persistence(persistence::Key),
-    HostGraph(u64),
+    HostGraph(shoop_port_graph::OperationId),
 }
 
 struct Pending {
@@ -108,6 +108,21 @@ impl From<anyhow::Error> for CommandError {
     }
 }
 impl CommandError {
+    fn graph(error: shoop_port_graph::Error) -> Self {
+        use shoop_port_graph::ErrorKind::*;
+        let reason = match error.kind {
+            Unsupported => Refusal::Unsupported,
+            Unavailable => Refusal::NotReady,
+            WrongEpoch | StalePort => Refusal::RevisionConflict,
+            Invalid | Incompatible => Refusal::Invalid,
+            Capacity | Busy => Refusal::Overloaded,
+            Backend => Refusal::Engine,
+        };
+        Self {
+            reason,
+            message: error.message,
+        }
+    }
     fn invalid(message: impl Into<String>) -> Self {
         Self {
             reason: Refusal::Invalid,
@@ -252,24 +267,64 @@ impl Service {
         Ok(service)
     }
 
-    pub fn set_host_graph_controller(&mut self, controller: Box<dyn crate::HostGraphController>) {
+    pub fn set_host_graph_controller(
+        &mut self,
+        controller: Box<dyn crate::HostGraphController>,
+    ) -> Result<()> {
+        if self.host_graph_controller.is_some() {
+            return Err(anyhow!("a port graph controller is already installed"));
+        }
         self.host_graph_controller = Some(controller);
         self.poll_host_graph();
+        Ok(())
+    }
+
+    pub fn bind_host_publication(
+        &mut self,
+        port: PortId,
+        key: Option<HostGraphLocalKey>,
+    ) -> Result<()> {
+        let target = self
+            .ports
+            .get(&port)
+            .ok_or_else(|| anyhow!("unknown application port"))?;
+        if let Some(key) = key {
+            if self
+                .ports
+                .values()
+                .any(|p| p.view.id != port && p.view.publication == Some(key))
+            {
+                return Err(anyhow!(
+                    "publication is already bound to another application port"
+                ));
+            }
+            let publication = self
+                .host_graph
+                .publication(key)
+                .ok_or_else(|| anyhow!("unknown host publication"))?;
+            if publication.spec.data_type != target.view.data_type
+                || publication.spec.direction != target.view.direction
+            {
+                return Err(anyhow!(
+                    "publication does not match application port format"
+                ));
+            }
+        }
+        self.ports.get_mut(&port).unwrap().view.publication = key;
+        self.bump();
+        Ok(())
     }
 
     fn poll_host_graph(&mut self) {
         let Some(controller) = &mut self.host_graph_controller else {
             return;
         };
-        while let Some((id, result)) = controller.take_result() {
+        while let Some(shoop_port_graph::Completion { id, result }) = controller.take_result() {
             for pending in self.pending.values_mut() {
                 if matches!(pending.effect, Effect::HostGraph(candidate) if candidate == id) {
                     pending.effect = Effect::None;
                     if let Err(error) = &result {
-                        pending.error = Some(CommandError {
-                            reason: error.reason,
-                            message: error.message.clone(),
-                        });
+                        pending.error = Some(CommandError::graph(error.clone()));
                     }
                 }
             }

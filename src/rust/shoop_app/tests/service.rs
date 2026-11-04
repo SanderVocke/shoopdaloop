@@ -2914,61 +2914,76 @@ fn observe_host_result(
     panic!("host operation did not finish");
 }
 
-#[derive(Default)]
-struct GraphFixture {
-    state: HostGraphState,
-    requests: Vec<HostGraphRequest>,
-    results: std::collections::VecDeque<(u64, Result<(), shoop_app::HostGraphError>)>,
-}
-struct GraphController(std::sync::Arc<std::sync::Mutex<GraphFixture>>);
-impl shoop_app::HostGraphController for GraphController {
-    fn snapshot(&mut self) -> std::sync::Arc<HostGraphState> {
-        std::sync::Arc::new(self.0.lock().unwrap().state.clone())
-    }
-    fn submit(&mut self, request: HostGraphRequest) -> Result<u64, shoop_app::HostGraphError> {
-        let mut state = self.0.lock().unwrap();
-        state.requests.push(request);
-        Ok(state.requests.len() as u64)
-    }
-    fn take_result(&mut self) -> Option<(u64, Result<(), shoop_app::HostGraphError>)> {
-        self.0.lock().unwrap().results.pop_front()
-    }
-}
 #[shoop_test]
 fn graph_commands_wait_for_host_observation_and_reconcile_after_ui_detach() {
+    use shoop_port_graph::{
+        self as graph,
+        testing::{perform, FakeProvider},
+    };
     for encoded in [false, true] {
         let mut f = fixture();
-        let graph = std::sync::Arc::new(std::sync::Mutex::new(GraphFixture {
-            state: HostGraphState {
-                epoch: 4,
-                revision: 1,
-                available: true,
-                ports: vec![
-                    HostGraphPort {
-                        name: "host:out".into(),
-                        data_type: PortDataType::Audio,
-                        direction: PortDirection::Output,
-                        owned: true,
-                    },
-                    HostGraphPort {
-                        name: "peer:in".into(),
-                        data_type: PortDataType::Audio,
-                        direction: PortDirection::Input,
-                        owned: false,
-                    },
-                ],
-                ..Default::default()
-            },
-            ..Default::default()
-        }));
-        f.service
-            .set_host_graph_controller(Box::new(GraphController(graph.clone())));
+        let mut provider = FakeProvider::new(4);
+        let mut control = provider.control();
         let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+        let logical = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.data_type == PortDataType::Audio && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        let key = graph::LocalPortKey(1001);
+        let graph::Outcome::Published { port: local, .. } = perform(
+            &mut control,
+            graph::Operation::Publish {
+                key,
+                spec: graph::PortSpec {
+                    name: "shared label".into(),
+                    data_type: PortDataType::Audio,
+                    direction: PortDirection::Output,
+                },
+            },
+            || provider.advance(),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        let peer = provider.peer(graph::PortSpec {
+            name: "shared label".into(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Input,
+        });
+        f.service
+            .set_host_graph_controller(Box::new(control))
+            .unwrap();
+        f.service.bind_host_publication(logical, Some(key)).unwrap();
+        assert!(f
+            .service
+            .set_host_graph_controller(Box::new(provider.control()))
+            .is_err());
+        let other = client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.id != logical
+                    && port.data_type == PortDataType::Audio
+                    && port.direction == PortDirection::Output
+            })
+            .unwrap()
+            .id;
+        assert!(f.service.bind_host_publication(other, Some(key)).is_err());
+
         let request = HostGraphRequest {
             epoch: 4,
-            revision: 1,
-            local: "host:out".into(),
-            peer: "peer:in".into(),
+            local,
+            peer,
             connected: true,
         };
         let id = submit(
@@ -2989,20 +3004,13 @@ fn graph_commands_wait_for_host_observation_and_reconcile_after_ui_detach() {
             .any(|p| p.id == id));
         assert!(!client.results().contains_key(&id));
         assert!(client.snapshot().unwrap().host_graph.links.is_empty());
-        assert_eq!(graph.lock().unwrap().requests, [request.clone()]);
         let stale_message = client
             .command(Command::SetHostGraphConnected(request.clone()), None)
             .unwrap();
         f.service.detach(ConnectionId(1));
-        {
-            let mut graph = graph.lock().unwrap();
-            graph.state.revision = 2;
-            graph.state.links.push(HostGraphLink {
-                source: request.local.clone(),
-                destination: request.peer.clone(),
-            });
-            graph.results.push_back((1, Ok(())));
-        }
+        provider.advance();
+        assert!(!provider.control().snapshot().connected(local, peer));
+        provider.advance();
         f.service.tick(STEP);
         let mut client = attach(&mut f.service, 2, ConnectionId(2), encoded);
         let state = client.snapshot().unwrap();
@@ -3013,48 +3021,63 @@ fn graph_commands_wait_for_host_observation_and_reconcile_after_ui_detach() {
             .results
             .iter()
             .any(|r| r.id == id && matches!(r.outcome, Outcome::Confirmed { .. })));
+        let binding = state
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == logical)
+            .unwrap()
+            .publication
+            .unwrap();
+        assert!(
+            matches!(state.host_graph.publication(binding).unwrap().state, HostGraphPublicationState::Published(port) if port == local)
+        );
         assert_eq!(
             f.service.handle(ConnectionId(1), stale_message),
             Err(Refusal::StaleAuthority)
         );
-        assert_eq!(graph.lock().unwrap().requests.len(), 1);
+        provider.fail_next(graph::Error::new(
+            graph::ErrorKind::Backend,
+            "connection refused by provider",
+        ));
         let id = submit(
             &mut f.service,
             &mut client,
             ConnectionId(2),
-            Command::SetHostGraphConnected(request),
-        );
-        graph.lock().unwrap().results.push_back((
-            2,
-            Err(shoop_app::HostGraphError {
-                reason: Refusal::RevisionConflict,
-                message: "graph changed".into(),
+            Command::SetHostGraphConnected(HostGraphRequest {
+                connected: false,
+                ..request
             }),
-        ));
+        );
+        provider.advance();
+        provider.advance();
         assert!(matches!(
             complete(&mut f.service, &mut client, ConnectionId(2), id, encoded),
             Outcome::Refused {
-                reason: Refusal::RevisionConflict,
+                reason: Refusal::Engine,
                 ..
             }
         ));
         assert_eq!(client.snapshot().unwrap().host_graph.links.len(), 1);
+        f.service.bind_host_publication(logical, None).unwrap();
     }
 }
 #[shoop_test]
 fn graph_control_is_explicitly_unsupported_without_a_host_adapter() {
     let mut f = fixture();
     let mut client = attach(&mut f.service, 1, ConnectionId(1), false);
-    assert!(!client.snapshot().unwrap().host_graph.available);
+    assert_eq!(
+        client.snapshot().unwrap().host_graph.status,
+        HostGraphStatus::Unsupported
+    );
     let outcome = command(
         &mut f.service,
         &mut client,
         ConnectionId(1),
         Command::SetHostGraphConnected(HostGraphRequest {
             epoch: 1,
-            revision: 1,
-            local: "host:out".into(),
-            peer: "peer:in".into(),
+            local: HostGraphPortId(1),
+            peer: HostGraphPortId(2),
             connected: true,
         }),
     );

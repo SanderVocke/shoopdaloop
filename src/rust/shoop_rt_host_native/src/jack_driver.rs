@@ -1,4 +1,5 @@
-use crate::graph;
+use crate::jack_graph::{self as graph, Generations};
+use shoop_port_graph::{self as contract, DataType, Direction, Snapshot, Status};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -81,10 +82,10 @@ impl JackConfig {
     }
 }
 
-struct Notifications(Arc<Shared>, Arc<AtomicU64>, Arc<AtomicU64>);
+struct Notifications(Arc<Shared>, Arc<AtomicU64>, Arc<Generations>);
 impl jack::NotificationHandler for Notifications {
-    fn port_registration(&mut self, _: &jack::Client, _: jack::PortId, _: bool) {
-        self.2.fetch_add(1, Ordering::Release);
+    fn port_registration(&mut self, _: &jack::Client, id: jack::PortId, _: bool) {
+        self.2.changed(id);
         self.1.fetch_add(1, Ordering::Release);
     }
     fn port_rename(
@@ -94,7 +95,6 @@ impl jack::NotificationHandler for Notifications {
         _: &str,
         _: &str,
     ) -> jack::Control {
-        self.2.fetch_add(1, Ordering::Release);
         self.1.fetch_add(1, Ordering::Release);
         jack::Control::Continue
     }
@@ -191,7 +191,7 @@ impl jack::ProcessHandler for Process {
 }
 
 pub(crate) struct Client {
-    pub graph: graph::Control,
+    pub graph: contract::Control,
     monitor_stop: Arc<AtomicBool>,
     monitor: JoinHandle<Option<Cycle>>,
 }
@@ -277,14 +277,40 @@ pub(crate) fn start(
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
     let shutdown = Arc::new(AtomicBool::new(false));
     let dirty = Arc::new(AtomicU64::new(1));
-    let topology = Arc::new(AtomicU64::new(1));
+    let generations = Arc::new(Generations::new());
     let mut epoch = [0; 8];
     getrandom::fill(&mut epoch).map_err(error)?;
-    let graph = graph::Control::new(u64::from_ne_bytes(epoch).max(1));
+    let (control, mut worker) = contract::channel(
+        u64::from_ne_bytes(epoch).max(1),
+        "jack",
+        graph::CAPABILITIES,
+    )
+    .map_err(error)?;
+    let mut graph = graph::Graph::new();
+    for port in &audio_inputs {
+        graph
+            .own(&client, port, DataType::Audio, Direction::Input)
+            .map_err(error)?;
+    }
+    for port in &audio_outputs {
+        graph
+            .own(&client, port, DataType::Audio, Direction::Output)
+            .map_err(error)?;
+    }
+    for port in &midi_inputs {
+        graph
+            .own(&client, port, DataType::Midi, Direction::Input)
+            .map_err(error)?;
+    }
+    for port in &midi_outputs {
+        graph
+            .own(&client, port, DataType::Midi, Direction::Output)
+            .map_err(error)?;
+    }
     let active = client
         .activate_async(
             shoop_jack::Notifications::new(
-                Notifications(shared.clone(), dirty.clone(), topology.clone()),
+                Notifications(shared.clone(), dirty.clone(), generations.clone()),
                 shutdown.clone(),
             ),
             Process {
@@ -318,36 +344,35 @@ pub(crate) fn start(
     let monitor_stop = Arc::new(AtomicBool::new(false));
     let finished = monitor_stop.clone();
     let observed = shared.clone();
-    let control = graph.clone();
+    let replies = control.clone();
     let monitor = thread::Builder::new()
         .name("jack-control".into())
         .spawn(move || {
             let client = active.as_client();
             let mut seen = 0;
             let mut last_scan = Instant::now();
-            let mut seen_topology = 0;
-            let mut refresh = |seen: &mut u64| {
-                for _ in 0..3 {
-                    let before = dirty.load(Ordering::Acquire);
-                    let structural = topology.load(Ordering::Acquire);
-                    let snapshot = graph::read(client);
-                    if before != dirty.load(Ordering::Acquire) {
-                        continue;
-                    }
-                    let snapshot = match snapshot {
-                        Ok(snapshot) => snapshot,
-                        Err(error) => graph::Snapshot {
-                            error: Some(error.to_string()),
+            let refresh =
+                |graph: &mut graph::Graph, worker: &mut contract::Worker, seen: &mut u64| {
+                    for _ in 0..3 {
+                        let before = dirty.load(Ordering::Acquire);
+                        let snapshot = graph.read(client, &generations);
+                        if before != dirty.load(Ordering::Acquire) {
+                            continue;
+                        }
+                        let snapshot = snapshot.unwrap_or_else(|error| Snapshot {
+                            status: Status::Unavailable,
+                            error: Some(error),
                             ..Default::default()
-                        },
-                    };
-                    control.publish(snapshot, seen_topology != structural);
-                    seen_topology = structural;
-                    *seen = before;
-                    return Ok(());
-                }
-                Err(graph::Error::Stale)
-            };
+                        });
+                        worker.publish(snapshot)?;
+                        *seen = before;
+                        return Ok(());
+                    }
+                    Err(contract::Error::new(
+                        contract::ErrorKind::Busy,
+                        "JACK graph is changing",
+                    ))
+                };
             while !finished.load(Ordering::Acquire) {
                 if shutdown.load(Ordering::Acquire) {
                     observed.fail(StreamFailure::DeviceNotAvailable);
@@ -356,36 +381,22 @@ pub(crate) fn start(
                 if seen != dirty.load(Ordering::Acquire)
                     || last_scan.elapsed() >= Duration::from_secs(1)
                 {
-                    let _ = refresh(&mut seen);
+                    let _ = refresh(&mut graph, &mut worker, &mut seen);
                     last_scan = Instant::now();
                 }
-                if let Some((id, request)) = control.next_request() {
-                    let result = refresh(&mut seen)
-                        .and_then(|()| graph::apply(client, &control.snapshot(), &request));
-                    let result = result.and_then(|()| {
-                        refresh(&mut seen)?;
-                        let snapshot = control.snapshot();
-                        if !snapshot.available {
-                            return Err(graph::Error::Unavailable);
-                        }
-                        let connected = snapshot.links.iter().any(|link| {
-                            (link.source == request.local && link.destination == request.peer)
-                                || (link.source == request.peer
-                                    && link.destination == request.local)
-                        });
-                        if connected == request.connected {
-                            Ok(())
-                        } else {
-                            Err(graph::Error::Failed(
-                                "JACK did not retain the requested connection state".into(),
-                            ))
-                        }
+                if let Some((id, request)) = worker.next_request() {
+                    let result = refresh(&mut graph, &mut worker, &mut seen).and_then(|()| {
+                        graph.apply(client, &generations, &replies.snapshot(), &request)
                     });
-                    control.complete(id, result);
+                    let result = result.and_then(|outcome| {
+                        refresh(&mut graph, &mut worker, &mut seen)?;
+                        graph::Graph::confirm(&replies.snapshot(), &request, outcome)
+                    });
+                    worker.complete(id, result);
                 }
                 thread::sleep(Duration::from_millis(5));
             }
-            control.close();
+            worker.close();
             if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
                 // Let the reset block cross the graph, including feedback edges, before removing ports.
                 let through = observed.stats().callbacks.saturating_add(2);
@@ -413,7 +424,7 @@ pub(crate) fn start(
         Running {
             shared,
             driver: Driver::Jack(Client {
-                graph,
+                graph: control,
                 monitor_stop,
                 monitor,
             }),
@@ -456,7 +467,7 @@ mod tests {
         let notifications = Notifications(
             shared.clone(),
             Arc::new(AtomicU64::new(0)),
-            Arc::new(AtomicU64::new(0)),
+            Arc::new(Generations::new()),
         );
         notifications.observe_sample_rate(48000);
         assert!(shared.failure().is_none());

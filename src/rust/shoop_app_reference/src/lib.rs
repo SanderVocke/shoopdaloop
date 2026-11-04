@@ -10759,6 +10759,7 @@ impl ApplicationModel {
             .connection_ports
             .values()
             .map(|port| ApplicationPortState {
+                publication: None,
                 id: port.id,
                 owner: port.owner.clone(),
                 name: port.name.clone(),
@@ -10793,6 +10794,7 @@ impl ApplicationModel {
                 };
                 let port_id = script_connection_port_id(script.id, registration);
                 application_ports.push(ApplicationPortState {
+                    publication: None,
                     id: port_id,
                     owner: ApplicationPortOwner::LuaControl {
                         script_id: script.id,

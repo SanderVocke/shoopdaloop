@@ -284,7 +284,7 @@ pub fn run_with_ready(
         },
     )?;
     if let Some(controller) = crate::host_graph::controller(host.as_ref().expect("running host")) {
-        service.set_host_graph_controller(controller);
+        service.set_host_graph_controller(controller)?;
     }
     service.set_host_settings(config.settings.clone(), warnings.clone())?;
     let deadline = Instant::now() + Duration::from_secs(10);

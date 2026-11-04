@@ -165,7 +165,10 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
     drop(client);
     let graph = host.graph_control().unwrap();
     let report = host.stop();
-    assert!(!graph.snapshot().available);
+    assert_eq!(
+        graph.snapshot().status,
+        shoop_port_graph::Status::Unavailable
+    );
     assert!(report.midi_reset);
     assert!(report.stopped.is_ok());
     wait(|| resets.load(Ordering::Relaxed) >= resets_before + 32);
@@ -267,7 +270,7 @@ fn native_jack_server_loss_peer() {
     drop(started.client);
     let begun = Instant::now();
     let graph = started.host.graph_control().unwrap();
-    wait(|| !graph.snapshot().available);
+    wait(|| graph.snapshot().status == shoop_port_graph::Status::Unavailable);
     let report = started.host.stop();
     assert!(begun.elapsed() < Duration::from_secs(2));
     assert!(
@@ -406,4 +409,166 @@ fn native_jack_server_readiness() {
             }
         }
     }
+}
+
+#[shoop_test(no_wasm = "real JACK provider conformance")]
+fn native_jack_implements_the_shared_port_graph_contract() {
+    use shoop_port_graph::{testing::connection_contract, *};
+    let Some(peer) = server() else {
+        return;
+    };
+    let sink = peer
+        .register_port("contract_sink", jack::AudioIn::default())
+        .unwrap();
+    let incompatible = peer
+        .register_port("contract_midi", jack::MidiIn::default())
+        .unwrap();
+    let foreign = peer
+        .register_port("contract_foreign", jack::AudioOut::default())
+        .unwrap();
+    let _active_peer = peer
+        .activate_async(
+            (),
+            jack::contrib::ClosureProcessHandler::new(
+                |_: &jack::Client, _: &jack::ProcessScope| jack::Control::Continue,
+            ),
+        )
+        .unwrap();
+    let started = start(&NativeConfig {
+        driver: DriverConfig::Jack(JackConfig::default()),
+        engine: description(),
+    })
+    .unwrap();
+    let mut graph = started.host.graph_control().unwrap();
+    wait(|| graph.snapshot().status == Status::Ready);
+    let snapshot = graph.snapshot();
+    let local = snapshot
+        .ports
+        .iter()
+        .find(|p| {
+            p.local.is_some() && p.data_type == DataType::Audio && p.direction == Direction::Output
+        })
+        .unwrap()
+        .id;
+    let endpoint = |port: &jack::Port<jack::Unowned>| {
+        snapshot
+            .ports
+            .iter()
+            .find(|p| p.name == port.name().unwrap())
+            .unwrap()
+            .id
+    };
+    connection_contract(
+        &mut graph,
+        local,
+        endpoint(&sink.clone_unowned()),
+        endpoint(&incompatible.clone_unowned()),
+        endpoint(&foreign.clone_unowned()),
+        || std::thread::sleep(Duration::from_millis(2)),
+    );
+    drop(started.client);
+    assert!(started.host.stop().stopped.is_ok());
+}
+
+#[shoop_test(no_wasm = "JACK registration incarnations")]
+fn native_jack_ids_survive_unrelated_hotplug_and_rename_but_detect_unobserved_replacement() {
+    use shoop_port_graph::*;
+    let Some(peer) = server() else {
+        return;
+    };
+    let mut input = peer
+        .register_port("incarnation", jack::AudioIn::default())
+        .unwrap();
+    let name = input.name().unwrap();
+    let peer = peer
+        .activate_async(
+            (),
+            jack::contrib::ClosureProcessHandler::new(
+                |_: &jack::Client, _: &jack::ProcessScope| jack::Control::Continue,
+            ),
+        )
+        .unwrap();
+    let started = start(&NativeConfig {
+        driver: DriverConfig::Jack(JackConfig::default()),
+        engine: description(),
+    })
+    .unwrap();
+    let control = started.host.graph_control().unwrap();
+    wait(|| control.snapshot().status == Status::Ready);
+    let snapshot = control.snapshot();
+    let before = snapshot.ports.iter().find(|p| p.name == name).unwrap().id;
+    let local = snapshot
+        .ports
+        .iter()
+        .find(|p| {
+            p.local.is_some() && p.direction == Direction::Output && p.data_type == DataType::Audio
+        })
+        .unwrap()
+        .id;
+    let unrelated = peer
+        .as_client()
+        .register_port("unrelated", jack::MidiOut::default())
+        .unwrap();
+    input.set_name("renamed").unwrap();
+    let renamed = input.name().unwrap();
+    wait(|| {
+        control
+            .snapshot()
+            .ports
+            .iter()
+            .any(|p| p.id == before && p.name == renamed)
+    });
+    let id = control
+        .submit(Request {
+            epoch: snapshot.epoch,
+            operation: Operation::Connect {
+                local,
+                peer: before,
+                connected: true,
+            },
+        })
+        .unwrap();
+    let mut result = None;
+    wait(|| {
+        result = control.take_result();
+        result.is_some()
+    });
+    assert_eq!(
+        result.unwrap(),
+        Completion {
+            id,
+            result: Ok(Outcome::Connected)
+        }
+    );
+    peer.as_client().unregister_port(input).unwrap();
+    // Do not wait for a snapshot of the absent port before reusing the same native slot/name.
+    let replacement = peer
+        .as_client()
+        .register_port("renamed", jack::AudioIn::default())
+        .unwrap();
+    wait(|| {
+        control
+            .snapshot()
+            .ports
+            .iter()
+            .any(|p| p.name == renamed && p.id != before)
+    });
+    assert_eq!(
+        control
+            .submit(Request {
+                epoch: snapshot.epoch,
+                operation: Operation::Connect {
+                    local,
+                    peer: before,
+                    connected: true
+                }
+            })
+            .unwrap_err()
+            .kind,
+        ErrorKind::StalePort
+    );
+    drop(replacement);
+    drop(unrelated);
+    drop(started.client);
+    assert!(started.host.stop().stopped.is_ok());
 }

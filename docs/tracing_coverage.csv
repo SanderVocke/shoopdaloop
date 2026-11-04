@@ -363,10 +363,13 @@ src/rust/shoop_host_processes/src/macos.rs,native_ui,excluded,Candidate-only lib
 src/rust/shoop_host_manager/src/lib.rs,native_ui,excluded,Native management entry point and embedded icon; no render-thread work.
 src/rust/shoop_host_manager/src/main.rs,native_ui,excluded,Standalone native management executable and CLI startup.
 src/rust/shoop_host_manager/src/args.rs,native_ui,excluded,Explicit advanced management CLI inputs; no automatic profile loading.
-src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
+src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown only stores an atomic flag; metadata reads are covered by host graph worker tracing.
 src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
 src/rust/shoop_app_api/src/host_graph.rs,non_realtime_support,excluded,Portable graph values and validation have no execution boundary.
 src/rust/shoop_app/src/host_graph.rs,app_session,excluded,Host control trait and error values have no execution boundary.
 src/rust/shoop_host/src/host_graph.rs,app_session,instrumented_indirect,Adapter runs within service command and tick boundaries.
-src/rust/shoop_rt_host_native/src/graph.rs,native_engine_host,instrumented_direct,Graph mutations are traced on the control worker outside rendering.
+src/rust/shoop_rt_host_native/src/jack_graph.rs,native_engine_host,instrumented_direct,Graph mutations are traced on the control worker outside rendering.
+src/rust/shoop_port_graph/src/lib.rs,non_realtime_support,excluded,Driver independent graph values and validation have no application execution boundary.
+src/rust/shoop_port_graph/src/channel.rs,non_realtime_support,excluded,Bounded control channel is shared infrastructure; service and native worker boundaries own tracing.
+src/rust/shoop_port_graph/src/testing.rs,non_realtime_support,excluded,Deterministic provider and shared conformance scenarios are test support.

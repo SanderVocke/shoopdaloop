@@ -115,8 +115,9 @@ configured audio outputs; external playback connections are explicit startup
 pairs, live graph commands, or JACK patchbay connections. Track-to-host routing uses the existing
 application connection UI. The port bank is fixed for the host lifetime; changing
 it requires restart. Dynamic per-track JACK registration is not yet implemented.
-`NativeHost::graph_control` provides bounded off-callback discovery and connection
-control. See the [session graph contract](../../../docs/native_session_recovery/jack-graph.md).
+`NativeHost::graph_control` exposes an optional provider-independent control handle
+for every driver build. JACK supports discovery, connections and rename; dynamic
+publication/removal remain unsupported until callback bindings can change safely. See the [session graph contract](../../../docs/native_session_recovery/jack-graph.md).
 
 The server determines sample rate and callback size. A callback above the engine
 maximum is rendered in parts without an extra duplex buffer. MIDI offsets are
