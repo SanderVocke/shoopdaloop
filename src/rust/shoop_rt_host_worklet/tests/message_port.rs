@@ -28,6 +28,9 @@ const START: u64 = 48_000;
 
 fn description() -> EngineDescription {
     EngineDescription {
+        composite_entries: 256,
+        composite_segments: 1024,
+        timing_relations: 512,
         quantum: 1,
         sample_rate: 1000,
         max_frames: QUANTUM,

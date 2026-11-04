@@ -16,6 +16,16 @@ pub struct StripPreset {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    Composite(crate::CompositeDescription),
+    CompositeSpan {
+        loop_id: LoopSlotId,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
+    RepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
     Bus {
         bus: crate::BusId,
         channels: u8,

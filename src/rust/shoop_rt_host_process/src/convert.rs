@@ -147,6 +147,18 @@ fn ramp(port: usize, frame: u64) -> f32 {
 
 pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
     Ok(EngineSettings {
+        composite_entries: value
+            .composite_entries
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid composite_entries"))?,
+        composite_segments: value
+            .composite_segments
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid composite_segments"))?,
+        timing_relations: value
+            .timing_relations
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid timing_relations"))?,
         quantum: value
             .quantum
             .try_into()
@@ -217,6 +229,18 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        composite_entries: value
+            .composite_entries
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid composite_entries"))?,
+        composite_segments: value
+            .composite_segments
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid composite_segments"))?,
+        timing_relations: value
+            .timing_relations
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid timing_relations"))?,
         quantum: value
             .quantum
             .try_into()

@@ -291,13 +291,13 @@ status and its named limits.
 
 ### Stage 1 — branch, contract fixtures and capacity decisions
 
-- [ ] Create the implementation branch from the refreshed target head, preserve
+- [x] Create the implementation branch from the refreshed target head, preserve
   unrelated changes, and commit/push the plan. Reconcile this baseline with any
   intervening changes before editing production code.
 - [x] Write the maintained composite contract and a preservation/difference matrix
   covering frame timing, repeat waits, pulse meaning, live edits and mode dependencies.
   Link it from the parity ledger and architecture.
-- [ ] Define immutable prepared timing, explicit repeat policy, wait/projection state,
+- [x] Define immutable prepared timing, explicit repeat policy, wait/projection state,
   version/fencing rules, finite capacity defaults and resource/graph budgets.
 - [x] Add an independent frame-based scalar oracle and table-driven contract cases.
   Register meaningful native/Wasm tests using the repository test attribute.
@@ -332,10 +332,10 @@ callback-size-dependent expected values or unexplained media rebaselines are all
 
 ### Stage 3 — RT protocol and production engine
 
-- [ ] Add versioned composite lifecycle, bounded plan staging/control, repeat-policy,
+- [x] Add versioned composite lifecycle, bounded plan staging/control, repeat-policy,
   outcome and resync records. Carry finite capacities through engine/host/worklet
   preparation and client negotiation; reject malformed or incompatible versions.
-- [ ] Generalize primitive-only model/encoder assumptions and binding/configuration
+- [x] Generalize primitive-only model/encoder assumptions and binding/configuration
   preparation. Use timing-only composite slots and actual action/sync dependency
   validation; handle empty-slot conversion, removal and generation reuse atomically.
 - [ ] Connect existing program/configuration/graph transactions to composite jobs,
@@ -506,7 +506,7 @@ python3 scripts/check_tracing_coverage.py --require-closed
 python3 scripts/check_rt_runtime_boundary.py
 python3 scripts/check_loops_boundary.py
 python3 scripts/check_rt_engine_boundary.py
-python3 scripts/check_wasm_test_dependencies.py
+python3 scripts/check_wasm_test_dependencies.py --package shoop_loops --package shoop_rt_protocol --package shoop_rt_engine --package shoop_rt_backend --package shoop_rt_host_worklet
 ```
 
 Run the relevant standalone loop host manifests/runners and documentation/example
@@ -545,3 +545,34 @@ and retain the normal/full test groups required before behavioral commits/pushes
 - Formatting, Rust test-attribute policy, parity/tracing inventories, generic
   dependency boundaries and whitespace checks pass. Production composite support
   remains unavailable: Stages 3–10 and the dependent-mode gate are not complete.
+
+- Loop execution checkpoint committed and pushed as `47add1c9`.
+- RT preparation milestone: neutral sparse compiler extraction; engine protocol v8,
+  host setup v7 and worklet configuration v4; finite negotiated entry/segment/relation
+  budgets; timing-only slots with optional strip ownership; generation-fenced empty
+  conversion; live plan/version staging and cancellation; coherent checked loop
+  telemetry; repeat policy, iteration controls, complete active-plan resync and
+  private replacement records. Application composite capability remains disabled.
+- The compiler dependency allowance is deliberately limited to `shoop_loop_plan`.
+  A separate four-target audit prohibits runtime, application and host dependencies
+  in that crate, preserving adapter portability and the generic runtime boundary.
+- At-limit staging now batches images larger than the command window. The guarded
+  engine case installs 8192 sparse spans with two reliable credits and one pending
+  transition, without allocating on endpoint delivery or rendering.
+- RT validation: full native workspace **2686 passed / 6 skipped**; subsequent
+  engine/protocol follow-ups **65 passed**, including the full composite-pool
+  projection and signal-free smoothing cases. Node/Wasm: engine **60**, worklet
+  host **18**, protocol **5**, all passed; Chrome runs the same **60 / 18 / 5**
+  cases after enabling the existing preview module's browser configuration.
+  Latest guarded composite cases **12 passed**, including coherent version
+  publication. Warning-denying workspace build passed. The maintained browser
+  artifact builder and Node worklet/codec artifact contracts passed; their
+  MessagePort simulation is distinct from actual Web Audio acceptance.
+- Remaining Stage 3 work includes final browser delivery evidence, the complete
+  active-child projection consumed by the adapter/service, and auditing unrelated
+  structural requests while a live program waits. No completion of Stages 4–10
+  or of full P03 is claimed at this checkpoint.
+- The target was refreshed during this checkpoint: `2e19210b` adds shared-media/
+  replace foundations and buffered processors after the original `bbf027e9` base.
+  Integrate that head and rerun the affected/final checks before adapter work and
+  publication. The results above identify the pre-integration checkpoint.

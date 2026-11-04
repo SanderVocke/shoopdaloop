@@ -1,6 +1,6 @@
 //! Latest-value cells that the render side writes without blocking and the
-//! control side reads when it assembles telemetry. Fields are independent
-//! atomics: a record may combine values from neighbouring callbacks.
+//! control side reads when it assembles telemetry. Loop snapshots use one
+//! nonblocking publication check; peaks remain independent latest-value cells.
 
 use alloc::boxed::Box;
 
@@ -49,6 +49,12 @@ pub(crate) struct StripCells {
 
 #[derive(Default)]
 pub(crate) struct LoopCells {
+    publication: AtomicU64,
+    epoch: AtomicU64,
+    frame: AtomicU64,
+    iteration: AtomicU64,
+    passes: AtomicU64,
+    waiting_repeat: AtomicBool,
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,
@@ -57,6 +63,42 @@ pub(crate) struct LoopCells {
     /// Clock edges this loop emitted, counted at settled boundaries.
     pub pulses: AtomicU64,
     pub peaks: Peak,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LoopSnapshot {
+    pub epoch: u64,
+    pub frame: u64,
+    pub generation: u32,
+    pub mode: Mode,
+    pub length: u64,
+    pub revision: u64,
+    pub position: u64,
+    pub iteration: u64,
+    pub passes: u64,
+    pub waiting_repeat: bool,
+}
+impl LoopCells {
+    pub(crate) fn snapshot(&self) -> Option<LoopSnapshot> {
+        let before = self.publication.load(Ordering::Acquire);
+        if before & 1 != 0 {
+            return None;
+        }
+        let snapshot = LoopSnapshot {
+            epoch: self.epoch.load(Ordering::Relaxed),
+            frame: self.frame.load(Ordering::Relaxed),
+            generation: self.generation.load(Ordering::Relaxed),
+            mode: mode_from_code(self.mode.load(Ordering::Relaxed)),
+            length: self.length.load(Ordering::Relaxed),
+            revision: self.content_revision.load(Ordering::Relaxed),
+            position: self.position.load(Ordering::Relaxed),
+            iteration: self.iteration.load(Ordering::Relaxed),
+            passes: self.passes.load(Ordering::Relaxed),
+            waiting_repeat: self.waiting_repeat.load(Ordering::Relaxed),
+        };
+        core::sync::atomic::fence(Ordering::Acquire);
+        (self.publication.load(Ordering::Relaxed) == before).then_some(snapshot)
+    }
 }
 
 pub(crate) fn mode_code(mode: Mode) -> u32 {
@@ -188,15 +230,19 @@ impl HostStatus {
 }
 
 /// Publishes settled loop state at every boundary.
-pub(crate) struct Observer(pub Arc<Cells>);
+pub(crate) struct Observer(pub Arc<Cells>, pub rt_runtime::Epoch);
 
 impl BoundaryObserver for Observer {
+    fn topology_epoch(&mut self, epoch: rt_runtime::Epoch) {
+        self.1 = epoch;
+    }
     fn boundary(&mut self, frame: Frame, decisions: &[Decision], _events: &[Event], _dropped: u64) {
         for decision in decisions {
             let state = decision.state;
             let Some(cells) = self.0.loops.get(state.id.slot() as usize) else {
                 continue;
             };
+            let publication = cells.publication.fetch_add(1, Ordering::AcqRel);
             let generation = state.id.generation();
             if cells.generation.load(Ordering::Relaxed) != generation {
                 cells.pulses.store(0, Ordering::Relaxed);
@@ -216,6 +262,17 @@ impl BoundaryObserver for Observer {
                 .content_revision
                 .store(state.content_revision.0, Ordering::Relaxed);
             cells.position.store(state.position, Ordering::Relaxed);
+            cells.epoch.store(self.1 .0, Ordering::Relaxed);
+            cells.frame.store(frame.0, Ordering::Relaxed);
+            let cursor = state.composite.unwrap_or_default();
+            cells.iteration.store(cursor.iteration, Ordering::Relaxed);
+            cells.passes.store(cursor.passes, Ordering::Relaxed);
+            cells
+                .waiting_repeat
+                .store(cursor.waiting_repeat, Ordering::Relaxed);
+            cells
+                .publication
+                .store(publication.wrapping_add(2), Ordering::Release);
         }
     }
     fn as_any(&self) -> &dyn core::any::Any {

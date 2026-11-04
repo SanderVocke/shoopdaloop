@@ -1,4 +1,8 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_loop_plan/src/lib.rs,portable_loop_library,excluded,Pure control-side sparse program compilation over generic keys exposes checked results without an application execution boundary.
+src/rust/shoop_rt_engine/src/composite.rs,realtime_engine,excluded,Prepared bounded program admission can execute on the audio thread; host and adapter own request and outcome tracing.
+src/rust/shoop_rt_protocol/src/composite.rs,engine_protocol,excluded,Plain bounded composite program values have no execution or I/O boundary.
+src/rust/shoop_rt_protocol/src/codec/composite.rs,engine_protocol,excluded,Canonical bounded composite record encoding and decoding has no allocation or I/O.
 src/rust/shoop_loops/src/resolver/retime.rs,portable_loop_library,excluded,Fixed-storage atomic timing publication exposes frame-tagged events and typed failures without callback tracing.
 src/rust/shoop_loops/src/media/playback.rs,portable_loop_library,excluded,Prepared playback ownership preflight has no tracing dependency and retains explicit resource ownership accounting.
 src/rust/shoop_loops/src/runtime/family.rs,portable_loop_library,excluded,Prepared family publication exposes typed preflight and execution outcomes without callback tracing.

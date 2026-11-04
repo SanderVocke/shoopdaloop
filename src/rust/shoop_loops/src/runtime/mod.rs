@@ -150,6 +150,16 @@ pub enum Operation {
         graph_epoch: Epoch,
         topology_epoch: Epoch,
     },
+    /// Convert a still-empty stopped primitive without a preceding Stop action.
+    /// The live fence and the prepared configuration commit share one cut.
+    ConvertEmpty {
+        previous: LoopId,
+        node_pairs: NodePairStageId,
+        topology: StageId,
+        graph: GraphStageId,
+        graph_epoch: Epoch,
+        topology_epoch: Epoch,
+    },
     /// Replace all owners at one cut, stopping playback and resetting host MIDI.
     /// Active/prepared recording and retained logical identities are refused.
     ConfigurationReplace {
@@ -447,6 +457,8 @@ struct Pending {
 /// before rendering. Implementations obey the same no-heap/nonblocking contract
 /// as processors; journal loss must not affect musical execution.
 pub trait BoundaryObserver: Send {
+    /// The topology owning the following settled boundary.
+    fn topology_epoch(&mut self, _epoch: Epoch) {}
     fn boundary(
         &mut self,
         frame: Frame,

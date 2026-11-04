@@ -812,7 +812,25 @@ impl LoopPlanner {
                     graph,
                     graph_epoch,
                     topology_epoch,
+                }
+                | Operation::ConvertEmpty {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                    ..
                 } => {
+                    if let Operation::ConvertEmpty { previous, .. } = operation {
+                        let state = self.resolver.state(previous)?;
+                        if state.composite.is_some()
+                            || state.mode != Mode::Stopped
+                            || state.content_length != 0
+                            || state.capture_frames != 0
+                        {
+                            return Err(crate::Error::InvalidState.into());
+                        }
+                    }
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
                         node_pairs,
                         topology,
@@ -1246,6 +1264,7 @@ impl LoopPlanner {
                 | Operation::NodePairCancel { .. }
                 | Operation::NodePairRecycle { .. }
                 | Operation::ConfigurationActivate { .. }
+                | Operation::ConvertEmpty { .. }
                 | Operation::SelectFamily { .. }
                 | Operation::ConfigurationReplace { .. }
                 | Operation::GraphStatus { .. }
@@ -1353,6 +1372,7 @@ impl LoopPlanner {
                 self.graph_epoch = permit.commit();
             }
             self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
+            self.observer.topology_epoch(self.resolver.epoch());
             self.observer.boundary(
                 context.frame,
                 self.resolver.decisions().map_err(runtime_error)?,

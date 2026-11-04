@@ -6,6 +6,9 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 #[shoop_test]
 fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
     let engine = EngineSettings {
+        composite_entries: 256,
+        composite_segments: 1024,
+        timing_relations: 512,
         quantum: 32,
         max_frames: 1,
         strip_channels: 2,

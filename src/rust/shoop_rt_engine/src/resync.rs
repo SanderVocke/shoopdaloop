@@ -100,7 +100,7 @@ impl ControlEndpoint {
                     });
                 }
                 8 => {
-                    cursor.stage = 1;
+                    cursor.stage = 9;
                     return Some(StateRecord::BusGenerations {
                         generation: self
                             .model
@@ -109,6 +109,12 @@ impl ControlEndpoint {
                             .copied()
                             .max()
                             .unwrap_or(0),
+                    });
+                }
+                9 => {
+                    cursor.stage = 1;
+                    return Some(StateRecord::CompositeStageFloor {
+                        id: self.composite.last_id,
                     });
                 }
                 1 => {
@@ -211,15 +217,56 @@ impl ControlEndpoint {
                         };
                         continue;
                     };
-                    cursor.index += 1;
-                    if let Some(entry) = slot {
-                        return Some(StateRecord::Loop {
-                            loop_id: entry.id,
-                            strip: entry.strip,
-                            sync: entry.sync,
-                            gain: entry.gain,
-                            balance: entry.balance,
-                        });
+                    let Some(entry) = slot else {
+                        cursor.index += 1;
+                        continue;
+                    };
+                    match cursor.part {
+                        0 => {
+                            cursor.part = 1;
+                            if let Some(description) = entry.program {
+                                return Some(StateRecord::Composite {
+                                    description,
+                                    strip: entry.strip,
+                                    sync: entry.sync,
+                                    gain: entry.gain,
+                                    balance: entry.balance,
+                                    repeat_sync: entry.repeat_sync,
+                                });
+                            }
+                            return Some(StateRecord::Loop {
+                                loop_id: entry.id,
+                                strip: entry.strip.expect("primitive owner"),
+                                sync: entry.sync,
+                                gain: entry.gain,
+                                balance: entry.balance,
+                            });
+                        }
+                        1 => {
+                            cursor.part = 2;
+                            return Some(StateRecord::RepeatSync {
+                                loop_id: entry.id,
+                                enabled: entry.repeat_sync,
+                            });
+                        }
+                        2 => {
+                            cursor.part = 3;
+                        }
+                        _ => {
+                            if let Some(span) =
+                                self.model.program_spans(entry.id).nth(cursor.part - 3)
+                            {
+                                let index = (cursor.part - 3) as u32;
+                                cursor.part += 1;
+                                return Some(StateRecord::CompositeSpan {
+                                    loop_id: entry.id,
+                                    index,
+                                    span,
+                                });
+                            }
+                            cursor.index += 1;
+                            cursor.part = 0;
+                        }
                     }
                 }
                 4 => {

@@ -16,6 +16,9 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        composite_entries: 256,
+        composite_segments: 1024,
+        timing_relations: 512,
         quantum: 1,
         sample_rate: 48_000,
         max_frames: 64,

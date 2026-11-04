@@ -290,7 +290,7 @@ pub fn compile(
             return Err(Error::Capacity);
         }
         let source_index = index(&nodes, source)?;
-        nodes[source_index].length = program.nominal_frames()?;
+        nodes[source_index].length = program.nominal_frames().map_err(|_| Error::Exhausted)?;
         compiled.insert(source, program);
     }
 

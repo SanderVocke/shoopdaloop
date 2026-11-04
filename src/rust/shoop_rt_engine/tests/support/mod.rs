@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        composite_entries: 256,
+        composite_segments: 1024,
+        timing_relations: 512,
         sample_rate: 1000,
         max_frames: 16,
         quantum: 1,

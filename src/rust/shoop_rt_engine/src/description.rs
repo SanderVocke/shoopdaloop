@@ -46,6 +46,9 @@ impl HostPorts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
+    pub composite_entries: usize,
+    pub composite_segments: usize,
+    pub timing_relations: usize,
     pub sample_rate: u32,
     /// Largest callback the host will render.
     pub max_frames: usize,
@@ -89,6 +92,9 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
+            composite_entries: 256,
+            composite_segments: 1024,
+            timing_relations: 512,
             sample_rate: 48_000,
             max_frames: 512,
             quantum: 32,
@@ -130,7 +136,10 @@ impl EngineDescription {
         use rt_runtime::Error;
         let host = &self.host;
         rt_runtime::Quantum::new(self.quantum)?;
-        if self.sample_rate == 0
+        if self.composite_entries == 0
+            || self.composite_segments == 0
+            || self.timing_relations == 0
+            || self.sample_rate == 0
             || self.max_frames == 0
             || self.strip_channels == 0
             || self.master_channels == 0
@@ -155,7 +164,14 @@ impl EngineDescription {
         {
             return Err(Error::InvalidConfig);
         }
-        if self.strip_channels as usize > MAX_STRIP_CHANNELS
+        if [
+            self.composite_entries,
+            self.composite_segments,
+            self.timing_relations,
+        ]
+        .iter()
+        .any(|&n| n > u32::MAX as usize)
+            || self.strip_channels as usize > MAX_STRIP_CHANNELS
             || self.master_channels as usize > MAX_STRIP_CHANNELS
             || [
                 host.audio_inputs.len(),

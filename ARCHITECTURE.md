@@ -37,6 +37,7 @@ snapshot-status paragraphs there do not describe the current tree.
 | Layer | Implemented responsibility | Boundary |
 | --- | --- | --- |
 | `rt_runtime` | Prepared audio/MIDI DAG, one optional planner, independently typed planner and processor operations, resource/index/capture pools, staged graph permits, planner admission of generic graph/processor changes, ownership transport | Generic core; no production/build Shoop, UI, device or browser dependency; no internal host threads |
+| `shoop_loop_plan` | Control-side sparse program compilation over generic target keys | No runtime, application, carrier or host dependency; shared by loop preparation and adapters |
 | `shoop_loops` | Parts for an application-owned runtime: the `LoopPlanner` (one resolver for primitive/composite timing, media ledger, capture lifecycle and coordinated publication), its playback/capture `LoopNodes` and a control-side `LoopClient` | Depends on runtime, not legacy backend; owns no runtime, resource store or control endpoint |
 | `shoop_loops_test_support` | Dev-only assembly of the loop parts with independent typed DSP operations, for tests and test hosts | Not used by production crates; not part of the loop library's API |
 | `shoop_example_dsp` | Independent prepared stereo/MIDI processor with its own typed preset operation, meters and fixed-delay fixture | No production loop/old-engine/backend/UI/device dependency |
@@ -274,7 +275,7 @@ Collapse pure-sync components to a stable DAG. At F:
 2. Walk components in topological order; upstream incoming actions/edges are now known.
 3. Resolve pre-clock intents and surviving natural/start seeds; propagate through Sync with one visited mark/member, respecting Stop masks.
 4. Make due requests eligible once per source edge, arbitrate reactive winners and propagate newly seeded members. A higher-priority reactive start may lift a mask; a reactive Stop cannot retract delivery. Idle cyclic waiting cannot create its own first seed.
-5. Advance composite tick cursors once per actual edge and stream due actions downstream. Start/seek iteration-zero authority must not also advance on its own start edge.
+5. Advance due composite cursors on their prepared frame units and stream actions downstream. Incoming source edges affect launch/repeat eligibility. A start/seek snapshot does not also consume a unit or fabricate an iteration pulse.
 6. Keep results/state unpublished, preflight the whole boundary, then commit once.
 
 Finite prepared components/edges/program actions/requests and once-only edge
@@ -303,9 +304,13 @@ Regular programs inherit Playing and repeat a finite pass; empty children reserv
 time but do not implicitly record. Explicit-mode programs use supported modes and
 end after one finite pass; recording still needs prepared storage. Nested iteration-
 zero actions execute at the parent's activation frame without propagation delay.
-Only actual sync edges advance iteration. A no-sync composite remains at its
-selected iteration; nominal units supply derived durations/seek offsets, not a
-fallback clock. Derived duration is `max(1, ceil(child_length/nominal_unit))` unless
+Prepared units advance iteration on rendered frames, independently of source
+activity or length changes. A regular program completes its pass, then either
+repeats independently or waits at the end for an active source's next boundary.
+Source stop releases an existing wait. End authored child occurrences during a
+wait; count the pass once and publish a new zero entry only at actual restart.
+Explicit programs stop after their pass. Derived duration is
+`max(1, ceil(child_length/nominal_unit))` unless
 explicitly overridden.
 
 Start/seek supplies an authoritative desired-state snapshot: stop no-longer-desired
@@ -317,8 +322,11 @@ semantics. Playback offsets derive from elapsed nominal units modulo nonzero len
 Seeking into Record creates a new prepared take at the seek frame, never history;
 missing preparation refuses the whole family.
 
-Stopped program changes can activate at the requested boundary. A running change
-waits for a true next iteration-zero/stopped entry. Probe the old unpublished cut
+Stopped program changes can activate at the requested boundary. A future-only
+change may preserve the past/current state and protected next unit with the same
+dependency shape. Other running changes wait for an actual iteration-zero/stopped
+entry; a repeat wait is not a zero entry. Paired program/route changes await that
+restart unless route safety is proved separately. Probe the old unpublished cut
 without executing old zero actions, then select the new candidate for real preview.
 Same-frame Stop/seek/restart and clock/refusal precedence still apply. Preserve
 contiguous continuations; stop removed descendants, including after component

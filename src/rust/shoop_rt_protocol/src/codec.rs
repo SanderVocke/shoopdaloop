@@ -398,6 +398,32 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::LoopIteration {
+                loop_id,
+                iteration,
+                retrigger,
+                seek,
+            } => {
+                w.u8(38)?;
+                loop_id.put(w)?;
+                w.u64(iteration)?;
+                w.bool(retrigger)?;
+                w.bool(seek)
+            }
+            Self::CreateComposite { loop_id, strip } => {
+                w.u8(37)?;
+                loop_id.put(w)?;
+                strip.put(w)
+            }
+            Self::Composite(command) => {
+                w.u8(35)?;
+                command.put(w)
+            }
+            Self::LoopRepeatSync { loop_id, enabled } => {
+                w.u8(36)?;
+                loop_id.put(w)?;
+                w.bool(enabled)
+            }
             Self::ContentFamilyBegin {
                 id,
                 root,
@@ -607,6 +633,21 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            38 => Self::LoopIteration {
+                loop_id: LoopSlotId::get(r)?,
+                iteration: r.u64()?,
+                retrigger: r.bool()?,
+                seek: r.bool()?,
+            },
+            37 => Self::CreateComposite {
+                loop_id: LoopSlotId::get(r)?,
+                strip: Option::get(r)?,
+            },
+            35 => Self::Composite(crate::CompositeCommand::get(r)?),
+            36 => Self::LoopRepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
             31 => Self::ContentFamilyBegin {
                 id: r.u64()?,
                 root: LoopSlotId::get(r)?,
@@ -747,6 +788,25 @@ impl Wire for Request {
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::Composite(d) => {
+                w.u8(7)?;
+                d.put(w)
+            }
+            Self::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                w.u8(8)?;
+                loop_id.put(w)?;
+                w.u32(index)?;
+                span.put(w)
+            }
+            Self::RepeatSync { loop_id, enabled } => {
+                w.u8(9)?;
+                loop_id.put(w)?;
+                w.bool(enabled)
+            }
             Self::Bus { bus, channels } => {
                 w.u8(5)?;
                 bus.put(w)?;
@@ -806,6 +866,16 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::Composite(crate::CompositeDescription::get(r)?),
+            8 => Self::CompositeSpan {
+                loop_id: LoopSlotId::get(r)?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
+            9 => Self::RepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
             5 => Self::Bus {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -916,6 +986,9 @@ impl Wire for HostPort {
 
 impl Wire for Limits {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u32(self.composite_entries)?;
+        w.u32(self.composite_segments)?;
+        w.u32(self.timing_relations)?;
         w.u16(self.content_chunk_bytes)?;
         w.u32(self.strips)?;
         w.u32(self.loops)?;
@@ -936,6 +1009,9 @@ impl Wire for Limits {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(Self {
+            composite_entries: r.u32()?,
+            composite_segments: r.u32()?,
+            timing_relations: r.u32()?,
             content_chunk_bytes: r.u16()?,
             strips: r.u32()?,
             loops: r.u32()?,
@@ -960,6 +1036,30 @@ impl Wire for Limits {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Composite {
+                loop_id,
+                frame,
+                mode,
+                position,
+                length,
+                active_version,
+                pending_version,
+                iteration,
+                passes,
+                waiting_repeat,
+            } => {
+                w.u8(5)?;
+                loop_id.put(w)?;
+                w.u64(*frame)?;
+                mode.put(w)?;
+                w.u64(*position)?;
+                w.u64(*length)?;
+                w.u64(*active_version)?;
+                pending_version.put(w)?;
+                w.u64(*iteration)?;
+                w.u64(*passes)?;
+                w.bool(*waiting_repeat)
+            }
             Self::Preview { request_id } => {
                 w.u8(4)?;
                 w.u64(*request_id)
@@ -1025,6 +1125,18 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            5 => Self::Composite {
+                loop_id: LoopSlotId::get(r)?,
+                frame: r.u64()?,
+                mode: LoopMode::get(r)?,
+                position: r.u64()?,
+                length: r.u64()?,
+                active_version: r.u64()?,
+                pending_version: Option::get(r)?,
+                iteration: r.u64()?,
+                passes: r.u64()?,
+                waiting_repeat: r.bool()?,
+            },
             4 => Self::Preview {
                 request_id: r.u64()?,
             },
@@ -1066,6 +1178,41 @@ impl Wire for Telemetry {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::CompositeStageFloor { id } => {
+                w.u8(15)?;
+                w.u64(*id)
+            }
+            Self::Composite {
+                description,
+                strip,
+                sync,
+                gain,
+                balance,
+                repeat_sync,
+            } => {
+                w.u8(12)?;
+                description.put(w)?;
+                strip.put(w)?;
+                sync.put(w)?;
+                w.f32(*gain)?;
+                w.f32(*balance)?;
+                w.bool(*repeat_sync)
+            }
+            Self::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                w.u8(13)?;
+                loop_id.put(w)?;
+                w.u32(*index)?;
+                span.put(w)
+            }
+            Self::RepeatSync { loop_id, enabled } => {
+                w.u8(14)?;
+                loop_id.put(w)?;
+                w.bool(*enabled)
+            }
             Self::BusShape { bus, channels } => {
                 w.u8(10)?;
                 bus.put(w)?;
@@ -1135,6 +1282,24 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            15 => Self::CompositeStageFloor { id: r.u64()? },
+            12 => Self::Composite {
+                description: crate::CompositeDescription::get(r)?,
+                strip: Option::get(r)?,
+                sync: Option::get(r)?,
+                gain: r.f32()?,
+                balance: r.f32()?,
+                repeat_sync: r.bool()?,
+            },
+            13 => Self::CompositeSpan {
+                loop_id: LoopSlotId::get(r)?,
+                index: r.u32()?,
+                span: crate::CompositeSpan::get(r)?,
+            },
+            14 => Self::RepeatSync {
+                loop_id: LoopSlotId::get(r)?,
+                enabled: r.bool()?,
+            },
             10 => Self::BusShape {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -1461,3 +1626,5 @@ pub fn decode_engine(record: &[u8]) -> Result<EngineMessage, CodecError> {
 
 mod host;
 pub use host::{decode_host_reply, decode_host_request, encode_host_reply, encode_host_request};
+
+mod composite;

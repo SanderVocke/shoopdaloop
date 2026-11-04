@@ -76,6 +76,10 @@ enum Kind {
     Clear(LoopSlotId),
     Smoothing(u32),
     Replacement,
+    Composite {
+        target: LoopSlotId,
+        conversion: bool,
+    },
     Content {
         id: LoopSlotId,
         frames: u64,
@@ -103,6 +107,7 @@ pub(crate) struct Job {
     failure: Option<Refusal>,
     edits: usize,
     topology_needed: bool,
+    configuration_needed: bool,
     graph_needed: bool,
     appended: bool,
     node_pairs: Option<NodePairStageId>,
@@ -130,6 +135,7 @@ impl Job {
             failure: None,
             edits: 0,
             topology_needed: false,
+            configuration_needed: false,
             graph_needed: false,
             appended: false,
             node_pairs: None,
@@ -149,6 +155,12 @@ impl Job {
     }
     pub(crate) fn batch(len: usize) -> Self {
         Self::new(Kind::Batch(len))
+    }
+    pub(crate) fn composite(target: LoopSlotId, conversion: bool) -> Self {
+        Self::new(Kind::Composite { target, conversion })
+    }
+    pub(crate) fn cancel_composite(&mut self) {
+        self.fail(Refusal::Busy);
     }
     pub(crate) fn replacement(correlation: u64) -> Self {
         let mut job = Self::new(Kind::Replacement);
@@ -224,7 +236,13 @@ impl ControlEndpoint {
     fn configuration_nodes(&self) -> usize {
         self.next.buses.iter().flatten().count()
             + 2 * self.next.strips.iter().flatten().count()
-            + self.next.loops.iter().flatten().count()
+            + self
+                .next
+                .loops
+                .iter()
+                .flatten()
+                .filter(|l| l.program.is_none())
+                .count()
     }
     fn configure_replacement(&mut self, job: &mut Job) -> bool {
         if job.configured {
@@ -283,7 +301,7 @@ impl ControlEndpoint {
             );
         }
         for slot in 0..self.next.loops.len() {
-            if self.next.loops[slot].is_some() {
+            if self.next.loops[slot].is_some_and(|l| l.program.is_none()) {
                 self.submit_configuration(job, self.pool.fader(slot), base);
             }
         }
@@ -353,6 +371,9 @@ impl ControlEndpoint {
                     }
                     self.replacement.clear();
                 }
+                if matches!(job.kind, Kind::Composite { .. }) {
+                    self.composite.clear();
+                }
                 self.clear_touched();
                 if self.family.id.is_some()
                     && self.family.cancel_requested
@@ -399,7 +420,12 @@ impl ControlEndpoint {
         expects: bool,
     ) {
         match self.submit(command, Purpose::Job(step), expects) {
-            Ok(_) => job.outstanding += 1,
+            Ok(sequence) => {
+                if step == Step::Activation && matches!(job.kind, Kind::Composite { .. }) {
+                    self.composite.activation = Some(sequence);
+                }
+                job.outstanding += 1;
+            }
             Err(refusal) => job.fail(refusal),
         }
     }
@@ -437,7 +463,10 @@ impl ControlEndpoint {
             let Some(entry) = self.model.loops[slot] else {
                 continue;
             };
-            if self.next.find_loop(entry.id).is_none() && self.next.strip(entry.strip).is_some() {
+            if entry.program.is_none()
+                && self.next.find_loop(entry.id).is_none()
+                && entry.strip.and_then(|id| self.next.strip(id)).is_some()
+            {
                 self.fades[count] = self.pool.fader(slot);
                 count += 1;
             }
@@ -628,13 +657,19 @@ impl ControlEndpoint {
                 true
             }
             Kind::Smoothing(frames) => {
-                let loops = self.model.loops.iter().flatten().count();
+                let loops = self
+                    .model
+                    .loops
+                    .iter()
+                    .flatten()
+                    .filter(|l| l.program.is_none())
+                    .count();
                 if !self.room(loops) {
                     return false;
                 }
                 let at = self.at();
                 for slot in 0..self.model.loops.len() {
-                    let Some(entry) = self.model.loops[slot] else {
+                    let Some(entry) = self.model.loops[slot].filter(|l| l.program.is_none()) else {
                         continue;
                     };
                     let operation = Operation::Smoothing {
@@ -665,7 +700,7 @@ impl ControlEndpoint {
                 );
                 true
             }
-            Kind::Batch(_) | Kind::Replacement => self.prepare_batch(job),
+            Kind::Batch(_) | Kind::Replacement | Kind::Composite { .. } => self.prepare_batch(job),
             Kind::Family { .. } => unreachable!("family job handled separately"),
         }
     }
@@ -727,12 +762,22 @@ impl ControlEndpoint {
         }
         let (model, next) = (&self.model, &self.next);
         job.edits = (0..model.loops.len())
-            .filter(|&slot| model.loops[slot].map(|l| l.id) != next.loops[slot].map(|l| l.id))
+            .filter(|&slot| {
+                model.loops[slot]
+                    .filter(|l| l.program.is_none())
+                    .map(|l| l.id)
+                    != next.loops[slot]
+                        .filter(|l| l.program.is_none())
+                        .map(|l| l.id)
+            })
             .count();
+        job.configuration_needed = (0..model.loops.len())
+            .any(|slot| model.loops[slot].map(|l| l.id) != next.loops[slot].map(|l| l.id));
         job.topology_needed = (0..model.loops.len()).any(|slot| {
-            model.loops[slot].map(|l| (l.id, l.sync)) != next.loops[slot].map(|l| (l.id, l.sync))
+            model.loops[slot].map(|l| (l.id, l.sync, l.program))
+                != next.loops[slot].map(|l| (l.id, l.sync, l.program))
         });
-        job.graph_needed = job.edits > 0
+        job.graph_needed = job.configuration_needed
             || model.buses != next.buses
             || (0..model.strips.len()).any(|slot| {
                 let shape = |strip: Option<crate::model::Strip>| {
@@ -753,7 +798,7 @@ impl ControlEndpoint {
             job.topology_needed = true;
             job.graph_needed = true;
         }
-        if job.edits > 0 || job.replacing() {
+        if job.configuration_needed || job.replacing() {
             self.submit_job_loop(
                 job,
                 Frame(0),
@@ -773,6 +818,7 @@ impl ControlEndpoint {
                     next.loops[slot].map(|entry| TopologyLoop {
                         id: loop_id(entry.id),
                         sync: loop_id(entry.sync.unwrap_or(entry.id)),
+                        program: entry.program,
                         length: if replacing {
                             initial[slot].map_or(0, |initial| initial.frames)
                         } else {
@@ -780,6 +826,7 @@ impl ControlEndpoint {
                         },
                     })
                 },
+                &next.spans,
                 &mut self.work.image,
             );
             match records {
@@ -845,8 +892,12 @@ impl ControlEndpoint {
             }
             job.appended = true;
             for slot in 0..self.model.loops.len() {
-                let before = self.model.loops[slot].map(|l| l.id);
-                let after = self.next.loops[slot].map(|l| l.id);
+                let before = self.model.loops[slot]
+                    .filter(|l| l.program.is_none())
+                    .map(|l| l.id);
+                let after = self.next.loops[slot]
+                    .filter(|l| l.program.is_none())
+                    .map(|l| l.id);
                 if before == after {
                     continue;
                 }
@@ -906,14 +957,13 @@ impl ControlEndpoint {
                 return true;
             };
             let per_append = self.settings.records_per_append;
-            let chunks = (job.records - job.sent).div_ceil(per_append);
-            if !self.room(chunks + 1) {
+            if !self.room(2) {
                 return false;
             }
             let first = self.at().0;
             let spacing = u64::from(self.settings.frames);
             let mut at = first;
-            while job.sent < job.records {
+            while job.sent < job.records && self.room(2) {
                 let chunk = (job.records - job.sent).min(per_append);
                 let Some(mut payload) = self.work.take_payload(chunk) else {
                     break;
@@ -947,8 +997,65 @@ impl ControlEndpoint {
     }
 
     fn activate(&mut self, job: &mut Job) -> bool {
-        if job.replacing() {
+        if let Kind::Composite {
+            target,
+            conversion: false,
+        } = job.kind
+        {
             if !self.room(1) {
+                return false;
+            }
+            self.submit_job_loop(
+                job,
+                self.at(),
+                Operation::ProgramActivate {
+                    id: job.topology.expect("prepared composite topology"),
+                    target: loop_id(target),
+                    graph_epoch: self.graph_epoch,
+                    topology_epoch: self.topology_epoch,
+                },
+                Step::Activation,
+            );
+            job.phase = Phase::Activating;
+            return true;
+        }
+        if let Kind::Composite {
+            conversion: true, ..
+        } = job.kind
+        {
+            if !self.room(1) {
+                return false;
+            }
+            let previous = self
+                .composite
+                .description
+                .and_then(|d| d.previous)
+                .expect("conversion source");
+            self.submit_job_loop(
+                job,
+                self.at(),
+                Operation::ConvertEmpty {
+                    previous: loop_id(previous),
+                    node_pairs: job.node_pairs.expect("prepared node pairs"),
+                    topology: job.topology.expect("prepared topology"),
+                    graph: job.graph.expect("prepared graph"),
+                    graph_epoch: self.graph_epoch,
+                    topology_epoch: self.topology_epoch,
+                },
+                Step::Activation,
+            );
+            job.phase = Phase::Activating;
+            return true;
+        }
+        if job.replacing() {
+            let repeats = self
+                .next
+                .loops
+                .iter()
+                .flatten()
+                .filter(|l| l.repeat_sync)
+                .count();
+            if !self.room(repeats + 1) {
                 return false;
             }
             self.submit_job_loop(
@@ -963,6 +1070,19 @@ impl ControlEndpoint {
                 },
                 Step::Activation,
             );
+            for slot in 0..self.next.loops.len() {
+                if let Some(entry) = self.next.loops[slot].filter(|l| l.repeat_sync) {
+                    self.submit_job_loop(
+                        job,
+                        Frame(0),
+                        Operation::RepeatSync {
+                            target: loop_id(entry.id),
+                            enabled: true,
+                        },
+                        Step::Prelude,
+                    );
+                }
+            }
             job.phase = Phase::Activating;
             return true;
         }
@@ -1098,7 +1218,12 @@ impl ControlEndpoint {
         }
         let graph_epoch = self.graph_epoch;
         let topology_epoch = self.topology_epoch;
-        let operation = match (job.edits > 0, job.topology, job.graph, job.node_pairs) {
+        let operation = match (
+            job.configuration_needed,
+            job.topology,
+            job.graph,
+            job.node_pairs,
+        ) {
             (true, Some(topology), Some(graph), Some(node_pairs)) => {
                 Operation::ConfigurationActivate {
                     node_pairs,
@@ -1154,7 +1279,7 @@ impl ControlEndpoint {
                 after.is_some() && after != self.next.loops[slot].map(|l| l.id)
             })
             .count();
-        if !self.room(2 * created + 3) {
+        if !self.room(3 * created + 3) {
             core::mem::swap(&mut self.model, &mut self.next);
             return false;
         }
@@ -1172,6 +1297,20 @@ impl ControlEndpoint {
                 continue;
             };
             if self.next.loops[slot].map(|l| l.id) == Some(entry.id) {
+                continue;
+            }
+            if entry.repeat_sync && !job.replacing() {
+                self.submit_job_loop(
+                    job,
+                    at,
+                    Operation::RepeatSync {
+                        target: loop_id(entry.id),
+                        enabled: true,
+                    },
+                    Step::Prelude,
+                );
+            }
+            if entry.program.is_some() {
                 continue;
             }
             let target = loop_id(entry.id);
@@ -1394,6 +1533,16 @@ impl ControlEndpoint {
                             ..
                         }
                         | Reply::TopologyGraphActivated {
+                            graph_epoch,
+                            topology_epoch,
+                            ..
+                        }
+                        | Reply::ProgramChanged {
+                            graph_epoch,
+                            topology_epoch,
+                            ..
+                        }
+                        | Reply::ProgramGraphChanged {
                             graph_epoch,
                             topology_epoch,
                             ..

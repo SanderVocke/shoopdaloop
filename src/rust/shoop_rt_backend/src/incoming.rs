@@ -122,6 +122,28 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Composite {
+                loop_id,
+                active_version,
+                mode,
+                position,
+                length,
+                ..
+            } => {
+                if let Some(entry) = self
+                    .mirror
+                    .slot_loops
+                    .get(&loop_id)
+                    .and_then(|id| self.mirror.loops.get_mut(id))
+                {
+                    if entry.program.is_none_or(|p| active_version >= p.version) {
+                        entry.composite = Some(record);
+                        entry.view.mode = mode;
+                        entry.view.position = position;
+                        entry.view.length = length;
+                    }
+                }
+            }
             Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {
                 frame,
@@ -301,6 +323,48 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         for record in records {
             match record {
+                StateRecord::Composite {
+                    description,
+                    repeat_sync,
+                    ..
+                } => {
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&description.loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        entry.program = Some(description);
+                        entry.program_spans.clear();
+                        entry.repeat_sync = repeat_sync;
+                    }
+                }
+                StateRecord::CompositeSpan {
+                    loop_id,
+                    index,
+                    span,
+                } => {
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        if entry.program_spans.len() == index as usize {
+                            entry.program_spans.push(span);
+                        }
+                    }
+                }
+                StateRecord::RepeatSync { loop_id, enabled } => {
+                    if let Some(entry) = self
+                        .mirror
+                        .slot_loops
+                        .get(&loop_id)
+                        .and_then(|id| self.mirror.loops.get_mut(id))
+                    {
+                        entry.repeat_sync = enabled;
+                    }
+                }
                 StateRecord::StripControl { strip, control } => {
                     let Some(id) = self.mirror.strip_tracks.get(&strip) else {
                         continue;

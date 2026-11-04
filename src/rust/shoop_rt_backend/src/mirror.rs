@@ -159,6 +159,10 @@ impl Default for LoopView {
 
 pub(crate) struct Loop {
     pub slot: LoopSlotId,
+    pub program: Option<shoop_rt_protocol::CompositeDescription>,
+    pub program_spans: Vec<shoop_rt_protocol::CompositeSpan>,
+    pub composite: Option<shoop_rt_protocol::Telemetry>,
+    pub repeat_sync: bool,
     pub track: BackendTrackId,
     pub confirmed: bool,
     pub sync: Option<BackendLoopId>,

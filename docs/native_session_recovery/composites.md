@@ -80,13 +80,51 @@ The initial production budget is 256 program entries, 1024 compiled segments and
 512 timing/action relations across the engine. Composite count uses the negotiated
 logical loop slots; composites consume no playback/capture nodes or host ports.
 These budgets do not reduce existing primitive slots or recording media capacity.
-Engine preparation will expose them as configurable, finite negotiated limits.
+Engine preparation exposes them as configurable, finite negotiated limits.
+
+The production engine carries these through protocol v8, native setup v7 and
+worklet configuration v4. The relation capacity is at least the prepared logical
+loop count, so adding composite budgets never removes existing primitive capacity.
+For N loop slots, E entries and S segments, the prepared LTP image holds at most
+`1 + 4*N + E + S` records of 64 bytes. Payload pools cover that image and append
+it in bounded batches when it exceeds the command window. The active, next and
+private replacement models each prepare S owned-span slots; the ingress stage
+prepares S plain spans. Their byte sizes use the target ABI's `size_of` values.
+Runtime candidate/retirement storage remains checked by the loop library's limits.
 
 Account separately for active metadata, staging receivers, candidate/displaced
 owners, pending requests and reliable results. Use the loop library's checked
 storage calculations rather than estimating only raw entry bytes. Existing
 single-owner program staging may serialize edit publication; saturation refuses
 new work before acceptance and never stops admitted autonomous playback.
+
+## Production preparation and publication
+
+The pure `shoop_loop_plan` compiler is shared by loop preparation and adapters.
+It contains no runtime or application dependency. The dependency audit checks that
+boundary separately; the render runtime continues to forbid every Shoop crate.
+Sparse spans, rather than authored documents, cross the RT protocol. The endpoint
+checks counts, quantum/sample rate, identities, modes, ordering and version fences;
+the prepared LTP receiver independently validates the complete timing/action DAG.
+
+Program staging IDs increase over the endpoint lifetime. Full resync publishes
+their floor, including cancelled stages. An edit names the exact current loop
+generation and active version; rejected/cancelled candidates do not replace it.
+An empty timing slot has version zero. Conversion also fences the old primitive
+identity and reserves a fresh generation. At the render-owned activation cut,
+`ConvertEmpty` rechecks that it is still empty and stopped before changing any
+owners. A recording admitted during preparation survives a refused conversion.
+
+Composite slots have no active capture/playback/fader bindings. Their optional
+strip owner controls lifecycle only; standalone composites need no strip. Private
+replacement prepares their plans alongside primitive media and publishes all new
+identities stopped. Repeat intent is installed with replacement activation.
+
+Loop telemetry reads one checked atomic publication without spinning. It includes
+the settled topology epoch so the endpoint cannot combine a newly active frame
+state with an older document. Composite telemetry carries its frame, mode,
+position, length, cursor/pass/wait state and confirmed active/pending versions.
+Resync carries the complete active spans, source, ownership and repeat policy.
 
 ## Reference disposition
 

@@ -154,6 +154,21 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    CreateComposite {
+        loop_id: LoopSlotId,
+        strip: Option<StripId>,
+    },
+    Composite(crate::CompositeCommand),
+    LoopRepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
+    LoopIteration {
+        loop_id: LoopSlotId,
+        iteration: u64,
+        retrigger: bool,
+        seek: bool,
+    },
     ContentFamilyBegin {
         id: u64,
         root: LoopSlotId,
@@ -381,6 +396,9 @@ impl Capabilities {
 /// Current capacities. They may change during a connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Limits {
+    pub composite_entries: u32,
+    pub composite_segments: u32,
+    pub timing_relations: u32,
     /// Maximum content-upload bytes per request, limited by the prepared page size.
     pub content_chunk_bytes: u16,
     pub strips: u32,
@@ -408,6 +426,18 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    Composite {
+        loop_id: LoopSlotId,
+        frame: u64,
+        mode: LoopMode,
+        position: u64,
+        length: u64,
+        active_version: u64,
+        pending_version: Option<u64>,
+        iteration: u64,
+        passes: u64,
+        waiting_repeat: bool,
+    },
     Preview {
         request_id: u64,
     },
@@ -450,6 +480,26 @@ pub enum Telemetry {
 /// One record of a full-state resynchronization, sent between `Begin` and `End`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StateRecord {
+    CompositeStageFloor {
+        id: u64,
+    },
+    Composite {
+        description: crate::CompositeDescription,
+        strip: Option<StripId>,
+        sync: Option<LoopSlotId>,
+        gain: f32,
+        balance: f32,
+        repeat_sync: bool,
+    },
+    CompositeSpan {
+        loop_id: LoopSlotId,
+        index: u32,
+        span: crate::CompositeSpan,
+    },
+    RepeatSync {
+        loop_id: LoopSlotId,
+        enabled: bool,
+    },
     BusShape {
         bus: BusId,
         channels: u8,

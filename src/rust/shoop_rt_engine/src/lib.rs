@@ -30,6 +30,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod bulk;
 mod cells;
+mod composite;
 mod content;
 mod description;
 mod endpoint;
@@ -119,7 +120,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + limits.buses as usize + 2,
+            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -296,9 +297,9 @@ pub fn prepare(
     )?;
     let loop_limits = LoopLimits {
         loop_slots: loops.max(1),
-        relations: loops.max(1),
-        program_entries: 1,
-        program_segments: 1,
+        relations: description.timing_relations.max(loops.max(1)),
+        program_entries: description.composite_entries,
+        program_segments: description.composite_segments,
         pending_requests: pending + 1,
         journal_events: 0,
     };
@@ -359,7 +360,7 @@ pub fn prepare(
                 sources: 2 * loops + 2,
                 source_packets_per_callback: 64,
             },
-            observer: Some(Box::new(Observer(cells.clone()))),
+            observer: Some(Box::new(Observer(cells.clone(), Epoch(0)))),
         },
     )?;
     let settings = NodeSettings {
@@ -405,7 +406,9 @@ pub fn prepare(
             .map(|records| Some(vec![0; records * RECORD_BYTES].into_boxed_slice()))
             .collect(),
         full: {
-            let count = (3 * loops).div_ceil(RECORDS_PER_APPEND);
+            let count =
+                (4 * loops + description.composite_entries + description.composite_segments)
+                    .div_ceil(RECORDS_PER_APPEND);
             let mut full = Vec::with_capacity(count);
             full.extend(
                 (0..count).map(|_| vec![0; RECORDS_PER_APPEND * RECORD_BYTES].into_boxed_slice()),
@@ -426,6 +429,9 @@ pub fn prepare(
         content_chunk_bytes -= 1;
     }
     let limits = Limits {
+        composite_entries: description.composite_entries as u32,
+        composite_segments: description.composite_segments as u32,
+        timing_relations: loop_limits.relations as u32,
         content_chunk_bytes: content_chunk_bytes as u16,
         strips: strips as u32,
         loops: loops as u32,
@@ -474,6 +480,7 @@ pub fn prepare(
             buses,
             description.master_channels,
             master_outputs,
+            description.composite_segments,
         ),
         next: Model::new(
             strips,
@@ -481,6 +488,7 @@ pub fn prepare(
             buses,
             description.master_channels,
             master_outputs,
+            description.composite_segments,
         ),
         limits,
         connected: false,
@@ -517,8 +525,14 @@ pub fn prepare(
         resync: None,
         bulk: bulk::Bulk::new(bulk_credits, channels),
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
-        replacement: replacement::Replacement::new(strips, loops, buses),
+        replacement: replacement::Replacement::new(
+            strips,
+            loops,
+            buses,
+            description.composite_segments,
+        ),
         family: family::Stage::new(loops),
+        composite: composite::Stage::new(description.composite_segments),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

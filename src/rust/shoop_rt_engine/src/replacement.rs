@@ -35,13 +35,20 @@ pub(crate) struct Replacement {
     pub initial: Box<[Option<Initial>]>,
 }
 impl Replacement {
-    pub(crate) fn new(strips: usize, loops: usize, buses: usize) -> Self {
+    pub(crate) fn new(strips: usize, loops: usize, buses: usize, program_segments: usize) -> Self {
         Self {
             id: None,
             state: State::Empty,
             last_id: 0,
             base_revision: 0,
-            candidate: Model::new(strips, loops, buses, 0, Default::default()),
+            candidate: Model::new(
+                strips,
+                loops,
+                buses,
+                0,
+                Default::default(),
+                program_segments,
+            ),
             initial: vec![None; loops].into_boxed_slice(),
         }
     }
@@ -77,6 +84,7 @@ impl ControlEndpoint {
                 stage.candidate.copy_from(&self.model);
                 stage.candidate.strips.fill(None);
                 stage.candidate.loops.fill(None);
+                stage.candidate.spans.fill(None);
                 stage.candidate.buses.fill(None);
                 stage.initial.fill(None);
                 return Ok(Some(Outcome::Done));
@@ -164,6 +172,85 @@ impl ControlEndpoint {
 
     fn replacement_edit(&mut self, edit: ReplacementEdit) -> Result<(), Refusal> {
         let request = match edit {
+            ReplacementEdit::Composite(d) => {
+                let slot = d.loop_id.0.index as usize;
+                let entry = self.next.find_loop(d.loop_id).ok_or(Refusal::InvalidId)?;
+                if entry.program.is_some()
+                    || d.previous.is_some()
+                    || d.expected_version != 0
+                    || d.version == 0
+                    || d.unit_frames == 0
+                    || d.unit_frames % u64::from(self.limits.quantum) != 0
+                    || d.quantum != self.limits.quantum
+                    || d.sample_rate != self.cells.driver().sample_rate
+                    || d.unit_frames.checked_mul(d.iterations).is_none()
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                if d.entries > self.limits.composite_entries
+                    || d.segments > self.limits.composite_segments
+                {
+                    return Err(Refusal::Capacity);
+                }
+                self.next.loops[slot].as_mut().unwrap().program = Some(d);
+                return Ok(());
+            }
+            ReplacementEdit::CompositeSpan {
+                loop_id,
+                index,
+                span,
+            } => {
+                let d = self
+                    .next
+                    .find_loop(loop_id)
+                    .and_then(|l| l.program)
+                    .ok_or(Refusal::InvalidId)?;
+                if index as usize != self.next.program_spans(loop_id).count() || index >= d.segments
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                let child = self.next.find_loop(span.target).ok_or(Refusal::InvalidId)?;
+                if span.target == loop_id
+                    || span.start >= span.end
+                    || span.end > d.iterations
+                    || span.occurrence_start != span.start
+                    || span.ordinal >= d.entries
+                    || d.kind == shoop_rt_protocol::CompositeKind::Regular
+                        && span.mode != shoop_rt_protocol::LoopMode::Playing
+                    || child.program.is_some()
+                        && span.mode == shoop_rt_protocol::LoopMode::Recording
+                    || self.next.program_spans(loop_id).last().is_some_and(|old| {
+                        old.target > span.target
+                            || old.target == span.target
+                                && (old.end > span.start
+                                    || old.end == span.start && old.mode == span.mode)
+                    })
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                let free = self
+                    .next
+                    .spans
+                    .iter_mut()
+                    .find(|s| s.is_none())
+                    .ok_or(Refusal::Capacity)?;
+                *free = Some(crate::model::OwnedSpan {
+                    source: loop_id,
+                    span,
+                });
+                return Ok(());
+            }
+            ReplacementEdit::RepeatSync { loop_id, enabled } => {
+                let entry = self
+                    .next
+                    .loops
+                    .get_mut(loop_id.0.index as usize)
+                    .and_then(Option::as_mut)
+                    .filter(|l| l.id == loop_id)
+                    .ok_or(Refusal::InvalidId)?;
+                entry.repeat_sync = enabled;
+                return Ok(());
+            }
             ReplacementEdit::Bus { bus, channels } => Request::CreateBus { bus, channels },
             ReplacementEdit::BusControl { bus, control } => {
                 self.set_replacement_bus(bus, control)?;
@@ -278,7 +365,18 @@ impl ControlEndpoint {
     }
 
     fn validate_replacement(&self) -> Result<(), Refusal> {
-        for (slot, entry) in self.replacement.candidate.loops.iter().enumerate() {
+        let model = &self.replacement.candidate;
+        let entries: u64 = model
+            .loops
+            .iter()
+            .flatten()
+            .filter_map(|l| l.program)
+            .map(|p| u64::from(p.entries))
+            .sum();
+        if entries > u64::from(self.limits.composite_entries) {
+            return Err(Refusal::Capacity);
+        }
+        for (slot, entry) in model.loops.iter().enumerate() {
             let Some(entry) = entry else { continue };
             if let Some(source) = entry.sync {
                 if self.replacement.candidate.find_loop(source).is_none()
@@ -288,6 +386,15 @@ impl ControlEndpoint {
                 }
             }
             let initial = self.replacement.initial[slot].ok_or(Refusal::InvalidValue)?;
+            if let Some(d) = entry.program {
+                if initial.frames != 0
+                    || initial.audio.is_some()
+                    || initial.midi.is_some()
+                    || model.program_spans(entry.id).count() != d.segments as usize
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+            }
             if initial.frames > 0 && (initial.audio.is_none() || initial.midi.is_none()) {
                 return Err(Refusal::InvalidValue);
             }

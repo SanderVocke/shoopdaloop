@@ -196,6 +196,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.loops.insert(
             id,
             Loop {
+                program: None,
+                program_spans: Vec::new(),
+                composite: None,
+                repeat_sync: false,
                 slot,
                 track: track_id,
                 confirmed: false,

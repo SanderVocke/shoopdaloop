@@ -120,8 +120,10 @@ impl Builder {
             self.step(plan, node, count, &mut end)?;
         }
         for (slot, entry) in model.loops.iter().enumerate() {
-            let Some(entry) = entry else { continue };
-            let strip_slot = entry.strip.0.index as usize;
+            let Some(entry) = entry.filter(|entry| entry.program.is_none()) else {
+                continue;
+            };
+            let strip_slot = entry.strip.ok_or(Error::InvalidState)?.0.index as usize;
             let strip = model.strips[strip_slot]
                 .as_ref()
                 .ok_or(Error::InvalidState)?;
@@ -171,7 +173,9 @@ impl Builder {
                     )?;
                 }
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                    if entry.is_some_and(|entry| {
+                        entry.strip == Some(strip.id) && entry.program.is_none()
+                    }) {
                         push(
                             &mut self.edges,
                             &mut count,
@@ -189,7 +193,9 @@ impl Builder {
                     )?;
                 }
                 for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                    if entry.is_some_and(|entry| {
+                        entry.strip == Some(strip.id) && entry.program.is_none()
+                    }) {
                         push(
                             &mut self.edges,
                             &mut count,

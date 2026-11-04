@@ -5084,10 +5084,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_loop_plan"
+version = "0.3.0"
+
+[[package]]
 name = "shoop_loops"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "shoop_loop_plan",
  "shoop_loops_test_support",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
