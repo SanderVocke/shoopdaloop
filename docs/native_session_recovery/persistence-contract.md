@@ -109,7 +109,9 @@ normal service work or silently restart against newer content.
   frame positions and ordering; SMF export reports quantization/format loss.
 - Unsupported session fields produce complete useful capability diagnostics before
   mutation. They are not omitted from save or stripped during load. Session script
-  persistence, duplication and generated click insertion remain named follow-ups.
+  persistence and duplication remain named follow-ups. Audio/MIDI click generation
+  and insertion use the restored bounded import path. System/Master audio preview
+  is complete under P15; see the [preview contract](preview.md).
 
 ## Engine integration boundary
 

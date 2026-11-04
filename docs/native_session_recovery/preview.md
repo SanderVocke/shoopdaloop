@@ -1,4 +1,9 @@
-# Click preview
+# Click preview — P15 complete
+
+P15 is complete as accepted on 2026-11-04. System and Master preview, cancellation,
+destination switching, persistent Master identity and deployment coverage are
+finished. The implementation and recorded evidence below satisfy the accepted
+scope; no additional testing is required for closure.
 
 The click dialog retains two audio destinations:
 
@@ -99,6 +104,12 @@ The host test reads an AudioDriverConfig JSON from `SHOOP_PREVIEW_DRIVER_CONFIG`
 to the test; System/CPAL require an external device/monitor capture. Hosted canary
 commands and failure probes are documented in the application README.
 
-These are measured virtual-device checks. No physical listening, macOS/Windows
-machine, or second physical client/RT machine was available. Those hardware and
-platform checks remain unverified; bus FX stays under P08.
+### Completion and accepted validation boundary
+
+The recorded output measurements use Linux virtual devices and separate local
+processes. Physical listening on macOS/Windows and a second physical client/RT
+machine were not performed. The user accepted this boundary and closed P15
+without additional testing or waiting for further CI results. Outstanding CI is
+assumed successful for this closure, rather than recorded as an observed pass.
+The retained canaries and opt-in device tests remain available for maintenance.
+Bus FX stays under P08.

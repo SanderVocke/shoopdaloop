@@ -135,8 +135,14 @@ Advanced JSON configuration also supports the complete JACK startup configuratio
 
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet
-operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
+operations, timing/alignment edits and loop duplication.
 The authoritative capability checks refuse unsupported operations.
+
+Audio/MIDI click generation and insertion are supported. Audio clicks can be
+previewed through the client's native/Web Audio System output or through Master
+on the RT host, including an attached host. Master preview follows the bus's
+gain, balance, mute and output routes. P15 is complete; see the
+[preview contract and completion evidence](../../../docs/native_session_recovery/preview.md).
 
 Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
 targets/policies, supported track/bus controls, routes/connections, piano MIDI and
