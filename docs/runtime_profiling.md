@@ -8,7 +8,8 @@ request immediately and saves the preference in the background; no Save action
 or audio restart is needed. The window reports the engine's acknowledgement. Profiling is independent
 of developer tracing. There are no recording levels or xrun arming controls.
 
-The table contains **Node / Avg / Worst / Stddev** in graph execution order.
+The window offers **Graph** and **Table** tabs with shared controls. The table
+contains **Node / Avg / Worst / Stddev** in graph execution order.
 Choose **µs** or **% budget**. Percentages use one fixed quantum's time budget:
 `100 × duration_ns / (quantum_frames × 1e9 / sample_rate)`. They represent a share
 of the available quantum period, rather than a share of the currently consumed
@@ -40,6 +41,77 @@ not identify the exact offending node. Captures already leased to a collector ar
 protected; additional incidents that cannot be retained are counted. A large
 callback or small quantum can exhaust post-trigger space, ending the capture
 early and marking it incomplete. Changing the graph invalidates the capture.
+
+## Graph and xrun analysis
+
+The graph shows the active executable audio/MIDI plan, including host endpoints.
+It is read-only: inspection cannot change routing or processor state. Use **Fit
+graph**, middle-drag to pan, and Ctrl/Cmd+scroll to zoom. The **Groups** menu
+collapses track, loop and bus members into summary nodes while retaining their
+external connections. Measurements updating do not re-run layout or move nodes.
+
+Hover a processor to see its complete-step Avg/Worst/population Stddev and sample
+count; click to pin details. Hover also highlights upstream dependencies and
+downstream affected outputs. This is structural influence, not proof that a
+processor caused an xrun. Collapsed groups retain member details and have no
+invented aggregate duration.
+
+Links show **source output readiness**: elapsed time from graph execution start to
+the source processor's output-ready boundary in each tick. All outgoing links
+from one processor share its readiness. This includes independent work that the
+sequential executor actually ran earlier. A 20 µs source followed by unrelated
+80 µs work and a 10 µs dependent has 110 µs readiness at the dependent, although
+the two connected processors contain 30 µs of work. Readiness statistics are
+computed per tick and then aggregated; summing node worst values or standard
+deviations would be incorrect. There is no path cost mode.
+
+Processor names include the current UI track label and, for loop processors, the
+loop label (`Drums / Verse · Loop 3 playback`). The processor role and prepared
+slot remain visible to distinguish duplicate names. Group menus and collapsed
+nodes use these same names. Renaming a track or loop updates the graph and table
+without resetting measurements or layout. Names are resolved through structured
+backend identities, not inferred from the numeric slot or display text; unresolved
+or mismatched topology retains the generic processor label.
+
+Node colors represent step duration; link colors represent readiness. Their
+separate numeric legends use the selected Avg/Worst/Stddev metric and µs or
+percentage of the original quantum period. Gray means unavailable. A bundled
+link uses the maximum displayed source metric for its color; its tooltip lists
+its actual member statistics. Host input links use a labeled zero graph-start
+baseline. Links to host outputs still show source readiness, not completed output
+routing or device playback latency; host-to-host bypass timing is unavailable.
+
+**Latest xrun** initially shows statistics over the actual retained capture
+interval. The callback selector switches to a recorded callback; the tick selector
+chooses one of its retained ticks. The graph then displays **actual** values for
+that tick, and interval statistic selectors are disabled. Return to **Capture
+interval** for Avg/Worst/Stddev. Maxima in an interval graph need not come from the
+same tick. A callback with no retained tick has unavailable node timings.
+
+The timeline shows retained ticks, the selected tick's node spans and recorded
+phase boundaries. Its red line uses the complete callback's original budget;
+engine parts and ticks do not receive fictitious independent device deadlines.
+If a parent callback was not retained, its deadline is unavailable. Host xrun
+notifications can be delayed; the capture does not automatically identify an
+exact offending callback or processor. Gaps remain unmeasured, and elapsed time
+cannot distinguish preemption from work. Receiving, truncation, loss and clock
+resolution remain visible. Old detail responses are ignored after changing the
+selection, capture, graph generation or connection.
+
+The native preview below uses prescribed synthetic timestamps. It shows a collapsed
+track, a processing hotspot, and selected-tick timing with the original callback
+deadline; it is not a recorded production incident.
+
+![Profiling graph with a collapsed track](images/profiling_graph.png)
+
+![Selected callback and tick timeline](images/profiling_graph_timeline.png)
+
+The graph supports at most 4,096 processors and 16,384 executable connections;
+larger plans report visualization capacity unavailable while audio and table
+profiling continue. Capture selection indexes at most 8,192 retained traces and
+reports truncation. Selected node details arrive in pages of at most 256 steps
+and 64 phase boundaries, without putting the complete raw capture in every app
+snapshot. Graph/selection state is local to the window and is not saved in sessions.
 
 ## Clocks and browser support
 
@@ -87,8 +159,8 @@ unavailable rather than failing audio preparation.
 
 The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
-bulk, metering and profiling rotate fairly. Engine protocol version 8, application
-protocol version 21, and SDM2 shared-memory descriptors reject incompatible peers.
+bulk, metering and profiling rotate fairly. Engine protocol version 9, application
+protocol version 23, and SDM2 shared-memory descriptors reject incompatible peers.
 The application backend collects and computes Welford statistics outside rendering;
 live reports refresh at most five times per second. The worklet endpoint performs
 bounded forwarding on the audio thread, including the existing record encoding
@@ -99,8 +171,8 @@ Raw `Packet` records retain generation, capture/sequence/callback IDs, tick and
 callback frames, graph epoch, nanosecond boundaries, completion/fault flags and
 trigger causes. Node keys are dense prepared slots; high bits distinguish phase
 and layout markers. `Collector::raw_capture()` exposes only the latest current
-capture. No timings are stored in session files. Timeline UI and export formats
-are outside this feature.
+capture. No timings are stored in session files. Graph and selected-callback timeline UI use the current generation only; export
+formats are outside this feature.
 
 ## Reproducing validation
 

@@ -3253,3 +3253,93 @@ fn application_publication_is_provider_independent_and_failed_creation_rolls_bac
         assert_eq!(f.waits.get(), f.initial_waits);
     }
 }
+
+#[shoop_test]
+fn profiling_labels_resolve_backend_slots_and_follow_ui_renames_over_the_wire() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 9001, connection, encoded);
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            connection,
+            new_track("Drums", false),
+        );
+        let (track, loops) = created(complete(
+            &mut f.service,
+            &mut client,
+            connection,
+            id,
+            encoded,
+        ));
+        let id = submit(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::SetProfiling(true),
+        );
+        complete(&mut f.service, &mut client, connection, id, encoded);
+        for _ in 0..32 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, encoded);
+        }
+        let view = f.service.snapshot();
+        let profiling = &view.profiling;
+        assert!(profiling
+            .groups
+            .iter()
+            .any(|g| g.kind == 1 && g.name == "Drums"));
+        assert!(profiling
+            .groups
+            .iter()
+            .any(|g| g.kind == 2 && g.name.starts_with("Drums / ")));
+        let groups = profiling.groups.clone();
+        let topology = profiling.topology.clone().unwrap();
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::Track {
+                track,
+                action: TrackAction::NameChanged("Percussion".into()),
+            },
+        );
+        command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::Loop {
+                track,
+                loop_id: loops[0],
+                action: LoopAction::NameChanged("Verse".into()),
+            },
+        );
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, connection, encoded);
+        let renamed = f.service.snapshot();
+        assert_eq!(
+            renamed.profiling.topology.as_deref(),
+            Some(topology.as_ref())
+        );
+        assert!(renamed
+            .profiling
+            .groups
+            .iter()
+            .any(|g| g.kind == 2 && g.name == "Percussion / Verse"));
+        assert_eq!(
+            groups
+                .iter()
+                .map(|g| (g.kind, g.slot, g.entity))
+                .collect::<Vec<_>>(),
+            renamed
+                .profiling
+                .groups
+                .iter()
+                .map(|g| (g.kind, g.slot, g.entity))
+                .collect::<Vec<_>>()
+        );
+        let projected = client.snapshot().unwrap();
+        assert_eq!(projected.profiling.groups, renamed.profiling.groups);
+    }
+}

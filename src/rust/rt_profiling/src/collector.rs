@@ -74,7 +74,20 @@ pub struct Report {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Group {
+    pub kind: u8,
+    pub slot: u32,
+    pub entity: u64,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct View {
+    pub connection: u64,
+    #[serde(skip)]
+    pub lease: u128,
+    #[serde(skip)]
+    pub attachment: u64,
     pub generation: u64,
     pub requested: bool,
     pub active: bool,
@@ -87,6 +100,7 @@ pub struct View {
     pub live: Report,
     pub capture: Option<Report>,
     pub topology: Option<Arc<Topology>>,
+    pub groups: Arc<[Group]>,
     pub index: Arc<[TraceSummary]>,
     pub index_incomplete: bool,
     pub graph_limited: bool,
@@ -94,6 +108,33 @@ pub struct View {
 }
 
 impl View {
+    pub fn node_names(&self, report: &Report) -> BTreeMap<u64, String> {
+        let groups: BTreeMap<_, _> = self
+            .groups
+            .iter()
+            .filter(|g| !g.name.is_empty())
+            .map(|g| ((g.kind, g.slot), &g.name))
+            .collect();
+        let prefixes: BTreeMap<_, _> = self
+            .topology
+            .as_ref()
+            .filter(|t| t.generation == report.generation && t.epoch == report.epoch)
+            .into_iter()
+            .flat_map(|t| &t.nodes)
+            .filter_map(|n| groups.get(&(n.group, n.slot)).map(|name| (n.key, *name)))
+            .collect();
+        report
+            .rows
+            .iter()
+            .map(|row| {
+                let name = prefixes
+                    .get(&row.key)
+                    .map_or_else(|| row.name.clone(), |name| format!("{name} · {}", row.name));
+                (row.key, name)
+            })
+            .collect()
+    }
+
     pub fn valid(&self) -> bool {
         let report = |r: &Report| {
             r.rows.len() <= MAX_SAMPLES
@@ -106,7 +147,12 @@ impl View {
                         && n.ready_stddev_ns.is_finite()
                 })
         };
-        report(&self.live)
+        self.groups.len() <= crate::MAX_GRAPH_NODES
+            && self
+                .groups
+                .iter()
+                .all(|g| (1..=3).contains(&g.kind) && g.name.len() <= 2048)
+            && report(&self.live)
             && self.capture.as_ref().is_none_or(report)
             && self
                 .topology
@@ -115,7 +161,8 @@ impl View {
             && self.index.len() <= MAX_CAPTURE_TRACES
             && self.index.iter().all(|t| t.start_ns <= t.end_ns)
             && self.detail.as_ref().is_none_or(|d| {
-                d.request.generation == self.generation
+                d.request.connection == self.connection
+                    && d.request.generation == self.generation
                     && self
                         .capture
                         .as_ref()
@@ -271,19 +318,25 @@ fn valid_samples(packet: Packet, samples: &[Sample]) -> bool {
 struct Assembly {
     header: Option<Packet>,
     samples: Vec<Sample>,
+    lost: bool,
 }
 impl Assembly {
     fn push(&mut self, packet: Packet) -> Option<(Packet, Vec<Sample>)> {
         if !packet.valid() {
             self.header = None;
             self.samples.clear();
+            self.lost = true;
             return None;
         }
         if packet.index == 0 {
+            self.lost |= self.header.is_some();
             self.header = Some(packet);
             self.samples.clear();
         }
-        let header = self.header?;
+        let Some(header) = self.header else {
+            self.lost = true;
+            return None;
+        };
         if header.generation != packet.generation
             || header.capture != packet.capture
             || header.sequence != packet.sequence
@@ -300,6 +353,7 @@ impl Assembly {
             || header.budget_ns != packet.budget_ns
             || self.samples.len() != packet.index as usize
         {
+            self.lost = true;
             self.header = None;
             self.samples.clear();
             return None;
@@ -317,6 +371,7 @@ impl Assembly {
 
 #[derive(Default)]
 pub struct Collector {
+    connection: u64,
     status: Status,
     names: BTreeMap<u64, String>,
     live: Measured,
@@ -337,12 +392,20 @@ pub struct Collector {
     view: View,
 }
 impl Collector {
+    pub fn set_connection(&mut self, connection: u64) {
+        *self = Self {
+            connection,
+            dirty: true,
+            ..Self::default()
+        };
+    }
     pub fn status(&mut self, status: Status) {
         if status.generation < self.status.generation {
             return;
         }
         if status.generation != self.status.generation {
             *self = Self {
+                connection: self.connection,
                 status,
                 dirty: true,
                 ..Self::default()
@@ -390,7 +453,9 @@ impl Collector {
             } else {
                 self.capture.incomplete = true;
             }
-            if let Some((header, samples)) = self.capture_assembly.push(packet) {
+            let assembled = self.capture_assembly.push(packet);
+            self.capture.incomplete |= core::mem::take(&mut self.capture_assembly.lost);
+            if let Some((header, samples)) = assembled {
                 if self.capture.accept(header, &samples) {
                     if self.index.len() < MAX_CAPTURE_TRACES {
                         self.index.push(TraceSummary::from_packet(header));
@@ -412,7 +477,9 @@ impl Collector {
                     self.live.incomplete = true;
                 }
             }
-            if let Some((header, samples)) = self.live_assembly.push(packet) {
+            let assembled = self.live_assembly.push(packet);
+            self.live.incomplete |= core::mem::take(&mut self.live_assembly.lost);
+            if let Some((header, samples)) = assembled {
                 self.live.accept(header, &samples);
                 if self
                     .topology
@@ -432,12 +499,17 @@ impl Collector {
         if record == GraphRecord::Unavailable {
             self.graph_limited = true;
             self.topology = None;
+            if self.live.values.values().all(|v| v.count == 0) {
+                self.live = Measured::default();
+            }
             self.dirty = true;
             return;
         }
         if let Some(topology) = self.graph_assembly.accept(generation, epoch, record) {
-            if self.live.values.is_empty() || topology.epoch == self.live.epoch {
-                if self.live.values.is_empty() {
+            let unmeasured = self.live.values.values().all(|v| v.count == 0);
+            if unmeasured || topology.epoch == self.live.epoch {
+                if unmeasured {
+                    self.live = Measured::default();
                     self.live.epoch = topology.epoch;
                     for node in &topology.nodes {
                         self.live.order.push(node.key);
@@ -451,12 +523,21 @@ impl Collector {
         }
     }
     pub fn select(&mut self, request: CaptureRequest) -> bool {
-        if request.generation != self.status.generation
+        if request.connection != self.connection
+            || request.generation != self.status.generation
             || request.capture != self.capture_id
             || request.capture == 0
             || request.offset as usize > MAX_SAMPLES
         {
             return false;
+        }
+        if self
+            .view
+            .detail
+            .as_ref()
+            .is_some_and(|p| p.request == request)
+        {
+            return true;
         }
         let Some(callback) = self
             .index
@@ -545,6 +626,9 @@ impl Collector {
             self.published_at = end;
             self.dirty = false;
             self.view = View {
+                connection: self.connection,
+                lease: 0,
+                attachment: 0,
                 generation: self.status.generation,
                 requested: self.status.requested,
                 active: self.status.active,
@@ -562,6 +646,7 @@ impl Collector {
                     &self.names,
                 ),
                 topology: self.topology.clone(),
+                groups: Arc::from([]),
                 graph_limited: self.graph_limited,
                 index: if self.view.index.len() == self.index.len() {
                     self.view.index.clone()
@@ -717,8 +802,53 @@ mod tests {
     }
 
     #[shoop_test]
+    fn topology_updates_without_an_elapsed_clock_and_capacity_is_explicit() {
+        let mut c = Collector::default();
+        c.status(Status {
+            generation: 1,
+            requested: true,
+            ..Status::default()
+        });
+        for epoch in [1, 2] {
+            c.graph(
+                1,
+                epoch,
+                GraphRecord::Begin {
+                    nodes: 1,
+                    edges: 0,
+                    sample_rate: 48000,
+                    quantum: 32,
+                },
+            );
+            c.name(1, epoch, "Prepared processor");
+            c.graph(
+                1,
+                epoch,
+                GraphRecord::Node {
+                    index: 0,
+                    node: crate::GraphNode {
+                        key: epoch,
+                        ..crate::GraphNode::default()
+                    },
+                },
+            );
+            c.graph(1, epoch, GraphRecord::End);
+            let view = c.view();
+            assert_eq!(view.topology.unwrap().epoch, epoch);
+            assert_eq!(view.live.rows.len(), 1);
+            assert_eq!(view.live.rows[0].key, epoch);
+            assert_eq!(view.live.rows[0].name, "Prepared processor");
+            assert_eq!(view.live.rows[0].samples, 0);
+        }
+        c.graph(1, 2, GraphRecord::Unavailable);
+        let view = c.view();
+        assert!(view.graph_limited && view.topology.is_none() && view.live.rows.is_empty());
+    }
+
+    #[shoop_test]
     fn selected_capture_uses_actual_tick_and_original_callback_budget() {
         let mut c = Collector::default();
+        c.set_connection(40);
         c.status(Status {
             generation: 1,
             available: true,
@@ -740,12 +870,17 @@ mod tests {
         };
         c.receive(callback);
         let request = CaptureRequest {
+            connection: 40,
             generation: 1,
             capture: 9,
             callback: 8,
             tick: 7,
             offset: 0,
         };
+        assert!(!c.select(CaptureRequest {
+            connection: 39,
+            ..request
+        }));
         assert!(c.select(request));
         let view = c.view();
         assert!(view.valid());
@@ -755,6 +890,7 @@ mod tests {
         assert_eq!(page.nodes[2].ready_ns, 110_000);
         assert_eq!(page.nodes[2].end_ns - page.nodes[2].start_ns, 10_000);
         assert!(!c.select(CaptureRequest {
+            connection: 0,
             generation: 2,
             ..request
         }));
@@ -793,6 +929,34 @@ mod tests {
         p.len = 2;
         c.receive(p);
         assert!(c.view().live.rows.is_empty());
+    }
+
+    #[shoop_test]
+    fn missing_capture_chunks_mark_the_completed_interval_incomplete() {
+        let mut c = Collector::default();
+        c.status(Status {
+            generation: 1,
+            ..Status::default()
+        });
+        let mut p = prescribed(1, 20_000, 80_000);
+        p.capture = 3;
+        p.len = 1;
+        c.receive(p);
+        c.receive(Packet {
+            generation: 1,
+            capture: 3,
+            sequence: 2,
+            epoch: 4,
+            start_ns: p.start_ns,
+            end_ns: p.end_ns,
+            flags: CALLBACK | CAPTURE_END,
+            ..Packet::default()
+        });
+        let view = c.view();
+        let capture = view.capture.unwrap();
+        assert!(capture.complete && capture.incomplete);
+        assert!(capture.rows.is_empty());
+        assert_eq!(view.index.len(), 1);
     }
 
     #[shoop_test]
@@ -840,6 +1004,7 @@ mod tests {
         });
         for (offset, expected) in [(0, 256), (256, 256), (512, 88)] {
             assert!(c.select(CaptureRequest {
+                connection: 0,
                 generation: 1,
                 capture: 1,
                 callback: 3,

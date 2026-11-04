@@ -39,6 +39,7 @@ impl TraceSummary {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CaptureRequest {
+    pub connection: u64,
     pub generation: u64,
     pub capture: u64,
     pub callback: u64,

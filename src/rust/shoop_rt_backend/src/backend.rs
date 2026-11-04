@@ -48,6 +48,52 @@ fn protocol_mode(mode: BackendLoopMode) -> Result<LoopMode> {
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn update_profiling_groups(&mut self) {
+        use shoop_rt_protocol::profiling::Group;
+        let view = self.profiling.view();
+        let Some(topology) = view.topology else {
+            return;
+        };
+        if self
+            .profiling_groups
+            .0
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &topology))
+        {
+            return;
+        }
+        let groups: alloc::collections::BTreeSet<_> = topology
+            .nodes
+            .iter()
+            .filter(|n| n.group != 0)
+            .map(|n| (n.group, n.slot))
+            .collect();
+        let groups: Vec<_> = groups
+            .into_iter()
+            .filter_map(|(kind, slot)| {
+                let entity = match kind {
+                    1 => self.mirror.tracks.iter().find_map(|(id, t)| {
+                        (t.strip.0.index == slot && t.confirmed && !t.removing).then_some(id.raw())
+                    }),
+                    2 => self.mirror.loops.iter().find_map(|(id, l)| {
+                        (l.slot.0.index == slot && l.confirmed).then_some(id.raw())
+                    }),
+                    3 => self.mirror.buses.iter().find_map(|(id, b)| {
+                        (b.slot.0.index == slot && b.confirmed && !b.removing).then_some(id.raw())
+                    }),
+                    _ => None,
+                }?;
+                Some(Group {
+                    kind,
+                    slot,
+                    entity,
+                    name: Default::default(),
+                })
+            })
+            .collect();
+        self.profiling_groups = (Some(topology), groups.into());
+    }
+
     fn driver_state(&self) -> BackendDriverState {
         match (&self.link, self.driver) {
             (Link::Disconnected(_), _) => BackendDriverState::Failed,
@@ -991,8 +1037,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             confirmed_links: mirror.routes.clone(),
             failures: core::mem::take(&mut self.mixer_failures),
         };
+        let mut profiling = self.profiling.view();
+        if profiling
+            .topology
+            .as_ref()
+            .zip(self.profiling_groups.0.as_ref())
+            .is_some_and(|(a, b)| Arc::ptr_eq(a, b))
+        {
+            profiling.groups = self.profiling_groups.1.clone();
+        }
         Ok(BackendSnapshot {
-            profiling: self.profiling.view(),
+            profiling,
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,

@@ -50,7 +50,7 @@ struct VisualEdge {
 
 #[derive(Default)]
 pub(super) struct State {
-    identity: (u64, u64),
+    identity: (u128, u64, u64, u64, u64),
     topology: Option<std::sync::Arc<Topology>>,
     view: View,
     nodes: BTreeMap<u64, VisualNode>,
@@ -59,6 +59,9 @@ pub(super) struct State {
     collapsed: BTreeSet<(u8, u32)>,
     metric: Metric,
     rows: BTreeMap<u64, Row>,
+    roles: BTreeMap<u64, String>,
+    groups: BTreeMap<(u8, u32), String>,
+    group_source: Option<std::sync::Arc<[profiling::Group]>>,
     report_stamp: (u64, u64, usize),
     successors: BTreeMap<u64, Vec<u64>>,
     predecessors: BTreeMap<u64, Vec<u64>>,
@@ -213,7 +216,7 @@ impl State {
         self.fit = true;
     }
     fn value(&self, key: u64, _report: &Report, ready: bool) -> Option<f64> {
-        if self.tick != 0 && self.callback != 0 {
+        if self.callback != 0 {
             self.actual.get(&key).map(|n| if ready { n.ready_ns } else { n.end_ns - n.start_ns } as f64)
         } else {
             self.rows
@@ -235,6 +238,12 @@ impl State {
         }
         result
     }
+    fn group_name(&self, group: u8, slot: u32) -> String {
+        let fallback = group_name(group, slot);
+        self.groups
+            .get(&(group, slot))
+            .map_or(fallback.clone(), |name| format!("{name} · {fallback}"))
+    }
     fn label(&self, node: &VisualNode, _report: &Report) -> String {
         if node.id & (1 << 63) != 0 {
             format!(
@@ -254,7 +263,7 @@ impl State {
         } else if node.id & (1 << 62) != 0 {
             format!(
                 "{} · {} nodes",
-                group_name(((node.id >> 32) & 0xff) as u8, node.id as u32),
+                self.group_name(((node.id >> 32) & 0xff) as u8, node.id as u32),
                 node.members.len()
             )
         } else {
@@ -307,7 +316,7 @@ impl State {
         }
         for &key in &node.members {
             ui.label(format!("Processor slot {key}"));
-            if self.tick != 0 {
+            if self.callback != 0 {
                 if let Some(n) = self.actual.get(&key) {
                     ui.label(format!(
                         "Actual duration {} · readiness {}",
@@ -341,6 +350,17 @@ impl State {
         units: Units,
         budget: Option<f64>,
     ) {
+        let endpoint = |port: Port| {
+            port.node.map_or_else(
+                || "Host".into(),
+                |key| {
+                    self.rows.get(&key).map_or_else(
+                        || format!("Node {key}"),
+                        |row| format!("{} [node {key}]", row.name),
+                    )
+                },
+            )
+        };
         ui.strong(format!(
             "{} connection(s) · source output readiness",
             edge.members.len()
@@ -352,14 +372,10 @@ impl State {
             } = t.edges[i];
             ui.label(format!(
                 "{} {}:{} → {} {}:{}",
-                source
-                    .node
-                    .map_or_else(|| "Host".into(), |k| format!("Node {k}")),
+                endpoint(source),
                 if source.kind == 0 { "audio" } else { "MIDI" },
                 source.channel + 1,
-                destination
-                    .node
-                    .map_or_else(|| "Host".into(), |k| format!("Node {k}")),
+                endpoint(destination),
                 if destination.kind == 0 {
                     "audio"
                 } else {
@@ -368,7 +384,7 @@ impl State {
                 destination.channel + 1
             ));
             if let Some(key) = source.node {
-                if self.tick != 0 {
+                if self.callback != 0 {
                     ui.label(format!(
                         "Actual {}",
                         self.value(key, report, true)
@@ -492,6 +508,7 @@ impl State {
             self.pending = None;
         }
         let wanted = CaptureRequest {
+            connection: view.connection,
             generation: view.generation,
             capture: id,
             callback: self.callback,
@@ -522,7 +539,9 @@ impl State {
                 self.sent = Some(request);
             }
         }
-        ui.weak(if complete {
+        ui.weak(if self.tick == 0 {
+            "Selected callback has no retained tick; node timings unavailable"
+        } else if complete {
             "Actual selected-tick timings"
         } else {
             "Loading selected-tick timings…"
@@ -555,7 +574,13 @@ impl State {
                 )
             });
         }
-        let identity = (view.generation, report.epoch);
+        let identity = (
+            view.lease,
+            view.attachment,
+            view.connection,
+            view.generation,
+            report.epoch,
+        );
         if identity != self.identity {
             *self = Self {
                 identity,
@@ -563,9 +588,36 @@ impl State {
                 ..Self::default()
             };
         }
+        let groups_changed = self
+            .group_source
+            .as_ref()
+            .is_none_or(|old| !std::sync::Arc::ptr_eq(old, &view.groups));
+        if groups_changed {
+            self.groups = view
+                .groups
+                .iter()
+                .filter(|g| !g.name.is_empty())
+                .map(|g| ((g.kind, g.slot), g.name.clone()))
+                .collect();
+            self.group_source = Some(view.groups.clone());
+        }
         let stamp = (report.capture, report.interval.end_ns, report.rows.len());
-        if stamp != self.report_stamp {
-            self.rows = report.rows.iter().map(|r| (r.key, r.clone())).collect();
+        if stamp != self.report_stamp || groups_changed {
+            let names = view.node_names(report);
+            self.roles = report
+                .rows
+                .iter()
+                .map(|r| (r.key, r.name.clone()))
+                .collect();
+            self.rows = report
+                .rows
+                .iter()
+                .map(|r| {
+                    let mut row = r.clone();
+                    row.name = names[&r.key].clone();
+                    (r.key, row)
+                })
+                .collect();
             self.report_stamp = stamp;
         }
         if capture {
@@ -611,29 +663,31 @@ impl State {
             if ui.button("Clear pin").clicked() {
                 self.pinned = None;
             }
-            ui.menu_button("Groups", |ui| {
-                let groups: BTreeSet<_> = t
-                    .nodes
-                    .iter()
-                    .filter(|n| n.group != 0)
-                    .map(|n| (n.group, n.slot))
-                    .collect();
-                for group in groups {
-                    let mut collapsed = self.collapsed.contains(&group);
-                    if ui
-                        .checkbox(&mut collapsed, group_name(group.0, group.1))
-                        .changed()
-                    {
-                        if collapsed {
-                            self.collapsed.insert(group);
-                        } else {
-                            self.collapsed.remove(&group);
+            egui::ComboBox::from_id_salt("profiling_groups")
+                .selected_text("Groups")
+                .show_ui(ui, |ui| {
+                    let groups: BTreeSet<_> = t
+                        .nodes
+                        .iter()
+                        .filter(|n| n.group != 0)
+                        .map(|n| (n.group, n.slot))
+                        .collect();
+                    for group in groups {
+                        let mut collapsed = self.collapsed.contains(&group);
+                        if ui
+                            .checkbox(&mut collapsed, self.group_name(group.0, group.1))
+                            .changed()
+                        {
+                            if collapsed {
+                                self.collapsed.insert(group);
+                            } else {
+                                self.collapsed.remove(&group);
+                            }
+                            rebuild = true;
                         }
-                        rebuild = true;
                     }
-                }
-                ui.small("Checked groups collapse into summary nodes.");
-            });
+                    ui.small("Checked groups collapse into summary nodes.");
+                });
         });
         if rebuild {
             self.rebuild(&t, ui.style());
@@ -714,7 +768,7 @@ impl State {
             Graph::new(("profiling_graph", identity))
                 .immutable(true)
                 .center_view(false)
-                .zoom_range(0.03..=4.)
+                .zoom_range(0.0001..=4.)
                 .show(&mut widget_view, ui, |ui, show| {
                     show.nodes(ui, |ctx, ui| {
                         for node in self.nodes.values() {
@@ -734,11 +788,31 @@ impl State {
                             let response = Node::from_id(NodeId(node.id))
                                 .inputs(node.inputs.len())
                                 .outputs(node.outputs.len())
-                                .max_width(190.)
+                                .max_width(148.)
                                 .show_or_cull(ctx, ui, |ctx| {
                                     ctx.framed_with(frame, |ui, _| {
-                                        ui.set_min_size(egui::vec2(165., 42.));
-                                        ui.label(self.label(node, report));
+                                        ui.set_opacity(1.);
+                                        ui.set_min_size(node_size(node) - egui::vec2(12., 12.));
+                                        ui.spacing_mut().item_spacing.y = 1.;
+                                        let name = self.label(node, report);
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&name)
+                                                    .color(colors::FOREGROUND),
+                                            )
+                                            .truncate(),
+                                        );
+                                        if let Some(role) =
+                                            self.roles.get(&node.id).filter(|r| **r != name)
+                                        {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(role)
+                                                        .color(colors::FOREGROUND),
+                                                )
+                                                .truncate(),
+                                            );
+                                        }
                                         ui.monospace(value.map_or_else(
                                             || "—".into(),
                                             |v| units.format(v, budget),
@@ -803,8 +877,8 @@ impl State {
 
 fn node_size(node: &VisualNode) -> egui::Vec2 {
     egui::vec2(
-        190.,
-        (node.inputs.len().max(node.outputs.len()) as f32 * 8. + 20.).max(74.),
+        148.,
+        (node.inputs.len().max(node.outputs.len()) as f32 * 16. + 24.).max(80.),
     )
 }
 
@@ -998,6 +1072,40 @@ mod tests {
         }
     }
 
+    #[shoop_test]
+    fn friendly_names_update_without_relayout_and_preserve_processor_identity() {
+        let mut view = fixture();
+        view.groups = vec![profiling::Group {
+            kind: 1,
+            slot: 0,
+            entity: 90,
+            name: "Drums".into(),
+        }]
+        .into();
+        let mut state = State::default();
+        let context = egui::Context::default();
+        render(&mut state, &view, &context, Vec::new())
+            .textures_delta
+            .clear();
+        assert_eq!(state.rows[&1].name, "Drums · Processor 1");
+        assert_eq!(state.rows[&2].name, "Drums · Processor 2");
+        assert_eq!(state.rows[&3].name, "Processor 3");
+        let layout = state.view.layout.clone();
+        let source = state.topology.clone().unwrap();
+        let mut renamed = view.groups.to_vec();
+        renamed[0].name = "Percussion".into();
+        view.groups = renamed.into();
+        render(&mut state, &view, &context, Vec::new())
+            .textures_delta
+            .clear();
+        assert_eq!(state.rows[&1].name, "Percussion · Processor 1");
+        assert_eq!(state.view.layout, layout);
+        assert!(Arc::ptr_eq(state.topology.as_ref().unwrap(), &source));
+        let mut old_report = view.live.clone();
+        old_report.epoch -= 1;
+        assert_eq!(view.node_names(&old_report)[&1], "Processor 1");
+    }
+
     fn render(
         state: &mut State,
         view: &ProfilingView,
@@ -1022,7 +1130,7 @@ mod tests {
         let context = egui::Context::default();
         let view = fixture();
         let mut state = State {
-            identity: (1, 4),
+            identity: (0, 0, 0, 1, 4),
             ..State::default()
         };
         state.collapsed.insert((1, 0));
@@ -1075,6 +1183,60 @@ mod tests {
     }
 
     #[shoop_test]
+    fn group_menu_opens_and_collapses_members_through_pointer_input() {
+        let context = egui::Context::default();
+        let view = fixture();
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        let mut output = render(&mut state, &view, &context, vec![]);
+        let point = text_center(&output.shapes, "Groups");
+        output.textures_delta.clear();
+        let click = |state: &mut State, point| {
+            render(
+                state,
+                &view,
+                &context,
+                vec![egui::Event::PointerMoved(point)],
+            )
+            .textures_delta
+            .clear();
+            render(
+                state,
+                &view,
+                &context,
+                vec![egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            )
+            .textures_delta
+            .clear();
+            render(
+                state,
+                &view,
+                &context,
+                vec![egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            )
+        };
+        click(&mut state, point).textures_delta.clear();
+        let mut output = render(&mut state, &view, &context, vec![]);
+        output.textures_delta.clear();
+        let point = text_center(&output.shapes, "Track 1");
+        click(&mut state, point).textures_delta.clear();
+        assert!(state.collapsed.contains(&(1, 0)));
+        assert_eq!(state.nodes[&group_id(1, 0)].members, [1, 2]);
+    }
+
+    #[shoop_test]
     fn node_hover_and_pinning_survive_widget_zoom() {
         let context = egui::Context::default();
         let view = fixture();
@@ -1124,6 +1286,37 @@ mod tests {
     }
 
     #[shoop_test]
+    fn new_connection_or_attachment_clears_selection_even_when_graph_numbers_repeat() {
+        let context = egui::Context::default();
+        let mut view = fixture();
+        view.connection = 7;
+        view.lease = 100;
+        view.attachment = 1;
+        let mut state = State::default();
+        render(&mut state, &view, &context, vec![])
+            .textures_delta
+            .clear();
+        for (connection, lease, attachment) in [(8, 100, 1), (8, 100, 2), (8, 200, 1)] {
+            state.pinned = Some(Focus::Node(1));
+            state.pending = Some(CaptureRequest {
+                connection: view.connection,
+                generation: 1,
+                capture: 9,
+                callback: 5,
+                tick: 4,
+                offset: 0,
+            });
+            view.connection = connection;
+            view.lease = lease;
+            view.attachment = attachment;
+            render(&mut state, &view, &context, vec![])
+                .textures_delta
+                .clear();
+            assert!(state.pinned.is_none() && state.pending.is_none() && state.actual.is_empty());
+        }
+    }
+
+    #[shoop_test]
     fn captured_selection_pages_are_generation_and_selection_fenced() {
         let context = egui::Context::default();
         let mut view = fixture();
@@ -1150,7 +1343,7 @@ mod tests {
         };
         view.index = Arc::from([callback, tick]);
         let mut state = State {
-            identity: (1, 4),
+            identity: (0, 0, 0, 1, 4),
             capture_id: 9,
             callback: 5,
             tick: 4,

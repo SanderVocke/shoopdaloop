@@ -22,7 +22,7 @@ pub use capture::{
     Boundary, CapturePage, CaptureRequest, NodeTiming, TraceSummary, DETAIL_NODES,
     MAX_CAPTURE_TRACES,
 };
-pub use collector::{Collector, Interval, Report, Row, Statistics, View};
+pub use collector::{Collector, Group, Interval, Report, Row, Statistics, View};
 pub use graph::{
     GraphEdge, GraphNode, GraphRecord, Port, Topology, MAX_GRAPH_EDGES, MAX_GRAPH_NODES,
 };

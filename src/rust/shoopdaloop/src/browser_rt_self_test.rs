@@ -252,6 +252,15 @@ impl NewEngineSelfTest {
                 if !profile.requested || (profile.available && !profile.active) {
                     return Ok(None);
                 }
+                let Some(topology) = &profile.topology else {
+                    return Ok(None);
+                };
+                if topology.generation != profile.generation
+                    || topology.epoch != profile.live.epoch
+                    || !topology.valid()
+                {
+                    return Ok(None);
+                }
                 self.profiling_generation = profile.generation;
                 send(AppIntent::RequestNewSession)?;
                 Step::NewSession
@@ -389,6 +398,38 @@ impl NewEngineSelfTest {
                 });
                 if !(linked && routed) {
                     return Ok(None);
+                }
+                let profile = &snapshot.profiling;
+                let Some(topology) = &profile.topology else {
+                    return Ok(None);
+                };
+                if topology.generation != profile.generation
+                    || topology.epoch != profile.live.epoch
+                    || topology.nodes.iter().filter(|n| n.group == 1).count()
+                        != 2 * snapshot.tracks.len()
+                {
+                    return Ok(None);
+                }
+                if !snapshot.tracks.iter().all(|track| {
+                    profile
+                        .groups
+                        .iter()
+                        .any(|g| g.kind == 1 && g.name == track.name)
+                        && track.loops.iter().all(|loop_| {
+                            profile.groups.iter().any(|g| {
+                                g.kind == 2 && g.name == format!("{} / {}", track.name, loop_.name)
+                            })
+                        })
+                }) {
+                    return Ok(None);
+                }
+                if profile
+                    .live
+                    .rows
+                    .iter()
+                    .any(|r| r.ready_avg_ns < r.avg_ns || r.ready_worst_ns < r.worst_ns)
+                {
+                    return Err("cumulative readiness precedes its processor duration".into());
                 }
                 send(loop_intent(ids.sync, LoopAction::RecordClicked)?)?;
                 Step::SyncRecording

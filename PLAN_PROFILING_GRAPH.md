@@ -26,6 +26,10 @@ Out of scope: path cost mode, dependency-path sums or longest-path estimates,
 critical-path attribution, graph editing, historical topology comparison,
 additional capture history, export formats and device playback/signal latency.
 
+User-approved addition (2026-11-04): correlate processor/group labels with the UI's
+track and loop names in both views. Preserve processor role and slot for duplicate
+labels; resolve through backend identities and update names without relayout.
+
 ## Immutable acceptance criteria
 
 1. The existing profiling window offers Graph and Table tabs with shared immediate
@@ -199,13 +203,13 @@ contract milestone before dependent behavior changes.
 
 Depends on Stage 0.
 
-- [ ] Export processor/host endpoints, typed port connections, execution order and
+- [x] Export processor/host endpoints, typed port connections, execution order and
   structured group metadata from the prepared plan with bounded storage and
   work. Publish only a complete descriptor associated with the active graph.
-- [ ] Add bounded engine metadata chunks, collection/reassembly and resync;
+- [x] Add bounded engine metadata chunks, collection/reassembly and resync;
   validate endpoint IDs, counts and complete identities. Keep old or partial
   descriptors from decorating new measurements, including activation mid-callback.
-- [ ] Cover branching, fan-in/out, audio/MIDI, host bypass, disconnected nodes,
+- [x] Cover branching, fan-in/out, audio/MIDI, host bypass, disconnected nodes,
   duplicate labels, failed/identical rebuilds, replacement and slot reuse.
 
 Verification: compare exported nodes/edges directly with the executable descriptor;
@@ -215,17 +219,17 @@ exercise stale/missing/reordered chunks and stalled readers under RT safety guar
 
 Depends on Stage 0; integrate with Stage 1 identities before publication.
 
-- [ ] Add per-node readiness accumulators to live/capture reports without changing
+- [x] Add per-node readiness accumulators to live/capture reports without changing
   table duration semantics. Validate complete records before accepting statistics;
   preserve counts and fault/partial markers independently for each metric.
-- [ ] Build a bounded capture callback/tick index from assembled raw records, with
+- [x] Build a bounded capture callback/tick index from assembled raw records, with
   actual node durations/readiness, phases, original budgets and loss/gap status.
   Add the minimal bounded recording context only if current fields cannot supply it.
-- [ ] Add independent prescribed-time fixtures: unrelated 80 µs work between a
+- [x] Add independent prescribed-time fixtures: unrelated 80 µs work between a
   20 µs source and 10 µs dependent gives 110 µs readiness, not 30 µs. Include
   anti-correlated spikes proving cumulative worst/stddev cannot be summed,
   plus fan-in/out, large clock origins, unfinished nodes and malformed packets.
-- [ ] Verify zero-/multi-tick callbacks, buffered and split host callbacks,
+- [x] Verify zero-/multi-tick callbacks, buffered and split host callbacks,
   differing host/engine frame origins, delayed notifications and truncated capture.
 
 Verification: exact independent expected statistics and selected-iteration values
@@ -235,15 +239,15 @@ match raw boundaries; no fabricated tick deadlines or xrun attribution appear.
 
 Depends on Stages 1–2.
 
-- [ ] Extend backend/service/API/app protocol/client projection for immutable
+- [x] Extend backend/service/API/app protocol/client projection for immutable
   topology, readiness and capture index; add bounded on-demand selected detail
   requests through existing application boundaries, without direct egui/engine access.
-- [ ] Tag requests/responses with connection, generation, graph, capture and
+- [x] Tag requests/responses with connection, generation, graph, capture and
   selection identity. Reject stale responses after reset, replacement or a rapid
   selection change. Define paging, cancellation, reconnect/resync and final-off data.
-- [ ] Bump affected protocol versions/compatibility descriptors and update codecs,
+- [x] Bump affected protocol versions/compatibility descriptors and update codecs,
   socket/shared-memory/worklet adapters and independent admission limits.
-- [ ] Exercise oversized/malformed data, interrupted assembly, slow clients and
+- [x] Exercise oversized/malformed data, interrupted assembly, slow clients and
   rapid graph/capture changes; keep snapshots below their existing size limit.
 
 Verification: production transport/client round trips preserve identical topology,
@@ -253,22 +257,22 @@ statistics and selected detail; saturation does not starve reliable or meter tra
 
 Depends on Stage 3 and the Stage 0 graph widget/layout decision.
 
-- [ ] Add Graph/Table tabs to the existing window and shared selectors; retain
+- [x] Add Graph/Table tabs to the existing window and shared selectors; retain
   immediate toggle, persistence behavior, overall DSP display and table values.
-- [ ] Add an `egui_graph` adapter mapping generation-scoped processor/host IDs to
+- [x] Add an `egui_graph` adapter mapping generation-scoped processor/host IDs to
   widget node IDs and audio/MIDI ports to sockets. Keep `View`, layout/routes and
   selection as UI state; keep authoritative topology and measurements in the
   application model. Set immutable mode so inspection cannot edit the DSP graph.
-- [ ] Use `layout_routed` on topology/group-expansion changes and render through
+- [x] Use `layout_routed` on topology/group-expansion changes and render through
   `Node`/`Edge` widgets with cached left-to-right geometry, zoom, pan and fit.
   Project collapsed groups into summary nodes while preserving member/edge IDs
   for inspection and expansion. Handle large, empty, disconnected and
   timing-unavailable graphs without freezing the UI or moving live layouts.
-- [ ] Use widget node/edge responses for hover and pinned details, and per-edge
+- [x] Use widget node/edge responses for hover and pinned details, and per-edge
   strokes/custom node framing for metric colors and upstream/downstream emphasis.
   Add group/member inspection, separate legends and metric selection with numeric
   values, unavailable styling and clear readiness wording.
-- [ ] Add focused UI checks for hit testing after transforms, overlapping/bundled
+- [x] Add focused UI checks for hit testing after transforms, overlapping/bundled
   edges, collapse/expand reachability, stable geometry, unit conversion, source
   switching, lost-data feedback and reset/selection invalidation.
 
@@ -279,15 +283,15 @@ inspection demonstrate readable topology and correct values without layout jitte
 
 Depends on Stages 3–4.
 
-- [ ] Keep capture-interval aggregation as the default; add callback and tick
+- [x] Keep capture-interval aggregation as the default; add callback and tick
   selection, navigation back to interval statistics and bounded detail loading.
-- [ ] Synchronize selected-tick graph values with a compact timeline showing all
+- [x] Synchronize selected-tick graph values with a compact timeline showing all
   retained ticks, node spans and recorded non-node phases within the selected
   callback, its actual deadline and any missing/uncertain regions.
-- [ ] Show actual values for selection, interval Avg/Worst/Stddev otherwise;
+- [x] Show actual values for selection, interval Avg/Worst/Stddev otherwise;
   retain separate node/link scales. Make trigger/attribution uncertainty and
   partial/receiving status visible in both graph and timeline.
-- [ ] Test rapid selection, capture replacement, incomplete parent callbacks,
+- [x] Test rapid selection, capture replacement, incomplete parent callbacks,
   missing details and graph reset while a detail page is in flight.
 
 Verification: an injected spike is visible in the independently known callback/tick
@@ -358,7 +362,7 @@ steps and 64 phase boundaries per page. Topology/index/detail use immutable shar
 ownership in app snapshots, not copies of the complete raw capture. Requests and
 responses carry generation/capture/callback/tick/page identity; the existing app
 connection authority fences reconnects. Switching selection logically cancels old
-pages by rejecting responses that no longer match. Engine/app versions are 9/22;
+pages by rejecting responses that no longer match. Engine/app versions are 9/23;
 the shared-memory descriptor layout and its independent profiling lane are unchanged.
 
 Core evidence: 14 recorder/collector tests and the profiling wire codec test pass.
@@ -374,3 +378,27 @@ then continue implementation/validation there. The initial broad native run foun
 two protocol golden fixtures needing the intended 21-to-22 version update (fixed)
 and a legacy graph playback test failure still under investigation. These are not
 passing evidence; the draft remains incomplete until validation finishes.
+
+
+Validation checkpoint (2026-11-04): PR [#939](https://github.com/SanderVocke/shoopdaloop/pull/939)
+contains the graph implementation. The complete native suite passed 2,699 tests
+with six facility-dependent skips. Subsequent UI fixes pass all eight profiling
+widget tests, including pointer-driven zoom/pinning and group-selector collapse;
+warning-denying workspace builds and the test/tracing/boundary/parity checks pass.
+The native packaged socket and shared-memory probes and production browser
+record/play/save/load/routing workflow pass (browser xruns: zero). The raw worklet
+contract passes topology, original budget, clock/timestamp and toggle assertions.
+The seven affected Node and Chrome Wasm packages pass; the final UI runs contain
+240 tests each. An additional application Wasm check exposed a pre-existing
+native-only import used by a cross-platform profiling settings test; its gate is
+corrected, with the application rerun pending.
+
+User label correlation is implemented through frozen topology-to-backend entity
+mappings, then application projection to current track/loop/bus labels. Loop names
+are qualified by track, and both graph/table retain processor role and slot.
+Renaming does not reset timing or layout. Link details and collapsed groups use
+the resolved names too. Independent native and encoded service tests verify the
+mapping and rename behavior. Native screenshots in `docs/images/profiling_graph*.png`
+use the prescribed-time preview fixture, not a production capture. Visual checking
+also caught an unusable group popup; an explicitly identified group selector and
+pointer-input regression test fix it.

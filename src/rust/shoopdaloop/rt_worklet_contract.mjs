@@ -238,6 +238,7 @@ for (const record of profileRecords) {
   }
 }
 if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
+if (!profileRecords.some(record => record[2] === 11 && record[19] === 3)) throw new Error('profiling sent no complete executable topology');
 node.load = 2;
 for (let index = 0; index < 64; index += 1) quantum(node, 0.25);
 const captureRecords = takeEngineRecords().filter(record => record[2] === 9).map(record =>
@@ -245,6 +246,7 @@ const captureRecords = takeEngineRecords().filter(record => record[2] === 9).map
 if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(96, true) & 4))) {
   throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
 }
+if (!captureRecords.some(view => (view.getUint32(96, true) & 16) && view.getBigUint64(75, true) > 0n)) throw new Error('captured host callbacks lost their original budgets');
 profilingRequest(false, 992);
 quantum(node, 0.25);
 const stoppedClockCalls = clockCalls;

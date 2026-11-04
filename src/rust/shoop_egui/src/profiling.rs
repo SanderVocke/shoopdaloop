@@ -320,9 +320,11 @@ fn show_inner(
                                 ui.strong(title);
                             }
                             ui.end_row();
+                            let names = view.node_names(report);
                             for row in &report.rows {
-                                ui.add_sized([240., 20.], egui::Label::new(&row.name).truncate())
-                                    .on_hover_text(&row.name);
+                                let name = &names[&row.key];
+                                ui.add_sized([240., 20.], egui::Label::new(name).truncate())
+                                    .on_hover_text(name);
                                 for ns in [row.avg_ns, row.worst_ns as f64, row.stddev_ns] {
                                     let text = if row.samples == 0 {
                                         "—".into()

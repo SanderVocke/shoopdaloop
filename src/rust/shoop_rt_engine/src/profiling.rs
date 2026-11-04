@@ -298,3 +298,79 @@ impl Layouts {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rt_runtime::graph::{Connection, Endpoint, NodeStep, PlanDescriptor, PortType};
+    use rt_runtime::profiling::{GraphRecord, Port};
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn exported_topology_matches_the_activated_descriptor_and_waits_for_capacity() {
+        let pool = Pool::new(
+            &[crate::description::Segment {
+                strips: 1,
+                loops: 1,
+            }],
+            1,
+        );
+        let node = pool.strip_input(0);
+        let descriptor = PlanDescriptor {
+            steps: alloc::vec![NodeStep { node, input_end: 1 }],
+            connections: alloc::vec![Connection {
+                source: Endpoint::host(PortType::Midi, 2),
+                destination: Endpoint::node(node, PortType::Midi, 0)
+            }],
+        };
+        let mut layouts = Layouts::new(&pool, 4, 48000, 32);
+        layouts.stage(&descriptor);
+        assert_eq!(layouts.active.node_count, 0);
+        layouts.activate();
+        assert_eq!(layouts.active.node_count, descriptor.steps.len());
+        assert_eq!(layouts.active.nodes[0].key, u64::from(node.slot()));
+        assert_eq!(
+            layouts.active.edges[0].source,
+            Port {
+                node: None,
+                kind: 1,
+                channel: 2
+            }
+        );
+        assert_eq!(
+            layouts.active.edges[0].destination,
+            Port {
+                node: Some(u64::from(node.slot())),
+                kind: 1,
+                channel: 0
+            }
+        );
+        let names = pool.profiling_names();
+        let mut named = alloc::vec![false; pool.nodes()];
+        let mut out = Outbox::new(2, 1, 1);
+        for _ in 0..256 {
+            out.push(EngineMessage::ProfilingGraph {
+                generation: 1,
+                epoch: 2,
+                record: GraphRecord::End,
+            })
+            .unwrap();
+        }
+        layouts.forward(1, 2, &names, &mut named, &mut out);
+        assert_eq!(layouts.cursor, 0);
+        while out.pop().is_some() {}
+        layouts.forward(1, 2, &names, &mut named, &mut out);
+        let mut records = alloc::vec::Vec::new();
+        while let Some(message) = out.pop() {
+            records.push(message);
+        }
+        assert!(records.iter().any(|m| matches!(m, EngineMessage::ProfilingNode { key, .. } if *key == u64::from(node.slot()))));
+        assert!(matches!(
+            records.last(),
+            Some(EngineMessage::ProfilingGraph {
+                record: GraphRecord::End,
+                ..
+            })
+        ));
+    }
+}
