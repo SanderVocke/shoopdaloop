@@ -56,7 +56,7 @@ pub struct Info {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capacity {
-    /// Maximum simultaneous owner credits after reserving live append workspace.
+    /// Prepared view slots; private transactions share the retained-chunk budget.
     pub owners: usize,
     pub chunks: usize,
     pub index_nodes: usize,
@@ -72,6 +72,7 @@ pub struct Usage {
     pub reserved_pages: usize,
     pub retiring: usize,
     pub owners: usize,
+    pub retained_chunks: usize,
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Work {
@@ -157,6 +158,7 @@ struct View {
     revision: Revision,
     writable: bool,
     retiring: bool,
+    credit: usize,
 }
 #[derive(Clone, Copy)]
 enum Garbage {
@@ -199,6 +201,7 @@ pub struct MidiStore {
     pages: SharedPages,
     reserved: usize,
     debt: usize,
+    owners: usize,
     debt_limit: usize,
     scratch: Box<[u8]>,
     records: [Record; EVENTS_PER_CHUNK],
@@ -262,11 +265,12 @@ impl MidiStore {
             base_slots,
             map,
             garbage,
+            views,
             debt_limit,
             capacity,
         } = layout;
         let mut chunk_states = vec![MidiState::default(); chunks].into_boxed_slice();
-        let mut states = vec![MidiState::default(); config.views].into_boxed_slice();
+        let mut states = vec![MidiState::default(); views].into_boxed_slice();
         let mut scratch = vec![0; page_bytes].into_boxed_slice();
         let mut edit_states =
             vec![MidiState::default(); config.transactions * 3].into_boxed_slice();
@@ -309,23 +313,24 @@ impl MidiStore {
             block_map,
             free_blocks: (0..blocks).rev().collect(),
             views: touched(
-                config.views,
+                views,
                 Slot {
                     generation: 1,
                     value: None,
                 },
             ),
             initial: states,
-            free_views: (0..config.views).rev().collect(),
+            free_views: (0..views).rev().collect(),
             pages,
             reserved: config.pages,
             debt: 0,
+            owners: 0,
             debt_limit,
             scratch,
             records: [Record::default(); EVENTS_PER_CHUNK],
             retired: jobs(garbage),
             immediate: jobs(garbage),
-            pending: touched(config.views + config.transactions + 2, 0).into_boxed_slice(),
+            pending: touched(views + config.transactions + 2, 0).into_boxed_slice(),
             closed: false,
             work: Work::default(),
             edits: touched(
@@ -366,7 +371,8 @@ impl MidiStore {
             free_views: self.free_views.len(),
             reserved_pages: self.reserved,
             retiring: self.retired.len(),
-            owners: self.debt,
+            owners: self.owners,
+            retained_chunks: self.debt,
         }
     }
     pub fn coverage(&self) -> Result<Range<Frame>, Error> {
@@ -393,25 +399,29 @@ impl MidiStore {
             }
         })
     }
-    fn own(&mut self, mut view: View, state: &MidiState, writable: bool) -> Result<Handle, Error> {
+    fn own(&mut self, view: View, state: &MidiState, writable: bool) -> Result<Handle, Error> {
         if self.closed {
             return Err(Error::InvalidState);
         }
-        if self.free_views.is_empty() || self.debt == self.debt_limit {
+        if self.free_views.is_empty() || view.credit > self.debt_limit - self.debt {
             return Err(Error::Capacity);
         }
         self.retain(view.root)?;
+        Ok(self.insert_view(view, state, writable))
+    }
+    fn insert_view(&mut self, mut view: View, state: &MidiState, writable: bool) -> Handle {
         let slot = self.free_views.pop().expect("prepared view");
         view.writable = writable;
         self.views[slot].value = Some(view);
         self.initial[slot] = *state;
-        self.debt += 1;
+        self.debt += view.credit;
+        self.owners += 1;
         self.work.add(0, 1, 0, 0);
-        Ok(Handle {
+        Handle {
             scope: self.scope,
             slot: slot as u32,
             generation: self.views[slot].generation,
-        })
+        }
     }
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
         let v = self.view(take.0)?;
@@ -479,10 +489,15 @@ impl MidiStore {
     }
     fn finish_owner(&mut self, owner: usize) {
         if owner < self.views.len() && self.pending[owner] == 0 {
-            self.debt -= 1;
+            self.debt -= self.views[owner].value.expect("retiring owner").credit;
+            self.owners -= 1;
             release(&mut self.views, &mut self.free_views, owner);
         } else if owner >= self.views.len() + 2 && self.pending[owner] == 0 {
-            self.debt -= 1;
+            self.debt -= self.edits[owner - self.views.len() - 2]
+                .value
+                .expect("retiring edit")
+                .credit;
+            self.owners -= 1;
             release(
                 &mut self.edits,
                 &mut self.free_edits,

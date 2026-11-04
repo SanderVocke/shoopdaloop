@@ -69,6 +69,15 @@ boundary paths rather than a full history tree per view. A 30-second stereo
 every handle without a sample copy. CI must validate that assertion and the
 updated lifetime tests; ordinary loop-memory capacity is unchanged.
 
+MIDI grabs now clip chunk roots and charge their covering chunks rather than a
+whole source history per owner. Private edits reserve growth plus a source pin,
+trim shrinking results before publication, and transfer/refund the correct credits
+through retirement. Metadata follows the total retained-chunk budget; unreachable
+handle/initial-state slots are not allocated. New heap-guarded packet/state oracles
+check growth, full erasure, old exports and exact credit recovery. These sizing
+changes retain the library checkpoint representation and do not implement the
+continuous MIDI writer or enable application capabilities.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

@@ -354,8 +354,8 @@ fn preparation_sizes_checkpoints_by_admitted_owners_and_keeps_live_append_reserv
         history_frames: 64,
         chunks: 8,
         views: 128,
-        // 192 history pages, 49 append workspace pages, four owner credits.
-        pages: 1009,
+        // 192 history pages, 49 append workspace pages, four retained chunks.
+        pages: 337,
         max_events: 32,
         max_bytes: 256,
         max_packet: 48,
@@ -496,6 +496,100 @@ fn preparation_estimates_refuse_invalid_and_oversized_shapes_without_allocating(
             .capacity(runtime),
             Err(Error::Capacity)
         );
+    });
+}
+
+#[shoop_test]
+fn clipped_packet_owners_grow_and_shrink_edit_credits_without_mutating_old_exports() {
+    let (mut store, mut midi, mut input) = setup(8, 64);
+    for frame in 0..20 {
+        input.push(frame, 32, &[0xb0, 7, frame as u8]).unwrap();
+    }
+    let mut initial = MidiState::default();
+    initial.apply_packet(&[0xb0, 7, 4], 48).unwrap();
+    let mut events: Vec<(u64, [u8; 3])> = vec![(0, [0xb0, 7, 5]), (1, [0xb0, 7, 6])];
+    events.extend((32..48).map(|value| (2, [0xb0, 7, value])));
+    events.extend([(3, [0xb0, 7, 8]), (4, [0xb0, 7, 9])]);
+    let expected: Vec<_> = events
+        .iter()
+        .map(|(frame, data)| (*frame, &data[..]))
+        .collect();
+    assert_no_heap(|| {
+        store.begin_callback();
+        midi.append(&mut store.render_io(), Frame(0), 32, &input)
+            .unwrap();
+        let take = midi
+            .grab(&mut store.render_io(), Frame(5)..Frame(10))
+            .unwrap();
+        let view = midi.view(take.0).unwrap();
+        assert_eq!(view.credit, 1);
+        for serial in 0..4 {
+            assert_eq!(midi.find(view.root, serial).is_ok(), serial == 1);
+        }
+        let old = midi.export(take).unwrap();
+        assert_eq!(midi.usage().retained_chunks, 2);
+        input.clear();
+        for value in 32..48 {
+            input.push(0, 1, &[0xb0, 7, value]).unwrap();
+        }
+        let edit = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(0),
+                2,
+                1,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        while midi.progress_edit(&mut store.render_io(), edit, 3).unwrap() == EditStatus::Building {
+            store.begin_callback();
+        }
+        midi.commit_edit(&mut store.render_io(), edit).unwrap();
+        drain(&mut store, &mut midi);
+        assert_eq!(midi.usage().retained_chunks, 4);
+        assert_eq!(midi.usage().owners, 2);
+        check(&mut store, &mut midi, take, 5, &expected, &initial);
+
+        input.clear();
+        store.begin_callback();
+        let edit = midi
+            .prepare_replace(
+                &mut store.render_io(),
+                take,
+                Revision(1),
+                0,
+                5,
+                &input,
+                &MidiState::default(),
+            )
+            .unwrap();
+        while midi.progress_edit(&mut store.render_io(), edit, 3).unwrap() == EditStatus::Building {
+            store.begin_callback();
+        }
+        midi.commit_edit(&mut store.render_io(), edit).unwrap();
+        drain(&mut store, &mut midi);
+        assert_eq!(midi.usage().retained_chunks, 2);
+        assert_eq!(midi.usage().owners, 2);
+        check(&mut store, &mut midi, take, 5, &[], &MidiState::default());
+        let index = midi.export_index(old).unwrap();
+        assert_eq!(midi.initial_state(index).unwrap(), &initial);
+        let mut cursor = midi.cursor(index).unwrap();
+        let mut packet = [0; 48];
+        for frame in 0..5 {
+            let event = midi.next(&mut cursor).unwrap().unwrap();
+            assert_eq!(event.frame(), frame);
+            assert_eq!(
+                midi.read_event(&mut store.render_io(), event, &mut packet),
+                Ok(3)
+            );
+            assert_eq!(&packet[..3], &[0xb0, 7, 5 + frame as u8]);
+        }
+        assert_eq!(midi.next(&mut cursor), Ok(None));
+        midi.release_take(take).unwrap();
+        midi.release_export(old).unwrap();
+        cleanup(&mut store, &mut midi);
     });
 }
 

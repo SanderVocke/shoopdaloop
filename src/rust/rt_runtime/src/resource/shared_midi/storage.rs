@@ -66,6 +66,60 @@ impl MidiStore {
         });
         slot
     }
+    pub(super) fn clip(
+        &mut self,
+        root: Option<usize>,
+        low: usize,
+        high: usize,
+        ranges: &[Range<usize>; 2],
+    ) -> Option<usize> {
+        let root = root?;
+        if ranges
+            .iter()
+            .all(|range| range.end <= low || range.start >= high)
+        {
+            return None;
+        }
+        if ranges
+            .iter()
+            .any(|range| range.start <= low && range.end >= high)
+        {
+            self.retain(Some(root)).expect("prepared reference bound");
+            return Some(root);
+        }
+        let Kind::Branch(children) = self.nodes[root].expect("indexed branch").kind else {
+            unreachable!("partial chunk interval")
+        };
+        let middle = low + (high - low) / 2;
+        let left = self.clip(children[0], low, middle, ranges);
+        let right = self.clip(children[1], middle, high, ranges);
+        Some(self.node(Kind::Branch([left, right])))
+    }
+    pub(super) fn clipped_root(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        view: View,
+    ) -> Result<Option<usize>, Error> {
+        let chunks = usize::try_from(view.last.serial - view.first.serial)
+            .map_err(|_| Error::Capacity)?
+            + usize::from(view.last.event > 0);
+        if self.free_nodes.len() < 4 * (self.depth + 1) {
+            return Err(Error::Capacity);
+        }
+        let first = view.first.serial as usize & (self.config.chunks - 1);
+        let end = first + if view.first == view.last { 0 } else { chunks };
+        let ranges = [
+            first..end.min(self.config.chunks),
+            0..end.saturating_sub(self.config.chunks),
+        ];
+        let steps = 8 * (self.depth + 1);
+        io.store.charge_work(WorkClass::Render, 0, steps)?;
+        for _ in 0..steps {
+            io.store.index_step(WorkClass::Render);
+        }
+        self.work.add(0, 0, steps, 0);
+        Ok(self.clip(view.root, 0, self.config.chunks, &ranges))
+    }
     pub(super) fn set(
         &mut self,
         root: Option<usize>,

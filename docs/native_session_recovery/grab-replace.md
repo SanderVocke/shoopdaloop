@@ -11,7 +11,7 @@ recorded here as the implementation stages pass.
 | --- | --- |
 | Normal host preparation | `shoop_host/engine`, native `direct`, and worklet `config`/`host` must prepare histories from a common production policy. `shoop_rt_engine::prepare` currently supplies empty shared settings. |
 | Portable domain | Add continuous writers and prefix continuation to `shoop_loops/runtime`, with a distinct Replacing mode in the resolver/program state. Retain the private-candidate API for prepared edits. |
-| Kernel resources | Production sizing must address `shared_audio` full-root owner credits and `shared_midi` checkpoint/state multiplication before allocating per-source stores. |
+| Kernel resources | Grab roots now retain visible audio pages/MIDI chunks; prepared metadata follows retained credits. Production global pooling, checkpoint-state density and continuous-writer reservations still need completion. |
 | Engine / protocol | Add bounded admission, musical batch settlement, completions and capability/limit negotiation in `shoop_rt_protocol`, `shoop_rt_engine/endpoint`, jobs, model, cells, topology and resync. |
 | Adapter | Implement Grab and Replacing in `shoop_rt_backend/backend`, requests, incoming/mirror, reads, capture, family and persistence. Invalidate canonical-import media on actual committed revisions. |
 | Service | Replace deliberate refusals in `shoop_app/service/commands` and `commands/control`; reconcile media, projection, persistence and family guards with active/scheduled Replacing. |
@@ -69,21 +69,24 @@ need 184,320,000 payload bytes for that interval. The shared arena's page geomet
 retained users, COW writes and MIDI add to this amount. The existing 256 MiB
 loop-memory setting must keep its documented meaning.
 
-Current audio owner credits conservatively charge a whole retained root per view;
-MIDI reserves complete checkpoint/state capacity by owner and transaction counts.
-Those admission guarantees suit the foundation fixtures but cannot simply be
-multiplied by the normal 16-track/128-loop configuration. Production pooling and
+Audio owners now charge the window's covering pages and retain a clipped root.
+Its index budget follows page credits plus boundary paths rather than a full ring
+per view. MIDI owners similarly retain and charge the intersecting chunks;
+metadata follows the total retained-chunk credits, with admission reserving edit
+growth and immutable source pins. These conservative guarantees still need
+production global pooling and
 admission must reserve guaranteed live history/writer work while sharing immutable
 data, bounding metadata and refusing additional owners before live capture loses
 its reservation. Exact budgets/defaults and their measured limits remain an F2
 verification gate, not an implied unlimited capacity claim.
 
 MIDI configuration now offers an allocation-free estimate of the complete
-prepared metadata/state shape and owner ceiling. Its checkpoint/index allocation
-is capped by reachable owner credits, rather than multiplying by every configured
-view handle. A heap-guarded pressure test retains all admitted owners while live
+prepared metadata/state shape and owner ceiling. Unreachable handle/initial-state
+slots are excluded. A heap-guarded pressure test retains all admitted owners while live
 input wraps repeatedly, then edits a retained cut and checks the old export.
-Full checkpoint projections, per-source reservations and continuous-writer debt
+Further packet/state oracles cover clipped roots and growing/shrinking edit-credit
+transfer while old exports remain readable. Full checkpoint projections,
+per-source reservations and continuous-writer debt
 still require the remaining production work; this change does not establish a
 default application budget or enable either capability.
 

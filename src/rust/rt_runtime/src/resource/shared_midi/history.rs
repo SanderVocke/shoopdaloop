@@ -225,23 +225,28 @@ impl MidiStore {
         let last = self.locate(source, range.end.0)?;
         let state = self.state_at(io.store, source, range.start.0)?.0;
         let (bytes, events) = self.between(self.root, first, last)?;
-        self.own(
-            View {
-                root: self.root,
-                first,
-                last,
-                origin: range.start.0,
-                frames: range.end.0 - range.start.0,
-                bytes,
-                events,
-                revision: Revision(0),
-                writable: true,
-                retiring: false,
+        let mut view = View {
+            root: self.root,
+            first,
+            last,
+            origin: range.start.0,
+            frames: range.end.0 - range.start.0,
+            bytes,
+            events,
+            revision: Revision(0),
+            writable: true,
+            retiring: false,
+            credit: if first == last {
+                1
+            } else {
+                (last.serial - first.serial) as usize + usize::from(last.event > 0)
             },
-            &state,
-            true,
-        )
-        .map(TakeId)
+        };
+        if self.free_views.is_empty() || view.credit > self.debt_limit - self.debt {
+            return Err(Error::Capacity);
+        }
+        view.root = self.clipped_root(io, view)?;
+        Ok(TakeId(self.insert_view(view, &state, true)))
     }
     pub(super) fn history_view(&self) -> View {
         View {
@@ -261,6 +266,7 @@ impl MidiStore {
             revision: Revision(0),
             writable: false,
             retiring: false,
+            credit: self.config.chunks,
         }
     }
 }

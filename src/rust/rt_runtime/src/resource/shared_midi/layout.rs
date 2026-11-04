@@ -10,6 +10,7 @@ pub(super) struct Layout {
     pub(super) base_slots: usize,
     pub(super) map: usize,
     pub(super) garbage: usize,
+    pub(super) views: usize,
     pub(super) debt_limit: usize,
     pub(super) capacity: Capacity,
 }
@@ -24,6 +25,9 @@ impl Config {
 impl Layout {
     pub(super) fn new(runtime: PreparedConfig, config: Config) -> Result<Self, Error> {
         let page_bytes = runtime.limits().page_bytes;
+        if config.views > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
         if config.history_frames == 0
             || config.chunks == 0
             || !config.chunks.is_power_of_two()
@@ -57,17 +61,25 @@ impl Layout {
             return Err(Error::Capacity);
         }
         let depth = config.chunks.trailing_zeros() as usize;
-        let owners = config.views.min((config.pages - baseline) / credit);
-        let chunks = owners
+        let debt_limit = (config.pages - baseline) / (EVENTS_PER_CHUNK * block_pages);
+        let owners = config.views.min(debt_limit);
+        let retained_chunks = owners
             .checked_add(config.transactions)
-            .and_then(|n| n.checked_add(4))
             .and_then(|n| n.checked_mul(config.chunks))
+            .ok_or(Error::Capacity)?
+            .min(debt_limit);
+        let chunks = config
+            .transactions
+            .checked_add(4)
+            .and_then(|n| n.checked_mul(config.chunks))
+            .and_then(|n| n.checked_add(retained_chunks))
             .and_then(|n| n.checked_add(config.max_events + 1))
             .ok_or(Error::Capacity)?;
-        let nodes = owners
-            .checked_add(config.transactions)
-            .and_then(|n| n.checked_add(4))
+        let nodes = config
+            .transactions
+            .checked_add(4)
             .and_then(|n| n.checked_mul(config.chunks.checked_mul(2)?.checked_sub(1)?))
+            .and_then(|n| n.checked_add(retained_chunks.checked_mul(depth + 1)?))
             .and_then(|n| n.checked_add(config.max_events.checked_add(1)?.checked_mul(depth + 1)?))
             .ok_or(Error::Capacity)?;
         let blocks = config
@@ -78,8 +90,7 @@ impl Layout {
                     .ok_or(Error::Capacity)?,
             )
             .ok_or(Error::Capacity)?;
-        let base_slots = config
-            .views
+        let base_slots = owners
             .checked_add(config.transactions)
             .ok_or(Error::Capacity)?;
         let map = blocks.checked_mul(block_pages).ok_or(Error::Capacity)?;
@@ -89,7 +100,7 @@ impl Layout {
             .and_then(|n| n.checked_add(config.transactions))
             .ok_or(Error::Capacity)?;
         let state_bytes = chunks
-            .checked_add(config.views)
+            .checked_add(owners)
             .and_then(|n| n.checked_add(config.transactions.checked_mul(3)?))
             .and_then(|n| n.checked_add(1))
             .and_then(|n| n.checked_mul(size_of::<MidiState>()))
@@ -104,11 +115,7 @@ impl Layout {
             })
             .and_then(|n| n.checked_add(map.checked_mul(size_of::<Option<LeaseId>>())?))
             .and_then(|n| {
-                n.checked_add(
-                    config
-                        .views
-                        .checked_mul(size_of::<Slot<View>>() + 2 * size_of::<usize>())?,
-                )
+                n.checked_add(owners.checked_mul(size_of::<Slot<View>>() + 2 * size_of::<usize>())?)
             })
             .and_then(|n| n.checked_add(garbage.checked_mul(2 * size_of::<Job>())?))
             .and_then(|n| {
@@ -160,7 +167,8 @@ impl Layout {
             base_slots,
             map,
             garbage,
-            debt_limit: (config.pages - baseline) / credit,
+            views: owners,
+            debt_limit,
             capacity: Capacity {
                 owners,
                 chunks,
