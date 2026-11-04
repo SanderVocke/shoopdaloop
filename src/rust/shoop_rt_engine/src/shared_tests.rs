@@ -54,6 +54,7 @@ struct Fixture {
     stimulus: Option<u64>,
     burst: Option<u64>,
     last_execution: Option<Executed>,
+    midi_overflows: usize,
     read_buffer: Option<(resource::Cursor, Box<[u8]>)>,
     #[cfg(not(target_arch = "wasm32"))]
     timings: Option<Vec<measurements::Callback>>,
@@ -186,6 +187,7 @@ impl Fixture {
             stimulus: None,
             burst: None,
             last_execution: None,
+            midi_overflows: 0,
             read_buffer: None,
             #[cfg(not(target_arch = "wasm32"))]
             timings: None,
@@ -281,6 +283,8 @@ impl Fixture {
                 },
             )
         });
+        let midi_overflows = self.engine.render.diagnostics().midi_overflows;
+        self.midi_overflows += midi_overflows;
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(clock) = clock {
             let elapsed = clock.elapsed().as_nanos();
@@ -292,6 +296,7 @@ impl Fixture {
                 usage: self.engine.render.resource_usage(),
                 ticks: self.engine.render.diagnostics().subranges,
                 phase: self.measure_phase,
+                midi_overflows,
             });
         }
         for ch in 0..2 {
@@ -635,6 +640,7 @@ fn fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision() {
         assert!(h.samples[0][(at + 160) as usize..]
             .iter()
             .all(|sample| *sample == 0.));
+        let overflows = h.midi_overflows;
         h.midi_output = MidiBuffer::new(1, 3).unwrap();
         h.op(Operation::Transition {
             target: target(0),
@@ -647,7 +653,7 @@ fn fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision() {
         let end = h.aligned_future(256);
         h.run_to(end);
         assert_eq!(h.engine.render.phase(), Phase::Running);
-        assert!(h.engine.render.diagnostics().midi_overflows > 0);
+        assert!(h.midi_overflows > overflows);
         h.midi_output = MidiBuffer::new(4096, 32768).unwrap();
         let end = h.aligned_future(256);
         h.run_to(end);
@@ -1663,7 +1669,7 @@ fn host_partitions_agree_at_identical_history_playback_and_replacement_cuts() {
                 matches!(h.result(selected), Reply::CandidatePublished { frame, .. } if frame == Frame(publish))
             );
             let latency = if q == 1 { 0 } else { q as u64 };
-            let end = publish + 3 * take.frames + latency;
+            let end = publish + 3 * take.frames + latency + 128;
             h.run_to(end);
             let audio = [
                 h.samples[0][(play + latency) as usize..end as usize].to_vec(),

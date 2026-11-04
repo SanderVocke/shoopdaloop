@@ -272,6 +272,12 @@ impl Pinned {
         let mut dependent = session.tracks[0].loops[0].clone();
         dependent.id = child;
         dependent.frames *= 2;
+        for channel in &mut dependent.audio {
+            channel.object = channel.object.map(|object| object + 3);
+        }
+        for channel in &mut dependent.midi {
+            channel.channel.object = channel.channel.object.map(|object| object + 3);
+        }
         let mut shorter = self.exact();
         shorter.length_frames /= 2;
         shorter
@@ -305,7 +311,12 @@ impl Pinned {
                     },
                 ],
             },
-            payloads: original.payloads.clone(),
+            payloads: original
+                .payloads
+                .iter()
+                .cloned()
+                .chain(original.payloads.iter().cloned())
+                .collect(),
         });
         let Value::Image(family) = (Work::ConvertFamily {
             decoded: Decoded::Midi(shorter.clone()),

@@ -9,6 +9,7 @@ pub(super) struct Callback {
     pub usage: resource::PoolUsage,
     pub ticks: usize,
     pub phase: &'static str,
+    pub midi_overflows: usize,
 }
 
 #[shoop_test]
@@ -102,14 +103,15 @@ fn fixed_shared_callback_measurements() {
                 .filter(|row| row.nanos * 48000 > row.frames as u128 * 1_000_000_000)
                 .count();
             let total: u128 = times.iter().sum();
-            writeln!(summary, "Q={q} partition={partition} callbacks={} mean_ns={} p50_ns={} p95_ns={} p99_ns={} max_ns={} misses={misses} capacity={capacity:?} midi={midi_work:?}",
+            let midi_overflows: usize = data.iter().map(|row| row.midi_overflows).sum();
+            writeln!(summary, "Q={q} partition={partition} callbacks={} mean_ns={} p50_ns={} p95_ns={} p99_ns={} max_ns={} misses={misses} midi_overflows={midi_overflows} capacity={capacity:?} midi={midi_work:?}",
                 data.len(), total / times.len() as u128, times[times.len()/2], times[(times.len()-1)*95/100], times[(times.len()-1)*99/100], times[times.len()-1]).unwrap();
-            let mut raw = std::string::String::from("frame,frames,phase,ticks,nanoseconds,deadline_ns,miss,render_operations,render_copied_bytes,render_validation_steps,background_copied_bytes,background_validation_steps,reclaimed_pages,reclaimed_versions,free_pages,reserved_pages,free_versions,free_snapshots,retired_versions,retired_pages\n");
+            let mut raw = std::string::String::from("frame,frames,phase,ticks,nanoseconds,deadline_ns,miss,render_operations,render_copied_bytes,render_validation_steps,background_copied_bytes,background_validation_steps,reclaimed_pages,reclaimed_versions,free_pages,reserved_pages,free_versions,free_snapshots,retired_versions,retired_pages,midi_overflows\n");
             for row in data {
                 assert!(!row.work.1.counter_overflow);
                 writeln!(
                     raw,
-                    "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                     row.frame,
                     row.frames,
                     row.phase,
@@ -129,7 +131,8 @@ fn fixed_shared_callback_measurements() {
                     row.usage.free_versions,
                     row.usage.free_snapshots,
                     row.usage.retired_versions,
-                    row.usage.retired_pages
+                    row.usage.retired_pages,
+                    row.midi_overflows
                 )
                 .unwrap();
             }
