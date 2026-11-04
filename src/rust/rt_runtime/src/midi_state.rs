@@ -5,6 +5,9 @@ use crate::{
     Error,
 };
 
+#[allow(dead_code)] // Interval-index writer integration is staged separately.
+pub(crate) mod interval;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NoteState {
     velocity: u8,

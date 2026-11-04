@@ -108,6 +108,15 @@ separately assert no record/state replay and logarithmic index/reclamation work
 in finalization. The remaining suite reached these cases after compilation; no
 full green application run is claimed.
 
+The continuous-writer investigation now has a concrete
+[semantic-index design note](docs/native_session_recovery/midi-writer-index.md).
+It addresses the suffix dependency using ordered category queries and fixed-size
+pedal transfer summaries, retaining COW bodies/roots and complete-cut publication.
+The initial heap-guarded summary tests compare composition with protocol note
+release and unchanged sostenuto suffixes after edits. This is a de-risking proof
+for one part of F3, not a completed writer, production density policy or state
+index. The complete projection/query and ownership tests remain required.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |
