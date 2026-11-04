@@ -1,7 +1,8 @@
 # P12 loop timing acceptance evidence
 
-Status: in progress; P12 is OPEN. Implementation branch: `feat/p12-loop-timing`,
-base `df4683527dbde0ec7483c3e522fc3873e39a81c8`, PR target
+Status: local acceptance complete; P12 is OPEN pending PR CI. Implementation
+branch: `feat/p12-loop-timing`, reconciled target
+`a192b0ce77325bc8bb55b7b749e8d68b324f0a43`. PR target is
 `feat/fixed-quantum-runtime`. The [plan](../../../PLAN_P12.md) defines completion.
 
 ## Reference behavior matrix
@@ -27,7 +28,7 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 ## Acceptance mapping
 
 The nine criteria in [PLAN_P12.md](../../../PLAN_P12.md) are unchanged.
-Implementation source is `846ae91f` (reconciled target `2e19210b`); the final
+Implementation source is `1e2faf74` (reconciled target `a192b0ce`); the final
 validation inventory records exact source and report hashes.
 
 | Criterion | Production behavior and executable evidence |
@@ -59,7 +60,14 @@ alignment do not move. Per-channel out-of-media spans produce silence; aligned
 capture windows retain their existing validation. No callback allocation, wait,
 lock, second transport clock or media-sized edit upload is introduced.
 
-The merged target adds shared media and buffered processing. Stored/shared audio
+The updated target imports only `shoop_profiling.now` in its raw worklet for
+elapsed-time profiling. Disabled profiling makes no profiling-clock reads. That
+measurement clock does not advance musical time. The built worklet contract
+verifies the single allowed import, clock/toggle/capture behavior and protocol 9.
+Both browser workflows also preserve the target's profiling behavior.
+
+The reconciled target includes shared media, buffered processing, hot-path
+optimizations and runtime profiling. Stored/shared audio
 both support bounded window reads. Shared MIDI parameter-history validation uses
 checkpoint flags and bounded prefix replay instead of full-state stack copies.
 Prepared shared candidates fence the timing revision. P04/P05 remain OPEN at the
@@ -68,9 +76,9 @@ application boundary despite the target's internal shared-media foundation.
 ## Validation results
 
 - Final combined native reference/production suite after target reconciliation
-  and the upload-window refinement: **2,755 passed**, seven intentionally skipped.
-  All **42 adapter regressions** also pass independently.
-- Formatting, warning-denying workspace builds, test attributes, all **422**
+  and the upload-window refinement: **2,778 passed**, seven intentionally skipped.
+  All adapter regressions also pass in the combined run.
+- Formatting, warning-denying workspace builds, test attributes, all **428**
   tracing-inventory modules, parity coverage and runtime/loop/engine dependency
   checks pass. All **76** Python runner/report tests pass; updated inventory
   assertions pass after adding the compact shared-MIDI Miri case.
@@ -79,7 +87,7 @@ application boundary despite the target's internal shared-media foundation.
 - Bare-metal builds: Cortex-M runtime/buffered/loops/ports plus no-default-feature
   engine/service/adapter on `armv7a-none-eabi` and `aarch64-unknown-none` pass.
 - Pinned Miri `nightly-2026-05-04`, seed 0: four exact timing cases plus the compact
-  shared MIDI checkpoint/reset case pass on `6c0ab030`. Ten indexed MIDI cases
+  shared MIDI checkpoint/reset case pass on `1e2faf74`. Ten indexed MIDI cases
   also passed at the earlier stack-safety checkpoint. These are selected-case
   claims, not whole-workspace Miri claims.
 - Strict JACK test runs without `SHOOP_ALLOW_MISSING_BACKENDS`: exact 0.25 PCM and
@@ -89,10 +97,10 @@ application boundary despite the target's internal shared-media foundation.
   pass >32 MiB WAV/exact-MIDI, native input/output, corrupt-file refusal, fresh load,
   exact resave and graceful shutdown; the socket probe also abandons in-flight
   uploads/captures and reconciles service-owned work.
-- Worklet and codec artifact contracts pass with RT protocol **8** (app protocol
-  **21**). Hosted Chromium timing/pickup/save/load/save passes with **zero xruns**.
+- Worklet and codec artifact contracts pass with RT protocol **9** (app protocol
+  **22**). Hosted Chromium timing/pickup/save/load/save passes with **zero xruns**.
   The isolated single-file HTML also passes with **zero xruns**, including fresh
-  owners, exact resave and restored playback. All **847 Wasm/Node executions across ten affected packages** pass.
+  owners, exact resave and restored playback. All **904 Wasm/Node executions across fifteen affected packages** pass.
 
 Browser diagnostics found serial initial-state packets could consume the load
 step's deadline under contention. Initial packets now share the negotiated bounded

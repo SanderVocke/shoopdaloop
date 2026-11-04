@@ -252,6 +252,14 @@ Goals and these criteria require explicit user approval to change.
   acceptance criteria are unchanged. Earlier report hashes remain checkpoint
   evidence; combined final validation and CI must be rerun before closure.
 
+- Reconciled local acceptance complete on `1e2faf74`, target `a192b0ce`: all
+  2,778 native tests and 904 Wasm/Node executions across fifteen packages pass.
+  Worklet clock/import/protocol contracts, hosted/isolated browser workflows with
+  zero xruns, full strict JACK acceptance, both transports and large-file probes,
+  debug/release loop-host replay, all five selected Miri cases and no-std/boundary
+  gates pass. The current source/hash inventory supersedes earlier checkpoints.
+  Final-head PR CI, review inspection and ledger closure remain.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -397,7 +405,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 8 — final end-to-end validation and evidence
 
-- [ ] Run formatting, warning-denying workspace build and the full reference plus
+- [x] Run formatting, warning-denying workspace build and the full reference plus
   production suite per `.agents/info/build.md` and `.agents/info/test.md`:
 
   ```sh
@@ -412,18 +420,18 @@ Each stage's verification must pass before its dependent stage is closed.
   python3 scripts/check_rt_engine_boundary.py
   ```
 
-- [ ] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
+- [x] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
   heap guards and selected Miri cases covering shared raw leases, window activation,
   active-capture edits, MIDI pickup cancellation and refusal/retirement. Update
   inventories and keep hashed reports, source SHAs and seeds.
-- [ ] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
+- [x] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
   codec artifact contracts using existing runners. Exercise all Q values and
   awkward host partitions, especially Q=1 exact reference cases and default Q=32.
-- [ ] Exercise packaged native client/host paths on sockets/shared memory and a
+- [x] Exercise packaged native client/host paths on sockets/shared memory and a
   native output fixture (JACK/dummy loopback as appropriate), including recording,
   live edits, scheduled pre-play, persistence and socket reattachment. Validate
   samples/MIDI and transport state, not just rendered labels or acknowledgments.
-- [ ] Extend/run actual hosted and isolated self-contained browser acceptance
+- [x] Extend/run actual hosted and isolated self-contained browser acceptance
   through the production AudioWorklet: edit audio/MIDI, play pickups, cancel/rearm,
   save/load/save and resume. Measure output/packet continuity and check errors,
   xruns and unchanged core/bus/preview workflows. Use existing browser runners and

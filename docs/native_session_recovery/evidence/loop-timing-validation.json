@@ -1,7 +1,7 @@
 {
   "status": "local validation passed; final PR checks required",
-  "production_source": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-  "merged_target": "2e19210bdbb5e32510322f8b8344715ce7cbefe5",
+  "production_source": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+  "merged_target": "a192b0ce77325bc8bb55b7b749e8d68b324f0a43",
   "reference_master": "92079fb6f00308be0f6b407b7e8c02229662e420",
   "quantum": {
     "supported": [
@@ -23,209 +23,244 @@
     ]
   },
   "native_tests": {
-    "passed": 2755,
+    "passed": 2778,
     "skipped": 7
   },
   "wasm_node": {
-    "passed": 847,
+    "passed": 904,
     "packages": [
       {
-        "package": "rt_runtime",
-        "tests": 228,
+        "package": "rt_profiling",
+        "tests": 11,
         "failures": 0,
-        "report_sha256": "6be0fcc96668a9406e257771b02c89b571098209dee201d3b0c82785ed14c30e",
-        "log_sha256": "d6eba2145116e3806b4d77a7f3f0b34782bb3ddbda5a972b5915ecfe89e98de1"
+        "report_sha256": "cc743bb30f945aac58beae2e565b95c33d78dd8bea43461ff4cd04b3ed200809",
+        "log_sha256": "37352c5f763cbe6ca2d8e489f4a2a72d9e14f958cf12ae8bf7a3e791c75752bc"
+      },
+      {
+        "package": "rt_runtime",
+        "tests": 231,
+        "failures": 0,
+        "report_sha256": "0d4e7074f711fa70106fbaf4af88b81e54e1ffa1c866267634436ab8765758d3",
+        "log_sha256": "dc4d185778128ddb1a2481103b9ac303ce1004f1128cd3709c748b63be629971"
       },
       {
         "package": "shoop_app",
         "tests": 37,
         "failures": 0,
-        "report_sha256": "2a6579a20ea17b3bcd2e052ea9057d91d39ed27e117999de923507d59cb40114",
-        "log_sha256": "db83f6da3f5ad142d6be398c5039ca8e372f877a40fc8267074ee98d189bd377"
+        "report_sha256": "4c79ddf1900f9bd5916edd70d41d6f8179a69bab40ca948045a8a997ea9c75a5",
+        "log_sha256": "55ca2f3cb4728e31aa90f2c79b1cf39f1507704046422304f0e3ad36a88f5d71"
       },
       {
         "package": "shoop_app_client",
         "tests": 11,
         "failures": 0,
-        "report_sha256": "ffe6be6ec947b8e436e5394117efc67dac2175365b49dde3b090abdf4dec0971",
-        "log_sha256": "6c5997edabad2dc79d35fb411c47b8a8bcbd84e9df7921da75ade0724b4f4358"
+        "report_sha256": "2d387abe7ee76a1375c976d8ddcb77007d4859c5c94fa65f9047258591741f9f",
+        "log_sha256": "5743c2e61c2696c84910a6ce4fad32657962724e8170ecbdf603c806618eccf1"
       },
       {
         "package": "shoop_app_protocol",
         "tests": 17,
         "failures": 0,
-        "report_sha256": "4e751075134d566c33c043261464ed3f35934ff6d21949a571859b2eb66b0dc9",
-        "log_sha256": "5ef87838f7763b00b19fcfd5672c647d6a564789d78c1bdd87f5aa6154058bc1"
+        "report_sha256": "b663cd642cdab4f0162f004196a1678ff62157e84e978ec445c8213d6007783e",
+        "log_sha256": "6723e22507cc39c9ab9558fefdd241767bed6516002aa99a41d65b111ceacd03"
       },
       {
         "package": "shoop_egui",
-        "tests": 233,
+        "tests": 235,
         "failures": 0,
-        "report_sha256": "6d5028ef96e11bdb36f2e70cad9f9b4b4bf2bfb8edc666e73eb872c59fad30bc",
-        "log_sha256": "f2d8d8c1c990cb9957382d218820a7b0283eabfe1fb74881f07175f14b79e573"
+        "report_sha256": "c586291fb86fedc6fa8fc10b7729500e1d60651919ae6ecbb39aba2ab8414c87",
+        "log_sha256": "ca7ac73e117b033a25fdfa6ec7f8801fa8eb46d98610df353be601127a2faff4"
       },
       {
         "package": "shoop_loops",
         "tests": 186,
         "failures": 0,
-        "report_sha256": "c08c13ba21524633dd2e43ea2a65dbbc956d79edd0a39caa6dc97cc1dfd3dc62",
-        "log_sha256": "6cce85b66cd81ecde2a163df976444fec14e34ad9cdd78470b8da90e01d32598"
+        "report_sha256": "248fd830f2566259967eaea2ecf4561c5c0115ac253d2a0e744da21168c063f6",
+        "log_sha256": "d14fabad8a31f30de2d726684d98195743ca2d13e1fd56974985d4397f35bfc6"
       },
       {
         "package": "shoop_persistence_codec",
         "tests": 17,
         "failures": 0,
-        "report_sha256": "1eecac83ad7dbefe74fbd1ae213271db9284fc1aa044ef936e8778d0f3a74ddc",
-        "log_sha256": "1c9ba818b460b1b92d77c3cde0aac43f62d1242076e71ff71a646138402a130b"
+        "report_sha256": "b8e6a51b00e7d4c40059a8977e310c4e9f3445bd3d83ffd0d72b99f0d9d8f1f6",
+        "log_sha256": "2d70835856d73531bd413828ec2597c84ed2ff0267c572693af1c5dd84b631b2"
       },
       {
         "package": "shoop_rt_backend",
-        "tests": 41,
+        "tests": 42,
         "failures": 0,
-        "report_sha256": "d58cd42ac932f8454773d2eab283154f5fdc0d4a837f0696c228226d2c2cd895",
-        "log_sha256": "292ec6a3d7724898920059d56c513feb8aa8d35eb7e7ba9807fbc153b42fc36d"
+        "report_sha256": "71e89edac7ea62a7fcdf8a0cb52760ad0b101866124bccd6b3cf55e67bb403a3",
+        "log_sha256": "57a27606a205c8e50c1330d1a688855f7cd981b207de17cbd63b2753d83e3a8c"
       },
       {
         "package": "shoop_rt_engine",
-        "tests": 71,
+        "tests": 72,
         "failures": 0,
-        "report_sha256": "2766ec99c581636cfd0499cb886014c0ce1f3d4cbb15e7c51bcc46d003798e8a",
-        "log_sha256": "bb1a87f94dd6349d4ad82aaa06afa2ad7fc147edece19aad2775d13be7f032ff"
+        "report_sha256": "09c2fd4544b0632064e998aa2267fccd292e24717e6d1d5c577aa949645289bd",
+        "log_sha256": "4994f965fa1fc18631c2a522b8f9ae19dd9f056e0b0ff69f093c0a639e6e5cf2"
+      },
+      {
+        "package": "shoop_rt_host_worklet",
+        "tests": 17,
+        "failures": 0,
+        "report_sha256": "8d2bb0f195938889b915d9ccb764376b237ddd02c0804fa70bb65a90d6850d6d",
+        "log_sha256": "329905f57901f14a86448842c7d0b226d2b338ffddcba8ae9fd28487e0e25d2c"
       },
       {
         "package": "shoop_rt_protocol",
+        "tests": 7,
+        "failures": 0,
+        "report_sha256": "8c89ee17231b107d060d6a6e7b8714f662da39313043fc1a79a4066afb398abb",
+        "log_sha256": "f70d3b160a20c70b93df674e86fd604a2c9940a1a8c902c3bc788fca46882bb0"
+      },
+      {
+        "package": "shoop_rt_transport",
         "tests": 6,
         "failures": 0,
-        "report_sha256": "9e6b0a60b738a6b57a1cb126945b6fb88fb87e25d26716e3a7151c17fff8a4c8",
-        "log_sha256": "4a71cc093f30319f90bd359a9c1e92f06240e7bc165dd65548e6fc8e9b8e71a5"
+        "report_sha256": "ea4594765ece50fb8dfc37487061de9bc64e6e7f87be827c24f761ae382346df",
+        "log_sha256": "33466c458e538f538acf1924879dc76c3b19690cae75b6ee60fa4d451daf4bcf"
+      },
+      {
+        "package": "shoop_rt_transport_message_port",
+        "tests": 7,
+        "failures": 0,
+        "report_sha256": "8eba05f5b3653b75b403628bf72bf26c4b5e32dd37e1135d8fc45f50394baec8",
+        "log_sha256": "51ab00489b2685603facdfe3c5de48b48f6fca52c395a408f622a7872c06d7ec"
+      },
+      {
+        "package": "shoop_transport",
+        "tests": 8,
+        "failures": 0,
+        "report_sha256": "3a1449b6b9d864e6c60fd5e26b50da7e919f76cf97db5176ac65c519d92efe78",
+        "log_sha256": "13dcbfab2dcc1422666f72dcae54704ac4d9e4153af3a54bba2eae7125e8bc46"
       }
     ]
   },
   "logs": [
     {
-      "report": "accepted-workspace-tests.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "e9149123e134542d99d7e7f6c72812cf32ac492fd32c9ff02044e1232549988c"
+      "report": "profiling-merge-native.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "3e67f9b834022d68963ecfa63eb827b839524f1d7c26b0e00b6c2dac7e301503"
     },
     {
-      "report": "accepted-python-tests.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "f0d8af84ae579801953f8204ca62f7d6503b88056adf9e0d3ee500f6d37132c7"
+      "report": "current-python-tests.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "bab924f2aea3fb608cb95f923bece78cf0349a89fd2d9396508cc7b880138d77"
     },
     {
-      "report": "accepted-jack.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "0fb00961dff34174b1409acc8702366970818414bb3f229f1821740a32931792"
+      "report": "current-jack.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "8ae155b4f229fe0c6d26c0d1efd1ff96b679a94798b2ee5f9a58035cf120bbd6"
     },
     {
-      "report": "accepted-native-socket.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "ea01e44de5a14c70f4973d9a758d72ca7726a5183c208d395fc3858ebaec7565"
+      "report": "current-native-socket.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "d670081832ba6ac502df425b43bf03f2962822435a3e893439493c089e3ff7c2"
     },
     {
-      "report": "accepted-native-shared.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "84f763d5a183816e377e4353d7a047daf9d3737cb9cbdc8f52c3c83d331aeef3"
+      "report": "current-native-shared.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "7a60e51a97c6c6dc216ca27ba7b2712be00900ad3c7a1ca679042c99bccf5ae4"
     },
     {
-      "report": "pipeline-browser-hosted.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "b81ba63cf45f6d5523e78d7b4e2f476d28ad8b571386c7f07b912a141f36a7a9"
+      "report": "current-browser-hosted.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "306bd82a0c9df12cd91386093fc1470fa40cb484c2aa681ee22eabffc2842f6d"
     },
     {
-      "report": "pipeline-browser-isolated.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "50ab7ee45ad6a47b68b77db792a6c3e3d804c661941515ef7a75bbd37e4e3220"
+      "report": "current-browser-isolated.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "aa879ac3a06146d70cb482c1881078642e015c4c61c441cb74ad57c1d5d8bfbd"
     },
     {
-      "report": "pipeline-worklet-contract.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "f41f40174c5adea89461b9ae2400bdc5dce1e954dc333475c630b5b07c8106d7"
+      "report": "current-worklet-contract.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "fb343408d7bce9251a4b95b5fe04d032324a6d818ca62f80cf595a92931e0423"
     },
     {
-      "report": "accepted-no-std.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
-      "sha256": "80b889a60a111be59ff345091dabf361f82938780969715e767c63f9f2e5a485"
+      "report": "current-no-std.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "sha256": "02ad6c1ce941621dfc9d05923dfbef12540a0996319542ae937a90b96017e229"
     },
     {
-      "report": "accepted-boundaries.log",
-      "source_commit": "846ae91fe9b0d27da9ecab9574d097fa6bf7c3e8",
+      "report": "current-boundaries.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "sha256": "877a58237f0bd453b29a03e9b2b8ccd453e6df1ef2d7e960d468a17d1439aedb"
     },
     {
-      "report": "merged-files-socket.log",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-files-socket.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "sha256": "77883c816a8db96f7abcc4a01d0349fcd4ebde1f2fba6a6287ac5fd48a990bcd"
     },
     {
-      "report": "merged-files-shared.log",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-files-shared.log",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "sha256": "194328abcdb7b6866a18adc8b0bde8f4081fa9390211bdd73f745954c305a319"
     }
   ],
   "miri": [
     {
-      "report": "merged-miri-1",
-      "sha256": "333d08f2171a9f16ee11ef8a6c7ce6a36b19262e5831f72da50175f3ede7c2ec",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-miri-1",
+      "sha256": "13f3cf9c97cc8d65c6f5cea114983d92662d3f9b2e1e8118bdcd49171fc13bc7",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "cases": [
         {
           "name": "timing_scenarios::cancelled_superseded_and_invalidated_pickups_release_notes_without_starting",
           "seed": 0,
           "passed": 1,
-          "log_sha256": "68b627266bdefdd25d1598167a2dc6950dc372962a879dc424ef4f47999bab2a"
+          "log_sha256": "7f2856170071d8e66e378c2e3f4f90b03bb2c84794faf2c21c5a9d26709779cb"
         }
       ]
     },
     {
-      "report": "merged-miri-2",
-      "sha256": "654059f2a7f611969bd49e2e1d2d5eb556fc5b05ffb2e84b9d8fa5455825df4d",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-miri-2",
+      "sha256": "9d1cae35dd6a8ee9c3fe0dc83fcaea891ad3e1b86b64f4c189e4a1f25c0653ef",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "cases": [
         {
           "name": "timing_scenarios::manual_timing_keeps_absolute_position_raw_media_and_independent_channel_windows",
           "seed": 0,
           "passed": 1,
-          "log_sha256": "5d8919637e95dd8a698e6e3c1d6e477dfa58be4b6033f4f66df3bd4cb57a1d4e"
+          "log_sha256": "49caad6cf921591d496c091735cbb235e0ff8a1d44a0cf40067156d0ce67c6d7"
         }
       ]
     },
     {
-      "report": "merged-miri-3",
-      "sha256": "2baa1071ac9ea29d9c35b15b3ae5613243a619225ca23b3b7cf205b89f2513be",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-miri-3",
+      "sha256": "939758f503861d017446af7738c6f016eac97af00d54b1aac1e468fedef82147",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "cases": [
         {
           "name": "timing_scenarios::preplay_is_audible_while_stopped_and_pickup_notes_continue_across_start",
           "seed": 0,
           "passed": 1,
-          "log_sha256": "ba9335e8169d6bbf82987015a0f775283c267af69fdc21853313416e8cee2b9f"
+          "log_sha256": "5c7e9cd29925bf091a0a781dd613b8c619a030007d50321bcc2175c2208ed215"
         }
       ]
     },
     {
-      "report": "merged-miri-4",
-      "sha256": "37452b6cefa42e7b5356e138ab333d0e6437a1ea7761b911723f69160b7a1a57",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-miri-4",
+      "sha256": "1638d4212b9f3834f6019edb6ac2d020a6fddfd814e6498c71a2c6ba3a700102",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "cases": [
         {
           "name": "timing_scenarios::channel_batch_refusal_and_armed_recording_length_refusal_do_not_partially_apply",
           "seed": 0,
           "passed": 1,
-          "log_sha256": "391747f0fa333c57c6268502e3946aca334a8a5cda9474f6d84cc1cf01b945f7"
+          "log_sha256": "6ddb2086d05a6c341b22e551b497ca1d427ce7cd90dcc62ecb7c30a5c02e75d7"
         }
       ]
     },
     {
-      "report": "merged-miri-shared",
-      "sha256": "70222b989b2626d51ec9b0c1c8f14d12f0692a7037334e150b4f575f7163091d",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
+      "report": "current-miri-shared",
+      "sha256": "bf8fa24349ffff335ea0ffa757f933c9353a0c618b993114fa6193a0508102e3",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
       "cases": [
         {
           "name": "resource::shared_midi::tests::compact_parameter_history_matches_shifted_checkpoints_and_reset_boundaries",
           "seed": 0,
           "passed": 1,
-          "log_sha256": "6a833d35ce0b3a4117dd1a24bfe36e588d91edc04942bd76b496e640aee4742c"
+          "log_sha256": "e70ef43ac449dc95fdd3ff1b976cf13105684cc253a8477556b7fdb1b0dce4ba"
         }
       ]
     }
@@ -233,45 +268,53 @@
   "loop_hosts": [
     {
       "profile": "debug",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
-      "report_sha256": "5795ca927c59a46b29b06710c41d01af19453802e1bd7adafeacc0dc0db3cce9",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "report_sha256": "0c6af55d2dddfc759f4eb62127933546c97f235651437a465264ac7fec8ce37a",
       "kind": "native-replay"
     },
     {
       "profile": "release",
-      "source_commit": "6c0ab030723ae28000424ca97967f7e2d8e48367",
-      "report_sha256": "2dd3d210faa45ec3bf988dddc59ba6ddb4d1dcc35abd5175c28903300cd4166d",
+      "source_commit": "1e2faf7434f9666216a6cbcb664fa2e4123a4316",
+      "report_sha256": "cdea53e7d0848133dde6f66d540832ad65c44a2807f8babe72ce497edb8bc361",
       "kind": "native-replay"
     }
   ],
   "browser_artifacts": [
     {
-      "path": "src/rust/shoopdaloop/dist/shoopdaloop-b02aed803d49e49f_bg.wasm",
-      "sha256": "a1ac3f1ef88a55c59609a75b4a735d1a5ed5d9d6387a628de7f78bf40da9712d",
-      "bytes": 74077863
+      "path": "src/rust/shoopdaloop/dist/shoopdaloop-c969379c97649d1a_bg.wasm",
+      "sha256": "aeedb3dead8e0094a7ee0d5953a94452753b5d453c79c7b32ab157a48366c399",
+      "bytes": 74249627
     },
     {
       "path": "src/rust/shoopdaloop/dist/generated/shoop_persistence_codec_bg.wasm",
-      "sha256": "7cca26a51b514609135f7e3e23f985594ea0908100e4d1c205d21259268eb62d",
-      "bytes": 9595628
+      "sha256": "8ce156c29cb38379861f8509ff7ee953dea40eda9e36ad676e28a87e5620d085",
+      "bytes": 9602281
     },
     {
       "path": "src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm",
-      "sha256": "264fc71ba2b705ecc6fd6586357ecbf3c2bd602db1c8315ef9060b4c6659984e",
-      "bytes": 3836595
+      "sha256": "9e15a100ff3a9a82621d136c9ce5fe2cc6b8edd3360fdbbec9520519657e605f",
+      "bytes": 3945300
     },
     {
       "path": "src/rust/shoopdaloop/dist/shoopdaloop.html",
-      "sha256": "e55c4dcad6621fdbc7c98a759e2cb2a3e955d217d0f2d3e59406f44a485841ea",
-      "bytes": 117747381
+      "sha256": "1fa0bf69287c5c1c286ae378aef35a3c7e2c210661bb9850aff72e05b930b07c",
+      "bytes": 118131833
     }
   ],
   "ci": {
     "pr": "https://github.com/SanderVocke/shoopdaloop/pull/943",
     "checks": "https://github.com/SanderVocke/shoopdaloop/pull/943/checks",
-    "implementation_build_run": 41926789253,
-    "implementation_codeql_run": 41926789474,
-    "implementation_docs_run": 41926789692
+    "implementation_build_run": 41933756106,
+    "implementation_codeql_run": 41933755850,
+    "implementation_docs_run": 41933756105
   },
-  "provenance": "Reports identify their actual code checkpoint. Later adapter-only upload refinements do not change loop-host/Miri package sources. Browser Rust inputs match the production source; remaining worktree changes were acceptance documentation. Report hashes preserve the local evidence; reproducible platform artifacts are published by the PR workflows."
+  "protocols": {
+    "app": 22,
+    "rt": 9,
+    "worklet_imports": [
+      "shoop_profiling.now"
+    ]
+  },
+  "immutable_plan_sha256": "543bcd78f2f47f75273b010b4834879d7039f022c42d42aaa1af79a303e27ea9",
+  "provenance": "Reports identify the actual current code checkpoint and reconciled target. Remaining worktree changes were acceptance documentation. Earlier checkpoint reports remain in the local work directory. Report hashes preserve local evidence; reproducible platform artifacts are published by the PR workflows."
 }
