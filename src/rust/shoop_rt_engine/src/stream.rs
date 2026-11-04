@@ -131,6 +131,10 @@ impl Processor<LoopPlanner, EngineOp> for BulkReader {
 
 impl BulkReader {
     pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+        #[cfg(test)]
+        if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
+            return Err(Error::InvalidState);
+        }
         let Some(mut cursor) = self.cursor else {
             return Ok(());
         };

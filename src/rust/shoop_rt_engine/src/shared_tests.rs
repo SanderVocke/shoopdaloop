@@ -75,6 +75,30 @@ fn packets(frame: u64, q: usize) -> Vec<Vec<u8>> {
     result
 }
 impl Fixture {
+    fn audio_candidate(&mut self, take: SharedTake) -> shoop_loops::runtime::CandidateId {
+        let Reply::Candidate { id, .. } = self.op(Operation::CandidateBegin {
+            target: target(0),
+            take,
+        }) else {
+            panic!("candidate")
+        };
+        let patch = self.snapshot(take.audio.unwrap());
+        assert!(matches!(
+            self.op(Operation::CandidateAudio {
+                id,
+                position: 0,
+                input: patch.id,
+                offset: 0,
+                frames: self.q,
+            }),
+            Reply::Candidate {
+                status: CandidateStatus::Ready,
+                ..
+            }
+        ));
+        self.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+        id
+    }
     fn new(q: usize, partition: usize) -> Self {
         let d = EngineDescription {
             quantum: q,
@@ -423,6 +447,172 @@ impl Fixture {
         };
         (a, b, at - 5 * self.q as u64)
     }
+}
+fn failed(error: Error) -> Reply {
+    Reply::Failed(shoop_loops::runtime::Failure::Runtime(error))
+}
+
+#[shoop_test]
+fn candidate_fences_preserve_controls_and_refuse_superseded_content_and_writers() {
+    let mut h = Fixture::new(32, 7);
+    let (take, sibling, _) = h.grabs();
+    h.adopt(0, take);
+    let old = h.export(0);
+    let empty = match h.op(Operation::CandidateBegin {
+        target: target(0),
+        take,
+    }) {
+        Reply::Candidate { id, .. } => id,
+        other => panic!("{other:?}"),
+    };
+    let patch = h.snapshot(take.audio.unwrap());
+    h.op(Operation::CandidateAudio {
+        id: empty,
+        position: 0,
+        input: patch.id,
+        offset: 0,
+        frames: 0,
+    });
+    h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id: empty }),
+        failed(Error::InvalidState)
+    );
+    h.op(Operation::CandidateCancel { id: empty });
+
+    let id = h.audio_candidate(take);
+    h.op(Operation::Gain {
+        target: target(0),
+        value: 0.25,
+    });
+    let Reply::CandidatePublished { take: current, .. } = h.op(Operation::CandidatePublish { id })
+    else {
+        panic!("control changes must survive publication")
+    };
+    let Reply::State(cut) = h.op(Operation::State { target: target(0) }) else {
+        panic!("state")
+    };
+    assert_eq!(cut.gain, 0.25);
+
+    let id = h.audio_candidate(current);
+    h.adopt(0, sibling);
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id }),
+        failed(Error::StaleRevision)
+    );
+    h.op(Operation::CandidateCancel { id });
+
+    let id = h.audio_candidate(sibling);
+    let audio = sibling.audio.unwrap();
+    let resource::Reply::Info(info) = h.resource(ResourceRequest::Info { resource: audio }) else {
+        panic!("info")
+    };
+    let resource::Reply::Upload(upload) = h.resource(ResourceRequest::BeginUpload {
+        resource: audio,
+        expected_revision: info.revision,
+        description: info.description,
+    }) else {
+        panic!("upload")
+    };
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id }),
+        failed(Error::Busy)
+    );
+    let data: Vec<u8> = (0..info.description.bytes / 4)
+        .flat_map(|_| 0.5f32.to_le_bytes())
+        .collect();
+    for (page, bytes) in data.chunks(256).enumerate() {
+        h.resource(ResourceRequest::Write {
+            upload,
+            offset: page * 256,
+            bytes: bytes.into(),
+        });
+    }
+    h.resource(ResourceRequest::Finish { upload });
+    h.resource(ResourceRequest::Commit { upload });
+    assert_eq!(
+        h.op(Operation::CandidatePublish { id }),
+        failed(Error::StaleRevision)
+    );
+    h.op(Operation::CandidateCancel { id });
+    let live = h.export(0);
+    let mut stopped = h.engine.render.into_stopped();
+    assert_ne!(
+        bytes(&mut stopped.resources, old.view.audio.unwrap().snapshot),
+        data
+    );
+    assert_ne!(
+        bytes(&mut stopped.resources, live.view.audio.unwrap().snapshot),
+        data
+    );
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+}
+
+#[shoop_test]
+fn shutdown_reclaims_published_owners_even_when_the_terminal_result_is_unread() {
+    let mut h = Fixture::new(32, 32);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let id = h.audio_candidate(take);
+    let at = h.aligned_future(128);
+    let seq = h.send(at, Operation::CandidatePublish { id });
+    while h.now() < at + 32 {
+        h.render(32, false);
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
+    let mut found = false;
+    while let Some(executed) = h.engine.endpoint.control.try_execution() {
+        if executed.sequence == seq {
+            let Some(Reply::CandidatePublished { take, .. }) = executed.operation_result else {
+                panic!("accepted result remains readable")
+            };
+            for resource in [take.audio, take.midi].into_iter().flatten() {
+                assert_eq!(stopped.resources.info(resource), Err(Error::InvalidId));
+            }
+            found = true;
+        }
+    }
+    assert!(found);
+}
+
+#[shoop_test]
+fn late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick() {
+    let mut h = Fixture::new(32, 32);
+    let (take, _, _) = h.grabs();
+    let retained = h.snapshot(take.audio.unwrap());
+    let start = h.now();
+    h.engine
+        .render
+        .cells
+        .fail_reader_tick
+        .store(true, core::sync::atomic::Ordering::Relaxed);
+    h.render(32, true);
+    assert_eq!(h.engine.render.phase(), Phase::Faulted(Error::InvalidState));
+    let mut stopped = h.engine.render.into_stopped();
+    let status = stopped
+        .planner
+        .history_status(0, &stopped.resources.render_io())
+        .unwrap();
+    assert_eq!(status.end, Frame(start));
+    let (audio, _) = stopped.planner.shared_stores(0).unwrap();
+    assert_eq!(
+        stopped
+            .resources
+            .audio_coverage(audio.unwrap())
+            .unwrap()
+            .end,
+        Frame(start + 32)
+    );
+    assert_eq!(
+        bytes(&mut stopped.resources, retained).len(),
+        retained.description.bytes
+    );
+    stopped.resources.release_snapshot(retained.id).unwrap();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
 }
 fn bytes(resources: &mut ResourceStore, snapshot: Snapshot) -> Vec<u8> {
     let mut output = vec![0; snapshot.description.bytes];

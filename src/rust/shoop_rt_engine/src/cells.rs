@@ -75,6 +75,8 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 }
 
 pub(crate) struct Cells {
+    #[cfg(test)]
+    pub fail_reader_tick: AtomicBool,
     pub next_frame: AtomicU64,
     pub endpoint_alive: AtomicBool,
     /// Rendering faulted; the engine no longer executes control work.
@@ -100,6 +102,8 @@ impl Cells {
         driver: DriverStatus,
     ) -> Arc<Self> {
         let cells = Self {
+            #[cfg(test)]
+            fail_reader_tick: AtomicBool::new(false),
             next_frame: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),

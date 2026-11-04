@@ -32,6 +32,8 @@ pub struct HistoryStatus {
 }
 /// Each resource is an independent caller-owned editable owner. Copying this
 /// descriptor acquires no ownership; remove each resource exactly once.
+/// Permanent planner shutdown reclaims any of these resources still alive,
+/// including owners whose result was never read by the controller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SharedTake {
     pub frames: u64,
@@ -1098,6 +1100,13 @@ impl LoopPlanner {
             .as_ref()
             .ok_or(Error::InvalidState)?
             .stores(source)
+    }
+    /// Inspect only committed coverage, including after a terminal render fault.
+    pub fn history_status(&self, source: u32, io: &ResourceIo<'_>) -> Result<HistoryStatus, Error> {
+        self.shared
+            .as_ref()
+            .ok_or(Error::InvalidState)?
+            .status(source, self.graph_epoch, io)
     }
     /// Observe the prepared processor's capture-feed outputs once per whole tick.
     pub fn observe_history(

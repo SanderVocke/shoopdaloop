@@ -17,7 +17,7 @@ fn full_loop_adopt_select_and_export_use_immutable_shared_snapshots() {
     ] {
         let mut h = prepared_shared(backing);
         let sources = source_pair(&mut h);
-        let Reply::Adopted { media } = call(
+        let Reply::Adopted { media, .. } = call(
             &mut h,
             Operation::Adopt {
                 target: id(1),
