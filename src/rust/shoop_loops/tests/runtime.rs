@@ -391,10 +391,14 @@ fn transition(control: &mut LoopControl<Fx>, at: u64, transition: Transition) ->
 }
 fn drain(control: &mut LoopControl<Fx>, replies: &mut Vec<(Sequence, Reply)>) {
     while let Some(completion) = control.try_completion() {
-        assert!(matches!(
-            completion.outcome,
-            RuntimeOutcome::Scheduled { late_by: 0, .. }
-        ));
+        assert!(
+            matches!(
+                completion.outcome,
+                RuntimeOutcome::Scheduled { late_by: 0, .. }
+            ),
+            "{:?}",
+            completion.outcome
+        );
     }
     while let Some(execution) = control.try_execution() {
         assert_eq!(execution.result, Ok(()));

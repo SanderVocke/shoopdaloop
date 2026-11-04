@@ -25,9 +25,14 @@ execution path only after parity and end-to-end validation.
 Quantum is immutable after preparation. Changing it requires stop/reprepare.
 Host capacity, core quantum and plugin block size are separate settings. Alignment
 rounds future requests upward, never earlier; overdue requests use the next eligible
-tick. Unaligned stored durations are refused until an explicit conversion is supplied;
-original media is retained. Tempo conversion must derive related lengths from a
+tick. Unaligned stored durations enter through explicit offline conversion;
+source media is retained until conversion succeeds. Tempo conversion derives related lengths from a
 shared tick clock and must not silently drift through independent rounding.
+
+Explicit sample-rate/quantum conversion, dependency-aware loop retiming and atomic
+live import are specified in [the media conversion plan](PLAN_MEDIA_FORMAT_CONVERSION.md).
+Its implementation and local validation precede all remaining CI work and human
+acceptance.
 
 The outer callback owns ingress and maintenance budgets. Each tick settles changes,
 executes the compiled graph, then advances capture/state. No partial graph tick is
@@ -101,6 +106,8 @@ preflight remains necessary for coherent capacity failures and request families.
   processing, preserving endpoint transactions, exports, telemetry and recovery.
 - [x] Carry quantum through native/process/worklet setup, protocol,
   application settings and persisted configuration; report Q and stream latency.
+- [x] Implement explicit session/media format conversion and atomic affected-family
+  imports using [the conversion plan](PLAN_MEDIA_FORMAT_CONVERSION.md).
 - [ ] Run parity scenarios against the separate reference checkout, including sync,
   program families, slot generations, media replacement, cancellation, shutdown,
   persistence and reconnect/recovery. Keep component tests as additional evidence.

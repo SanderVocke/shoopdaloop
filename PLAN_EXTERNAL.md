@@ -317,3 +317,11 @@ builds or implementation tests.
   the optional measured field and native `FAILED` spelling; a regression test
   preserves successful, failed and ignored doctest accounting. All 14 report
   policy tests pass, and the retained first-run logs reparse without errors.
+
+- Base synchronization: while validation ran, the target advanced from 3ed8ff11
+  to cb79706e (explicit media conversion and atomic family imports). Merged those
+  changes, preserving both tracing inventories; the combined warning-denying
+  workspace build and all source/attribute inventory checks pass. The older
+  snapshot repeat was interrupted after additional existing legacy-driver/LAN
+  fixture failures; its partial results are retained and are not a passing gate.
+  Final regression uses the merged source and a fresh isolated build container.

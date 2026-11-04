@@ -46,6 +46,7 @@ pub(crate) enum Step {
     Configure,
     ContentAdopt,
     ContentSelect,
+    FamilySelect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +66,7 @@ enum Phase {
     Prepared,
     ContentSelect,
     ContentFinish,
+    FamilyFinish,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,6 +81,10 @@ enum Kind {
         frames: u64,
         audio: Option<shoop_loops::runtime::NodePairSourceId>,
         midi: Option<shoop_loops::runtime::NodePairSourceId>,
+        family: Option<usize>,
+    },
+    Family {
+        commit: bool,
     },
 }
 
@@ -111,6 +117,7 @@ pub(crate) struct Job {
     committed: bool,
     cancelled: bool,
     content_media: Option<shoop_loops::media::MediaId>,
+    content_revision: Option<rt_runtime::Revision>,
 }
 
 impl Job {
@@ -137,6 +144,7 @@ impl Job {
             committed: false,
             cancelled: false,
             content_media: None,
+            content_revision: None,
         }
     }
     pub(crate) fn batch(len: usize) -> Self {
@@ -186,7 +194,26 @@ impl Job {
             frames,
             audio,
             midi,
+            family: None,
         })
+    }
+    pub(crate) fn family_append(
+        slot: usize,
+        id: LoopSlotId,
+        frames: u64,
+        audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        midi: Option<shoop_loops::runtime::NodePairSourceId>,
+    ) -> Self {
+        Self::new(Kind::Content {
+            id,
+            frames,
+            audio,
+            midi,
+            family: Some(slot),
+        })
+    }
+    pub(crate) fn family(commit: bool) -> Self {
+        Self::new(Kind::Family { commit })
     }
     fn fail(&mut self, refusal: Refusal) {
         self.failure.get_or_insert(refusal);
@@ -301,6 +328,13 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn advance_job(&mut self) {
+        if self.job.is_none()
+            && self.family.id.is_some()
+            && self.family.cancel_requested
+            && !self.family.committing
+        {
+            self.job = Some(Job::family(false));
+        }
         for _ in 0..16 {
             let Some(mut job) = self.job.take() else {
                 return;
@@ -320,6 +354,12 @@ impl ControlEndpoint {
                     self.replacement.clear();
                 }
                 self.clear_touched();
+                if self.family.id.is_some()
+                    && self.family.cancel_requested
+                    && !self.family.committing
+                {
+                    self.job = Some(Job::family(false));
+                }
             }
             if !progressed {
                 return;
@@ -413,6 +453,9 @@ impl ControlEndpoint {
 
     /// Run the next phase of `job`; returns whether it can continue immediately.
     fn step_job(&mut self, job: &mut Job) -> bool {
+        if let Kind::Family { commit } = job.kind {
+            return self.step_family(job, commit);
+        }
         if job.cancelled && !matches!(job.phase, Phase::Cleanup | Phase::Finishing) {
             job.phase = Phase::Cleanup;
             return true;
@@ -438,6 +481,23 @@ impl ControlEndpoint {
         }
         match job.phase {
             Phase::ContentSelect => {
+                if let Kind::Content {
+                    family: Some(slot), ..
+                } = job.kind
+                {
+                    self.family.entries[slot]
+                        .as_mut()
+                        .expect("staged family entry")
+                        .media = job.content_media.take();
+                    self.answer_job(
+                        job,
+                        Outcome::ContentPrepared {
+                            revision: job.content_revision.expect("adopted revision").0,
+                        },
+                    );
+                    job.phase = Phase::Finishing;
+                    return true;
+                }
                 if !self.room(1) {
                     return false;
                 }
@@ -466,11 +526,17 @@ impl ControlEndpoint {
                 if let Some(media) = job.content_media.take() {
                     self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
                 }
-                self.answer_job(job, Outcome::Done);
+                self.answer_job(
+                    job,
+                    Outcome::ContentApplied {
+                        revision: job.content_revision.expect("adopted revision").0,
+                    },
+                );
                 job.phase = Phase::Finishing;
                 true
             }
             Phase::Start => self.start_job(job),
+            Phase::FamilyFinish => unreachable!("family job handled separately"),
             Phase::Append => self.append(job),
             Phase::Validate => {
                 if job.topology_needed && !job.ready {
@@ -542,6 +608,7 @@ impl ControlEndpoint {
                 frames,
                 audio,
                 midi,
+                ..
             } => {
                 if !self.room(1) {
                     return false;
@@ -599,7 +666,58 @@ impl ControlEndpoint {
                 true
             }
             Kind::Batch(_) | Kind::Replacement => self.prepare_batch(job),
+            Kind::Family { .. } => unreachable!("family job handled separately"),
         }
+    }
+
+    fn step_family(&mut self, job: &mut Job, commit: bool) -> bool {
+        if job.phase == Phase::Start {
+            if commit {
+                if !self.room(1) || self.family.payload.is_none() {
+                    return false;
+                }
+                let payload = match self.family_payload() {
+                    Ok(payload) => payload,
+                    Err(refusal) => {
+                        job.fail(refusal);
+                        job.phase = Phase::FamilyFinish;
+                        return true;
+                    }
+                };
+                let operation = Operation::SelectFamily {
+                    root: loop_id(self.family.root.expect("staged family root")),
+                    topology_epoch: self.family.epoch,
+                };
+                let command = self
+                    .loops
+                    .command_with_payload(Frame(0), operation, payload);
+                self.submit_job(job, command, Step::FamilySelect, true);
+            }
+            job.phase = Phase::FamilyFinish;
+            return true;
+        }
+        if job.phase != Phase::FamilyFinish {
+            job.fail(Refusal::Internal);
+        }
+        for slot in 0..self.family.entries.len() {
+            if self.family.entries[slot].is_some_and(|entry| entry.media.is_some()) {
+                if !self.room(1) {
+                    return false;
+                }
+                let media = self.family.entries[slot]
+                    .as_mut()
+                    .unwrap()
+                    .media
+                    .take()
+                    .unwrap();
+                self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
+                return true;
+            }
+        }
+        self.answer_job(job, job.failure.map_or(Outcome::Done, Outcome::Refused));
+        self.family.clear();
+        job.phase = Phase::Finishing;
+        true
     }
 
     /// Start the independent preparations of the staged model together.
@@ -1206,6 +1324,9 @@ impl ControlEndpoint {
                     (Step::Prelude | Step::Cleanup | Step::Retire | Step::ClearStop, _) => None,
                     (_, Outcome::Refused(refusal)) => Some(refusal),
                     (_, Outcome::Done) => None,
+                    (_, Outcome::ContentApplied { .. } | Outcome::ContentPrepared { .. }) => {
+                        Some(Refusal::Internal)
+                    }
                 };
                 (refusal, execution.operation_result, true, None)
             }
@@ -1230,8 +1351,9 @@ impl ControlEndpoint {
                 return;
             }
             match (step, reply) {
-                (Step::ContentAdopt, Some(Reply::Adopted { media })) => {
-                    job.content_media = Some(media)
+                (Step::ContentAdopt, Some(Reply::Adopted { media, revision })) => {
+                    job.content_media = Some(media);
+                    job.content_revision = Some(revision);
                 }
                 (Step::NodePairBegin, Some(Reply::NodePairStatus { id, .. })) => {
                     job.node_pairs = Some(id)

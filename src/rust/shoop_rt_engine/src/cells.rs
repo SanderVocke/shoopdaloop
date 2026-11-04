@@ -52,6 +52,7 @@ pub(crate) struct LoopCells {
     pub generation: AtomicU32,
     pub mode: AtomicU32,
     pub length: AtomicU64,
+    pub content_revision: AtomicU64,
     pub position: AtomicU64,
     /// Clock edges this loop emitted, counted at settled boundaries.
     pub pulses: AtomicU64,
@@ -207,6 +208,9 @@ impl BoundaryObserver for Observer {
                 state.content_length
             };
             cells.length.store(length, Ordering::Relaxed);
+            cells
+                .content_revision
+                .store(state.content_revision.0, Ordering::Relaxed);
             cells.position.store(state.position, Ordering::Relaxed);
         }
     }

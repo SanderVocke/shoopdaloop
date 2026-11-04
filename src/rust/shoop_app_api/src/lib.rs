@@ -919,6 +919,19 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConversionTarget {
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+impl ConversionTarget {
+    pub fn is_valid(self) -> bool {
+        self.sample_rate > 0 && matches!(self.quantum_frames, 1 | 16 | 32 | 64 | 128)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
@@ -927,6 +940,7 @@ pub struct StatusState {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub audio_driver: AudioDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -941,6 +955,14 @@ pub struct StatusState {
 }
 
 impl StatusState {
+    pub fn conversion_target(&self) -> Option<ConversionTarget> {
+        let target = ConversionTarget {
+            sample_rate: self.sample_rate,
+            quantum_frames: self.quantum_frames,
+        };
+        target.is_valid().then_some(target)
+    }
+
     pub fn latency_ms(&self) -> Option<f32> {
         (self.sample_rate > 0).then(|| self.buffer_size as f32 * 1000.0 / self.sample_rate as f32)
     }
@@ -1512,7 +1534,7 @@ pub enum IoTaskKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IoTaskStatus {
     Running,
-    AwaitingSampleRateConfirmation,
+    AwaitingFormatConversionConfirmation,
     AwaitingChannelMapping,
     AwaitingChannelSelection,
     Completed,
@@ -1528,7 +1550,7 @@ pub enum FileOutputOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SampleRateWarning {
+pub struct FormatConversionWarning {
     pub source_rate: u32,
     pub target_rate: u32,
     pub affected_media: String,
@@ -1554,7 +1576,7 @@ pub struct IoTaskState {
     pub status: IoTaskStatus,
     pub progress: f32,
     pub message: String,
-    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub format_conversion_warning: Option<FormatConversionWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
@@ -2620,7 +2642,7 @@ pub enum AppIntent {
         task_id: TaskId,
         outcome: FileOutputOutcome,
     },
-    ConfirmSampleRateConversion {
+    ConfirmFormatConversion {
         task_id: TaskId,
         accept: bool,
     },
@@ -2877,7 +2899,7 @@ impl AppIntent {
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
-            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmFormatConversion { .. } => "io.confirm_format_conversion",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
             Self::CompleteIoInput { .. } => "io.input_complete",
             Self::RequestLoadSessionSource { .. } => "session.load_source",

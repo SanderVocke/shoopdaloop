@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 13;
+pub const VERSION: u16 = 14;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -225,6 +225,7 @@ pub struct OperationResult {
 pub struct SessionSnapshot {
     pub bus_limits: BusLimits,
     pub persistence_epoch: u64,
+    pub sync_sources: Vec<(LoopId, LoopId)>,
     pub revision: Revision,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,

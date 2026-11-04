@@ -33,6 +33,7 @@ mod cells;
 mod content;
 mod description;
 mod endpoint;
+mod family;
 pub mod fixed;
 mod graph;
 mod jobs;
@@ -177,7 +178,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out;
     let page_bytes = description.page_bytes;
-    let payload = RECORDS_PER_APPEND * RECORD_BYTES;
+    let payload = RECORDS_PER_APPEND.max(loops) * RECORD_BYTES;
     Config {
         sample_rate: description.sample_rate,
         max_frames: graph_frames,
@@ -522,6 +523,7 @@ pub fn prepare(
         bulk: bulk::Bulk::new(bulk_credits, channels),
         uploads: content::Uploads::new(2 * loops + 2, usize::from(limits.content_chunk_bytes)),
         replacement: replacement::Replacement::new(strips, loops, buses),
+        family: family::Stage::new(loops),
         telemetry_frame: None,
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,

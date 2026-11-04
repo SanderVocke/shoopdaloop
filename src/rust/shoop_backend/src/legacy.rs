@@ -6494,6 +6494,17 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    sync_source: self
+                        .session
+                        .primitive_sync_sources()
+                        .get(*engine_loop)
+                        .copied()
+                        .flatten()
+                        .and_then(|source| {
+                            self.loops
+                                .iter()
+                                .find_map(|(id, index)| (*index == source).then_some(*id))
+                        }),
                     content_revision: 0,
                     mode,
                     length,
@@ -6603,6 +6614,7 @@ impl Backend for EngineBackend {
                 } else {
                     BackendDriverState::Dummy
                 },
+                quantum_frames: 1,
                 callback_count: self.callback_count,
                 processed_frames: self.processed_frames,
                 input_peak: self.input_peak,
@@ -7393,6 +7405,7 @@ impl Default for FakeBackend {
             status: BackendStatus {
                 buffer_size: 256,
                 sample_rate: 48_000,
+                quantum_frames: 1,
                 ..Default::default()
             },
             active_audio_driver: ResolvedAudioDriverConfig {
@@ -8946,6 +8959,10 @@ impl Backend for FakeBackend {
             self.require_loop(source)?;
         }
         self.sync_sources.insert(loop_id, source);
+        self.loops
+            .get_mut(&loop_id)
+            .expect("checked loop")
+            .sync_source = source;
         self.operations
             .push(FakeOperation::SetSyncSource(loop_id, source));
         Ok(())
@@ -10407,7 +10424,15 @@ impl Backend for FakeBackend {
                 .iter()
                 .map(|(id, track)| (*id, track.state.clone()))
                 .collect(),
-            loops: self.loops.clone(),
+            loops: self
+                .loops
+                .iter()
+                .map(|(id, state)| {
+                    let mut state = state.clone();
+                    state.sync_source = self.sync_sources.get(id).copied().flatten();
+                    (*id, state)
+                })
+                .collect(),
             composites: self.composites.clone(),
             removed_composites: Vec::new(),
             connections: self.connection_snapshot(),

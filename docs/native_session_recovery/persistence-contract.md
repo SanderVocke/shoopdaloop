@@ -9,7 +9,7 @@ P01/P02/P11 remain open for their deferred dependencies.
 
 | Document/live data | Core behavior | Ownership and refusal |
 | --- | --- | --- |
-| Sample rate | Save host rate; confirm conversion and resample audio, MIDI and timing before loading at another rate | Client codecs; recheck host rate before commit; never switch device implicitly |
+| Sample rate and processing quantum | Confirm resampling/retiming once, then convert audio, MIDI and timing together into the prepared format | Client codecs; recheck rate/Q and content before commit; never switch the device implicitly |
 | Direct audio/MIDI/trigger tracks and primitive loops | Preserve names, order, topology, media, supported controls and sync relationships | Service maps document IDs to fresh live IDs; RT owns playback/resources |
 | Loop/channel length, gain, offsets, capture alignment and preplay | Preserve supported stored values and exact media timing | Validate every value; reject an unsupported non-default value before mutation; this does not enable P09/P10/P12 editing |
 | Selection, target and global policies | Preserve document values supported by the core | Service-owned; reject unsupported recording/default-playback policies |
@@ -100,7 +100,8 @@ normal service work or silently restart against newer content.
   distinguishes a download-link click from dialog cancellation/close and releases
   the temporary Blob URL after the handoff event turn. Failed/cancelled
   native output preserves any previously saved file and allows retry.
-- Load/import: read/decode, validate, ask any sample-rate/channel questions, recheck
+- Load/import: read/decode, resolve channel mapping, plan exact timing, ask for
+  conversion consent if needed, recheck
   the target, stage, commit and await the confirmed result. Decline/cancel before
   commit leaves playback/content intact. New Session uses safe replacement too.
 - Audio import/export keeps reference channel selection/role order and mapping;
@@ -112,6 +113,28 @@ normal service work or silently restart against newer content.
   persistence, duplication and generated click insertion remain named follow-ups.
 
 ## Engine integration boundary
+
+Fixed-quantum session loads use one rational dependency plan and one anchored
+audio/MIDI conversion from the original media. Lengths round to the nearest
+positive quantum, with ties upward and empty loops remaining empty. Source-first
+propagation preserves exact cycle multiples. MIDI timestamps retain individual
+frame precision. Signed offsets, capture alignment and stored prefix/suffix history
+follow the same origin map; hardware calibration scales only with sample rate.
+Differing recorded quantum provenance alone does not require conversion.
+
+A live import first defines its intended length using the normal keep/update
+choice. Only its automatic grid correction propagates to retained channels and
+sync descendants. The client captures changed loops individually, preserving
+unrelated recording. The family manifest carries rate/Q, loop identities, links,
+old lengths and revisions; the service and adapter check these again before the
+engine's single tick publication. Audio, MIDI, periods and mapped dependent
+playheads change together. Current gains, names and routes are preserved.
+Affected active/prepared captures or stale preparation refuse the entire cut.
+Cancelled preparation releases staged owners; an admitted commit remains engine
+owned across controller loss. Application protocol version 14 carries resolved
+sync links and target format, and RT protocol version 6 carries bounded family
+staging and authoritative content revisions. Typed local and encoded transports
+use the same operations.
 
 The adapter stages a private mirror instead of removing live tracks. It uses
 prepared loop node-pair sources, immutable exports and configuration transactions,

@@ -1,4 +1,8 @@
 path,context,classification,coverage_or_rationale
+src/rust/shoop_loops/src/resolver/retime.rs,portable_loop_library,excluded,Fixed-storage atomic timing publication exposes frame-tagged events and typed failures without callback tracing.
+src/rust/shoop_loops/src/media/playback.rs,portable_loop_library,excluded,Prepared playback ownership preflight has no tracing dependency and retains explicit resource ownership accounting.
+src/rust/shoop_loops/src/runtime/family.rs,portable_loop_library,excluded,Prepared family publication exposes typed preflight and execution outcomes without callback tracing.
+src/rust/shoop_rt_engine/src/family.rs,realtime_engine,excluded,Bounded family staging may execute on an audio thread; host and adapter trace request and outcome boundaries.
 src/rust/rt_runtime/src/buffer.rs,generic_realtime_library,excluded,Independent bounded runtime; no application tracing dependency. Hosts can observe Copy diagnostics outside rendering.
 src/rust/rt_runtime/src/config.rs,generic_realtime_library,excluded,Independent capacity validation; no application tracing dependency.
 src/rust/rt_runtime/src/error.rs,generic_realtime_library,excluded,Compact error definitions; no execution boundary to instrument.
@@ -199,6 +203,9 @@ src/rust/shoop_scripting/src/lib.rs,non_realtime_support,instrumented_indirect,"
 src/rust/shoop_scripting/src/midi.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/archive.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/click_track.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_session/src/conversion.rs,non_realtime_support,instrumented_indirect,Exact conversion planning runs inside traced client codec and persistence orchestration.
+src/rust/shoop_session/src/conversion/media.rs,non_realtime_support,instrumented_indirect,Bounded off-thread media conversion runs inside traced client codec orchestration.
+src/rust/shoop_session/src/conversion/session.rs,non_realtime_support,instrumented_indirect,Session conversion planning and transformation run inside traced persistence orchestration.
 src/rust/shoop_session/src/document.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_session/src/media.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -372,3 +379,7 @@ src/rust/rt_external/src/lib.rs,external_block_processing,excluded,Portable boun
 src/rust/rt_external/src/timing.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
 src/rust/rt_external/src/inline.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
 src/rust/rt_external/src/processor.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
+src/rust/shoop_app/src/service/persistence/family.rs,app_session,instrumented_indirect,Runs inside traced service receive and cooperative tick boundaries with scoped persistence authority and operation ownership.
+src/rust/shoop_rt_backend/src/family.rs,application_ui_and_control,instrumented_indirect,Prepared content and read progression run within traced adapter requests/outcomes and application polling; no per-sample tracing.
+src/rust/shoop_persistence_codec/src/codec/family.rs,client_codec_worker,excluded,Pure portable codecs and bounded worker ABI; import-free Wasm worker has no tracing host dependency. Frontend persistence task/codec boundaries track orchestration.
+src/rust/shoopdaloop/src/persistence_io/family.rs,application_ui_and_control,instrumented_indirect,"Client input leases and worker/transfer progress run within traced frontend file intents, persistence pumping and codec task boundaries."

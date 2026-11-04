@@ -130,6 +130,10 @@ fn standard_midi_export_places_all_initial_state_before_frame_zero_events() {
 
 #[shoop_test]
 fn conversion_budget_keeps_midi_bytes_and_rounds_each_audio_channel() {
+    let target = |sample_rate| ConversionTarget {
+        sample_rate,
+        quantum_frames: 1,
+    };
     let midi = ExactMidi {
         sample_rate: 24000,
         length_frames: 4,
@@ -142,11 +146,16 @@ fn conversion_budget_keeps_midi_bytes_and_rounds_each_audio_channel() {
     };
     let decoded = Decoded::Midi(midi.clone());
     let bytes = decoded.bytes().unwrap();
-    decoded.check_conversion_budget(48000, bytes).unwrap();
-    assert!(decoded.check_conversion_budget(48000, bytes - 1).is_err());
-    let Value::Decoded(Decoded::Midi(converted)) = (Work::Resample {
+    decoded
+        .check_conversion_budget(target(48000), false, bytes)
+        .unwrap();
+    assert!(decoded
+        .check_conversion_budget(target(48000), false, bytes - 1)
+        .is_err());
+    let Value::Decoded(Decoded::Midi(converted)) = (Work::Convert {
         decoded,
-        rate: 48000,
+        target: target(48000),
+        update_length: true,
     })
     .run()
     .unwrap() else {
@@ -166,8 +175,12 @@ fn conversion_budget_keeps_midi_bytes_and_rounds_each_audio_channel() {
         }),
     );
     let mixed = Decoded::Session(bundle);
-    mixed.check_conversion_budget(48000, bytes + 24).unwrap();
-    assert!(mixed.check_conversion_budget(48000, bytes + 23).is_err());
+    mixed
+        .check_conversion_budget(target(48000), false, bytes + 24)
+        .unwrap();
+    assert!(mixed
+        .check_conversion_budget(target(48000), false, bytes + 23)
+        .is_err());
 
     let audio = Decoded::Audio(LoopAudio {
         sample_rate: 48000,
@@ -179,8 +192,12 @@ fn conversion_budget_keeps_midi_bytes_and_rounds_each_audio_channel() {
             })
             .collect(),
     });
-    audio.check_conversion_budget(24000, 16).unwrap();
-    assert!(audio.check_conversion_budget(24000, 15).is_err());
+    audio
+        .check_conversion_budget(target(24000), false, 16)
+        .unwrap();
+    assert!(audio
+        .check_conversion_budget(target(24000), false, 15)
+        .is_err());
 }
 #[shoop_test]
 fn exact_audio_export_maps_the_logical_window_without_baking_in_gain() {

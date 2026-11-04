@@ -6,8 +6,10 @@ use crate::*;
 use alloc::{vec, vec::Vec};
 
 mod program_change;
+mod retime;
 pub use program_change::ProgramChangeResult;
 use program_change::{ProgramChange, Replacement};
+pub use retime::ContentRetime;
 
 #[cfg(test)]
 #[path = "resolver_tests.rs"]
@@ -110,6 +112,8 @@ pub struct Resolver {
     epoch: Epoch,
     frame: Frame,
     states: Vec<Option<State>>,
+    retimed: Vec<Option<Transition>>,
+    retimed_pending: bool,
     records: Vec<Option<Record>>,
     loop_generations: Vec<u32>,
     request_generations: Vec<u32>,
@@ -135,6 +139,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<Decision>()
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
+                + size_of::<Option<Transition>>()
                 + 4,
         ),
         (
@@ -216,6 +221,8 @@ impl Resolver {
                 dropped: 0,
             },
             states,
+            retimed: prepared(limits.loop_slots, None),
+            retimed_pending: false,
             records: prepared(limits.pending_requests, None),
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
@@ -528,6 +535,26 @@ impl Resolver {
         scratch.events.clear();
         scratch.decisions.clear();
         scratch.dropped = 0;
+        if self.retimed_pending {
+            for (slot, transition) in self.retimed.iter().enumerate() {
+                let Some(transition) = transition else {
+                    continue;
+                };
+                let Some(state) = self.states[slot] else {
+                    continue;
+                };
+                scratch.playback_discontinuities[slot] = true;
+                if scratch.events.len() < self.topology.limits().journal_events {
+                    scratch.events.push(Event {
+                        frame: self.frame,
+                        target: state.id,
+                        kind: EventKind::Transition(*transition),
+                    });
+                } else {
+                    scratch.dropped = scratch.dropped.saturating_add(1);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -688,6 +715,10 @@ impl Resolver {
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
         self.committed = true;
+        if self.retimed_pending {
+            self.retimed.fill(None);
+            self.retimed_pending = false;
+        }
         Ok(interval)
     }
 
@@ -785,6 +816,9 @@ impl Resolver {
         self.states.fill(None);
         for node in candidate.nodes() {
             let slot = node.id.slot() as usize;
+            if self.scratch.states[slot].is_none_or(|state| state.id != node.id) {
+                self.retimed[slot] = None;
+            }
             self.states[slot] = Some(
                 self.scratch.states[slot]
                     .filter(|state| state.id == node.id)

@@ -136,6 +136,30 @@ fn client_samples() -> Vec<ClientMessage> {
             data: ContentChunk::new(&[42; 1024]).unwrap(),
         },
         Request::ContentFinish { id: 1 },
+        Request::ContentFamilyBegin {
+            id: 9,
+            root: loop_id(0),
+            count: 2,
+            sample_rate: 48_000,
+            quantum: 32,
+        },
+        Request::ContentFamilyEdit {
+            id: 9,
+            edit: ContentFamilyEdit {
+                loop_id: loop_id(1),
+                sync_source: loop_id(0),
+                expected_revision: 7,
+                expected_frames: 96,
+                frames: 128,
+                audio: Some(1),
+                midi: Some(2),
+                replace: true,
+                restart: false,
+                fence_content: true,
+            },
+        },
+        Request::ContentFamilyCommit { id: 9 },
+        Request::ContentFamilyCancel { id: 9 },
         Request::ContentApply {
             loop_id: loop_id(0),
             frames: 4,
@@ -280,6 +304,14 @@ fn engine_samples() -> Vec<EngineMessage> {
         },
         EngineMessage::Rejected { version: 3 },
         EngineMessage::Result {
+            correlation: 9,
+            outcome: Outcome::ContentPrepared { revision: 8 },
+        },
+        EngineMessage::Result {
+            correlation: 8,
+            outcome: Outcome::ContentApplied { revision: 9 },
+        },
+        EngineMessage::Result {
             correlation: u64::MAX,
             outcome: Outcome::Refused(Refusal::Capacity),
         },
@@ -295,6 +327,7 @@ fn engine_samples() -> Vec<EngineMessage> {
             mode: LoopMode::Playing,
             next_mode: Some(LoopMode::Stopped),
             next_delay: Some(1),
+            content_revision: 9,
             length: 48,
             position: 7,
             peaks,
@@ -433,7 +466,15 @@ fn malformed_records_are_refused_without_panicking() {
     assert!(MidiMessage::new(&[]).is_none());
     assert!(BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES + 1]).is_none());
     assert_eq!(
-        encode_engine(&engine_samples()[12], &mut [0; 64]),
+        encode_engine(
+            &EngineMessage::Bulk(BulkChunk {
+                id: 1,
+                offset: 0,
+                total: BULK_CHUNK_SAMPLES as u64,
+                payload: BulkPayload::audio(&[0.; BULK_CHUNK_SAMPLES]).unwrap()
+            }),
+            &mut [0; 64]
+        ),
         Err(CodecError::Overflow)
     );
     let connect = ClientMessage::Request {
