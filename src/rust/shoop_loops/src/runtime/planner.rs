@@ -840,6 +840,7 @@ impl LoopPlanner {
                     topology_epoch,
                 } => {
                     if matches!(operation, Operation::ConfigurationReplace { .. })
+                        && self.fixed_quantum.is_none()
                         && context.frame != context.callback_start
                     {
                         return Err(Error::InvalidState.into());

@@ -2605,23 +2605,20 @@ impl AppWidget {
                             actions.push(AppAction::CancelIoTask { task_id: task.id });
                         }
                     });
-                } else if let Some(warning) = &task.sample_rate_warning {
+                } else if task.format_conversion_warning.is_some() {
                     ui.colored_label(
                         colors::WARNING,
-                        format!(
-                            "This will resample {} from {} Hz to {} Hz.",
-                            warning.affected_media, warning.source_rate, warning.target_rate
-                        ),
+                        "This import requires resampling or retiming to the session's sample rate and processing quantum. This will slightly affect audio, MIDI timing and synchronized loop lengths.",
                     );
                     ui.horizontal(|ui| {
-                        if ui.button("Resample and load").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                        if ui.button("Convert").clicked() {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: true,
                             });
                         }
                         if ui.button("Cancel").clicked() {
-                            actions.push(AppAction::ConfirmSampleRateConversion {
+                            actions.push(AppAction::ConfirmFormatConversion {
                                 task_id: task.id,
                                 accept: false,
                             });
@@ -5168,7 +5165,7 @@ mod tests {
                 status: crate::IoTaskStatus::AwaitingChannelSelection,
                 progress: 0.2,
                 message: "Select channels".to_owned(),
-                sample_rate_warning: None,
+                format_conversion_warning: None,
                 audio_channel_mapping: None,
                 audio_channel_selection: Some(crate::AudioChannelSelectionState {
                     available_channels: vec!["Direct 1".to_owned(), "Direct 2".to_owned()],

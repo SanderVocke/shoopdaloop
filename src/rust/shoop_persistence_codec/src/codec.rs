@@ -90,76 +90,92 @@ impl Decoded {
         );
         Ok(bytes)
     }
-    fn check_conversion_budget(&self, rate: u32, limit: u64) -> Result<()> {
-        self.bytes()?;
-        ensure!(self.rate() > 0 && rate > 0, "sample rates must be non-zero");
-        let audio_bytes = |frames: u64| -> Result<u128> {
-            Ok(u128::from(scale_duration(frames, self.rate(), rate)?) * 4)
+    fn standalone_scale(
+        &self,
+        target: ConversionTarget,
+        update_length: bool,
+    ) -> Result<FrameScale> {
+        ensure!(
+            target.is_valid() && self.rate() > 0,
+            "invalid conversion format"
+        );
+        let frames = match self {
+            Self::Audio(audio) => audio
+                .channels
+                .iter()
+                .map(|channel| channel.samples.len() as u64)
+                .max()
+                .unwrap_or(0),
+            Self::Midi(midi) => midi.length_frames,
+            _ => anyhow::bail!("expected standalone media"),
         };
+        if update_length && frames > 0 {
+            let plan = ConversionPlan::new(
+                target,
+                &[LoopTiming {
+                    id: 1,
+                    sync_source: None,
+                    frames,
+                    sample_rate: self.rate(),
+                }],
+            )?;
+            Ok(plan.loops[0].scale)
+        } else {
+            Ok(FrameScale::new(
+                u128::from(target.sample_rate),
+                u128::from(self.rate()),
+            )?)
+        }
+    }
+    fn check_conversion_budget(
+        &self,
+        target: ConversionTarget,
+        update_length: bool,
+        limit: u64,
+    ) -> Result<bool> {
+        self.bytes()?;
+        ensure!(target.is_valid(), "invalid conversion format");
+        if let Self::Session(bundle) = self {
+            return Ok(SessionFormatPlan::new(bundle, target, limit)?
+                .timing
+                .requires_confirmation);
+        }
+        let scale = self.standalone_scale(target, update_length)?;
+        let map = MediaTiming::new(scale, 0)?;
         let estimate = match self {
-            Self::Remote(_) => anyhow::bail!("decoded input belongs to the browser codec worker"),
             Self::Midi(midi) => u128::from(midi_bytes(midi)),
-            Self::Audio(audio) => audio.channels.iter().try_fold(0u128, |bytes, channel| {
-                Ok::<_, anyhow::Error>(bytes + audio_bytes(channel.samples.len() as u64)?)
+            Self::Audio(audio) => audio.channels.iter().try_fold(0_u128, |bytes, channel| {
+                Ok::<_, anyhow::Error>(
+                    bytes + u128::from(map.length(channel.samples.len() as u64)?) * 4,
+                )
             })?,
-            Self::Session(bundle) => {
-                let source = bundle.document.sample_rate;
-                let mut lengths = std::collections::BTreeMap::new();
-                let mut bytes = 0u128;
-                for (id, payload) in &bundle.media {
-                    match payload {
-                        MediaPayload::Audio(audio) => {
-                            lengths.insert(
-                                id.as_str(),
-                                scale_duration(audio.samples.len() as u64, source, rate)?,
-                            );
-                        }
-                        MediaPayload::Midi(midi) => bytes += u128::from(midi_bytes(midi)),
-                    }
-                }
-                for content in bundle
-                    .document
-                    .track_groups
-                    .iter()
-                    .flat_map(|g| &g.tracks)
-                    .flat_map(|t| &t.loops)
-                {
-                    for channel in &content.channels {
-                        if channel.capture_alignment_frames == 0 {
-                            continue;
-                        }
-                        let Some(length) = channel
-                            .media_id
-                            .as_deref()
-                            .and_then(|id| lengths.get_mut(id))
-                        else {
-                            continue;
-                        };
-                        let required =
-                            i128::from(scale_signed_nearest(
-                                channel.start_offset_frames,
-                                source,
-                                rate,
-                            )?) + i128::from(scale_signed_nearest(
-                                channel.capture_alignment_frames,
-                                source,
-                                rate,
-                            )?) + i128::from(scale_duration(content.length_frames, source, rate)?);
-                        *length = (*length).max(u64::try_from(required)?);
-                    }
-                }
-                bytes
-                    + lengths
-                        .values()
-                        .map(|frames| u128::from(*frames) * 4)
-                        .sum::<u128>()
-            }
+            _ => anyhow::bail!("decoded input belongs to the browser codec worker"),
         };
         ensure!(
             estimate <= u128::from(limit),
             "converted media would exceed the 256 MiB budget"
         );
-        Ok(())
+        Ok(self.rate() != target.sample_rate || !scale.is_identity())
+    }
+    fn select_audio(self, mapping: &[u32]) -> Result<Self> {
+        let Self::Audio(mut audio) = self else {
+            return Ok(self);
+        };
+        ensure!(
+            !mapping.is_empty() && mapping.len() <= 2,
+            "invalid destination channel count"
+        );
+        audio.channels = mapping
+            .iter()
+            .map(|source| {
+                audio
+                    .channels
+                    .get(*source as usize)
+                    .cloned()
+                    .ok_or_else(|| anyhow!("audio mapping refers to a missing source channel"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self::Audio(audio))
     }
 }
 pub enum Work {
@@ -173,9 +189,16 @@ pub enum Work {
         bytes: Arc<Vec<u8>>,
         rate: u32,
     },
-    Resample {
+    Inspect {
         decoded: Decoded,
-        rate: u32,
+        target: ConversionTarget,
+        mapping: Vec<u32>,
+        update_length: bool,
+    },
+    Convert {
+        decoded: Decoded,
+        target: ConversionTarget,
+        update_length: bool,
     },
     Prepare {
         decoded: Decoded,
@@ -191,6 +214,10 @@ pub enum Work {
     },
 }
 pub enum Value {
+    Inspected {
+        decoded: Decoded,
+        conversion_required: bool,
+    },
     Captured(Arc<image::Image>),
     Decoded(Decoded),
     Image(Arc<image::Image>),
@@ -203,6 +230,9 @@ pub enum Value {
 }
 impl Work {
     pub fn run(self) -> Result<Value> {
+        self.run_with_cancel(|| false)
+    }
+    pub fn run_with_cancel(self, mut cancelled: impl FnMut() -> bool) -> Result<Value> {
         match self {
             Self::GenerateClick { request, rate } => {
                 let timing = ClickTrackTimingSpec {
@@ -267,15 +297,72 @@ impl Work {
                 decoded.bytes()?;
                 Ok(Value::Decoded(decoded))
             }
-            Self::Resample { decoded, rate } => {
-                decoded.check_conversion_budget(rate, MAX_SESSION_MEDIA_BYTES)?;
+            Self::Inspect {
+                decoded,
+                target,
+                mapping,
+                update_length,
+            } => {
+                let decoded = decoded.select_audio(&mapping)?;
+                let conversion_required = decoded.check_conversion_budget(
+                    target,
+                    update_length,
+                    MAX_SESSION_MEDIA_BYTES,
+                )?;
+                Ok(Value::Inspected {
+                    decoded,
+                    conversion_required,
+                })
+            }
+            Self::Convert {
+                decoded,
+                target,
+                update_length,
+            } => {
+                decoded.check_conversion_budget(target, update_length, MAX_SESSION_MEDIA_BYTES)?;
+                let scale = if matches!(decoded, Decoded::Audio(_) | Decoded::Midi(_)) {
+                    Some(decoded.standalone_scale(target, update_length)?)
+                } else {
+                    None
+                };
                 let decoded = match decoded {
                     Decoded::Remote(_) => {
                         anyhow::bail!("decoded input belongs to the browser codec worker")
                     }
-                    Decoded::Session(b) => Decoded::Session(resample_session(&b, rate)?),
-                    Decoded::Audio(a) => Decoded::Audio(resample_loop_audio(&a, rate)?),
-                    Decoded::Midi(m) => Decoded::Midi(resample_exact_midi(&m, rate)?),
+                    Decoded::Session(bundle) => Decoded::Session(
+                        SessionFormatPlan::new(&bundle, target, MAX_SESSION_MEDIA_BYTES)?
+                            .convert(&bundle, &mut cancelled)?,
+                    ),
+                    Decoded::Audio(mut audio) => {
+                        let map = MediaTiming::new(scale.expect("standalone scale"), 0)?;
+                        let length = audio
+                            .channels
+                            .iter()
+                            .map(|channel| channel.samples.len())
+                            .max()
+                            .unwrap_or(0);
+                        for channel in &mut audio.channels {
+                            let periodic = update_length && channel.samples.len() == length;
+                            let mut conversion = AudioConversion::new(
+                                &channel.samples,
+                                map,
+                                periodic,
+                                MAX_SESSION_MEDIA_BYTES / 4,
+                            )?;
+                            while !conversion.step(4096)? {
+                                ensure!(!cancelled(), "audio conversion cancelled");
+                            }
+                            channel.samples = conversion.finish()?;
+                        }
+                        audio.sample_rate = target.sample_rate;
+                        Decoded::Audio(audio)
+                    }
+                    Decoded::Midi(midi) => Decoded::Midi(convert_midi_with_cancel(
+                        &midi,
+                        MediaTiming::new(scale.expect("standalone scale"), 0)?,
+                        target.sample_rate,
+                        &mut cancelled,
+                    )?),
                 };
                 decoded.bytes()?;
                 Ok(Value::Decoded(decoded))

@@ -397,7 +397,13 @@ impl BrowserJob {
                 WorkerResponse::Ack => {}
                 WorkerResponse::Failed(message) => bail!(message),
                 WorkerResponse::Decoded(summary) => {
-                    return Ok(Some(Value::Decoded(Decoded::Remote(summary))))
+                    if let Some(conversion_required) = summary.conversion_required {
+                        return Ok(Some(Value::Inspected {
+                            decoded: Decoded::Remote(summary),
+                            conversion_required,
+                        }));
+                    }
+                    return Ok(Some(Value::Decoded(Decoded::Remote(summary))));
                 }
                 WorkerResponse::Image(description) => {
                     self.output = Output::Image(
@@ -558,14 +564,30 @@ impl CodecExecutor {
                     update_length,
                 }))
             }
-            Work::Resample {
+            Work::Inspect {
                 decoded: Decoded::Remote(summary),
-                rate,
+                target,
+                mapping,
+                update_length,
             } => {
                 ensure!(self.peer.is_some(), "decoded codec worker was lost");
-                Sending::One(Some(WorkerCommand::Resample {
+                Sending::One(Some(WorkerCommand::Inspect {
                     handle: summary.handle,
-                    rate,
+                    target,
+                    mapping,
+                    update_length,
+                }))
+            }
+            Work::Convert {
+                decoded: Decoded::Remote(summary),
+                target,
+                update_length,
+            } => {
+                ensure!(self.peer.is_some(), "decoded codec worker was lost");
+                Sending::One(Some(WorkerCommand::Convert {
+                    handle: summary.handle,
+                    target,
+                    update_length,
                 }))
             }
             _ => bail!("decoded media is not owned by the browser codec worker"),

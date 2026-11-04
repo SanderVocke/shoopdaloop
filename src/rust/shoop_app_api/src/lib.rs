@@ -1534,7 +1534,7 @@ pub enum IoTaskKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IoTaskStatus {
     Running,
-    AwaitingSampleRateConfirmation,
+    AwaitingFormatConversionConfirmation,
     AwaitingChannelMapping,
     AwaitingChannelSelection,
     Completed,
@@ -1550,7 +1550,7 @@ pub enum FileOutputOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SampleRateWarning {
+pub struct FormatConversionWarning {
     pub source_rate: u32,
     pub target_rate: u32,
     pub affected_media: String,
@@ -1576,7 +1576,7 @@ pub struct IoTaskState {
     pub status: IoTaskStatus,
     pub progress: f32,
     pub message: String,
-    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub format_conversion_warning: Option<FormatConversionWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
@@ -2642,7 +2642,7 @@ pub enum AppIntent {
         task_id: TaskId,
         outcome: FileOutputOutcome,
     },
-    ConfirmSampleRateConversion {
+    ConfirmFormatConversion {
         task_id: TaskId,
         accept: bool,
     },
@@ -2899,7 +2899,7 @@ impl AppIntent {
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
-            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmFormatConversion { .. } => "io.confirm_format_conversion",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
             Self::CompleteIoInput { .. } => "io.input_complete",
             Self::RequestLoadSessionSource { .. } => "session.load_source",

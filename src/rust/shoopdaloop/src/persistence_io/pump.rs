@@ -125,6 +125,10 @@ impl Provider {
             if matches!(self.phase, Phase::Working) {
                 match value.map_err(|e| anyhow!(e))? {
                     Value::Decoded(decoded) => self.decoded(decoded)?,
+                    Value::Inspected {
+                        decoded,
+                        conversion_required,
+                    } => self.inspected(decoded, conversion_required)?,
                     Value::Captured(image) => self.captured(image)?,
                     Value::Image(image) => {
                         let state = client

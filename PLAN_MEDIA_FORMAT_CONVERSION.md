@@ -165,9 +165,9 @@ do not push them until stage 8, since the existing PR would start CI.
 The initial milestone adds the shared rational planner and anchored, incremental
 48-tap windowed-sinc audio/MIDI converter. Application status now reports the
 prepared engine quantum separately from host callback size; application wire
-version 14 fences the changed snapshot schema. Import/session orchestration and
-family publication are still pending, so these primitives are not yet a complete
-production conversion path. Whole-session planning/conversion now also handles
+version 14 fences the changed snapshot schema. Production whole-session load now
+uses this conversion through native codecs and the browser worker, with one generic
+Convert/Cancel warning. Atomic live-family imports remain pending. Conversion handles
 physical versus musical metadata, context-sensitive shared-media splitting,
 MIDI collision ordering, cancellation and converted save/reload idempotence.
 
@@ -176,6 +176,20 @@ skips; the warning-denying workspace build, formatting, test-attribute and close
 tracing inventory checks pass. Local socket tests require network permission in
 the execution sandbox. Logs: `work/retiming-core-native.log`,
 `work/retiming-stage1-build.log` and `work/retiming-core-session-tests.log`.
+
+Workflow milestone validation: 2,615 native tests pass, with four host-facility
+skips; 14 conversion tests and 12 codec/worker tests pass in Node/Wasm. The browser
+application checks successfully for Wasm and the warning-denying workspace build
+passes. End-to-end tests cover same-rate Q=16-aligned media loaded at Q=32,
+combined rate/quantum conversion, preserved sync multiples, cancellation and
+conversion-free reload. Logs: `work/retiming-workflow-native.log`,
+`work/retiming-session-workflow.log`, `work/retiming-core-node.log`,
+`work/retiming-codec-node.log` and `work/retiming-io-wasm-check.log`.
+
+The workflow test also exposed a callback-start restriction on complete session
+replacement. A configured fixed planner now permits replacement at any fixed tick,
+including when host callbacks are smaller than Q. The component test checks
+mid-callback tick publication, retained old exports and MIDI cleanup together.
 
 Timing field classification: loop lengths, channel offsets, combined playback
 origin, capture alignment, preplay, raw audio/MIDI extents and event frames follow
@@ -193,7 +207,7 @@ window and 256-phase linear interpolation; it is one path for every correction.
 
 - [x] Inspect the existing conversion/publication paths and reuse the current
   implementation branch and draft PR.
-- [ ] Specify conversion types and enumerate timing fields by musical, physical
+- [x] Specify conversion types and enumerate timing fields by musical, physical
   or dimensionless meaning; expose authoritative engine Q alongside sample rate
   through service/app status and native/browser worker inputs.
 - [ ] Snapshot target format and relevant revisions; define coordinated protocol
@@ -252,9 +266,9 @@ window and 256-phase linear interpolation; it is one path for every correction.
 
 ### 6. Unified conversion warning and API behavior
 
-- [ ] Generalize rate-only task states, warning data and confirmation intents;
+- [x] Generalize rate-only task states, warning data and confirmation intents;
   show one Convert/Cancel warning for rate and/or timing changes with no preview.
-- [ ] Apply the same explicit authorization to script/API imports. Preserve
+- [x] Apply the same explicit authorization to script/API imports. Preserve
   independent format-loss warnings and existing task/error reporting.
 - [ ] Verify automatically in native and browser app tests: accept/cancel,
   identity/no prompt, aligned old-Q/no prompt, combined conversion/one prompt,
