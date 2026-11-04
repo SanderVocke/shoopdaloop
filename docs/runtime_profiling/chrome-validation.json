@@ -1,5 +1,9 @@
 {
-  "method": "Complete affected Chromium suite and MessagePort unit rerun with browser test configuration",
+  "method": "Complete affected Chromium suite plus successful rt_buffered retry after a Wasm harness-load timeout",
+  "source_commit": "9183b9b593e730572f2aa7730e22f5cb0c3de464",
+  "additional_source_sha256": {
+    "src/rust/shoopdaloop/src/browser_rt_self_test.rs": "0d8771f7a014de17a99b32d96996eb5c227b1f93171d8976713be120f2836fe3"
+  },
   "packages": {
     "rt_profiling": {
       "exit": 0,
@@ -8,7 +12,7 @@
     },
     "rt_runtime": {
       "exit": 0,
-      "tests": 198,
+      "tests": 229,
       "failures": 0
     },
     "shoop_app": {
@@ -26,9 +30,19 @@
       "tests": 234,
       "failures": 0
     },
+    "shoop_loops": {
+      "exit": 0,
+      "tests": 181,
+      "failures": 0
+    },
     "shoop_rt_backend": {
       "exit": 0,
       "tests": 36,
+      "failures": 0
+    },
+    "shoop_rt_engine": {
+      "exit": 0,
+      "tests": 65,
       "failures": 0
     },
     "shoop_rt_host_worklet": {
@@ -54,6 +68,11 @@
     "shoopdaloop": {
       "exit": 0,
       "tests": 49,
+      "failures": 0
+    },
+    "rt_buffered": {
+      "exit": 0,
+      "tests": 11,
       "failures": 0
     }
   }
