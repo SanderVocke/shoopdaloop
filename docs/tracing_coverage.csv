@@ -370,3 +370,5 @@ src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded 
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
 src/rust/rt_external/src/lib.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
 src/rust/rt_external/src/timing.rs,external_block_processing,excluded,Portable bounded preparation and node helpers; render execution is observed by the owning runtime.
+src/rust/rt_external/src/inline.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.
+src/rust/rt_external/src/processor.rs,external_block_processing,excluded,Bounded inline block execution; runtime owns render diagnostics without tracing in the processor.

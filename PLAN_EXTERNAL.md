@@ -143,23 +143,23 @@ preceding stage. Keep fixes and verification within their owning milestone.
 
 ### 2. Inline audio/MIDI backend
 
-- [ ] Implement `InlineTest` over complete prepared blocks: stereo 2x gain and
+- [x] Implement `InlineTest` over complete prepared blocks: stereo 2x gain and
   next-channel MIDI rotation. System packets and event timing remain unchanged.
-- [ ] Verify two focused groups: distinct signed stereo samples proving 2x gain
+- [x] Verify two focused groups: distinct signed stereo samples proving 2x gain
   without clipping/crosstalk; MIDI packet tables covering channel wrap, note pairs,
   velocity-zero note-on, CC/program change, realtime, and variable-length SysEx.
   Check unchanged payload lengths, offsets, counts, and equal-time order. Commit.
 
 ### 3. Batched node, scheduled release, and lifecycle
 
-- [ ] Implement collection, immediate completion, bounded retained results, exact
+- [x] Implement collection, immediate completion, bounded retained results, exact
   Q-frame release, latency queries, generation/sequence tracking, and quiescent
   reset. Validate tick continuity and runtime quantum/port shape before mutation.
-- [ ] Add four focused groups: sample mapping/startup and slot reuse over several
+- [x] Add four focused groups: sample mapping/startup and slot reuse over several
   blocks; MIDI offset mapping at Q-1/Q/B-1/B plus simultaneous events; exact-fit
   event/byte limits and one-over-limit refusal without silent loss; reset and
   discontinuity refusal proving no stale audio/MIDI after a new origin.
-- [ ] Include S>M and non-power-of-two M in the stream tests. Check completions
+- [x] Include S>M and non-power-of-two M in the stream tests. Check completions
   are retained until due and that backend invocation count follows batches, not
   graph ticks. Commit after these checks pass.
 
@@ -276,3 +276,10 @@ builds or implementation tests.
   library check pass. The extended portable dependency audit passes on all four
   targets; existing audit unit tests, test-attribute policy and tracing inventory
   pass. Rust 1.99.1 is used in the build container.
+
+- Stages 2/3: backend and adapter are one committed milestone because the
+  submission/completion seam is intentionally crate-private. Eight timing/backend/
+  node tests and two runtime integration tests pass natively with warnings denied.
+  The runtime exposes generic remaining MIDI capacities for atomic preflight;
+  External returns `Capacity` on exhaustion, since the integrated runtime treats
+  `Full` as recoverable MIDI overflow. No runtime scheduling policy was changed.

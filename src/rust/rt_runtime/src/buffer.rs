@@ -241,6 +241,20 @@ impl MidiBuffer {
     pub fn is_recovery(&self) -> bool {
         self.recovering
     }
+    pub fn remaining_events(&self) -> usize {
+        if self.recovering {
+            0
+        } else {
+            self.event_capacity - self.event_len
+        }
+    }
+    pub fn remaining_bytes(&self) -> usize {
+        if self.recovering {
+            0
+        } else {
+            self.byte_capacity - self.byte_len
+        }
+    }
     pub(crate) fn force_reset(&mut self, offset: u32) {
         for index in 0..crate::midi::ResetState::EVENTS {
             let start = index * 3;
