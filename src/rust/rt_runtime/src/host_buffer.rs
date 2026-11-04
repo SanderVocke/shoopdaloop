@@ -49,6 +49,18 @@ impl HostBuffer {
         &mut self,
         audio: &mut AudioBlock<'_, '_>,
         midi: &mut MidiBlock<'_>,
+        tick: impl FnMut(&mut AudioBlock<'_, '_>, &mut MidiBlock<'_>) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        if audio.inputs.len().max(audio.outputs.len()) <= 64 {
+            self.process_ports::<64>(audio, midi, tick)
+        } else {
+            self.process_ports::<PORTS>(audio, midi, tick)
+        }
+    }
+    fn process_ports<const N: usize>(
+        &mut self,
+        audio: &mut AudioBlock<'_, '_>,
+        midi: &mut MidiBlock<'_>,
         mut tick: impl FnMut(&mut AudioBlock<'_, '_>, &mut MidiBlock<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let q = self.q;
@@ -79,12 +91,12 @@ impl HostBuffer {
             at += count;
             self.fill += count;
             if self.fill == q {
-                let mut inputs = [&[][..]; PORTS];
+                let mut inputs = [&[][..]; N];
                 for (dst, src) in inputs.iter_mut().zip(self.input.chunks_exact(q)) {
                     *dst = src;
                 }
                 self.output.fill(0.);
-                let mut outputs: [&mut [f32]; PORTS] = core::array::from_fn(|_| &mut [][..]);
+                let mut outputs: [&mut [f32]; N] = core::array::from_fn(|_| &mut [][..]);
                 for (dst, src) in outputs.iter_mut().zip(self.output.chunks_exact_mut(q)) {
                     *dst = src;
                 }
