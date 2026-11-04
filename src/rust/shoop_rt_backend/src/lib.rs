@@ -127,6 +127,7 @@ struct Replacement {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    profiling: shoop_rt_protocol::profiling::Collector,
     client: ProtocolClient<C>,
     clock: K,
     link: Link,
@@ -179,6 +180,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .map_err(|error| anyhow!("could not reach the engine: {error:?}"))?;
         tracing::debug!("backend.rt.connecting");
         Ok(Self {
+            profiling: Default::default(),
             client,
             clock,
             link: Link::Connecting,
@@ -431,6 +433,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
+        self.profiling = Default::default();
         for pending in self
             .requests
             .outgoing

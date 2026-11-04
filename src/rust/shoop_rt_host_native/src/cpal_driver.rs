@@ -345,6 +345,7 @@ impl Output {
         let shared = &*self.shared;
         let channels = self.channels;
         let frames = data.len() / channels;
+        shared.begin_profiling(cycle.next_frame(), frames);
         Shared::count(&shared.counters.callbacks, 1);
         if frames != self.frames {
             self.frames = frames;

@@ -6600,6 +6600,7 @@ impl Backend for EngineBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
@@ -10417,6 +10418,7 @@ impl Backend for FakeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         Ok(BackendSnapshot {
+            profiling: Default::default(),
             status: self.status,
             audio_drivers: self.audio_driver_state()?,
             tracks: self

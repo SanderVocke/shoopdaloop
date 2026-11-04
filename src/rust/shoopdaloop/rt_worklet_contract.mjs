@@ -1,5 +1,5 @@
 // Contract of the new engine's AudioWorklet artifact and its processor script:
-// the module has no imports, and the script prepares it from a configuration
+// the module imports only its profiling clock, and accepts a configuration
 // record and moves records, MIDI and audio over a simulated MessagePort.
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -18,7 +18,7 @@ console.log('client codec worker artifact contract: ok');
 
 const wasmModule = await WebAssembly.compile(await readFile(wasmPath));
 const imports = WebAssembly.Module.imports(wasmModule);
-if (imports.length !== 0) {
+if (imports.length !== 1 || imports[0].module !== "shoop_profiling" || imports[0].name !== "now" || imports[0].kind !== "function") {
   throw new Error(`the new engine worklet Wasm has imports: ${JSON.stringify(imports)}`);
 }
 const exported = new Set(WebAssembly.Module.exports(wasmModule).map(entry => entry.name));
@@ -38,6 +38,11 @@ for (const name of [
   'shoop_rt_worklet_commit',
   'shoop_rt_worklet_process',
   'shoop_rt_worklet_counter',
+  'shoop_rt_worklet_profiling_clock',
+  'shoop_rt_worklet_profiling_active',
+  'shoop_rt_worklet_profiling_credit',
+  'shoop_rt_worklet_profiling_begin',
+  'shoop_rt_worklet_profiling_end',
 ]) {
   if (!exported.has(name)) throw new Error(`the new engine worklet Wasm lacks ${name}`);
 }
@@ -69,6 +74,12 @@ globalThis.AudioWorkletProcessor = class {
 globalThis.registerProcessor = (name, processor) => {
   registered = { name, processor };
 };
+let clockCalls = 0;
+let clockMillis = 0;
+Object.defineProperty(globalThis, 'performance', {
+  configurable: true,
+  value: { now() { clockCalls += 1; clockMillis += 0.001; return clockMillis; } },
+});
 globalThis.sampleRate = 1000;
 globalThis.currentFrame = 5000;
 await import('./rt_audio_worklet.js');
@@ -113,9 +124,11 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 7;
+const engineProtocolVersion = 8;
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
+const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
+if (clockCalls - disabledClockCalls !== 2) throw new Error('disabled profiling read an extra clock');
 if (!first.alive) throw new Error('the processor stopped after its first quantum');
 const replies = node.port.take('records');
 if (replies.length !== 1 || !(replies[0].bytes instanceof ArrayBuffer)) {
@@ -161,6 +174,106 @@ if (node.wasm.memory.buffer.byteLength !== preparedBytes) {
   throw new Error('module memory grew after preparation');
 }
 if (!node.port.take('records').length) throw new Error('the connected engine sent no telemetry');
+
+// The runtime profiling request uses its appended protocol tag.
+function profilingRequest(enabled, correlation) {
+  const bytes = new Uint8Array(13);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, bytes.length, true);
+  bytes[2] = 1;
+  view.setBigUint64(3, BigInt(correlation), true);
+  bytes[11] = 35;
+  bytes[12] = enabled ? 1 : 0;
+  node.port.deliver({ kind: 'records', bytes });
+}
+function takeEngineRecords(returnCredits = true) {
+  const records = [];
+  for (const { bytes } of node.port.take('records')) {
+    const view = new DataView(bytes);
+    for (let offset = 0; offset < bytes.byteLength;) {
+      const length = view.getUint16(offset, true);
+      if (length < 3 || offset + length > bytes.byteLength) throw new Error('invalid profiling record batch');
+      records.push(new Uint8Array(bytes, offset, length));
+      offset += length;
+    }
+  }
+  if (returnCredits) {
+    const count = records.filter(record => record[2] >= 8 && record[2] <= 10).length;
+    if (count) node.port.deliver({ kind: 'profiling-credit', count });
+  }
+  return records;
+}
+// Create a stereo/MIDI strip so the fixture has compiled nodes to measure.
+{
+  const bytes = new Uint8Array(24);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, bytes.length, true);
+  bytes[2] = 1;
+  view.setBigUint64(3, 990n, true);
+  bytes[11] = 0;
+  view.setUint32(12, 0, true);
+  view.setUint32(16, 1, true);
+  bytes.set([2, 2, 1, 1], 20);
+  node.port.deliver({ kind: 'records', bytes });
+  for (let index = 0; index < 32; index += 1) quantum(node, 0.25);
+  takeEngineRecords();
+}
+profilingRequest(true, 991);
+const enabledClockCalls = clockCalls;
+quantum(node, 0.25);
+if (clockCalls - enabledClockCalls <= 2 || !node.wasm.shoop_rt_worklet_profiling_active()) {
+  throw new Error('runtime profiling did not use the host elapsed-time clock');
+}
+let timedNodes = 0;
+const profileRecords = takeEngineRecords();
+if (!profileRecords.some(record => record[2] === 2 &&
+    new DataView(record.buffer, record.byteOffset, record.byteLength).getBigUint64(3, true) === 991n && record[11] === 0)) {
+  throw new Error('profiling request did not receive a successful completion');
+}
+for (const record of profileRecords) {
+  if (record[2] !== 9) continue;
+  const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
+  const start = view.getBigUint64(59, true);
+  const end = view.getBigUint64(67, true);
+  for (let index = 0; index < record[87]; index += 1) {
+    const key = view.getBigUint64(96 + index * 16, true);
+    const at = view.getBigUint64(104 + index * 16, true);
+    if (at < start || at > end) throw new Error('node timing escaped its measured interval');
+    if ((key & ((1n << 63n) | (1n << 62n))) === 0n) timedNodes += 1;
+  }
+}
+if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
+node.load = 2;
+const captureMessages = [];
+for (let index = 0; index < 64; index += 1) {
+  quantum(node, 0.25);
+  captureMessages.push(...takeEngineRecords());
+}
+const captureRecords = captureMessages.filter(record => record[2] === 9).map(record =>
+  new DataView(record.buffer, record.byteOffset, record.byteLength));
+if (!captureRecords.some(view => view.getBigUint64(11, true) !== 0n && (view.getUint32(88, true) & 4))) {
+  throw new Error('a worklet overrun did not produce a complete bounded xrun capture');
+}
+let stalledRecords = 0;
+for (let index = 0; index < 512; index += 1) {
+  quantum(node, 0.25);
+  stalledRecords += takeEngineRecords(false).filter(record => record[2] >= 8 && record[2] <= 10).length;
+}
+if (!stalledRecords || stalledRecords > 256) throw new Error('profiling exceeded its browser credit window');
+profilingRequest(false, 992);
+quantum(node, 0.25);
+if (!takeEngineRecords(false).some(record => record[2] === 2 &&
+    new DataView(record.buffer, record.byteOffset, record.byteLength).getBigUint64(3, true) === 992n && record[11] === 0)) {
+  throw new Error('stalled profiling blocked a reliable runtime control');
+}
+node.port.deliver({ kind: 'profiling-credit', count: stalledRecords });
+const stoppedClockCalls = clockCalls;
+quantum(node, 0.25);
+if (clockCalls - stoppedClockCalls !== 2 || node.wasm.shoop_rt_worklet_profiling_active()) {
+  throw new Error('runtime profiling did not stop reading its clock');
+}
+if (node.wasm.memory.buffer.byteLength !== preparedBytes) throw new Error('profiling grew worklet memory after preparation');
+console.log('worklet profiling clocks, timestamps, xrun capture and runtime toggle: ok');
 
 node.port.deliver({ kind: 'stop' });
 if (quantum(node, 0).alive) throw new Error('the processor kept running after stop');

@@ -31,6 +31,13 @@ pub enum DisconnectReason {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineMessage {
+    ProfilingStatus(rt_profiling::Status),
+    Profiling(rt_profiling::Packet),
+    ProfilingNode {
+        generation: u64,
+        key: u64,
+        name: crate::Name,
+    },
     Welcome {
         version: u16,
         capabilities: Capabilities,
@@ -64,6 +71,9 @@ impl ClientMessage {
 impl EngineMessage {
     pub fn lane(&self) -> Lane {
         match self {
+            Self::ProfilingStatus(_) | Self::Profiling(_) | Self::ProfilingNode { .. } => {
+                Lane::Profiling
+            }
             Self::Telemetry(_) => Lane::Telemetry,
             Self::Bulk(_) => Lane::Bulk,
             _ => Lane::Reliable,

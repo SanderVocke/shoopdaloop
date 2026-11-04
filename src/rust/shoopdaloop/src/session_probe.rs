@@ -43,7 +43,13 @@ fn wait(
                 .map_err(|error| anyhow!("probe readiness: {error:?}"))?;
         }
         ensure!(client.state() != State::Lost, "probe client lost its host");
-        ensure!(Instant::now() < deadline, "session probe timed out");
+        ensure!(
+            Instant::now() < deadline,
+            "session probe timed out: state={:?}, pending={:?}, profiling={:?}",
+            client.state(),
+            client.pending(),
+            client.snapshot().map(|s| &s.profiling)
+        );
         std::thread::sleep(Duration::from_millis(2));
     }
     Ok(())
@@ -155,6 +161,14 @@ fn launch(
 pub fn run(transport: EngineTransportKind) -> Result<()> {
     let (root, mut host, entry) = launch(transport, 16)?;
     let (mut client, mut connection) = attach(&entry)?;
+    ensure!(
+        !client.snapshot().unwrap().profiling.requested,
+        "profiling must default off"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    wait(&mut client, &mut connection, |client| {
+        client.snapshot().unwrap().profiling.active
+    })?;
     command(
         &mut client,
         &mut connection,
@@ -210,6 +224,28 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         &mut connection,
         Command::Piano(PianoAction::Release(MidiNote::new(60).unwrap())),
     )?;
+    wait(&mut client, &mut connection, |client| {
+        client
+            .snapshot()
+            .unwrap()
+            .profiling
+            .live
+            .rows
+            .iter()
+            .any(|row| row.samples > 0)
+    })?;
+    let profile_generation = client.snapshot().unwrap().profiling.generation;
+    ensure!(
+        client
+            .snapshot()
+            .unwrap()
+            .profiling
+            .live
+            .rows
+            .iter()
+            .any(|row| row.name.contains("playback")),
+        "profiling lost node metadata"
+    );
     let before = client.snapshot().unwrap().status.processed_frames;
     shoop_host_manager::verify_host_discovery(
         &entry,
@@ -264,6 +300,27 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
             && !media.audio[0].samples.is_empty()
             && media.midi[0].events.len() == 2,
         "recorded audio/MIDI was not preserved"
+    );
+    ensure!(
+        client.snapshot().unwrap().profiling.generation >= profile_generation,
+        "profiling generation regressed"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(false))?;
+    wait(&mut client, &mut connection, |client| {
+        !client.snapshot().unwrap().profiling.active
+    })?;
+    ensure!(
+        !client.snapshot().unwrap().profiling.live.rows.is_empty(),
+        "disabling lost the final report"
+    );
+    command(&mut client, &mut connection, Command::SetProfiling(true))?;
+    wait(&mut client, &mut connection, |client| {
+        let profiling = &client.snapshot().unwrap().profiling;
+        profiling.active && profiling.generation > profile_generation
+    })?;
+    println!(
+        "Profiling {}: default off, live names/statistics, recovery and runtime toggles passed",
+        transport.id()
     );
     let ticket = client.shutdown().map_err(|error| anyhow!("{error:?}"))?;
     crate::recovery::shutdown(&entry, ticket)
