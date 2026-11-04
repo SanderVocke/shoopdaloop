@@ -141,6 +141,11 @@ impl Shared {
         let c = resources.config().limits();
         if settings.histories.len() > c.max_nodes
             || settings.candidates > c.resource_slots
+            || settings.edit_steps_per_callback > i32::MAX as usize
+            || settings
+                .edit_steps_per_callback
+                .checked_mul(settings.candidates)
+                .is_none()
             || (settings.candidates > 0 && settings.edit_steps_per_callback == 0)
         {
             return Err(Error::InvalidConfig);

@@ -150,6 +150,47 @@ mod tests {
         .is_err());
         assert_eq!(resolver.states, before);
     }
+
+    #[shoop_test]
+    fn same_length_revision_waits_for_a_finished_tick_and_preserves_the_playhead() {
+        let mut resolver = resolver();
+        resolver
+            .submit(Request {
+                target: id(0),
+                sequence: Sequence(1),
+                at: Frame(0),
+                timing: Timing::At,
+                transition: Transition::Play {
+                    position: 0,
+                    retrigger: false,
+                },
+            })
+            .unwrap();
+        tick(&mut resolver);
+        resolver.preview_tick(&[]).unwrap();
+        resolver.commit().unwrap();
+        let before = resolver.states.clone();
+        assert_eq!(
+            assert_no_heap(|| resolver.replace_content(change(0, 96, 96))),
+            Err(Error::InvalidState)
+        );
+        assert_eq!(resolver.states, before);
+        resolver.finish().unwrap();
+        let unrelated = resolver.state(id(2)).unwrap();
+        assert_no_heap(|| resolver.replace_content(change(0, 96, 96))).unwrap();
+        assert_eq!(resolver.state(id(0)).unwrap().position, 64);
+        assert_eq!(resolver.state(id(2)).unwrap(), unrelated);
+        resolver.preview_tick(&[]).unwrap();
+        let decision = resolver
+            .decisions()
+            .unwrap()
+            .iter()
+            .find(|d| d.state.id == id(0))
+            .unwrap();
+        assert_eq!(decision.state.content_revision, Revision(1));
+        assert_eq!(decision.state.position, 64);
+        assert!(decision.playback_discontinuity);
+    }
 }
 
 fn position(position: u64, previous: u64, length: u64, quantum: u64) -> Result<u64, Error> {
@@ -193,6 +234,9 @@ impl Resolver {
         &mut self,
         changes: impl Iterator<Item = ContentRetime> + Clone,
     ) -> Result<(), Error> {
+        if self.quiescent || self.committed {
+            return Err(Error::InvalidState);
+        }
         let quantum = self.quantum.frames() as u64;
         self.scratch.states.copy_from_slice(&self.states);
         for (index, change) in changes.clone().enumerate() {
