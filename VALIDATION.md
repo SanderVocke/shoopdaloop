@@ -2,6 +2,94 @@
 
 [Workstreams, acceptance and remaining checks](PLAN.md) · [Architecture](ARCHITECTURE.md) · [Historical records](docs/history/README.md)
 
+## Buffered processor
+
+The latest implementation includes base `3ca192e1`, whose final MIDI-reset and
+buffered-MIDI fixes resolve the earlier lifecycle diagnostics. The complete
+native suite now passes all 2676 tests, with four intentional failure canaries
+and two manual device-acceptance tests skipped. Recovery fixtures and lifecycle
+assertions match the updated base.
+
+At `7c214af6`, [CI run 41891267327](https://github.com/SanderVocke/shoopdaloop/actions/runs/41891267327)
+passes Linux and Windows debug/release, both web profiles, full Node tests,
+browser/session/AudioWorklet checks, independent hosts, coverage, JACK and
+bare-metal gates. Documentation, all CodeQL languages and both Codecov checks
+also pass. The tested merge candidate `cea197b2` includes base `820fb239`;
+its full native and coverage runs each pass 2677 tests with six expected skips.
+The branch-local result above uses integrated base `3ca192e1`.
+
+The subsequent documentation-closeout Node runner at `d3012734` exhausted its
+disk; GitHub reports `System.IO.IOException: No space left on device` in the
+runner diagnostic log. The existing unused Android/.NET SDK cleanup now also
+runs for web jobs before restoring caches, with all test settings unchanged.
+That run's coverage job passed 2678 tests with six expected skips on the merge
+candidate including base `17df278e`. Final delivery results are linked from the PR.
+
+The PR's `ci:skip-macos` label excludes macOS from the preflight and build
+matrices so contended macOS runners cannot hold up other platforms. Actionlint
+passes, and both generated matrix variants match the original entries exactly
+(eight builds normally, six with the waiver; three/two preflight platforms).
+
+The API adaptation was validated against base `435eb2a2`.
+The former fixed-processing APIs were consolidated upstream; the node now uses
+`Processor::process` and its direct `process_tick` core. The private production
+strip-DSP composition fixture and all focused processor tests pass natively and
+in Node/Chromium, including the API doctest. Workspace build, examples, boundaries,
+bare-metal build, source policies, 28 Python checks and both independent hosts'
+native debug/release replays pass. The earlier live-recovery fixture edits are
+removed; upstream Q=1 settings and all lifecycle assertions are preserved.
+The broad local run had 2669 passes and three lifecycle failures; a fresh isolated
+run passed those cases but observed a different shutdown-confirmation failure
+(19/20 passed). Six default skips are four canaries and two manual device checks.
+These diagnostics precede the final native and CI passes above; checkpoints
+below also predate this integration.
+macOS remains explicitly waived.
+
+The implementation and focused coverage are tracked in
+[PLAN_BUFFERED.md](PLAN_BUFFERED.md); the public timing and MIDI contract is in
+[the crate documentation](src/rust/rt_buffered/README.md). Source revision
+`1dcf26f9` includes the updated fixed-quantum base `cb79706e`; `41f0dc56`
+renames the abstraction and crate to `BufferedProcessor` and `rt_buffered`.
+
+Local validation passes: warning-denying workspace build; 2641 native tests with
+four intentionally ignored failure canaries; eleven focused processor/engine
+Wasm cases and the API doctest in both Node and Chromium; the Wasm application
+check; paired client-codec/AudioWorklet artifact contracts; bare-metal library
+build; four-target runtime/engine dependency audits; Wasm test dependency
+isolation; formatting, tracing inventory and shared test attributes; 28 Python
+report/boundary tests; and executable Q/M/S examples 16/2/1 and 32/3/7.
+
+After the rename, the warning-denying workspace build, focused native tests,
+API doctest, examples, portable audits and bare-metal build pass again. Eleven
+focused Wasm cases plus the API doctest pass in both Node and Chromium.
+At `9cee6c15`, fresh real-worklet evidence replaces four obsolete capture
+revision fields in the independent host recording; all inputs and callback
+audio hashes are unchanged. Exact debug/release native replays, both loop-host
+profiles, both worklet failure canaries and 44 selected Python policy tests pass.
+See [recording provenance](docs/rt_runtime/evidence/hosts-fixed-quantum.json).
+A subsequent local full-suite repeat observed one existing legacy Built-in FX
+track-creation race (2640 passed, one failed; 8/10 isolated reproductions). The
+complete Linux CI workspace suite passes on the same pushed revision. No
+legacy implementation or assertions were changed for that local failure.
+
+Checks use Rust 1.99.1, cargo-nextest 0.9.116, Node 22.22.2, wasm-pack 0.15.0,
+wasm-bindgen 0.2.127 and Chrome/ChromeDriver 147.0.7727.117 in an isolated Debian
+build container. Native execution uses the documented missing-backend setting;
+physical devices and remote processors are outside this development milestone.
+These are correctness and bounded-rendering checks, not performance evidence.
+Local raw logs and structured Wasm reports remain in `work/` and
+`target/wasm-tests/dev/reports/`.
+
+At `e51fe082`, [CI run 41868336475](https://github.com/SanderVocke/shoopdaloop/actions/runs/41868336475)
+passes both Linux and Windows profiles, both web profiles, coverage, JACK and
+bare-metal checks; documentation and CodeQL also pass. The complete Linux suite
+confirms 2641 passed and four intentional canary skips. The user explicitly
+waived macOS validation after repeated hosted ARM64 runner acquisition failures;
+those unavailable runs are not passing evidence. No automated code review or
+inline threads were posted; approval is not claimed. Document closeout was followed
+by the runner storage fix above, with current non-macOS results available on
+[PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937).
+
 ## Native session recovery checkpoint
 
 The current session-service milestone is tracked by

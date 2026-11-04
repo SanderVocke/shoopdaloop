@@ -20,6 +20,46 @@ Prepare `AudioCapture` with channel count and quantum size. `stage` converts pla
 
 Playback and capture use distinct operations and can refer to different revisions of the same logical resource: read a retained immutable take, apply gain/FX, and stage the resulting samples into a fresh reserved take. A frozen take is immediately indexed/readable without an asynchronous build. The tests verify these operations directly, including old-content preservation. The planner supplies separate signal nodes and coordinated group lifecycle; its public example also checks the retained old export. The [configuration example](../examples/configuration_cut.rs) changes the prepared capture route while preserving old content.
 
+## Shared history and editable takes
+
+`rt_runtime::resource::shared_audio::AudioStore` supplies interleaved history and
+independently editable takes. `AudioCapture::append_shared` and
+`append_shared_ports` append a common multichannel interval through `RenderIo`.
+They accept partial pages and arbitrary intervals within the prepared maximum.
+Required audio copies are counted separately from background transfer allowance.
+
+`grab` owns a history window, `fork` owns another editable view, and `export` owns
+an immutable revision. A copied read index borrows its owner and becomes invalid
+when that owner is released. `replace` publishes one multichannel edit atomically,
+including page and loop boundary crossings, without changing the take's length.
+Other takes and exports retain their original pages. Musical decisions and the
+effective cut remain the caller's responsibility.
+
+`SharedPlayback`, `render_shared` and `render_shared_ports` use the same
+conversion, gain, balance and smoothing path as ordinary resource playback.
+The resolver still supplies non-wrapping intervals and discontinuity flags.
+See the [shared audio ownership reference](../../rt_runtime/docs/reference/shared-audio.md)
+for preparation, capacity and release contracts.
+
+`tests/shared_audio.rs` composes a fixed Q=1 scalar resolver, audio capture
+and audio renderer as a reference oracle. An independent scalar oracle checks two overlapping stereo
+grabs, replacement across pages/wraps, retained original and intermediate exports,
+stop/resume and continued history capture with background transfers exhausted.
+Whole, single-frame and irregular callback partitions produce identical samples.
+A separate run refuses an export at its owner limit and preserves running content.
+All execution and cleanup are heap guarded.
+
+Registered shared audio also uses ordinary resource snapshots, so existing
+`LoopPlanner` source admission, `Adopt`, `Select`, media-ledger exports and complete
+configuration replacement accept it without a second publication mechanism.
+Integration fixtures cover loaded PCM bases and grabbed history, playback and
+retained exports across replacement, and complete resource cleanup. Codec fixtures
+exercise session, exact-audio and WAV round trips. See the [fixed shared-history contract](shared-history.md) for mixed audio/MIDI
+history, private preparation and production tick publication. Continuous Replacing
+mode, host grab protocols and application P04/P05 capability restoration remain
+separate work. Native tests do not establish browser/device deadlines or a new cross-platform
+acceptance campaign.
+
 ## Verification boundary
 
 The six audio tests use the production resolver with an independent scalar sample/ramp oracle over three host partitions, plus mono/stereo/five-channel page crossings, 128 one-sample intervals, immediate freeze/read, separate old-playback/gain/new-capture operations, refusal/zero-frame/stale-scope cases and complete resource recovery. All operations run under heap guards, including failure paths; the full workloads are included in pinned Miri and package Node/Chromium runs.

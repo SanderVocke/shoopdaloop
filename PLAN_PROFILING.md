@@ -1,7 +1,7 @@
 # Runtime profiling implementation plan
 
-Status: dedicated profiling window and RT/transport integration implemented;
-all local acceptance gates pass; remote CI and automated-review checks in progress.
+Status: implementation and local acceptance gates passed at `30bc167f`;
+reconciling newly merged shared-media/buffered-processor code so remote CI can run.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -410,3 +410,11 @@ without returned credits stay within the 256-record window and that reliable
 disable still succeeds. No Wasm memory growth occurs. Regular and large-media
 workflows both pass with zero reported xruns.
 The PR remains unmerged. No automated review has appeared at the latest check.
+
+Late target reconciliation: PRs #927 and #937 advanced the target to `2e19210b`
+and caused conflicts before CI could start on `30bc167f`. Preserve both changes:
+shared-media stores and input epochs, buffered-processor support, both crate
+lockfile entries, both tracing inventories, and both Wasm dependency audits.
+The warning-denying merged workspace build and 423-module inventory pass.
+Refresh native/affected Wasm/browser checks and the matching benchmark comparison
+before final delivery. The preceding counts describe the validated checkpoint.

@@ -556,6 +556,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn resource_usage(&self) -> resource::PoolUsage {
         self.resources.usage()
     }
+    pub fn resource_work(&self) -> resource::Work {
+        self.resources.work()
+    }
+    pub fn render_work(&self) -> resource::RenderWork {
+        self.resources.render_work()
+    }
 
     pub fn set_profiling(&mut self, recorder: rt_profiling::Recorder) {
         self.profiling = recorder;

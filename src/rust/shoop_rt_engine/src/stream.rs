@@ -133,6 +133,10 @@ impl BulkReader {
         &mut self,
         block: &mut ProcessBlock<'_, LoopPlanner>,
     ) -> Result<(), Error> {
+        #[cfg(test)]
+        if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
+            return Err(Error::InvalidState);
+        }
         let Some(mut cursor) = self.cursor else {
             return Ok(());
         };

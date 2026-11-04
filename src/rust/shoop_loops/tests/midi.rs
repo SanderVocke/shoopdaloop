@@ -588,6 +588,11 @@ impl Processor for RuntimeNode {
 }
 #[shoop_test]
 fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_audio() {
+    for shared in [false, true] {
+        runtime_overflow_case(shared);
+    }
+}
+fn runtime_overflow_case(shared: bool) {
     let cfg = Config {
         max_frames: 2,
         max_nodes: 2,
@@ -611,12 +616,42 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
     .prepare()
     .unwrap();
     let mut store = store_with(cfg);
-    let snapshot = upload(
+    let mut snapshot = upload(
         &mut store,
         &[(0, vec![0x90, 60, 99]), (1, vec![0x90, 61, 88])],
         2,
         &MidiState::default(),
     );
+    let history = if shared {
+        let midi = store
+            .prepare_midi_store(
+                shared_midi::Config {
+                    history_frames: 2,
+                    chunks: 1,
+                    views: 8,
+                    pages: 220,
+                    max_events: 2,
+                    max_bytes: 6,
+                    max_packet: 3,
+                    transactions: 1,
+                    edit_steps: 2,
+                },
+                Frame(0),
+                &MidiState::default(),
+            )
+            .unwrap();
+        let import = store.prepare_midi_import(midi, snapshot.id).unwrap();
+        while assert_no_heap(|| store.render_io().progress_midi_import(import, 2))
+            == Ok(shared_midi::EditStatus::Building)
+        {}
+        let resource = store.finish_midi_import(import).unwrap();
+        store.release_snapshot(snapshot.id).unwrap();
+        store.remove(snapshot.resource).unwrap();
+        snapshot = store.snapshot(resource, Frame(0)).unwrap();
+        Some(midi)
+    } else {
+        None
+    };
     let index = store.read_index(snapshot.id).unwrap();
     let observed = Arc::new(AtomicUsize::new(0));
     let mut tracker = MidiCapture::prepare(2, 1, 3).unwrap();
@@ -723,7 +758,27 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
     });
     drop(control);
     let mut store = runtime.into_resources();
-    cleanup(&mut store, &[snapshot]);
+    if let Some(history) = history {
+        assert_no_heap(|| {
+            store.release_snapshot(snapshot.id).unwrap();
+            store.remove(snapshot.resource).unwrap();
+            for _ in 0..272 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            store.cleanup_midi_store(history).unwrap();
+            for _ in 0..272 {
+                store.begin_callback();
+                store.reclaim();
+            }
+            assert_eq!(store.usage().free_pages, 256);
+            assert_eq!(store.usage().free_versions, 8);
+            assert_eq!(store.usage().free_snapshots, 8);
+            assert_eq!(store.midi_index_usage().free_versions, 4);
+        });
+    } else {
+        cleanup(&mut store, &[snapshot]);
+    }
 }
 #[shoop_test]
 fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
