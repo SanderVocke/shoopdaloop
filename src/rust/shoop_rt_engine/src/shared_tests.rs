@@ -26,6 +26,9 @@ use shoop_wasm_test_support::{
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "shared_measurements.rs"]
+mod measurements;
 #[path = "shared_persistence_tests.rs"]
 mod persistence;
 
@@ -52,6 +55,10 @@ struct Fixture {
     burst: Option<u64>,
     last_execution: Option<Executed>,
     read_buffer: Option<(resource::Cursor, Box<[u8]>)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    timings: Option<Vec<measurements::Callback>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    measure_phase: &'static str,
 }
 fn target(slot: u32) -> LoopId {
     LoopId::from_parts(slot, 1).unwrap()
@@ -104,9 +111,12 @@ impl Fixture {
         id
     }
     fn new(q: usize, partition: usize) -> Self {
+        Self::new_with_rate(q, partition, 1000)
+    }
+    fn new_with_rate(q: usize, partition: usize, rate: u32) -> Self {
         let d = EngineDescription {
             quantum: q,
-            sample_rate: 1000,
+            sample_rate: rate,
             max_frames: 128,
             host: HostPorts::numbered(2, 2, 1),
             segments: vec![Segment {
@@ -127,7 +137,7 @@ impl Fixture {
             DriverStatus {
                 kind: DriverKind::Dummy,
                 state: DriverRunState::Running,
-                sample_rate: 1000,
+                sample_rate: rate,
                 buffer_frames: 128,
             },
             SharedSettings {
@@ -174,6 +184,10 @@ impl Fixture {
             burst: None,
             last_execution: None,
             read_buffer: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            timings: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            measure_phase: "capture",
         };
         h.engine.endpoint.deliver(
             protocol::message::ClientMessage::Hello {
@@ -245,6 +259,8 @@ impl Fixture {
             }
         }
         let [left, right] = &mut self.output;
+        #[cfg(not(target_arch = "wasm32"))]
+        let clock = self.timings.as_ref().map(|_| std::time::Instant::now());
         assert_no_heap(|| {
             self.engine.render.process(
                 AudioBlock {
@@ -260,6 +276,19 @@ impl Fixture {
             )
         })
         .unwrap();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(clock) = clock {
+            let elapsed = clock.elapsed().as_nanos();
+            self.timings.as_mut().unwrap().push(measurements::Callback {
+                frame: start,
+                frames,
+                nanos: elapsed,
+                work: self.engine.render.resource_work(),
+                usage: self.engine.render.resource_usage(),
+                ticks: self.engine.render.diagnostics().subranges,
+                phase: self.measure_phase,
+            });
+        }
         for ch in 0..2 {
             self.samples[ch].extend_from_slice(&self.output[ch][..frames]);
         }

@@ -61,6 +61,18 @@ pub struct SharedWork {
     pub edit_steps: usize,
     pub jobs_scanned: usize,
 }
+/// Prepared storage without allocator overhead. Reserved payload is a subset of
+/// the ordinary arena; MIDI state is a subset of store metadata.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SharedCapacity {
+    pub coordinator_bytes: usize,
+    pub store_metadata_bytes: usize,
+    pub midi_state_bytes: usize,
+    pub reserved_payload_bytes: usize,
+    pub arena_payload_bytes: usize,
+    pub sources: usize,
+    pub candidates: usize,
+}
 struct History {
     committed_graph: Option<Epoch>,
     settings: HistorySettings,
@@ -121,6 +133,7 @@ pub(super) struct Shared {
     midi_patch: MidiBuffer,
     work: SharedWork,
     closed: bool,
+    capacity: SharedCapacity,
 }
 
 impl Shared {
@@ -233,7 +246,82 @@ impl Shared {
             midi_patch: MidiBuffer::new(events, bytes)?,
             work: SharedWork::default(),
             closed: false,
+            capacity: SharedCapacity::default(),
         };
+        let mut capacity = SharedCapacity {
+            coordinator_bytes: size_of::<Self>(),
+            arena_payload_bytes: c
+                .resource_pages
+                .checked_mul(c.page_bytes)
+                .ok_or(Error::Capacity)?,
+            sources: result.histories.len(),
+            candidates: result.jobs.len(),
+            ..SharedCapacity::default()
+        };
+        let add = |total: &mut usize, count: usize, bytes: usize| -> Result<(), Error> {
+            *total = total
+                .checked_add(count.checked_mul(bytes).ok_or(Error::Capacity)?)
+                .ok_or(Error::Capacity)?;
+            Ok(())
+        };
+        for (count, bytes) in [
+            (result.histories.capacity(), size_of::<History>()),
+            (result.lookup.len(), size_of::<Option<usize>>()),
+            (result.jobs.len(), size_of::<Job>()),
+            (
+                result.owned.len(),
+                size_of::<Option<rt_runtime::ResourceId>>(),
+            ),
+            (result.audio_patch.len(), size_of::<f32>()),
+            (result.bytes.len(), 1),
+            (result.midi_patch.prepared_bytes(), 1),
+        ] {
+            add(&mut capacity.coordinator_bytes, count, bytes)?;
+        }
+        for history in &result.histories {
+            add(
+                &mut capacity.coordinator_bytes,
+                history.audio_scratch.len(),
+                size_of::<f32>(),
+            )?;
+            if history.tracker.is_some() {
+                add(&mut capacity.coordinator_bytes, 1, size_of::<MidiState>())?;
+            }
+            if let Some(id) = history.audio {
+                let c = resources.audio_store_capacity(id)?;
+                add(&mut capacity.store_metadata_bytes, 1, c.metadata_bytes)?;
+                add(
+                    &mut capacity.store_metadata_bytes,
+                    1,
+                    size_of::<shared_audio::AudioStore>(),
+                )?;
+                add(
+                    &mut capacity.reserved_payload_bytes,
+                    history.settings.audio.expect("audio settings").pages,
+                    resources.config().limits().page_bytes,
+                )?;
+            }
+            if let Some(id) = history.midi {
+                let c = resources.midi_store_capacity(id)?;
+                add(&mut capacity.store_metadata_bytes, 1, c.metadata_bytes)?;
+                add(
+                    &mut capacity.store_metadata_bytes,
+                    1,
+                    size_of::<shared_midi::MidiStore>(),
+                )?;
+                add(&mut capacity.midi_state_bytes, 1, c.state_bytes)?;
+                add(
+                    &mut capacity.reserved_payload_bytes,
+                    history.settings.midi.expect("MIDI settings").pages,
+                    resources.config().limits().page_bytes,
+                )?;
+            }
+        }
+        capacity
+            .coordinator_bytes
+            .checked_add(capacity.store_metadata_bytes)
+            .ok_or(Error::Capacity)?;
+        result.capacity = capacity;
         for h in &mut result.histories {
             for v in h.audio_scratch.iter_mut() {
                 core::hint::black_box(v);
@@ -769,6 +857,9 @@ impl Shared {
     pub fn work(&self) -> SharedWork {
         self.work
     }
+    pub fn capacity(&self) -> SharedCapacity {
+        self.capacity
+    }
     pub fn validate_original(job: Candidate, io: &ResourceIo<'_>) -> Result<(), Error> {
         for (resource, revision) in [
             (job.original.audio, job.original_audio),
@@ -870,6 +961,9 @@ impl LoopPlanner {
     ) -> Result<Reply, Failure> {
         let q = self.fixed_quantum.ok_or(Error::InvalidState)?.frames();
         match operation {
+            Operation::SharedCapacity => Ok(Reply::SharedCapacity(
+                self.shared.as_ref().ok_or(Error::InvalidState)?.capacity(),
+            )),
             Operation::SharedWork => Ok(Reply::SharedWork(
                 self.shared.as_ref().ok_or(Error::InvalidState)?.work(),
             )),

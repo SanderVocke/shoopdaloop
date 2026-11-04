@@ -632,6 +632,28 @@ jobs:
           python3 scripts/benchmark_loops.py --iterations 1024 --trials 3 \
             --report-dir '${{ runner.temp }}/loops-bench-${{ github.run_id }}-${{ github.run_attempt }}'
 
+      - name: Measure production fixed shared media callbacks
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_SHARED_REPORT_DIR: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p "$SHOOP_SHARED_REPORT_DIR"
+          git rev-parse HEAD > "$SHOOP_SHARED_REPORT_DIR/source.txt"
+          rustc -vV > "$SHOOP_SHARED_REPORT_DIR/toolchain.txt"
+          uname -a > "$SHOOP_SHARED_REPORT_DIR/runner.txt"
+          export SHOOP_SHARED_SOURCE_SHA="$(git rev-parse HEAD)"
+          cargo test --locked -p shoop_rt_engine --release --lib fixed_shared_callback_measurements -- --ignored --nocapture
+
+      - name: Upload production shared media callback measurements
+        if: always() && matrix.target == 'linux' && matrix.profile == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload guarded loop measurement evidence
         if: always() && matrix.target == 'linux' && matrix.profile == 'release'
         uses: actions/upload-artifact@v7

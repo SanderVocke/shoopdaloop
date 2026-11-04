@@ -774,6 +774,7 @@ impl LoopPlanner {
                     | Operation::CandidateCancel { .. }
                     | Operation::CandidatePublish { .. }
                     | Operation::SharedWork
+                    | Operation::SharedCapacity
             ) {
                 if !context.payload.is_empty() {
                     return Err(Error::InvalidShape.into());
@@ -1325,6 +1326,7 @@ impl LoopPlanner {
                 | Operation::CandidateCancel { .. }
                 | Operation::CandidatePublish { .. }
                 | Operation::SharedWork
+                | Operation::SharedCapacity
                 | Operation::NodePairSnapshot { .. }
                 | Operation::NodePairSourceStatus { .. }
                 | Operation::NodePairSourceValidate { .. }

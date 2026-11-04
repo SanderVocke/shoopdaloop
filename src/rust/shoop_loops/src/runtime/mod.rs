@@ -24,8 +24,8 @@ mod family;
 mod shared;
 pub use family::{ContentFamilyEntry, CONTENT_FAMILY_RECORD_BYTES};
 pub use shared::{
-    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedSettings,
-    SharedTake, SharedWork,
+    CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, SharedCapacity,
+    SharedSettings, SharedTake, SharedWork,
 };
 mod node_pairs;
 mod planner;
@@ -110,6 +110,7 @@ pub enum Selection {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
     SharedWork,
+    SharedCapacity,
     HistoryStatus {
         source: u32,
     },
@@ -343,6 +344,7 @@ pub enum Reply {
         frame: Frame,
     },
     SharedWork(SharedWork),
+    SharedCapacity(SharedCapacity),
     NodePairSource {
         id: NodePairSourceId,
         snapshot: Snapshot,

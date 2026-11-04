@@ -400,3 +400,4 @@ src/rust/shoopdaloop/src/persistence_io/family.rs,application_ui_and_control,ins
 src/rust/shoop_loops/src/runtime/shared.rs,generic_realtime_library,excluded,Prepared fixed history taps and bounded private edit publication; render must not trace.
 src/rust/shoop_rt_engine/src/shared_tests.rs,test_support,excluded,Guarded fixed engine shared history and private publication fixtures.
 src/rust/shoop_rt_engine/src/shared_persistence_tests.rs,test_support,excluded,Production fixed history export codec reload and replacement fixtures.
+src/rust/shoop_rt_engine/src/shared_measurements.rs,test_support,excluded,Full guarded fixed callback measurements with retained raw observations.

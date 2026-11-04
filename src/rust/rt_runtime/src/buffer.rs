@@ -189,6 +189,10 @@ pub struct MidiBuffer {
 }
 
 impl MidiBuffer {
+    /// Prepared backing storage, excluding this descriptor and allocator overhead.
+    pub fn prepared_bytes(&self) -> usize {
+        self.events.len() * size_of::<Event>() + self.bytes.len()
+    }
     pub fn new(events: usize, bytes: usize) -> Result<Self, Error> {
         let reserved_events = events
             .checked_add(crate::midi::ResetState::EVENTS)

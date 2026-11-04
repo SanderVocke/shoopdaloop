@@ -23,6 +23,12 @@ pub(super) struct Export {
 }
 
 impl ResourceStore {
+    pub fn audio_store_capacity(
+        &mut self,
+        id: AudioStoreId,
+    ) -> Result<shared_audio::Capacity, Error> {
+        self.with_audio(id, |_, store| Ok(store.capacity()))
+    }
     /// Host preparation only. The store and its reservation outlive all resources
     /// and snapshots created from it. Cleanup releases pages, never RT allocations.
     pub fn prepare_audio_store(
