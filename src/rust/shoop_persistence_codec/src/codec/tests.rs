@@ -105,6 +105,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
                     label: label.into(),
                     port: image::Port {
                         state: ApplicationPortState {
+                            publication: None,
                             id: PortId::from_raw(index as u64 + 1),
                             owner: ApplicationPortOwner::Bus {
                                 bus_id: BusId::from_raw(1),
@@ -121,6 +122,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
                 .collect(),
         }],
         bus_display_order: vec![BusId::from_raw(1)],
+        preview_bus: None,
         global_ports: vec![],
         routes: vec![],
         selected: vec![],
