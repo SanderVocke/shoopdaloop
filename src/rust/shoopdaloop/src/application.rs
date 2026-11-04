@@ -60,11 +60,15 @@ impl From<shoop_app_client::Error> for DispatchError {
 }
 #[derive(Default)]
 struct FileMailbox {
+    preview: Option<ApplicationAudioPreview>,
     outputs: VecDeque<ApplicationFileOutput>,
     requests: VecDeque<ApplicationFileRequest>,
 }
 impl FileMailbox {
     fn collect(&mut self, runtime: &mut ClientRuntime) {
+        if let Some(preview) = runtime.take_audio_preview() {
+            self.preview = Some(preview);
+        }
         while self.outputs.len() < 8 {
             let Some(output) = runtime.take_file_output() else {
                 break;
@@ -171,7 +175,11 @@ impl CooperativeApplicationRuntime {
     }
     #[cfg(target_arch = "wasm32")]
     pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-        self.client.take_audio_preview()
+        self.outputs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .preview
+            .take()
     }
 }
 
@@ -409,7 +417,11 @@ mod native {
                 .pop_front()
         }
         pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-            None
+            self.outputs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .preview
+                .take()
         }
     }
     pub struct ApplicationRuntime {

@@ -135,8 +135,14 @@ Advanced JSON configuration also supports the complete JACK startup configuratio
 
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet
-operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
+operations, timing/alignment edits and loop duplication.
 The authoritative capability checks refuse unsupported operations.
+
+Audio/MIDI click generation and insertion are supported. Audio clicks can be
+previewed through the client's native/Web Audio System output or through Master
+on the RT host, including an attached host. Master preview follows the bus's
+gain, balance, mute and output routes. P15 is complete; see the
+[preview contract and completion evidence](../../../docs/native_session_recovery/preview.md).
 
 Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
 targets/policies, supported track/bus controls, routes/connections, piano MIDI and
@@ -332,3 +338,19 @@ Screenshots from the native manager (800 × 500):
 ![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
 
 ![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)
+
+The hosted preview canary uses the real codec worker and AudioWorklet, switches
+System → Master → System, checks Master signal, Stop and natural completion, and
+requires unchanged loop media/transport. It can run with output-only permission:
+
+```sh
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending CHROME_BIN=chromium node browser_smoke.mjs
+```
+
+`PREVIEW_RESUME=reject` injects a rejected Web Audio resume after suspending the
+actual context. `pending` leaves the resume unresolved to model autoplay gating.
+Both require a visible failure without a false Playing state and a successful
+retry. `DENY_FIRST=1` additionally checks browser microphone denial and retry.
+These flags select acceptance probes; they do not alter production playback.

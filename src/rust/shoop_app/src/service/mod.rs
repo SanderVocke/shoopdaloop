@@ -12,6 +12,7 @@ mod management;
 mod media;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
+mod preview;
 mod projection;
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -124,6 +125,9 @@ impl CommandError {
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
     backend: Box<dyn Backend>,
+    preview: ClickTrackState,
+    preview_bus: Option<BusId>,
+    preview_stage: Option<preview::Stage>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
     host_diagnostics: Vec<String>,
@@ -180,6 +184,9 @@ impl Service {
         }
         let mut service = Self {
             backend,
+            preview: ClickTrackState::default(),
+            preview_bus: None,
+            preview_stage: None,
             options,
             host_settings: None,
             host_diagnostics: Vec::new(),
@@ -479,6 +486,7 @@ impl Service {
             .as_ref()
             .is_some_and(|lease| lease.connection == connection)
         {
+            self.stop_preview();
             self.lease = None;
             for (note, tracks) in core::mem::take(&mut self.piano_notes) {
                 for track in tracks {
@@ -781,6 +789,7 @@ impl Service {
             return;
         }
         self.backend.advance(elapsed);
+        self.advance_preview();
         match self.backend.poll() {
             Ok(mut observed) => {
                 let completions = core::mem::take(&mut observed.mutation_completions);

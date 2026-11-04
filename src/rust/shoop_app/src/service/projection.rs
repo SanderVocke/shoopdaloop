@@ -45,6 +45,15 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            preview: {
+                let mut state = self.preview.clone();
+                state.master_preview_available = self.backend.supports_audio_preview()
+                    && self
+                        .preview_bus
+                        .is_some_and(|id| self.buses.contains_key(&id));
+                state
+            },
+            preview_bus: self.preview_bus,
             bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
             revision: self.revision,
@@ -204,7 +213,7 @@ impl Service {
             .cloned()
             .collect::<Vec<_>>();
         for bus in buses {
-            self.insert_bus(
+            let id = self.insert_bus(
                 BackendBusCreation {
                     bus_id: bus.id,
                     channels: bus.channels,
@@ -212,6 +221,9 @@ impl Service {
                 bus.name,
                 StructuralState::Confirmed,
             )?;
+            if bus.id == MASTER_BUS_ID {
+                self.preview_bus = Some(id);
+            }
         }
         let descriptors = self
             .observed
@@ -279,6 +291,10 @@ impl Service {
     }
     fn forget_bus(&mut self, id: BusId) {
         if let Some(bus) = self.buses.remove(&id) {
+            if self.preview_bus == Some(id) {
+                self.preview_bus = None;
+                self.stop_preview();
+            }
             self.bus_order.retain(|v| *v != id);
             for channel in bus.view.channels.iter() {
                 self.channels.remove(&channel.id);

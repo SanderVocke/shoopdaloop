@@ -702,6 +702,12 @@ impl Planner for LoopPlanner {
                 return Err(Error::InvalidShape.into());
             }
             let topology_status = match operation {
+                Operation::NodePairSourceCursor { id } => {
+                    let source = self.node_pairs.source(id)?;
+                    return Ok(Disposition::Complete(Reply::Cursor(
+                        context.resources.cursor(source.snapshot.id)?,
+                    )));
+                }
                 Operation::NodePairSnapshot { resource } => {
                     let (id, snapshot) = self.node_pairs.snapshot(
                         resource,
@@ -1201,7 +1207,8 @@ impl Planner for LoopPlanner {
                     });
                     Ok(Disposition::Pending)
                 }
-                Operation::NodePairSnapshot { .. }
+                Operation::NodePairSourceCursor { .. }
+                | Operation::NodePairSnapshot { .. }
                 | Operation::NodePairSourceStatus { .. }
                 | Operation::NodePairSourceValidate { .. }
                 | Operation::NodePairSourceRelease { .. }

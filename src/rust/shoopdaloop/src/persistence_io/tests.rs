@@ -15,7 +15,8 @@ impl Delivery for GateDelivery {
             && matches!(
                 &message,
                 ClientMessage::Submit {
-                    command: Command::Global(GlobalControlAction::SetSolo(true)),
+                    command: Command::Global(GlobalControlAction::SetSolo(true))
+                        | Command::Preview(PreviewCommand::Chunk { .. }),
                     ..
                 }
             )
@@ -1174,4 +1175,254 @@ async fn large_browser_worker_maps_and_returns_media_over_the_old_view_limit() {
         assert!(samples.iter().all(|sample| *sample == 0.25));
     }
     codec.reset();
+}
+
+#[shoop_test]
+async fn system_preview_is_local_and_stale_completion_cannot_restart_it() {
+    let mut f = Fixture::new();
+    let loop_id = f.runtime.snapshot().tracks[0].loops[0].id;
+    let before: Vec<_> = f
+        .runtime
+        .snapshot()
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .map(|l| (l.id, l.length_frames, l.content_revision))
+        .collect();
+    f.dispatch(AppIntent::PreviewClickTrack {
+        output: ClickTrackPreviewOutput::System,
+        loop_id,
+        request: ClickTrackRequest::default(),
+    });
+    let mut output = None;
+    for _ in 0..10_000 {
+        f.step();
+        idle().await;
+        output = f.runtime.take_audio_preview();
+        if output.is_some() {
+            break;
+        }
+    }
+    let output = output.expect("system player must receive PCM");
+    assert_eq!(output.output, ClickTrackPreviewOutput::System);
+    assert!(output.samples.iter().any(|v| v.abs() > 0.));
+    assert_eq!(
+        f.runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .map(|l| (l.id, l.length_frames, l.content_revision))
+            .collect::<Vec<_>>(),
+        before
+    );
+    f.dispatch(AppIntent::ClickTrackPreviewStarted {
+        request_id: output.request_id,
+    });
+    assert_eq!(
+        f.runtime.snapshot().click_track.preview_status,
+        ClickTrackPreviewStatus::Playing
+    );
+    f.dispatch(AppIntent::StopClickTrackPreview);
+    f.dispatch(AppIntent::CompleteClickTrackPreview {
+        request_id: output.request_id,
+        success: true,
+        message: "late callback".into(),
+    });
+    assert_eq!(
+        f.runtime.snapshot().click_track.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    assert!(f.runtime.take_audio_preview().is_none());
+    f.dispatch(AppIntent::PreviewClickTrack {
+        output: ClickTrackPreviewOutput::System,
+        loop_id,
+        request: ClickTrackRequest::default(),
+    });
+    f.dispatch(AppIntent::StopClickTrackPreview);
+    for _ in 0..100 {
+        f.step();
+        idle().await;
+        assert!(f.runtime.take_audio_preview().is_none());
+    }
+}
+
+#[shoop_test]
+async fn master_preview_uses_service_rt_path_and_stops_on_cancel_or_lease_loss() {
+    let mut f = Fixture::new();
+    let loop_id = f.runtime.snapshot().tracks[0].loops[0].id;
+    let content_before = f.runtime.snapshot().tracks[0].loops[0].content_revision;
+    assert!(f.runtime.snapshot().click_track.master_preview_available);
+    for detach in [false, true] {
+        f.dispatch(AppIntent::PreviewClickTrack {
+            output: ClickTrackPreviewOutput::MasterBus,
+            loop_id,
+            request: ClickTrackRequest::default(),
+        });
+        f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Playing)
+            .await;
+        assert!(
+            f.runtime.take_audio_preview().is_none(),
+            "Master must never reach the client system player"
+        );
+        assert_eq!(
+            f.runtime.snapshot().tracks[0].loops[0].content_revision,
+            content_before
+        );
+        if detach {
+            f.service.detach(ConnectionId(1));
+            for _ in 0..200 {
+                f.service.tick(STEP);
+            }
+            assert_eq!(
+                f.service.snapshot().preview.preview_status,
+                ClickTrackPreviewStatus::Cancelled
+            );
+        } else {
+            f.dispatch(AppIntent::StopClickTrackPreview);
+            f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Cancelled)
+                .await;
+            // A second preview must start after cancellation releases the prepared upload.
+            f.dispatch(AppIntent::PreviewClickTrack {
+                output: ClickTrackPreviewOutput::MasterBus,
+                loop_id,
+                request: ClickTrackRequest::default(),
+            });
+            f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Completed)
+                .await;
+        }
+    }
+}
+
+#[shoop_test]
+async fn preview_cancellation_discards_unsent_chunks_and_session_replacement_stops_playback() {
+    let mut f = Fixture::new();
+    let loop_id = f.runtime.snapshot().tracks[0].loops[0].id;
+    f.hold.set(true);
+    f.dispatch(AppIntent::PreviewClickTrack {
+        output: ClickTrackPreviewOutput::MasterBus,
+        loop_id,
+        request: ClickTrackRequest::default(),
+    });
+    for _ in 0..10_000 {
+        f.step();
+        idle().await;
+        if f.service.snapshot().preview.preview_request_id != 0 {
+            break;
+        }
+    }
+    assert_ne!(f.service.snapshot().preview.preview_request_id, 0);
+    f.dispatch(AppIntent::StopClickTrackPreview);
+    for _ in 0..100 {
+        f.step();
+        idle().await;
+    }
+    assert_eq!(
+        f.service.snapshot().preview.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    f.hold.set(false);
+    f.dispatch(AppIntent::PreviewClickTrack {
+        output: ClickTrackPreviewOutput::MasterBus,
+        loop_id,
+        request: ClickTrackRequest::default(),
+    });
+    f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Playing)
+        .await;
+    f.dispatch(AppIntent::RequestNewSession);
+    f.until(|s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|t| t.status == IoTaskStatus::Completed)
+    })
+    .await;
+    assert_eq!(
+        f.runtime.snapshot().click_track.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    assert!(f.runtime.take_audio_preview().is_none());
+}
+
+#[shoop_test]
+async fn master_preview_identity_survives_renamed_session_and_clears_when_removed() {
+    let mut f = Fixture::new();
+    let original = f.runtime.snapshot().buses[0].id;
+    f.dispatch(AppIntent::AddBus(BusSpec {
+        name: "Master".into(),
+        channel_count: 2,
+        fx: None,
+        creation_request_id: None,
+    }));
+    let state = f
+        .until(|s| {
+            s.buses.len() == 2
+                && s.buses
+                    .iter()
+                    .all(|b| b.structural_state == StructuralState::Confirmed)
+        })
+        .await;
+    f.dispatch(AppIntent::Bus {
+        bus_id: state.buses[1].id,
+        action: BusAction::MoveBefore(Some(original)),
+    });
+    f.until(|s| s.buses[0].id != original).await;
+    f.dispatch(AppIntent::RequestSaveSession);
+    let saved = f.output().await;
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: saved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    let mut bundle = shoop_session::decode_session(&saved.bytes).unwrap();
+    assert!(matches!(
+        bundle.document.preview_bus,
+        shoop_session::PreviewBusDocument::Bus(_)
+    ));
+    bundle.document.buses[0].name = "Renamed output".into();
+    let bytes = shoop_session::encode_session(&bundle, "preview").unwrap();
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "renamed.shoop".into(),
+        bytes: bytes.into(),
+    });
+    let state = f
+        .until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == IoTaskStatus::Completed)
+        })
+        .await;
+    assert!(state.click_track.master_preview_available);
+    assert_eq!(state.buses[0].name, "Master");
+    let bus_id = state
+        .buses
+        .iter()
+        .find(|b| b.name == "Renamed output")
+        .unwrap()
+        .id;
+    let loop_id = state.tracks[0].loops[0].id;
+    assert_eq!(f.service.snapshot().preview_bus, Some(bus_id));
+    f.dispatch(AppIntent::PreviewClickTrack {
+        loop_id,
+        request: Default::default(),
+        output: ClickTrackPreviewOutput::MasterBus,
+    });
+    f.until(|s| s.click_track.preview_status == ClickTrackPreviewStatus::Playing)
+        .await;
+    f.dispatch(AppIntent::Bus {
+        bus_id,
+        action: BusAction::Remove,
+    });
+    f.until(|s| s.buses.len() == 1 && !s.click_track.master_preview_available)
+        .await;
+    assert_eq!(f.service.snapshot().preview_bus, None);
+    assert_eq!(
+        f.service.snapshot().preview.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    f.dispatch(AppIntent::RequestNewSession);
+    f.until(|s| s.buses.len() == 1 && s.click_track.master_preview_available)
+        .await;
+    assert_eq!(
+        f.service.snapshot().preview_bus,
+        Some(f.runtime.snapshot().buses[0].id)
+    );
 }

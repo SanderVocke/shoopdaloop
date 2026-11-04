@@ -1792,12 +1792,14 @@ impl Default for ScriptingState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewOutput {
     System,
     MasterBus,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewStatus {
     Cancelled,
     #[default]
@@ -1809,12 +1811,14 @@ pub enum ClickTrackPreviewStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickSoundDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackState {
     pub preview_output: Option<ClickTrackPreviewOutput>,
     pub master_preview_available: bool,

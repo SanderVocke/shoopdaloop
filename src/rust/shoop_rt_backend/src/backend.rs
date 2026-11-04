@@ -221,6 +221,27 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             total_channels: u32::from(limits.buses) * u32::from(limits.bus_channels),
         }
     }
+    fn supports_audio_preview(&self) -> bool {
+        self.is_ready()
+    }
+    fn start_bus_audio_preview_async(
+        &mut self,
+        bus: BackendBusId,
+        request_id: u64,
+        rate: u32,
+        samples: Arc<Vec<f32>>,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.bus_preview(bus, request_id, rate, samples)
+    }
+    fn audio_preview_playing(&self) -> bool {
+        self.preview
+            .as_ref()
+            .is_some_and(|p| !p.stopped && p.job.id == self.preview_playing)
+    }
+    fn stop_audio_preview(&mut self) -> Result<()> {
+        self.stop_preview();
+        Ok(())
+    }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
             .with(BackendCapability::BusManagement, self.is_ready())
@@ -747,6 +768,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() && self.preview.is_some() {
+            self.stop_preview();
+            return Ok(BackendAsyncResult::Pending(
+                shoop_backend::BackendOperationProgress {
+                    key: 0,
+                    kind: shoop_backend::BackendOperationKind::SessionReplacement,
+                    completed: 0,
+                    total: None,
+                },
+            ));
+        }
         if self.replacement.is_none() {
             self.start_replacement(session)?;
         }
@@ -764,6 +796,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         session: &BackendSessionData,
         sync: &alloc::collections::BTreeMap<u64, u64>,
     ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if self.replacement.is_none() && self.preview.is_some() {
+            self.stop_preview();
+            return Ok(BackendAsyncResult::Pending(
+                shoop_backend::BackendOperationProgress {
+                    key: 0,
+                    kind: shoop_backend::BackendOperationKind::SessionReplacement,
+                    completed: 0,
+                    total: None,
+                },
+            ));
+        }
         if self.replacement.is_none() {
             self.start_replacement_with_sync(session, sync)?;
         }

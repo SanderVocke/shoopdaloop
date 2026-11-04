@@ -253,6 +253,7 @@ mod tests {
         });
         let buses = SessionDocument::empty(sample_rate).buses;
         let document = SessionDocument {
+            preview_bus: Default::default(),
             sample_rate,
             connection_model_version: CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {

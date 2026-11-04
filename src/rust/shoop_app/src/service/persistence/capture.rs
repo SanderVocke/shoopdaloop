@@ -249,6 +249,7 @@ impl Cut {
                         .collect::<Result<_>>()?
                 },
                 bus_display_order: self.state.buses.iter().map(|bus| bus.id).collect(),
+                preview_bus: self.state.preview_bus,
                 global_ports: self
                     .state
                     .connections

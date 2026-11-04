@@ -103,6 +103,7 @@ jobs:
             cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features --features "$features"
           done
           cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features
+          cargo check --locked -p shoopdaloop --no-default-features --features system-preview
           cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features
       - name: Upload JACK acceptance evidence
         if: always()
@@ -144,6 +145,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: Rust coverage (Linux)
     runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -175,6 +178,12 @@ jobs:
             libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
             protobuf-compiler
+
+      - name: Reserve disk space for instrumented workspace binaries
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
 
       - name: Generate Rust coverage
         env:
@@ -909,6 +918,7 @@ jobs:
           NEW_ENGINE: '1'
         run: |
           node --experimental-websocket browser_smoke.mjs
+          PREVIEW_ONLY=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
           if [ '${{ matrix.profile }}' = release ]; then
             SELF_CONTAINED=1 SELF_CONTAINED_PATH="$SHOOP_HTML_ARTIFACT" \
               node --experimental-websocket browser_smoke.mjs
@@ -917,6 +927,8 @@ jobs:
               node --experimental-websocket browser_smoke.mjs
           else
             DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
+            PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject node --experimental-websocket browser_smoke.mjs
+            PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending node --experimental-websocket browser_smoke.mjs
           fi
 
       - name: Install Firefox browser
