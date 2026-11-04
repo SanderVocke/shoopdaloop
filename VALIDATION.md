@@ -86,8 +86,8 @@ bare-metal checks; documentation and CodeQL also pass. The complete Linux suite
 confirms 2641 passed and four intentional canary skips. The user explicitly
 waived macOS validation after repeated hosted ARM64 runner acquisition failures;
 those unavailable runs are not passing evidence. No automated code review or
-inline threads were posted; approval is not claimed. Final closeout changes only
-delivery documents, with current non-macOS results available on
+inline threads were posted; approval is not claimed. Document closeout was followed
+by the runner storage fix above, with current non-macOS results available on
 [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937).
 
 ## Native session recovery checkpoint

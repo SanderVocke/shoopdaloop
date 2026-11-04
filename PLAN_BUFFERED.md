@@ -287,8 +287,8 @@ builds or implementation tests.
   its full native and coverage runs each pass 2677 tests with six expected skips.
   The branch-local native run passes 2676 tests against integrated base `3ca192e1`.
   macOS is explicitly waived, with no macOS pass claimed. No review submissions
-  or inline threads were posted; automated approval is not claimed. The final
-  closeout updates only delivery documents; its checks are linked from
+  or inline threads were posted; automated approval is not claimed. Document
+  closeout was followed by the runner storage fix above; final checks are linked from
   [PR #937](https://github.com/SanderVocke/shoopdaloop/pull/937).
 
 - Latest base 3ca192e1 includes wide host-I/O preservation, structural-tick
