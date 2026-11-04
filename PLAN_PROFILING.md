@@ -1,7 +1,7 @@
 # Runtime profiling implementation plan
 
-Status: implementation and all local acceptance gates pass; completing remote
-CI/review gates.
+Status: completed. Implementation and all local acceptance gates pass. The user
+waived remaining CI verification on 2026-11-05 and requested final delivery.
 
 Base branch: `feat/fixed-quantum-runtime`.
 Investigated baseline: `cb79706e95350539638368bcca9f50b1601795ae`.
@@ -295,14 +295,15 @@ Depends on Stage 6.
 - [x] Push the implementation branch and open a PR targeting
   `feat/fixed-quantum-runtime`, describing behavior, reset semantics and measured
   overhead with links to validation evidence.
-- [ ] Work through CI failures until required checks are green. Check for automated
-  review and repeatedly address applicable feedback, rerunning affected checks,
-  until reviewer approval. Record any unavailable reviewer explicitly.
-- [ ] Update this plan with completed stages, final evidence, PR link and remaining
+- [x] Complete CI/review follow-up to the user-approved stopping point. Remaining
+  CI verification was explicitly waived on 2026-11-05. No automated reviewer or
+  inline review feedback was available. Record observed results below.
+- [x] Update this plan with completed stages, final evidence, PR link and remaining
   target-device limitations. Do not merge as part of this plan.
 
-Verification: the PR reflects the final implementation, required CI is green and
-automated-review feedback is resolved through approval where a reviewer exists.
+Verification: the PR reflects the final implementation and recorded local evidence.
+Remaining CI gating is waived by the user; this is not a claim that every remote
+check passed. Automated review was unavailable. The PR remains unmerged.
 
 ## Execution contract
 
@@ -361,8 +362,8 @@ universal zero-cost or target-device guarantee.
 Validation completed:
 
 - Warning-denying workspace build and full native suite: **2,757 passed**, seven
-  skipped tests. The coverage job later hit a legacy meter assertion; that test
-  passes in isolation, and the non-coverage Linux/Windows suites pass remotely. The 16 focused recorder/runtime/window tests include
+  skipped tests. Current-revision coverage passes, including a legacy meter test
+  that failed in an earlier run. The 16 focused recorder/runtime/window tests include
   no-heap saturation/reset/fault paths, independent prescribed node work and all
   five quanta with arbitrary host partitions and unchanged audio/MIDI.
 - Packaged socket and shared-memory probes: default off, enable, current names and
@@ -399,8 +400,8 @@ clock. These limits are anticipated by acceptance criterion 8.
 
 Delivery: https://github.com/SanderVocke/shoopdaloop/pull/938 targets
 `feat/fixed-quantum-runtime`. Implementation and release evidence are pushed;
-all local validation passes; remote CI and applicable automated-review checks
-remain in progress.
+all local validation passes. Remaining CI verification was waived by the user on
+2026-11-05. CI monitoring has stopped, and no automated reviewer was available.
 The release CI large-media workflow exposed a startup race; the self-test now
 waits for queued and accepted operation acknowledgements before requesting a new
 session, including after profiling acknowledgement and bus recreation.
@@ -427,6 +428,16 @@ and pending operations before the self-test enables profiling; this prevents the
 initial default from reversing its first runtime toggle. The final optimized
 regular and large-media workflows pass in isolation with zero reported xruns. An
 earlier large-load acknowledgement timed out during concurrent testing; it passes
-in isolation and both hosted/single-file workflows pass remotely. The remote
-coverage job hit a legacy peak-poll assertion that passes in isolation; retry it
-once the workflow completes. No automated review or inline thread is available.
+in isolation and both hosted/single-file workflows pass remotely.
+
+At the user-directed CI stopping point, revision `5036ad06` had passed CodeQL,
+docs, coverage, bare-metal, JACK, all three process-inspection jobs and the
+shared-media foundation. Windows debug reported a native application smoke-test
+timeout waiting for MIDI detail; its later missing-evidence upload failure followed
+from that test failure. The workflow passes twenty local repetitions, including ten
+on one CPU with tracing enabled. Its Windows trace shows ordered note-on, note-off
+and play submissions and continued application polling, without establishing the
+cause of the incomplete detail. Remaining jobs were running or queued when
+monitoring stopped; their results are not asserted here. The user explicitly
+waived further CI verification and requested delivery. No automated review or
+inline thread was available at the last review check.
