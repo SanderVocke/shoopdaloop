@@ -430,6 +430,12 @@ jobs:
             'CARGO_PROFILE_TEST_DEBUG=line-tables-only' \
             'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
 
+      - name: Reclaim unused Linux runner SDKs
+        if: matrix.target == 'linux' && matrix.profile == 'debug' && env.ACT != 'true'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h .
+
       - name: Cache Rust builds
         if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
