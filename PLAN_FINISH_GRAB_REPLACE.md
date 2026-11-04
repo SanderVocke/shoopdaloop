@@ -41,6 +41,14 @@ capacity/admission policy are verified. Builds and
 tests run in CI under the user's standing instruction; local Cargo formatting is
 editing only. P04/P05 remain OPEN during implementation.
 
+The production sizing investigation exposed checkpoint arrays multiplied by view
+slots that the page budget could never admit. MIDI preparation now estimates its
+complete layout without allocation and sizes chunk/index tables by reachable
+owner credits. A pressure scenario retains all credits through repeated live
+history wraps, then prepares an edit and verifies the immutable old export.
+This preserves conservative admission and live workspace; it is an F2 sizing
+increment, not resolution of global pooling or the continuous-writer design.
+
 ## Findings that determine the work
 
 | Layer | Existing support and remaining gap |

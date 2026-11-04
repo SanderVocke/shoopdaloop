@@ -75,7 +75,13 @@ conservatively charges a complete root of worst-case packets, including invisibl
 chunks outside its clip. Live history and callback scratch have reserved credits.
 Owner admission may refuse before every metadata slot is occupied. This favors
 predictable admission over dense memory use; it is not application memory policy.
-`capacity` reports checkpoint/state and prepared table/scratch bytes separately;
+`Config::capacity(prepared_runtime)` validates and reports the prepared shape
+without allocating or reserving pages. `MidiStore::capacity` reports the same
+shape after preparation. Checkpoint/index tables use the smaller of configured
+view slots and the owner credits permitted by the page reservation; unreachable
+owners do not multiply those tables. View handles and transaction slots retain
+their configured capacities. The estimate reports the owner ceiling and
+checkpoint/state and prepared table/scratch bytes separately;
 common arena storage and allocator overhead are additional. `work` reports record,
 state-copy, index-publication and reclamation work; ordinary resource index/render
 counters also account virtual byte positioning and transfers.
@@ -92,7 +98,7 @@ bytes of state projections and 3,550,384 bytes of prepared metadata/state/scratc
 in total, plus 64,000 payload bytes. The current projection is 15,120 bytes.
 These intentionally small pages expose fragmentation and cross-page behavior;
 full checkpoint projections dominate this configuration. Storage grows with
-prepared chunk/owner/transaction counts, even when few packets have arrived.
+prepared chunk/admissible-owner/transaction counts, even when few packets have arrived.
 
 ## Loaded bases, ordinary resources and teardown
 

@@ -78,6 +78,15 @@ data, bounding metadata and refusing additional owners before live capture loses
 its reservation. Exact budgets/defaults and their measured limits remain an F2
 verification gate, not an implied unlimited capacity claim.
 
+MIDI configuration now offers an allocation-free estimate of the complete
+prepared metadata/state shape and owner ceiling. Its checkpoint/index allocation
+is capped by reachable owner credits, rather than multiplying by every configured
+view handle. A heap-guarded pressure test retains all admitted owners while live
+input wraps repeatedly, then edits a retained cut and checks the old export.
+Full checkpoint projections, per-source reservations and continuous-writer debt
+still require the remaining production work; this change does not establish a
+default application budget or enable either capability.
+
 ## Validation status
 
 No application success is claimed yet. CI will run the new arithmetic/reference

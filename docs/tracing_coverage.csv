@@ -365,6 +365,7 @@ src/rust/shoop_app_connection/src/server.rs,app_session,instrumented_indirect,Ge
 src/rust/shoop_app_connection/src/upload.rs,app_session,instrumented_indirect,Cooperative upload progression runs under traced client delivery and service persistence boundaries.
 src/rust/shoop_host/src/remote.rs,app_session,instrumented_indirect,Profile resolution and validation report failures through traced native session/client startup boundaries; credentials are not traced.
 src/rust/rt_runtime/src/resource/shared_midi/mod.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
+src/rust/rt_runtime/src/resource/shared_midi/layout.rs,generic_realtime_library,excluded,Allocation-free prepared MIDI capacity validation; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/storage.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/history.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
 src/rust/rt_runtime/src/resource/shared_midi/read.rs,generic_realtime_library,excluded,Prepared immutable MIDI storage and bounded diagnostics; no host tracing dependency.
