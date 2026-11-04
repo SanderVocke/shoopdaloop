@@ -71,7 +71,7 @@ pub(crate) fn start_selected(
     transport: shoop_egui::EngineTransportKind,
 ) -> Result<NewEngine> {
     anyhow::ensure!(transport == shoop_egui::EngineTransportKind::InProcess,
-        "external sessions must be launched as independent host/UI roles or attached with --host-file");
+        "external sessions must be launched as independent host/UI roles or attached with --host-profile");
     start(driver, pools)
 }
 

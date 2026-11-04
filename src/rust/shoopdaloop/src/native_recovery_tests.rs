@@ -2,11 +2,7 @@ use super::*;
 use shoop_egui::{
     DirectTrackSpec, GlobalControlAction, LoopAction, LoopMode, SelectionModifiers, TrackAction,
 };
-use shoop_host::{
-    config::HostConfig,
-    registry::{HostEntry, Registry},
-    serve::StartOptions,
-};
+use shoop_host::{config::HostConfig, remote::Target as HostEntry, serve::StartOptions};
 use std::process::{Child, Command, Stdio};
 
 struct Peer(Child);
@@ -50,7 +46,7 @@ fn wait(runtime: &Runtime, done: impl Fn(&AppSnapshot) -> bool) -> Arc<AppSnapsh
 fn ui(path: std::path::PathBuf) -> UnifiedApp {
     let args = AppArgs {
         ui_only: true,
-        host_file: Some(path),
+        remote_profile: Some(path),
         ..Default::default()
     };
     let app = UnifiedApp::new(1.0, false, &args).unwrap();
@@ -88,10 +84,12 @@ fn host_peer() {
         test_signal: true,
         ..Default::default()
     };
-    let mut options = StartOptions::new(root.join("registry")).unwrap();
+    let mut options = StartOptions::new().unwrap();
+
+    options.export_profile = Some(root.join("profile.json"));
     if root.join("lan").exists() {
         options.lan = true;
-        options.credential = Some(root.join("host.key"));
+
         options.export_profile = Some(root.join("profile.json"));
     }
     shoop_host::serve::run(config, options).unwrap();
@@ -147,18 +145,10 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
     let root = tempfile::tempdir().unwrap();
     let mut host = peer("host_peer", root.path());
     let deadline = Instant::now() + Duration::from_secs(15);
-    let registry_path = root.path().join("registry");
-    let (path, entry) = loop {
-        if registry_path.exists() {
-            if let Some(entry) = Registry::open(&registry_path)
-                .unwrap()
-                .list()
-                .unwrap()
-                .into_iter()
-                .next()
-            {
-                break entry;
-            }
+    let path = root.path().join("profile.json");
+    let entry = loop {
+        if path.exists() {
+            break HostEntry::read(&path).unwrap();
         }
         assert!(host.0.try_wait().unwrap().is_none());
         assert!(Instant::now() < deadline);
@@ -272,14 +262,14 @@ fn real_ui_process_loss_repeated_attachment_media_and_both_exit_actions() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(!path.exists() && !entry.credential.exists());
+    assert!(path.exists());
 }
 
 #[shoop_wasm_test_support::shoop_test]
 fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_shutdown() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("lan"), b"1").unwrap();
-    shoop_host::remote::create_credential(&root.path().join("host.key")).unwrap();
+
     let mut host = peer("host_peer", root.path());
     let path = root.path().join("profile.json");
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -422,7 +412,7 @@ fn remote_profile_ui_preserves_recording_across_close_and_reattach_and_confirms_
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(path.exists() && root.path().join("host.key").exists());
+    assert!(path.exists());
 }
 
 #[shoop_wasm_test_support::shoop_test]

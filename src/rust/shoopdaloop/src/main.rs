@@ -406,8 +406,6 @@ struct UnifiedApp {
     exit: recovery::ExitController,
     #[cfg(not(target_arch = "wasm32"))]
     host_panel: recovery::HostPanel,
-    #[cfg(not(target_arch = "wasm32"))]
-    host_choices: Option<Vec<(std::path::PathBuf, shoop_host::registry::HostEntry)>>,
     runtime: Runtime,
     widget: AppWidget,
     about_open: bool,
@@ -488,6 +486,8 @@ fn load_settings_manager(
 fn default_audio_driver_kind() -> AudioDriverKind {
     if cfg!(feature = "cpal") {
         AudioDriverKind::Cpal
+    } else if cfg!(feature = "jack") {
+        AudioDriverKind::Jack
     } else {
         AudioDriverKind::Dummy
     }
@@ -549,8 +549,6 @@ impl UnifiedApp {
             exit: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             host_panel: Default::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            host_choices: None,
             runtime,
             widget,
             about_open: false,
@@ -1387,7 +1385,6 @@ impl UnifiedApp {
         self.widget.reset_connection();
         self.exit = Default::default();
         self.host_panel = Default::default();
-        self.host_choices = None;
     }
     #[cfg(not(target_arch = "wasm32"))]
     fn use_connection(&mut self, runtime: Runtime, context: &egui::Context) {
@@ -1415,45 +1412,42 @@ impl UnifiedApp {
         {
             if self.runtime.remote_entry.is_none() {
                 ui.menu_button("Session", |ui| {
-                    if ui.button("Open remote profile…").clicked() {
-                        self.open_remote_profile(ui.ctx());
+                    if ui.button("Host Manager…").clicked() {
+                        if let Err(error) = shoop_host::launch::launch_manager() {
+                            self.settings.report_action_error(error.to_string());
+                        }
                         ui.close();
                     }
+                    ui.menu_button("Advanced", |ui| {
+                        if ui.button("Import host profile…").clicked() {
+                            self.open_remote_profile(ui.ctx());
+                            ui.close();
+                        }
+                    });
                 });
             }
             if let Some(entry) = self.runtime.remote_entry.clone() {
                 self.exit.intercept_close(ui.ctx());
                 ui.horizontal(|ui| {
                     ui.menu_button("Session", |ui| {
-                        if ui
-                            .add_enabled(
-                                !self.exit.open && !self.exit.is_pending(),
-                                egui::Button::new("Open remote profile…"),
-                            )
-                            .clicked()
-                        {
-                            self.open_remote_profile(ui.ctx());
-                            ui.close();
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.exit.open && !self.exit.is_pending(),
-                                egui::Button::new("Choose a running host…"),
-                            )
-                            .clicked()
-                        {
-                            let result =
-                                shoop_host::registry::Registry::default_path().and_then(|path| {
-                                    let registry = shoop_host::registry::Registry::open(&path)?;
-                                    registry.prune_stale()?;
-                                    registry.list()
-                                });
-                            match result {
-                                Ok(entries) => self.host_choices = Some(entries),
-                                Err(error) => self.settings.report_action_error(error.to_string()),
+                        if ui.button("Host Manager…").clicked() {
+                            if let Err(error) = shoop_host::launch::launch_manager() {
+                                self.settings.report_action_error(error.to_string());
                             }
                             ui.close();
                         }
+                        ui.menu_button("Advanced", |ui| {
+                            if ui
+                                .add_enabled(
+                                    !self.exit.open && !self.exit.is_pending(),
+                                    egui::Button::new("Import host profile…"),
+                                )
+                                .clicked()
+                            {
+                                self.open_remote_profile(ui.ctx());
+                                ui.close();
+                            }
+                        });
                         if ui.button("Connected host settings…").clicked() {
                             self.host_panel.open = true;
                             ui.close();
@@ -1470,27 +1464,13 @@ impl UnifiedApp {
                 });
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
                 self.host_panel.show(ui.ctx(), &entry);
-                if let Some(choices) = self.host_choices.clone() {
-                    egui::Window::new("Running session hosts").show(ui.ctx(), |ui| {
-                        if choices.is_empty() { ui.label("No registered hosts found. Use --host-file for an explicit registration."); }
-                        for (path, candidate) in choices {
-                            if ui.add_enabled(!self.exit.open && !self.exit.is_pending(), egui::Button::new(format!("{} — {}", candidate.name, path.display()))).clicked() {
-                                match Runtime::attach(&self.settings.active(), candidate) {
-                                    Ok(runtime) => self.use_connection(runtime, ui.ctx()),
-                                    Err(error) => self.settings.report_action_error(error.to_string()),
-                                }
-                            }
-                        }
-                        if ui.button("Cancel").clicked() { self.host_choices = None; }
-                    });
-                }
                 let status = self.runtime.handle.status();
                 match status.state {
                     shoop_app_client::State::Ready => {}
                     shoop_app_client::State::Lost => {
                         ui.heading("Session connection lost");
                         ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Connect again to read its current state."));
-                        if entry.transport == shoop_host::registry::AppTransport::Socket
+                        if entry.transport == shoop_host::config::AppTransport::Socket
                             && ui
                                 .add_enabled(
                                     !self.exit.is_pending(),
@@ -2449,21 +2429,20 @@ impl Runtime {
             shoop_egui::EngineTransportKind,
         ) -> anyhow::Result<engine_backend::NewEngine>,
     ) -> anyhow::Result<Self> {
-        if let Some(path) = &args.remote_profile {
-            return Self::attach(settings, shoop_host::remote::RemoteProfile::read(path)?);
-        }
-        if let Some(path) = &args.host_file {
-            return Self::attach(settings, shoop_host::registry::HostEntry::read(path)?);
+        if let Some(target) = args.host_target()? {
+            return Self::attach(settings, target);
         }
         let mut startup_warnings = Vec::new();
-        let configured_driver = shoop_egui::selected_audio_driver(settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind))
-            .unwrap_or_else(|error| {
+        let configured_driver = match args.configured_audio_driver(settings) {
+            Ok(driver) => driver,
+            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error) => {
                 startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
                 ));
                 AudioDriverConfig::default()
-            });
+            }
+        };
         let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
             startup_warnings.push(format!(
                 "Could not use engine capacities: {error}; using defaults"
@@ -2543,6 +2522,11 @@ impl Runtime {
         entry: impl Into<shoop_host::remote::Target>,
     ) -> anyhow::Result<Self> {
         let entry = entry.into();
+        let entry = if entry.process.is_none() {
+            shoop_host::connection::resolve_target(&entry, Duration::from_secs(3))?
+        } else {
+            entry
+        };
         let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
         let pending_script_paths = startup_scripts
             .iter()
@@ -3599,87 +3583,19 @@ fn create_app(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
-    use shoop_host::{
-        registry::{AppTransport, Registry},
-        serve::StartOptions,
-    };
+    use anyhow::Context;
+    use shoop_host::{config::AppTransport, serve::StartOptions};
     if args.shutdown_host {
-        let entry: shoop_host::remote::Target = match args.remote_profile.as_ref() {
-            Some(path) => shoop_host::remote::RemoteProfile::read(path)?.into(),
-            None => shoop_host::registry::HostEntry::read(args.host_file.as_ref().unwrap())?.into(),
-        };
-        shoop_host::connection::shutdown_ownerless(&entry, Duration::from_secs(15))?;
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
         println!("Host cleanup confirmed");
         return Ok(true);
     }
-    if args.ui_only || args.host_file.is_some() || args.remote_profile.is_some() {
+    if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
         return Ok(false);
-    }
-    let registry = args
-        .host_registry
-        .clone()
-        .map(Ok)
-        .unwrap_or_else(Registry::default_path)?;
-    if args.list_hosts {
-        if !registry.exists() {
-            return Ok(true);
-        }
-        let registry = Registry::open(&registry)?;
-        registry.prune_stale()?;
-        for (path, entry) in registry.list()? {
-            println!("{}\t{}\t{}", entry.endpoint, entry.name, path.display());
-        }
-        return Ok(true);
     }
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
-    if args.host_only {
-        let mut command = std::process::Command::new(companion);
-        command
-            .arg("--config")
-            .arg(args.host_config.as_ref().unwrap())
-            .arg("--registry")
-            .arg(registry);
-        if let Some(endpoint) = args.endpoint {
-            command.arg("--endpoint").arg(endpoint.to_string());
-        }
-        if args.lan {
-            command.arg("--lan");
-        }
-        if let Some(endpoint) = args.management_endpoint {
-            command
-                .arg("--management-endpoint")
-                .arg(endpoint.to_string());
-        }
-        for (flag, value) in [
-            ("--advertise-data", &args.advertise_data),
-            ("--advertise-management", &args.advertise_management),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value);
-            }
-        }
-        if let Some(path) = &args.export_profile {
-            command.arg("--export-profile").arg(path);
-        }
-        for (flag, value) in [
-            ("--heartbeat-interval-ms", args.heartbeat_interval_ms),
-            ("--heartbeat-timeout-ms", args.heartbeat_timeout_ms),
-            ("--snapshot-hz", args.snapshot_hz.map(u64::from)),
-        ] {
-            if let Some(value) = value {
-                command.arg(flag).arg(value.to_string());
-            }
-        }
-        if let Some(credential) = &args.credential_file {
-            command.arg("--credential-file").arg(credential);
-        }
-        anyhow::ensure!(
-            command.status()?.success(),
-            "session host exited with an error"
-        );
-        return Ok(true);
-    }
     let mut builder = SettingsRegistryBuilder::default();
     register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
     register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
@@ -3692,8 +3608,8 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
-            driver: shoop_egui::selected_audio_driver(&settings)
-                .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(&settings, kind))
+            driver: args
+                .configured_audio_driver(&settings)
                 .map_err(anyhow::Error::msg)?,
             pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
                 .map_err(anyhow::Error::msg)?,
@@ -3710,19 +3626,17 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         },
         ..Default::default()
     };
-    let mut options = StartOptions::new(registry)?;
+    let mut options = StartOptions::new()?;
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;
     }
-    options.credential = args.credential_file.clone();
-    let original: Vec<_> = std::env::args_os().skip(1).collect();
-    shoop_host::launch::pair(&config, options, &companion, |path| {
+    options.export_profile = args.export_profile.clone();
+    options.log_file = args.log_file.clone();
+    let original =
+        shoop_host::audio_args::AudioArgs::without_overrides(std::env::args_os().skip(1));
+    shoop_host::launch::pair(&config, options, &companion, |_target| {
         let mut command = std::process::Command::new(&executable);
-        command
-            .args(&original)
-            .arg("--ui-only")
-            .arg("--host-file")
-            .arg(path);
+        command.args(&original).arg("--ui-only").arg("--host-stdin");
         command
     })?;
     Ok(true)

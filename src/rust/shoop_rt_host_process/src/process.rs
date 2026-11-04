@@ -295,13 +295,6 @@ impl Pending {
             transport,
             monitor: Some(monitor),
         };
-        pending
-            .input
-            .as_ref()
-            .unwrap()
-            .lock()
-            .map_err(|_| anyhow::anyhow!("engine launch pipe failed"))?
-            .write_all(listener.token())?;
         pending.control = Some(listener.accept(SocketConfig::default(), TIMEOUT)?);
         match pending.exchange(HostRequest::Hello {
             version: HOST_VERSION,

@@ -3,9 +3,10 @@ use shoop_app_api::*;
 use shoop_app_client::{Client, State};
 use shoop_app_protocol::*;
 use shoop_host::{
+    config::AppTransport,
     config::HostConfig,
     connection::{self, Connection},
-    registry::{AppTransport, HostEntry},
+    remote::Target as HostEntry,
 };
 use shoop_wasm_test_support::shoop_test;
 use std::{
@@ -52,19 +53,22 @@ fn host_with_loop_memory(transport: AppTransport, loop_memory_mb: u32) -> Host {
     };
     let config_path = root.path().join("config.json");
     std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
-    let registry = root.path().join("registry");
+
+    let path = root.path().join("profile.json");
 
     let mut child = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .env("RUST_LOG", "info")
         .args(["--config"])
         .arg(&config_path)
-        .arg("--registry")
-        .arg(&registry)
+        .arg("--export-profile")
+        .arg(&path)
+        .arg("--log-file")
+        .arg(root.path().join("host.log"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let path = registry.join(format!("{}.json", child.id()));
     let deadline = Instant::now() + Duration::from_secs(10);
     while !path.exists() {
         assert!(
@@ -302,16 +306,21 @@ fn shutdown(host: &mut Host, client: &mut Client) {
         assert!(Instant::now() < deadline, "host did not exit after cleanup");
         thread::sleep(Duration::from_millis(10));
     }
-    assert!(!host.path.exists());
-    assert!(!host.entry.credential.exists());
+    assert!(host.path.exists());
 }
 
 #[shoop_test]
 fn ui_peer() {
-    let Some(path) = std::env::var_os("SHOOP_TEST_ENTRY") else {
+    let entry = if std::env::var_os("SHOOP_TEST_STDIN").is_some() {
+        let address: String = shoop_host::launch::read_message(std::io::stdin().lock()).unwrap();
+        connection::describe(&address, Duration::from_secs(2)).unwrap()
+    } else if let Ok(address) = std::env::var("SHOOP_TEST_ADDRESS") {
+        connection::describe(&address, Duration::from_secs(2)).unwrap()
+    } else if let Some(path) = std::env::var_os("SHOOP_TEST_ENTRY") {
+        HostEntry::read(Path::new(&path)).unwrap()
+    } else {
         return;
     };
-    let entry = HostEntry::read(Path::new(&path)).unwrap();
     let (mut client, mut connection) = attach(&entry, 300);
     command(
         &mut client,
@@ -448,10 +457,123 @@ fn killing_a_ui_preserves_recording_and_a_replacement_can_read_media_and_close_t
 }
 
 #[shoop_test]
+fn app_version_and_endpoint_role_are_checked_before_shared_attachment_admission() {
+    use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
+    use std::io::Write;
+    let mut host = host(AppTransport::SharedMemory);
+    let data = connection::Endpoint::Data as u8;
+    let management = connection::Endpoint::Management as u8;
+    for (address, version, role) in [
+        (&host.entry.endpoint, VERSION, management),
+        (&host.entry.management, VERSION, data),
+        (&host.entry.endpoint, VERSION + 1, data),
+        (&host.entry.management, VERSION + 1, management),
+    ] {
+        let mut raw = shoop_transport_socket::setup::connect(
+            address.parse().unwrap(),
+            Default::default(),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let version = version.to_le_bytes();
+        for byte in [version[0], version[1], role] {
+            raw.stream().write_all(&[byte]).unwrap();
+            thread::sleep(Duration::from_millis(2));
+        }
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while raw.failure().is_none() {
+            assert!(
+                raw.take(&mut [0; MAX_RECORD_BYTES]).is_none(),
+                "invalid admission reached the session"
+            );
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            connection::describe(&host.entry.endpoint, Duration::from_secs(2))
+                .unwrap()
+                .can_attach
+        );
+    }
+    let mut raw = shoop_transport_socket::setup::connect(
+        host.entry.endpoint.parse().unwrap(),
+        Default::default(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    raw.stream().write_all(&VERSION.to_le_bytes()).unwrap();
+    assert!(
+        connection::describe(&host.entry.management, Duration::from_secs(2))
+            .unwrap()
+            .can_attach
+    );
+    raw.stream().write_all(&[data]).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    loop {
+        if let Some(count) = raw.take(&mut bytes) {
+            assert!(matches!(
+                codec::decode(&bytes[..count]).unwrap(),
+                WireMessage::CarrierReady
+            ));
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        !connection::describe(&host.entry.endpoint, Duration::from_secs(2))
+            .unwrap()
+            .can_attach
+    );
+    drop(raw);
+    connection::shutdown_ownerless(&host.entry, Duration::from_secs(5)).unwrap();
+    assert!(host.child.wait().unwrap().success());
+}
+
+#[shoop_test]
 fn busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_and_exits() {
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
         let mut host = host(transport);
+        let identity = shoop_host_processes::identity(host.child.id())
+            .unwrap()
+            .unwrap();
+        let mut instance = None;
+        for address in [&host.entry.endpoint, &host.entry.management] {
+            for _ in 0..3 {
+                let description = connection::describe(address, Duration::from_secs(2)).unwrap();
+                assert_eq!(description.process.as_ref(), Some(&identity));
+                assert!(description.can_attach);
+                assert_eq!(
+                    *instance.get_or_insert(description.instance),
+                    description.instance
+                );
+                let profile = serde_json::to_value(description.profile()).unwrap();
+                for field in [
+                    "process",
+                    "instance",
+                    "credential",
+                    "can_attach",
+                    "shared_memory",
+                ] {
+                    assert!(profile.get(field).is_none());
+                }
+            }
+        }
         let (mut owner, mut connection) = attach(&host.entry, 400);
+        for _ in 0..3 {
+            let description =
+                connection::describe(&host.entry.endpoint, Duration::from_secs(2)).unwrap();
+            assert_eq!(Some(description.instance), instance);
+            assert_eq!(description.can_attach, transport == AppTransport::Socket);
+            assert!(
+                connection::host_report(&description, Duration::from_secs(2))
+                    .unwrap()
+                    .busy
+            );
+            connection.poll(&mut owner).unwrap();
+            assert_eq!(owner.state(), State::Ready);
+        }
         if transport == AppTransport::Socket {
             let mut second = connection::connect(&host.entry, Duration::from_secs(2)).unwrap();
             let mut client = Client::new();
@@ -495,7 +617,7 @@ fn launcher_peer() {
         return;
     };
     let root = PathBuf::from(root);
-    let options = shoop_host::serve::StartOptions::new(root.join("registry")).unwrap();
+    let options = shoop_host::serve::StartOptions::new().unwrap();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
@@ -511,22 +633,23 @@ fn launcher_peer() {
         test_signal: true,
         ..Default::default()
     };
-    let path = shoop_host::launch::pair(
+    let target = shoop_host::launch::pair(
         &config,
         options,
         Path::new(env!("CARGO_BIN_EXE_shoop_host")),
-        |path| {
+        |_target| {
             let mut command = Process::new(std::env::current_exe().unwrap());
             command
                 .args(["--exact", "ui_peer", "--nocapture"])
-                .env("SHOOP_TEST_ENTRY", path)
+                .env("SHOOP_TEST_STDIN", "1")
                 .env("SHOOP_TEST_READY", root.join("ui-ready"))
                 .env("SHOOP_TEST_EXIT", root.join("ui-exit"));
             command
         },
     )
     .unwrap();
-    std::fs::write(root.join("entry-path"), path.to_str().unwrap()).unwrap();
+    std::fs::write(root.join("entry-address"), &target.management).unwrap();
+    assert!(!root.join("profile.json").exists());
 }
 
 #[shoop_test]
@@ -541,29 +664,14 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
         .spawn()
         .unwrap();
     assert!(launcher.wait().unwrap().success());
-    let path = PathBuf::from(std::fs::read_to_string(root.path().join("entry-path")).unwrap());
-    let entry = HostEntry::read(&path).unwrap();
+    let address = std::fs::read_to_string(root.path().join("entry-address")).unwrap();
+    let entry = connection::describe(&address, Duration::from_secs(2)).unwrap();
     struct Cleanup(HostEntry, PathBuf);
     impl Drop for Cleanup {
         fn drop(&mut self) {
             let _ = std::fs::write(self.1.join("ui-exit"), b"");
-            if self.0.credential.exists() {
-                #[cfg(unix)]
-                {
-                    let _ = nix::sys::signal::kill(
-                        nix::unistd::Pid::from_raw(self.0.process as i32),
-                        nix::sys::signal::Signal::SIGTERM,
-                    );
-                }
-                #[cfg(windows)]
-                {
-                    let _ = Process::new("taskkill")
-                        .args(["/PID", &self.0.process.to_string(), "/T", "/F"])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
-                }
-            }
+            thread::sleep(Duration::from_millis(100));
+            let _ = connection::shutdown_ownerless(&self.0, Duration::from_secs(3));
         }
     }
     let _cleanup = Cleanup(entry.clone(), root.path().to_owned());
@@ -617,26 +725,30 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
         )
         .unwrap();
     }
-    while path.exists() {
+    while connection::management(
+        &entry,
+        ManagementRequest::Status { version: VERSION },
+        Duration::from_millis(200),
+    )
+    .is_ok()
+    {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
+    assert!(!root.path().join("profile.json").exists());
 }
 
 #[shoop_test]
-fn bad_credentials_versions_and_early_disconnects_leave_the_session_healthy() {
+fn incompatible_greetings_versions_and_early_disconnects_leave_the_session_healthy() {
     let mut host = host(AppTransport::Socket);
-    assert!(shoop_transport_socket::setup::connect(
-        host.entry.endpoint,
-        &[0; 32],
-        Default::default(),
-        Duration::from_millis(150)
-    )
-    .is_err());
+    {
+        use std::io::Write;
+        let mut incompatible = std::net::TcpStream::connect(&host.entry.endpoint).unwrap();
+        incompatible.write_all(b"obsolete!").unwrap();
+    }
     drop(
         shoop_transport_socket::setup::connect(
-            host.entry.endpoint,
-            &host.entry.token().unwrap(),
+            host.entry.endpoint.parse().unwrap(),
             Default::default(),
             Duration::from_secs(2),
         )
@@ -672,7 +784,7 @@ fn bad_credentials_versions_and_early_disconnects_leave_the_session_healthy() {
 }
 
 #[shoop_test]
-fn authenticated_management_can_close_a_shared_host_after_its_only_data_connection_is_lost() {
+fn management_can_close_a_shared_host_after_its_only_data_connection_is_lost() {
     let mut host = host(AppTransport::SharedMemory);
     let (_client, connection) = attach(&host.entry, 900);
     assert!(connection::shutdown_ownerless(&host.entry, Duration::from_secs(2)).is_err());
@@ -697,7 +809,7 @@ fn authenticated_management_can_close_a_shared_host_after_its_only_data_connecti
         assert!(Instant::now() < deadline + Duration::from_secs(5));
         thread::sleep(Duration::from_millis(10));
     }
-    assert!(!host.path.exists());
+    assert!(host.path.exists());
 }
 
 #[shoop_test]
@@ -819,20 +931,24 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         br#"{"pools":{"tracks":0,"loops":1,"channels":2,"loop_memory_mb":1}}"#,
     )
     .unwrap();
-    let registry = root.path().join("invalid-registry");
+
+    let profile = root.path().join("profile.json");
     let status = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
         .arg("--config")
         .arg(&config_path)
-        .arg("--registry")
-        .arg(&registry)
+        .arg("--export-profile")
+        .arg(&profile)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .unwrap();
     assert!(!status.success());
-    assert!(!registry.exists());
-    let options = shoop_host::serve::StartOptions::new(root.path().join("registry")).unwrap();
+    assert!(!profile.exists());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    let mut options = shoop_host::serve::StartOptions::new().unwrap();
+
+    options.export_profile = Some(profile.clone());
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: NewEnginePools {
@@ -854,12 +970,7 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         |_| Process::new(root.path().join("missing-ui")),
     );
     assert!(result.is_err());
-    let path = shoop_host::registry::Registry::open(&root.path().join("registry"))
-        .unwrap()
-        .list()
-        .unwrap()[0]
-        .0
-        .clone();
+    let path = profile;
     let entry = HostEntry::read(&path).unwrap();
     let (mut client, _connection) = attach(&entry, 800);
     let ClientMessage::Shutdown {
@@ -900,8 +1011,90 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
         )
         .unwrap();
     }
-    while path.exists() {
+    while connection::management(
+        &entry,
+        ManagementRequest::Status { version: VERSION },
+        Duration::from_millis(200),
+    )
+    .is_ok()
+    {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
+    assert!(path.exists());
+}
+
+#[shoop_test]
+fn management_monitoring_preserves_controller_and_logs_startup_failures() {
+    let mut host = host(AppTransport::Socket);
+    let (mut client, mut connection) = attach(&host.entry, 1);
+    for _ in 0..3 {
+        let report = connection::host_report(&host.entry, Duration::from_secs(2)).unwrap();
+        assert!(report.ready && report.busy);
+        assert!(connection::shutdown_ownerless(&host.entry, Duration::from_secs(2)).is_err());
+        connection.poll(&mut client).unwrap();
+        assert_eq!(client.state(), State::Ready);
+    }
+    let log_path = host.root.path().join("host.log");
+    let log = shoop_host::logging::tail(&log_path).unwrap();
+    assert!(log.contains("Host ready:"));
+    shutdown(&mut host, &mut client);
+    assert!(shoop_host::logging::tail(&log_path)
+        .unwrap()
+        .contains("Host cleanup confirmed"));
+
+    let log_path = host.root.path().join("failed-start.log");
+    let mut failed = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .arg("--config")
+        .arg(host.root.path().join("missing.json"))
+        .arg("--log-file")
+        .arg(&log_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(!failed.wait().unwrap().success());
+    assert!(shoop_host::logging::tail(&log_path)
+        .unwrap()
+        .contains("session host:"));
+}
+
+#[shoop_test]
+fn a_host_without_requested_outputs_writes_no_host_records_or_logs() {
+    let root = tempfile::tempdir().unwrap();
+
+    let options = shoop_host::serve::StartOptions::new().unwrap();
+
+    let config = HostConfig {
+        settings: shoop_host::config::HostSettings {
+            pools: NewEnginePools {
+                tracks: 2,
+                loops: 8,
+                channels: 2,
+                loop_memory_mb: 8,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let (mut child, target) = shoop_host::launch::spawn(
+        &config,
+        options,
+        Path::new(env!("CARGO_BIN_EXE_shoop_host")),
+    )
+    .unwrap();
+    assert!(target.log_file.is_none());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    connection::shutdown_ownerless(&target, Duration::from_secs(5)).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    let status = Process::new(env!("CARGO_BIN_EXE_shoop_host"))
+        .arg("--registry")
+        .arg(root.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(!status.success());
 }

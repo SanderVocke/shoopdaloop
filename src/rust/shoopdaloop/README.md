@@ -13,42 +13,46 @@ For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapte
 ## Native roles and delivery
 
 ```sh
-cargo build -p shoopdaloop -p shoop_host
-# Local service and engine: ordinary process-exit behavior.
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager
 cargo run -p shoopdaloop
-# Launcher starts independent host/UI siblings, then exits.
+# Detached host and UI siblings, with configuration exchanged over pipes.
 target/debug/shoopdaloop --session-transport socket
-# Independent host, without socket reattachment support.
+# Shared memory permits one data attachment.
 target/debug/shoopdaloop --session-transport shared_memory
+# Configure and manage detached hosts from the GUI.
+target/debug/shoop_host_manager
 ```
 
 The default is `in_process`. **Settings → Audio → Session delivery** selects the
-next launch's placement. `--engine-transport` remains a CLI alias. These settings
-configure UI/service delivery; the host's RT engine connection stays internal.
-The external host owns devices, the service and the existing RT adapter. Detaching
-or killing its UI does not reset playback, recording or accepted operations.
-Only socket delivery supports reattachment. No host is automatically restarted.
+next launch's placement. `--engine-transport` remains a CLI alias. A detached host
+survives its launcher and UI. Socket delivery supports reattachment; a shared-memory
+host supports its first attachment only. Hosts do not restart automatically.
 
-Start roles independently with a JSON host configuration (an empty object selects
-the dummy driver and default pools):
+The manager discovers local `shoop_host` processes and their owned TCP listeners
+through the OS. It probes only those sockets and retains OS-assigned ports. Discovery
+and status queries do not take control or consume a shared-memory attachment.
+There is no registry, port scan, advertisement file or remembered host list.
+
+For CLI use, start the roles separately (the host defaults to dummy audio):
 
 ```sh
-printf '{}\n' > host.json
-target/debug/shoop_host --config host.json
-# Alternative application role: --host-only --host-config host.json
-# Discover protected per-user registrations, then select one explicitly.
-target/debug/shoopdaloop --list-hosts
-target/debug/shoopdaloop --ui-only --host-file /path/from/list/host.json
+target/debug/shoop_host
+# Use the management address printed by the host, or select it in Host Manager.
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-Host-only also accepts `--registry`, `--endpoint 127.0.0.1:PORT`,
-`--credential-file PATH` and `--name`. The application
-wrapper uses `--host-registry` for the registry override. Credential files contain
-exactly 32 random bytes and require owner-only permissions/ACLs. Registry entries
-refer to credentials rather than embedding tokens; never put tokens in arguments.
-Registrations carry data/management endpoints and local process metadata.
-Authentication and protocol checks precede attachment; a second controller is
-refused while the current owner remains healthy. Registrations are discovery hints.
+`shoop_host --config PATH` accepts an optional host configuration.
+`--endpoint`, `--management-endpoint`, `--name` and `--log-file` remain explicit host
+options. Advanced connection profiles can be exported with `--export-profile PATH`
+and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
+select endpoints, never process or session identities, and are never saved or loaded
+automatically. The launcher exchanges bounded startup/readiness messages over pipes.
+Manager and sibling UI launches pass the live endpoint through a bounded stdin pipe;
+normal creation and attachment require no configuration or profile files.
+
+Compatible clients connect without keys, certificates or trust records. Protocol
+checks, controller generations and exclusive control still apply. A second controller
+is refused while the current owner remains healthy.
 
 Every connection obtains a fresh snapshot of the endpoint's current state. The
 **Connect to endpoint** action uses the same flow after loss or host restart.
@@ -63,14 +67,14 @@ future local launch defaults, independently of the connected host.
 For an external host, the Session menu and window/platform close offer:
 
 - **Close UI only (keep host running)** releases control and exits this UI.
-- **Close UI and host** waits for authenticated MIDI reset, render stop and cleanup.
+- **Close UI and host** waits for MIDI reset, render stop and cleanup.
 - **Cancel** keeps the UI open.
 
-After data loss, shutdown uses a separate authenticated management connection with
+After data loss, shutdown uses a separate management connection with
 the last owner's generation. A replacement UI fences that authority. Failure is
 reported with retry and UI-only options; an uncertain retry checks the same operation.
 A host with no live UI owner can be closed explicitly with
-`shoopdaloop --shutdown-host --host-file PATH`. This authenticates and acquires a new
+`shoopdaloop --shutdown-host --host-address HOST:PORT`. This acquires a new
 shutdown generation; a live owner refuses it. It also manages a shared-memory host
 after its single data connection is lost, without enabling shared-memory reattachment.
 The UI never uses this claim as a fallback for stale-owner shutdown.
@@ -79,10 +83,56 @@ mode ends with its page. Shared-memory mode cannot reattach after UI exit.
 
 ## Drivers, controls and files
 
-Default native builds include CPAL+midir. Without default features the RT host uses
-the dummy driver; Lua controller MIDI remains client-local. Saved JACK preferences
-map to CPAL's JACK host or default device with a diagnostic. Unusable device settings
-fall back to dummy with a visible warning and do not overwrite the saved preference.
+Default native builds include CPAL+midir and native JACK audio/MIDI. The application
+and Host Manager default to CPAL, or JACK in a JACK-only build; the standalone host
+defaults to Dummy. Driver-free builds use Dummy. Lua controller MIDI remains client-local.
+JACK connects directly to the JACK server; CPAL's JACK API is a separate CPAL selection.
+Unusable device settings fall back to Dummy with a visible warning and do not
+overwrite the saved preference.
+
+**Settings → Audio** selects the application's preferred driver for its next launch.
+In Host Manager, **New host → Audio driver → JACK** exposes the client name; expand
+**JACK ports and connections** to configure local audio/MIDI port names and startup
+source/destination pairs. The JACK server supplies sample rate and buffer size.
+No profile files are required.
+
+Both native launch executables accept the same audio overrides:
+
+```sh
+shoop_host --audio-driver jack --jack-client-name Studio
+shoopdaloop --audio-driver jack --session-transport socket
+shoop_host --audio-driver jack --jack-audio-inputs capture_l,capture_r \
+  --jack-audio-outputs main_l,main_r --jack-midi-inputs= \
+  --jack-connect 'main_l->system:playback_1' \
+  --jack-connect 'main_r->system:playback_2'
+```
+
+`--audio-driver` accepts `dummy`, `cpal`, or `jack`. JACK port lists are comma-separated;
+an empty list disables that direction. Repeat `--jack-connect` for startup connections.
+Use local short names or external `client:port` names. Application flags override the
+chosen driver's saved profile for this launch only. For `shoop_host --config FILE`,
+flags override the JSON driver configuration; unspecified fields keep their configured
+values when the driver kind matches. Explicitly selecting a driver omitted from the
+build fails with a diagnostic. Audio overrides cannot be used when attaching to an
+existing host. `--help` lists the available options.
+
+Advanced JSON configuration also supports the complete JACK startup configuration:
+
+```json
+{
+  "driver": {
+    "Jack": {
+      "client_name": "Studio",
+      "audio_inputs": ["capture_l", "capture_r"],
+      "audio_outputs": ["main_l", "main_r"],
+      "midi_inputs": ["keys"],
+      "midi_outputs": ["events"],
+      "connections": [["main_l", "system:playback_1"], ["main_r", "system:playback_2"]]
+    }
+  }
+}
+```
+
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet
 operations, timing/alignment edits, click generation/preview/insertion and loop duplication.
@@ -113,7 +163,14 @@ Session script ownership conversion/resource persistence remains in the parity l
 Source builds use a sibling `SHOOP_SRC_TREE` marker to locate built-ins. Native
 packages omit it and carry built-ins beside the executable on Linux/Windows or in
 `Contents/Resources` on macOS. `shoop_host` ships beside the UI executable, including
-inside `Contents/MacOS`. Carla runtime payloads and old worker/worklet payloads are
+inside `Contents/MacOS`. `shoop_host_manager` ships beside both executables. The macOS
+archive also provides **ShoopDaLoop Host Manager.app**; Windows includes a manager
+shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` and
+`icon.png` for installation into the desktop applications/icon directories, with
+the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
+three executables together when installing. On macOS, keep both app bundles
+together, for example by copying both to Applications.
+Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
 ## Output buses
@@ -167,7 +224,7 @@ The workspace suite includes the isolated `shoop_app_reference` and independent 
 engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
 is a reference-test feature, never a production frontend dependency.
 
-A packaged, windowless canary exercises the actual companion, authenticated attach,
+A packaged, windowless canary exercises the actual companion, keyless attach,
 recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 
 ```sh
@@ -207,3 +264,71 @@ The browser tracing smoke waits for more than 8,192 records from the local UI
 capture. After 60 seconds it saves the available trace and reports a failure with
 the observed record count.
 Forced process termination cannot finalize an in-process trace.
+
+## Host Manager
+
+Run `shoop_host_manager`, or choose **Session → Host Manager…** in the
+native looper UI. The three native entry points are `shoopdaloop` (looper),
+`shoop_host` (headless host), and `shoop_host_manager` (management GUI).
+The manager runs in its own process without starting audio
+or taking control of a session. Closing the manager leaves hosts and UIs running.
+
+**New host…** configures and starts a detached companion. Set its name and audio
+settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+connection or optional logging when needed. The form uses OS-assigned local ports;
+no profile, key or configuration path is required. Driver and capacity changes
+require a new host/session.
+
+The manager automatically enumerates local host processes and their actual
+listening sockets. Scans run in the background with bounded concurrency. A fresh
+manager rediscovers hosts started through the GUI or CLI; closing
+the manager leaves their processes and sessions running. Exited hosts disappear
+through OS observation. Inspection failures are surfaced separately from exits;
+processes that cannot answer a compatible greeting are not presented as ready.
+
+**Advanced** contains **Connect to address…**, **Import profile…** and
+**Export profile…**. Manual targets exist only for the current manager session.
+Local and manual connections to the same live instance appear once. Remote hosts
+are added explicitly; LAN-wide discovery is outside scope.
+
+Select a host to inspect effective audio state, DSP load, xruns, startup settings
+and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
+**Audio fallback**. **Open UI** is available when the host can accept an attachment
+and has no controller. Socket hosts can reattach; shared-memory hosts can attach
+once. **••• → Stop host…** requests orderly cleanup after confirmation; the server
+refuses this while a controller is live. **Force stop…** is available only for an
+OS-identified local process, requires separate confirmation and terminates without
+session cleanup. Its PID, creation identity and executable are revalidated before
+termination. Remote descriptor PIDs cannot select a local process to kill. Tray
+integration is not included.
+
+Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
+host. This writes a rotating file only at the requested path, including
+startup errors. Logs rotate at
+1 MiB with three backups and remain until manually removed. Without `--log-file`,
+host diagnostics go to stderr and no persistent host logs or records are created.
+`RUST_LOG` controls verbosity (default `info`). An explicitly exported local profile
+includes its requested log path; a manually authored profile can set `log_file`.
+The **Logs** tab reads the latest 64 KiB from that explicit path. Remote log files
+stay on the host computer. **Open saved log…** opens only a file explicitly chosen
+by the user. **••• → Copy diagnostics** copies the current report with current process and connection information.
+Success messages dismiss after five seconds without moving the layout; errors stay
+visible until dismissed.
+
+Screenshots from the native manager (800 × 500):
+
+![Configure and start a detached host](../../../docs/screenshots/host-manager-new-host.png)
+
+![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
+
+![Host Manager persistent log viewer](../../../docs/screenshots/host-manager-logs.png)
+
+![Host Manager observing a connected controller](../../../docs/screenshots/host-manager-controller.png)
+
+![Host Manager warning for an audio fallback](../../../docs/screenshots/host-manager-fallback.png)
+
+![Host Manager with no running hosts](../../../docs/screenshots/host-manager-empty.png)
+
+![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
+
+![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)

@@ -43,6 +43,37 @@ env:
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  host_process_inspection:
+    if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
+    name: Host process inspection (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: host-process-inspection-${{ matrix.os }}
+      - name: Configure MSVC C++ compilation for Perfetto
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = (Get-Command clang-cl.exe -ErrorAction Stop).Source
+          "CXX=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CXXFLAGS=-DNOMINMAX -D_WINSOCKAPI_ -D_CRT_SECURE_NO_WARNINGS -D_CRT_DECLARE_NONSTDC_NAMES=1" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Inspect real child processes and their listening sockets
+        run: cargo test --locked -p shoop_host_processes --tests
+      - name: Inspect optimized Windows process lifetimes
+        if: runner.os == 'Windows'
+        run: cargo test --locked --release -p shoop_host_processes --tests
+
   native_jack:
     name: Native JACK audio and MIDI acceptance
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
@@ -68,10 +99,10 @@ jobs:
       - name: Build and test native driver feature combinations
         run: |
           for features in jack cpal jack,cpal; do
-            cargo check --locked -p shoopdaloop -p shoop_host -p shoop_rt_host_process --no-default-features --features "$features"
+            cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features --features "$features"
             cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features --features "$features"
           done
-          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_rt_host_process --no-default-features
+          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager -p shoop_rt_host_process --no-default-features
           cargo test --locked -p shoop_rt_host_native -p shoop_host --lib --no-default-features
       - name: Upload JACK acceptance evidence
         if: always()
@@ -239,10 +270,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests
       - name: Build without CPAL or Rodio
         if: matrix.flavor != 'macos-intel-10.15'
-        run: cargo build --locked -p shoopdaloop -p shoop_host --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target ${{ env.NATIVE_BUILD_TARGET }}
       - name: Build Intel release targeting Catalina
         if: matrix.flavor == 'macos-intel-10.15'
-        run: cargo build --locked --release -p shoopdaloop -p shoop_host --no-default-features --target x86_64-apple-darwin
+        run: cargo build --locked --release -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features --target x86_64-apple-darwin
       - name: Package portable Catalina distribution
         if: matrix.flavor == 'macos-intel-10.15'
         run: |
@@ -282,6 +313,7 @@ jobs:
           retention-days: 14
 
   build_and_test:
+    needs: host_process_inspection
     if: github.event_name != 'workflow_dispatch' || inputs.nightly_flavor == 'none'
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
@@ -452,7 +484,7 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked -p shoopdaloop -p shoop_host ${{ matrix.cargo_args }}
+        run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager ${{ matrix.cargo_args }}
 
       - name: Build web application
         if: matrix.target == 'web'
@@ -566,6 +598,8 @@ jobs:
             -p shoop_app_protocol \
             -p shoop_app_client \
             -p shoop_host \
+            -p shoop_host_processes \
+            -p shoop_host_manager \
             -p shoop_app_reference \
             -p shoop_scripting \
             -p shoop_transport \
@@ -666,7 +700,7 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: |
-          cargo check --locked -p shoopdaloop -p shoop_host --no-default-features
+          cargo check --locked -p shoopdaloop -p shoop_host -p shoop_host_manager --no-default-features
           python3 scripts/check_rt_engine_boundary.py
           python3 -m unittest discover -s scripts/tests
 

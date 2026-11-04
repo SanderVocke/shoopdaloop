@@ -1,7 +1,7 @@
 //! Portable host setup vocabulary; execution and OS configuration belong to hosts.
 use crate::{DriverKind, DriverStatus};
 
-pub const HOST_VERSION: u16 = 3;
+pub const HOST_VERSION: u16 = 4;
 pub const MAX_HOST_TEXT_BYTES: usize = 256;
 pub const MAX_SETUP_ITEMS: usize = 256;
 

@@ -50,6 +50,11 @@ trunk serve --open
 
 See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The application-specific [technical README](src/rust/shoopdaloop/README.md) documents settings, drivers, browser permissions, files, CI, and verification workflows.
 
+Run `shoopdaloop --manage-hosts` to discover running local hosts or configure and
+start a detached host. Discovery uses live OS process/socket inspection. No profile
+files, keys, registry or saved host history are required. See the
+[host manager guide](src/rust/shoopdaloop/README.md#host-manager).
+
 ## Builds and platforms
 
 The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a self-contained HTML file with embedded built-ins and RT worklet. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.

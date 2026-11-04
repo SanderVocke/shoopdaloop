@@ -15,11 +15,8 @@ fn socket_peer() {
     let Ok(address) = std::env::var("SHOOP_SOCKET_TEST_ADDRESS") else {
         return;
     };
-    let mut token = [0; 32];
-    std::io::stdin().read_exact(&mut token).unwrap();
     let port = setup::connect(
         address.parse().unwrap(),
-        &token,
         Config::default(),
         Duration::from_secs(5),
     )
@@ -44,12 +41,6 @@ fn subprocess_socket_uses_the_shared_lifecycle_credits_and_bulk_contract() {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
-        .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(listener.token())
         .unwrap();
     let port = listener
         .accept(Config::default(), Duration::from_secs(5))
@@ -80,23 +71,23 @@ fn streams() -> (TcpStream, TcpStream) {
     let b = listener.accept().unwrap().0;
     (a, b)
 }
-#[shoop_test(no_wasm = "native socket authentication")]
-fn authentication_uses_the_remaining_launch_deadline() {
+#[shoop_test(no_wasm = "native socket compatibility")]
+fn compatibility_uses_the_remaining_launch_deadline() {
     let listener = setup::Listener::bind().unwrap();
     let address = listener.address().unwrap();
-    let token = *listener.token();
     let server =
         std::thread::spawn(move || listener.accept(Config::default(), Duration::from_secs(2)));
     let mut peer = TcpStream::connect(address).unwrap();
     std::thread::sleep(Duration::from_millis(250));
-    peer.write_all(&token).unwrap();
+    peer.write_all(&setup::MAGIC).unwrap();
+    peer.write_all(&[0]).unwrap();
     peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-    let mut ack = [0];
-    let authenticated = peer.read_exact(&mut ack);
+    let mut ack = [0; 8];
+    let compatible = peer.read_exact(&mut ack);
     let accepted = server.join().unwrap();
-    assert!(accepted.is_ok(), "{authenticated:?}");
-    assert!(authenticated.is_ok());
-    assert_eq!(ack, [1]);
+    assert!(accepted.is_ok(), "{compatible:?}");
+    assert!(compatible.is_ok());
+    assert_eq!(ack, setup::MAGIC);
 }
 #[shoop_test(no_wasm = "native sockets")]
 fn fragmented_and_coalesced_records_and_eof_are_distinct_from_idle() {
@@ -143,23 +134,18 @@ fn malformed_lengths_end_the_carrier() {
         );
     }
 }
-#[shoop_test(no_wasm = "native socket authentication")]
-fn an_unauthenticated_peer_cannot_establish_the_connection() {
+#[shoop_test(no_wasm = "native socket compatibility")]
+fn an_incompatible_peer_cannot_establish_the_connection() {
     let listener = setup::Listener::bind().unwrap();
     let address = listener.address().unwrap();
     let client = std::thread::spawn(move || {
-        setup::connect(
-            address,
-            &[0; 32],
-            Config::default(),
-            Duration::from_millis(100),
-        )
-        .is_err()
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.write_all(b"obsolete!").unwrap();
     });
     assert!(listener
         .accept(Config::default(), Duration::from_millis(200))
         .is_err());
-    assert!(client.join().unwrap());
+    client.join().unwrap();
 }
 #[shoop_test(no_wasm = "native socket backpressure")]
 fn full_output_retries_preserve_whole_records_in_order() {

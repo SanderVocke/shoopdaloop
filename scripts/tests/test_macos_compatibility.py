@@ -81,13 +81,15 @@ class MacOSPackageMetadataTests(unittest.TestCase):
             binary = root / "shoopdaloop"
             binary.write_bytes(macho())
             binary.with_name("shoop_host").write_bytes(macho())
+            binary.with_name("shoop_host_manager").write_bytes(macho())
             stage = root / "stage"
             stage.mkdir()
             args = ("macos", binary, stage)
-            if minimum is None:
-                package_artifacts.create_native_stage(*args)
-            else:
-                package_artifacts.create_native_stage(*args, minimum)
+            with patch.object(Path, "symlink_to"):
+                if minimum is None:
+                    package_artifacts.create_native_stage(*args)
+                else:
+                    package_artifacts.create_native_stage(*args, minimum)
             return plistlib.loads((stage / "shoopdaloop/ShoopDaLoop.app/Contents/Info.plist").read_bytes())
 
     def test_catalina_metadata(self):

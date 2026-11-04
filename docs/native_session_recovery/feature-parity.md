@@ -99,7 +99,7 @@ what is missing rather than assume the whole feature needs a new engine primitiv
   Port these UI-bound expectations when their feature is restored; reference-model
   coverage alone is not a substitute for exercising the new production route.
 - Obsolete backend-selection, engine-child fatal-disconnect and Carla-worker-entry
-  canaries are superseded by sole-backend, independent-host recovery and authenticated
+  canaries are superseded by sole-backend, independent-host recovery and generation-fenced
   shutdown tests. The removed launch architecture itself is not a parity target;
   its useful processor/driver behavior belongs to P07/P14.
 - Keep existing feature editors, intents, configuration/document fields, assets and
