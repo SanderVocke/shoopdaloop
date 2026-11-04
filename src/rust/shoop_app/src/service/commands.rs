@@ -23,6 +23,10 @@ impl Service {
             Command::SetLoopChannelTimings { loop_id, updates } => {
                 self.set_loop_channel_timings(loop_id, &updates)
             }
+            Command::SetProfiling(enabled) => {
+                self.backend.set_profiling(enabled)?;
+                Ok(Effect::None)
+            }
             Command::SetHostGraphConnected(request) => {
                 let controller =
                     self.host_graph_controller

@@ -26,6 +26,10 @@ const SIGNAL_DB: f32 = -80.0;
 enum Step {
     Disabled,
     Startup,
+    ProfilingStarted,
+    ProfilingStopped,
+    ProfilingRestarted,
+    ProfilingFinished,
     NewSession,
     Buses,
     BusZero,
@@ -99,6 +103,7 @@ pub struct NewEngineSelfTest {
     links: Vec<(PortId, HostPortId)>,
     routes: Vec<(PortId, BusChannelId)>,
     sync_length: u64,
+    profiling_generation: u64,
     position: Option<f32>,
     saved_file: Option<Arc<Vec<u8>>>,
     saved_bundle: Option<shoop_session::SessionBundle>,
@@ -127,6 +132,7 @@ impl NewEngineSelfTest {
             links: Vec::new(),
             routes: Vec::new(),
             sync_length: 0,
+            profiling_generation: 0,
             position: None,
             saved_file: None,
             saved_bundle: None,
@@ -193,7 +199,14 @@ impl NewEngineSelfTest {
                     } else {
                         STEP_TIMEOUT
                     } => {}
-            Ok(None) => self.fail(format!("timed out; file task: {:?}", snapshot.io_task)),
+            Ok(None) => self.fail(format!(
+                "timed out; pending operations: {}; profiling requested/active/available: {}/{}/{}; file task: {:?}",
+                runtime.session_operations_pending(),
+                snapshot.profiling.requested,
+                snapshot.profiling.active,
+                snapshot.profiling.available,
+                snapshot.io_task,
+            )),
             Err(reason) => self.fail(reason),
         }
     }
@@ -228,6 +241,8 @@ impl NewEngineSelfTest {
         }
         let running = runtime.audio_running();
         let signal = runtime.new_engine_microphone();
+        let pending = runtime.session_operations_pending();
+        let profiling_preferences_ready = runtime.applied_profiling_preference.is_some();
         let mut send = |intent: AppIntent| {
             runtime
                 .dispatch(intent)
@@ -237,12 +252,23 @@ impl NewEngineSelfTest {
         let next = match self.step {
             Step::Disabled | Step::Passed | Step::Failed => return Ok(None),
             Step::Startup => {
-                if !(running
-                    && snapshot.connections.backend_available
-                    && snapshot.tracks.len() == 1)
+                if pending
+                    || !profiling_preferences_ready
+                    || !(running
+                        && snapshot.connections.backend_available
+                        && snapshot.tracks.len() == 1)
                 {
                     return Ok(None);
                 }
+                send(AppIntent::SetProfiling(true))?;
+                Step::ProfilingStarted
+            }
+            Step::ProfilingStarted => {
+                let profile = &snapshot.profiling;
+                if pending || !profile.requested || (profile.available && !profile.active) {
+                    return Ok(None);
+                }
+                self.profiling_generation = profile.generation;
                 send(AppIntent::RequestNewSession)?;
                 Step::NewSession
             }
@@ -825,6 +851,12 @@ impl NewEngineSelfTest {
                 Step::RestoredPlayback
             }
             Step::RestoredPlayback => {
+                if snapshot.profiling.available && snapshot.profiling.live.rows.is_empty() {
+                    return Ok(None);
+                }
+                if snapshot.profiling.generation <= self.profiling_generation {
+                    return Err("graph rebuild did not reset profiling".into());
+                }
                 let entry = first_loop(snapshot, ids.audio)?;
                 if entry.mode != LoopMode::Playing || entry.length_frames == 0 {
                     return Ok(None);
@@ -1009,10 +1041,12 @@ impl NewEngineSelfTest {
                 Step::BusZeroSaving
             }
             Step::BusZeroSaving => {
-                if !snapshot.io_task.as_ref().is_some_and(|t| {
-                    t.kind == shoop_egui::IoTaskKind::SaveSession
-                        && t.status == IoTaskStatus::Completed
-                }) {
+                if pending
+                    || !snapshot.io_task.as_ref().is_some_and(|t| {
+                        t.kind == shoop_egui::IoTaskKind::SaveSession
+                            && t.status == IoTaskStatus::Completed
+                    })
+                {
                     return Ok(None);
                 }
                 let Some(bundle) = &self.saved_bundle else {
@@ -1060,7 +1094,8 @@ impl NewEngineSelfTest {
                 Step::BusAddedAgain
             }
             Step::BusAddedAgain => {
-                if snapshot.buses.len() != 1
+                if pending
+                    || snapshot.buses.len() != 1
                     || snapshot.buses[0].name != "After zero"
                     || snapshot.buses[0].structural_state != StructuralState::Confirmed
                 {
@@ -1194,6 +1229,32 @@ impl NewEngineSelfTest {
                             && t.status == IoTaskStatus::Completed
                     })
                 {
+                    return Ok(None);
+                }
+                send(AppIntent::SetProfiling(false))?;
+                Step::ProfilingStopped
+            }
+            Step::ProfilingStopped => {
+                if snapshot.profiling.requested || snapshot.profiling.active {
+                    return Ok(None);
+                }
+                self.profiling_generation = snapshot.profiling.generation;
+                send(AppIntent::SetProfiling(true))?;
+                Step::ProfilingRestarted
+            }
+            Step::ProfilingRestarted => {
+                let profile = &snapshot.profiling;
+                if !profile.requested
+                    || profile.generation <= self.profiling_generation
+                    || (profile.available && !profile.active)
+                {
+                    return Ok(None);
+                }
+                send(AppIntent::SetProfiling(false))?;
+                Step::ProfilingFinished
+            }
+            Step::ProfilingFinished => {
+                if snapshot.profiling.requested || snapshot.profiling.active {
                     return Ok(None);
                 }
                 Step::Passed

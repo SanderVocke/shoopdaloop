@@ -37,8 +37,8 @@ struct Record {
 }
 pub struct Stream<S> {
     io: S,
-    queues: [VecDeque<Record>; 3],
-    capacities: [usize; 3],
+    queues: [VecDeque<Record>; 4],
+    capacities: [usize; 4],
     active: Option<(usize, Record, usize)>,
     input: [u8; MAX_RECORD_BYTES],
     used: usize,
@@ -49,6 +49,7 @@ fn lane_index(lane: Lane) -> usize {
         Lane::Reliable => 0,
         Lane::Telemetry => 1,
         Lane::Bulk => 2,
+        Lane::Profiling => 3,
     }
 }
 impl<S: ByteIo> Stream<S> {
@@ -61,7 +62,7 @@ impl<S: ByteIo> Stream<S> {
         {
             return Err(CarrierError::Codec(CodecError::Invalid));
         }
-        let capacities = [config.reliable, config.telemetry, config.bulk];
+        let capacities = [config.reliable, config.telemetry, config.bulk, 64];
         Ok(Self {
             io,
             queues: core::array::from_fn(|i| VecDeque::with_capacity(capacities[i])),
@@ -90,7 +91,7 @@ impl<S: ByteIo> Stream<S> {
         }
         for _ in 0..32 {
             if self.active.is_none() {
-                for lane in [0, 2, 1] {
+                for lane in [0, 2, 1, 3] {
                     if let Some(record) = self.queues[lane].pop_front() {
                         self.active = Some((lane, record, 0));
                         break;

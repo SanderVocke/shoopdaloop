@@ -48,6 +48,13 @@ fn app_control(control: StripControl) -> BackendTrackControl {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ProfilingStatus(status) => self.profiling.status(status),
+            EngineMessage::Profiling(packet) => self.profiling.receive(packet),
+            EngineMessage::ProfilingNode {
+                generation,
+                key,
+                name,
+            } => self.profiling.name(generation, key, name.as_str()),
             EngineMessage::Welcome {
                 capabilities,
                 limits,
@@ -66,6 +73,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ));
                     return;
                 }
+                self.profiling = Default::default();
                 self.capabilities = capabilities;
                 self.set_limits(limits);
                 self.driver = Some(driver);
@@ -752,6 +760,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
+            (Purpose::Profiling, Some(refusal)) => self.failure(
+                shoop_backend::BackendMutationKind::AudioProcessing,
+                None,
+                None,
+                format!("could not change profiling: {}", refusal_text(refusal)),
+            ),
             (Purpose::Smoothing(milliseconds), Some(refusal)) => self.failure(
                 BackendMutationKind::LoopControl,
                 None,
@@ -763,6 +777,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             ),
             (
                 Purpose::InjectMidi(_)
+                | Purpose::Profiling
                 | Purpose::Smoothing(_)
                 | Purpose::Preview
                 | Purpose::Persistence

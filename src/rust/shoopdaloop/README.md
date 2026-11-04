@@ -176,6 +176,15 @@ together, for example by copying both to Applications.
 Carla runtime payloads and old worker/worklet payloads are
 not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
+## Runtime profiling
+
+The backend status LED panel provides **Profiling…**, below **Host Manager…**.
+Its dedicated window has an immediate persisted on/off switch, overall DSP load
+bar, and Node / Avg / Worst / Stddev table in µs or % of the fixed quantum budget. Every graph rebuild resets the
+interval. Xruns automatically retain bounded recent timing while profiling is on;
+Live and Latest xrun use the same table. See the [profiling guide](../../../docs/runtime_profiling.md)
+for timing semantics, overhead measurements and browser clock availability.
+
 ## Output buses
 
 The mixer supports ordinary named buses, persisted display order, gain/mute,

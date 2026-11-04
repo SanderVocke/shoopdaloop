@@ -827,6 +827,9 @@ impl ControlEndpoint {
                 job.fail(Refusal::Internal);
                 return true;
             };
+            if let Some(control) = &self.cells.profiling {
+                control.reset();
+            }
             if let Err(error) =
                 self.work
                     .builder

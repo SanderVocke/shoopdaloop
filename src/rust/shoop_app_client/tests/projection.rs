@@ -15,7 +15,23 @@ const AUTHORITY: Authority = Authority {
 };
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
+    let mut profiling = shoop_app_api::ProfilingView {
+        generation: revision,
+        active: true,
+        requested: true,
+        available: true,
+        ..Default::default()
+    };
+    profiling.live.generation = revision;
+    profiling.live.rows.push(Default::default());
+    let row = &mut profiling.live.rows[0];
+    row.name = "Loop 1 MIDI playback".into();
+    row.samples = 8;
+    row.avg_ns = 1250.;
+    row.worst_ns = 3000;
+    row.stddev_ns = 500.;
     Arc::new(SessionSnapshot {
+        profiling,
         sync_sources: Vec::new(),
         preview: Default::default(),
         preview_bus: None,

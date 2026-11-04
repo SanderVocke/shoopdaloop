@@ -6,6 +6,8 @@
 #[cfg(test)]
 extern crate std;
 
+pub use rt_profiling as profiling;
+
 pub mod codec;
 pub mod content;
 pub mod host;
@@ -23,7 +25,7 @@ pub use schema::*;
 pub use timing::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 8;
+pub const PROTOCOL_VERSION: u16 = 9;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.

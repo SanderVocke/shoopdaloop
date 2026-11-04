@@ -49,6 +49,7 @@ pub struct AudioRenderer {
     window_bytes: Box<[u8]>,
     last: Box<[f32]>,
     anchor: Box<[f32]>,
+    ramp_weights: Box<[f32]>,
     ramp_frames: u32,
     ramp_position: u32,
     next_ramp_frames: u32,
@@ -139,6 +140,11 @@ impl AudioRenderer {
                     .checked_mul(8)
                     .and_then(|extra| n.checked_add(extra))
             })
+            .and_then(|n| {
+                max_frames
+                    .checked_mul(4)
+                    .and_then(|extra| n.checked_add(extra))
+            })
             .filter(|n| *n <= i32::MAX as usize)
             .ok_or(Error::InvalidConfig)?;
         let ramp_frames = match smoothing {
@@ -152,6 +158,7 @@ impl AudioRenderer {
             window_bytes: buffer(count * 4),
             last: buffer(channels),
             anchor: buffer(channels),
+            ramp_weights: buffer(max_frames),
             ramp_frames,
             ramp_position: ramp_frames,
             next_ramp_frames: ramp_frames,
@@ -367,30 +374,34 @@ impl AudioRenderer {
             self.ramp_frames = self.next_ramp_frames;
             self.ramp_position = 0;
         }
-        for frame in 0..frames {
-            let ramping = self.ramp_position < self.ramp_frames;
-            let weight = if ramping {
-                self.ramp_position += 1;
-                self.ramp_position as f32 / self.ramp_frames as f32
-            } else {
-                1.0
-            };
-            for channel in 0..channels {
-                let output = outputs.channel(channel);
+        let ramp_start = self.ramp_position;
+        let ramping_frames = (self.ramp_frames.saturating_sub(ramp_start) as usize).min(frames);
+        for (frame, weight) in self.ramp_weights[..ramping_frames].iter_mut().enumerate() {
+            *weight = (ramp_start + frame as u32 + 1) as f32 / self.ramp_frames as f32;
+        }
+        for channel in 0..channels {
+            let output = outputs.channel(channel);
+            let factor = factors[channel.min(1)];
+            for (frame, sample) in output[..ramping_frames].iter_mut().enumerate() {
                 let byte = (frame * self.channels + channel) * 4;
                 let raw =
                     f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
                         * playback.gain
-                        * factors[channel.min(1)];
-                let value = if ramping {
-                    self.anchor[channel] * (1.0 - weight) + raw * weight
-                } else {
-                    raw
-                };
-                output[frame] = value;
-                self.last[channel] = value;
+                        * factor;
+                let weight = self.ramp_weights[frame];
+                *sample = self.anchor[channel] * (1.0 - weight) + raw * weight;
             }
+            for (offset, sample) in output[ramping_frames..].iter_mut().enumerate() {
+                let frame = ramping_frames + offset;
+                let byte = (frame * self.channels + channel) * 4;
+                *sample =
+                    f32::from_le_bytes(self.bytes[byte..byte + 4].try_into().expect("four bytes"))
+                        * playback.gain
+                        * factor;
+            }
+            self.last[channel] = output[frames - 1];
         }
+        self.ramp_position += ramping_frames as u32;
         Ok(())
     }
 }

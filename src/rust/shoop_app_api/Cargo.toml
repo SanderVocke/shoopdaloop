@@ -13,6 +13,7 @@ serde = ["dep:serde", "shoop_port_graph/serde"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_profiling = { path = "../rt_profiling" }
 shoop_port_graph = { path = "../shoop_port_graph" }
 serde = { workspace = true, features = ["derive", "rc"], optional = true }
 shoop_latency = { path = "../shoop_latency" }

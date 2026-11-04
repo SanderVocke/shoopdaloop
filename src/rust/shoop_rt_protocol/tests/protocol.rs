@@ -40,6 +40,8 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::Profiling(false),
+        Request::Profiling(true),
         Request::ContentWindow {
             id: u64::MAX,
             frames: u64::MAX,
@@ -464,6 +466,8 @@ fn engine_samples() -> Vec<EngineMessage> {
 
 #[shoop_test]
 fn every_message_round_trips_through_bounded_records() {
+    assert!(!Capabilities::PROFILING.contains(Capabilities::LOOP_TIMING));
+    assert!(!Capabilities::LOOP_TIMING.contains(Capabilities::PROFILING));
     let mut buf = [0; MAX_RECORD_BYTES];
     for message in client_samples() {
         let len = encode_client(&message, &mut buf).unwrap();

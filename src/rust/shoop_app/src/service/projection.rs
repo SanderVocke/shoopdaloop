@@ -54,6 +54,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            profiling: self.observed.profiling.clone(),
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()
@@ -509,6 +510,7 @@ impl Service {
 
     pub(super) fn apply_observation(&mut self, observed: BackendSnapshot) {
         if observed.connections.revision != self.observed.connections.revision
+            || observed.profiling != self.observed.profiling
             || observed.mixer.revision != self.observed.mixer.revision
         {
             self.bump();

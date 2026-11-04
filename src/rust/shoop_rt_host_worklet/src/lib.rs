@@ -1,5 +1,5 @@
 //! The new engine backend's browser host: an AudioWorklet module around the
-//! engine, built for `wasm32-unknown-unknown` without Wasm imports.
+//! engine, built for `wasm32-unknown-unknown` with a host profiling-clock import.
 //!
 //! The processor script instantiates the module, writes a configuration record
 //! ([`config`]) and prepares the engine before its first render quantum. Per

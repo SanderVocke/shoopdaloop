@@ -5,7 +5,8 @@ Status: implementation in progress on `feat/p12-loop-timing`. Written under
 
 - Base and PR target: **`feat/fixed-quantum-runtime`**, inspected at
   `df4683527dbde0ec7483c3e522fc3873e39a81c8`; reconciled with target
-  `2e19210bdbb5e32510322f8b8344715ce7cbefe5` before final validation.
+  `2e19210bdbb5e32510322f8b8344715ce7cbefe5`, then
+  `a192b0ce77325bc8bb55b7b749e8d68b324f0a43` before final validation.
 - Implementation branch: `feat/p12-loop-timing`, created from the inspected
   target; remote head was unchanged when implementation began.
 - Reference: `master` at `92079fb6f00308be0f6b407b7e8c02229662e420`, including
@@ -153,7 +154,9 @@ Goals and these criteria require explicit user approval to change.
 - Prepare finite channel-edit/window/receipt capacity and validate checked signed
   arithmetic and legacy field bounds before promising success. Version changed
   app/RT layouts, host/worklet handshakes and fixture codecs as needed. Preserve
-  `no_std`, safe Rust, the import-free worklet and existing dependency boundaries.
+  `no_std`, safe Rust and existing dependency boundaries. The worklet accepts only
+  the target branch's audited `shoop_profiling.now` elapsed-clock import; no other
+  imports or service/render dependency expansion are permitted.
 - Preserve UI/Lua ownership, current recording limits and other parity gates.
   Reuse `shoop_session` document fields; introduce a file-format migration only if
   demonstrably needed. P12 does not require undo or new transport modes.
@@ -239,6 +242,15 @@ Goals and these criteria require explicit user approval to change.
   playback and bus workflows with zero xruns. Final strict JACK and both native
   transport probes pass. The hashed validation inventory and nine-criterion
   evidence map are written; only PR CI/review and ledger closure remain.
+
+- Second target reconciliation: target advanced to `a192b0ce` with runtime
+  profiling and audio/MIDI hot-path optimizations. Preserve those approved target
+  features while combining P12. Allocate separate profiling/timing capability bits
+  and request tags; bump app protocol to 22 and RT protocol to 9 for the combined
+  layouts. The worklet design rule now preserves upstream's single audited
+  profiling-clock import, rather than removing that feature. Goals and immutable
+  acceptance criteria are unchanged. Earlier report hashes remain checkpoint
+  evidence; combined final validation and CI must be rerun before closure.
 
 ## Execution contract
 
@@ -385,7 +397,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 8 — final end-to-end validation and evidence
 
-- [x] Run formatting, warning-denying workspace build and the full reference plus
+- [ ] Run formatting, warning-denying workspace build and the full reference plus
   production suite per `.agents/info/build.md` and `.agents/info/test.md`:
 
   ```sh
@@ -400,18 +412,18 @@ Each stage's verification must pass before its dependent stage is closed.
   python3 scripts/check_rt_engine_boundary.py
   ```
 
-- [x] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
+- [ ] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
   heap guards and selected Miri cases covering shared raw leases, window activation,
   active-capture edits, MIDI pickup cancellation and refusal/retirement. Update
   inventories and keep hashed reports, source SHAs and seeds.
-- [x] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
+- [ ] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
   codec artifact contracts using existing runners. Exercise all Q values and
   awkward host partitions, especially Q=1 exact reference cases and default Q=32.
-- [x] Exercise packaged native client/host paths on sockets/shared memory and a
+- [ ] Exercise packaged native client/host paths on sockets/shared memory and a
   native output fixture (JACK/dummy loopback as appropriate), including recording,
   live edits, scheduled pre-play, persistence and socket reattachment. Validate
   samples/MIDI and transport state, not just rendered labels or acknowledgments.
-- [x] Extend/run actual hosted and isolated self-contained browser acceptance
+- [ ] Extend/run actual hosted and isolated self-contained browser acceptance
   through the production AudioWorklet: edit audio/MIDI, play pickups, cancel/rearm,
   save/load/save and resume. Measure output/packet continuity and check errors,
   xruns and unchanged core/bus/preview workflows. Use existing browser runners and
