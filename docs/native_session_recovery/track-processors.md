@@ -258,3 +258,13 @@ reverbs at 8/48/384 kHz, immediate wake, retained controls, and cleared voices a
 queued output. The DSP Wasm Node suite passed 47 tests; the linked both-feature
 worklet still had zero imports. These Wasm checks preceded the final setup-only
 storage-touch addition; the final full gates must include that revision.
+
+The loop foundation now publishes settled per-source demand, including recording
+and rerecording due in the next sync cycle. Lookahead is cached per loop at the
+same preview/commit boundary as playback/capture decisions, so consumers do not
+rescan pending transitions for every processor. Cancellation clears lookahead;
+wrap counting remains resolver-owned. Unaligned dry-play offsets refuse before
+state changes, and self-synchronized dry modes retain delayed transition behavior.
+Native loop/engine regressions and the warning-denying workspace build pass for
+these additions. Reference routing uses imminent recording/rerecording demand;
+monitoring behavior must follow that truth table when the production nodes connect.

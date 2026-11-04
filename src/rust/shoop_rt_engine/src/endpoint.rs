@@ -691,7 +691,7 @@ impl ControlEndpoint {
         let at = self.at();
         let target = loop_id(id);
         let immediate =
-            delay.is_none() || (entry.sync.is_none() && self.observed_mode(id) != Mode::Playing);
+            delay.is_none() || (entry.sync.is_none() && !self.observed_mode(id).playback_mode());
         if immediate {
             self.cancel_planned(slot, None, at);
             self.submit_loop(

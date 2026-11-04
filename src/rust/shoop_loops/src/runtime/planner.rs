@@ -526,9 +526,15 @@ impl LoopPlanner {
             }
             let playing = decision.state.plays();
             let dry_playing = playing && decision.state.mode.dry_playback();
+            let next = self
+                .resolver
+                .next_cycle_transition(row.binding.target)
+                .map_err(runtime_error)?;
             self.views[slot] = View {
                 decision,
                 dry_wet: row.dry_wet,
+                pre_recording: matches!(next, Some(Transition::Record { .. })),
+                pre_rerecording: matches!(next, Some(Transition::Rerecord)),
                 replace: row.active.and_then(|take| take.edit),
                 auxiliary: media
                     .filter(|_| dry_playing)

@@ -453,6 +453,8 @@ pub struct View {
     pub capture_node: NodeId,
     pub reset_input: bool,
     pub dry_wet: bool,
+    pub pre_recording: bool,
+    pub pre_rerecording: bool,
     pub replace: Option<(rt_runtime::ResourceId, Revision)>,
 }
 #[derive(Clone, Copy)]
@@ -533,6 +535,16 @@ impl BoundaryObserver for NoObserver {
         self
     }
 }
+/// Current and imminent dry/wet work sharing one prepared input history source.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SourceActivity {
+    pub recording: bool,
+    pub pre_recording: bool,
+    pub playing_dry: bool,
+    pub rerecording: bool,
+    pub pre_rerecording: bool,
+}
+
 pub struct LoopPlanner {
     shared: Option<shared::Shared>,
     observer: Box<dyn BoundaryObserver>,
@@ -886,6 +898,8 @@ impl LoopPlanner {
             capture_node: NodeId::from_parts(0, 1)?,
             reset_input: false,
             dry_wet: false,
+            pre_recording: false,
+            pre_rerecording: false,
             replace: None,
         };
         let mut views = vec![initial; slots].into_boxed_slice();
@@ -928,6 +942,30 @@ impl LoopPlanner {
             },
         })
     }
+    /// Demand at the last settled boundary. A logical wrap is still owned only
+    /// by the resolver; consumers use this aggregate solely to route signals.
+    pub fn source_activity(&self, source: u32) -> SourceActivity {
+        let mut activity = SourceActivity::default();
+        for row in self
+            .rows
+            .iter()
+            .flatten()
+            .filter(|row| row.assigned && row.dry_wet && row.history_source == source)
+        {
+            let mode = self.views[row.binding.target.slot() as usize]
+                .decision
+                .state
+                .mode;
+            activity.recording |= mode == Mode::Recording;
+            activity.playing_dry |= mode == Mode::PlayingDryThroughWet;
+            activity.rerecording |= mode == Mode::RecordingDryIntoWet;
+            let view = &self.views[row.binding.target.slot() as usize];
+            activity.pre_recording |= view.pre_recording;
+            activity.pre_rerecording |= view.pre_rerecording;
+        }
+        activity
+    }
+
     fn validate_media_shape(row: Row, view: media::View) -> Result<(), Error> {
         if view.description.channels as usize != row.binding.channels
             || view.description.auxiliary_channels as usize

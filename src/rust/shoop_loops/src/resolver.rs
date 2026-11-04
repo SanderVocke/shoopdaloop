@@ -299,6 +299,36 @@ impl Resolver {
         self.preview.ok_or(Error::InvalidState)?;
         Ok(&self.scratch.decisions)
     }
+    /// Head delayed transition due on the next source pulse, after supersession
+    /// and cancellation have settled. The skip count is a pulse count, not time.
+    pub fn next_cycle_transition(&self, target: LoopId) -> Result<Option<Transition>, Error> {
+        self.topology.node(target)?;
+        let records = if self.preview.is_some() && !self.committed {
+            &self.scratch.records
+        } else {
+            &self.records
+        };
+        let head = records
+            .iter()
+            .flatten()
+            .filter(|record| {
+                record.terminal.is_none()
+                    && record.request.target == target
+                    && record.effective <= self.frame
+                    && matches!(record.request.timing, Timing::AfterTicks { .. })
+            })
+            .min_by_key(|record| {
+                (
+                    record.remaining,
+                    record.effective,
+                    core::cmp::Reverse(record.request.sequence),
+                )
+            });
+        Ok(head
+            .filter(|record| record.remaining == 0)
+            .map(|record| record.request.transition))
+    }
+
     pub fn retained_requests(&self) -> usize {
         self.records
             .iter()
@@ -320,9 +350,9 @@ impl Resolver {
         {
             let q = self.quantum;
             let aligned = match request.transition {
-                Transition::Play { position, .. } | Transition::Seek { position, .. } => {
-                    position % q.frames() as u64 == 0
-                }
+                Transition::Play { position, .. }
+                | Transition::PlayDry { position, .. }
+                | Transition::Seek { position, .. } => position % q.frames() as u64 == 0,
                 Transition::Replace { length, .. } => length % q.frames() as u64 == 0,
                 _ => true,
             };

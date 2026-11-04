@@ -562,3 +562,92 @@ fn dry_and_wet_widths_are_independent_and_each_uses_its_full_capacity() {
         }
     }
 }
+
+#[shoop_test]
+fn unaligned_dry_seek_is_refused_before_changing_the_usable_take() {
+    let mut h = Harness::new(2, 16);
+    for input in &mut h.inputs {
+        input.fill(0.5);
+    }
+    h.transition(Transition::Record {
+        monitor_previous: false,
+    });
+    for _ in 0..4 {
+        h.step();
+    }
+    h.transition(Transition::Stop);
+    let original = h.export();
+    h.transition(Transition::Play {
+        position: 0,
+        retrigger: true,
+    });
+    h.step();
+    while h.control.try_execution().is_some() {}
+    let sequence = h.send(Operation::Transition {
+        target: id(),
+        timing: Timing::At,
+        transition: Transition::PlayDry {
+            position: 1,
+            retrigger: true,
+        },
+    });
+    h.step();
+    let mut refused = 0;
+    while let Some(execution) = h.control.try_execution() {
+        if execution.sequence == sequence {
+            assert!(matches!(
+                execution.operation_result,
+                Some(Reply::Failed(Failure::Timeline(Error::InvalidFrame)))
+            ));
+            refused += 1;
+        }
+    }
+    assert_eq!(refused, 1);
+    assert_eq!(h.export().media, original.media);
+    for output in &h.outputs[..2] {
+        assert_eq!(output, &vec![0.5; 16]);
+    }
+}
+
+#[shoop_test]
+fn source_demand_enters_prerouting_only_in_the_last_cycle_and_cancellation_clears_it() {
+    for (steps, cancel, pre) in [(0, false, false), (2, false, true), (2, true, false)] {
+        let mut h = Harness::new(2, 16);
+        h.transition(Transition::Record {
+            monitor_previous: false,
+        });
+        for _ in 0..4 {
+            h.step();
+        }
+        h.transition(Transition::Play {
+            position: 0,
+            retrigger: true,
+        });
+        h.step();
+        let sequence = h.send(Operation::Transition {
+            target: id(),
+            timing: Timing::AfterTicks {
+                source: id(),
+                skip: 1,
+            },
+            transition: Transition::Rerecord,
+        });
+        h.step();
+        for _ in 0..steps {
+            h.step();
+        }
+        if cancel {
+            h.send(Operation::Cancel { sequence });
+        }
+        h.step();
+        let (planner, _) = h.runtime.into_planner_and_resources();
+        let activity = planner.source_activity(0);
+        assert_eq!(
+            activity.pre_rerecording, pre,
+            "steps={steps} cancel={cancel}"
+        );
+        assert!(!activity.rerecording);
+        assert!(!activity.recording);
+        assert_eq!(planner.source_activity(1), SourceActivity::default());
+    }
+}
