@@ -2,12 +2,8 @@
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, GraphRuntime, PreparedNode};
-use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
-};
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
-};
+use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
+use rt_runtime::planner::{FinishContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::Lane;
@@ -23,38 +19,25 @@ impl ProcessorOperation for GainOperation {
 
 struct AlternatingGain {
     decision: [f32; 1],
+    rendered: usize,
     id: PlannerId,
 }
 impl Planner for AlternatingGain {
-    type Decision = f32;
-    type Observation = usize;
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: self.id,
-            decision_slots: 1,
-            observation_capacity: 1,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(self.id)
     }
-    fn decisions(&self) -> &[f32] {
-        &self.decision
-    }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
         self.decision[0] = 1.0 + ((context.frame.0 / 8) % 2) as f32;
-        Ok(context
-            .frame
-            .checked_add(8 - (context.frame.0 % 8) as usize)?
-            .min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
-        if context.observations.len() != 1
-            || context.observations[0].value as u64
-                != context.interval.end.0 - context.interval.start.0
-        {
-            return Err(Error::InvalidState);
-        }
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        assert_eq!(
+            self.rendered as u64,
+            context.interval.end.0 - context.interval.start.0
+        );
+        self.rendered = 0;
         Ok(())
     }
 }
@@ -69,13 +52,7 @@ impl Processor<AlternatingGain, GainOperation> for Gain {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
-        }
-    }
+
     fn operation(
         &mut self,
         operation: GainOperation,
@@ -89,12 +66,13 @@ impl Processor<AlternatingGain, GainOperation> for Gain {
         Ok(value)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, AlternatingGain>) -> Result<(), Error> {
-        let gain = *block.decision.as_ref().ok_or(Error::InvalidState)?.value * self.parameter;
+        let gain = block.domain.decision[0] * self.parameter;
         let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
         for (input, output) in input.iter().zip(output) {
             *output = input * gain;
         }
-        block.observations.push(block.frames)
+        block.domain.rendered += block.frames;
+        Ok(())
     }
 }
 // One-consumer planner variant: a gain follows a planned decision per interval.
@@ -123,6 +101,7 @@ fn main() -> Result<(), Error> {
     let planner_id = PlannerId::from_parts(0, 1)?;
     let planner = AlternatingGain {
         decision: [1.0],
+        rendered: 0,
         id: planner_id,
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_planner(
@@ -149,15 +128,7 @@ fn main() -> Result<(), Error> {
             },
         ],
     };
-    let plan = compile_planned(
-        runtime.catalog(),
-        &graph,
-        &[DecisionBinding {
-            planner: planner_id,
-            consumer: node,
-            decision_slot: 0,
-        }],
-    )?;
+    let plan = compile(runtime.catalog(), &graph)?;
     let _commit = control
         .submit(Lane::Normal, Command::commit(Epoch(0), plan))
         .map_err(|error| error.error)?;

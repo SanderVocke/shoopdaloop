@@ -2,13 +2,11 @@ mod support;
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode};
-use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType,
-};
+use rt_runtime::graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType};
 use rt_runtime::planner::*;
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::schedule::Action;
-use rt_runtime::transport::{Lane, Outcome};
+use rt_runtime::transport::Lane;
 use rt_runtime::{Budgets, Config, Epoch, Error, Frame, NodeId, PlannerId};
 use shoop_wasm_test_support::shoop_test;
 use std::sync::{
@@ -42,71 +40,44 @@ struct Counters {
 #[derive(Clone, Copy, PartialEq)]
 enum Fault {
     None,
-    Zero,
-    BeyondCeiling,
-    Shrink,
+    InvalidFrame,
+    InvalidShape,
 }
 struct Clock {
     decision: [Decision; 1],
-    single_sample: bool,
     fault: Fault,
-    planned: bool,
+    processed: u8,
     counters: Arc<Counters>,
 }
 impl Planner for Clock {
-    type Decision = Decision;
-    type Observation = usize;
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner_id(),
-            decision_slots: 1,
-            observation_capacity: 2,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner_id())
     }
-    fn decisions(&self) -> &[Decision] {
-        if self.fault == Fault::Shrink && self.planned {
-            &[]
-        } else {
-            &self.decision
-        }
-    }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
-        self.planned = true;
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
+        self.processed = 0;
         self.counters.plans.fetch_add(1, Ordering::Relaxed);
         self.decision[0] = Decision {
             frame: context.frame,
             gain: 1.0 + ((context.frame.0 / 5) % 2) as f32,
         };
         match self.fault {
-            Fault::Zero => Ok(context.frame),
-            Fault::BeyondCeiling => context.ceiling.checked_add(1),
-            _ => context
-                .frame
-                .checked_add(if self.single_sample {
-                    1
-                } else {
-                    5 - (context.frame.0 % 5) as usize
-                })
-                .map(|end| end.min(context.ceiling)),
+            Fault::InvalidFrame => return Err(Error::InvalidFrame),
+            Fault::InvalidShape => return Err(Error::InvalidShape),
+            Fault::None => {}
         }
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, usize>) -> Result<(), Error> {
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
         self.counters.finishes.fetch_add(1, Ordering::Relaxed);
         assert!(context.interval.end > context.interval.start);
-        if !context.observations.is_empty() {
-            assert_eq!(context.observations.len(), 2);
-            assert_eq!(context.observations[0].producer, id(0));
-            assert_eq!(context.observations[1].producer, id(2));
-            let frames = (context.interval.end.0 - context.interval.start.0) as usize;
-            for observation in context.observations {
-                assert_eq!(observation.value, frames);
-            }
-            self.counters
-                .observed_frames
-                .fetch_add(frames, Ordering::Relaxed);
+        if self.processed != 0 {
+            assert_eq!(self.processed, 0b101);
+            self.counters.observed_frames.fetch_add(
+                (context.interval.end.0 - context.interval.start.0) as usize,
+                Ordering::Relaxed,
+            );
         }
         Ok(())
     }
@@ -124,17 +95,7 @@ impl Processor<Clock> for Node {
             midi_outputs: 1,
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        if self.slot == 1 {
-            ConsumerAccess::default()
-        } else {
-            ConsumerAccess {
-                decision_required: true,
-                observations: 1,
-                operation_bytes: 0,
-            }
-        }
-    }
+
     fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
         if parameter != 0 {
             return Err(Error::InvalidParameter);
@@ -144,22 +105,13 @@ impl Processor<Clock> for Node {
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
         let mut gain = self.gain;
-        if self.slot == 1 {
-            assert!(block.decision.is_none());
-            assert_eq!(block.observations.push(0), Err(Error::Capacity));
-        } else {
-            let view = block.decision.as_ref().unwrap();
-            assert_eq!(view.planner, planner_id());
-            assert_eq!(view.slot, 0);
-            assert_eq!(view.interval.start, block.frame);
-            assert_eq!(view.interval.end, block.frame.checked_add(block.frames)?);
-            assert_eq!(view.value.frame, block.frame);
+        if self.slot != 1 {
+            assert_eq!(block.domain.decision[0].frame, block.frame);
+            assert_eq!(block.domain.processed & (1 << self.slot), 0);
+            block.domain.processed |= 1 << self.slot;
             if self.slot == 0 {
-                gain *= view.value.gain;
+                gain *= block.domain.decision[0].gain;
             }
-            block.observations.push(block.frames)?;
-            assert_eq!(block.observations.remaining(), 0);
-            assert_eq!(block.observations.push(usize::MAX), Err(Error::Capacity));
         }
         let (input, output) = block.audio.pair(0, 0).unwrap();
         for (input, output) in input.iter().zip(output) {
@@ -205,13 +157,12 @@ struct Harness {
     output: [f32; 128],
 }
 impl Harness {
-    fn new(single_sample: bool, fault: Fault, reverse: bool, config: Config) -> Self {
+    fn new(_single_sample: bool, fault: Fault, reverse: bool, config: Config) -> Self {
         let counters = Arc::new(Counters::default());
         let clock = Clock {
             decision: [Decision::default()],
-            single_sample,
             fault,
-            planned: false,
+            processed: 0,
             counters: counters.clone(),
         };
         let mut nodes: Vec<_> = (0..3)
@@ -256,20 +207,12 @@ impl Harness {
                 });
             }
         }
-        let mut bindings: Vec<_> = [0, 2]
-            .into_iter()
-            .map(|slot| DecisionBinding {
-                planner: planner_id(),
-                consumer: id(slot),
-                decision_slot: 0,
-            })
-            .collect();
+
         if reverse {
             graph.nodes.reverse();
             graph.connections.reverse();
-            bindings.reverse();
         }
-        let plan = compile_planned(runtime.catalog(), &graph, &bindings).unwrap();
+        let plan = compile(runtime.catalog(), &graph).unwrap();
         control
             .submit(Lane::Normal, Command::commit(Epoch(0), plan))
             .unwrap_or_else(|error| panic!("{:?}", error.error));
@@ -399,9 +342,8 @@ fn ingress_and_recycled_results_wait_until_the_next_callback_not_next_interval()
     };
     let planner = Clock {
         decision: [Decision::default()],
-        single_sample: true,
         fault: Fault::None,
-        planned: false,
+        processed: 0,
         counters: counters.clone(),
     };
     let mut config = limits();
@@ -418,7 +360,7 @@ fn ingress_and_recycled_results_wait_until_the_next_callback_not_next_interval()
         nodes: vec![id(0)],
         connections: vec![],
     };
-    let plan = compile_planned(runtime.catalog(), &graph, &[]).unwrap();
+    let plan = compile(runtime.catalog(), &graph).unwrap();
     let _commit_ticket = control
         .submit_prepared(Lane::Normal, Command::commit(Epoch(0), plan))
         .unwrap_or_else(|error| panic!("{:?}", error.error));
@@ -596,11 +538,10 @@ fn callback_end_and_zero_length_do_not_settle_or_reexecute_boundaries() {
 }
 
 #[shoop_test]
-fn malformed_intervals_and_changed_view_storage_fault_before_consumers() {
+fn planner_begin_errors_fault_before_consumers() {
     for (fault, error) in [
-        (Fault::Zero, Error::InvalidFrame),
-        (Fault::BeyondCeiling, Error::InvalidFrame),
-        (Fault::Shrink, Error::InvalidShape),
+        (Fault::InvalidFrame, Error::InvalidFrame),
+        (Fault::InvalidShape, Error::InvalidShape),
     ] {
         let mut harness = Harness::new(true, fault, false, limits());
         assert_eq!(harness.step(8), Err(error));
@@ -621,22 +562,12 @@ struct BudgetClock {
     refused: Arc<AtomicUsize>,
 }
 impl Planner for BudgetClock {
-    type Decision = ();
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner_id(),
-            decision_slots: 0,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner_id())
     }
-    fn decisions(&self) -> &[()] {
-        &[]
-    }
-    fn plan(&mut self, mut context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_>) -> Result<(), Error> {
         match context.resources.read(&mut self.cursor, &mut [0; 4]) {
             Ok(bytes) => {
                 self.read.fetch_add(bytes, Ordering::Relaxed);
@@ -669,10 +600,6 @@ impl Planner for BudgetClock {
                 if frame > 0 && frame <= 64 { 100 } else { 0 }
             );
         }
-        context.frame.checked_add(1)
-    }
-    fn finish(&mut self, context: FinishContext<'_, ()>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
         Ok(())
     }
 }
@@ -839,49 +766,4 @@ fn check_resource_allowances(required: bool, midi: bool) {
             (callback as usize + 1) * 112
         );
     }
-}
-
-#[shoop_test]
-fn stale_planner_candidate_keeps_previous_graph_and_bindings_active() {
-    let mut harness = Harness::new(true, Fault::None, false, limits());
-    harness.step(1).unwrap();
-    assert_eq!(
-        harness.control.try_completion().unwrap().outcome,
-        Outcome::Applied
-    );
-    let signal = rt_runtime::graph::PlanDescriptor {
-        steps: vec![],
-        connections: vec![],
-    };
-    let stale = PlanningDescriptor {
-        step: Some(PlanningStep {
-            planner: PlannerSpec {
-                id: PlannerId::from_parts(0, 2).unwrap(),
-                decision_slots: 1,
-                observation_capacity: 2,
-                operation_bytes: 0,
-            },
-            before_step: 0,
-        }),
-        bindings: vec![],
-    };
-    let plan = rt_runtime::graph::PreparedPlan::from_planned_descriptor(
-        limits().prepare().unwrap(),
-        signal,
-        stale,
-    )
-    .unwrap();
-    harness
-        .control
-        .submit(Lane::Normal, Command::commit(Epoch(1), plan))
-        .unwrap_or_else(|e| panic!("{:?}", e.error));
-    harness.step(8).unwrap();
-    assert_eq!(harness.runtime.epoch(), Epoch(1));
-    let completion = harness.control.try_completion().unwrap();
-    assert_eq!(completion.outcome, Outcome::Rejected(Error::InvalidId));
-    assert!(matches!(
-        completion.request,
-        Command::Commit { plan: Some(_), .. }
-    ));
-    assert_eq!(harness.counters.observed_frames.load(Ordering::Relaxed), 9);
 }

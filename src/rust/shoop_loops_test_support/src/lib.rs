@@ -8,7 +8,6 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{self, Command, GraphRuntime, PreparedNode},
     graph::{Catalog, GraphDescription, PortCounts, PreparedPlan},
-    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
     resource::{self, PoolUsage, ResourceStore},
     schedule,
@@ -30,16 +29,17 @@ pub enum TestNode<P> {
     Effect(P),
 }
 impl<P: Processor<LoopPlanner>> Processor<LoopPlanner> for TestNode<P> {
+    fn admit(&self, id: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        match self {
+            Self::Loop(node) => node.admit(id, domain),
+            Self::Effect(node) => node.admit(id, domain),
+        }
+    }
+
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Effect(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Effect(node) => node.planning(),
         }
     }
     fn set_parameter(&mut self, parameter: u32, value: f32) -> Result<(), Error> {
@@ -223,7 +223,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
             .map(|(id, node)| PreparedNode::new(id, TestNode::Loop(node)))
             .collect();
         for (id, effect) in effects {
-            if effect.planning() != ConsumerAccess::default() || !graph.nodes.contains(&id) {
+            if !graph.nodes.contains(&id) {
                 return Err(Error::InvalidShape.into());
             }
             nodes.push(PreparedNode::new(id, TestNode::Effect(effect)));
@@ -231,14 +231,8 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         if templates == 0 && graph.nodes.len() != nodes.len() {
             return Err(Error::InvalidShape.into());
         }
-        let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
-            config,
-            nodes,
-            planner,
-            resources,
-            &graph,
-            &client.bindings_for(&graph),
-        )?;
+        let (mut control, runtime) =
+            GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph)?;
         control.prepare_submissions()?;
         let catalog = runtime.catalog().clone();
         Ok((

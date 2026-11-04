@@ -97,20 +97,6 @@ impl<L: Planner> Processor<L, Operation> for Dsp {
             preset,
         }))
     }
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
-    fn process_tick(
-        &mut self,
-        block: &mut rt_runtime::processor::TickProcessBlock<'_, L>,
-    ) -> Result<(), Error> {
-        self.render(
-            block.quantum.frames(),
-            &mut block.audio,
-            block.midi_inputs,
-            block.midi_outputs,
-        )
-    }
     fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
         self.render(
             block.frames,

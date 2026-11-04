@@ -52,20 +52,13 @@ struct Owner {
     snapshots: [Option<Snapshot>; 2],
 }
 impl Planner for Owner {
-    type Decision = ();
-    type Observation = ();
     type Operation = bool;
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: pid(),
-            decision_slots: 0,
-            observation_capacity: 0,
-            operation_bytes: 1,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(pid())
     }
-    fn decisions(&self) -> &[()] {
-        &[]
+    fn operation_bytes(&self) -> usize {
+        1
     }
     fn recovery_safe(stop: bool) -> bool {
         stop
@@ -81,7 +74,7 @@ impl Planner for Owner {
         self.stopped = true;
         Ok(Disposition::Complete(()))
     }
-    fn plan(&mut self, mut context: PlanContext<'_, bool, ()>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, bool, ()>) -> Result<(), Error> {
         if self.stopped {
             if let Some(interval) = self.interval.take() {
                 context.resources.capture().cancel_interval(interval)?;
@@ -114,9 +107,9 @@ impl Planner for Owner {
                 }
             }
         }
-        context.frame.checked_add(1)
+        Ok(())
     }
-    fn finish(&mut self, mut context: FinishContext<'_, (), bool, ()>) -> Result<(), Error> {
+    fn finish_tick(&mut self, mut context: FinishContext<'_, bool, ()>) -> Result<(), Error> {
         if !self.stopped && context.interval.end == Frame(1) {
             assert!((7..=11).contains(&self.cut));
             context

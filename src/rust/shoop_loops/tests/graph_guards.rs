@@ -2,8 +2,7 @@
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Command, GraphRuntime, PreparedNode},
-    graph::{compile_planned, GraphDescription},
-    planner::DecisionBinding,
+    graph::GraphDescription,
     resource::ResourceStore,
     transport::{Lane, Outcome as Admission},
     Budgets, Config, Epoch, Error, NodeId, PlannerId, PreparedConfig,
@@ -213,17 +212,9 @@ fn generic_commit_without_a_loop_node_is_refused() {
 }
 
 #[shoop_test]
-fn generic_commit_with_crossed_decision_bindings_is_refused() {
+fn generic_commit_with_unassigned_loop_consumers_is_refused() {
     let (mut control, mut runtime) = prepare();
-    let planner = PlannerId::from_parts(0, 1).unwrap();
-    let crossed: Vec<_> = (0..4)
-        .map(|slot| DecisionBinding {
-            planner,
-            consumer: node(slot),
-            decision_slot: 1 - (slot / 2) as usize,
-        })
-        .collect();
-    let plan = compile_planned(control.catalog(), &graph(0..4), &crossed).unwrap();
+    let plan = control.compile_graph(&graph(0..6)).unwrap();
     assert_eq!(
         outcome(&mut control, &mut runtime, Command::commit(Epoch(1), plan)),
         Admission::Rejected(Error::InvalidShape)
@@ -265,7 +256,7 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
     let Prepared {
         planner,
         nodes,
-        client,
+        client: _,
     } = LoopPlanner::prepare(
         config(),
         topology(),
@@ -293,7 +284,52 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
         planner,
         resources,
         &initial,
-        &client.bindings_for(&initial),
     );
     assert_eq!(refused.err(), Some(Error::InvalidShape));
+}
+
+#[shoop_test]
+fn prepared_processors_refuse_wrong_roles_crossed_owners_and_stale_physical_ids() {
+    for mode in 0..3 {
+        let mut resources = ResourceStore::new(config()).unwrap();
+        let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
+            config(),
+            topology(),
+            &mut resources,
+            settings(),
+            bindings(),
+            vec![],
+            Options {
+                node_pairs: NodePairSettings {
+                    candidates: 1,
+                    sources: 0,
+                    source_packets_per_callback: 0,
+                },
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let mut initial = graph(0..4);
+        let nodes = nodes
+            .into_iter()
+            .map(|(id, processor)| {
+                let id = match mode {
+                    0 if id.slot() < 2 => node(1 - id.slot()),
+                    1 if id.slot() == 0 => node(2),
+                    1 if id.slot() == 2 => node(0),
+                    2 if id.slot() == 0 => id.checked_next_generation().unwrap(),
+                    _ => id,
+                };
+                PreparedNode::new(id, processor)
+            })
+            .collect::<Vec<_>>();
+        if mode == 2 {
+            initial.nodes[0] = node(0).checked_next_generation().unwrap();
+        }
+        assert_eq!(
+            GraphRuntime::prepare_with_initial_graph(config(), nodes, planner, resources, &initial)
+                .err(),
+            Some(Error::InvalidId)
+        );
+    }
 }

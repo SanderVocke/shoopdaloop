@@ -5,7 +5,6 @@ use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired
 use rt_runtime::graph::{
     Catalog, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan,
 };
-use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::{
     CaptureGroupConfig, Cursor, Reply as ResourceReply, Request, ResourceStore,
@@ -61,12 +60,6 @@ impl Processor<LoopPlanner> for Node {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Half(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Half(node) => node.planning(),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -453,15 +446,9 @@ fn run(parts: &[usize]) {
         .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
         .chain([PreparedNode::new(node(2), Node::Half(Half))])
         .collect();
-    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &initial,
-        &client.bindings_for(&initial),
-    )
-    .unwrap();
+    let (runtime_control, mut runtime) =
+        GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &initial)
+            .unwrap();
     let mut control = Controls {
         catalog: runtime.catalog().clone(),
         runtime: runtime_control,

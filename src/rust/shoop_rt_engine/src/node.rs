@@ -5,13 +5,11 @@ use alloc::boxed::Box;
 use alloc::vec;
 
 use crate::cells::{Cells, Peak};
-use crate::signal::SignalBlock;
 use crate::stream::BulkReader;
 use alloc::sync::Arc;
 use rt_runtime::buffer::MidiBuffer;
 use rt_runtime::graph::PortCounts;
 use rt_runtime::midi_state::MidiState;
-use rt_runtime::planner::ConsumerAccess;
 use rt_runtime::processor::{OperationContext, ProcessBlock, Processor, ProcessorOperation};
 use rt_runtime::resource::Cursor;
 use rt_runtime::Error;
@@ -383,7 +381,7 @@ impl Processor<LoopPlanner, EngineOp> for StripInput {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(&mut SignalBlock::interval(block))
+        self.render(block)
     }
 }
 
@@ -400,7 +398,7 @@ impl Processor<LoopPlanner, EngineOp> for StripOutput {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(&mut SignalBlock::interval(block))
+        self.render(block)
     }
 }
 
@@ -416,7 +414,7 @@ impl Processor<LoopPlanner, EngineOp> for LoopFader {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(&mut SignalBlock::interval(block))
+        self.render(block)
     }
 }
 
@@ -432,7 +430,7 @@ impl Processor<LoopPlanner, EngineOp> for BusMixer {
         self.apply(operation)
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        self.render(&mut SignalBlock::interval(block))
+        self.render(block)
     }
 }
 
@@ -481,19 +479,13 @@ impl EngineNode {
 }
 
 impl Processor<LoopPlanner, EngineOp> for EngineNode {
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
-    fn process_tick(
-        &mut self,
-        block: &mut rt_runtime::processor::TickProcessBlock<'_, LoopPlanner>,
-    ) -> Result<(), Error> {
-        self.apply_configuration(block.graph_epoch);
+    fn admit(&self, node: rt_runtime::NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
-            Self::Loop(node) => node.process_tick(block),
-            _ => self.render_signal(&mut SignalBlock::integrated(block)),
+            Self::Loop(processor) => processor.admit(node, domain),
+            _ => Ok(()),
         }
     }
+
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
@@ -502,12 +494,6 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Fader(node) => node.ports(),
             Self::Bus(node) => node.ports(),
             Self::Reader(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            _ => ConsumerAccess::default(),
         }
     }
     fn operation(
@@ -521,13 +507,16 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
         self.apply_configuration(block.graph_epoch);
         match self {
             Self::Loop(node) => node.process(block),
-            _ => self.render_signal(&mut SignalBlock::interval(block)),
+            _ => self.render_signal(block),
         }
     }
 }
 
 impl StripInput {
-    pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.inputs == 2;
@@ -570,7 +559,7 @@ impl StripInput {
             }
         }
         let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
-        let [capture, monitor] = &mut *block.midi_outputs else {
+        let [capture, monitor] = block.midi_outputs else {
             return Err(Error::InvalidShape);
         };
         if self.release {
@@ -652,7 +641,10 @@ impl StripInput {
 }
 
 impl StripOutput {
-    pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.outputs == 2;
@@ -729,7 +721,10 @@ impl StripOutput {
 }
 
 impl LoopFader {
-    pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let peaks: &Peak = &self.cells.loops[self.slot].peaks;
         for channel in 0..self.channels {
@@ -768,7 +763,10 @@ impl LoopFader {
 }
 
 impl BusMixer {
-    pub(crate) fn render(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    pub(crate) fn render(
+        &mut self,
+        block: &mut ProcessBlock<'_, LoopPlanner>,
+    ) -> Result<(), Error> {
         let frames = block.frames;
         let channels = self.channels;
         let stereo = self.active_channels == 2;
@@ -956,7 +954,7 @@ impl EngineNode {
             self.configure(configuration);
         }
     }
-    fn render_signal(&mut self, block: &mut SignalBlock<'_, '_>) -> Result<(), Error> {
+    fn render_signal(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         match self {
             Self::Loop(_) => Err(Error::InvalidState),
             Self::StripInput(node) => node.render(block),

@@ -2,7 +2,7 @@ mod support;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     executor::{Command, GraphRuntime, PreparedNode},
-    graph::{compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType},
+    graph::{compile, Connection, Endpoint, GraphDescription, PortCounts, PortType},
     midi_state::MidiState,
     planner::*,
     processor::{ProcessBlock, Processor},
@@ -34,22 +34,12 @@ struct CaptureClock {
     snapshots: [Option<Snapshot>; 2],
 }
 impl Planner for CaptureClock {
-    type Decision = Decision;
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[Decision] {
-        &self.decisions
-    }
-    fn plan(&mut self, mut context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_>) -> Result<(), Error> {
         if context.frame == Frame(0) {
             context
                 .resources
@@ -77,10 +67,9 @@ impl Planner for CaptureClock {
                 Err(error) => return Err(error),
             }
         }
-        Ok(context.frame.checked_add(1)?.min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, mut context: FinishContext<'_, ()>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
+    fn finish_tick(&mut self, mut context: FinishContext<'_>) -> Result<(), Error> {
         if let Some(interval) = self.decisions[0].interval {
             context.resources.capture().commit(interval)?;
         }
@@ -137,16 +126,10 @@ impl Processor<CaptureClock> for CaptureNode {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 0,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, CaptureClock>) -> Result<(), Error> {
         assert_eq!(block.frames, 1);
-        let decision = *block.decision.as_ref().unwrap().value;
+        let decision = block.domain.decisions[0];
         let sample = {
             let (input, output) = block.audio.pair(0, 0).unwrap();
             output[0] = input[0] * if decision.stopped { 2. } else { 1. };
@@ -247,7 +230,7 @@ fn reservation_failure_changes_dependent_output_before_the_affected_sample() {
             store,
         )
         .unwrap();
-        let plan = compile_planned(
+        let plan = compile(
             runtime.catalog(),
             &GraphDescription {
                 nodes: vec![node()],
@@ -290,11 +273,6 @@ fn reservation_failure_changes_dependent_output_before_the_affected_sample() {
                     },
                 ],
             },
-            &[DecisionBinding {
-                planner: planner(),
-                consumer: node(),
-                decision_slot: 0,
-            }],
         )
         .unwrap();
         control

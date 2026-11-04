@@ -2,13 +2,13 @@ mod support;
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, Control, GraphRuntime, PreparedNode, Retired};
 use rt_runtime::graph::{
-    compile_planned, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan,
+    compile, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan,
 };
 use rt_runtime::planner::*;
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::ResourceStore;
 use rt_runtime::transport::{Lane, Outcome};
-use rt_runtime::{Config, Epoch, Error, Frame, NodeId, PlannerId};
+use rt_runtime::{Config, Epoch, Error, NodeId, PlannerId};
 use shoop_wasm_test_support::shoop_test;
 use support::assert_no_heap;
 
@@ -26,31 +26,14 @@ fn planner() -> PlannerId {
 
 /// Requires `required` in every published graph and protects `protected` slots.
 struct Guard {
-    decisions: [f32; 1],
     required: NodeId,
     protected: NodeId,
 }
 impl Planner for Guard {
-    type Decision = f32;
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
-    }
-    fn decisions(&self) -> &[f32] {
-        &self.decisions
-    }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
-        Ok(context.ceiling)
-    }
-    fn finish(&mut self, _context: FinishContext<'_, ()>) -> Result<(), Error> {
-        Ok(())
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
     fn admit_graph(&self, candidate: &PreparedPlan) -> Result<(), Error> {
         if candidate.contains(self.required) {
@@ -138,13 +121,11 @@ impl Harness {
                 PreparedNode::new(node(1, 1), Gain(3.0)),
             ],
             Guard {
-                decisions: [0.0],
                 required,
                 protected,
             },
             ResourceStore::new(config).unwrap(),
             &graph(node(0, 1)),
-            &[],
         )
         .unwrap();
         Self {
@@ -175,7 +156,7 @@ impl Harness {
             .collect()
     }
     fn commit(&mut self, through: NodeId) {
-        let plan = compile_planned(self.runtime.catalog(), &graph(through), &[]).unwrap();
+        let plan = compile(self.runtime.catalog(), &graph(through)).unwrap();
         self.control
             .submit(Lane::Normal, Command::commit(self.runtime.epoch(), plan))
             .unwrap_or_else(|error| panic!("{:?}", error.error));
@@ -287,13 +268,11 @@ fn planner_refuses_an_initial_graph_without_its_requirements() {
             PreparedNode::new(node(1, 1), Gain(3.0)),
         ],
         Guard {
-            decisions: [0.0],
             required: node(0, 1),
             protected: node(1, 9),
         },
         ResourceStore::new(config).unwrap(),
         &graph(node(1, 1)),
-        &[],
     );
     assert_eq!(refused.err(), Some(Error::InvalidGraph));
 }

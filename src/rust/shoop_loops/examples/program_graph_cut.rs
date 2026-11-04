@@ -3,7 +3,6 @@ use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Command, Control, GraphRuntime, PreparedNode, Retired},
     graph::{Catalog, Connection, Endpoint, GraphDescription, PortCounts, PortType, PreparedPlan},
-    planner::ConsumerAccess,
     processor::{ProcessBlock, Processor},
     resource::ResourceStore,
     transport::{Lane, Outcome as Admission, SubmitError, Ticket},
@@ -50,12 +49,6 @@ impl Processor<LoopPlanner> for Node {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Half(node) => node.ports(),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Half(node) => node.planning(),
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
@@ -361,15 +354,9 @@ fn run(parts: &[usize]) {
         .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
         .chain([PreparedNode::new(node(4), Node::Half(Half))])
         .collect();
-    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &initial,
-        &client.bindings_for(&initial),
-    )
-    .unwrap();
+    let (runtime_control, mut runtime) =
+        GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &initial)
+            .unwrap();
     let mut control = Controls {
         catalog: runtime.catalog().clone(),
         runtime: runtime_control,

@@ -190,7 +190,6 @@ fn setup(initial: u32, fault: Fault, events: usize) -> Fixture {
         NoPlanner,
         ResourceStore::new(cfg).unwrap(),
         &graph,
-        &[],
     )
     .unwrap();
     control.prepare_submissions().unwrap();

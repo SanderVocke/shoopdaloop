@@ -395,20 +395,6 @@ pub struct View {
     pub reset_input: bool,
 }
 #[derive(Clone, Copy)]
-pub enum Observed {
-    Playback { target: LoopId, overflow: bool },
-    Input { target: LoopId, state: MidiState },
-    NoMidiInput { target: LoopId },
-}
-impl Default for Observed {
-    fn default() -> Self {
-        Self::Input {
-            target: LoopId::from_parts(0, 1).expect("fixed identity"),
-            state: MidiState::default(),
-        }
-    }
-}
-#[derive(Clone, Copy)]
 struct Take {
     revision: Revision,
     media: media::MediaId,
@@ -430,8 +416,6 @@ struct Row {
     failure: Option<Error>,
     overflows: u64,
     balance: f32,
-    seen_playback: bool,
-    seen_capture: bool,
 }
 #[derive(Clone, Copy)]
 enum PendingKind {
@@ -523,7 +507,6 @@ pub struct Prepared {
 pub struct LoopClient {
     planner: PlannerId,
     media: Box<[PreparedMedia]>,
-    bindings: Box<[DecisionBinding]>,
 }
 impl LoopClient {
     pub fn planner(&self) -> PlannerId {
@@ -533,25 +516,13 @@ impl LoopClient {
     pub fn media(&self) -> &[PreparedMedia] {
         &self.media
     }
-    /// Decision bindings of every prepared loop node, including unassigned templates.
-    pub fn bindings(&self) -> &[DecisionBinding] {
-        &self.bindings
-    }
-    /// Decision bindings for the loop nodes present in `graph`.
-    pub fn bindings_for(&self, graph: &GraphDescription) -> Vec<DecisionBinding> {
-        self.bindings
-            .iter()
-            .filter(|binding| graph.nodes.contains(&binding.consumer))
-            .copied()
-            .collect()
-    }
-    /// Allocating control-side compilation of `graph` with the loop's bindings.
+    /// Allocating control-side compilation of the signal graph.
     pub fn compile_graph(
         &self,
         catalog: &Catalog,
         graph: &GraphDescription,
     ) -> Result<PreparedPlan, Error> {
-        rt_runtime::graph::compile_planned(catalog, graph, &self.bindings_for(graph))
+        rt_runtime::graph::compile(catalog, graph)
     }
     /// Typed loop work at `at`. Admission, delivery and the domain outcome are
     /// reported separately by the runtime.
@@ -609,8 +580,7 @@ impl LoopPlanner {
                 size_of::<Row>()
                     + size_of::<MidiState>()
                     + size_of::<View>()
-                    + size_of::<family::Selection>()
-                    + 2 * size_of::<rt_runtime::planner::Observation<Observed>>(),
+                    + size_of::<family::Selection>(),
             )
             .and_then(|n| {
                 settings
@@ -632,7 +602,6 @@ impl LoopPlanner {
         )?;
         let mut rows = vec![None; slots].into_boxed_slice();
         let mut nodes = Vec::new();
-        let mut decision_bindings = Vec::new();
         for binding in bindings {
             let spec = resolver.topology().node(binding.target).ok();
             let assigned = spec.is_some();
@@ -673,8 +642,6 @@ impl LoopPlanner {
                 failure: None,
                 overflows: 0,
                 balance: 0.,
-                seen_playback: false,
-                seen_capture: false,
             };
             for bank in 0..2 {
                 let mut members = Vec::new();
@@ -714,13 +681,7 @@ impl LoopPlanner {
                 binding.capture,
                 LoopNode::Capture(CaptureNode::prepare(binding, cfg.max_frames)?),
             ));
-            for consumer in [binding.playback, binding.capture] {
-                decision_bindings.push(DecisionBinding {
-                    planner: settings.planner,
-                    consumer,
-                    decision_slot: slot,
-                });
-            }
+
             rows[slot] = Some(row);
         }
         for spec in resolver.topology().nodes() {
@@ -857,7 +818,6 @@ impl LoopPlanner {
             client: LoopClient {
                 planner: settings.planner,
                 media: catalog.into_boxed_slice(),
-                bindings: decision_bindings.into_boxed_slice(),
             },
         })
     }

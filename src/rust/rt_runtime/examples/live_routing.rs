@@ -132,7 +132,6 @@ fn main() -> Result<(), Error> {
         NoPlanner,
         ResourceStore::new(config)?,
         &graph,
-        &[],
     )?;
     let initial_epoch = runtime.epoch();
     let mut output = [[0.0; 8]; 2];

@@ -32,12 +32,7 @@ fn empty(receiver: &mut Receiver, id: Id) {
         id,
         Payload::Begin {
             epoch: Epoch(1),
-            counts: Counts {
-                steps: 0,
-                edges: 0,
-                bindings: 0,
-            },
-            planned: false,
+            counts: Counts { steps: 0, edges: 0 },
         },
     )
     .unwrap();
@@ -52,9 +47,7 @@ pub(crate) fn transfer(receiver: &mut Receiver, id: Id, epoch: Epoch, plan: &Pre
             counts: Counts {
                 steps: plan.descriptor().steps.len() as u32,
                 edges: plan.descriptor().connections.len() as u32,
-                bindings: plan.planning().bindings.len() as u32,
             },
-            planned: plan.planning().step.is_some(),
         },
     )
     .unwrap();
@@ -80,24 +73,9 @@ pub(crate) fn transfer(receiver: &mut Receiver, id: Id, epoch: Epoch, plan: &Pre
         )
         .unwrap();
     }
-    if let Some(planning) = plan.planning().step {
-        send(receiver, id, Payload::Planning(planning)).unwrap();
-    }
-    for (offset, &binding) in plan.planning().bindings.iter().enumerate() {
-        send(
-            receiver,
-            id,
-            Payload::Binding {
-                offset: offset as u32,
-                binding,
-            },
-        )
-        .unwrap();
-    }
     send(receiver, id, Payload::Seal).unwrap();
     let received = receiver.plan(id).unwrap();
     assert_eq!(received.descriptor(), plan.descriptor());
-    assert_eq!(received.planning(), plan.planning());
 }
 fn config() -> PreparedConfig {
     rt_runtime::Config {
@@ -120,16 +98,13 @@ fn canonical_records_preserve_full_width_fields_and_reject_all_padding_and_trunc
         generation: u32::MAX,
     };
     let node = NodeId::from_parts(u32::MAX - 1, u32::MAX).unwrap();
-    let planner = PlannerId::from_parts(u32::MAX - 1, u32::MAX).unwrap();
     let payloads = [
         Payload::Begin {
             epoch: Epoch(u64::MAX),
             counts: Counts {
                 steps: u32::MAX,
                 edges: u32::MAX,
-                bindings: u32::MAX,
             },
-            planned: true,
         },
         Payload::Step {
             offset: u32::MAX,
@@ -145,32 +120,13 @@ fn canonical_records_preserve_full_width_fields_and_reject_all_padding_and_trunc
                 destination: Endpoint::node(node, PortType::Midi, u32::MAX),
             },
         },
-        Payload::Planning(PlanningStep {
-            planner: PlannerSpec {
-                id: planner,
-                decision_slots: usize::MAX,
-                observation_capacity: usize::MAX,
-                operation_bytes: usize::MAX,
-            },
-            before_step: usize::MAX,
-        }),
-        Payload::Binding {
-            offset: u32::MAX,
-            binding: DecisionBinding {
-                planner,
-                consumer: node,
-                decision_slot: usize::MAX,
-            },
-        },
         Payload::Seal,
         Payload::Abort,
     ];
-    let used: [&[std::ops::Range<usize>]; 7] = [
-        &[0..7, 8..53],
+    let used: [&[std::ops::Range<usize>]; 5] = [
+        &[0..7, 8..48],
         &[0..7, 8..52],
         &[0..7, 8..45, 48..61, 64..68],
-        &[0..7, 8..72],
-        &[0..7, 8..60],
         &[0..7, 8..32],
         &[0..7, 8..32],
     ];
@@ -184,13 +140,12 @@ fn canonical_records_preserve_full_width_fields_and_reject_all_padding_and_trunc
         let bytes = guarded(|| original.encode()).unwrap();
         assert_eq!(guarded(|| Record::decode(&bytes)), Ok(original));
         let mut expected = [0; RECORD_BYTES];
-        expected[..6].copy_from_slice(b"LGP1\x01\x00");
-        expected[6] = index as u8 + 1;
+        expected[..6].copy_from_slice(b"LGP2\x02\x00");
+        expected[6] = [1, 2, 3, 6, 7][index];
         expected[8..32].fill(255);
         match index {
             0 => {
-                expected[32..52].fill(255);
-                expected[52] = 1;
+                expected[32..48].fill(255);
             }
             1 => {
                 expected[32..44].fill(255);
@@ -203,19 +158,6 @@ fn canonical_records_preserve_full_width_fields_and_reject_all_padding_and_trunc
                 expected[52] = 254;
                 expected[60] = 1;
                 expected[64..68].fill(255);
-            }
-            3 => {
-                expected[32..40].fill(255);
-                expected[32] = 254;
-                for at in [40, 48, 56, 64] {
-                    expected[at..at + 8].copy_from_slice(&(usize::MAX as u64).to_le_bytes());
-                }
-            }
-            4 => {
-                expected[32..52].fill(255);
-                expected[36] = 254;
-                expected[44] = 254;
-                expected[52..60].copy_from_slice(&(usize::MAX as u64).to_le_bytes());
             }
             _ => {}
         }
@@ -267,18 +209,12 @@ fn receiving_is_transactional_ordered_and_independent_of_other_banks() {
     let mut receiver = Receiver::new(7, config()).unwrap();
     let a = receiver.id(0).unwrap();
     let b = receiver.id(1).unwrap();
-    let counts = Counts {
-        steps: 1,
-        edges: 1,
-        bindings: 1,
-    };
     send(
         &mut receiver,
         a,
         Payload::Begin {
             epoch: Epoch(9),
-            counts,
-            planned: true,
+            counts: Counts { steps: 1, edges: 1 },
         },
     )
     .unwrap();
@@ -289,7 +225,6 @@ fn receiving_is_transactional_ordered_and_independent_of_other_banks() {
         source: Endpoint::host(PortType::Audio, 0),
         destination: Endpoint::node(node, PortType::Audio, 0),
     };
-    let planner = PlannerId::from_parts(0, 1).unwrap();
     for payload in [
         Payload::Seal,
         Payload::Edge { offset: 0, edge },
@@ -297,61 +232,23 @@ fn receiving_is_transactional_ordered_and_independent_of_other_banks() {
             offset: 1,
             step: NodeStep { node, input_end: 1 },
         },
-        Payload::Binding {
-            offset: 0,
-            binding: DecisionBinding {
-                planner,
-                consumer: node,
-                decision_slot: 0,
-            },
-        },
     ] {
         let before = receiver.last_sequence();
         assert_eq!(send(&mut receiver, a, payload), Err(Error::InvalidOffset));
         assert_eq!(receiver.last_sequence(), before);
         assert!(receiver.plan(a).unwrap().descriptor().steps.is_empty());
     }
-    send(
-        &mut receiver,
-        a,
-        Payload::Step {
-            offset: 0,
-            step: NodeStep { node, input_end: 1 },
-        },
-    )
-    .unwrap();
+    let step = Payload::Step {
+        offset: 0,
+        step: NodeStep { node, input_end: 1 },
+    };
+    send(&mut receiver, a, step).unwrap();
+    assert_eq!(send(&mut receiver, a, step), Err(Error::InvalidOffset));
     assert_eq!(
         send(&mut receiver, a, Payload::Seal),
         Err(Error::InvalidOffset)
     );
     send(&mut receiver, a, Payload::Edge { offset: 0, edge }).unwrap();
-    let planning = PlanningStep {
-        planner: PlannerSpec {
-            id: planner,
-            decision_slots: 1,
-            observation_capacity: 1,
-            operation_bytes: 0,
-        },
-        before_step: 0,
-    };
-    send(&mut receiver, a, Payload::Planning(planning)).unwrap();
-    assert_eq!(
-        send(&mut receiver, a, Payload::Planning(planning)),
-        Err(Error::InvalidOffset)
-    );
-    send(
-        &mut receiver,
-        a,
-        Payload::Binding {
-            offset: 0,
-            binding: DecisionBinding {
-                planner,
-                consumer: node,
-                decision_slot: 0,
-            },
-        },
-    )
-    .unwrap();
     send(&mut receiver, a, Payload::Seal).unwrap();
     let snapshot = receiver.plan(a).unwrap().descriptor().clone();
     let before = receiver.last_sequence();
@@ -377,22 +274,25 @@ fn busy_stale_foreign_and_malformed_records_do_not_advance_or_destroy_owners() {
         counts: Counts {
             steps: capacity.steps + 1,
             edges: 0,
-            bindings: 0,
         },
-        planned: false,
     };
     assert_eq!(send(&mut receiver, id, begin), Err(Error::Capacity));
     assert_eq!(receiver.last_sequence(), 0);
-    let malformed = Payload::Begin {
-        epoch: Epoch(0),
-        counts: Counts {
-            steps: 0,
-            edges: 0,
-            bindings: 1,
+    let mut malformed = record(
+        1,
+        id,
+        Payload::Begin {
+            epoch: Epoch(0),
+            counts: Counts { steps: 0, edges: 0 },
         },
-        planned: false,
-    };
-    assert_eq!(send(&mut receiver, id, malformed), Err(Error::InvalidShape));
+    )
+    .encode()
+    .unwrap();
+    malformed[48] = 1;
+    assert_eq!(
+        guarded(|| receiver.ingest(&malformed)),
+        Err(Error::InvalidShape)
+    );
     empty(&mut receiver, id);
     let loan = guarded(|| receiver.take(id)).unwrap();
     assert_eq!(receiver.phase(id).unwrap(), Phase::Loaned);
@@ -497,11 +397,7 @@ fn generation_and_sequence_exhaustion_never_wrap_and_recycled_capacities_are_tru
     let next = receiver.id(0).unwrap();
     assert_eq!(
         receiver.capacities(next).unwrap(),
-        Counts {
-            steps: 0,
-            edges: 0,
-            bindings: 0
-        }
+        Counts { steps: 0, edges: 0 }
     );
     assert_eq!(
         send(
@@ -509,12 +405,7 @@ fn generation_and_sequence_exhaustion_never_wrap_and_recycled_capacities_are_tru
             next,
             Payload::Begin {
                 epoch: Epoch(1),
-                counts: Counts {
-                    steps: 1,
-                    edges: 0,
-                    bindings: 0
-                },
-                planned: false
+                counts: Counts { steps: 1, edges: 0 },
             }
         ),
         Err(Error::Capacity)
@@ -742,7 +633,6 @@ fn receiver_descriptors_stage_activate_and_recycle_real_facade_graph_owners() {
             .compile_graph(&scenario::routes(false))
             .unwrap();
         assert_eq!(retired.descriptor(), initial.descriptor());
-        assert_eq!(retired.planning(), initial.planning());
         recycle(&mut receiver, id, retired);
         let next = receiver.id(0).unwrap();
         transfer(&mut receiver, next, Epoch(2), &initial);
@@ -771,8 +661,12 @@ fn cancelled_stale_and_invalid_runtime_candidates_return_the_exact_prepared_owne
         );
         let mut loan = guarded(|| receiver.take(id)).unwrap();
         if case % 4 == 2 {
-            loan.plan.set_planning_step(None);
+            let mut step = loan.plan.descriptor().steps[0];
+            step.input_end = usize::MAX;
+            loan.plan.begin_descriptor().unwrap();
+            loan.plan.push_step(step).unwrap();
         }
+        let expected_descriptor = loan.plan.descriptor().clone();
         let before = loan.plan.storage_bytes().unwrap();
         let cancelled = case % 4 == 0;
         let ticket = guarded(|| host.control.stage_graph(0, loan.epoch, loan.plan))
@@ -822,7 +716,7 @@ fn cancelled_stale_and_invalid_runtime_candidates_return_the_exact_prepared_owne
                 panic!("owning refusal");
             };
             assert_eq!(plan.storage_bytes().unwrap(), before);
-            assert_eq!(plan.descriptor(), reference.descriptor());
+            assert_eq!(plan.descriptor(), &expected_descriptor);
             recycle(&mut receiver, id, plan);
         }
         assert_eq!(receiver.id(0).unwrap().generation, case + 2);

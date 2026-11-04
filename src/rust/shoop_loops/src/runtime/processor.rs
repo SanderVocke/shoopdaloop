@@ -1,8 +1,5 @@
 use super::*;
-use rt_runtime::{
-    graph::PortCounts,
-    processor::{ProcessBlock, TickProcessBlock},
-};
+use rt_runtime::{graph::PortCounts, processor::ProcessBlock};
 
 /// A loop's playback or capture node, for wrapping in an application's node type.
 pub enum LoopNode {
@@ -76,19 +73,18 @@ impl CaptureNode {
         })
     }
 }
-const CONSUMER: ConsumerAccess = ConsumerAccess {
-    decision_required: true,
-    observations: 1,
-    operation_bytes: 0,
-};
 impl Processor<LoopPlanner> for LoopNode {
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
-    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
-            Self::Playback(node) => node.process_tick(block),
-            Self::Capture(node) => node.process_tick(block),
+            Self::Playback(processor) => processor.admit(node, domain),
+            Self::Capture(processor) => processor.admit(node, domain),
+        }
+    }
+
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        match self {
+            Self::Playback(node) => node.process(block),
+            Self::Capture(node) => node.process(block),
         }
     }
     fn ports(&self) -> PortCounts {
@@ -97,24 +93,32 @@ impl Processor<LoopPlanner> for LoopNode {
             Self::Capture(node) => node.ports(),
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
-    }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        match self {
-            Self::Playback(node) => node.process(block),
-            Self::Capture(node) => node.process(block),
-        }
-    }
 }
 impl Processor<LoopPlanner> for PlaybackNode {
-    fn uses_direct_domain(&self) -> bool {
-        true
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        let row = domain
+            .rows
+            .get(self.binding.target.slot() as usize)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        if node != self.binding.playback
+            || row.binding.playback != self.binding.playback
+            || row.binding.capture != self.binding.capture
+            || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.channels != self.binding.channels
+            || row.binding.midi != self.binding.midi
+        {
+            return Err(Error::InvalidId);
+        }
+        Ok(())
     }
-    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
-        if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture
+        if block.node != self.binding.playback
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
         {
             return Err(Error::InvalidId);
         }
@@ -160,61 +164,32 @@ impl Processor<LoopPlanner> for PlaybackNode {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
-    }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?.value;
-        if view.decision.state.id.slot() != self.binding.target.slot()
-            || view.playback_node != self.binding.playback
-            || view.capture_node != self.binding.capture
+}
+impl Processor<LoopPlanner> for CaptureNode {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+        let row = domain
+            .rows
+            .get(self.binding.target.slot() as usize)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidId)?;
+        if node != self.binding.capture
+            || row.binding.playback != self.binding.playback
+            || row.binding.capture != self.binding.capture
+            || row.binding.target.slot() != self.binding.target.slot()
+            || row.binding.channels != self.binding.channels
+            || row.binding.midi != self.binding.midi
         {
             return Err(Error::InvalidId);
         }
-        if let Some(audio) = &mut self.audio {
-            audio.set_smoothing(view.smoothing);
-            audio.render_ports(
-                &mut block.resources.render(),
-                audio::Playback {
-                    source: view.audio,
-                    position: view.decision.state.position,
-                    gain: view.gain,
-                    balance: view.balance,
-                    discontinuity: view.decision.playback_discontinuity,
-                },
-                &mut block.audio,
-            )?;
-        }
-        let error = if let Some(midi) = &mut self.midi {
-            midi.render(
-                &mut block.resources.render(),
-                midi::Playback {
-                    source: view.midi,
-                    position: view.decision.state.position,
-                    discontinuity: view.decision.playback_discontinuity,
-                },
-                block.frames,
-                block.midi_outputs.get_mut(0).ok_or(Error::InvalidShape)?,
-            )?
-            .output_error
-        } else {
-            None
-        };
-        block.observations.push(Observed::Playback {
-            target: view.decision.state.id,
-            overflow: error.is_some(),
-        })?;
-        error.map_or(Ok(()), Err)
+        Ok(())
     }
-}
-impl Processor<LoopPlanner> for CaptureNode {
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
-    fn process_tick(&mut self, block: &mut TickProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
-        if view.playback_node != self.binding.playback || view.capture_node != self.binding.capture
+        if block.node != self.binding.capture
+            || view.playback_node != self.binding.playback
+            || view.capture_node != self.binding.capture
         {
             return Err(Error::InvalidId);
         }
@@ -242,41 +217,5 @@ impl Processor<LoopPlanner> for CaptureNode {
             midi_inputs: usize::from(self.binding.midi),
             ..PortCounts::default()
         }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        CONSUMER
-    }
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?.value;
-        if view.decision.state.id.slot() != self.binding.target.slot()
-            || view.playback_node != self.binding.playback
-            || view.capture_node != self.binding.capture
-        {
-            return Err(Error::InvalidId);
-        }
-        if let (Some(audio), Some(interval)) = (&mut self.audio, view.capture) {
-            audio.stage_ports(&mut block.resources.render(), interval, 0, &block.audio)?;
-        }
-        if let Some(midi) = &mut self.midi {
-            if view.reset_input {
-                midi.reset();
-            }
-            midi.process(
-                &mut block.resources.render(),
-                block.midi_inputs.first().ok_or(Error::InvalidShape)?,
-                block.frames,
-                view.capture
-                    .map(|interval| (interval, usize::from(self.binding.channels > 0))),
-            )?;
-            block.observations.push(Observed::Input {
-                target: view.decision.state.id,
-                state: *midi.state(),
-            })?;
-        } else {
-            block.observations.push(Observed::NoMidiInput {
-                target: view.decision.state.id,
-            })?;
-        }
-        Ok(())
     }
 }

@@ -72,7 +72,6 @@ fn main() -> Result<(), Error> {
         NoPlanner,
         resources,
         &graph,
-        &[],
     )?;
     assert_eq!(runtime.epoch(), Epoch(1));
     assert_eq!(runtime.next_frame(), Frame(0));

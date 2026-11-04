@@ -102,7 +102,6 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
         NoPlanner,
         ResourceStore::new(config)?,
         &description,
-        &[],
     )?;
     let first = control
         // Submit an owning request: the runtime returns it with its outcome and any retired object.

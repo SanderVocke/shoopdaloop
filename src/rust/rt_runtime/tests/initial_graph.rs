@@ -62,34 +62,23 @@ struct Counts {
 struct Owner {
     decisions: [f32; 1],
     finished: Frame,
+    observed: Option<Frame>,
     snapshot: Option<Snapshot>,
     counts: Arc<Counts>,
 }
 impl Planner for Owner {
-    type Decision = f32;
-    type Observation = Frame;
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 1,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[f32] {
-        &self.decisions
-    }
-    fn plan(&mut self, context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, context: PlanContext<'_>) -> Result<(), Error> {
         assert_eq!(context.frame, self.finished);
         self.decisions[0] = 7.0 + context.frame.0 as f32;
-        Ok(context.ceiling)
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, Frame>) -> Result<(), Error> {
-        assert_eq!(context.observations.len(), 1);
-        assert_eq!(context.observations[0].producer, node());
-        assert_eq!(context.observations[0].value, context.interval.start);
+    fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
+        assert_eq!(self.observed.take(), Some(context.interval.start));
         self.finished = context.interval.end;
         Ok(())
     }
@@ -109,20 +98,16 @@ impl Processor<Owner> for Fill {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Owner>) -> Result<(), Error> {
-        let view = block.decision.ok_or(Error::InvalidState)?;
-        assert_eq!(view.planner, planner());
-        assert_eq!(view.slot, 0);
-        assert_eq!(view.interval.start, block.frame);
-        block.audio.output(0).unwrap().fill(*view.value);
-        block.observations.push(block.frame)?;
+        assert_eq!(block.node, node());
+        assert_eq!(block.domain.finished, block.frame);
+        block
+            .audio
+            .output(0)
+            .unwrap()
+            .fill(block.domain.decisions[0]);
+        assert_eq!(block.domain.observed.replace(block.frame), None);
         self.0.calls.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
@@ -159,6 +144,7 @@ fn setup(counts: &Arc<Counts>) -> (ResourceStore, Owner, Vec<PreparedNode<Fill, 
         Owner {
             decisions: [0.],
             finished: Frame(0),
+            observed: None,
             snapshot: Some(snapshot),
             counts: counts.clone(),
         },
@@ -174,26 +160,14 @@ fn graph() -> GraphDescription {
         }],
     }
 }
-fn binding() -> DecisionBinding {
-    DecisionBinding {
-        planner: planner(),
-        consumer: node(),
-        decision_slot: 0,
-    }
-}
+
 #[shoop_test]
 fn prepared_graph_executes_at_frame_zero_and_extraction_retains_the_owner_ledger() {
     let counts = Arc::new(Counts::default());
     let (resources, owner, nodes) = setup(&counts);
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config(),
-        nodes,
-        owner,
-        resources,
-        &graph(),
-        &[binding()],
-    )
-    .unwrap();
+    let (mut control, mut runtime) =
+        GraphRuntime::prepare_with_initial_graph(config(), nodes, owner, resources, &graph())
+            .unwrap();
     assert_eq!(runtime.epoch(), Epoch(1));
     assert_eq!(runtime.next_frame(), Frame(0));
     assert_eq!(counts.calls.load(Ordering::Relaxed), 0);
@@ -258,16 +232,16 @@ fn prepared_graph_executes_at_frame_zero_and_extraction_retains_the_owner_ledger
     assert_eq!(counts.planners.load(Ordering::Relaxed), 1);
 }
 #[shoop_test]
-fn preparation_rejects_invalid_initial_signal_or_planning_graphs_and_drops_off_render() {
+fn preparation_rejects_invalid_initial_graphs_and_drops_off_render() {
     for case in 0..4 {
         let counts = Arc::new(Counts::default());
         let (resources, owner, nodes) = setup(&counts);
         let mut graph = graph();
-        let mut bindings = vec![binding()];
+
         match case {
-            0 => bindings.clear(),
-            1 => bindings[0].decision_slot = 1,
-            2 => bindings[0].planner = PlannerId::from_parts(0, 2).unwrap(),
+            0 => graph.nodes.clear(),
+            1 => graph.nodes.push(node()),
+            2 => graph.nodes[0] = NodeId::from_parts(0, 2).unwrap(),
             _ => graph.connections.push(Connection {
                 source: Endpoint::node(node(), PortType::Audio, 0),
                 destination: Endpoint::node(node(), PortType::Audio, 0),
@@ -278,8 +252,7 @@ fn preparation_rejects_invalid_initial_signal_or_planning_graphs_and_drops_off_r
             nodes,
             owner,
             resources,
-            &graph,
-            &bindings
+            &graph
         )
         .is_err());
         assert_eq!(counts.calls.load(Ordering::Relaxed), 0);
@@ -296,7 +269,6 @@ impl Processor for Signal {
         }
     }
     fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
-        assert!(block.decision.is_none());
         block.audio.output(0).unwrap().fill(4.);
         Ok(())
     }
@@ -310,7 +282,6 @@ fn signal_only_initial_graph_preserves_normal_later_commit_epochs_and_receipts()
         NoPlanner,
         ResourceStore::new(cfg).unwrap(),
         &graph(),
-        &[],
     )
     .unwrap();
     let mut output = [0.; 2];

@@ -18,9 +18,6 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 struct Unused;
 impl Processor for Unused {
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
     fn ports(&self) -> PortCounts {
         PortCounts::default()
     }

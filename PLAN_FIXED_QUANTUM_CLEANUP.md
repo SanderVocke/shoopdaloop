@@ -153,17 +153,17 @@ changing representations. Record existing failures separately; defer CI work.
 
 ### Stage 2 — one processor/planner interface and graph admission
 
-- [ ] Merge processing blocks and processor entry points; migrate all production
+- [x] Merge processing blocks and processor entry points; migrate all production
   nodes, independent DSP, boxed delegation, examples and test adapters. Remove mode
   flags and the executor's legacy dispatch/decision lookup.
-- [ ] Collapse planner lifecycle/operation hooks and remove associated decision and
+- [x] Collapse planner lifecycle/operation hooks and remove associated decision and
   observation types, generic observation buffers/writers and obsolete storage bounds.
   Preserve operation payload capacities and callback-origin propagation.
-- [ ] Replace decision-binding validation with prepared loop-node membership/role
+- [x] Replace decision-binding validation with prepared loop-node membership/role
   admission. Cover initial graphs, generic graph/processor changes, configuration
   replacement, staged node pairs and program/graph activation. Then remove planning
   descriptors, compiler/catalog tables and builder scratch that only served delivery.
-- [ ] Migrate native/Wasm graph-transfer fixtures and planner fault canaries to the
+- [x] Migrate native/Wasm graph-transfer fixtures and planner fault canaries to the
   same API. Remove obsolete fixture fields/records and update their versions rather
   than keeping a second graph representation. Keep error/heap origin assertions.
 
@@ -319,3 +319,31 @@ absence of unassigned loop consumers. Keep generic processor mutation protection
 This removes decision bindings without introducing another graph delivery table.
 Planner ID remains only where needed to address typed operations; payload bounds
 are cached in prepared runtime/node signatures.
+
+Stage 2: one `ProcessBlock`/`Processor::process` and planner begin/finish/operation
+lifecycle now serve all production, generic, example and independent fixture callers.
+Decision/observation metadata and storage are removed from graph compilation,
+validation, builders and runtime traversal. Payload bounds remain in prepared node
+signatures and cached planner authority. Loop admission validates actual node roles
+and owners, assigned membership and absence of unassigned consumers; new negative
+coverage exercises crossed roles/owners and stale physical IDs. The engine's
+`signal` module is removed because the common block needs no projection wrapper.
+
+Verification: warning-denying workspace build and all-target check passed; 450
+affected native tests passed, followed by all five graph-admission tests including
+the new identity case. All 60 independent loop-host fixture tests passed. All 18
+runtime book examples executed successfully. Node/Wasm planner execution (7),
+graph activation (8), DSP (15), graph guards (5) and engine production (3) passed:
+38 total. Test-attribute policy passed. Logs: `work/cleanup-unified-*`,
+`work/cleanup-admission-tests.log`, `work/cleanup-loop-fixture-tests.log`.
+
+Retired tests: `rt_runtime/tests/planning_graph.rs` (eight metadata-only tests) and
+`stale_planner_candidate_keeps_previous_graph_and_bindings_active` exercise fields
+that no longer exist. Canonical/incremental graph validation, stale epochs, descriptor
+capacity/membership reuse and actual domain admission remain covered by `graph.rs`,
+`graph_activation.rs`, `planner_admission.rs` and loop `graph_guards.rs`. Observation
+quota/view-size assertions were replaced with domain-owned completion accounting;
+full sample/MIDI and callback-budget assertions remain. Invalid planning-header
+fixture cases now corrupt signal descriptors and verify exact returned ownership.
+Fixture descriptor and graph-command wire formats are version 2; production wire
+versions are unchanged. Documentation prose migration is reserved for stage 6.

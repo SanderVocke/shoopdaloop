@@ -45,7 +45,6 @@ mod render;
 mod replacement;
 mod resync;
 mod ring;
-mod signal;
 mod stream;
 mod topology;
 
@@ -391,10 +390,6 @@ pub fn prepare(
     }
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
-    let planner = runtime
-        .catalog()
-        .planner()
-        .ok_or(rt_runtime::Error::InvalidState)?;
     let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
         master_outputs[channel as usize].set(host as usize, true);
@@ -402,7 +397,7 @@ pub fn prepare(
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();
     let work = Work {
-        builder: Builder::new(config.limits().max_edges, loops),
+        builder: Builder::new(config.limits().max_edges),
         encoder,
         image,
         payloads: (1..=RECORDS_PER_APPEND)
@@ -455,7 +450,6 @@ pub fn prepare(
             channels,
             master_channels,
         },
-        planner,
         cells: cells.clone(),
         settings: Settings {
             ramp: description.ramp_frames,

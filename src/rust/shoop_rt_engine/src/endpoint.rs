@@ -26,7 +26,6 @@ use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 use rt_runtime::executor::Command;
 use rt_runtime::graph::PreparedPlan;
-use rt_runtime::planner::PlannerSpec;
 use rt_runtime::schedule::Action;
 use rt_runtime::transport::{Lane, Outcome as RuntimeOutcome};
 use rt_runtime::{Epoch, Frame, NodeId, Sequence};
@@ -154,7 +153,6 @@ pub struct ControlEndpoint {
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
     pub(crate) shape: Shape,
-    pub(crate) planner: PlannerSpec,
     pub(crate) cells: Arc<Cells>,
     pub(crate) settings: Settings,
     pub(crate) host_ports: Box<[HostPort]>,

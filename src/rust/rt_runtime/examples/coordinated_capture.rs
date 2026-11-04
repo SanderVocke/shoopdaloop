@@ -4,9 +4,7 @@ use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::executor::{GraphRuntime, PreparedNode};
 use rt_runtime::graph::{Connection, Endpoint, GraphDescription, PortCounts, PortType};
 use rt_runtime::midi_state::MidiState;
-use rt_runtime::planner::{
-    ConsumerAccess, DecisionBinding, FinishContext, PlanContext, Planner, PlannerSpec,
-};
+use rt_runtime::planner::{FinishContext, PlanContext, Planner};
 use rt_runtime::processor::{ProcessBlock, Processor};
 use rt_runtime::resource::*;
 use rt_runtime::{Budgets, Config, Error, Frame, NodeId, PlannerId, ResourceId, Revision};
@@ -78,22 +76,12 @@ impl Clock {
     }
 }
 impl Planner for Clock {
-    type Decision = Decision;
-    type Observation = ();
     type Operation = ();
     type Result = ();
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 1,
-            observation_capacity: 0,
-            operation_bytes: 0,
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
-    fn decisions(&self) -> &[Decision] {
-        &self.decisions
-    }
-    fn plan(&mut self, mut context: PlanContext<'_>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_>) -> Result<(), Error> {
         if context.frame == context.callback_start {
             for _ in 0..2 {
                 let mut cursor = context.resources.cursor(self.old[0].id)?;
@@ -188,10 +176,9 @@ impl Planner for Clock {
                 Err(error) => return Err(error),
             }
         }
-        Ok(context.frame.checked_add(1)?.min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, mut context: FinishContext<'_, ()>) -> Result<(), Error> {
-        assert!(context.observations.is_empty());
+    fn finish_tick(&mut self, mut context: FinishContext<'_>) -> Result<(), Error> {
         if let Some(interval) = self.decisions[0].interval.take() {
             context.resources.capture().commit(interval)?;
             assert_eq!(
@@ -221,16 +208,10 @@ impl Processor<Clock> for Capture {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 0,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Clock>) -> Result<(), Error> {
         assert_eq!(block.frames, 1);
-        let decision = *block.decision.as_ref().ok_or(Error::InvalidState)?.value;
+        let decision = block.domain.decisions[0];
         let sample = {
             let (input, output) = block.audio.pair(0, 0).ok_or(Error::InvalidShape)?;
             output[0] = input[0] * if decision.failed { 2.0 } else { 1.0 };
@@ -544,11 +525,6 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
         clock,
         store,
         &graph,
-        &[DecisionBinding {
-            planner: planner(),
-            consumer: node(),
-            decision_slot: 0,
-        }],
     )?;
     let prefix = if pages == 6 { 2 } else { 8 };
     for &frames in partition {

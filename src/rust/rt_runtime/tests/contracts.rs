@@ -380,8 +380,10 @@ fn prepared_processor_uses_borrowed_disjoint_views_without_heap_operations() {
             midi_inputs: &midi_in,
             midi_outputs: &mut midi_out,
             resources: resources.io(),
-            decision: None,
-            observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
+            node: rt_runtime::NodeId::from_parts(0, 1).unwrap(),
+            callback_start: rt_runtime::Frame(0),
+            quantum: rt_runtime::Quantum::new(1).unwrap(),
+            domain: &mut rt_runtime::planner::NoPlanner,
         })
     })
     .unwrap();

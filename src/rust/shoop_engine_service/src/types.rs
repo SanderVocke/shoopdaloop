@@ -2,7 +2,6 @@ use crate::{dsp, Client, Render};
 use rt_runtime::{
     executor,
     graph::{PortCounts, PreparedPlan},
-    planner::ConsumerAccess,
     processor::{OperationContext, ProcessBlock, Processor},
     transport::{Lane, Outcome},
     Epoch, Error, Frame,
@@ -129,28 +128,17 @@ pub enum ServiceNode {
     Dsp(dsp::Dsp),
 }
 impl Processor<LoopPlanner, dsp::Operation> for ServiceNode {
-    fn uses_direct_domain(&self) -> bool {
-        true
-    }
-    fn process_tick(
-        &mut self,
-        block: &mut rt_runtime::processor::TickProcessBlock<'_, LoopPlanner>,
-    ) -> Result<(), Error> {
+    fn admit(&self, id: rt_runtime::NodeId, domain: &LoopPlanner) -> Result<(), Error> {
         match self {
-            Self::Loop(node) => node.process_tick(block),
-            Self::Dsp(node) => node.process_tick(block),
+            Self::Loop(node) => node.admit(id, domain),
+            _ => Ok(()),
         }
     }
+
     fn ports(&self) -> PortCounts {
         match self {
             Self::Loop(node) => node.ports(),
             Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner, dsp::Operation>>::ports(node),
-        }
-    }
-    fn planning(&self) -> ConsumerAccess {
-        match self {
-            Self::Loop(node) => node.planning(),
-            Self::Dsp(node) => <dsp::Dsp as Processor<LoopPlanner, dsp::Operation>>::planning(node),
         }
     }
     fn operation(

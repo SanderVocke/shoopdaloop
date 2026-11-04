@@ -92,7 +92,6 @@ fn main() -> Result<(), Error> {
         NoPlanner,
         ResourceStore::new(config)?,
         &graph,
-        &[],
     )?;
     let input = [1.0; 8];
     let mut output = [9.0; 8];

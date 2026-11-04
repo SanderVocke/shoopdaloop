@@ -77,26 +77,11 @@ fn description(second: u32, route_second: bool, reverse: bool) -> GraphDescripti
     }
     graph
 }
-fn bindings(second: u32, swapped: bool) -> Vec<DecisionBinding> {
-    vec![
-        DecisionBinding {
-            planner: planner(),
-            consumer: node(0),
-            decision_slot: usize::from(swapped),
-        },
-        DecisionBinding {
-            planner: planner(),
-            consumer: node(second),
-            decision_slot: usize::from(!swapped),
-        },
-    ]
-}
+
 fn oversized(plan: PreparedPlan) -> PreparedPlan {
     let mut descriptor = plan.descriptor().clone();
     descriptor.steps.reserve_exact(128);
-    let oversized =
-        PreparedPlan::from_planned_descriptor(plan.config(), descriptor, plan.planning().clone())
-            .unwrap();
+    let oversized = PreparedPlan::from_descriptor(plan.config(), descriptor).unwrap();
     assert!(oversized.storage_bytes().unwrap() > plan.storage_bytes().unwrap());
     oversized
 }
@@ -125,14 +110,11 @@ enum Reply {
     Cut { epoch: Epoch, values: [u32; 2] },
     Cancelled,
 }
-#[derive(Clone, Copy, Default)]
-struct Observed {
-    value: u32,
-    injected: usize,
-}
+
 struct Domain {
     values: [u32; 2],
     live: u8,
+    processed: u8,
     injected: [usize; 2],
     swapped: bool,
     epoch: Epoch,
@@ -165,13 +147,13 @@ impl Domain {
         let other = value.checked_add(2).ok_or(Error::Exhausted)?;
         let swapped = permit
             .candidate()
-            .planning()
-            .bindings
+            .descriptor()
+            .connections
             .iter()
-            .find(|b| b.consumer == node(0))
-            .ok_or(Error::InvalidGraph)?
-            .decision_slot
-            == 1;
+            .any(|edge| {
+                edge.source == Endpoint::node(node(1), PortType::Audio, 0)
+                    && edge.destination == Endpoint::host(PortType::Audio, 0)
+            });
         let epoch = permit.next_epoch();
         let live = 1 | (u8::from(permit.candidate().contains(node(1))) << 1);
         self.values = [value, other];
@@ -183,20 +165,10 @@ impl Domain {
     }
 }
 impl Planner for Domain {
-    type Decision = u32;
-    type Observation = Observed;
     type Operation = Op;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: planner(),
-            decision_slots: 2,
-            observation_capacity: 3,
-            operation_bytes: 0,
-        })
-    }
-    fn decisions(&self) -> &[u32] {
-        &self.values
+    fn id(&self) -> Option<PlannerId> {
+        Some(planner())
     }
     fn recovery_safe(operation: Op) -> bool {
         // Deliberately over-classified Activate proves the capability still denies a recovery swap.
@@ -243,7 +215,8 @@ impl Planner for Domain {
         };
         Ok(Disposition::Complete(reply))
     }
-    fn plan(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<Frame, Error> {
+    fn begin_tick(&mut self, mut context: PlanContext<'_, Op, Reply>) -> Result<(), Error> {
+        self.processed = 0;
         self.epoch = context.graph_epoch;
         if let Some((token, id, expected, value, at)) =
             self.pending.filter(|p| p.4 == context.frame)
@@ -258,19 +231,11 @@ impl Planner for Domain {
         if let Some(row) = self.log.get_mut(context.frame.0 as usize) {
             *row = Some((self.epoch, self.values));
         }
-        Ok(context.frame.checked_add(1)?.min(context.ceiling))
+        Ok(())
     }
-    fn finish(&mut self, context: FinishContext<'_, Observed, Op, Reply>) -> Result<(), Error> {
-        assert_eq!(context.observations.len(), self.live.count_ones() as usize);
-        for observation in context.observations {
-            let slot = observation.producer.slot() as usize;
-            assert_eq!(
-                observation.value.value,
-                self.values[if self.swapped { 1 - slot } else { slot }]
-            );
-            assert_ne!(self.live & (1 << slot), 0);
-            self.injected[slot] += observation.value.injected;
-        }
+    fn finish_tick(&mut self, context: FinishContext<'_, Op, Reply>) -> Result<(), Error> {
+        assert_eq!(self.processed, self.live);
+        assert!(context.interval.end > context.interval.start);
         Ok(())
     }
 }
@@ -293,17 +258,14 @@ impl Processor<Domain> for Fill {
             ..PortCounts::default()
         }
     }
-    fn planning(&self) -> ConsumerAccess {
-        ConsumerAccess {
-            decision_required: true,
-            observations: 1,
-            operation_bytes: 0,
-        }
-    }
+
     fn process(&mut self, block: &mut ProcessBlock<'_, Domain>) -> Result<(), Error> {
-        let decision = block.decision.ok_or(Error::InvalidState)?;
-        assert_eq!(decision.interval.start, block.frame);
-        let value = *decision.value;
+        let slot = self.slot as usize;
+        assert_eq!(block.node, node(self.slot));
+        assert_ne!(block.domain.live & (1 << slot), 0);
+        assert_eq!(block.domain.processed & (1 << slot), 0);
+        block.domain.processed |= 1 << slot;
+        let value = block.domain.values[if block.domain.swapped { 1 - slot } else { slot }];
         block
             .audio
             .output(0)
@@ -321,7 +283,8 @@ impl Processor<Domain> for Fill {
                 &[0x90, 60 + self.slot as u8, value as u8],
             )?;
         }
-        block.observations.push(Observed { value, injected })
+        block.domain.injected[slot] += injected;
+        Ok(())
     }
 }
 impl Drop for Fill {
@@ -347,6 +310,7 @@ impl Harness {
         let domain = Domain {
             values: [3, 7],
             live: 3,
+            processed: 0,
             injected: [0; 2],
             swapped: false,
             epoch: Epoch(1),
@@ -374,7 +338,6 @@ impl Harness {
             domain,
             ResourceStore::new(cfg).unwrap(),
             &description(1, false, reverse),
-            &bindings(1, false),
         )
         .unwrap();
         runtime.prepare_graph_staging(2).unwrap();
@@ -390,12 +353,7 @@ impl Harness {
         }
     }
     fn plan(&self, new: bool) -> PreparedPlan {
-        graph::compile_planned(
-            self.runtime.catalog(),
-            &description(1, new, false),
-            &bindings(1, new),
-        )
-        .unwrap()
+        graph::compile(self.runtime.catalog(), &description(1, new, false)).unwrap()
     }
     fn send(&mut self, lane: Lane, command: Command<Fill, Domain>) -> transport::Ticket {
         assert_no_heap(|| self.control.submit_prepared(lane, command))
@@ -591,7 +549,10 @@ fn graph_and_domain_publish_at_one_internal_cut_across_partitions_and_orders() {
                 Some(Reply::Status(StageStatus::Taken))
             );
             let retired = h.release(id);
-            assert_eq!(retired.planning().bindings, bindings(1, false));
+            assert_eq!(
+                retired.descriptor().connections,
+                description(1, false, false).connections
+            );
             drop(retired);
             let counts = h.counts.clone();
             drop(h.control);
@@ -833,11 +794,9 @@ fn incremental_validation_and_malformed_or_cancelled_envelopes_never_publish_ear
     validation_survives_recovery();
     let mut h = Harness::new(1, false, false);
     let source = h.plan(true);
-    let mut bad_planning = source.planning().clone();
-    bad_planning.step.as_mut().unwrap().before_step = 1;
-    let malformed =
-        PreparedPlan::from_planned_descriptor(config(1), source.descriptor().clone(), bad_planning)
-            .unwrap();
+    let mut malformed_descriptor = source.descriptor().clone();
+    malformed_descriptor.steps[0].input_end = usize::MAX;
+    let malformed = PreparedPlan::from_descriptor(config(1), malformed_descriptor).unwrap();
     let id = h.stage(0, source);
     assert!(h.runtime.next_frame().0 > 1);
     assert_eq!(h.runtime.epoch(), Epoch(1));
@@ -1019,12 +978,7 @@ fn unread_results_and_retired_graphs_do_not_gate_music_and_recovery_cannot_activ
 #[shoop_test]
 fn physical_catalog_generation_changes_invalidate_staged_plans_without_losing_returns() {
     let mut h = Harness::new(4096, false, true);
-    let plan = graph::compile_planned(
-        h.runtime.catalog(),
-        &description(2, true, false),
-        &bindings(2, false),
-    )
-    .unwrap();
+    let plan = graph::compile(h.runtime.catalog(), &description(2, true, false)).unwrap();
     let id = h.stage(0, plan);
     h.send(Lane::Normal, Command::Remove { node: node(2) });
     h.step(1);
@@ -1084,8 +1038,7 @@ fn same_frame_injected_midi_prevents_removal_until_delivery_and_never_replays_on
     let mut h = Harness::new(4096, false, false);
     let mut graph = description(1, false, false);
     graph.nodes.pop();
-    let candidate =
-        graph::compile_planned(h.runtime.catalog(), &graph, &bindings(1, false)[..1]).unwrap();
+    let candidate = graph::compile(h.runtime.catalog(), &graph).unwrap();
     let id = h.stage(0, candidate);
     let message = |at| Command::Schedule {
         at: Frame(at),
@@ -1194,7 +1147,6 @@ fn no_planner_legacy_commit_and_128_staging_returns_keep_the_original_lifecycle(
         NoPlanner,
         ResourceStore::new(cfg).unwrap(),
         &graph,
-        &[],
     )
     .unwrap();
     assert_eq!(runtime.prepare_graph_staging(0), Err(Error::InvalidConfig));

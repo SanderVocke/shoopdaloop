@@ -109,8 +109,10 @@ fn exercise(pages: usize, midi_reset: bool) {
                 midi_inputs: &input,
                 midi_outputs: &mut output,
                 resources: store.io(),
-                decision: None,
-                observations: rt_runtime::planner::ObservationWriter::disabled(&mut 0),
+                node: rt_runtime::NodeId::from_parts(0, 1).unwrap(),
+                callback_start: rt_runtime::Frame(0),
+                quantum: rt_runtime::Quantum::new(1).unwrap(),
+                domain: &mut rt_runtime::planner::NoPlanner,
             })
         });
         assert_eq!(

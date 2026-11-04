@@ -2,28 +2,9 @@ use super::*;
 
 impl LoopPlanner {
     fn validate_graph(&self, graph: &PreparedPlan) -> Result<(), Error> {
-        let bindings = &graph.planning().bindings;
-        if bindings.len()
-            != self
-                .rows
-                .iter()
-                .flatten()
-                .filter(|row| row.assigned)
-                .count()
-                * 2
-        {
-            return Err(Error::InvalidShape);
-        }
-        for row in self.rows.iter().flatten().filter(|row| row.assigned) {
+        for row in self.rows.iter().flatten() {
             for consumer in [row.binding.playback, row.binding.capture] {
-                if !graph.contains(consumer) {
-                    return Err(Error::InvalidId);
-                }
-                if !bindings.iter().any(|binding| {
-                    binding.consumer == consumer
-                        && binding.planner == self.settings.planner
-                        && binding.decision_slot == row.binding.target.slot() as usize
-                }) {
+                if graph.contains(consumer) != row.assigned {
                     return Err(Error::InvalidShape);
                 }
             }
@@ -651,14 +632,6 @@ impl Planner for LoopPlanner {
         self.quantum = Some(quantum);
         Ok(())
     }
-    fn tick_operation(
-        &mut self,
-        operation: Operation,
-        context: OperationContext<'_, Operation, Reply>,
-    ) -> Result<Disposition<Reply>, Error> {
-        self.quantum.ok_or(Error::InvalidState)?;
-        self.execute_operation(operation, context)
-    }
     fn begin_tick(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
         let q = self.quantum.ok_or(Error::InvalidState)?;
         if context.frame.checked_add(q.frames())? != context.ceiling {
@@ -670,30 +643,19 @@ impl Planner for LoopPlanner {
         }
         Ok(())
     }
-    fn finish_tick(
-        &mut self,
-        context: FinishContext<'_, Observed, Operation, Reply>,
-    ) -> Result<(), Error> {
+    fn finish_tick(&mut self, context: FinishContext<'_, Operation, Reply>) -> Result<(), Error> {
         self.quantum.ok_or(Error::InvalidState)?;
         self.finish_boundary(context)
     }
-    type Decision = View;
-    type Observation = Observed;
     type Operation = Operation;
     type Result = Reply;
-    fn spec(&self) -> Option<PlannerSpec> {
-        Some(PlannerSpec {
-            id: self.settings.planner,
-            decision_slots: self.views.len(),
-            observation_capacity: self.rows.iter().flatten().count() * 2,
-            operation_bytes: self
-                .topologies
-                .operation_bytes()
-                .max(self.rows.len() * CONTENT_FAMILY_RECORD_BYTES),
-        })
+    fn id(&self) -> Option<PlannerId> {
+        Some(self.settings.planner)
     }
-    fn decisions(&self) -> &[View] {
-        &self.views
+    fn operation_bytes(&self) -> usize {
+        self.topologies
+            .operation_bytes()
+            .max(self.rows.len() * CONTENT_FAMILY_RECORD_BYTES)
     }
     fn admit_graph(&self, candidate: &PreparedPlan) -> Result<(), Error> {
         self.validate_graph(candidate)
@@ -727,17 +689,6 @@ impl Planner for LoopPlanner {
         context: OperationContext<'_, Operation, Reply>,
     ) -> Result<Disposition<Reply>, Error> {
         self.execute_operation(operation, context)
-    }
-    fn plan(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<Frame, Error> {
-        let end = context.ceiling;
-        self.begin_tick(context)?;
-        Ok(end)
-    }
-    fn finish(
-        &mut self,
-        context: FinishContext<'_, Observed, Operation, Reply>,
-    ) -> Result<(), Error> {
-        self.finish_tick(context)
     }
 }
 
@@ -1415,63 +1366,8 @@ impl LoopPlanner {
     }
     fn finish_boundary(
         &mut self,
-        mut context: FinishContext<'_, Observed, Operation, Reply>,
+        mut context: FinishContext<'_, Operation, Reply>,
     ) -> Result<(), Error> {
-        if !context.observations.is_empty() {
-            for row in self.rows.iter_mut().flatten() {
-                row.seen_playback = false;
-                row.seen_capture = false;
-            }
-        }
-        for observation in context.observations {
-            let (target, capture) = match &observation.value {
-                Observed::Playback { target, .. } => (*target, false),
-                Observed::Input { target, .. } | Observed::NoMidiInput { target } => {
-                    (*target, true)
-                }
-            };
-            let row = self.row(target)?;
-            let slot = target.slot() as usize;
-            if observation.producer
-                != if capture {
-                    row.binding.capture
-                } else {
-                    row.binding.playback
-                }
-                || if capture {
-                    row.seen_capture
-                } else {
-                    row.seen_playback
-                }
-            {
-                return Err(Error::InvalidId);
-            }
-            match &observation.value {
-                Observed::Input { state, .. } => {
-                    if !row.binding.midi {
-                        return Err(Error::InvalidShape);
-                    }
-                    self.inputs[slot] = *state;
-                }
-                Observed::NoMidiInput { .. } => {
-                    if row.binding.midi {
-                        return Err(Error::InvalidShape);
-                    }
-                }
-                Observed::Playback { overflow, .. } => {
-                    if *overflow {
-                        self.rows[slot].as_mut().expect("row").overflows =
-                            row.overflows.saturating_add(1);
-                    }
-                }
-            }
-            let row = self.rows[slot].as_mut().expect("row");
-            if capture {
-                row.seen_capture = true;
-            } else {
-                row.seen_playback = true;
-            }
-        }
         for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
             if let Some(interval) = row.interval {
                 context.resources.capture().commit(interval)?;

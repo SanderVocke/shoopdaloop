@@ -117,7 +117,6 @@ fn prepare(
         NoPlanner,
         ResourceStore::new(config)?,
         &graph,
-        &[],
     )?;
     Ok((control, runtime, received_resets))
 }

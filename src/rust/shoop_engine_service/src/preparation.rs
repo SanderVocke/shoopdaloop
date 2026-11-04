@@ -160,7 +160,7 @@ fn prepare_inner(
         planner,
         resources,
     )?;
-    engine.prepare_initial_graph(&initial_graph, &client.bindings_for(&initial_graph))?;
+    engine.prepare_initial_graph(&initial_graph)?;
     if quantum.frames() > 1 {
         engine.prepare_host_buffering()?;
     }

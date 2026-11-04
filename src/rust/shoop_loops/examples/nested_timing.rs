@@ -192,7 +192,6 @@ fn run(parts: &[usize]) {
         planner,
         resources,
         &graph,
-        &client.bindings_for(&graph),
     )
     .unwrap();
     let mut control = Controls {

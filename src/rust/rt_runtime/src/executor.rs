@@ -3,15 +3,14 @@
 use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
 use crate::graph::activation::{GraphAccess, GraphStages, StageId};
 use crate::graph::{
-    compile_planned, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator,
-    PortCounts, PortType, PreparedPlan, ValidationStatus,
+    compile, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator, PortCounts,
+    PortType, PreparedPlan, ValidationStatus,
 };
 use crate::midi::ResetState;
 use crate::planner::{
-    ConsumerAccess, ConsumerSpec, DecisionBinding, DecisionView, Disposition, FinishContext,
-    Interval, NoPlanner, Observations, OperationContext, PlanContext, Planner,
+    Disposition, FinishContext, Interval, NoPlanner, OperationContext, PlanContext, Planner,
 };
-use crate::processor::{ProcessBlock, Processor, ProcessorOperation, TickProcessBlock};
+use crate::processor::{ProcessBlock, Processor, ProcessorOperation};
 use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
@@ -24,9 +23,8 @@ use core::marker::PhantomData;
 pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     id: NodeId,
     ports: PortCounts,
-    access: ConsumerAccess,
+    operation_bytes: usize,
     processor: P,
-    direct_domain: bool,
     marker: PhantomData<fn() -> (L, Q)>,
 }
 impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q> {
@@ -34,8 +32,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q
         Self {
             id,
             ports: processor.ports(),
-            access: processor.planning(),
-            direct_domain: processor.uses_direct_domain(),
+            operation_bytes: processor.operation_bytes(),
             processor,
             marker: PhantomData,
         }
@@ -256,10 +253,9 @@ impl Buffers {
     }
 }
 struct Slot<P> {
-    direct_domain: bool,
     id: NodeId,
     ports: PortCounts,
-    access: ConsumerAccess,
+    operation_bytes: usize,
     processor: Option<P>,
     buffers: Buffers,
 }
@@ -300,7 +296,7 @@ pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     recovery_remaining: Vec<usize>,
     resources: ResourceStore,
     planner: L,
-    observations: Observations<L::Observation>,
+    planner_authority: Option<(crate::PlannerId, usize)>,
 }
 
 impl<P: Processor> GraphRuntime<P> {
@@ -334,23 +330,18 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         planner: L,
         resources: ResourceStore,
         graph: &GraphDescription,
-        bindings: &[DecisionBinding],
     ) -> Result<(Control<P, L, Q>, Self), Error> {
         let (control, mut runtime) =
             Self::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
-        runtime.prepare_initial_graph(graph, bindings)?;
+        runtime.prepare_initial_graph(graph)?;
         Ok((control, runtime))
     }
     /// Install the startup graph off-render, before any nonempty callback.
-    pub fn prepare_initial_graph(
-        &mut self,
-        graph: &GraphDescription,
-        bindings: &[DecisionBinding],
-    ) -> Result<(), Error> {
+    pub fn prepare_initial_graph(&mut self, graph: &GraphDescription) -> Result<(), Error> {
         if self.next_frame() != Frame(0) || self.epoch != Epoch(0) || self.active.is_some() {
             return Err(Error::InvalidState);
         }
-        let plan = compile_planned(&self.catalog, graph, bindings)?;
+        let plan = compile(&self.catalog, graph)?;
         self.planner.admit_graph(&plan)?;
         self.epoch = self.epoch.checked_next()?;
         self.active = Some(plan);
@@ -399,55 +390,26 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Err(Error::Capacity);
         }
         let specs: Vec<_> = nodes.iter().map(PreparedNode::spec).collect();
-        let signature = planner.spec();
-        let catalog = if let Some(signature) = signature {
-            signature.validate()?;
-            if planner.decisions().len() != signature.decision_slots {
-                return Err(Error::InvalidShape);
-            }
-            if signature
-                .decision_slots
-                .checked_mul(size_of::<L::Decision>())
-                .is_none_or(|bytes| bytes > i32::MAX as usize)
-            {
-                return Err(Error::Capacity);
-            }
-            let consumers: Vec<_> = nodes
-                .iter()
-                .map(|node| ConsumerSpec {
-                    node: node.id,
-                    access: node.access,
-                })
-                .collect();
-            Catalog::with_planner(config, &specs, signature, &consumers)?
-        } else {
-            if !planner.decisions().is_empty()
-                || nodes
-                    .iter()
-                    .any(|node| node.access != ConsumerAccess::default())
-            {
-                return Err(Error::InvalidGraph);
-            }
-            Catalog::new(config, &specs)?
-        };
-        let observations = Observations::new(if nodes.iter().all(|n| n.direct_domain) {
-            0
-        } else {
-            signature.map_or(0, |spec| spec.observation_capacity)
-        })?;
+        let catalog = Catalog::new(config, &specs)?;
+        let planner_authority = planner.id().map(|id| (id, planner.operation_bytes()));
         let operation_bytes = nodes.iter().fold(
-            signature.map_or(0, |spec| spec.operation_bytes),
-            |bytes, node| bytes.max(node.access.operation_bytes),
+            planner_authority.map_or(0, |(_, bytes)| bytes),
+            |bytes, node| bytes.max(node.operation_bytes),
         );
+        if operation_bytes > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
+        for node in &nodes {
+            node.processor.admit(node.id, &planner)?;
+        }
         let limits = config.limits();
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
         for node in nodes {
             let buffers = Buffers::new(config, node.ports, quantum.frames())?;
             slots[node.id.slot() as usize] = Some(Slot {
-                direct_domain: node.direct_domain,
                 id: node.id,
                 ports: node.ports,
-                access: node.access,
+                operation_bytes: node.operation_bytes,
                 processor: Some(node.processor),
                 buffers,
             });
@@ -461,7 +423,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             publications_per_cycle: limits.budgets.publications,
         })?;
         let (executions, mut scheduler) =
-            schedule::typed_scheduler(config, operation_bytes, signature.is_some())?;
+            schedule::typed_scheduler(config, operation_bytes, planner_authority.is_some())?;
         scheduler.set_quantum(quantum);
         Ok((
             Control {
@@ -492,7 +454,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 recovery_remaining: vec![0; limits.midi_outputs],
                 resources,
                 planner,
-                observations,
+                planner_authority,
             },
         ))
     }
@@ -815,31 +777,37 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                     } else if payload.len() > self.resources.copy_remaining() {
                         break;
                     } else {
-                        validate_action(&self.catalog, *action, payload.len())
-                            .and_then(|()| {
-                                if operation.lane == Lane::Recovery {
-                                    self.scheduler.admit_recovery(
-                                        operation.sequence,
-                                        *at,
-                                        self.diagnostics.frame,
-                                        *action,
-                                        payload,
-                                    )
-                                } else {
-                                    self.scheduler.admit(
-                                        operation.sequence,
-                                        *at,
-                                        self.diagnostics.frame,
-                                        *action,
-                                        payload,
-                                    )
-                                }
-                            })
-                            .and_then(|admission| {
-                                self.resources.charge_external(payload.len(), 0)?;
-                                admitted = Some(admission);
-                                Ok(())
-                            })
+                        validate_action(
+                            &self.catalog,
+                            self.planner_authority,
+                            &self.slots,
+                            *action,
+                            payload.len(),
+                        )
+                        .and_then(|()| {
+                            if operation.lane == Lane::Recovery {
+                                self.scheduler.admit_recovery(
+                                    operation.sequence,
+                                    *at,
+                                    self.diagnostics.frame,
+                                    *action,
+                                    payload,
+                                )
+                            } else {
+                                self.scheduler.admit(
+                                    operation.sequence,
+                                    *at,
+                                    self.diagnostics.frame,
+                                    *action,
+                                    payload,
+                                )
+                            }
+                        })
+                        .and_then(|admission| {
+                            self.resources.charge_external(payload.len(), 0)?;
+                            admitted = Some(admission);
+                            Ok(())
+                        })
                     }
                 }
                 Command::Cancel { sequence } => {
@@ -929,10 +897,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 Command::Install { prepared } => {
                     if operation.lane != Lane::Normal {
                         Err(Error::InvalidState)
-                    } else if let Some(Err(error)) = prepared
-                        .as_ref()
-                        .map(|node| self.planner.admit_processor_change(node.id))
-                    {
+                    } else if let Some(Err(error)) = prepared.as_ref().map(|node| {
+                        self.planner.admit_processor_change(node.id)?;
+                        node.processor.admit(node.id, &self.planner)
+                    }) {
                         Err(error)
                     } else {
                         install_processor(
@@ -1029,7 +997,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             *remaining_events -= 1;
             match event.action {
                 Action::Planner { planner, operation } => {
-                    let result = if self.catalog.planner().is_none_or(|spec| spec.id != planner) {
+                    let result = if self.planner_authority.is_none_or(|(id, _)| id != planner) {
                         Err(Error::InvalidId)
                     } else {
                         let compatible = |candidate: &PreparedPlan| {
@@ -1054,7 +1022,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                             resources: self.resources.planner_io(at, at),
                             receipts: event.receipts.planner(),
                         };
-                        self.planner.tick_operation(operation, context)
+                        self.planner.operation(operation, context)
                     };
                     match result {
                         Ok(Disposition::Complete(value)) => {
@@ -1195,18 +1163,9 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if self.scheduler.recovery_pending() {
             return Err(Error::InvalidState);
         }
-        if self
-            .catalog
-            .planner()
-            .is_some_and(|spec| self.planner.decisions().len() != spec.decision_slots)
-        {
-            return Err(Error::InvalidShape);
-        }
-        self.observations.clear();
         self.run_graph(audio, midi, start, callback_start, quantum)?;
         self.planner.finish_tick(FinishContext {
             interval: Interval { start: frame, end },
-            observations: self.observations.values(),
             resources: self.resources.planner_io(end, end),
             receipts: self.scheduler.receipts(end),
         })?;
@@ -1265,56 +1224,19 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 }
             }
             let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
-            let result = if slot.direct_domain {
-                processor.process_tick(&mut TickProcessBlock {
-                    graph_epoch: self.epoch,
-                    callback_start,
-                    frame,
-                    quantum,
-                    audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
-                    midi_inputs: &buffers.midi_input,
-                    midi_outputs: &mut buffers.midi_output,
-                    resources: self.resources.io(),
-                    domain: &mut self.planner,
-                })
-            } else {
-                let decision = match plan
-                    .planning()
-                    .bindings
-                    .binary_search_by_key(&step.node, |b| b.consumer)
-                {
-                    Ok(index) => {
-                        let binding = plan.planning().bindings[index];
-                        Some(DecisionView {
-                            planner: binding.planner,
-                            slot: binding.decision_slot,
-                            interval: Interval {
-                                start: frame,
-                                end: frame.checked_add(q)?,
-                            },
-                            value: self
-                                .planner
-                                .decisions()
-                                .get(binding.decision_slot)
-                                .ok_or(Error::InvalidState)?,
-                        })
-                    }
-                    Err(_) => None,
-                };
-                processor.process(&mut ProcessBlock {
-                    graph_epoch: self.epoch,
-                    frame,
-                    frames: q,
-                    audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
-                    midi_inputs: &buffers.midi_input,
-                    midi_outputs: &mut buffers.midi_output,
-                    resources: self.resources.io(),
-                    decision,
-                    observations: self
-                        .observations
-                        .writer(step.node, slot.access.observations),
-                })
-            };
+            let result = processor.process(&mut ProcessBlock {
+                node: step.node,
+                graph_epoch: self.epoch,
+                callback_start,
+                frame,
+                frames: q,
+                quantum,
+                audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
+                midi_inputs: &buffers.midi_input,
+                midi_outputs: &mut buffers.midi_output,
+                resources: self.resources.io(),
+                domain: &mut self.planner,
+            });
             if result == Err(Error::Full) {
                 for out in &mut buffers.midi_output {
                     out.force_reset(0);
@@ -1350,20 +1272,28 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
 }
 
-fn validate_action<O: Copy, Q: Copy>(
+fn validate_action<P, O: Copy, Q: Copy>(
     catalog: &Catalog,
+    planner_authority: Option<(crate::PlannerId, usize)>,
+    slots: &[Option<Slot<P>>],
     action: Action<O, Q>,
     bytes: usize,
 ) -> Result<(), Error> {
     let limit = match action {
         Action::Planner { planner, .. } => {
-            catalog
-                .planner()
-                .filter(|spec| spec.id == planner)
+            planner_authority
+                .filter(|(id, _)| *id == planner)
+                .ok_or(Error::InvalidId)?
+                .1
+        }
+        Action::Processor { node, .. } => {
+            catalog.node(node)?;
+            slots
+                .get(node.slot() as usize)
+                .and_then(Option::as_ref)
                 .ok_or(Error::InvalidId)?
                 .operation_bytes
         }
-        Action::Processor { node, .. } => catalog.consumer(node)?.operation_bytes,
         Action::Midi { node, port } => {
             let spec = catalog.node(node)?;
             if port as usize >= spec.ports.midi_inputs {
@@ -1418,10 +1348,7 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
     if slot.id != node.id || slot.processor.is_some() {
         return Err(Error::InvalidId);
     }
-    if slot.ports != node.ports
-        || slot.access != node.access
-        || slot.direct_domain != node.direct_domain
-    {
+    if slot.ports != node.ports || slot.operation_bytes != node.operation_bytes {
         return Err(Error::InvalidShape);
     }
     let next_epoch = epoch.checked_next()?;
@@ -1430,7 +1357,6 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
         ports: node.ports,
     })?;
     let node = prepared.take().ok_or(Error::InvalidState)?;
-    slot.direct_domain = node.direct_domain;
     slot.processor = Some(node.processor);
     *epoch = next_epoch;
     Ok(())

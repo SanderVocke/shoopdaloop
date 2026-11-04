@@ -251,7 +251,6 @@ src/rust/shoop_rt_engine/src/render.rs,realtime_engine,excluded,Render owner cal
 src/rust/shoop_rt_engine/src/resync.rs,realtime_engine,excluded,Bounded full-state record stream; the adapter traces resynchronization.
 src/rust/shoop_rt_engine/src/ring.rs,realtime_engine,excluded,Fixed-capacity queue.
 src/rust/shoop_rt_engine/src/stream.rs,realtime_engine,excluded,Bulk reader node and lock-free byte ring on the render path; rendering must not trace and the adapter traces reads and refusals.
-src/rust/shoop_rt_engine/src/signal.rs,realtime_engine,excluded,Borrowed common DSP buffers for interval and fixed execution; no independent execution or tracing boundary.
 src/rust/shoop_rt_engine/src/testing.rs,realtime_engine,excluded,Deterministic offline test host for tests and adapters; not a production path.
 src/rust/shoop_rt_engine/src/topology.rs,realtime_engine,excluded,Allocation-free timing image encoding; no execution boundary to instrument.
 src/rust/shoop_rt_host_native/src/cpal_driver.rs,native_engine_host,instrumented_indirect,"Opens devices and streams within the traced host start; stream and render callbacks must not trace, so failures and xruns are reported through host status and engine telemetry."
