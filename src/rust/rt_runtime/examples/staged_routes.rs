@@ -214,9 +214,22 @@ fn prepare(initial: bool) -> Result<(Control<Fill, Domain>, GraphRuntime<Fill, D
     };
     let resources = ResourceStore::new(config)?;
     let (control, mut runtime) = if initial {
-        GraphRuntime::prepare_with_initial_graph(config, nodes, domain, resources, &graph(false))?
+        GraphRuntime::prepare_with_initial_graph(
+            config,
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+            domain,
+            resources,
+            &graph(false),
+        )?
     } else {
-        GraphRuntime::prepare_with_planner_and_resources(config, nodes, domain, resources)?
+        GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+            domain,
+            resources,
+        )?
     };
     // Opt in to one staging slot before the first callback; a staged plan becomes Ready, not active.
     runtime.prepare_graph_staging(1)?;

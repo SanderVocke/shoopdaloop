@@ -99,33 +99,18 @@ fn main() {
         planner,
         nodes,
         client,
-    } = LoopPlanner::prepare(
-        config,
-        topology,
-        &mut resources,
-        Settings {
+    } = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 5,
             media_slots: 4,
             export_slots: 0,
-        },
-        vec![binding],
-        vec![],
-        Options::default(),
-    )
+        }, vec![binding], vec![], Options::default())
     .unwrap();
     let nodes = nodes
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &graph,
-        &client.bindings_for(&graph),
-    )
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
     .unwrap();
     control.prepare_submissions().unwrap();
     // Frames 8-11 play the OLD take (monitor_previous) while the new one records.

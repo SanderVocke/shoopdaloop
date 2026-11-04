@@ -166,6 +166,7 @@ fn run(parts: &[usize]) {
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology,
         &mut resources,
         Settings {
@@ -185,6 +186,7 @@ fn run(parts: &[usize]) {
     };
     let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node))

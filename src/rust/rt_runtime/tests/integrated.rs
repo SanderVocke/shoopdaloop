@@ -72,16 +72,15 @@ fn buffered_generic_publication_cannot_change_an_already_collected_tick() {
         }
         .prepare()
         .unwrap();
-        let (mut control, mut runtime) =
-            GraphRuntime::<Unused>::prepare_with_quantum_and_resources(
-                config,
-                128,
-                Quantum::new(q).unwrap(),
-                vec![],
-                NoPlanner,
-                ResourceStore::new(config).unwrap(),
-            )
-            .unwrap();
+        let (mut control, mut runtime) = GraphRuntime::<Unused>::prepare_for_host(
+            config,
+            128,
+            Quantum::new(q).unwrap(),
+            vec![],
+            NoPlanner,
+            ResourceStore::new(config).unwrap(),
+        )
+        .unwrap();
         runtime.prepare_host_buffering().unwrap();
         let plan = graph::compile(runtime.catalog(), &graph(0)).unwrap();
         control
@@ -117,16 +116,15 @@ fn buffered_capture_begins_at_an_eligible_tick_boundary() {
         .unwrap();
         let mut resources = ResourceStore::new(config).unwrap();
         let resource = resources.create().unwrap();
-        let (mut control, mut runtime) =
-            GraphRuntime::<Unused>::prepare_with_quantum_and_resources(
-                config,
-                128,
-                Quantum::new(q).unwrap(),
-                vec![],
-                NoPlanner,
-                resources,
-            )
-            .unwrap();
+        let (mut control, mut runtime) = GraphRuntime::<Unused>::prepare_for_host(
+            config,
+            128,
+            Quantum::new(q).unwrap(),
+            vec![],
+            NoPlanner,
+            resources,
+        )
+        .unwrap();
         runtime.prepare_host_buffering().unwrap();
         let step = |runtime: &mut GraphRuntime<Unused>, frames| {
             assert_no_heap(|| {

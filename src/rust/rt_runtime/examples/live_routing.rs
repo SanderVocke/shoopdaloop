@@ -125,6 +125,7 @@ fn main() -> Result<(), Error> {
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![
             PreparedNode::new(a, Gain(0.5)),
             PreparedNode::new(b, Gain(0.25)),

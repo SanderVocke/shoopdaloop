@@ -165,9 +165,15 @@ fn graph() -> GraphDescription {
 fn prepared_graph_executes_at_frame_zero_and_extraction_retains_the_owner_ledger() {
     let counts = Arc::new(Counts::default());
     let (resources, owner, nodes) = setup(&counts);
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_initial_graph(config(), nodes, owner, resources, &graph())
-            .unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config(),
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        owner,
+        resources,
+        &graph(),
+    )
+    .unwrap();
     assert_eq!(runtime.epoch(), Epoch(1));
     assert_eq!(runtime.next_frame(), Frame(0));
     assert_eq!(counts.calls.load(Ordering::Relaxed), 0);
@@ -249,6 +255,7 @@ fn preparation_rejects_invalid_initial_graphs_and_drops_off_render() {
         }
         assert!(GraphRuntime::prepare_with_initial_graph(
             config(),
+            rt_runtime::Quantum::new(1).unwrap(),
             nodes,
             owner,
             resources,
@@ -278,6 +285,7 @@ fn signal_only_initial_graph_preserves_normal_later_commit_epochs_and_receipts()
     let cfg = config();
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(), Signal)],
         NoPlanner,
         ResourceStore::new(cfg).unwrap(),

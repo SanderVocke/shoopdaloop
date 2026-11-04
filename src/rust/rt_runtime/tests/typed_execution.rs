@@ -255,6 +255,7 @@ impl Harness {
     fn new(events: usize) -> Self {
         let (control, runtime) = GraphRuntime::prepare_with_planner(
             config(events),
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node(), Gain { factor: 1 })],
             Domain {
                 context_mode: false,

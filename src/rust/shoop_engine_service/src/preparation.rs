@@ -121,6 +121,7 @@ fn prepare_inner(
         client,
     } = LoopPlanner::prepare(
         runtime,
+        quantum,
         topology,
         &mut resources,
         Settings {
@@ -152,7 +153,7 @@ fn prepare_inner(
             ServiceNode::Dsp(prepared_dsp.processor),
         )])
         .collect();
-    let (mut control, mut engine) = GraphRuntime::prepare_with_quantum_and_resources(
+    let (mut control, mut engine) = GraphRuntime::prepare_for_host(
         runtime,
         config.max_frames,
         quantum,

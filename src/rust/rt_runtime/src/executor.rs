@@ -304,19 +304,21 @@ impl<P: Processor> GraphRuntime<P> {
     /// callbacks begin. Only declared slots can be reused after startup.
     pub fn prepare(
         config: PreparedConfig,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P>>,
     ) -> Result<(Control<P>, Self), Error> {
-        Self::prepare_with_resources(config, nodes, ResourceStore::new(config)?)
+        Self::prepare_with_resources(config, quantum, nodes, ResourceStore::new(config)?)
     }
 
     /// Move prepared resource identities/content into the runtime before starting
     /// callbacks. Processors may retain plain IDs/leases created in this store.
     pub fn prepare_with_resources(
         config: PreparedConfig,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P>>,
         resources: ResourceStore,
     ) -> Result<(Control<P>, Self), Error> {
-        Self::prepare_with_planner_and_resources(config, nodes, NoPlanner, resources)
+        Self::prepare_with_planner_and_resources(config, quantum, nodes, NoPlanner, resources)
     }
 }
 
@@ -326,13 +328,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     /// planner/processor execution is used. Failure drops inputs off-render.
     pub fn prepare_with_initial_graph(
         config: PreparedConfig,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
         resources: ResourceStore,
         graph: &GraphDescription,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
         let (control, mut runtime) =
-            Self::prepare_with_planner_and_resources(config, nodes, planner, resources)?;
+            Self::prepare_with_planner_and_resources(config, quantum, nodes, planner, resources)?;
         runtime.prepare_initial_graph(graph)?;
         Ok((control, runtime))
     }
@@ -350,11 +353,13 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
 
     pub fn prepare_with_planner(
         config: PreparedConfig,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
         Self::prepare_with_planner_and_resources(
             config,
+            quantum,
             nodes,
             planner,
             ResourceStore::new(config)?,
@@ -363,22 +368,23 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
 
     pub fn prepare_with_planner_and_resources(
         config: PreparedConfig,
+        quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P, L, Q>>,
         planner: L,
         resources: ResourceStore,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
-        Self::prepare_owned(config, nodes, planner, resources, crate::Quantum::new(1)?)
+        Self::prepare_owned(config, nodes, planner, resources, quantum)
     }
 
     fn prepare_owned(
         config: PreparedConfig,
         nodes: Vec<PreparedNode<P, L, Q>>,
-        mut planner: L,
+        planner: L,
         resources: ResourceStore,
         quantum: crate::Quantum,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
-        planner.set_quantum(quantum)?;
-        if resources.config() != config {
+        planner.validate_quantum(quantum)?;
+        if quantum.frames() > config.limits().max_frames || resources.config() != config {
             return Err(Error::InvalidConfig);
         }
         if config
@@ -512,7 +518,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         )?);
         Ok(())
     }
-    pub fn prepare_with_quantum_and_resources(
+    pub fn prepare_for_host(
         config: PreparedConfig,
         max_host_frames: usize,
         quantum: crate::Quantum,

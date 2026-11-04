@@ -68,6 +68,7 @@ fn main() -> Result<(), Error> {
     // Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(0.5))],
         NoPlanner,
         resources,

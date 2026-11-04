@@ -220,6 +220,7 @@ fn reservation_failure_changes_dependent_output_before_the_affected_sample() {
         };
         let (mut control, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(
                 node(),
                 CaptureNode {

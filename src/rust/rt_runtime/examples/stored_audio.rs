@@ -143,8 +143,12 @@ fn main() -> Result<(), Error> {
     })?;
 
     let cursor = store.cursor(old.id)?;
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_resources(config, Vec::<PreparedNode<Unused>>::new(), store)?;
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_resources(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        Vec::<PreparedNode<Unused>>::new(),
+        store,
+    )?;
     let ticket = control
         .submit(
             Lane::Normal,

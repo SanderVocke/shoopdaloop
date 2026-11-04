@@ -231,6 +231,7 @@ fn main() {
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology,
         &mut resources,
         Settings {
@@ -260,9 +261,15 @@ fn main() {
         .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
         .chain([PreparedNode::new(effect, Node::Mix(Mix))])
         .collect();
-    let (runtime_control, mut runtime) =
-        GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph)
-            .unwrap();
+    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        planner,
+        resources,
+        &graph,
+    )
+    .unwrap();
     let mut control = Controls {
         runtime: runtime_control,
         loops: client,

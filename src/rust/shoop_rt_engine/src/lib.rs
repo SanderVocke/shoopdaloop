@@ -337,6 +337,7 @@ pub fn prepare(
         client,
     } = LoopPlanner::prepare(
         config,
+        quantum,
         topology,
         &mut resources,
         LoopSettings {
@@ -377,7 +378,7 @@ pub fn prepare(
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node)),
     );
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_quantum_and_resources(
+    let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
         config,
         description.max_frames,
         quantum,

@@ -179,8 +179,13 @@ impl Harness {
         if reverse {
             nodes.reverse();
         }
-        let (mut control, runtime) =
-            GraphRuntime::prepare_with_planner(config.prepare().unwrap(), nodes, clock).unwrap();
+        let (mut control, runtime) = GraphRuntime::prepare_with_planner(
+            config.prepare().unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+            clock,
+        )
+        .unwrap();
         control.prepare_submissions().unwrap();
         let mut graph = GraphDescription {
             nodes: vec![id(0), id(1), id(2)],
@@ -351,6 +356,7 @@ fn ingress_and_recycled_results_wait_until_the_next_callback_not_next_interval()
     config.budgets.subranges = 0;
     let (mut control, mut runtime) = GraphRuntime::prepare_with_planner(
         config.prepare().unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(id(0), node)],
         planner,
     )
@@ -706,6 +712,7 @@ fn check_resource_allowances(required: bool, midi: bool) {
     let (_control, mut runtime) =
         GraphRuntime::<NoNodes, BudgetClock>::prepare_with_planner_and_resources(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![],
             planner,
             store,

@@ -180,7 +180,8 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                 },
             )
             .unwrap();
-            let mut resolver = Resolver::prepare(topology).unwrap();
+            let mut resolver =
+                Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
             let mut renderer =
                 AudioRenderer::prepare(2, 64, Smoothing::LinearRestart { frames: smooth }).unwrap();
             let mut left = [0.; 40];
@@ -238,7 +239,7 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                     let mut cursor = store.cursor(old.id).unwrap();
                     assert_eq!(store.read(&mut cursor, &mut [0; 16]), Ok(16));
                     loop {
-                        let interval = resolver.preview(Frame(ceiling), &[]).unwrap();
+                        let interval = resolver.preview_tick(&[]).unwrap();
                         let decision = resolver.decisions().unwrap()[0];
                         let state = decision.state;
                         resolver.commit().unwrap();
@@ -261,7 +262,7 @@ fn resolver_driven_audio_matches_scalar_samples_and_smoothing_across_host_cuts()
                             )
                             .unwrap();
                         assert_eq!(store.copy_remaining(), 0);
-                        resolver.finish(interval.end).unwrap();
+                        resolver.finish().unwrap();
                         if interval.end.0 == ceiling {
                             break;
                         }
@@ -741,7 +742,8 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                 },
             )
             .unwrap();
-            let mut resolver = Resolver::prepare(topology).unwrap();
+            let mut resolver =
+                Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
             let mut output = [0.; 128];
             let mut wraps = 0;
             assert_no_heap(|| {
@@ -761,7 +763,7 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                 for frames in &partitions {
                     end += frames;
                     loop {
-                        let interval = resolver.preview(Frame(end), &[]).unwrap();
+                        let interval = resolver.preview_tick(&[]).unwrap();
                         let decision = resolver.decisions().unwrap()[0];
                         let state = decision.state;
                         assert!(decision.playback_discontinuity);
@@ -787,7 +789,7 @@ fn one_sample_content_executes_every_wrap_without_a_renderer_clock_or_quota() {
                                 ],
                             )
                             .unwrap();
-                        resolver.finish(interval.end).unwrap();
+                        resolver.finish().unwrap();
                         if interval.end.0 == end {
                             break;
                         }

@@ -79,6 +79,7 @@ fn run_trigger_case(period: u64, partitions: &[usize], journal: usize) -> Vec<Ev
             },
         )
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap();
     let unrelated = assert_no_heap(|| {
@@ -93,23 +94,20 @@ fn run_trigger_case(period: u64, partitions: &[usize], journal: usize) -> Vec<Ev
     for &frames in partitions {
         end += frames as u64;
         while resolver.frame().0 < end {
-            let interval = assert_no_heap(|| {
-                resolver.preview(Frame(end), &[]).unwrap();
+            assert_no_heap(|| {
+                resolver.preview_tick(&[]).unwrap();
                 let candidate = decision(&resolver, 1);
                 let interval = if candidate.state.mode == Mode::Recording {
                     assert_eq!(candidate.origin, None);
                     refused += 1;
                     // Repeated previews must not retain a failed capture pulse or revision.
-                    let first = resolver.preview(Frame(end), &[unavailable(1)]).unwrap();
+                    let first = resolver.preview_tick(&[unavailable(1)]).unwrap();
                     let state = decision(&resolver, 1);
-                    assert_eq!(
-                        resolver.preview(Frame(end), &[unavailable(1)]).unwrap(),
-                        first
-                    );
+                    assert_eq!(resolver.preview_tick(&[unavailable(1)]).unwrap(), first);
                     assert_eq!(decision(&resolver, 1), state);
                     first
                 } else {
-                    resolver.preview(Frame(end), &[unavailable(1)]).unwrap()
+                    resolver.preview_tick(&[unavailable(1)]).unwrap()
                 };
                 let retained = decision(&resolver, 1);
                 assert_eq!(retained.state.mode, Mode::Playing);
@@ -125,7 +123,7 @@ fn run_trigger_case(period: u64, partitions: &[usize], journal: usize) -> Vec<Ev
             });
             events.extend_from_slice(resolver.events());
             assert_no_heap(|| {
-                resolver.finish(interval.end).unwrap();
+                resolver.finish().unwrap();
                 assert_eq!(resolver.retained_requests(), 4);
             });
         }
@@ -204,6 +202,7 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                 },
             )
             .unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
         )
         .unwrap();
         assert_no_heap(|| {
@@ -217,10 +216,13 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                     },
                 ))
                 .unwrap();
-            resolver.preview(Frame(2), &[]).unwrap();
+            resolver.preview_tick(&[]).unwrap();
             resolver.commit().unwrap();
-            resolver.finish(Frame(2)).unwrap();
+            resolver.finish().unwrap();
             resolver.take_completion(first).unwrap().unwrap();
+            resolver.preview_tick(&[]).unwrap();
+            resolver.commit().unwrap();
+            resolver.finish().unwrap();
             let restart = resolver
                 .submit(request(
                     0,
@@ -231,14 +233,14 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                     },
                 ))
                 .unwrap();
-            resolver.preview(Frame(3), &[]).unwrap();
+            resolver.preview_tick(&[]).unwrap();
             assert_eq!(decision(&resolver, 0).state.capture_revision, Revision(2));
             let observations = [
                 unavailable(0),
                 Observation::CaptureExhausted { target: id(0) },
             ];
             resolver
-                .preview(Frame(3), &observations[..if exhausted { 2 } else { 1 }])
+                .preview_tick(&observations[..if exhausted { 2 } else { 1 }])
                 .unwrap();
             let value = decision(&resolver, 0);
             assert_eq!(
@@ -262,17 +264,17 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                     reason: Error::Capacity
                 }
             );
-            resolver.finish(Frame(3)).unwrap();
+            resolver.finish().unwrap();
             resolver.take_completion(restart).unwrap().unwrap();
             let stop = resolver.submit(request(0, 3, 3, Transition::Stop)).unwrap();
-            resolver.preview(Frame(4), &[unavailable(0)]).unwrap();
+            resolver.preview_tick(&[unavailable(0)]).unwrap();
             resolver.commit().unwrap();
             assert_eq!(resolver.state(id(0)).unwrap().mode, Mode::Stopped);
             assert_eq!(
                 resolver.completion(stop).unwrap().unwrap().outcome,
                 Outcome::Applied { frame: Frame(3) }
             );
-            resolver.finish(Frame(4)).unwrap();
+            resolver.finish().unwrap();
             resolver.take_completion(stop).unwrap().unwrap();
             resolver
                 .submit(request(
@@ -284,7 +286,7 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                     },
                 ))
                 .unwrap();
-            resolver.preview(Frame(5), &[]).unwrap();
+            resolver.preview_tick(&[]).unwrap();
             assert_eq!(decision(&resolver, 0).state.capture_revision, Revision(2));
         });
     }
@@ -303,6 +305,7 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                 },
             )
             .unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
         )
         .unwrap();
         assert_no_heap(|| {
@@ -326,7 +329,7 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
             if reversed {
                 observations.reverse();
             }
-            resolver.preview(Frame(1), &observations).unwrap();
+            resolver.preview_tick(&observations).unwrap();
             resolver.commit().unwrap();
             assert_eq!(
                 resolver.completion(token).unwrap().unwrap().outcome,
@@ -352,6 +355,7 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
             },
         )
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap();
     assert_no_heap(|| {
@@ -366,22 +370,18 @@ fn capture_restart_refusal_and_running_take_exhaustion_have_distinct_effects() {
                     },
                 ))
                 .unwrap();
-            let end = Frame(u64::from(target) + 1);
-            resolver.preview(end, &[]).unwrap();
+            resolver.preview_tick(&[]).unwrap();
             resolver.commit().unwrap();
-            resolver.finish(end).unwrap();
+            resolver.finish().unwrap();
             resolver.take_completion(token).unwrap().unwrap();
         }
         resolver
-            .preview(
-                Frame(3),
-                &[
-                    unavailable(0),
-                    Observation::CaptureExhausted { target: id(0) },
-                    unavailable(1),
-                    Observation::CaptureExhausted { target: id(1) },
-                ],
-            )
+            .preview_tick(&[
+                unavailable(0),
+                Observation::CaptureExhausted { target: id(0) },
+                unavailable(1),
+                Observation::CaptureExhausted { target: id(1) },
+            ])
             .unwrap();
         for target in 0..2 {
             assert_eq!(decision(&resolver, target).state.mode, Mode::Stopped);
@@ -435,40 +435,35 @@ fn request_family_refusal_remains_separate_from_targeted_capture_admission() {
             },
         )
         .unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
     )
     .unwrap();
     assert_no_heap(|| {
         assert_eq!(
-            resolver.preview(Frame(1), &[unavailable(2)]),
+            resolver.preview_tick(&[unavailable(2)]),
             Err(Error::InvalidState)
         );
         assert_eq!(
-            resolver.preview(
-                Frame(1),
-                &[Observation::CaptureUnavailable {
-                    target: LoopId::from_parts(1, 2).unwrap(),
-                    reason: Error::Capacity
-                }]
-            ),
+            resolver.preview_tick(&[Observation::CaptureUnavailable {
+                target: LoopId::from_parts(1, 2).unwrap(),
+                reason: Error::Capacity
+            }]),
             Err(Error::InvalidId)
         );
         assert_eq!(
-            resolver.preview(Frame(1), &[unavailable(1), unavailable(1)]),
+            resolver.preview_tick(&[unavailable(1), unavailable(1)]),
             Err(Error::DuplicateId)
         );
         resolver.submit(request(0, 1, 0, play())).unwrap();
         let parent = resolver.submit(request(2, 2, 0, play())).unwrap();
-        resolver.preview(Frame(1), &[]).unwrap();
+        resolver.preview_tick(&[]).unwrap();
         assert_eq!(decision(&resolver, 1).state.mode, Mode::Recording);
         assert_eq!(decision(&resolver, 1).origin, Some(parent));
         resolver
-            .preview(
-                Frame(1),
-                &[Observation::Refused {
-                    request: parent,
-                    reason: Error::Capacity,
-                }],
-            )
+            .preview_tick(&[Observation::Refused {
+                request: parent,
+                reason: Error::Capacity,
+            }])
             .unwrap();
         resolver.commit().unwrap();
         for target in [1, 2, 3] {
@@ -481,9 +476,9 @@ fn request_family_refusal_remains_separate_from_targeted_capture_admission() {
                 reason: Error::Capacity
             }
         );
-        resolver.finish(Frame(1)).unwrap();
+        resolver.finish().unwrap();
         let next = resolver.submit(request(2, 3, 1, play())).unwrap();
-        resolver.preview(Frame(2), &[unavailable(1)]).unwrap();
+        resolver.preview_tick(&[unavailable(1)]).unwrap();
         resolver.commit().unwrap();
         assert_eq!(resolver.state(id(1)).unwrap().mode, Mode::Stopped);
         for target in [2, 3] {
@@ -497,6 +492,6 @@ fn request_family_refusal_remains_separate_from_targeted_capture_admission() {
             .events()
             .iter()
             .any(|e| e.target == id(1) && e.kind == EventKind::Refused(Error::Capacity)));
-        resolver.finish(Frame(2)).unwrap();
+        resolver.finish().unwrap();
     });
 }

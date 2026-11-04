@@ -114,36 +114,21 @@ fn main() {
         planner,
         nodes,
         client,
-    } = LoopPlanner::prepare(
-        config,
-        topology,
-        &mut resources,
-        Settings {
+    } = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 5,
             media_slots: 4,
             export_slots: 0,
-        },
-        vec![
+        }, vec![
             binding(parent, parent_playback, parent_capture),
             binding(child, child_playback, child_capture),
-        ],
-        vec![],
-        Options::default(),
-    )
+        ], vec![], Options::default())
     .unwrap();
     let nodes = nodes
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
-        config,
-        nodes,
-        planner,
-        resources,
-        &graph,
-        &client.bindings_for(&graph),
-    )
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
     .unwrap();
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));

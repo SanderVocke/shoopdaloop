@@ -211,6 +211,7 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
             client,
         } = LoopPlanner::prepare(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             topology,
             &mut resources,
             settings,
@@ -231,8 +232,14 @@ impl<P: Processor<LoopPlanner>> LoopRuntime<P> {
         if templates == 0 && graph.nodes.len() != nodes.len() {
             return Err(Error::InvalidShape.into());
         }
-        let (mut control, runtime) =
-            GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph)?;
+        let (mut control, runtime) = GraphRuntime::prepare_with_initial_graph(
+            config,
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+            planner,
+            resources,
+            &graph,
+        )?;
         control.prepare_submissions()?;
         let catalog = runtime.catalog().clone();
         Ok((

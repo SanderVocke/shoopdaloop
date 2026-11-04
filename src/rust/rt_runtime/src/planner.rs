@@ -57,7 +57,7 @@ pub trait Planner: Send {
     fn operation_bytes(&self) -> usize {
         0
     }
-    fn set_quantum(&mut self, _quantum: Quantum) -> Result<(), Error> {
+    fn validate_quantum(&self, _quantum: Quantum) -> Result<(), Error> {
         Ok(())
     }
     fn begin_tick(

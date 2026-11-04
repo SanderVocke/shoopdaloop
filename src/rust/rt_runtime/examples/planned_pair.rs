@@ -158,6 +158,7 @@ fn demonstrate(partition: &[usize], _quantum: usize, reverse: bool) -> Result<()
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
         ResourceStore::new(config)?,

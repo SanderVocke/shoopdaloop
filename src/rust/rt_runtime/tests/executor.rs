@@ -154,7 +154,12 @@ impl Harness {
         Self::with_limits(nodes, config())
     }
     fn with_limits(nodes: Vec<PreparedNode<TestProcessor>>, limits: Config) -> Self {
-        let (control, runtime) = GraphRuntime::prepare(limits.prepare().unwrap(), nodes).unwrap();
+        let (control, runtime) = GraphRuntime::prepare(
+            limits.prepare().unwrap(),
+            rt_runtime::Quantum::new(1).unwrap(),
+            nodes,
+        )
+        .unwrap();
         Self {
             control,
             runtime,
@@ -1027,6 +1032,7 @@ fn overflow_delivers_reserved_resets_to_internal_processors_not_only_host_output
     .unwrap();
     let (mut control, mut runtime) = GraphRuntime::prepare(
         limits,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(
             id(0),
             Synth {

@@ -100,6 +100,7 @@ impl Bridge {
         };
         let (mut control, runtime) = GraphRuntime::prepare_with_resources(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node_id(), node)],
             store,
         )

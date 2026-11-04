@@ -220,6 +220,7 @@ fn run(graceful: bool) -> Result<(), Error> {
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(), gain)],
         ledger,
         store,

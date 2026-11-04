@@ -624,16 +624,15 @@ impl LoopPlanner {
     }
 }
 impl Planner for LoopPlanner {
-    fn set_quantum(&mut self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
-        if self.quantum.is_some() {
-            return Err(Error::InvalidState);
+    fn validate_quantum(&self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
+        if quantum != self.resolver.quantum() {
+            return Err(Error::InvalidConfig);
         }
-        self.resolver.set_quantum(quantum).map_err(runtime_error)?;
-        self.quantum = Some(quantum);
         Ok(())
     }
+
     fn begin_tick(&mut self, context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
-        let q = self.quantum.ok_or(Error::InvalidState)?;
+        let q = self.resolver.quantum();
         if context.frame.checked_add(q.frames())? != context.ceiling {
             return Err(Error::InvalidFrame);
         }
@@ -644,7 +643,6 @@ impl Planner for LoopPlanner {
         Ok(())
     }
     fn finish_tick(&mut self, context: FinishContext<'_, Operation, Reply>) -> Result<(), Error> {
-        self.quantum.ok_or(Error::InvalidState)?;
         self.finish_boundary(context)
     }
     type Operation = Operation;
@@ -813,12 +811,6 @@ impl LoopPlanner {
                     graph_epoch,
                     topology_epoch,
                 } => {
-                    if matches!(operation, Operation::ConfigurationReplace { .. })
-                        && self.quantum.is_none()
-                        && context.frame != context.callback_start
-                    {
-                        return Err(Error::InvalidState.into());
-                    }
                     let (graph_epoch, topology_epoch) = self.activate_configuration(
                         node_pairs,
                         topology,
@@ -1112,10 +1104,7 @@ impl LoopPlanner {
                     audio,
                     midi,
                 } => {
-                    if self
-                        .quantum
-                        .is_some_and(|q| frames % q.frames() as u64 != 0)
-                    {
+                    if frames % self.resolver.quantum().frames() as u64 != 0 {
                         return Err(Error::InvalidFrame.into());
                     }
                     let row = self.row(target)?;
@@ -1375,9 +1364,7 @@ impl LoopPlanner {
             }
             row.reset_input = false;
         }
-        self.resolver
-            .finish(context.interval.end)
-            .map_err(runtime_error)?;
+        self.resolver.finish().map_err(runtime_error)?;
         for index in 0..self.pending.len() {
             if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
                 if let PendingKind::Transition { request, pin, .. } = pending.kind {

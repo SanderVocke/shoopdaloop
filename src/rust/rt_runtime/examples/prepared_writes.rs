@@ -99,8 +99,12 @@ fn main() -> Result<(), Error> {
             bytes: 16,
         },
     )?;
-    let (mut control, mut runtime) =
-        GraphRuntime::<Unused>::prepare_with_resources(config, vec![], store)?;
+    let (mut control, mut runtime) = GraphRuntime::<Unused>::prepare_with_resources(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![],
+        store,
+    )?;
     let bytes = vec![0; 4].into_boxed_slice();
     let pointer = bytes.as_ptr();
     let spare = vec![0; 4].into_boxed_slice();

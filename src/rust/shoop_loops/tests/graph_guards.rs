@@ -259,6 +259,7 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
         client: _,
     } = LoopPlanner::prepare(
         config(),
+        rt_runtime::Quantum::new(1).unwrap(),
         topology(),
         &mut resources,
         settings(),
@@ -277,6 +278,7 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
     let initial = graph([0, 1, 2]);
     let refused = GraphRuntime::prepare_with_initial_graph(
         config(),
+        rt_runtime::Quantum::new(1).unwrap(),
         nodes
             .into_iter()
             .map(|(id, node)| PreparedNode::new(id, node))
@@ -294,6 +296,7 @@ fn prepared_processors_refuse_wrong_roles_crossed_owners_and_stale_physical_ids(
         let mut resources = ResourceStore::new(config()).unwrap();
         let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
             config(),
+            rt_runtime::Quantum::new(1).unwrap(),
             topology(),
             &mut resources,
             settings(),
@@ -327,9 +330,57 @@ fn prepared_processors_refuse_wrong_roles_crossed_owners_and_stale_physical_ids(
             initial.nodes[0] = node(0).checked_next_generation().unwrap();
         }
         assert_eq!(
-            GraphRuntime::prepare_with_initial_graph(config(), nodes, planner, resources, &initial)
-                .err(),
+            GraphRuntime::prepare_with_initial_graph(
+                config(),
+                rt_runtime::Quantum::new(1).unwrap(),
+                nodes,
+                planner,
+                resources,
+                &initial
+            )
+            .err(),
             Some(Error::InvalidId)
         );
     }
+}
+
+#[shoop_test]
+fn runtime_preparation_refuses_a_different_quantum_from_its_loop_domain() {
+    let mut limits = config().limits();
+    limits.max_frames = 32;
+    let config = limits.prepare().unwrap();
+    let mut resources = ResourceStore::new(config).unwrap();
+    let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
+        config,
+        rt_runtime::Quantum::new(16).unwrap(),
+        topology(),
+        &mut resources,
+        settings(),
+        bindings(),
+        vec![],
+        Options {
+            node_pairs: NodePairSettings {
+                candidates: 1,
+                sources: 0,
+                source_packets_per_callback: 0,
+            },
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let nodes = nodes
+        .into_iter()
+        .map(|(id, node)| PreparedNode::new(id, node))
+        .collect();
+    assert_eq!(
+        GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            rt_runtime::Quantum::new(32).unwrap(),
+            nodes,
+            planner,
+            resources,
+        )
+        .err(),
+        Some(Error::InvalidConfig)
+    );
 }

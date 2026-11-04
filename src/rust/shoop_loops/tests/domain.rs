@@ -64,7 +64,7 @@ fn submit(r: &mut Resolver, slot: u32, seq: u64, at: u64, transition: Transition
     .unwrap()
 }
 fn prepare(q: usize) -> Resolver {
-    let mut r = Resolver::prepare(
+    let r = Resolver::prepare(
         compile(
             Limits {
                 loop_slots: 4,
@@ -77,9 +77,10 @@ fn prepare(q: usize) -> Resolver {
             &description(q as u64),
         )
         .unwrap(),
+        rt_runtime::Quantum::new(q).unwrap(),
     )
     .unwrap();
-    r.set_quantum(rt_runtime::Quantum::new(q).unwrap()).unwrap();
+
     r
 }
 
@@ -119,7 +120,7 @@ fn fixed_sync_and_explicit_programs_follow_the_shared_tick_clock() {
                 );
             }
             assert!(r.events().iter().all(|event| event.frame.0 % q as u64 == 0));
-            assert_no_heap(|| r.finish(interval.end)).unwrap();
+            assert_no_heap(|| r.finish()).unwrap();
         }
         for request in requests {
             assert_eq!(
@@ -158,7 +159,7 @@ fn fixed_requests_round_up_preserve_requested_times_and_refuse_unaligned_media()
             Err(Error::InvalidFrame)
         );
         for tick in 0..3 {
-            let interval = assert_no_heap(|| r.preview_tick(&[])).unwrap();
+            assert_no_heap(|| r.preview_tick(&[])).unwrap();
             assert_no_heap(|| r.commit()).unwrap();
             assert_eq!(
                 r.state(id(0)).unwrap().mode,
@@ -168,7 +169,7 @@ fn fixed_requests_round_up_preserve_requested_times_and_refuse_unaligned_media()
                     Mode::Playing
                 }
             );
-            assert_no_heap(|| r.finish(interval.end)).unwrap();
+            assert_no_heap(|| r.finish()).unwrap();
         }
         let completion = r.completion(request).unwrap().unwrap();
         assert_eq!(completion.requested, Frame(q as u64 + 1));

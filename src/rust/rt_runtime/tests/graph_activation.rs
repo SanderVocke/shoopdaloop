@@ -334,6 +334,7 @@ impl Harness {
         }
         let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             nodes,
             domain,
             ResourceStore::new(cfg).unwrap(),
@@ -1143,6 +1144,7 @@ fn no_planner_legacy_commit_and_128_staging_returns_keep_the_original_lifecycle(
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(0), Signal)],
         NoPlanner,
         ResourceStore::new(cfg).unwrap(),

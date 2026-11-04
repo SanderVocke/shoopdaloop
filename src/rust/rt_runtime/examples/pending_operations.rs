@@ -196,6 +196,7 @@ fn prepare() -> Result<
     let host = Endpoint::host(PortType::Audio, 0);
     GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(1.0))],
         Domain {
             value: [1.0],

@@ -108,6 +108,7 @@ fn prepare(
     let received_resets = Arc::new(AtomicUsize::new(0));
     let (control, runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(
             node,
             Pass {

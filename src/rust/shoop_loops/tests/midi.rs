@@ -646,8 +646,13 @@ fn runtime_overflow_resets_downstream_and_advances_media_without_interrupting_au
             },
         ),
     ];
-    let (mut control, mut runtime) =
-        GraphRuntime::prepare_with_resources(cfg, nodes, store).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_resources(
+        cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        store,
+    )
+    .unwrap();
     let edge = |from, to, kind| Connection {
         source: Endpoint {
             node: from,
@@ -758,7 +763,8 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let mut renderer = MidiRenderer::prepare(64, 2048).unwrap();
         let mut output = MidiBuffer::new(128, 512).unwrap();
         let mut actual = Vec::new();
@@ -781,7 +787,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
             loop {
                 let interval = assert_no_heap(|| {
                     output.clear();
-                    let interval = resolver.preview(Frame(end), &[]).unwrap();
+                    let interval = resolver.preview_tick(&[]).unwrap();
                     let decision = resolver.decisions().unwrap()[0];
                     resolver.commit().unwrap();
                     let report = renderer
@@ -797,7 +803,7 @@ fn one_sample_midi_wraps_are_lossless_across_host_partitions() {
                         )
                         .unwrap();
                     assert_eq!(report.output_error, None);
-                    resolver.finish(interval.end).unwrap();
+                    resolver.finish().unwrap();
                     interval
                 });
                 collect(&output, interval.start.0, &mut actual);

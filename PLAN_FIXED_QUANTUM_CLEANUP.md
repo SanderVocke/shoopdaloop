@@ -175,16 +175,16 @@ tests and Wasm/Node tests. Search executable sources for the retired interfaces.
 
 ### Stage 3 — mandatory resolver quantum and one settlement path
 
-- [ ] Pass `Quantum` at resolver/planner preparation; eliminate `Option<Quantum>`,
+- [x] Pass `Quantum` at resolver/planner preparation; eliminate `Option<Quantum>`,
   post-construction mode selection and implicit adaptive constructors. Validate
   topology/program/media alignment before publication, including replacement paths.
-- [ ] Keep one whole-tick preview/commit/finish path; remove variable-boundary
+- [x] Keep one whole-tick preview/commit/finish path; remove variable-boundary
   `Resolver::preview`, boundary-minimum scans and compatibility call chains.
   Replace arbitrary finish endpoints with checked completion of the prepared tick.
-- [ ] Migrate resolver tests, examples and test-only planner canaries. Retain semantic
+- [x] Migrate resolver tests, examples and test-only planner canaries. Retain semantic
   coverage of sync cascades, composite iteration/seek, same-frame precedence,
   program changes, recording failures, retimed families and completion ordering.
-- [ ] Consolidate scratch/state copies and retry setup where demonstrably redundant;
+- [x] Consolidate scratch/state copies and retry setup where demonstrably redundant;
   retain rollback for refused capture/graph preparation and cancellation.
 
 Verification: explicit `Q=1` oracles retain exact frame/media results. At `16/32/64`
@@ -347,3 +347,22 @@ full sample/MIDI and callback-budget assertions remain. Invalid planning-header
 fixture cases now corrupt signal descriptors and verify exact returned ownership.
 Fixture descriptor and graph-command wire formats are version 2; production wire
 versions are unchanged. Documentation prose migration is reserved for stage 6.
+
+Stage 3: `Resolver::prepare` and loop/runtime preparation now require an explicit
+quantum. The resolver validates alignment immediately, exposes no setter or adaptive
+preview, and completes only its committed tick without a caller-supplied endpoint.
+`LoopPlanner` uses the resolver's quantum rather than retaining optional duplicate
+mode state; runtime admission rejects mismatched quanta. Arbitrary-callback
+preparation is named `prepare_for_host`; it is not an alternate execution mode.
+Transactional scratch remains because resource/graph refusals require rollback;
+removed boundary search/mode branches had no such role.
+
+Verification: warning-denying workspace build passed; **453 affected native tests**,
+**60 loop-host fixture tests**, and **26 Wasm/Node loop tests** passed. The latter
+include resolver units, larger-Q sync/program behavior, graph admission and program
+changes. Added runtime/domain-quantum mismatch coverage and an internal exhausted-
+clock test for every supported Q, including final valid Q=1 completion. The old
+public jump-to-u64::MAX test is replaced by that internal clock test; late-delivery
+and invalid lifecycle assertions remain public. Direct resolver helpers now drive
+complete ticks to their observation frames, keeping scalar/media oracles intact.
+Logs: `work/cleanup-quantum-{build,core-tests,fixture-tests,wasm}.log`.

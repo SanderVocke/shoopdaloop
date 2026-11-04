@@ -32,7 +32,11 @@ fn topology(nodes: Vec<LoopSpec>, triggers: Vec<Trigger>) -> TopologyDescription
     }
 }
 fn resolver(description: &TopologyDescription, limits: Limits) -> Resolver {
-    Resolver::prepare(compile(limits, description).unwrap()).unwrap()
+    Resolver::prepare(
+        compile(limits, description).unwrap(),
+        rt_runtime::Quantum::new(1).unwrap(),
+    )
+    .unwrap()
 }
 fn request(target: u32, sequence: u64, at: u64, transition: Transition) -> Request {
     Request {
@@ -144,12 +148,15 @@ fn submit(resolver: &mut Resolver, request: Request) -> RequestId {
     assert_no_heap(|| resolver.submit(request)).unwrap()
 }
 fn step(resolver: &mut Resolver, end: u64, observations: &[Observation]) -> Interval {
-    let interval = assert_no_heap(|| resolver.preview(Frame(end), observations)).unwrap();
+    let interval = assert_no_heap(|| resolver.preview_tick(observations)).unwrap();
+    assert!(interval.end <= Frame(end));
     assert_eq!(assert_no_heap(|| resolver.commit()).unwrap(), interval);
     interval
 }
 fn finish(resolver: &mut Resolver, interval: Interval) {
-    assert_no_heap(|| resolver.finish(interval.end)).unwrap();
+    assert_eq!(resolver.frame(), interval.start);
+    assert_no_heap(|| resolver.finish()).unwrap();
+    assert_eq!(resolver.frame(), interval.end);
 }
 fn run(resolver: &mut Resolver, partitions: &[u64]) -> (Vec<Event>, Vec<Vec<(Mode, u64, u64)>>) {
     let mut events = Vec::new();
@@ -530,7 +537,7 @@ fn discarded_preview_has_no_visible_pulses_results_or_state_changes() {
     let input = topology(vec![node(0, 4, None)], vec![]);
     let mut resolver = resolver(&input, Limits::default());
     let start = submit(&mut resolver, request(0, 1, 0, play()));
-    assert_no_heap(|| resolver.preview(Frame(4), &[])).unwrap();
+    assert_no_heap(|| resolver.preview_tick(&[])).unwrap();
     assert_eq!(resolver.state(id(0)).unwrap().mode, Mode::Stopped);
     assert!(resolver.events().is_empty());
     assert!(resolver.completion(start).unwrap().is_none());
@@ -539,7 +546,7 @@ fn discarded_preview_has_no_visible_pulses_results_or_state_changes() {
         reason: Error::Capacity,
     }];
     for _ in 0..3 {
-        assert_no_heap(|| resolver.preview(Frame(4), &refusal)).unwrap();
+        assert_no_heap(|| resolver.preview_tick(&refusal)).unwrap();
     }
     let interval = assert_no_heap(|| resolver.commit()).unwrap();
     assert!(resolver.events().is_empty());
@@ -599,7 +606,7 @@ fn duplicate_failure_observations_are_refused_without_losing_monitored_playback(
     let before = resolver.state(id(0)).unwrap();
     let observation = Observation::CaptureExhausted { target: id(0) };
     assert_eq!(
-        assert_no_heap(|| resolver.preview(Frame(2), &[observation, observation])),
+        assert_no_heap(|| resolver.preview_tick(&[observation, observation])),
         Err(Error::DuplicateId)
     );
     assert_eq!(resolver.state(id(0)).unwrap(), before);
@@ -754,12 +761,12 @@ fn replacement_returns_owners_and_prevents_generation_resurrection() {
 }
 
 #[shoop_test]
-fn invalid_phase_late_delivery_and_absolute_frame_exhaustion_are_explicit() {
+fn invalid_phase_and_late_delivery_are_explicit() {
     let input = topology(vec![node(0, u64::MAX, None)], vec![]);
     let mut resolver = resolver(&input, Limits::default());
     assert_eq!(
-        assert_no_heap(|| resolver.preview(Frame(0), &[])),
-        Err(Error::InvalidFrame)
+        assert_no_heap(|| resolver.finish()),
+        Err(Error::InvalidState)
     );
     run(&mut resolver, &[3]);
     let late = submit(&mut resolver, request(0, 1, 1, play()));
@@ -773,14 +780,10 @@ fn invalid_phase_late_delivery_and_absolute_frame_exhaustion_are_explicit() {
         assert_no_heap(|| resolver.submit(request(0, 2, 3, Transition::Stop))),
         Err(Error::InvalidState)
     );
-    assert_eq!(
-        assert_no_heap(|| resolver.finish(Frame(4))),
-        Err(Error::InvalidState)
-    );
     finish(&mut resolver, interval);
-    assert_eq!(resolver.frame(), Frame(u64::MAX));
+    assert_eq!(resolver.frame(), Frame(4));
     assert_eq!(
-        assert_no_heap(|| resolver.preview(Frame(u64::MAX), &[])),
-        Err(Error::Exhausted)
+        assert_no_heap(|| resolver.finish()),
+        Err(Error::InvalidState)
     );
 }

@@ -98,6 +98,7 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(0.5))],
         NoPlanner,
         ResourceStore::new(config)?,

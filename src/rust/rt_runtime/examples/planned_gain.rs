@@ -106,6 +106,7 @@ fn main() -> Result<(), Error> {
     };
     let (mut control, mut runtime) = GraphRuntime::prepare_with_planner(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain { parameter: 1.0 })],
         planner,
     )?;

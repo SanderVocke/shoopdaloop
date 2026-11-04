@@ -8,10 +8,7 @@ impl LoopPlanner {
         initial: Option<NodePairInitial>,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
-        if initial.is_some_and(|i| {
-            self.quantum
-                .is_some_and(|q| i.frames % q.frames() as u64 != 0)
-        }) {
+        if initial.is_some_and(|i| i.frames % self.resolver.quantum().frames() as u64 != 0) {
             return Err(Error::InvalidFrame);
         }
         let edit = node_pairs::Edit { previous, initial };

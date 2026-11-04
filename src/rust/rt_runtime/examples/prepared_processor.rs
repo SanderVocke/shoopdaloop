@@ -93,6 +93,7 @@ fn main() -> Result<(), Error> {
     };
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, processor)],
         NoPlanner,
         ResourceStore::new(config)?,

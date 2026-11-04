@@ -116,6 +116,7 @@ impl Harness {
         .unwrap();
         let (control, runtime) = GraphRuntime::prepare_with_initial_graph(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![
                 PreparedNode::new(node(0, 1), Gain(2.0)),
                 PreparedNode::new(node(1, 1), Gain(3.0)),
@@ -263,6 +264,7 @@ fn planner_refuses_an_initial_graph_without_its_requirements() {
     .unwrap();
     let refused = GraphRuntime::prepare_with_initial_graph(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         vec![
             PreparedNode::new(node(0, 1), Gain(2.0)),
             PreparedNode::new(node(1, 1), Gain(3.0)),

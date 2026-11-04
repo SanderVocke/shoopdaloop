@@ -467,7 +467,6 @@ impl BoundaryObserver for NoObserver {
     }
 }
 pub struct LoopPlanner {
-    quantum: Option<rt_runtime::Quantum>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -559,6 +558,7 @@ impl LoopPlanner {
     /// templates need node-pair edit banks and stay outside the initial graph.
     pub fn prepare(
         config: PreparedConfig,
+        quantum: rt_runtime::Quantum,
         topology: PreparedTopology,
         resources: &mut ResourceStore,
         settings: Settings,
@@ -593,7 +593,7 @@ impl LoopPlanner {
         if bytes > i32::MAX as usize {
             return Err(Error::Capacity.into());
         }
-        let mut resolver = Resolver::prepare(topology)?;
+        let mut resolver = Resolver::prepare(topology, quantum)?;
         let mut ledger = media::Ledger::prepare(
             slots,
             settings.media_slots,
@@ -797,7 +797,6 @@ impl LoopPlanner {
             vec![crate::Observation::CaptureExhausted { target: dummy }; failure_capacity];
         failures.clear();
         let planner = LoopPlanner {
-            quantum: None,
             observer,
             settings,
             resolver,

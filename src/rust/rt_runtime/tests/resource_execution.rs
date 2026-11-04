@@ -182,6 +182,7 @@ impl<P: Processor> Harness<P> {
     fn new(config: PreparedConfig, processor: P, store: ResourceStore, midi: bool) -> Self {
         let (control, runtime) = GraphRuntime::prepare_with_resources(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(id(), processor)],
             store,
         )
@@ -809,8 +810,13 @@ fn resource_payloads_survive_saturation_refusal_cancellation_recovery_and_discon
     let snapshot = store.snapshot(readable, Frame(0)).unwrap();
     let _held_until_shutdown = store.snapshot(readable, Frame(0)).unwrap();
     let cursor = store.cursor(snapshot.id).unwrap();
-    let (mut control, mut runtime) =
-        GraphRuntime::<Passive>::prepare_with_resources(config, vec![], store).unwrap();
+    let (mut control, mut runtime) = GraphRuntime::<Passive>::prepare_with_resources(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        vec![],
+        store,
+    )
+    .unwrap();
     for (offset, value) in [(0, 1), (64, 2)] {
         control
             .submit(

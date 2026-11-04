@@ -55,7 +55,7 @@ impl Planner for Clock {
         }
         let interval = self
             .resolver
-            .preview(context.ceiling, &[])
+            .preview_tick(&[])
             .map_err(|_| Error::InvalidState)?;
         if self.fault == 1 {
             self.counts.witness.store(3, Ordering::Relaxed);
@@ -82,9 +82,10 @@ impl Planner for Clock {
         Ok(())
     }
     fn finish_tick(&mut self, context: FinishContext<'_>) -> Result<(), Error> {
-        self.resolver
-            .finish(context.interval.end)
-            .map_err(|_| Error::InvalidState)?;
+        if self.resolver.frame() != context.interval.start {
+            return Err(Error::InvalidFrame);
+        }
+        self.resolver.finish().map_err(|_| Error::InvalidState)?;
         self.counts.finishes.store(
             self.counts
                 .finishes
@@ -200,7 +201,8 @@ impl BrowserPlannerCanary {
             },
         )
         .unwrap();
-        let mut resolver = Resolver::prepare(topology).unwrap();
+        let mut resolver =
+            Resolver::prepare(topology, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let decisions = [Decision {
             state: resolver.state(target).unwrap(),
             playback_discontinuity: false,
@@ -243,6 +245,7 @@ impl BrowserPlannerCanary {
         }
         let (control, runtime) = GraphRuntime::prepare_with_initial_graph(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node, Half)],
             clock,
             ResourceStore::new(config).map_err(wire::runtime_error)?,

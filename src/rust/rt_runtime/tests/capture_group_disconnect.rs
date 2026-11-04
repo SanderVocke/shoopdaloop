@@ -303,6 +303,7 @@ fn disconnected_control_preserves_capture_owners_at_every_lifecycle_cut() {
         let drops = Arc::new(Drops::default());
         let (mut control, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
             cfg,
+            rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(
                 NodeId::from_parts(0, 1).unwrap(),
                 NeverRun(drops.clone()),

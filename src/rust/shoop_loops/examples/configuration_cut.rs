@@ -404,6 +404,7 @@ fn run(parts: &[usize]) {
         client,
     } = LoopPlanner::prepare(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         topology(1, 0),
         &mut resources,
         Settings {
@@ -446,9 +447,15 @@ fn run(parts: &[usize]) {
         .map(|(id, node)| PreparedNode::new(id, Node::Loop(node)))
         .chain([PreparedNode::new(node(2), Node::Half(Half))])
         .collect();
-    let (runtime_control, mut runtime) =
-        GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &initial)
-            .unwrap();
+    let (runtime_control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        planner,
+        resources,
+        &initial,
+    )
+    .unwrap();
     let mut control = Controls {
         catalog: runtime.catalog().clone(),
         runtime: runtime_control,
