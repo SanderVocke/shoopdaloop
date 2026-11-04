@@ -4,7 +4,7 @@ The native application and independent `shoop_host` expose the external audio/MI
 graph through `SessionSnapshot.host_graph` and `AppSnapshot.host_graph`. Clients send
 `Command::SetHostGraphConnected(HostGraphRequest)` or the matching `AppIntent`.
 The same command/result/snapshot path works in process, over socket/shared-memory
-IPC, and over trusted-LAN TCP. Application protocol version 17 is required at both
+IPC, and over trusted-LAN TCP. Application protocol version 18 is required at both
 ends. Engine and carrier protocols are unchanged.
 
 The shared [port graph contract](port-graph.md) defines identities, capabilities,

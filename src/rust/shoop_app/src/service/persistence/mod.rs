@@ -390,10 +390,16 @@ impl Service {
                 "wait for admitted changes before committing persistence",
             ));
         }
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }
     pub(super) fn persistence_busy(&self, command: Option<&Command>) -> bool {
+        if matches!(command, Some(Command::Preview(PreviewCommand::Stop))) {
+            return false;
+        }
         if self
             .pending
             .values()
@@ -688,6 +694,9 @@ impl Service {
                         .backend
                         .mutations_pending_through(self.backend.mutation_cursor())
                 {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
@@ -711,6 +720,9 @@ impl Service {
                         }),
                 };
                 if matches!(result, Ok(None)) {
+                    if matches!(ready.target, persistence::Target::Session { .. }) {
+                        self.stop_preview();
+                    }
                     self.persistence_job = Some(Job::Commit(ready));
                     return;
                 }
@@ -930,6 +942,7 @@ impl Service {
                     }],
                 }],
                 bus_display_order: vec![BusId::from_raw(1)],
+                preview_bus: Some(BusId::from_raw(1)),
                 buses: vec![image::Bus {
                     id: BusId::from_raw(1),
                     name: "Master".to_owned(),
@@ -980,6 +993,9 @@ impl Service {
                 .finish()
                 .map_err(|_| CommandError::invalid("incomplete new session image"))?,
         )?;
+        if matches!(ready.target, persistence::Target::Session { .. }) {
+            self.stop_preview();
+        }
         self.persistence_job = Some(Job::Commit(ready));
         Ok(Effect::Persistence(key))
     }

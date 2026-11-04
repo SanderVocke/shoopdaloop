@@ -16,6 +16,8 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        preview: Default::default(),
+        preview_bus: None,
         bus_limits: Default::default(),
         persistence_epoch: 1,
         revision: Revision(revision),

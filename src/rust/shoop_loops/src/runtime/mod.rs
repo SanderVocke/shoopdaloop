@@ -102,6 +102,9 @@ pub enum Selection {
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
+    NodePairSourceCursor {
+        id: NodePairSourceId,
+    },
     NodePairSnapshot {
         resource: rt_runtime::ResourceId,
     },

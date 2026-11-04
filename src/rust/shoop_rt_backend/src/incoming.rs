@@ -122,6 +122,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {
                 frame,
                 callbacks,
@@ -392,6 +393,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
         if pending.purpose == Purpose::CancelReads {
+            return;
+        }
+        if pending.purpose == Purpose::Preview {
+            if let Some(preview) = &mut self.preview {
+                preview
+                    .job
+                    .answered(pending.request, outcome, self.status.callbacks);
+            }
             return;
         }
         if pending.purpose == Purpose::Persistence {
@@ -700,6 +709,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             (
                 Purpose::InjectMidi(_)
                 | Purpose::Smoothing(_)
+                | Purpose::Preview
                 | Purpose::Persistence
                 | Purpose::CancelReads,
                 _,

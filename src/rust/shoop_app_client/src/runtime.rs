@@ -18,6 +18,9 @@ pub trait Delivery {
 /// session client or service to file formats or platform APIs.
 pub trait PersistenceIo {
     fn click_track(&self) -> ClickTrackState;
+    fn take_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        None
+    }
     fn handles(&self, intent: &AppIntent) -> bool;
     fn complete_platform(&mut self, intent: AppIntent);
     fn apply(
@@ -192,13 +195,16 @@ impl Runtime {
     pub fn take_file_request(&mut self) -> Option<ApplicationFileRequest> {
         self.persistence_io.as_mut()?.take_request()
     }
-    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
-        None
+    pub fn take_audio_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        self.persistence_io.as_mut()?.take_preview()
     }
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
         if matches!(
             intent,
-            AppIntent::CompleteIoOutput { .. } | AppIntent::FailIoTask { .. }
+            AppIntent::CompleteIoOutput { .. }
+                | AppIntent::FailIoTask { .. }
+                | AppIntent::CompleteClickTrackPreview { .. }
+                | AppIntent::ClickTrackPreviewStarted { .. }
         ) {
             let handled = self
                 .persistence_io

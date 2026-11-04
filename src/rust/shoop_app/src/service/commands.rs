@@ -26,6 +26,7 @@ impl Service {
                     .map(Effect::HostGraph)
                     .map_err(CommandError::graph)
             }
+            Command::Preview(command) => self.preview_command(command),
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {

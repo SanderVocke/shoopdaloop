@@ -14,6 +14,7 @@ pub(in crate::service) struct Candidate {
     channels: BTreeMap<BusChannelId, BackendBusChannelId>,
     buses: BTreeMap<BusId, Bus>,
     bus_order: Vec<BusId>,
+    preview_bus: Option<BusId>,
     connections: BTreeMap<(PortId, String), Intent>,
     routes: BTreeMap<MixerRouteState, Intent>,
     global: GlobalControlState,
@@ -214,6 +215,7 @@ impl Candidate {
             channels: BTreeMap::new(),
             buses: BTreeMap::new(),
             bus_order: Vec::new(),
+            preview_bus: None,
             connections: BTreeMap::new(),
             routes: BTreeMap::new(),
             global: session.global.clone(),
@@ -517,6 +519,15 @@ impl Candidate {
                     .ok_or_else(|| anyhow!("unknown bus order identity"))?,
             );
         }
+        candidate.preview_bus = session
+            .preview_bus
+            .map(|id| {
+                bus_ids
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| anyhow!("unknown preview bus identity"))
+            })
+            .transpose()?;
         let mut global_ports = Vec::new();
         for port in &session.global_ports {
             if port.state.owner != ApplicationPortOwner::GlobalFxControl {
@@ -644,6 +655,7 @@ impl Candidate {
         }
         service.buses = self.buses;
         service.bus_order = self.bus_order;
+        service.preview_bus = self.preview_bus;
         service.tracks = self.tracks;
         service.track_order = self.order;
         service.loops = self.loops;

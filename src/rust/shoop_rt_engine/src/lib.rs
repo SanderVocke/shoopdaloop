@@ -38,6 +38,7 @@ mod jobs;
 mod model;
 mod node;
 mod pool;
+mod preview;
 mod queue;
 mod render;
 mod replacement;
@@ -117,7 +118,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + limits.loops as usize + limits.buses as usize + 1,
+            limits.strips as usize + limits.loops as usize + limits.buses as usize + 2,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -476,6 +477,7 @@ pub fn prepare(
         dirty: vec![false; loops].into_boxed_slice(),
         limits_changed: false,
         protocol_error: false,
+        preview: None,
         pool,
     };
     let render = Render::new(

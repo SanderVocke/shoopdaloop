@@ -59,8 +59,8 @@ policy for unrelated hardware; it does not replace strict JACK acceptance.
 
 ## Compatibility and scope
 
-The engine protocol is version 4, host setup is version 4, and the application
-protocol is now version 17 for dynamic external ports. The basic restoration checkpoint used version 14. These versions combine native JACK with output-bus
+The engine protocol is version 5, host setup is version 4, and the application
+protocol is now version 18 for dynamic external ports. The basic restoration checkpoint used version 14. These versions combine native JACK with output-bus
 parity from the target branch. Existing driver tags remain unchanged. Version checks
 reject older peers before exchanging the expanded JACK configuration and
 instance metadata. Existing JSON JACK profiles receive backward-compatible port
@@ -82,7 +82,8 @@ and JACK session management remain outside this port feature.
 
 ## Dynamic port feature validation
 
-- Complete retained native workspace suite: 2,622 passed; four existing skips.
+- Complete retained native workspace suite after click-preview integration:
+  2,632 passed; six intentional skips.
 - Strict isolated JACK acceptance: dynamic track/audio-bus publication, live system
   connections, audio/MIDI recording/playback, session restoration with missing peers,
   hotplug reconnection and reclamation over local, socket, shared-memory and TCP
@@ -90,6 +91,8 @@ and JACK session management remain outside this port feature.
   existing one-attachment limit.
 - Startup playback wiring, including swapped channels, retains one Master signal
   path over all four delivery modes before and after save/load.
+- Master click preview produces the expected signal through published outputs over
+  socket/shared-memory IPC and becomes silent after Stop.
 - Prepared pool exhaustion and audio routing past 64 output slots are covered.
   MIDI removal drains reset messages across small server buffers before reclamation.
   Actual callback handoff/retirement is guarded against heap operations.

@@ -376,3 +376,7 @@ src/rust/shoop_port_graph/src/testing.rs,non_realtime_support,excluded,Determini
 src/rust/shoop_app/src/service/publication.rs,app_session,instrumented_indirect,Publication coordination runs inside the shared service tick and receive boundaries.
 src/rust/shoop_rt_host_native/src/jack_publication.rs,native_engine_host,instrumented_direct,Publication start and acknowledged completion are traced on the control worker.
 src/rust/shoop_rt_host_native/src/jack_ports.rs,native_engine_host,excluded,Prepared bounded callback ownership handoff must not trace; publication lifecycle is traced off the callback.
+src/rust/shoop_app/src/service/preview.rs,app_session,instrumented_indirect,Preview staging and playback progression run inside the service tick and command boundaries.
+src/rust/shoop_rt_backend/src/preview.rs,application_ui_and_control,instrumented_indirect,Preview uploads use traced adapter requests and outcomes without media payload tracing.
+src/rust/shoop_rt_engine/src/preview.rs,realtime_engine,excluded,Prepared bounded preview control may run on the audio thread; host and adapter trace request boundaries.
+src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,instrumented_indirect,Preview generation uses the codec worker and runs within the frontend persistence pump boundary.

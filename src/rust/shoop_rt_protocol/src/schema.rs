@@ -154,6 +154,13 @@ pub struct StripShape {
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Request {
+    PreviewStart {
+        request_id: u64,
+        bus: BusId,
+        content: u64,
+        frames: u64,
+    },
+    PreviewStop,
     CreateBus {
         bus: BusId,
         channels: u8,
@@ -378,6 +385,9 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    Preview {
+        request_id: u64,
+    },
     Engine {
         frame: u64,
         /// Callbacks rendered since preparation.
