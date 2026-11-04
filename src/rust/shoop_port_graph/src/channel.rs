@@ -9,6 +9,8 @@ struct State {
     requests: VecDeque<(OperationId, Request)>,
     results: VecDeque<Completion>,
     closed: bool,
+    routing: bool,
+    bindings: BTreeMap<LocalPortKey, IoBinding>,
 }
 #[derive(Clone)]
 pub struct Control(Arc<Mutex<State>>);
@@ -36,6 +38,8 @@ pub fn channel(
         requests: VecDeque::new(),
         results: VecDeque::new(),
         closed: false,
+        routing: false,
+        bindings: BTreeMap::new(),
     }));
     Ok((Control(state.clone()), Worker(state)))
 }
@@ -69,6 +73,17 @@ impl Control {
     }
 }
 impl Controller for Control {
+    fn supports_io_binding(&self) -> bool {
+        self.0.lock().expect("port graph state").routing
+    }
+    fn io_binding(&self, key: LocalPortKey) -> Option<IoBinding> {
+        self.0
+            .lock()
+            .expect("port graph state")
+            .bindings
+            .get(&key)
+            .cloned()
+    }
     fn snapshot(&mut self) -> Arc<Snapshot> {
         Control::snapshot(self)
     }
@@ -80,6 +95,17 @@ impl Controller for Control {
     }
 }
 impl Worker {
+    pub fn enable_io_bindings(&mut self) {
+        self.0.lock().expect("port graph state").routing = true;
+    }
+    pub fn bind_io(&mut self, key: LocalPortKey, binding: Option<IoBinding>) {
+        let mut state = self.0.lock().expect("port graph state");
+        if let Some(binding) = binding {
+            state.bindings.insert(key, binding);
+        } else {
+            state.bindings.remove(&key);
+        }
+    }
     pub fn next_request(&mut self) -> Option<(OperationId, Request)> {
         self.0
             .lock()
@@ -137,6 +163,7 @@ impl Worker {
         snapshot.revision = snapshot.revision.saturating_add(1);
         state.snapshot = Arc::new(snapshot);
         state.closed = true;
+        state.bindings.clear();
         state.requests.clear();
         let pending: Vec<_> = state
             .inflight

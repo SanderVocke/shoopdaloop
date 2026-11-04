@@ -1,4 +1,5 @@
 use crate::jack_graph::{self as graph, Generations};
+use crate::jack_ports;
 use shoop_port_graph::{self as contract, DataType, Direction, Snapshot, Status};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -52,7 +53,7 @@ impl JackConfig {
             &self.midi_inputs,
             &self.midi_outputs,
         ] {
-            if ports.len() > MAX_HOST_PORTS {
+            if ports.len() > 64 {
                 return Err(StartError::InvalidConfig("too many JACK ports"));
             }
             for name in ports {
@@ -120,37 +121,40 @@ impl Notifications {
 
 struct Process {
     cycle: Cycle,
-    audio_inputs: Vec<Port<AudioIn>>,
-    audio_outputs: Vec<Port<AudioOut>>,
-    midi_inputs: Vec<Port<MidiIn>>,
-    midi_outputs: Vec<Port<MidiOut>>,
+    ports: jack_ports::Callback,
     shared: Arc<Shared>,
 }
 struct Io<'a> {
     scope: &'a jack::ProcessScope,
-    inputs: &'a [Port<AudioIn>],
-    outputs: &'a mut [Port<AudioOut>],
-    midi: &'a [Port<MidiIn>],
+    inputs: &'a [Option<Port<AudioIn>>],
+    outputs: &'a mut [Option<Port<AudioOut>>],
+    midi: &'a [Option<Port<MidiIn>>],
     writers: [Option<jack::MidiWriter<'a>>; MAX_HOST_PORTS],
 }
 impl DirectIo for Io<'_> {
     fn begin(&mut self) {}
     fn input(&self, port: usize, offset: usize, samples: &mut [f32]) {
-        samples.copy_from_slice(
-            &self.inputs[port].as_slice(self.scope)[offset..offset + samples.len()],
-        );
+        if let Some(input) = &self.inputs[port] {
+            samples.copy_from_slice(&input.as_slice(self.scope)[offset..offset + samples.len()]);
+        } else {
+            samples.fill(0.);
+        }
     }
     fn output(&mut self, port: usize, offset: usize, samples: &[f32]) {
-        self.outputs[port].as_mut_slice(self.scope)[offset..offset + samples.len()]
-            .copy_from_slice(samples);
+        if let Some(output) = &mut self.outputs[port] {
+            output.as_mut_slice(self.scope)[offset..offset + samples.len()]
+                .copy_from_slice(samples);
+        }
     }
     fn midi_input(&self, port: usize, receive: &mut dyn FnMut(u32, &[u8])) {
-        for event in self.midi[port].iter(self.scope) {
-            receive(event.time, event.bytes);
+        if let Some(input) = &self.midi[port] {
+            for event in input.iter(self.scope) {
+                receive(event.time, event.bytes);
+            }
         }
     }
     fn midi_output(&mut self, port: usize, offset: u32, bytes: &[u8]) -> bool {
-        self.writers[port].as_mut().is_some_and(|writer| {
+        self.writers[port].as_mut().is_none_or(|writer| {
             writer
                 .write(&jack::RawMidi {
                     time: offset,
@@ -162,25 +166,31 @@ impl DirectIo for Io<'_> {
 }
 impl jack::ProcessHandler for Process {
     fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        self.ports.begin(scope);
         let mut writers = std::array::from_fn(|_| None);
-        for (slot, port) in writers.iter_mut().zip(&mut self.midi_outputs) {
-            *slot = Some(port.writer(scope));
+        for (slot, port) in writers.iter_mut().zip(&mut self.ports.midi_outputs) {
+            if let Some(port) = port {
+                *slot = Some(port.writer(scope));
+            }
         }
         if self.shared.failure().is_some() {
-            for port in &mut self.audio_outputs {
+            for port in self.ports.outputs.iter_mut().flatten() {
                 port.as_mut_slice(scope).fill(0.);
             }
+            drop(writers);
+            self.ports.finish();
             return jack::Control::Continue;
         }
         let mut io = Io {
             scope,
-            inputs: &self.audio_inputs,
-            outputs: &mut self.audio_outputs,
-            midi: &self.midi_inputs,
+            inputs: &self.ports.inputs,
+            outputs: &mut self.ports.outputs,
+            midi: &self.ports.midi_inputs,
             writers,
         };
         self.cycle
             .process_direct(scope.n_frames() as usize, &mut io);
+        self.ports.finish();
         self.shared.set_state(DriverRunState::Running);
         jack::Control::Continue
     }
@@ -221,12 +231,52 @@ pub(crate) fn start(
             .map(|name| Name::new(&format!("jack:{name}")).expect("validated port name"))
             .collect()
     };
-    let ports = HostPorts {
+    let mut ports = HostPorts {
         audio_inputs: names(&config.audio_inputs),
         audio_outputs: names(&config.audio_outputs),
         midi_inputs: names(&config.midi_inputs),
         midi_outputs: names(&config.midi_outputs),
     };
+    let capacities = [
+        config.audio_inputs.len() + engine.strips() * engine.strip_channels as usize,
+        config.audio_outputs.len()
+            + engine.strips() * engine.strip_channels as usize
+            + engine.buses as usize * engine.bus_channels as usize,
+        config.midi_inputs.len() + engine.strips(),
+        config.midi_outputs.len() + engine.strips(),
+    ];
+    for (kind, bank) in [
+        &mut ports.audio_inputs,
+        &mut ports.audio_outputs,
+        &mut ports.midi_inputs,
+        &mut ports.midi_outputs,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if capacities[kind] > MAX_HOST_PORTS {
+            return Err(StartError::InvalidConfig(
+                "prepared session exceeds host I/O capacity",
+            ));
+        }
+        while bank.len() < capacities[kind] {
+            bank.push(
+                Name::new(&format!(
+                    "{}{kind}/{}",
+                    shoop_rt_protocol::HOST_IO_PREFIX,
+                    bank.len()
+                ))
+                .expect("bounded private port name"),
+            );
+        }
+    }
+    let slot_names = [
+        &ports.audio_inputs,
+        &ports.audio_outputs,
+        &ports.midi_inputs,
+        &ports.midi_outputs,
+    ]
+    .map(|ports| ports.iter().map(|p| p.as_str().to_owned()).collect());
     let audio_inputs = config
         .audio_inputs
         .iter()
@@ -266,12 +316,13 @@ pub(crate) fn start(
         render,
         shared,
         layout,
-    } = Prepared::new(
+    } = Prepared::with_output_count(
         engine,
         ports,
         DriverKind::Jack,
         sample_rate,
         Some(buffer_frames),
+        config.audio_outputs.len(),
     )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
@@ -286,6 +337,7 @@ pub(crate) fn start(
         graph::CAPABILITIES,
     )
     .map_err(error)?;
+    worker.enable_io_bindings();
     let mut graph = graph::Graph::new();
     for port in &audio_inputs {
         graph
@@ -307,6 +359,22 @@ pub(crate) fn start(
             .own(&client, port, DataType::Midi, Direction::Output)
             .map_err(error)?;
     }
+    let (callback_ports, io_control) = jack_ports::prepare(
+        audio_inputs,
+        audio_outputs,
+        midi_inputs,
+        midi_outputs,
+        slot_names,
+    );
+    let mut publications = crate::jack_publication::Publications::new(
+        io_control,
+        [
+            config.audio_inputs.len(),
+            config.audio_outputs.len(),
+            config.midi_inputs.len(),
+            config.midi_outputs.len(),
+        ],
+    );
     let active = client
         .activate_async(
             shoop_jack::Notifications::new(
@@ -315,10 +383,7 @@ pub(crate) fn start(
             ),
             Process {
                 cycle,
-                audio_inputs,
-                audio_outputs,
-                midi_inputs,
-                midi_outputs,
+                ports: callback_ports,
                 shared: shared.clone(),
             },
         )
@@ -373,6 +438,34 @@ pub(crate) fn start(
                         "JACK graph is changing",
                     ))
                 };
+            let confirm = |graph: &mut graph::Graph,
+                           worker: &mut contract::Worker,
+                           seen: &mut u64,
+                           request: &contract::Request| {
+                let deadline = Instant::now() + Duration::from_millis(100);
+                loop {
+                    let result = refresh(graph, worker, seen).and_then(|()| {
+                        let snapshot = replies.snapshot();
+                        snapshot.check(request)?;
+                        let outcome = graph::Graph::outcome(&snapshot, request)?;
+                        graph::Graph::confirm(&snapshot, request, outcome)
+                    });
+                    match result {
+                        Err(error)
+                            if Instant::now() < deadline
+                                && !shutdown.load(Ordering::Acquire)
+                                && !finished.load(Ordering::Acquire)
+                                && matches!(
+                                    error.kind,
+                                    contract::ErrorKind::Backend | contract::ErrorKind::Busy
+                                ) =>
+                        {
+                            thread::sleep(Duration::from_millis(1))
+                        }
+                        result => return result,
+                    }
+                }
+            };
             while !finished.load(Ordering::Acquire) {
                 if shutdown.load(Ordering::Acquire) {
                     observed.fail(StreamFailure::DeviceNotAvailable);
@@ -384,17 +477,53 @@ pub(crate) fn start(
                     let _ = refresh(&mut graph, &mut worker, &mut seen);
                     last_scan = Instant::now();
                 }
-                if let Some((id, request)) = worker.next_request() {
-                    let result = refresh(&mut graph, &mut worker, &mut seen).and_then(|()| {
-                        graph.apply(client, &generations, &replies.snapshot(), &request)
-                    });
-                    let result = result.and_then(|outcome| {
-                        refresh(&mut graph, &mut worker, &mut seen)?;
-                        graph::Graph::confirm(&replies.snapshot(), &request, outcome)
-                    });
+                if let Some((id, request, result)) =
+                    publications.poll(client, &mut graph, &mut worker)
+                {
+                    let result =
+                        result.and_then(|()| confirm(&mut graph, &mut worker, &mut seen, &request));
                     worker.complete(id, result);
                 }
-                thread::sleep(Duration::from_millis(5));
+                if !publications.busy() {
+                    if let Some((id, request)) = worker.next_request() {
+                        let refreshed = refresh(&mut graph, &mut worker, &mut seen);
+                        if matches!(
+                            request.operation,
+                            contract::Operation::Publish { .. }
+                                | contract::Operation::Unpublish { .. }
+                        ) {
+                            let result = refreshed.and_then(|()| {
+                                publications.start(
+                                    client,
+                                    &mut graph,
+                                    &replies.snapshot(),
+                                    &mut worker,
+                                    id,
+                                    request.clone(),
+                                )
+                            });
+                            let _ = refresh(&mut graph, &mut worker, &mut seen);
+                            match result {
+                                Ok(true) => {}
+                                Ok(false) => {
+                                    let result =
+                                        confirm(&mut graph, &mut worker, &mut seen, &request);
+                                    worker.complete(id, result);
+                                }
+                                Err(error) => worker.complete(id, Err(error)),
+                            }
+                        } else {
+                            let result = refreshed.and_then(|()| {
+                                graph.apply(client, &generations, &replies.snapshot(), &request)
+                            });
+                            let result = result.and_then(|_| {
+                                confirm(&mut graph, &mut worker, &mut seen, &request)
+                            });
+                            worker.complete(id, result);
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(1));
             }
             worker.close();
             if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {

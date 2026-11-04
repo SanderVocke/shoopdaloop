@@ -281,6 +281,7 @@ impl Fixture {
         }
         thread::sleep(Duration::from_millis(2));
     }
+    #[track_caller]
     fn until(&mut self, mut done: impl FnMut(&mut Client) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -288,7 +289,11 @@ impl Fixture {
             if done(&mut self.client) {
                 return;
             }
-            assert!(Instant::now() < deadline, "JACK service workflow timed out");
+            assert!(
+                Instant::now() < deadline,
+                "JACK service workflow timed out: {:?}",
+                self.client.snapshot()
+            );
         }
     }
     fn attach(&mut self) {
@@ -299,6 +304,19 @@ impl Fixture {
     fn command(&mut self, command: protocol::Command) -> Outcome {
         let outcome = self.outcome(command);
         assert!(!matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+        let revision = match outcome {
+            Outcome::Confirmed { revision }
+            | Outcome::TrackCreated { revision, .. }
+            | Outcome::LoopCreated { revision, .. } => Some(revision),
+            _ => None,
+        };
+        if let Some(revision) = revision {
+            self.until(|client| {
+                client
+                    .snapshot()
+                    .is_some_and(|state| state.revision >= revision)
+            });
+        }
         outcome
     }
     fn outcome(&mut self, command: protocol::Command) -> Outcome {
@@ -606,6 +624,20 @@ fn native_jack_service_records_replays_reconnects_and_restores_audio_midi_and_ro
     }
 }
 
+fn peer_links(graph: &HostGraphState, peer: &str) -> usize {
+    graph
+        .links
+        .iter()
+        .filter(|link| {
+            [link.source, link.destination].iter().any(|id| {
+                graph
+                    .port(*id)
+                    .is_some_and(|port| port.name.starts_with(&format!("{peer}:")))
+            })
+        })
+        .count()
+}
+
 fn graph_request(f: &Fixture, local: &str, peer: &str, connected: bool) -> HostGraphRequest {
     let state = &f.client.snapshot().unwrap().host_graph;
     HostGraphRequest {
@@ -675,7 +707,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 .iter()
                 .filter(|port| port.local.is_some())
                 .count(),
-            6
+            10
         );
         let owner = f
             .client
@@ -764,7 +796,10 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
             graph_link(&mut f, &local(bank), other, true);
             graph_link(&mut f, &local(bank), other, true);
         }
-        assert_eq!(f.client.snapshot().unwrap().host_graph.links.len(), 4);
+        assert_eq!(
+            peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
+            4
+        );
         f.command(protocol::Command::Global(GlobalControlAction::SetSync(
             false,
         )));
@@ -823,7 +858,10 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 && midi.load(Ordering::Relaxed) > before.1 + 6
         });
         assert_eq!(f.client.snapshot().unwrap().host_graph.epoch, initial.epoch);
-        assert_eq!(f.client.snapshot().unwrap().host_graph.links.len(), 4);
+        assert_eq!(
+            peer_links(&f.client.snapshot().unwrap().host_graph, &peer_name),
+            4
+        );
         graph_link(&mut f, &local("audio_out_1"), &sink_name, false);
         graph_link(&mut f, &local("midi_out_1"), &synth_name, false);
         thread::sleep(Duration::from_millis(30));
@@ -839,7 +877,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
         peer.as_client()
             .connect_ports_by_name(&local("midi_out_1"), &synth_name)
             .unwrap();
-        f.until(|client| client.snapshot().unwrap().host_graph.links.len() == 4);
+        f.until(|client| peer_links(&client.snapshot().unwrap().host_graph, &peer_name) == 4);
         f.until(|_| {
             audio.load(Ordering::Relaxed) > disconnected.0 + 3
                 && midi.load(Ordering::Relaxed) > disconnected.1 + 6
@@ -881,7 +919,7 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
         drop(peer);
         f.until(|client| {
             let graph = &client.snapshot().unwrap().host_graph;
-            graph.links.is_empty()
+            peer_links(graph, &peer_name) == 0
                 && !graph
                     .ports
                     .iter()
@@ -908,5 +946,311 @@ fn native_jack_graph_hotplug_control_observation_and_detached_playback() {
                 ..
             }
         ));
+    }
+}
+
+#[shoop_test(no_wasm = "dynamic JACK publications over every native session carrier")]
+fn native_jack_dynamic_tracks_buses_connections_and_session_restore() {
+    for mode in [
+        DeliveryMode::Local,
+        DeliveryMode::Socket,
+        DeliveryMode::SharedMemory,
+        DeliveryMode::Tcp,
+    ] {
+        eprintln!("dynamic JACK delivery: {mode:?}");
+        let (peer, _) = match jack::Client::new(
+            &format!("full-jack-peer-{}-{mode:?}", std::process::id()),
+            jack::ClientOptions::NO_START_SERVER,
+        ) {
+            Ok(peer) => peer,
+            Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
+            Err(error) => panic!("required JACK server unavailable: {error}"),
+        };
+        let peer_name = peer.name().to_owned();
+        let source = peer
+            .register_port("source", jack::AudioOut::default())
+            .unwrap();
+        let sink = peer
+            .register_port("sink", jack::AudioIn::default())
+            .unwrap();
+        let keys = peer
+            .register_port("keys", jack::MidiOut::default())
+            .unwrap();
+        let synth = peer
+            .register_port("synth", jack::MidiIn::default())
+            .unwrap();
+        let audio = Arc::new(AtomicUsize::new(0));
+        let midi = Arc::new(AtomicUsize::new(0));
+        let peer = peer
+            .activate_async(
+                (),
+                Peer {
+                    source,
+                    sink,
+                    keys,
+                    synth,
+                    audio: audio.clone(),
+                    midi: midi.clone(),
+                },
+            )
+            .unwrap();
+        let mut f = Fixture::new_on(
+            AudioDriverConfig::Jack(JackAudioDriverConfig {
+                client_name: format!("full-jack-{}-{mode:?}", std::process::id()),
+                audio_inputs: Vec::new(),
+                audio_outputs: Vec::new(),
+                midi_inputs: Vec::new(),
+                midi_outputs: Vec::new(),
+                connections: Vec::new(),
+            }),
+            mode,
+        );
+        f.command(protocol::Command::Global(GlobalControlAction::SetSync(
+            false,
+        )));
+        f.command(protocol::Command::AddBus(BusSpec {
+            name: "Live".into(),
+            channel_count: 1,
+            fx: None,
+            creation_request_id: None,
+        }));
+        let bus = f
+            .client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Live")
+            .unwrap()
+            .clone();
+        let Outcome::TrackCreated { track, loops, .. } =
+            f.command(protocol::Command::AddTrack(TrackSpec {
+                name: "Full JACK".into(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 1,
+                    midi: true,
+                },
+                latency: Default::default(),
+                initial_output_bus_names: vec!["Live".into()],
+                creation_request_id: None,
+            }))
+        else {
+            panic!("track missing")
+        };
+        let ports: Vec<_> = f.client.snapshot().unwrap().connections.application_ports.iter().filter(|port| matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track)).cloned().collect();
+        assert_eq!(ports.len(), 4);
+        for port in &ports {
+            let graph = &f.client.snapshot().unwrap().host_graph;
+            let publication = graph.publication(port.publication.unwrap()).unwrap();
+            assert!(matches!(
+                publication.state,
+                shoop_port_graph::PublicationState::Published(_)
+            ));
+            assert_eq!(publication.spec.name, port.name);
+            assert!(port.name.starts_with("full_jack_direct_"));
+        }
+        for (role, target) in [
+            (PortRole::AudioInput, "source"),
+            (PortRole::MidiInput, "keys"),
+            (PortRole::MidiOutput, "synth"),
+        ] {
+            let port = ports.iter().find(|port| port.role == role).unwrap();
+            f.command(protocol::Command::SetPortConnected {
+                port: port.id,
+                host_port: HostPortId::new(format!("{peer_name}:{target}")),
+                connected: true,
+            });
+        }
+        f.command(protocol::Command::SetPortConnected {
+            port: bus.channels[0].output_port_id,
+            host_port: HostPortId::new(format!("{peer_name}:sink")),
+            connected: true,
+        });
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::RecordClicked,
+        });
+        f.until(|client| client.snapshot().unwrap().tracks[1].loops[0].mode == LoopMode::Recording);
+        thread::sleep(Duration::from_millis(60));
+        f.command(protocol::Command::Loop {
+            track,
+            loop_id: loops[0],
+            action: LoopAction::PlayClicked,
+        });
+        f.until(|_| audio.load(Ordering::Relaxed) > 3 && midi.load(Ordering::Relaxed) > 6);
+        // External patchbay changes must appear in the ordinary connection view.
+        let bus_port = f
+            .client
+            .snapshot()
+            .unwrap()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.id == bus.channels[0].output_port_id)
+            .unwrap()
+            .clone();
+        let owner = f
+            .client
+            .snapshot()
+            .unwrap()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap()
+            .instance_name
+            .clone();
+        let local_bus = format!("{owner}:{}", bus_port.name);
+        peer.as_client()
+            .disconnect_ports_by_name(&local_bus, &format!("{peer_name}:sink"))
+            .unwrap();
+        f.until(|client| {
+            !client
+                .snapshot()
+                .unwrap()
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.application_port_id == bus_port.id)
+        });
+        peer.as_client()
+            .connect_ports_by_name(&local_bus, &format!("{peer_name}:sink"))
+            .unwrap();
+        f.until(|client| {
+            client
+                .snapshot()
+                .unwrap()
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.application_port_id == bus_port.id)
+        });
+        let image = f.capture(1);
+        if let persistence_image::Manifest::Session(session) = &image.manifest {
+            assert!(session
+                .tracks
+                .iter()
+                .flat_map(|track| &track.ports)
+                .all(|port| port.state.publication.is_none()));
+            assert!(session
+                .tracks
+                .iter()
+                .flat_map(|track| &track.ports)
+                .any(|port| port
+                    .external_connections
+                    .iter()
+                    .any(|name| name == &format!("{peer_name}:synth"))));
+        } else {
+            panic!("session capture missing")
+        }
+        if !matches!(mode, DeliveryMode::SharedMemory) {
+            f.reconnect();
+        }
+        let before = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
+        f.until(|_| {
+            audio.load(Ordering::Relaxed) > before.0 + 3
+                && midi.load(Ordering::Relaxed) > before.1 + 6
+        });
+        drop(peer);
+        f.until(|client| {
+            !client
+                .snapshot()
+                .unwrap()
+                .host_graph
+                .ports
+                .iter()
+                .any(|port| port.name.starts_with(&format!("{peer_name}:")))
+        });
+        f.load(image);
+        assert!(f
+            .client
+            .snapshot()
+            .unwrap()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| link.host_port_id.as_str() == format!("{peer_name}:synth")));
+        let (replacement, _) =
+            jack::Client::new(&peer_name, jack::ClientOptions::NO_START_SERVER).unwrap();
+        let source = replacement
+            .register_port("source", jack::AudioOut::default())
+            .unwrap();
+        let sink = replacement
+            .register_port("sink", jack::AudioIn::default())
+            .unwrap();
+        let keys = replacement
+            .register_port("keys", jack::MidiOut::default())
+            .unwrap();
+        let synth = replacement
+            .register_port("synth", jack::MidiIn::default())
+            .unwrap();
+        let peer = replacement
+            .activate_async(
+                (),
+                Peer {
+                    source,
+                    sink,
+                    keys,
+                    synth,
+                    audio: audio.clone(),
+                    midi: midi.clone(),
+                },
+            )
+            .unwrap();
+        let restored = f
+            .client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|track| track.name == "Full JACK")
+            .unwrap()
+            .clone();
+        assert_ne!(restored.id, track);
+        f.until(|client| {
+            client
+                .snapshot()
+                .unwrap()
+                .connections
+                .confirmed_links
+                .iter()
+                .any(|link| link.host_port_id.as_str() == format!("{peer_name}:synth"))
+        });
+        f.command(protocol::Command::Loop {
+            track: restored.id,
+            loop_id: restored.loops[0].id,
+            action: LoopAction::PlayClicked,
+        });
+        let before = (audio.load(Ordering::Relaxed), midi.load(Ordering::Relaxed));
+        f.until(|_| {
+            audio.load(Ordering::Relaxed) > before.0 + 3
+                && midi.load(Ordering::Relaxed) > before.1 + 6
+        });
+        let published: Vec<_> = f.client.snapshot().unwrap().connections.application_ports.iter().filter(|port| matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == restored.id)).map(|port| port.publication.unwrap()).collect();
+        f.command(protocol::Command::Track {
+            track: restored.id,
+            action: TrackAction::Remove,
+        });
+        assert!(published.iter().all(|key| f
+            .client
+            .snapshot()
+            .unwrap()
+            .host_graph
+            .publication(*key)
+            .is_none()));
+        let bus = f
+            .client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Live")
+            .unwrap()
+            .id;
+        f.command(protocol::Command::Bus {
+            bus,
+            action: BusAction::Remove,
+        });
+        assert!(peer.as_client().port_by_name(&local_bus).is_none());
     }
 }

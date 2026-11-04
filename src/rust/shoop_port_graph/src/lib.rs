@@ -20,7 +20,7 @@ pub mod testing;
 
 pub const MAX_PORTS: usize = 4096;
 pub const MAX_LINKS: usize = 8192;
-pub const MAX_PUBLICATIONS: usize = 256;
+pub const MAX_PUBLICATIONS: usize = 4096;
 pub const MAX_PENDING: usize = 64;
 
 macro_rules! identity {
@@ -120,6 +120,7 @@ pub struct Port {
     pub data_type: DataType,
     pub direction: Direction,
     pub local: Option<LocalPortKey>,
+    pub physical: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -470,8 +471,20 @@ pub struct Completion {
     pub result: Result<Outcome, Error>,
 }
 
+/// Opaque host-private engine route for a published endpoint; never serialized.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IoBinding {
+    pub port: String,
+}
+
 /// Control-side interface. Completion confirms an observed state, never permanent connectivity.
 pub trait Controller: Send {
+    fn supports_io_binding(&self) -> bool {
+        false
+    }
+    fn io_binding(&self, _: LocalPortKey) -> Option<IoBinding> {
+        None
+    }
     fn snapshot(&mut self) -> Arc<Snapshot>;
     fn submit(&mut self, request: Request) -> Result<OperationId, Error>;
     fn take_result(&mut self) -> Option<Completion>;

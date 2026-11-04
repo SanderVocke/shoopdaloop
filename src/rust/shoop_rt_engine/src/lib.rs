@@ -346,9 +346,9 @@ pub fn prepare(
         .catalog()
         .planner()
         .ok_or(rt_runtime::Error::InvalidState)?;
-    let mut master_outputs = [0u64; shoop_rt_protocol::MAX_STRIP_CHANNELS];
+    let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
-        master_outputs[channel as usize] |= 1 << host;
+        master_outputs[channel as usize].set(host as usize, true);
     }
     let encoder = Encoder::new(loop_limits);
     let image = vec![0; encoder.image_bytes()].into_boxed_slice();

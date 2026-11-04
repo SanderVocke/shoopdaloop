@@ -62,6 +62,7 @@ impl FakeProvider {
             data_type: spec.data_type,
             direction: spec.direction,
             local: None,
+            physical: false,
         });
         self.publish();
         id
@@ -202,6 +203,7 @@ impl FakeProvider {
                     data_type: spec.data_type,
                     direction: spec.direction,
                     local: Some(*key),
+                    physical: false,
                 });
                 self.state
                     .publications

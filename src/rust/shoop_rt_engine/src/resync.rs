@@ -44,7 +44,7 @@ impl ControlEndpoint {
         let strip = self.model.strips[cursor.index]?;
         while cursor.part < PORT_KINDS.len() {
             let kind = PORT_KINDS[cursor.part];
-            let (channels, masks): (usize, &[u64]) = match kind {
+            let (channels, masks): (usize, &[crate::model::HostMask]) = match kind {
                 PortKind::AudioIn => (strip.shape.audio_inputs as usize, strip.inputs.current()),
                 PortKind::AudioOut => (strip.shape.audio_outputs as usize, strip.outputs.current()),
                 PortKind::MidiIn => (
@@ -58,10 +58,10 @@ impl ControlEndpoint {
             };
             while cursor.channel < channels {
                 let mask = masks[cursor.channel];
-                while cursor.bit < 64 {
+                while cursor.bit < crate::MAX_HOST_PORTS {
                     let bit = cursor.bit;
                     cursor.bit += 1;
-                    if mask & (1 << bit) != 0 {
+                    if mask.contains(bit) {
                         return Some(StateRecord::Connection {
                             port: EnginePort::Strip(StripPort {
                                 strip: strip.id,
@@ -252,10 +252,10 @@ impl ControlEndpoint {
                     }
                     while cursor.channel < bus.channels as usize {
                         let mask = bus.outputs.current()[cursor.channel];
-                        while cursor.bit < 64 {
+                        while cursor.bit < crate::MAX_HOST_PORTS {
                             let bit = cursor.bit;
                             cursor.bit += 1;
-                            if mask & (1 << bit) != 0 {
+                            if mask.contains(bit) {
                                 return Some(StateRecord::Connection {
                                     port: EnginePort::Bus(BusPort {
                                         bus: bus.id,

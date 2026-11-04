@@ -394,6 +394,13 @@ impl Service {
         Ok(Effect::Persistence(key))
     }
     pub(super) fn persistence_busy(&self, command: Option<&Command>) -> bool {
+        if self
+            .pending
+            .values()
+            .any(|pending| matches!(pending.effect, Effect::SessionPublished))
+        {
+            return true;
+        }
         match self.persistence_job {
             Some(Job::Commit(_)) => true,
             Some(Job::Capture { .. }) => !matches!(
@@ -763,10 +770,22 @@ impl Service {
                         .then_some(*id)
                 });
                 if let Some(id) = operation {
+                    let publish = outcome.is_ok()
+                        && self.dynamic_ports()
+                        && matches!(ready.target, persistence::Target::Session { .. });
                     if let Err(error) = outcome {
                         self.pending.get_mut(&id).unwrap().error = Some(CommandError::from(error));
                     }
-                    self.finish(id);
+                    if publish {
+                        let pending = self.pending.get_mut(&id).unwrap();
+                        pending.effect = Effect::SessionPublished;
+                        pending.first = 1;
+                        pending.last = 0;
+                        pending.completed.clear();
+                        self.advance_publications();
+                    } else {
+                        self.finish(id);
+                    }
                 }
             }
             job => self.persistence_job = Some(job),

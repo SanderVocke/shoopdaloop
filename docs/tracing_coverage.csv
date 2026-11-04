@@ -373,3 +373,6 @@ src/rust/shoop_rt_host_native/src/jack_graph.rs,native_engine_host,instrumented_
 src/rust/shoop_port_graph/src/lib.rs,non_realtime_support,excluded,Driver independent graph values and validation have no application execution boundary.
 src/rust/shoop_port_graph/src/channel.rs,non_realtime_support,excluded,Bounded control channel is shared infrastructure; service and native worker boundaries own tracing.
 src/rust/shoop_port_graph/src/testing.rs,non_realtime_support,excluded,Deterministic provider and shared conformance scenarios are test support.
+src/rust/shoop_app/src/service/publication.rs,app_session,instrumented_indirect,Publication coordination runs inside the shared service tick and receive boundaries.
+src/rust/shoop_rt_host_native/src/jack_publication.rs,native_engine_host,instrumented_direct,Publication start and acknowledged completion are traced on the control worker.
+src/rust/shoop_rt_host_native/src/jack_ports.rs,native_engine_host,excluded,Prepared bounded callback ownership handoff must not trace; publication lifecycle is traced off the callback.

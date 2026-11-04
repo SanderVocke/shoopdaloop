@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub(crate) const CAPABILITIES: Capabilities = Capabilities {
     discovery: true,
     connections: true,
-    publication: false,
+    publication: true,
     renaming: true,
 };
 const NATIVE_PORTS: usize = 65536;
@@ -53,6 +53,8 @@ pub(crate) struct Graph {
     identities: BTreeMap<(jack::PortId, u64), EndpointId>,
     owned: BTreeMap<jack::PortId, (LocalPortKey, PortSpec)>,
     live: BTreeMap<EndpointId, (jack::PortId, u64)>,
+    stages: BTreeMap<LocalPortKey, u8>,
+    failed: BTreeMap<LocalPortKey, (PortSpec, Error)>,
 }
 impl Graph {
     pub fn new() -> Self {
@@ -61,6 +63,8 @@ impl Graph {
             identities: BTreeMap::new(),
             owned: BTreeMap::new(),
             live: BTreeMap::new(),
+            stages: BTreeMap::new(),
+            failed: BTreeMap::new(),
         }
     }
     pub fn own<Spec>(
@@ -84,6 +88,23 @@ impl Graph {
         );
         Ok(())
     }
+    pub fn add(&mut self, native: jack::PortId, key: LocalPortKey, spec: PortSpec) {
+        self.failed.remove(&key);
+        self.owned.insert(native, (key, spec));
+        self.stages.insert(key, 1);
+    }
+    pub fn phase(&mut self, key: LocalPortKey, phase: u8) {
+        self.stages.insert(key, phase);
+    }
+    pub fn forget(&mut self, key: LocalPortKey) {
+        self.owned.retain(|_, (owned, _)| *owned != key);
+        self.stages.remove(&key);
+        self.failed.remove(&key);
+    }
+    pub fn fail(&mut self, key: LocalPortKey, spec: PortSpec, error: Error) {
+        self.forget(key);
+        self.failed.insert(key, (spec, error));
+    }
     pub fn read(
         &mut self,
         client: &jack::Client,
@@ -99,7 +120,16 @@ impl Graph {
         let mut ports = BTreeMap::new();
         let mut native = BTreeMap::new();
         let mut live = BTreeMap::new();
-        let mut publications = Vec::new();
+        let mut publications: Vec<_> = self
+            .failed
+            .iter()
+            .map(|(key, (spec, error))| Publication {
+                key: *key,
+                spec: spec.clone(),
+                state: PublicationState::Failed(error.clone()),
+            })
+            .collect();
+        let mut hidden = BTreeSet::new();
         let mut seen = BTreeSet::new();
         for name in names {
             if !name_valid(&name) {
@@ -120,6 +150,17 @@ impl Graph {
                 Direction::Output
             };
             let native_id = shoop_jack::port_id(client, &port).ok_or_else(stale)?;
+            if let Some((key, spec)) = self.owned.get(&native_id) {
+                if self.stages.get(key) == Some(&1) {
+                    hidden.insert(name);
+                    publications.push(Publication {
+                        key: *key,
+                        spec: spec.clone(),
+                        state: PublicationState::Publishing,
+                    });
+                    continue;
+                }
+            }
             let generation = generations.get(native_id)?;
             let identity = (native_id, generation);
             seen.insert(identity);
@@ -138,7 +179,11 @@ impl Graph {
                 publications.push(Publication {
                     key,
                     spec: self.owned[&native_id].1.clone(),
-                    state: PublicationState::Published(id),
+                    state: if self.stages.get(&key) == Some(&2) {
+                        PublicationState::Removing(id)
+                    } else {
+                        PublicationState::Published(id)
+                    },
                 });
             }
             ports.insert(
@@ -146,10 +191,15 @@ impl Graph {
                 Port {
                     id,
                     name: name.clone(),
-                    locator: local.is_none().then_some(name),
+                    locator: Some(if local.is_some() {
+                        format!("local/{}", self.owned[&native_id].1.name)
+                    } else {
+                        name
+                    }),
                     data_type,
                     direction,
                     local,
+                    physical: port.flags().contains(jack::PortFlags::IS_PHYSICAL),
                 },
             );
             native.insert(id, port);
@@ -161,6 +211,9 @@ impl Graph {
             .filter(|port| port.direction == Direction::Output)
         {
             for destination in native[&source.id].get_connections() {
+                if hidden.contains(&destination) {
+                    continue;
+                }
                 let destination = ports.get(&destination).ok_or_else(stale)?;
                 if source.local.is_some() || destination.local.is_some() {
                     if links.len() == MAX_LINKS {
@@ -248,7 +301,10 @@ impl Graph {
                 Ok(Outcome::Connected)
             }
             Operation::Rename { port, name } => {
-                if name.len() > 59 || name.contains([':', ',', '\0']) || name.trim().is_empty() {
+                if name.len() + client.name().len() + 1 > 255
+                    || name.contains([':', ',', '\0'])
+                    || name.trim().is_empty()
+                {
                     return Err(Error::new(
                         ErrorKind::Invalid,
                         "invalid JACK short port name",
@@ -267,6 +323,23 @@ impl Graph {
                 ErrorKind::Unsupported,
                 "JACK publication requires a prepared callback binding",
             )),
+        }
+    }
+    pub fn outcome(snapshot: &Snapshot, request: &Request) -> Result<Outcome, Error> {
+        match &request.operation {
+            Operation::Publish { key, .. } => match snapshot.publication(*key).map(|p| &p.state) {
+                Some(PublicationState::Published(port)) => Ok(Outcome::Published {
+                    key: *key,
+                    port: *port,
+                }),
+                _ => Err(Error::new(
+                    ErrorKind::Unavailable,
+                    "publication was not observed",
+                )),
+            },
+            Operation::Unpublish { .. } => Ok(Outcome::Unpublished),
+            Operation::Connect { .. } => Ok(Outcome::Connected),
+            Operation::Rename { .. } => Ok(Outcome::Renamed),
         }
     }
     pub fn confirm(
@@ -295,7 +368,10 @@ impl Graph {
                     .rsplit_once(':')
                     .is_some_and(|(_, short)| short == name)
             }),
-            _ => false,
+            Operation::Publish { key, .. } => snapshot
+                .publication(*key)
+                .is_some_and(|p| matches!(p.state, PublicationState::Published(_))),
+            Operation::Unpublish { key } => snapshot.publication(*key).is_none(),
         };
         if observed {
             Ok(outcome)

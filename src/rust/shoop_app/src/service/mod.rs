@@ -13,6 +13,7 @@ mod media;
 #[path = "persistence/mod.rs"]
 mod persistence_jobs;
 mod projection;
+mod publication;
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::sync::Arc;
@@ -82,6 +83,8 @@ enum Effect {
     Shutdown,
     Persistence(persistence::Key),
     HostGraph(shoop_port_graph::OperationId),
+    Connection(PortId, String),
+    SessionPublished,
 }
 
 struct Pending {
@@ -92,6 +95,9 @@ struct Pending {
     completed: BTreeSet<u64>,
     error: Option<CommandError>,
     effect: Effect,
+    publications: Vec<HostGraphLocalKey>,
+    retiring: bool,
+    rollback: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -141,6 +147,9 @@ impl CommandError {
 pub struct Service {
     host_graph_controller: Option<Box<dyn crate::HostGraphController>>,
     host_graph: Arc<HostGraphState>,
+    publications: BTreeMap<HostGraphLocalKey, publication::Publication>,
+    graph_connections: BTreeMap<shoop_port_graph::OperationId, (PortId, String)>,
+    master_graph_auto_done: bool,
     backend: Box<dyn Backend>,
     options: ServiceOptions,
     host_settings: Option<HostSettings>,
@@ -199,6 +208,9 @@ impl Service {
         let mut service = Self {
             host_graph_controller: None,
             host_graph: Arc::default(),
+            publications: BTreeMap::new(),
+            graph_connections: BTreeMap::new(),
+            master_graph_auto_done: false,
             backend,
             options,
             host_settings: None,
@@ -276,6 +288,10 @@ impl Service {
         }
         self.host_graph_controller = Some(controller);
         self.poll_host_graph();
+        self.advance_publications();
+        if self.dynamic_ports() && self.options.master_auto_connect {
+            self.connect_master()?;
+        }
         Ok(())
     }
 
@@ -320,6 +336,13 @@ impl Service {
             return;
         };
         while let Some(shoop_port_graph::Completion { id, result }) = controller.take_result() {
+            publication::complete(&mut self.publications, id, &result);
+            if let Some(key) = self.graph_connections.remove(&id) {
+                if let Some(intent) = self.connection_intent.get_mut(&key) {
+                    intent.pending = None;
+                    intent.error = result.as_ref().err().map(|e| e.message.clone());
+                }
+            }
             for pending in self.pending.values_mut() {
                 if matches!(pending.effect, Effect::HostGraph(candidate) if candidate == id) {
                     pending.effect = Effect::None;
@@ -331,6 +354,7 @@ impl Service {
         }
         let graph = controller.snapshot();
         if graph != self.host_graph {
+            self.reconcile_graph(&graph);
             self.host_graph = graph;
             self.bump();
         }
@@ -384,6 +408,7 @@ impl Service {
             && self.init_error.is_none()
             && self.revision.0 != u64::MAX
             && !self.backend.mutations_pending_through(self.init_through)
+            && self.initial_publications_ready()
             && self
                 .bootstrap_track
                 .is_none_or(|id| self.observed.tracks.contains_key(&id))
@@ -706,6 +731,9 @@ impl Service {
                 completed: BTreeSet::new(),
                 error: None,
                 effect: Effect::None,
+                publications: Vec::new(),
+                retiring: false,
+                rollback: false,
             },
         );
         self.emit(ServiceMessage::Accepted {
@@ -733,6 +761,8 @@ impl Service {
             }
             Err(error) => pending.error = Some(error),
         }
+        let keys = self.effect_publications(&self.pending[&id].effect);
+        self.pending.get_mut(&id).unwrap().publications = keys;
         self.bump();
         if before == after {
             self.tick(Duration::ZERO);
@@ -881,6 +911,7 @@ impl Service {
                 let completions = core::mem::take(&mut observed.mutation_completions);
                 self.apply_observation(observed);
                 for completion in completions {
+                    publication::engine_complete(&mut self.publications, &completion);
                     for track in self.tracks.values_mut() {
                         if track
                             .monitoring_intent
@@ -916,22 +947,9 @@ impl Service {
                         }
                     }
                 }
-                let done: Vec<_> = self
-                    .pending
-                    .values()
-                    .filter(|pending| {
-                        !matches!(
-                            pending.effect,
-                            Effect::Persistence(_) | Effect::HostGraph(_)
-                        ) && pending.completed.len() as u64
-                            == pending
-                                .last
-                                .checked_sub(pending.first)
-                                .map_or(0, |count| count + 1)
-                            && !(self.shutdown_ready && self.shutdown == Some(pending.id))
-                    })
-                    .map(|pending| pending.id)
-                    .collect();
+                self.advance_publications();
+                self.advance_graph_connections();
+                let done = self.completed_operations();
                 for id in done {
                     self.finish(id);
                 }
