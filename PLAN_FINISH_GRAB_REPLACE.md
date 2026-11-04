@@ -3,7 +3,7 @@
 ## Status and delivery
 
 Execution started on `feat/finish-grab-replace` from fixed-runtime head
-`2e19210bdbb5e32510322f8b8344715ce7cbefe5`. F0 is in progress. Written using
+`2e19210bdbb5e32510322f8b8344715ce7cbefe5`. F0 is complete; F1 behavior and capacity proofs are in progress. Written using
 [write_plan.md](.agents/prompts/write_plan.md). This plan finishes **P04 and P05
 in the normal application**, including capability advertisement and parity-row
 closure. Completing another internal engine demonstration does not finish it.
@@ -30,7 +30,14 @@ F0: refreshed the parent on 2026-11-04. PR #930 remains open; the merged
 foundation and BufferedProcessor delivery (#937) are present in target
 `2e19210b`. The buffering layer is additive and leaves the production loop hooks
 unchanged; request/effective-time tests will include its declared timing when used.
-The new branch preserves the untracked plan from the prior checkout. Builds and
+The new branch preserves the untracked plan from the prior checkout. Draft
+[PR #940](https://github.com/SanderVocke/shoopdaloop/pull/940) targets the refreshed
+fixed branch. [The application contract](docs/native_session_recovery/grab-replace.md)
+records the gate inventory and reference behavior. A checked portable musical
+window resolver pins the cycle/phase, prefix-continuation, explicit padding and
+u64 range semantics before engine settlement uses them. It does not enable a
+capability or publish resources. F1 remains open until production routes and the
+capacity/admission policy are verified. Builds and
 tests run in CI under the user's standing instruction; local Cargo formatting is
 editing only. P04/P05 remain OPEN during implementation.
 
@@ -186,10 +193,10 @@ requires both. Keep the checklist and evidence current throughout execution.
 
 ### F0 — Establish the new delivery
 
-- [ ] Refresh the merged foundation, target instructions and parent status; record
+- [x] Refresh the merged foundation, target instructions and parent status; record
   actual source/base SHAs. Create the new feature branch and open/push its PR as
   described above, preserving unrelated work. Establish CI on the actual base.
-- [ ] Inventory every refusal, capability gate, mode conversion and production
+- [x] Inventory every refusal, capability gate, mode conversion and production
   constructor named above; include service media/persistence guards, adapter
   canonical-import caches and configuration/family capture exclusions.
 

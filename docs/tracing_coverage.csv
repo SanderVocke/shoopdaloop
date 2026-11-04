@@ -42,6 +42,7 @@ src/rust/shoop_loops/src/audio.rs,portable_loop_library,excluded,Prepared domain
 src/rust/shoop_loops/src/command.rs,portable_loop_library,excluded,Plain-data musical requests and results; no host execution or tracing dependency.
 src/rust/shoop_loops/src/config.rs,portable_loop_library,excluded,Independent storage validation; no host tracing dependency or render execution boundary.
 src/rust/shoop_loops/src/decision.rs,portable_loop_library,excluded,Immutable decisions and observations; host-visible semantic events do not require application tracing.
+src/rust/shoop_loops/src/grab.rs,portable_loop_library,excluded,Checked musical window arithmetic has no execution or ownership boundary; callers report admission and publication outcomes.
 src/rust/shoop_loops/src/ids.rs,portable_loop_library,excluded,Checked identity value types; no execution boundary to instrument.
 src/rust/shoop_loops/src/lib.rs,portable_loop_library,excluded,Portable library declarations and compact errors; not wired into the application backend.
 src/rust/shoop_loops/src/media.rs,portable_loop_library,excluded,Fixed media ownership and checked exports; host tracing stays outside the portable library and generic resource work remains accounted.
