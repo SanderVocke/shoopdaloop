@@ -982,9 +982,24 @@ impl ControlEndpoint {
         if !self.room(bound) {
             return false;
         }
-        let ramp = u64::from(self.settings.ramp);
-        let base = self.at().0.max(self.quiet_until);
-        let mut activation = base;
+        let timing = (|| {
+            let quantum = rt_runtime::Quantum::new(self.limits.quantum as usize)?;
+            let base = quantum.ceil(Frame(self.at().0.max(self.quiet_until)))?;
+            let stop = quantum.ceil(base.checked_add(self.settings.ramp as usize)?)?;
+            let activation = if faded == 0 {
+                base
+            } else if stopping == 0 {
+                stop
+            } else {
+                stop.checked_add(quantum.frames())?
+            };
+            let quiet = activation.checked_add(self.settings.ramp as usize)?;
+            Ok::<_, rt_runtime::Error>((base.0, stop.0, activation.0, quiet.0))
+        })();
+        let Ok((base, stop, activation, quiet)) = timing else {
+            job.fail(Refusal::InvalidValue);
+            return true;
+        };
         for slot in 0..self.next.strips.len() {
             let Some(strip) = self.next.strips[slot] else {
                 continue;
@@ -1018,7 +1033,6 @@ impl ControlEndpoint {
                 let node = self.fades[index];
                 self.submit_job_op(job, Frame(base), node, EngineOp::Presence(false));
             }
-            activation = base + ramp;
             for slot in 0..self.model.loops.len() {
                 if !removed(slot, &self.model, &self.next) {
                     continue;
@@ -1027,7 +1041,7 @@ impl ControlEndpoint {
                 self.cancel_planned(slot, None, Frame(base));
                 self.submit_job_loop(
                     job,
-                    Frame(base + ramp),
+                    Frame(stop),
                     Operation::Transition {
                         target: loop_id(id),
                         timing: Timing::At,
@@ -1035,7 +1049,6 @@ impl ControlEndpoint {
                     },
                     Step::Prelude,
                 );
-                activation = base + ramp + 1;
             }
         }
         for slot in 0..self.next.strips.len() {
@@ -1135,7 +1148,7 @@ impl ControlEndpoint {
         if job.failure.is_some() {
             return true;
         }
-        self.quiet_until = activation + ramp;
+        self.quiet_until = quiet;
         self.submit_job_loop(job, Frame(activation), operation, Step::Activation);
         job.phase = Phase::Activating;
         true
