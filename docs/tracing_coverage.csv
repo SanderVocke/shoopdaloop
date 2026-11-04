@@ -399,3 +399,4 @@ src/rust/shoop_persistence_codec/src/codec/family.rs,client_codec_worker,exclude
 src/rust/shoopdaloop/src/persistence_io/family.rs,application_ui_and_control,instrumented_indirect,"Client input leases and worker/transfer progress run within traced frontend file intents, persistence pumping and codec task boundaries."
 src/rust/shoop_loops/src/runtime/shared.rs,generic_realtime_library,excluded,Prepared fixed history taps and bounded private edit publication; render must not trace.
 src/rust/shoop_rt_engine/src/shared_tests.rs,test_support,excluded,Guarded fixed engine shared history and private publication fixtures.
+src/rust/shoop_rt_engine/src/shared_persistence_tests.rs,test_support,excluded,Production fixed history export codec reload and replacement fixtures.

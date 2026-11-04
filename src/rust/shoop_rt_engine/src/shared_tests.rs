@@ -26,6 +26,9 @@ use shoop_wasm_test_support::{
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
+#[path = "shared_persistence_tests.rs"]
+mod persistence;
+
 type Completion = rt_runtime::transport::Completion<
     crate::EngineCommand,
     rt_runtime::executor::Retired<crate::EngineNode>,
@@ -48,6 +51,7 @@ struct Fixture {
     stimulus: Option<u64>,
     burst: Option<u64>,
     last_execution: Option<Executed>,
+    read_buffer: Option<(resource::Cursor, Box<[u8]>)>,
 }
 fn target(slot: u32) -> LoopId {
     LoopId::from_parts(slot, 1).unwrap()
@@ -169,6 +173,7 @@ impl Fixture {
             stimulus: None,
             burst: None,
             last_execution: None,
+            read_buffer: None,
         };
         h.engine.endpoint.deliver(
             protocol::message::ClientMessage::Hello {
@@ -279,6 +284,13 @@ impl Fixture {
         }
     }
     fn request(&mut self, request: protocol::Request) {
+        assert_eq!(
+            self.request_outcome(request),
+            protocol::Outcome::Done,
+            "{request:?}"
+        );
+    }
+    fn request_outcome(&mut self, request: protocol::Request) -> protocol::Outcome {
         self.engine.endpoint.deliver(
             protocol::message::ClientMessage::Request {
                 correlation: 1,
@@ -294,8 +306,7 @@ impl Fixture {
                     outcome,
                 } = m
                 {
-                    assert_eq!(outcome, protocol::Outcome::Done, "{request:?}");
-                    return;
+                    return outcome;
                 }
             }
             self.render(self.q, false);
@@ -353,7 +364,11 @@ impl Fixture {
                 let Command::Resource(command) = c.request else {
                     panic!("resource completion")
                 };
-                return Ok(command.reply().unwrap());
+                let reply = command.reply().unwrap();
+                if let ResourceRequest::Read { cursor, bytes } = command.into_request() {
+                    self.read_buffer = Some((cursor, bytes));
+                }
+                return Ok(reply);
             }
             self.render(self.partition, true);
         }
@@ -365,6 +380,27 @@ impl Fixture {
             panic!("snapshot")
         };
         s
+    }
+    fn read(&mut self, snapshot: Snapshot) -> Vec<u8> {
+        let resource::Reply::Cursor(mut cursor) = self.resource(ResourceRequest::Cursor {
+            snapshot: snapshot.id,
+        }) else {
+            panic!("cursor")
+        };
+        let mut result = Vec::new();
+        while result.len() < snapshot.description.bytes {
+            let resource::Reply::Read { written, .. } = self.resource(ResourceRequest::Read {
+                cursor,
+                bytes: vec![0; 256].into_boxed_slice(),
+            }) else {
+                panic!("read")
+            };
+            assert!(written > 0);
+            let (next, buffer) = self.read_buffer.take().unwrap();
+            result.extend_from_slice(&buffer[..written]);
+            cursor = next;
+        }
+        result
     }
     fn node_source(
         &mut self,
@@ -410,13 +446,16 @@ impl Fixture {
         media
     }
     fn export(&mut self, slot: u32) -> media::Export {
-        let Reply::Export { media, .. } = self.op(Operation::Export {
+        self.export_owned(slot).1
+    }
+    fn export_owned(&mut self, slot: u32) -> (media::ExportId, media::Export) {
+        let Reply::Export { id, media, .. } = self.op(Operation::Export {
             target: target(slot),
             selection: Selection::Playback,
         }) else {
             panic!("export")
         };
-        media
+        (id, media)
     }
     fn grabs(&mut self) -> (SharedTake, SharedTake, u64) {
         let Reply::History(status) = self.op(Operation::HistoryStatus { source: 0 }) else {

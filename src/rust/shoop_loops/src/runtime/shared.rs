@@ -96,6 +96,7 @@ pub(super) struct Candidate {
     pub original_midi: Option<Revision>,
     pub take: SharedTake,
     pub midi_edit: Option<MidiEditId>,
+    pub midi_import: Option<MidiImportId>,
     pub failure: Option<Error>,
     pub packet_bytes: usize,
 }
@@ -468,7 +469,7 @@ impl Shared {
     pub fn candidate_status(&self, id: CandidateId) -> Result<CandidateStatus, Error> {
         let j = self.candidate(id)?;
         Ok(j.failure.map_or(
-            if j.midi_edit.is_some() {
+            if j.midi_edit.is_some() || j.midi_import.is_some() {
                 CandidateStatus::Building
             } else {
                 CandidateStatus::Ready
@@ -524,12 +525,20 @@ impl Shared {
                 }
             };
         let audio = fork_audio(io)?;
+        let mut midi_import = None;
         let midi = match (source.midi_store, source.midi) {
             (Some(store), Some(resource)) => (|| {
                 let snap = io.snapshot(resource, frame)?;
-                let result = io.fork_midi(store, snap.id);
+                let result = match io.fork_midi(store, snap.id) {
+                    Ok(resource) => Ok(Some(resource)),
+                    Err(Error::InvalidShape) => io.prepare_midi_import(store, snap.id).map(|id| {
+                        midi_import = Some(id);
+                        None
+                    }),
+                    Err(error) => Err(error),
+                };
                 io.release_snapshot(snap.id)?;
-                result.map(Some)
+                result
             })(),
             (None, None) => Ok(None),
             _ => Err(Error::InvalidShape),
@@ -556,9 +565,13 @@ impl Shared {
                 ..source
             },
             midi_edit: None,
+            midi_import,
             failure: None,
             packet_bytes,
         });
+        if midi_import.is_some() {
+            self.building += 1;
+        }
         self.track(SharedTake {
             audio,
             midi,
@@ -706,10 +719,9 @@ impl Shared {
                 let slot = self.turn;
                 self.turn = (slot + 1) % self.jobs.len();
                 self.work.jobs_scanned = self.work.jobs_scanned.saturating_add(1);
-                if self.jobs[slot]
-                    .value
-                    .is_some_and(|j| j.midi_edit.is_some() && j.failure.is_none())
-                {
+                if self.jobs[slot].value.is_some_and(|j| {
+                    (j.midi_edit.is_some() || j.midi_import.is_some()) && j.failure.is_none()
+                }) {
                     selected = Some(slot);
                     break;
                 }
@@ -721,17 +733,34 @@ impl Shared {
             self.work.edit_steps += 1;
             let mut job = self.jobs[slot].value.expect("selected job");
             job.steps = job.steps.saturating_add(1);
-            let edit = job.midi_edit.expect("building edit");
-            match io.render().progress_midi_edit(edit, 1) {
-                Ok(shared_midi::EditStatus::Building) => {}
-                Ok(shared_midi::EditStatus::Ready) => match io.render().commit_midi_edit(edit) {
-                    Ok(_) => job.midi_edit = None,
+            if let Some(import) = job.midi_import {
+                match io.render().progress_midi_import(import, 1) {
+                    Ok(shared_midi::EditStatus::Building) => {}
+                    Ok(shared_midi::EditStatus::Ready) => match io.finish_midi_import(import) {
+                        Ok(resource) => {
+                            job.take.midi = Some(resource);
+                            job.midi_import = None;
+                            self.track(job.take);
+                        }
+                        Err(error) => job.failure = Some(error),
+                    },
                     Err(error) => job.failure = Some(error),
-                },
-                Err(error) => job.failure = Some(error),
+                }
+            } else {
+                let edit = job.midi_edit.expect("building edit");
+                match io.render().progress_midi_edit(edit, 1) {
+                    Ok(shared_midi::EditStatus::Building) => {}
+                    Ok(shared_midi::EditStatus::Ready) => {
+                        match io.render().commit_midi_edit(edit) {
+                            Ok(_) => job.midi_edit = None,
+                            Err(error) => job.failure = Some(error),
+                        }
+                    }
+                    Err(error) => job.failure = Some(error),
+                }
             }
             self.jobs[slot].value = Some(job);
-            if job.midi_edit.is_none() || job.failure.is_some() {
+            if (job.midi_edit.is_none() && job.midi_import.is_none()) || job.failure.is_some() {
                 self.building -= 1;
             }
         }
@@ -753,7 +782,7 @@ impl Shared {
     }
     pub fn take(&mut self, id: CandidateId) -> Result<Candidate, Error> {
         let value = self.candidate(id)?;
-        if value.midi_edit.is_some() && value.failure.is_none() {
+        if (value.midi_edit.is_some() || value.midi_import.is_some()) && value.failure.is_none() {
             self.building -= 1;
         }
         self.jobs[id.slot as usize].value = None;
@@ -767,6 +796,9 @@ impl Shared {
         let job = self.candidate(id)?;
         if let Some(edit) = job.midi_edit {
             io.cancel_midi_edit(edit)?;
+        }
+        if let Some(import) = job.midi_import {
+            io.cancel_midi_import(import)?;
         }
         for resource in [job.take.audio, job.take.midi].into_iter().flatten() {
             io.remove(resource)?;
@@ -898,16 +930,11 @@ impl LoopPlanner {
                     graph,
                     topology: self.resolver.epoch(),
                 };
-                let id = self.shared.as_mut().ok_or(Error::InvalidState)?.begin(
-                    fence,
-                    take,
-                    row.binding.packet_bytes,
-                    io,
-                    frame,
-                )?;
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let id = shared.begin(fence, take, row.binding.packet_bytes, io, frame)?;
                 Ok(Reply::Candidate {
                     id,
-                    status: CandidateStatus::Ready,
+                    status: shared.candidate_status(id)?,
                     steps: 0,
                 })
             }
