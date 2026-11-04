@@ -5159,6 +5159,7 @@ impl Backend for NativeBackend {
         Ok(BackendSnapshot {
             composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
+            profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,
                 xruns: driver.xruns_since_last,

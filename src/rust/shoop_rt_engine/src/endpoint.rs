@@ -149,6 +149,11 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) profiling: Option<rt_runtime::profiling::Reader>,
+    pub(crate) profile_named: Box<[bool]>,
+    pub(crate) profile_names: Box<[shoop_rt_protocol::Name]>,
+    pub(crate) profile_generation: u64,
+    pub(crate) profile_status: Option<rt_runtime::profiling::Status>,
     pub(crate) control: EngineControl,
     pub(crate) loops: LoopClient,
     pub(crate) pool: Pool,
@@ -341,7 +346,8 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn capabilities() -> Capabilities {
-        Capabilities::MIDI_INJECTION
+        Capabilities::PROFILING
+            .union(Capabilities::MIDI_INJECTION)
             .union(Capabilities::BULK_MIDI)
             .union(Capabilities::CONTENT_UPLOAD)
             .union(Capabilities::COMPLETE_REPLACEMENT)
@@ -779,6 +785,13 @@ impl ControlEndpoint {
             Request::LoopRepeatSync { loop_id, enabled } => {
                 self.repeat_sync(correlation, loop_id, enabled)
             }
+            Request::Profiling(enabled) => match &self.profiling {
+                Some(reader) => {
+                    reader.control().set_enabled(enabled);
+                    Ok(Some(Outcome::Done))
+                }
+                _ => Err(Refusal::Unsupported),
+            },
             Request::PreviewStart {
                 request_id,
                 bus,
@@ -1221,6 +1234,7 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.profile_status = None;
                 self.dirty.fill(true);
                 let _ = out.push(EngineMessage::Welcome {
                     version: PROTOCOL_VERSION,
@@ -1291,6 +1305,7 @@ impl Endpoint for ControlEndpoint {
         self.advance_content();
         self.flush(out);
         self.telemetry(out);
+        self.forward_profiling(out);
     }
 }
 

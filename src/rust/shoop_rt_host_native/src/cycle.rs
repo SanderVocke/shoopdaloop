@@ -103,6 +103,7 @@ impl Cycle {
         for (slot, output) in outputs.iter_mut().zip(self.outputs.iter_mut()) {
             *slot = &mut output[..frames];
         }
+        self.shared.profile_input();
         let result = self.render.process(
             AudioBlock {
                 frame: self.render.next_frame(),

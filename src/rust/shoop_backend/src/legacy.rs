@@ -6610,6 +6610,7 @@ impl Backend for EngineBackend {
         Ok(BackendSnapshot {
             composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
+            profiling: Default::default(),
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
@@ -10430,6 +10431,7 @@ impl Backend for FakeBackend {
         Ok(BackendSnapshot {
             composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
+            profiling: Default::default(),
             status: self.status,
             audio_drivers: self.audio_driver_state()?,
             tracks: self

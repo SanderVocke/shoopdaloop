@@ -636,3 +636,13 @@ and retain the normal/full test groups required before behavioral commits/pushes
 - The target advanced to `a192b0ce` (profiling and render optimizations). Its
   integration follows the service milestone; both workstreams independently
   changed protocol shapes, so merged versions must be reconciled before delivery.
+
+- Service checkpoint `08c34392`: Node and Chrome both passed app **49**, client
+  **11**, app protocol **17**, editor **232** and adapter **48** tests. Four-target
+  dependency boundaries and Wasm test dependency isolation passed.
+- Integrated target `a192b0ce`: retained profiling and render optimizations,
+  reconciled app protocol **22** and engine protocol **9**, assigned profiling
+  request tag **40** after the composite request range, and kept one shared test
+  allocator for engine unit modules. Warning-denying full-feature build passed;
+  focused app/protocol/adapter/engine integration tests **203 passed / 1 skipped**.
+  The complete integrated-head gates are still pending.

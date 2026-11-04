@@ -923,6 +923,22 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.persistence_progress()
     }
 
+    fn set_profiling(&mut self, enabled: bool) -> Result<()> {
+        self.ready()?;
+        if !self
+            .capabilities
+            .contains(shoop_rt_protocol::Capabilities::PROFILING)
+        {
+            if enabled {
+                return Err(anyhow!("Runtime profiling is unavailable on this engine"));
+            }
+            return Ok(());
+        }
+        self.requests
+            .push(Request::Profiling(enabled), Purpose::Profiling);
+        Ok(())
+    }
+
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.ready()?;
         let sample_rate = self.driver.map_or(0, |driver| driver.sample_rate);
@@ -1073,6 +1089,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(BackendSnapshot {
             composite_operations: self.composite_operations(),
             composite_receipts: core::mem::take(&mut self.composites.receipts),
+            profiling: self.profiling.view(),
             status,
             audio_drivers: self.driver_runtime_state(),
             tracks,

@@ -49,6 +49,7 @@ impl HostUiState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostAction {
     OpenManager,
+    OpenProfiling,
     ImportProfile,
     OpenSettings,
     CloseUi,
@@ -137,6 +138,7 @@ impl HostControls {
 
     fn show_shortcuts(&mut self, ui: &mut egui::Ui) {
         self.button(ui, "Host Manager…", HostAction::OpenManager, true);
+        self.button(ui, "Profiling…", HostAction::OpenProfiling, true);
         if self.state.as_ref().is_some_and(HostUiState::independent) {
             self.button(
                 ui,
@@ -218,7 +220,12 @@ impl HostControls {
         };
         response.clone().on_hover_ui(|ui| {
             details(ui, self);
-            ui.label("Click for backend and host details");
+            ui.separator();
+            if self.state.is_some() {
+                self.show_shortcuts(ui);
+            } else {
+                self.button(ui, "Profiling…", HostAction::OpenProfiling, true);
+            }
         });
         egui::Popup::from_toggle_button_response(&response)
             .id(ui.make_persistent_id("backend_status_popup"))
@@ -230,6 +237,9 @@ impl HostControls {
                     ui.separator();
                     self.show_shortcuts(ui);
                     self.show_reconnect(ui);
+                } else {
+                    ui.separator();
+                    self.button(ui, "Profiling…", HostAction::OpenProfiling, true);
                 }
             });
     }
@@ -403,6 +413,13 @@ mod tests {
                 .unwrap()
                 .1
                 .center();
+            let profiling = host
+                .action_rects
+                .iter()
+                .find(|(action, _)| *action == HostAction::OpenProfiling)
+                .unwrap()
+                .1;
+            assert!(profiling.top() > manager.y);
             click(&context, &mut host, manager);
             assert_eq!(host.actions, [HostAction::OpenManager]);
         }
@@ -419,6 +436,15 @@ mod tests {
         let text = frame(&context, &mut host, Vec::new());
         assert!(text.contains("Audio runs in this browser page"));
         assert!(text.contains("Driver status: Running"));
-        assert!(host.action_rects.is_empty());
+        assert_eq!(
+            host.action_rects
+                .iter()
+                .map(|(action, _)| *action)
+                .collect::<Vec<_>>(),
+            [HostAction::OpenProfiling]
+        );
+        let profiling = host.action_rects[0].1.center();
+        click(&context, &mut host, profiling);
+        assert_eq!(host.actions, [HostAction::OpenProfiling]);
     }
 }

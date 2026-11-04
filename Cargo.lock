@@ -4499,10 +4499,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_profiling"
+version = "0.3.0"
+dependencies = [
+ "libm",
+ "rtrb",
+ "serde",
+ "shoop_wasm_test_support",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
  "loom",
+ "rt_profiling",
  "rtrb",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -4807,6 +4819,7 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "rt_profiling",
  "serde",
  "shoop_latency",
  "shoop_port_graph",
@@ -5249,6 +5262,7 @@ dependencies = [
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
+ "rt_profiling",
  "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

@@ -169,6 +169,7 @@ pub enum Request {
         retrigger: bool,
         seek: bool,
     },
+    Profiling(bool),
     ContentFamilyBegin {
         id: u64,
         root: LoopSlotId,
@@ -382,6 +383,7 @@ pub struct HostPort {
 pub struct Capabilities(pub u32);
 
 impl Capabilities {
+    pub const PROFILING: Self = Self(1 << 6);
     pub const MIDI_INJECTION: Self = Self(1);
     pub const BULK_MIDI: Self = Self(1 << 1);
     pub const GROWABLE_LIMITS: Self = Self(1 << 2);

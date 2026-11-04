@@ -43,6 +43,7 @@ pub enum TracingStopped {
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
+    SetProfiling(bool),
     SaveTrackDefaults {
         request_id: u64,
         draft: SettingsDraft,
@@ -73,6 +74,7 @@ pub enum SettingsAction {
 impl SettingsAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetProfiling(_) => "profiling.toggle",
             Self::Save(_) => "settings.save",
             Self::SaveTrackDefaults { .. } => "settings.save_track_defaults",
             Self::RequestAudioDriverSwitch { .. } => "settings.request_audio_driver_switch",
@@ -532,6 +534,7 @@ impl SettingsDialog {
     }
 
     fn show_developer(&mut self, ui: &mut egui::Ui, response: &mut SettingsDialogResponse) {
+        ui.heading("Tracing");
         ui.label(
             "Capture performance data or investigate UI/audio bugs. Tracing can be stopped again, but capturing may degrade performance.",
         );

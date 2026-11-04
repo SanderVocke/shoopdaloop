@@ -107,6 +107,7 @@ pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scriptin
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
+pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
 pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
@@ -379,6 +380,11 @@ pub fn register_settings_with_appearance_defaults(
         .category_order(2)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(RUNTIME_PROFILING, false, "Developer", "Runtime profiling",
+            "Measure graph node durations and automatically retain recent timing when an xrun occurs.")
+            .category_order(100).setting_order(0).effect(SettingEffect::Immediate),
     )?;
     builder.register_draft_validator(validate_track_default_latency);
     Ok(())
@@ -1250,6 +1256,7 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    profiling: crate::profiling::Window,
     script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
@@ -1340,6 +1347,10 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_profiling(&mut self) {
+        self.profiling.open = true;
+    }
+
     pub fn set_host_state(&mut self, state: crate::HostUiState) {
         self.host_controls.state = Some(state);
     }
@@ -1348,6 +1359,7 @@ impl AppWidget {
         let mut fresh = Self::new(self.settings.registry());
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
+        fresh.profiling = core::mem::take(&mut self.profiling);
         fresh.logo = self.logo.take();
         fresh.tracing_status = self.tracing_status;
         fresh.tracing_stopped = self.tracing_stopped.take();
@@ -1368,6 +1380,7 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            profiling: Default::default(),
             script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
@@ -1863,6 +1876,24 @@ impl AppWidget {
             &state.scripting.dialogs,
             script_paths,
         ));
+        let mut open_profiling = false;
+        self.host_controls.actions.retain(|action| {
+            if *action == crate::HostAction::OpenProfiling {
+                open_profiling = true;
+                false
+            } else {
+                true
+            }
+        });
+        self.profiling.open |= open_profiling;
+        if let Some(enabled) = self.profiling.show(
+            ui.ctx(),
+            &state.profiling,
+            &state.status,
+            controls_enabled && state.connections.backend_available,
+        ) {
+            settings_actions.push(SettingsAction::SetProfiling(enabled));
+        }
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
