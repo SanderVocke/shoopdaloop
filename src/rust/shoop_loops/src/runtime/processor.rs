@@ -207,7 +207,7 @@ impl Processor<LoopPlanner> for CaptureNode {
                 view.capture
                     .map(|interval| (interval, usize::from(self.binding.channels > 0))),
             )?;
-            block.domain.inputs[slot] = *midi.state();
+            midi.publish_state(&mut block.domain.inputs[slot]);
         }
         Ok(())
     }

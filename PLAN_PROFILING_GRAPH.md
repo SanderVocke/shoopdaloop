@@ -2,7 +2,7 @@
 
 Status: implementation in progress; core collection/transport and graph UI implemented, final validation pending.
 
-Target branch: `feat/runtime-profiling-graph`, based on `feat/runtime-profiling` (profiling PR #938).
+Target branch: `feat/runtime-profiling-graph`, targeting `feat/fixed-quantum-runtime` after basic profiling PR #938 was merged.
 Investigated baseline: `ac4748a4` (2026-11-04).
 
 ## Goals and scope
@@ -335,8 +335,8 @@ Depends on Stages 1–5; this is the final implementation/validation stage.
   time and steady UI frame cost. Resolve unexplained RT regressions and verify
   fixed bounds under dense topology, capture saturation and slow clients.
 - [ ] Commit meaningful milestones, push `feat/runtime-profiling-graph` and update its
-  dedicated PR against `feat/runtime-profiling` with final graph scope and evidence.
-  Keep the underlying profiling PR #938 separate. Do not merge.
+  dedicated PR against `feat/fixed-quantum-runtime` with final graph scope and evidence.
+  Basic profiling PR #938 is already merged. Do not merge this graph PR.
 - [ ] Work through CI failures until required checks are green. Check for automated
   review as it arrives and repeatedly address applicable feedback through reviewer
   approval; explicitly record an unavailable reviewer. Re-run affected checks after
@@ -492,3 +492,14 @@ exit and between-execution statistics to reach the application snapshot with
 matching sample counts; both pass. The injected-clock worklet artifact contract
 also requires a nonzero execution count on captured host callbacks and passes.
 These checks exercise the new envelope context across the real transport paths.
+
+
+### Retarget after basic profiling merged (2026-11-05)
+
+Per the user's instruction, PR #939 now targets `feat/fixed-quantum-runtime`.
+Basic profiling was squash-merged as `a192b0ce` (#938), after render optimizations
+`5b0c166b` (#944). Squash ancestry caused duplicate profiling conflicts. Resolving
+against the exact shared profiling content at `5036ad06` preserves the graph
+implementation and brings in exactly the new target's six-file content delta.
+The final performance baseline moves to `a192b0ce` so the render optimizations
+are present on both sides. Affected validation is repeated after reconciliation.
