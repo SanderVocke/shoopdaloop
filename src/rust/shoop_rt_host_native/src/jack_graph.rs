@@ -67,27 +67,6 @@ impl Graph {
             failed: BTreeMap::new(),
         }
     }
-    pub fn own<Spec>(
-        &mut self,
-        client: &jack::Client,
-        port: &jack::Port<Spec>,
-        data_type: DataType,
-        direction: Direction,
-    ) -> Result<(), Error> {
-        let key = LocalPortKey(self.owned.len() as u64 + 1);
-        self.owned.insert(
-            shoop_jack::port_id(client, port).ok_or_else(stale)?,
-            (
-                key,
-                PortSpec {
-                    name: port.short_name().map_err(backend)?,
-                    data_type,
-                    direction,
-                },
-            ),
-        );
-        Ok(())
-    }
     pub fn add(&mut self, native: jack::PortId, key: LocalPortKey, spec: PortSpec) {
         self.failed.remove(&key);
         self.owned.insert(native, (key, spec));

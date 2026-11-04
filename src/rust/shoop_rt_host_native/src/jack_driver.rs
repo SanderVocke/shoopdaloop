@@ -1,6 +1,6 @@
 use crate::jack_graph::{self as graph, Generations};
 use crate::jack_ports;
-use shoop_port_graph::{self as contract, DataType, Direction, Snapshot, Status};
+use shoop_port_graph::{self as contract, Snapshot, Status};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -8,7 +8,7 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use jack::{AudioIn, AudioOut, MidiIn, MidiOut, Port};
+use jack::{AudioIn, AudioOut, MidiIn, Port};
 use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, Name};
 
@@ -19,22 +19,11 @@ use crate::{assemble, reset_wait, Driver, Prepared, Running, StartError, Started
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JackConfig {
     pub client_name: String,
-    pub audio_inputs: Vec<String>,
-    pub audio_outputs: Vec<String>,
-    pub midi_inputs: Vec<String>,
-    pub midi_outputs: Vec<String>,
-    /// A short endpoint is local; a client:port endpoint belongs to the JACK graph.
-    pub connections: Vec<(String, String)>,
 }
 impl Default for JackConfig {
     fn default() -> Self {
         Self {
             client_name: "ShoopDaLoop".into(),
-            audio_inputs: vec!["audio_in_1".into(), "audio_in_2".into()],
-            audio_outputs: vec!["audio_out_1".into(), "audio_out_2".into()],
-            midi_inputs: vec!["midi_in_1".into()],
-            midi_outputs: vec!["midi_out_1".into()],
-            connections: Vec::new(),
         }
     }
 }
@@ -45,39 +34,6 @@ impl JackConfig {
             || self.client_name.contains([':', '\0'])
         {
             return Err(StartError::InvalidConfig("invalid JACK client name"));
-        }
-        let mut names = std::collections::BTreeSet::new();
-        for ports in [
-            &self.audio_inputs,
-            &self.audio_outputs,
-            &self.midi_inputs,
-            &self.midi_outputs,
-        ] {
-            if ports.len() > 64 {
-                return Err(StartError::InvalidConfig("too many JACK ports"));
-            }
-            for name in ports {
-                if name.trim().is_empty()
-                    || name.len() > 59
-                    || name.contains([':', ',', '\0'])
-                    || !names.insert(name)
-                {
-                    return Err(StartError::InvalidConfig(
-                        "invalid or duplicate JACK port name",
-                    ));
-                }
-            }
-        }
-        if self.connections.len() > 256
-            || self.connections.iter().any(|(a, b)| {
-                [a, b]
-                    .iter()
-                    .any(|s| s.trim().is_empty() || s.len() > 256 || s.contains('\0'))
-            })
-        {
-            return Err(StartError::InvalidConfig(
-                "invalid JACK startup connections",
-            ));
         }
         Ok(())
     }
@@ -225,25 +181,13 @@ pub(crate) fn start(
     let instance_name = client.name().to_owned();
     let sample_rate = client.sample_rate();
     let buffer_frames = client.buffer_size();
-    let names = |ports: &[String]| {
-        ports
-            .iter()
-            .map(|name| Name::new(&format!("jack:{name}")).expect("validated port name"))
-            .collect()
-    };
-    let mut ports = HostPorts {
-        audio_inputs: names(&config.audio_inputs),
-        audio_outputs: names(&config.audio_outputs),
-        midi_inputs: names(&config.midi_inputs),
-        midi_outputs: names(&config.midi_outputs),
-    };
+    let mut ports = HostPorts::numbered(0, 0, 0);
     let capacities = [
-        config.audio_inputs.len() + engine.strips() * engine.strip_channels as usize,
-        config.audio_outputs.len()
-            + engine.strips() * engine.strip_channels as usize
+        engine.strips() * engine.strip_channels as usize,
+        engine.strips() * engine.strip_channels as usize
             + engine.buses as usize * engine.bus_channels as usize,
-        config.midi_inputs.len() + engine.strips(),
-        config.midi_outputs.len() + engine.strips(),
+        engine.strips(),
+        engine.strips(),
     ];
     for (kind, bank) in [
         &mut ports.audio_inputs,
@@ -277,38 +221,6 @@ pub(crate) fn start(
         &ports.midi_outputs,
     ]
     .map(|ports| ports.iter().map(|p| p.as_str().to_owned()).collect());
-    let audio_inputs = config
-        .audio_inputs
-        .iter()
-        .map(|name| {
-            client
-                .register_port(name, AudioIn::default())
-                .map_err(error)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let audio_outputs = config
-        .audio_outputs
-        .iter()
-        .map(|name| {
-            client
-                .register_port(name, AudioOut::default())
-                .map_err(error)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let midi_inputs = config
-        .midi_inputs
-        .iter()
-        .map(|name| client.register_port(name, MidiIn::default()).map_err(error))
-        .collect::<Result<Vec<_>, _>>()?;
-    let midi_outputs = config
-        .midi_outputs
-        .iter()
-        .map(|name| {
-            client
-                .register_port(name, MidiOut::default())
-                .map_err(error)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
     let Prepared {
         description,
         endpoint,
@@ -322,7 +234,7 @@ pub(crate) fn start(
         DriverKind::Jack,
         sample_rate,
         Some(buffer_frames),
-        config.audio_outputs.len(),
+        0,
     )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
@@ -339,60 +251,8 @@ pub(crate) fn start(
     .map_err(error)?;
     worker.enable_io_bindings();
     let mut graph = graph::Graph::new();
-    for port in &audio_inputs {
-        graph
-            .own(&client, port, DataType::Audio, Direction::Input)
-            .map_err(error)?;
-    }
-    for port in &audio_outputs {
-        graph
-            .own(&client, port, DataType::Audio, Direction::Output)
-            .map_err(error)?;
-    }
-    for port in &midi_inputs {
-        graph
-            .own(&client, port, DataType::Midi, Direction::Input)
-            .map_err(error)?;
-    }
-    for port in &midi_outputs {
-        graph
-            .own(&client, port, DataType::Midi, Direction::Output)
-            .map_err(error)?;
-    }
-    let mut bank_key = 1;
-    for (kind, count) in [
-        config.audio_inputs.len(),
-        config.audio_outputs.len(),
-        config.midi_inputs.len(),
-        config.midi_outputs.len(),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        for name in slot_names[kind].iter().take(count) {
-            worker.bind_io(
-                contract::LocalPortKey(bank_key),
-                Some(contract::IoBinding { port: name.clone() }),
-            );
-            bank_key += 1;
-        }
-    }
-    let (callback_ports, io_control) = jack_ports::prepare(
-        audio_inputs,
-        audio_outputs,
-        midi_inputs,
-        midi_outputs,
-        slot_names,
-    );
-    let mut publications = crate::jack_publication::Publications::new(
-        io_control,
-        [
-            config.audio_inputs.len(),
-            config.audio_outputs.len(),
-            config.midi_inputs.len(),
-            config.midi_outputs.len(),
-        ],
-    );
+    let (callback_ports, io_control) = jack_ports::prepare(slot_names);
+    let mut publications = crate::jack_publication::Publications::new(io_control);
     let active = client
         .activate_async(
             shoop_jack::Notifications::new(
@@ -406,24 +266,6 @@ pub(crate) fn start(
             },
         )
         .map_err(error)?;
-    let endpoint_name = |name: &str| {
-        if name.contains(':') {
-            name.to_owned()
-        } else {
-            format!("{instance_name}:{name}")
-        }
-    };
-    for (source, destination) in &config.connections {
-        if let Err(failure) = active
-            .as_client()
-            .connect_ports_by_name(&endpoint_name(source), &endpoint_name(destination))
-        {
-            drop(active);
-            return Err(error(format!(
-                "JACK connection {source} -> {destination}: {failure}"
-            )));
-        }
-    }
     let monitor_stop = Arc::new(AtomicBool::new(false));
     let finished = monitor_stop.clone();
     let observed = shared.clone();

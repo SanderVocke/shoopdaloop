@@ -99,47 +99,33 @@ Unusable device settings fall back to Dummy with a visible warning and do not
 overwrite the saved preference.
 
 **Settings → Audio** selects the application's preferred driver for its next launch.
-In Host Manager, **New host → Audio driver → JACK** exposes the client name; expand
-**JACK ports and connections** to configure local audio/MIDI port names and startup
-source/destination pairs. The JACK server supplies sample rate and buffer size.
-No profile files are required.
+In Host Manager, **New host → Audio driver → JACK** configures the client-name
+hint. Audio/MIDI ports follow the tracks and buses in the session; connections are
+managed in the application's connection dialog or a JACK patchbay. The JACK server
+supplies sample rate and buffer size. No profile files are required.
 
 Both native launch executables accept the same audio overrides:
 
 ```sh
 shoop_host --audio-driver jack --jack-client-name Studio
 shoopdaloop --audio-driver jack --session-transport socket
-shoop_host --audio-driver jack --jack-audio-inputs capture_l,capture_r \
-  --jack-audio-outputs main_l,main_r --jack-midi-inputs= \
-  --jack-connect 'main_l->system:playback_1' \
-  --jack-connect 'main_r->system:playback_2'
 ```
 
-`--audio-driver` accepts `dummy`, `cpal`, or `jack`. JACK port lists are comma-separated;
-an empty list disables that direction. Repeat `--jack-connect` for startup connections.
-Use local short names or external `client:port` names. Application flags override the
-chosen driver's saved profile for this launch only. For `shoop_host --config FILE`,
-flags override the JSON driver configuration; unspecified fields keep their configured
-values when the driver kind matches. Explicitly selecting a driver omitted from the
-build fails with a diagnostic. Audio overrides cannot be used when attaching to an
-existing host. `--help` lists the available options.
+`--audio-driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
+the chosen JACK profile for this launch only. For `shoop_host --config FILE`, flags
+override the JSON driver configuration. Explicitly selecting a driver omitted from
+the build fails with a diagnostic. Audio overrides cannot be used when attaching to
+an existing host. `--help` lists the available options.
 
-Advanced JSON configuration also supports the complete JACK startup configuration:
+The JACK JSON configuration contains only the client-name hint:
 
 ```json
-{
-  "driver": {
-    "Jack": {
-      "client_name": "Studio",
-      "audio_inputs": ["capture_l", "capture_r"],
-      "audio_outputs": ["main_l", "main_r"],
-      "midi_inputs": ["keys"],
-      "midi_outputs": ["events"],
-      "connections": [["main_l", "system:playback_1"], ["main_r", "system:playback_2"]]
-    }
-  }
-}
+{"driver":{"Jack":{"client_name":"Studio"}}}
 ```
+
+Fixed audio/MIDI port lists and startup connection pairs have been removed from
+settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected.
+Connections are persisted in the session through dynamically published ports.
 
 Driver and capacity changes apply at host startup. Live driver switching is a
 tracked temporary gap, as are FX/synths, composite/grab/dry-wet

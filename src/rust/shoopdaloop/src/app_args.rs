@@ -361,7 +361,6 @@ mod native_tests {
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
         draft.set(shoop_egui::SELECTED_AUDIO_DRIVER, "dummy".into());
-        draft.set(shoop_egui::JACK_AUDIO_OUTPUTS, "left,right".into());
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -379,7 +378,6 @@ mod native_tests {
                 "jack",
                 "--jack-client-name",
                 "Live",
-                "--jack-midi-inputs=",
             ])
             .unwrap();
             let shoop_egui::AudioDriverConfig::Jack(config) =
@@ -388,8 +386,6 @@ mod native_tests {
                 panic!("direct JACK expected");
             };
             assert_eq!(config.client_name, "Live");
-            assert_eq!(config.audio_outputs, ["left", "right"]);
-            assert!(config.midi_inputs.is_empty());
         }
         assert_eq!(
             settings.get(shoop_egui::SELECTED_AUDIO_DRIVER).unwrap(),

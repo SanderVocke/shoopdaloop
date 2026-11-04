@@ -17,18 +17,10 @@ pub(crate) struct Publications {
     pending: Option<Pending>,
 }
 impl Publications {
-    pub fn new(io: jack_ports::Control, banks: [usize; 4]) -> Self {
-        let mut key = 1;
-        let mut slots = BTreeMap::new();
-        for (kind, count) in banks.into_iter().enumerate() {
-            for index in 0..count {
-                slots.insert(LocalPortKey(key), Slot { kind, index });
-                key += 1;
-            }
-        }
+    pub fn new(io: jack_ports::Control) -> Self {
         Self {
             io,
-            slots,
+            slots: BTreeMap::new(),
             pending: None,
         }
     }

@@ -96,40 +96,21 @@ pub(crate) struct Control {
     updates: Producer<Update>,
     acknowledgements: Consumer<Ack>,
     used: [Vec<bool>; 4],
-    permanent: [usize; 4],
     names: [Vec<String>; 4],
     next: u64,
 }
-fn slots<T>(values: Vec<Port<T>>, capacity: usize) -> Box<[Option<Port<T>>]> {
-    let mut values: Vec<_> = values.into_iter().map(Some).collect();
-    values.resize_with(capacity, || None);
-    values.into_boxed_slice()
+fn slots<T>(capacity: usize) -> Box<[Option<Port<T>>]> {
+    (0..capacity).map(|_| None).collect()
 }
-pub(crate) fn prepare(
-    inputs: Vec<Port<AudioIn>>,
-    outputs: Vec<Port<AudioOut>>,
-    midi_inputs: Vec<Port<MidiIn>>,
-    midi_outputs: Vec<Port<MidiOut>>,
-    names: [Vec<String>; 4],
-) -> (Callback, Control) {
-    let permanent = [
-        inputs.len(),
-        outputs.len(),
-        midi_inputs.len(),
-        midi_outputs.len(),
-    ];
+pub(crate) fn prepare(names: [Vec<String>; 4]) -> (Callback, Control) {
     let (send, receive) = RingBuffer::new(2);
     let (ack, completed) = RingBuffer::new(2);
-    let used = core::array::from_fn(|kind| {
-        (0..names[kind].len())
-            .map(|index| index < permanent[kind])
-            .collect()
-    });
+    let used = core::array::from_fn(|kind| vec![false; names[kind].len()]);
     let callback = Callback {
-        inputs: slots(inputs, names[0].len()),
-        outputs: slots(outputs, names[1].len()),
-        midi_inputs: slots(midi_inputs, names[2].len()),
-        midi_outputs: slots(midi_outputs, names[3].len()),
+        inputs: slots(names[0].len()),
+        outputs: slots(names[1].len()),
+        midi_inputs: slots(names[2].len()),
+        midi_outputs: slots(names[3].len()),
         updates: receive,
         acknowledgements: ack,
         retired: None,
@@ -141,7 +122,6 @@ pub(crate) fn prepare(
             updates: send,
             acknowledgements: completed,
             used,
-            permanent,
             names,
             next: 1,
         },
@@ -165,9 +145,7 @@ impl Control {
         Ok(Slot { kind, index })
     }
     pub fn release(&mut self, slot: Slot) {
-        if slot.index >= self.permanent[slot.kind] {
-            self.used[slot.kind][slot.index] = false;
-        }
+        self.used[slot.kind][slot.index] = false;
     }
     pub fn name(&self, slot: Slot) -> &str {
         &self.names[slot.kind][slot.index]
@@ -270,13 +248,8 @@ mod tests {
                 Err(_) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => return,
                 Err(error) => panic!("required JACK server unavailable: {error}"),
             };
-        let (callback, mut control) = prepare(
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            core::array::from_fn(|kind| vec![format!("slot_{kind}")]),
-        );
+        let (callback, mut control) =
+            prepare(core::array::from_fn(|kind| vec![format!("slot_{kind}")]));
         let active = client.activate_async((), Guarded(callback)).unwrap();
         for (data_type, direction) in [
             (DataType::Audio, Direction::Input),

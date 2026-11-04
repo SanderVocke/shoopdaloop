@@ -168,7 +168,6 @@ fn run_impl(
     let mut hello = false;
     let mut engine: Option<EngineDescription> = None;
     let mut driver = None;
-    let mut jack = convert::JackSetup::default();
     let mut midi_inputs = Vec::new();
     let mut midi_outputs = Vec::new();
     #[cfg(feature = "cpal")]
@@ -235,31 +234,6 @@ fn run_impl(
                     driver = Some(settings);
                     HostReply::Ok
                 }
-                HostRequest::AddJackAudioInput(name) => {
-                    if jack.inputs.len() >= 64 {
-                        bail!("too many JACK audio inputs");
-                    }
-                    jack.inputs.push(name.as_str().into());
-                    HostReply::Ok
-                }
-                HostRequest::AddJackAudioOutput(name) => {
-                    if jack.outputs.len() >= 64 {
-                        bail!("too many JACK audio outputs");
-                    }
-                    jack.outputs.push(name.as_str().into());
-                    HostReply::Ok
-                }
-                HostRequest::ConnectJack {
-                    source,
-                    destination,
-                } => {
-                    if jack.connections.len() >= MAX_SETUP_ITEMS {
-                        bail!("too many JACK connections");
-                    }
-                    jack.connections
-                        .push((source.as_str().into(), destination.as_str().into()));
-                    HostReply::Ok
-                }
                 HostRequest::AddMidiInput(name) => {
                     if midi_inputs.len() >= MAX_SETUP_ITEMS {
                         bail!("too many MIDI inputs")
@@ -315,7 +289,6 @@ fn run_impl(
             settings,
             std::mem::take(&mut midi_inputs),
             std::mem::take(&mut midi_outputs),
-            std::mem::take(&mut jack),
         ) {
             Ok(driver) => driver,
             Err(error) => {

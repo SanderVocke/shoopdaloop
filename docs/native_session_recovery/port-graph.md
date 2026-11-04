@@ -9,8 +9,8 @@ application API re-exports graph values and the common audio/MIDI directions/typ
 
 The application owns logical port lifetimes and desired publication/connection
 intent. `ApplicationPortState.publication` maps an application port ID to a
-`LocalPortKey`. This mapping is optional: a shared engine bank route does not mean
-that an individual track has a dedicated published endpoint. The session service
+`LocalPortKey`. This mapping is optional for providers without publication support.
+The session service
 validates mapping formats and rejects duplicate bindings. Runtime mappings are not
 saved into session images.
 
@@ -78,16 +78,13 @@ polls cannot silently retain an observed old identity. Rename notifications leav
 registration generations intact. Queries and mutations run outside the audio
 callback; notification callbacks use bounded atomic operations.
 
-Configured JACK bank ports remain available for existing profiles. New track audio
-and MIDI ports, the sync track and audio-bus outputs are published automatically.
-Implicit Master bank routes are retired when the service adopts publication. Peers
-wired to those outputs by startup configuration are reconnected through the new
-Master publications with their channel order preserved, avoiding duplicate playback
-when automatic Master connections are enabled. Configured banks remain available
-for explicit application routes.
+Track audio/MIDI, the sync track and audio-bus outputs are published automatically.
+JACK starts without a fixed public port bank. Every registered endpoint belongs to
+a session publication and is reclaimed with its owner. Master auto-connect and saved
+connection intent target those publications directly.
 
 The native host reserves bounded private I/O capacity from the configured track,
-channel and bus pools, independently of the configured public bank. Registration
+channel and bus pools. These slots do not register public JACK ports. Registration
 and unregistration run on the control worker. A bounded queue transfers typed
 owners into preallocated callback slots, and acknowledgements transfer retired
 owners back. MIDI removal emits reset messages and allows them to cross the graph
