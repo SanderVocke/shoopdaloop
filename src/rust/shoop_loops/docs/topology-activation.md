@@ -23,7 +23,7 @@ Whole, single-frame and split music callbacks agree. A zero call at publication 
 |---|---|---|
 | `TopologyActivate` | Timing topology only; exact logical IDs/kinds, current node pairs/media/graph retained | Immediate delivery; changed programs already stopped. |
 | `ProgramActivate` | One selected program and nominal length; fixed graph/node pairs/IDs | Pending owning transaction at stopped or actual zero entry. |
-| `GraphActivate` | Signal routes; fixed primitive node pairs/decision bindings | Immediate delivery; preserves domain/media state, including continuing recording. |
+| `GraphActivate` | Signal routes; prepared primitive node pairs | Immediate delivery; preserves domain/media state, including continuing recording. |
 | `TopologyGraphActivate` | Timing topology and routes; fixed logical IDs/node pairs | Immediate delivery; changed programs already stopped. |
 | `ConfigurationActivate` | Stopped logical owner edits, initial media, matching topology and routes | Edited old owners/changed programs already stopped at delivery; clean capture rows/Idle groups. |
 | `ConfigurationReplace` | Complete logical owner replacement, initial media, topology and routes | Callback start only; all old owners replaced by fresh identities; playing owners may retire, active/prepared recording is refused; requests host MIDI cleanup atomically. |
@@ -65,7 +65,7 @@ Compile signal metadata off-render using the retained control-side catalog:
         .unwrap_or_else(|e| panic!("stage: {}", e.error));
 ```
 
-Here `graph(true)` is the example's route-description helper, not a library builder. Compile filters immutable decision bindings to consumers present in that description. Applied StageGraph completion means **Ready**, not active; the changed owning request contains GraphStageId. Refusal/cancellation returns the candidate owner. Actual retained vector capacity is checked, not only populated rows.
+Here `graph(true)` is the example's route-description helper, not a library builder. Compile validates the signal graph; planner admission checks physical loop-node membership. Applied StageGraph completion means **Ready**, not active; the changed owning request contains GraphStageId. Refusal/cancellation returns the candidate owner. Actual retained vector capacity is checked, not only populated rows.
 
 GraphStageId/GraphStageStatus are distinct from timing StageId/Status and NodePairStageId/NodePairStatus. Copying them acquires no owner, lock or cross-instance authorization.
 
@@ -81,7 +81,7 @@ Begin a bank with `NodePairBegin { slot, changes }`, then append unique-slot edi
 
 NodePairInitial supplies target, duration, optional audio/MIDI sources, finite gain and `preserve_input`; initial logical revision is zero. Shape/duration/index/packet/current-owner checks precede transfer. Successful NodePairAppend consumes its source IDs into the candidate; rejected append transfers nothing. The example deliberately checks release through a consumed source ID returns InvalidId.
 
-Prepare matching timing IDs/lengths and a graph containing exactly each resulting primitive's prepared pair/bindings. Generic DAG validity cannot prove that domain relationship. Reserve enough **currently free** media metadata for every new initial owner; do not count credits that old-node pair retirement might later free. Old residency, exports and pins remain separate owners.
+Prepare matching timing IDs/lengths and a graph containing exactly each resulting primitive's prepared node pair. Generic DAG validity cannot prove that domain relationship. Reserve enough **currently free** media metadata for every new initial owner; do not count credits that old-node pair retirement might later free. Old residency, exports and pins remain separate owners.
 
 ## 4. Preflight at the actual cut, then publish
 
@@ -97,7 +97,7 @@ The example's payload-free request is:
     };
 ```
 
-Old edited owners and changed programs must already be stopped at delivery. A same-frame Transition::Stop is only registered for later settlement and does not satisfy that check. Capture rows must have no active/prepared/interval/frozen owner, and their groups must be Idle.
+Old edited owners and changed programs must already be stopped at delivery. A same-frame Transition::Stop is only registered for later settlement and does not satisfy that check. Capture rows must have no active/prepared/tick/frozen owner, and their groups must be Idle.
 
 Configuration preflight holds a generic graph permit and a media-owner permit across the final fallible resolver/topology publication. After that succeeds, media/graph publication has no ordinary failure path. Failed preflight leaves all candidates Ready and active state unchanged. It is not speculative retirement-credit reuse or general rollback.
 
@@ -107,7 +107,7 @@ Same-frame Play uses the newly published owner/configuration during settlement. 
 
 ## Live fixed node-pair routes and immediate pairs
 
-GraphActivate validates every primitive's playback/capture consumers and exact planner/decision slots, with no missing/extra bindings. It preserves current content/take identities and physical consumer cursors/projections. Routing can change while recording: samples from F follow the new route without restarting the take. It supplies no automatic note/pedal cleanup.
+GraphActivate validates every assigned primitive's playback/capture membership, with unassigned template pairs absent. Prepared consumers validate their owner, role and actual node identity. It preserves current content/take identities and physical consumer cursors/projections. Routing can change while recording: samples from F follow the new route without restarting the take. It supplies no automatic note/pedal cleanup.
 
 TopologyGraphActivate adds exact-ID/kind timing compatibility. Timing publication is the last fallible step; graph commit follows the preflighted permit. A stopped changed program can then start under the new configuration at that frame. Pure TopologyActivate follows the same timing precondition without changing routes.
 

@@ -14,7 +14,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 fn public_scenario_matches_complete_oracles_across_all_partitions() {
     scenario::verify_stopped_input();
     for mode in [Partition::Whole, Partition::Single, Partition::Irregular] {
-        let summary = run(mode, false, None);
+        let summary = run(mode, false);
         assert_eq!(summary.frames, 42);
         assert_eq!(summary.packets, 487);
         assert_eq!(summary.copied_bytes, 378);
@@ -24,7 +24,7 @@ fn public_scenario_matches_complete_oracles_across_all_partitions() {
 #[shoop_test]
 fn alternate_valid_query_declaration_order_preserves_the_public_scenario() {
     for mode in [Partition::Whole, Partition::Single, Partition::Irregular] {
-        let summary = run(mode, true, None);
+        let summary = run(mode, true);
         assert_eq!(summary.frames, 42);
         assert_eq!(summary.packets, 487);
         assert_eq!(summary.copied_bytes, 378);

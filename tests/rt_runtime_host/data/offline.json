@@ -1,0 +1,53 @@
+{
+  "recorded_on": "2026-11-04",
+  "journal_sha256": "873203b4be670722b02fdca740157f7342b8b74e0eeb6cc20c6faff0b68c4e47",
+  "reference": {
+    "frames": 332928,
+    "sample_hash": 480331717,
+    "midi_hash": 3308430490,
+    "midi_events": 34,
+    "graph_hash": 487351092,
+    "max_copy": 1042,
+    "max_steps": 512
+  },
+  "source_commit": "bcebee10668654b96f351e4edcf2f0ffee45bf17",
+  "source_dirty": true,
+  "quantum_frames": 1,
+  "provenance": "Actual non-isolated Chromium offline/live AudioWorklets, followed by exact offline and two-thread native replay.",
+  "previous_journal_sha256": "fb8ecf1fae2cb7ac7246bbb836d2ed7670f9d1341b8c005ab3d2565f07ee6237",
+  "changes": [
+    {
+      "callback": 58,
+      "response_opcode": 144,
+      "changed_byte_offsets": [
+        64,
+        65
+      ]
+    },
+    {
+      "callback": 59,
+      "response_opcode": 152,
+      "changed_byte_offsets": [
+        56,
+        57
+      ]
+    },
+    {
+      "callback": 60,
+      "response_opcode": 144,
+      "changed_byte_offsets": [
+        64,
+        65
+      ]
+    },
+    {
+      "callback": 61,
+      "response_opcode": 152,
+      "changed_byte_offsets": [
+        56,
+        57
+      ]
+    }
+  ],
+  "reason": "Capture revisions publish once per whole Q=1 tick rather than once per old variable interval. All requests, every rendered sample hash and all other response bytes are identical; MIDI and graph hashes and work counters are unchanged."
+}

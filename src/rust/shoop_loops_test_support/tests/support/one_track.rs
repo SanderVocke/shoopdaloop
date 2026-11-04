@@ -705,7 +705,7 @@ pub fn verify_stopped_input() {
     assert_eq!(stopped.media_usage().references, 0);
 }
 
-pub fn run(mode: Partition, alternate: bool, inject: Option<&str>) -> Summary {
+pub fn run(mode: Partition, alternate: bool) -> Summary {
     let mut h = Host::new();
     h.advance(2, mode);
     let (original_export, original) = h.export(0, 4);
@@ -1063,10 +1063,7 @@ pub fn run(mode: Partition, alternate: bool, inject: Option<&str>) -> Summary {
     let cut = h.state(query35, 35, Mode::Playing, Some(original));
     assert_eq!(cut.state.content_revision, rt_runtime::Revision(0));
     assert_eq!(cut.state.content_length, 4);
-    assert_eq!(
-        cut.graph_epoch.0,
-        if inject == Some("outcome") { 99 } else { 2 }
-    );
+    assert_eq!(cut.graph_epoch.0, 2);
     h.state(query40, 40, Mode::Stopped, Some(original));
     assert_eq!(h.reply(release_original), Reply::Done);
     assert_eq!(h.reply(release_completed), Reply::Done);
@@ -1074,14 +1071,8 @@ pub fn run(mode: Partition, alternate: bool, inject: Option<&str>) -> Summary {
     assert!(h.reads.is_empty());
     assert_eq!(h.control.outstanding(), 0);
     assert!(h.dsp_applied);
-    let (mut left, right) = golden_audio();
-    let mut packets = golden_packets();
-    if inject == Some("sample") {
-        left[0] += 1.;
-    }
-    if inject == Some("packet") {
-        packets[0].1[2] ^= 1;
-    }
+    let (left, right) = golden_audio();
+    let packets = golden_packets();
     assert_eq!(h.left, left);
     assert_eq!(h.right, right);
     assert_eq!(h.packets, packets);

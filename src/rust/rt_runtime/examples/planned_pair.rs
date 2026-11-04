@@ -1,4 +1,4 @@
-//! One planner, two consumers, exact automation and bounded observations.
+//! One planner, two consumers and exact automation through a shared domain.
 
 use rt_runtime::buffer::{AudioBlock, MidiBlock};
 use rt_runtime::executor::{Command, GraphRuntime, PreparedNode};
@@ -93,7 +93,7 @@ impl Processor<Clock, Op> for Gain {
     }
 }
 
-fn demonstrate(partition: &[usize], _quantum: usize, reverse: bool) -> Result<(), Error> {
+fn demonstrate(partition: &[usize], reverse: bool) -> Result<(), Error> {
     let config = Config {
         max_frames: 32,
         audio_inputs: 1,
@@ -252,14 +252,13 @@ fn demonstrate(partition: &[usize], _quantum: usize, reverse: bool) -> Result<()
     Ok(())
 }
 
-// One planner alternates a gain decision every 8 frames; two consumers borrow it per interval.
+// One planner alternates gain every 8 frames; two consumers borrow it per tick.
 fn main() -> Result<(), Error> {
     for reverse in [false, true] {
-        demonstrate(&[32], 8, reverse)?;
-        demonstrate(&[8, 5, 3, 8, 8], 8, reverse)?;
-        demonstrate(&[3, 10, 19], 8, reverse)?;
-        demonstrate(&[32], 1, reverse)?;
+        demonstrate(&[32], reverse)?;
+        demonstrate(&[8, 5, 3, 8, 8], reverse)?;
+        demonstrate(&[3, 10, 19], reverse)?;
     }
-    println!("planned pair: exact samples, two stamped observations, callback partitions and one-frame progress verified");
+    println!("planned pair: exact samples, per-node completion, callback partitions and one-frame progress verified");
     Ok(())
 }

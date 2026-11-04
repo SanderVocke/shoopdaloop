@@ -84,9 +84,10 @@ pause is not continuous wall-clock live-edit/deadline evidence.
 ## Timing and ownership contracts
 
 The resolver API supports `submit`, retained `completion`/`take_completion`,
-`cancel`, `preview`, `commit`, and `finish`. `preview` produces candidate
+`cancel`, `preview_tick`, `commit`, and `finish`. Prepare the resolver with its
+immutable `Quantum`; `preview_tick` produces candidate
 `decisions`; only `commit` publishes state, terminal outcomes, and semantic
-events. Finish the selected interval before another submission or boundary.
+events. `finish()` completes exactly that whole quantum before another submission or boundary.
 A failed or invalidated preview cannot be committed or expose valid decisions.
 `Decision::playback_discontinuity` is an authoritative, transactional media restart
 flag, independent of optional journal storage. Same-position seeks and explicit

@@ -237,16 +237,16 @@ stale references, and production dependency boundaries remain unchanged.
 
 ### Stage 6 — consolidate and complete local acceptance
 
-- [ ] Remove remaining adapters, duplicate helpers, stale examples and temporary
+- [x] Remove remaining adapters, duplicate helpers, stale examples and temporary
   artifacts. Update maintained runtime/loop/DSP guides, architecture, tracing and
   documentation inventories; preserve historical reports and reference behavior.
-- [ ] Audit the acceptance criteria against source searches and the coverage map.
+- [x] Audit the acceptance criteria against source searches and the coverage map.
   Record final deletions/additions and distinguish removed mechanisms from retained
   safety machinery. No second execution path or hidden demonstrator may remain.
-- [ ] Run formatting, warning-denying workspace build, test-attribute, tracing,
+- [x] Run formatting, warning-denying workspace build, test-attribute, tracing,
   documentation, parity and four-target dependency-boundary checks. Run the full
   native suite and affected Wasm/Node tests after the final code changes.
-- [ ] Commit the consolidated local result and record exact commands/results here.
+- [x] Commit the consolidated local result and record exact commands/results here.
   Stop with a reviewable diff before any push, remote CI inspection or CI fixes.
 
 Verification: use [.agents/info/test.md](.agents/info/test.md) and the active build
@@ -437,3 +437,60 @@ the removed package nor a dependency on it. Test-attribute, closed 390-module
 tracing inventory and Wasm dependency-isolation checks passed. Full independent
 media oracles and complete resource-recovery assertions remain intact. Logs:
 `work/cleanup-retired-service-*` and `work/cleanup-migrated-dsp-*`.
+
+
+Stage 6 (2026-11-04): the maintained architecture, runtime book/reference and loop
+guides now describe the sole processing/domain interface, immutable preparation
+quantum, physical node admission and whole-tick capture. Executable excerpts match
+all current examples. Removed ignored adaptive-comparison flags, a duplicate example
+run and the demonstrator's dead command-line oracle-corruption switches. No service
+package, second processor entry point, graph decision metadata, adaptive resolver
+constructor or arbitrary-frame coordinated reservation remains. Domain failure
+observations, receipt authority, transactional rollback scratch and capture/lease
+generations remain because they implement behavior and ownership safety.
+
+Fresh browser execution found stale JavaScript graph-payload emitters and Python
+reference tables. Migrated these to LGP2/version2 and the two signal capacity fields;
+retired opcodes4/5 refuse. The regenerated graph report changes only descriptor and
+graph-command/result records: complete samples, MIDI, semantic records, primitive
+receipts and recovery remain identical. Miri selections include all seven loop unit
+cases and the six physical-membership/quantum-admission cases; the explicit selected
+inventory now declares 342 executions in 172 commands. This count is an inventory,
+not a claim those interpreter executions have all run locally.
+
+Final local gates:
+
+- `cargo fmt --all -- --check`, independent fixture formatting and `git diff --check` passed.
+- `RUSTFLAGS="-D warnings" cargo build --workspace` passed before the full suite.
+- Full documented nextest command: **2,661 passed, six existing skips**, zero failures.
+- All affected package tests on Wasm/Node: **434 passed**. Independent loop fixture:
+  **60 passed**, preserving full native media/model/ownership oracles.
+- Test-attribute policy, closed **390-module** tracing inventory, feature-parity
+  coverage, runtime book links/excerpts, all **18 runnable examples**, all three
+  dependency-boundary scripts across their four targets, and **133 Python tooling
+  tests** passed.
+
+Logs are `work/cleanup-final-*`, `work/cleanup-full-{native,node}.log`,
+`work/cleanup-python-tests.log` and `work/cleanup-*-boundary.log`; generated logs,
+tooling, artifacts and `work/` are not committed. Before this evidence entry the
+consolidation relative to 52f24c02 changed 182 tracked files, adding 2,965 lines and
+removing 7,466 (net **4,501 removed**, excluding binary sizes and the new journal
+sidecar). This follows the preceding removal of roughly16,000 prototype/benchmark
+lines. The largest retired component is the demonstrator; useful DSP scenarios
+remain in existing shared test support rather than a copied service implementation.
+
+Additional local end-to-end evidence is available for the final stage: actual
+non-isolated loop offline/live AudioWorklets pass in debug and release, including
+all six deliberate failure gates per profile; the generic runtime worklets and both
+failure gates also pass. The 21 production file/retiming Chromium tests pass,
+including sync-family import and Q16/Q64 scenarios. Native socket/shared-memory
+transport and >32MiB file canaries pass. The fresh generic runtime journal matches
+all2,601 historical callback inputs/sample hashes, complete MIDI/graph hashes and
+work counters. Only four capture revision fields differ because Q=1 publishes each
+tick (35→4097,36→4225,36→4225,37→4353). Updated the golden artifact only after that
+comparison and successful real-worklet/native replay; its sidecar records current
+provenance and the exact changed response offsets. Historical reports are unchanged.
+Native-only replay of the updated golden artifact passes.
+
+The consolidated result remains local. Final interpreter completion, delivery/CI,
+automated review and human delivery decision are still tracked in stage7.

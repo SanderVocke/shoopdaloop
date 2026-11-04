@@ -157,7 +157,7 @@ struct Harness {
     output: [f32; 128],
 }
 impl Harness {
-    fn new(_single_sample: bool, fault: Fault, reverse: bool, config: Config) -> Self {
+    fn new(fault: Fault, reverse: bool, config: Config) -> Self {
         let counters = Arc::new(Counters::default());
         let clock = Clock {
             decision: [Decision::default()],
@@ -414,7 +414,7 @@ fn dense_planning_uses_one_callback_envelope_without_subrange_quota() {
     let mut config = limits();
     config.budgets.events = 1;
     config.budgets.subranges = 0;
-    let mut harness = Harness::new(true, Fault::None, false, config);
+    let mut harness = Harness::new(Fault::None, false, config);
     harness.step(128).unwrap();
     assert_eq!(harness.runtime.epoch(), Epoch(1));
     assert_eq!(harness.runtime.diagnostics().subranges, 128);
@@ -432,8 +432,8 @@ fn dense_planning_uses_one_callback_envelope_without_subrange_quota() {
     }
 }
 
-fn render(partitions: &[usize], single: bool, reverse: bool) -> (Vec<f32>, Vec<(u64, Vec<u8>)>) {
-    let mut harness = Harness::new(single, Fault::None, reverse, limits());
+fn render(partitions: &[usize], reverse: bool) -> (Vec<f32>, Vec<(u64, Vec<u8>)>) {
+    let mut harness = Harness::new(Fault::None, reverse, limits());
     harness.schedule(
         7,
         Action::Parameter {
@@ -507,18 +507,18 @@ fn render(partitions: &[usize], single: bool, reverse: bool) -> (Vec<f32>, Vec<(
 
 #[shoop_test]
 fn decisions_scheduled_actions_and_midi_ignore_host_cuts_and_declarations() {
-    let reference = render(&[64], false, false);
+    let reference = render(&[64], false);
     assert_eq!(
         reference.1.iter().map(|e| e.0).collect::<Vec<_>>(),
         [3, 7, 13, 16, 32, 50]
     );
-    assert_eq!(reference, render(&[1; 64], true, true));
-    assert_eq!(reference, render(&[7, 6, 19, 1, 17, 14], false, true));
+    assert_eq!(reference, render(&[1; 64], true));
+    assert_eq!(reference, render(&[7, 6, 19, 1, 17, 14], true));
 }
 
 #[shoop_test]
 fn callback_end_and_zero_length_do_not_settle_or_reexecute_boundaries() {
-    let mut harness = Harness::new(true, Fault::None, false, limits());
+    let mut harness = Harness::new(Fault::None, false, limits());
     harness.schedule(
         8,
         Action::Parameter {
@@ -549,7 +549,7 @@ fn planner_begin_errors_fault_before_consumers() {
         (Fault::InvalidFrame, Error::InvalidFrame),
         (Fault::InvalidShape, Error::InvalidShape),
     ] {
-        let mut harness = Harness::new(true, fault, false, limits());
+        let mut harness = Harness::new(fault, false, limits());
         assert_eq!(harness.step(8), Err(error));
         assert_eq!(harness.output[..8], [0.0; 8]);
         assert_eq!(harness.runtime.next_frame(), Frame(8));

@@ -77,13 +77,12 @@ and capture completion updates that domain at its end. Processors do not run a
 separate musical clock. Host callback sizes are adapted outside graph execution;
 callback-wide work budgets are not renewed at internal tick boundaries.
 
-The generic processor/planner API also retains decision-slot and observation
-interfaces used by standalone examples and test hosts. Production loop nodes use
-direct domain access; these compatibility interfaces are a remaining consolidation
-opportunity, not a second production execution strategy.
+Every processor uses `ProcessBlock` and borrows the render-owned domain directly.
+The planner has one `begin_tick`/`finish_tick` lifecycle. `NoPlanner` supplies an
+empty domain for independent signal-only processing.
 
 Timing relations (sync, state-changing actions and composite containment), signal
-routes and generic planner/consumer bindings are distinct structures. Do not use
+routes and prepared loop-node ownership are distinct structures. Do not use
 dummy audio/MIDI edges to impose planning order. One logical loop may have separate
 playback and capture nodes with intervening effects:
 
@@ -95,7 +94,7 @@ The application owns the `GraphRuntime`, its resource store, its node type, the
 control endpoint and the lifecycle; it installs the loop library's planner and nodes
 next to its other processors. The loop planner still coordinates everything loop
 timing and media depend on, and the runtime asks it to admit generic graph commits
-and processor install/remove, so these cannot drop or replace its nodes or bindings.
+and processor install/remove, so these cannot drop or replace its nodes.
 One runtime has one planner. Independently planning domains need explicit
 composition, not installation of competing clocks or nested engines.
 
@@ -111,7 +110,7 @@ dev-only. Arbitrary downstream processors/hosts must honor the same contract.
 Keep four things distinct:
 
 - **Prepared storage/admission:** finite nodes, media/pages/indexes, operations,
-  results, observations, descriptors and retirement credits.
+  results, descriptors and retirement credits.
 - **Callback-wide optional work:** bounded ingress, upload/export, validation,
   reclamation, telemetry and recovery snapshots.
 - **Required work:** admitted rendering, indexed data access, lifecycle cuts,
@@ -120,9 +119,8 @@ Keep four things distinct:
   Semantic frames, generations, revisions and sequences use checked exhaustion.
 
 The engine owns correctness and termination; the application owns musical cost.
-An expensive valid workload may xrun. Do not impose an interaction quantum,
-mandatory block/per-hop delay, wrap/subdivision limit or propagation-wave counter
-to hide that cost. Finite storage and safe Rust do not certify arbitrary user
+An expensive valid workload may xrun. The configured quantum bounds timing resolution; host adaptation can add buffering
+latency. Do not add wrap limits or propagation-wave counters to hide musical cost. Finite storage and safe Rust do not certify arbitrary user
 planner termination, browser scheduling or callback deadlines.
 
 ### One callback envelope and borrowed authority
@@ -130,23 +128,22 @@ planner termination, browser scheduling or callback deadlines.
 `GraphRuntime<P, L, Q>` defaults to `NoPlanner` and no processor operations.
 Planner operations (`Planner::Operation`) and processor operations (the `Q` of
 `Processor<L, Q>`) are typed independently, so a DSP crate defines its own family
-and depends only on `rt_runtime`. `Planner`/`PlannerSpec`,
-`DecisionBinding`, `ConsumerAccess` and prepared associated `Copy` types give one
-planner decision storage and independently reserved producer observation slots.
-Validate generations, binding completeness/order and observation capacity before
-activation. Consumers cannot retain decision/context/resource borrows across
-planner mutation, finish or graph publication.
+and depends only on `rt_runtime`. Domain state belongs to the planner; processors
+borrow it during their whole-tick process calls. Preparation caches port signatures
+and operation payload limits. Processor admission validates actual physical identity
+and role; planner admission validates required graph membership before publication.
+Consumers cannot retain context/resource/domain borrows across mutation or finish.
 
 For one host callback: validate the block/clock; snapshot admission/recycling and
-background/recovery allowances once; deliver due actions and settle a boundary;
-select a positive interval up to the external ceiling; render the signal DAG;
-finish observations/capture and advance. Repeat internal intervals without
+background/recovery allowances once; deliver due actions and settle a tick;
+render one whole quantum of the signal DAG; commit capture and finish the tick.
+Adapt host callback partitions outside this traversal. Repeat internal ticks without
 refreshing any callback allowance or polling producers. `callback_start` remains
 the enclosing callback origin; `graph_epoch` is context-entry identity.
 
 Intervals are half-open `[F,E)`: changes at F affect sample/event F. Callback-end
 settlement belongs to the next nonempty callback. Zero callbacks do nothing.
-Finish reports observations/advances positions but does not settle the next
+Finish commits capture/advances positions but does not settle the next
 boundary. Final position may equal length with a wrap pending. Public State/Export
 cuts are post-settlement, pre-render; `AfterInterval` is conceptual, not a public
 Cut phase. Sample-rate changes require stopping and re-preparing; no implicit
@@ -361,17 +358,18 @@ before acquiring any claim. Legacy mutations that bypass the claim must refuse;
 read/snapshot access retains its lease/optional-work rules.
 
 Preparing a take reserves all version/index/initial-state/final-snapshot slots
-before success; pages remain finite interval reservations, not unlimited recording.
+before success; pages remain finite whole-quantum reservations, not unlimited recording.
 Reserved final leases are unpublished and unavailable to ordinary snapshot callers.
 Checked take/transaction identities prevent cancelled tokens retargeting a later
 reuse. Cancellation returns promises without changing old active content.
 
-Reserve a new take's **first interval before activation** (`PreparedReserved`).
+The store and runtime share one immutable quantum. Reserve a new take's
+**first tick before activation** (`PreparedReserved`).
 Validate exact frame/window, audio shape, revision arithmetic and MIDI producer
 promise (`12*events + payload_bytes`, including possible recovery) across all
 members before changing global reservations. Conservative MIDI bounds may refuse
 earlier than exact future-output knowledge; this is storage admission, not a
-musical CPU cap. Activation at F retains its interval token and installs all new
+musical CPU cap. Activation at F retains its tick token and installs all new
 zero-duration versions together.
 
 Consumers stage complete contributions once per member in prepared storage.
@@ -425,7 +423,7 @@ prepared output capacity; unlimited MIDI/recording is not promised.
 | --- | --- |
 | TopologyActivate | Delivery-time fixed IDs/kinds; changed programs already stopped; node pairs/media/routes unchanged |
 | ProgramActivate | One owning selected-program/nominal-length change at stopped/true zero; other timing/graph/node pairs fixed |
-| GraphActivate | Immediate compatible fixed node-pair route/binding change, including continued capture |
+| GraphActivate | Immediate compatible prepared node-pair route change, including continued capture |
 | TopologyGraphActivate | Paired compatible immediate timing/routes; logical owners fixed, changed programs stopped |
 | ConfigurationActivate | Already-stopped logical generation/media edits with matching topology/routes over prepared physical node pairs |
 | ProgramGraphActivate | Pending selected program/routes at actual zero/stopped entry; IDs/kinds/sync/triggers/other programs and physical node pairs fixed |
@@ -440,7 +438,7 @@ hold a call waiting for later input or allocate owners in a MessagePort handler.
 Generic `StageGraph` makes a validated owning candidate Ready, not active or locked.
 `GraphAccess` lends an exclusive permit that rechecks scoped generation, current/
 validated/expected epochs, next epoch, actual vector capacities, retirement space,
-bindings and pending MIDI. Complete every fallible domain/capture preflight before
+domain membership and pending MIDI. Complete every fallible domain/capture preflight before
 consuming it for infallible publication. An unused permit moves no graph owner and
 is not rollback of arbitrary domain mutation. Planning-time removal of a node with
 delivered unconsumed MIDI refuses Busy so old graph consumes it once; operation-time
@@ -455,7 +453,7 @@ already-stopped configuration precondition. Successful NodePairAppend consumes s
 IDs; rejection transfers none. Node pair/source, timing/program, graph retirement and
 external exports recycle independently; old-generation exports remain valid.
 
-`prepare_with_initial_graph` installs validated routes/bindings off-render at epoch
+`prepare_with_initial_graph` installs validated routes off-render at epoch
 one/frame zero, with no warm-up callback or ingress receipt. A post-publication
 fault may leave changed state/epochs and advanced time. Never replay samples,
 fake finish or infer rollback from cleared output. Stopped extraction must retain
@@ -491,7 +489,7 @@ returns the planner, its playback/capture nodes and a control-side client. The
 earlier critique's guarantees remain requirements, now enforced without owning the
 runtime:
 
-1. Required playback/capture consumers, decision bindings and input tracking on every
+1. Required playback/capture membership, physical roles and input tracking on every
    graph activation: the planner validates its own activations and admits generic
    ones (`Planner::admit_graph`, `Planner::admit_processor_change`).
 2. Paired program/routing publication at the real cut after full preflight.
@@ -518,7 +516,7 @@ The boundary keeps these rules:
 - **The loop library never stores the `ResourceStore`.** Preparation and cleanup
   borrow it; stopped extraction uses `GraphRuntime::into_planner_and_resources`.
 - **`LoopClient` owns no transport.** It builds typed commands and graph descriptions,
-  including the loop's decision bindings, for the application's control endpoint, and
+  for the application's control endpoint, and
   decodes loop results.
 - **The callback contract is unchanged.** Render paths do not allocate, free, lock or
   wait, and fixed capacities stay finite and checked.

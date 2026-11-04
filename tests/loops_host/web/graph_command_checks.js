@@ -76,7 +76,7 @@ export function checkGraphCommands(wasm, GraphClient, Client, Bridge) {
     assert(bridge.stop() === 15, "Ready/Taken graph silently disposed as successful stop");
     assert(graph.release(...id, false) === 0, "release"); command(); render(1);
     const returned = drain();
-    assert(returned.length === 1 && returned[0].getUint32(108, true) === 2 && [112,116,120].map(at => returned[0].getUint32(at, true)).join() === "3,12,2", "retired initial graph capacities");
+    assert(returned.length === 1 && returned[0].getUint32(108, true) === 2 && [112,116].map(at => returned[0].getUint32(at, true)).join() === "3,12", "retired initial graph capacities");
     const left = [1,2,3,4,1,2,3,4,1,2,3,4,0];
     assert(audio.every((samples, channel) => samples.every((value, at) => value === left[at] * (channel ? 10 : 1))), "full graph-route samples");
     checks.push("graph command bindings render exact route cut, receipts and owning retirement");

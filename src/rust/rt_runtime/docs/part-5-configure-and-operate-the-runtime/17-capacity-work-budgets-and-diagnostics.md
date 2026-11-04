@@ -57,7 +57,7 @@ A descriptor's populated rows do not describe all its retained memory: `Prepared
 
 ## Bound callback work without inventing musical quotas
 
-One enclosing nonempty callback owns ingress snapshots, result recycling, command/recovery/publication allowances, optional copy/validation and maintenance. More planner intervals do not renew them. For `N` active nodes, `E` connections and `R` intervals, expect `N × R` processor calls and `E × R` route visits, plus actual sample/MIDI work. The capture example deliberately chooses `R = frames`; that is simple to inspect, not an efficient universal planning policy. `Budgets::subranges` is retained for compatibility and ignored.
+One enclosing nonempty callback owns ingress snapshots, result recycling, command/recovery/publication allowances, optional copy/validation and maintenance. More graph ticks do not renew them. For `N` active nodes, `E` connections and `R` whole ticks, expect `N × R` processor calls and `E × R` route visits, plus actual sample/MIDI work. The capture example uses Q=1, so `R = frames`; in general `R = rendered frames / Q`. `Budgets::subranges` is retained for compatibility and ignored.
 
 ## Read diagnostics from the owner
 
