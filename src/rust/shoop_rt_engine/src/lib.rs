@@ -281,6 +281,7 @@ pub fn prepare(
     let midi_bytes = description.midi_bytes;
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        quantum,
         Some(MidiIndexConfig {
             versions: 6 * loops + 8,
             checkpoints_per_version: 64,

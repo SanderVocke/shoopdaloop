@@ -125,7 +125,7 @@ impl Harness {
                 required,
                 protected,
             },
-            ResourceStore::new(config).unwrap(),
+            ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
             &graph(node(0, 1)),
         )
         .unwrap();
@@ -273,7 +273,7 @@ fn planner_refuses_an_initial_graph_without_its_requirements() {
             required: node(0, 1),
             protected: node(1, 9),
         },
-        ResourceStore::new(config).unwrap(),
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         &graph(node(1, 1)),
     );
     assert_eq!(refused.err(), Some(Error::InvalidGraph));

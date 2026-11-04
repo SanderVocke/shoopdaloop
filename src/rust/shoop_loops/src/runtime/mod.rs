@@ -386,7 +386,7 @@ pub struct View {
     pub decision: Decision,
     pub audio: Option<ReadIndex>,
     pub midi: Option<ReadIndex>,
-    pub capture: Option<CaptureIntervalId>,
+    pub capture: Option<CaptureTickId>,
     pub gain: f32,
     pub balance: f32,
     pub smoothing: audio::Smoothing,
@@ -410,7 +410,7 @@ struct Row {
     resources: [[Option<rt_runtime::ResourceId>; 2]; 2],
     active: Option<Take>,
     prepared: Option<Take>,
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     next_bank: usize,
     frozen: [Option<Snapshot>; 2],
     failure: Option<Error>,
@@ -566,6 +566,9 @@ impl LoopPlanner {
         imports: Vec<media::Input>,
         options: Options,
     ) -> Result<Prepared, Failure> {
+        if resources.config() != config || resources.quantum() != quantum {
+            return Err(Error::InvalidConfig.into());
+        }
         let (topologies, topology) = topology::Topologies::prepare(topology, options.staging)?;
         let observer = options.observer.unwrap_or_else(|| Box::new(NoObserver));
         let limits = topology.limits();

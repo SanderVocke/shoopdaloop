@@ -19,6 +19,7 @@ fn planner_capture_authority_is_bound_to_the_runtime_boundary_and_ceiling() {
     .unwrap();
     let mut store = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 1,
@@ -57,41 +58,48 @@ fn planner_capture_authority_is_bound_to_the_runtime_boundary_and_ceiling() {
         let baseline = store.usage();
         assert_eq!(
             store
-                .planner_io(Frame(10), Frame(12))
+                .planner_io(Frame(10), Frame(10))
                 .capture()
-                .reserve(take, Frame(10), 3),
+                .reserve(take, Frame(10)),
             Err(Error::InvalidFrame)
         );
         assert_eq!(
             store
                 .planner_io(Frame(10), Frame(12))
                 .capture()
-                .reserve(take, Frame(11), 1),
+                .reserve(take, Frame(11)),
             Err(Error::InvalidFrame)
         );
         assert_eq!(store.usage(), baseline);
         let interval = store
             .planner_io(Frame(10), Frame(12))
             .capture()
-            .reserve(take, Frame(10), 2)
+            .reserve(take, Frame(10))
             .unwrap();
-        store
-            .io()
-            .render()
-            .stage_audio(interval, 0, &[1., 2.])
-            .unwrap();
+        store.io().render().stage_audio(interval, 0, &[1.]).unwrap();
         assert_eq!(
             store
-                .planner_io(Frame(11), Frame(12))
+                .planner_io(Frame(10), Frame(12))
                 .capture()
                 .commit(interval),
             Err(Error::InvalidFrame)
         );
         assert_eq!(store.info(resource).unwrap().description.frames, 0);
         store
-            .planner_io(Frame(12), Frame(12))
+            .planner_io(Frame(11), Frame(11))
             .capture()
             .commit(interval)
+            .unwrap();
+        let next_tick = store
+            .planner_io(Frame(11), Frame(12))
+            .capture()
+            .reserve(take, Frame(11))
+            .unwrap();
+        store.render_io().stage_audio(next_tick, 0, &[2.]).unwrap();
+        store
+            .planner_io(Frame(12), Frame(12))
+            .capture()
+            .commit(next_tick)
             .unwrap();
         let mut output = [None];
         assert_eq!(
@@ -113,7 +121,7 @@ fn planner_capture_authority_is_bound_to_the_runtime_boundary_and_ceiling() {
         let next = store.prepare_capture_take(group, &[]).unwrap();
         store.activate_capture_take(next, Frame(u64::MAX)).unwrap();
         assert_eq!(
-            store.reserve_capture_interval(next, Frame(u64::MAX), 1),
+            store.reserve_capture_tick(next, Frame(u64::MAX)),
             Err(Error::Exhausted)
         );
         let mut output = [None];

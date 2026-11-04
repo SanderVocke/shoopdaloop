@@ -101,7 +101,7 @@ fn demonstrate(publications: usize, cancel_recovery: bool) -> Result<(), Error> 
         rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, Gain(0.5))],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &description,
     )?;
     let first = control

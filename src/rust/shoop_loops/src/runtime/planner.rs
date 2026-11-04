@@ -85,11 +85,11 @@ impl LoopPlanner {
                 .ok_or(Error::Capacity)
         }
     }
-    fn cancel_intervals(&mut self, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
+    fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
             if let Some(row) = self.rows[slot] {
                 if let Some(interval) = row.interval {
-                    io.capture().cancel_interval(interval)?;
+                    io.capture().cancel_tick(interval)?;
                     self.rows[slot].as_mut().expect("row").interval = None;
                 }
             }
@@ -204,7 +204,9 @@ impl LoopPlanner {
         end: Frame,
         io: &mut PlannerResourceIo<'_>,
     ) -> Result<bool, Error> {
-        let frames = usize::try_from(end.0 - frame.0).map_err(|_| Error::InvalidFrame)?;
+        if frame.checked_add(self.resolver.quantum().frames())? != end {
+            return Err(Error::InvalidFrame);
+        }
         for slot in 0..self.rows.len() {
             let Some(mut row) = self.rows[slot].filter(|row| row.assigned) else {
                 continue;
@@ -236,9 +238,9 @@ impl LoopPlanner {
                 if starting { row.prepared } else { row.active }.ok_or(Error::InvalidState)?;
             if let Some(token) = take.token {
                 let result = if starting {
-                    io.capture().reserve_prepared(token, frame, frames)
+                    io.capture().reserve_prepared(token, frame)
                 } else {
-                    io.capture().reserve(token, frame, frames)
+                    io.capture().reserve(token, frame)
                 };
                 match result {
                     Ok(interval) => {
@@ -571,7 +573,7 @@ impl LoopPlanner {
         for slot in 0..self.rows.len() {
             let Some(row) = self.rows[slot] else { continue };
             if let Some(interval) = row.interval {
-                resources.cancel_capture_interval(interval)?;
+                resources.cancel_capture_tick(interval)?;
                 self.rows[slot].as_mut().expect("row").interval = None;
             }
             if let Some(take) = row.prepared {
@@ -1292,7 +1294,7 @@ impl LoopPlanner {
             }
         }
         loop {
-            self.cancel_intervals(&mut context.resources)?;
+            self.cancel_ticks(&mut context.resources)?;
             let interval = self
                 .resolver
                 .preview_tick(&self.failures)

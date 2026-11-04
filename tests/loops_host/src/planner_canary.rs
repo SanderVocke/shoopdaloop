@@ -248,7 +248,8 @@ impl BrowserPlannerCanary {
             rt_runtime::Quantum::new(1).unwrap(),
             vec![PreparedNode::new(node, Half)],
             clock,
-            ResourceStore::new(config).map_err(wire::runtime_error)?,
+            ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())
+                .map_err(wire::runtime_error)?,
             &graph,
         )
         .map_err(wire::runtime_error)?;

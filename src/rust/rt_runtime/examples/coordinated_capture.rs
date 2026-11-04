@@ -26,7 +26,7 @@ fn initial() -> MidiState {
 }
 #[derive(Clone, Copy, Default)]
 struct Decision {
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     members: [usize; 2],
     failed: bool,
 }
@@ -37,7 +37,7 @@ struct Clock {
     old: [Snapshot; 2],
     extra: [Option<Snapshot>; 4],
     frozen: [Option<Snapshot>; 2],
-    last: Option<CaptureIntervalId>,
+    last: Option<CaptureTickId>,
     done: bool,
 }
 impl Clock {
@@ -99,12 +99,12 @@ impl Planner for Clock {
                 context
                     .resources
                     .capture()
-                    .reserve_prepared(self.take, context.frame, 1)
+                    .reserve_prepared(self.take, context.frame)
             } else {
                 context
                     .resources
                     .capture()
-                    .reserve(self.take, context.frame, 1)
+                    .reserve(self.take, context.frame)
             };
             match reservation {
                 Ok(interval) => {
@@ -143,7 +143,7 @@ impl Planner for Clock {
                             .activate(self.take, context.frame)?;
                         let info = context.resources.capture().info(self.group)?;
                         assert_eq!(info.phase, CapturePhase::Reserved);
-                        assert_eq!(info.interval_sequence, 2);
+                        assert_eq!(info.tick_sequence, 2);
                     }
                     if let Some(previous) = self.last {
                         assert_ne!(previous, interval);
@@ -386,6 +386,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     .prepare()?;
     let mut store = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
@@ -420,7 +421,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
             store
                 .planner_io(Frame(0), Frame(1))
                 .capture()
-                .reserve_prepared(cancelled, Frame(0), 1),
+                .reserve_prepared(cancelled, Frame(0)),
             Err(Error::Capacity)
         );
         assert_eq!(
@@ -451,13 +452,13 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     let interval = store
         .planner_io(Frame(0), Frame(1))
         .capture()
-        .reserve_prepared(cancelled, Frame(0), 1)?;
+        .reserve_prepared(cancelled, Frame(0))?;
     assert_eq!(store.usage().reserved_pages, 3);
     assert_eq!(
         store.cancel_capture_take(cancelled),
         Err(Error::InvalidState)
     );
-    store.cancel_capture_interval(interval)?;
+    store.cancel_capture_tick(interval)?;
     assert_eq!(
         store.capture_group_info(group)?.phase,
         CapturePhase::Prepared
@@ -469,7 +470,7 @@ fn run(pages: usize, partition: &[usize]) -> Result<(), Error> {
     let take = store.prepare_capture_take(group, &[initial()])?;
     assert_ne!(take, cancelled);
     assert_eq!(
-        store.reserve_prepared_capture_interval(cancelled, Frame(0), 1),
+        store.reserve_prepared_capture_tick(cancelled, Frame(0)),
         Err(Error::InvalidId)
     );
     for snapshot in old {

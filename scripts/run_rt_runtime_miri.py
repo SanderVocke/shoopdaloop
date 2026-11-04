@@ -17,8 +17,7 @@ TOOLCHAIN = "nightly-2026-05-04"
 REPORTS = ROOT / "target/rt-runtime-miri"
 CASES = [
     ("contracts", [], 12),
-    ("planning_graph", [], 8),
-    ("planner_execution", [], 9),
+    ("planner_execution", [], 8),
     ("initial_graph", [], 3),
     ("graph_activation", [], 7),
     ("lib", ["graph::activation::tests::stage_scope_generation_and_epoch_exhaustion_preserve_unpublished_owners", "--", "--exact"], 1),
@@ -36,7 +35,7 @@ CASES = [
     ("mixed_stress", [], 1),
     ("capture", [], 7),
     ("capture_groups", [], 5),
-    ("capture_group_intervals", [], 5),
+    ("capture_group_intervals", [], 6),
     ("capture_prepared_interval", [], 3),
     ("capture_group_planner", [], 1),
     ("capture_boundary", [], 1),

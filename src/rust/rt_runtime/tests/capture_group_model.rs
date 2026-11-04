@@ -48,7 +48,7 @@ struct Lease {
     private_tail: bool,
 }
 struct Pending {
-    actual: CaptureIntervalId,
+    actual: CaptureTickId,
     frames: usize,
     audio: Vec<f32>,
     midi: Vec<(u32, [u8; 3])>,
@@ -67,7 +67,7 @@ struct Model {
     revision: u64,
     at: u64,
     take_sequence: u64,
-    interval_sequence: u64,
+    tick_sequence: u64,
     failed: bool,
 }
 impl Model {
@@ -134,11 +134,10 @@ impl Model {
         let info = store.capture_group_info(group).unwrap();
         assert_eq!(info.phase, phase);
         assert_eq!(info.take_sequence, self.take_sequence);
-        assert_eq!(info.interval_sequence, self.interval_sequence);
-        assert_eq!(
-            info.interval_frames,
-            self.pending.as_ref().map_or(0, |p| p.frames)
-        );
+        assert_eq!(info.tick_sequence, self.tick_sequence);
+        if let Some(pending) = &self.pending {
+            assert_eq!(pending.frames, store.quantum().frames());
+        }
         for (member, resource) in resources.into_iter().enumerate() {
             assert_eq!(store.revision(resource), Ok(Revision(self.revision)));
             if let Some(index) = self.current {
@@ -293,6 +292,7 @@ fn check_model(page_capacity: usize) {
     .unwrap();
     let mut store = ResourceStore::with_capture_groups(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 3,
             checkpoints_per_version: 8,
@@ -375,7 +375,7 @@ fn check_model(page_capacity: usize) {
         } else if model.pending.is_some() {
             if choice == 2 {
                 assert_no_heap(|| {
-                    store.cancel_capture_interval(model.pending.as_ref().unwrap().actual)
+                    store.cancel_capture_tick(model.pending.as_ref().unwrap().actual)
                 })
                 .unwrap();
                 model.pending = None;
@@ -396,7 +396,7 @@ fn check_model(page_capacity: usize) {
                     pending.ready[1] = true;
                     coverage[6] += 1;
                 } else {
-                    assert_no_heap(|| store.commit_capture_interval(pending.actual)).unwrap();
+                    assert_no_heap(|| store.commit_capture_tick(pending.actual)).unwrap();
                     let pending = model.pending.take().unwrap();
                     let take = &mut model.takes[model.current.unwrap()];
                     let base = take.frames() as u64;
@@ -434,7 +434,7 @@ fn check_model(page_capacity: usize) {
                 }
                 coverage[8] += 1;
             } else {
-                let frames = (random(&mut seed) % 4 + 1) as usize;
+                let frames = 1;
                 let take = &model.takes[model.current.unwrap()];
                 let pages = (take.bytes(0) + frames * 8).div_ceil(16) - take.bytes(0).div_ceil(16)
                     + (take.bytes(1) + 60).div_ceil(16)
@@ -446,7 +446,7 @@ fn check_model(page_capacity: usize) {
                     Ok(())
                 };
                 let result = assert_no_heap(|| {
-                    store.reserve_capture_interval(model.token.unwrap(), Frame(model.at), frames)
+                    store.reserve_capture_tick(model.token.unwrap(), Frame(model.at))
                 });
                 assert_eq!(result.as_ref().map(|_| ()).map_err(|e| *e), expected);
                 if let Ok(interval) = result {
@@ -472,7 +472,7 @@ fn check_model(page_capacity: usize) {
                         ready: [false; 2],
                         pages,
                     });
-                    model.interval_sequence += 1;
+                    model.tick_sequence += 1;
                     coverage[9] += 1;
                 } else {
                     model.failed = true;
@@ -524,7 +524,7 @@ fn check_model(page_capacity: usize) {
         }
     }
     if let Some(pending) = model.pending.take() {
-        assert_no_heap(|| store.cancel_capture_interval(pending.actual)).unwrap();
+        assert_no_heap(|| store.cancel_capture_tick(pending.actual)).unwrap();
     }
     if model.prepared.is_some() {
         assert_no_heap(|| store.cancel_capture_take(model.token.unwrap())).unwrap();

@@ -305,6 +305,7 @@ impl Harness {
         .unwrap();
         let mut resources = ResourceStore::with_capture_groups(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             Some(MidiIndexConfig {
                 versions: 4,
                 checkpoints_per_version: 4,

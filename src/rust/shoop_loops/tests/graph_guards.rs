@@ -128,7 +128,7 @@ fn prepare() -> (LoopControl<NoEffects>, LoopRuntime<NoEffects>) {
     LoopRuntime::prepare_with_configuration_staging(
         config(),
         topology(),
-        ResourceStore::new(config()).unwrap(),
+        ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         settings(),
         bindings(),
         vec![],
@@ -252,7 +252,7 @@ fn generic_processor_changes_cannot_replace_loop_nodes() {
 
 #[shoop_test]
 fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
-    let mut resources = ResourceStore::new(config()).unwrap();
+    let mut resources = ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let Prepared {
         planner,
         nodes,
@@ -293,7 +293,8 @@ fn an_application_runtime_refuses_an_initial_graph_without_loop_nodes() {
 #[shoop_test]
 fn prepared_processors_refuse_wrong_roles_crossed_owners_and_stale_physical_ids() {
     for mode in 0..3 {
-        let mut resources = ResourceStore::new(config()).unwrap();
+        let mut resources =
+            ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
             config(),
             rt_runtime::Quantum::new(1).unwrap(),
@@ -349,7 +350,7 @@ fn runtime_preparation_refuses_a_different_quantum_from_its_loop_domain() {
     let mut limits = config().limits();
     limits.max_frames = 32;
     let config = limits.prepare().unwrap();
-    let mut resources = ResourceStore::new(config).unwrap();
+    let mut resources = ResourceStore::new(config, rt_runtime::Quantum::new(16).unwrap()).unwrap();
     let Prepared { planner, nodes, .. } = LoopPlanner::prepare(
         config,
         rt_runtime::Quantum::new(16).unwrap(),

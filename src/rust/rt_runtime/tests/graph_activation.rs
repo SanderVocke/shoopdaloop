@@ -337,7 +337,7 @@ impl Harness {
             rt_runtime::Quantum::new(1).unwrap(),
             nodes,
             domain,
-            ResourceStore::new(cfg).unwrap(),
+            ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
             &description(1, false, reverse),
         )
         .unwrap();
@@ -1147,7 +1147,7 @@ fn no_planner_legacy_commit_and_128_staging_returns_keep_the_original_lifecycle(
         rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(0), Signal)],
         NoPlanner,
-        ResourceStore::new(cfg).unwrap(),
+        ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         &graph,
     )
     .unwrap();

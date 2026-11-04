@@ -77,6 +77,7 @@ fn prepare_inner(
     .prepare()?;
     let mut resources = ResourceStore::with_capture_groups(
         runtime,
+        quantum,
         Some(MidiIndexConfig {
             versions: 8,
             checkpoints_per_version: 32,

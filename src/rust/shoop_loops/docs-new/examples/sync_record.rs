@@ -34,15 +34,11 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        None,
-        CaptureGroupConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
             groups: 4,
             members_per_group: 1,
             staging_bytes_per_group: 256,
-        },
-    )
+        })
     .unwrap();
 
     let bar = LoopId::from_parts(0, 1).unwrap();

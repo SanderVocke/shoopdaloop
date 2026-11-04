@@ -203,7 +203,7 @@ fn prepare() -> Result<
             pending: None,
             recovery: None,
         },
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &GraphDescription {
             nodes: vec![node],
             connections: vec![

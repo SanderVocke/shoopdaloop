@@ -119,7 +119,7 @@ impl Drop for Fill {
     }
 }
 fn setup(counts: &Arc<Counts>) -> (ResourceStore, Owner, Vec<PreparedNode<Fill, Owner>>) {
-    let mut resources = ResourceStore::new(config()).unwrap();
+    let mut resources = ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let id = resources.create().unwrap();
     let upload = resources
         .begin_upload(
@@ -288,7 +288,7 @@ fn signal_only_initial_graph_preserves_normal_later_commit_epochs_and_receipts()
         rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node(), Signal)],
         NoPlanner,
-        ResourceStore::new(cfg).unwrap(),
+        ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         &graph(),
     )
     .unwrap();

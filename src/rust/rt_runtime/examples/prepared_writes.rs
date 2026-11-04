@@ -88,7 +88,7 @@ fn main() -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
-    let mut store = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let resource = store.create()?;
     let upload = store.begin_upload(
         resource,

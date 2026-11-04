@@ -194,15 +194,15 @@ publish once, terminate within prepared bounds and do not render a partial tick.
 
 ### Stage 4 — coordinated capture in whole quanta
 
-- [ ] Bind resource/capture preparation to the same immutable quantum as the runtime;
+- [x] Bind resource/capture preparation to the same immutable quantum as the runtime;
   refuse mismatches before processing and migrate standalone resource tests explicitly.
-- [ ] Replace frame-count reservation APIs with whole-tick reservation derived from
+- [x] Replace frame-count reservation APIs with whole-tick reservation derived from
   that quantum. Remove arbitrary interval sizes, redundant end/count storage and
   partial-offset staging paths once all callers use complete ticks.
-- [ ] Unify ordinary and prepared-first-tick reservation bookkeeping where possible,
+- [x] Unify ordinary and prepared-first-tick reservation bookkeeping where possible,
   retaining the activation distinction and stale ownership checks. Update loop views,
   capture nodes, planner preflight/cancellation and completion together.
-- [ ] Simplify resolver/capture retry handoff using the one-tick contract, keeping
+- [x] Simplify resolver/capture retry handoff using the one-tick contract, keeping
   all-member reservation, atomic commit, MIDI index capacity checks, immutable
   export revisions and off-render retirement.
 
@@ -332,8 +332,8 @@ coverage exercises crossed roles/owners and stale physical IDs. The engine's
 Verification: warning-denying workspace build and all-target check passed; 450
 affected native tests passed, followed by all five graph-admission tests including
 the new identity case. All 60 independent loop-host fixture tests passed. All 18
-runtime book examples executed successfully. Node/Wasm planner execution (7),
-graph activation (8), DSP (15), graph guards (5) and engine production (3) passed:
+runtime book examples executed successfully. Node/Wasm planner execution (8),
+graph activation (7), DSP (15), graph guards (5) and engine production (3) passed:
 38 total. Test-attribute policy passed. Logs: `work/cleanup-unified-*`,
 `work/cleanup-admission-tests.log`, `work/cleanup-loop-fixture-tests.log`.
 
@@ -366,3 +366,23 @@ public jump-to-u64::MAX test is replaced by that internal clock test; late-deliv
 and invalid lifecycle assertions remain public. Direct resolver helpers now drive
 complete ticks to their observation frames, keeping scalar/media oracles intact.
 Logs: `work/cleanup-quantum-{build,core-tests,fixture-tests,wasm}.log`.
+
+Stage 4: resource stores are prepared with an immutable quantum, checked against
+both runtime and loop-domain preparation. Coordinated reservations expose no frame
+count and use `CaptureTickId`; group state no longer stores interval length.
+Audio staging, MIDI timestamp bounds and atomic completion derive size from the
+store quantum. First unpublished and running ticks share the same reservation
+implementation while preserving activation and cancellation phases. Group audio
+scratch is sized to Q rather than the maximum outer callback. Raw media transfers
+and per-event MIDI timestamps retain frame/byte precision.
+
+Verification: **454 affected native tests**, **60 loop-host fixture tests** and
+**36 Wasm/Node tests** passed, including the new heap-guarded 16/32/64-frame capture
+matrix for wrong-grid admission, stale cancellation, incomplete all-member commit,
+immutable old prefixes, exact audio/MIDI and full resource recovery. Standalone
+variable-size capture fixtures now preserve their physical media through whole
+Q=1 ticks; capture revisions count those actual publications. The independent
+resource model likewise reserves one complete tick. Existing preflight retries
+remain bounded and transactional. Formatting/test-attribute/tracing checks passed;
+warning-denying workspace build passed. Updated Miri inventory removes the retired
+metadata tests and includes the new tick capture case. Logs: `work/cleanup-capture-*`.

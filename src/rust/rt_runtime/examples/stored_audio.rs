@@ -89,7 +89,7 @@ fn main() -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
-    let mut store = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let resource = store.create()?;
     assert_eq!(store.revision(resource)?, Revision(0));
     let samples: [f32; 10] = [1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 2.0, -2.0, 0.0, 0.125];

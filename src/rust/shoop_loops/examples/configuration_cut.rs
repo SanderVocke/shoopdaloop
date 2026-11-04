@@ -390,6 +390,7 @@ fn run(parts: &[usize]) {
     .unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         None,
         CaptureGroupConfig {
             groups: 2,

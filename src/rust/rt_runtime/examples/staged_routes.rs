@@ -212,7 +212,7 @@ fn prepare(initial: bool) -> Result<(Control<Fill, Domain>, GraphRuntime<Fill, D
         epoch: Epoch(u64::from(initial)),
         pending: None,
     };
-    let resources = ResourceStore::new(config)?;
+    let resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let (control, mut runtime) = if initial {
         GraphRuntime::prepare_with_initial_graph(
             config,

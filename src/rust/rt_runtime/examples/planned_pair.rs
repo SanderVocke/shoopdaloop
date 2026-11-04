@@ -161,7 +161,7 @@ fn demonstrate(partition: &[usize], _quantum: usize, reverse: bool) -> Result<()
         rt_runtime::Quantum::new(1).unwrap(),
         nodes,
         planner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
     )?;
     let ticket = control

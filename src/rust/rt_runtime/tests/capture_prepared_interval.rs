@@ -31,6 +31,7 @@ fn indexed_store(pages: usize, checkpoints: usize, span: usize) -> ResourceStore
     .unwrap();
     ResourceStore::with_capture_groups(
         cfg,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: checkpoints,
@@ -130,7 +131,7 @@ fn first_reservation_preserves_active_revisions_until_exact_activation_and_freez
         initial.apply_packet(&[0x90, 70, 99], 3).unwrap();
         let take = store.prepare_capture_take(group, &[initial]).unwrap();
         let reserved = store
-            .reserve_prepared_capture_interval(take, Frame(10), 2)
+            .reserve_prepared_capture_tick(take, Frame(10))
             .unwrap();
         assert_eq!(
             store.capture_group_info(group).unwrap().phase,
@@ -146,7 +147,7 @@ fn first_reservation_preserves_active_revisions_until_exact_activation_and_freez
             Err(Error::InvalidState)
         );
         assert_eq!(
-            store.commit_capture_interval(reserved),
+            store.commit_capture_tick(reserved),
             Err(Error::InvalidState)
         );
         assert_eq!(store.cancel_capture_take(take), Err(Error::InvalidState));
@@ -164,12 +165,14 @@ fn first_reservation_preserves_active_revisions_until_exact_activation_and_freez
             CapturePhase::Reserved
         );
         assert_eq!(store.usage().reserved_pages, 3);
-        packets.push(1, 2, &[0x90, 61, 88]).unwrap();
-        store
-            .stage_capture_audio(reserved, 0, &[-0.25, 0.75])
-            .unwrap();
+        store.stage_capture_audio(reserved, 0, &[-0.25]).unwrap();
         store.stage_capture_midi(reserved, 1, &packets).unwrap();
-        store.commit_capture_interval(reserved).unwrap();
+        store.commit_capture_tick(reserved).unwrap();
+        let next = store.reserve_capture_tick(take, Frame(11)).unwrap();
+        packets.push(0, 1, &[0x90, 61, 88]).unwrap();
+        store.stage_capture_audio(next, 0, &[0.75]).unwrap();
+        store.stage_capture_midi(next, 1, &packets).unwrap();
+        store.commit_capture_tick(next).unwrap();
         assert_eq!(store.usage().reserved_pages, 0);
         assert_eq!(store.usage().free_pages, 28);
         store
@@ -181,8 +184,8 @@ fn first_reservation_preserves_active_revisions_until_exact_activation_and_freez
         assert_eq!(audio.description.bytes, 8);
         assert_eq!(midi.description.frames, 2);
         assert_eq!(midi.description.bytes, 15);
-        assert_eq!(audio.revision, Revision(3));
-        assert_eq!(midi.revision, Revision(3));
+        assert_eq!(audio.revision, Revision(4));
+        assert_eq!(midi.revision, Revision(4));
         let audio_index = store.read_index(audio.id).unwrap();
         let mut cursor = store.render_io().cursor_at(audio_index, 0).unwrap();
         let mut bytes = [0; 8];
@@ -250,16 +253,15 @@ fn competing_prepared_groups_reserve_all_or_none_and_cancel_without_publishing()
             ];
             let first = round % 2;
             let second = 1 - first;
-            let frames = 1 + round % 4;
             let at = Frame(4 * round as u64);
-            // Independent byte ledger: ceil(4*frames/16) + ceil((2*12+6)/16) = 3.
+            // One audio page plus two reserved MIDI pages.
             let interval = store
-                .reserve_prepared_capture_interval(takes[first], at, frames)
+                .reserve_prepared_capture_tick(takes[first], at)
                 .unwrap();
             assert_eq!(store.usage().reserved_pages, 3);
             let before = store.usage();
             assert_eq!(
-                store.reserve_prepared_capture_interval(takes[second], at, frames),
+                store.reserve_prepared_capture_tick(takes[second], at),
                 Err(Error::Capacity)
             );
             assert_eq!(store.usage(), before);
@@ -267,25 +269,22 @@ fn competing_prepared_groups_reserve_all_or_none_and_cancel_without_publishing()
                 store.capture_group_info(groups[second]).unwrap().phase,
                 CapturePhase::Prepared
             );
-            store.cancel_capture_interval(interval).unwrap();
+            store.cancel_capture_tick(interval).unwrap();
             assert_eq!(store.usage().reserved_pages, 0);
             assert_eq!(
                 store.capture_group_info(groups[first]).unwrap().next_frame,
                 None
             );
             let other = store
-                .reserve_prepared_capture_interval(takes[second], at, frames)
+                .reserve_prepared_capture_tick(takes[second], at)
                 .unwrap();
-            store.cancel_capture_interval(other).unwrap();
+            store.cancel_capture_tick(other).unwrap();
             let again = store
-                .reserve_prepared_capture_interval(takes[first], at, frames)
+                .reserve_prepared_capture_tick(takes[first], at)
                 .unwrap();
             assert_ne!(interval, again);
-            assert_eq!(
-                store.cancel_capture_interval(interval),
-                Err(Error::InvalidId)
-            );
-            store.cancel_capture_interval(again).unwrap();
+            assert_eq!(store.cancel_capture_tick(interval), Err(Error::InvalidId));
+            store.cancel_capture_tick(again).unwrap();
             for take in takes {
                 store.cancel_capture_take(take).unwrap();
             }
@@ -322,7 +321,7 @@ fn prepared_interval_authority_rejects_foreign_tokens_frame_overflow_and_wrong_w
             .unwrap();
         let initial_usage = limited.usage();
         assert_eq!(
-            limited.reserve_prepared_capture_interval(limited_take, Frame(10), 1),
+            limited.reserve_prepared_capture_tick(limited_take, Frame(10)),
             Err(Error::Capacity)
         );
         assert_eq!(limited.usage(), initial_usage);
@@ -340,38 +339,33 @@ fn prepared_interval_authority_rejects_foreign_tokens_frame_overflow_and_wrong_w
             .unwrap();
         let before = store.usage();
         assert_eq!(
-            store.reserve_prepared_capture_interval(other, Frame(10), 1),
+            store.reserve_prepared_capture_tick(other, Frame(10)),
             Err(Error::InvalidId)
         );
         assert_eq!(
-            store.reserve_prepared_capture_interval(take, Frame(u64::MAX), 1),
+            store.reserve_prepared_capture_tick(take, Frame(u64::MAX)),
             Err(Error::Exhausted)
         );
-        for frames in [0, 5] {
-            assert_eq!(
-                store.reserve_prepared_capture_interval(take, Frame(10), frames),
-                Err(Error::InvalidShape)
-            );
-        }
+
         assert_eq!(
             store
                 .planner_io(Frame(10), Frame(12))
                 .capture()
-                .reserve_prepared(take, Frame(9), 1),
+                .reserve_prepared(take, Frame(9)),
             Err(Error::InvalidFrame)
         );
         assert_eq!(
             store
-                .planner_io(Frame(10), Frame(12))
+                .planner_io(Frame(10), Frame(10))
                 .capture()
-                .reserve_prepared(take, Frame(10), 3),
+                .reserve_prepared(take, Frame(10)),
             Err(Error::InvalidFrame)
         );
         assert_eq!(store.usage(), before);
         let interval = store
             .planner_io(Frame(10), Frame(12))
             .capture()
-            .reserve_prepared(take, Frame(10), 2)
+            .reserve_prepared(take, Frame(10))
             .unwrap();
         assert_eq!(
             store
@@ -383,7 +377,7 @@ fn prepared_interval_authority_rejects_foreign_tokens_frame_overflow_and_wrong_w
         store
             .planner_io(Frame(10), Frame(12))
             .capture()
-            .cancel_interval(interval)
+            .cancel_tick(interval)
             .unwrap();
         store
             .planner_io(Frame(10), Frame(12))
@@ -391,7 +385,7 @@ fn prepared_interval_authority_rejects_foreign_tokens_frame_overflow_and_wrong_w
             .cancel_take(take)
             .unwrap();
         assert_eq!(
-            store.reserve_prepared_capture_interval(take, Frame(10), 1),
+            store.reserve_prepared_capture_tick(take, Frame(10)),
             Err(Error::InvalidState)
         );
         peer.cancel_capture_take(other).unwrap();

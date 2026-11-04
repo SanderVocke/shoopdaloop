@@ -36,19 +36,15 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        Some(MidiIndexConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
             replay_events: 128,
-        }),
-        CaptureGroupConfig {
+        }), CaptureGroupConfig {
             groups: 2,
             members_per_group: 1,
             staging_bytes_per_group: 8192,
-        },
-    )
+        })
     .unwrap();
 
     let target = LoopId::from_parts(0, 1).unwrap();

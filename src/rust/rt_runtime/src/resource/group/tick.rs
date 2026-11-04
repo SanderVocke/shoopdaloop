@@ -3,12 +3,12 @@ use super::*;
 use crate::buffer::MidiBuffer;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CaptureIntervalId {
+pub struct CaptureTickId {
     take: CaptureTakeId,
     sequence: u64,
 }
 #[derive(Clone, Copy)]
-pub(super) struct AppendReservation {
+pub(super) struct TickReservation {
     pages: usize,
     revision: Revision,
     ready: bool,
@@ -16,22 +16,19 @@ pub(super) struct AppendReservation {
     events: usize,
 }
 impl ResourceStore {
-    pub(in crate::resource) fn capture_interval_end(
+    pub(in crate::resource) fn capture_tick_end(
         &self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
     ) -> Result<Frame, Error> {
-        let group = self.capture_interval_info(interval)?;
+        let group = self.capture_tick_info(interval)?;
         group
             .next_frame
             .ok_or(Error::InvalidState)?
-            .checked_add(group.interval_frames)
+            .checked_add(self.quantum.frames())
     }
-    fn capture_interval_info(
-        &self,
-        interval: CaptureIntervalId,
-    ) -> Result<CaptureGroupInfo, Error> {
+    fn capture_tick_info(&self, interval: CaptureTickId) -> Result<CaptureGroupInfo, Error> {
         let group = self.capture_take_info(interval.take)?;
-        if group.interval_sequence != interval.sequence {
+        if group.tick_sequence != interval.sequence {
             return Err(Error::InvalidId);
         }
         if !matches!(
@@ -42,12 +39,12 @@ impl ResourceStore {
         }
         Ok(group)
     }
-    fn interval_member(
+    fn tick_member(
         &self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         ordinal: usize,
     ) -> Result<(CaptureGroupInfo, Member), Error> {
-        let group = self.capture_interval_info(interval)?;
+        let group = self.capture_tick_info(interval)?;
         if group.phase != CapturePhase::Reserved {
             return Err(Error::InvalidState);
         }
@@ -64,38 +61,36 @@ impl ResourceStore {
         let page = self.config.limits().page_bytes;
         Ok(end.div_ceil(page) - written.div_ceil(page))
     }
-    fn interval_bound(&self, member: Member, frames: usize) -> usize {
+    fn tick_bound(&self, member: Member) -> usize {
         match member.spec.format {
-            Format::Audio { channels } => frames * channels as usize * 4,
+            Format::Audio { channels } => self.quantum.frames() * channels as usize * 4,
             Format::Midi => member.staging_bytes,
         }
     }
     /// Reserve the first interval without replacing active resource versions.
     /// Staging and commit remain unavailable until activation at `at`.
-    pub fn reserve_prepared_capture_interval(
+    pub fn reserve_prepared_capture_tick(
         &mut self,
         take: CaptureTakeId,
         at: Frame,
-        frames: usize,
-    ) -> Result<CaptureIntervalId, Error> {
-        self.reserve_capture_interval_with(take, at, frames, true)
+    ) -> Result<CaptureTickId, Error> {
+        self.reserve_capture_tick_with(take, at, true)
     }
-    pub fn reserve_capture_interval(
+    pub fn reserve_capture_tick(
         &mut self,
         take: CaptureTakeId,
         at: Frame,
-        frames: usize,
-    ) -> Result<CaptureIntervalId, Error> {
-        self.reserve_capture_interval_with(take, at, frames, false)
+    ) -> Result<CaptureTickId, Error> {
+        self.reserve_capture_tick_with(take, at, false)
     }
-    fn reserve_capture_interval_with(
+    fn reserve_capture_tick_with(
         &mut self,
         take: CaptureTakeId,
         at: Frame,
-        frames: usize,
         prepared: bool,
-    ) -> Result<CaptureIntervalId, Error> {
+    ) -> Result<CaptureTickId, Error> {
         self.note_operation(WorkClass::Render);
+        let frames = self.quantum.frames();
         let mut group = self.capture_take_info(take)?;
         if group.phase
             != if prepared {
@@ -106,17 +101,14 @@ impl ResourceStore {
         {
             return Err(Error::InvalidState);
         }
-        if frames == 0 || frames > self.config.limits().max_frames {
-            return Err(Error::InvalidShape);
+        if !self.quantum.aligned(at) {
+            return Err(Error::InvalidFrame);
         }
         if !prepared && group.next_frame != Some(at) {
             return Err(Error::InvalidFrame);
         }
         at.checked_add(frames)?;
-        let sequence = group
-            .interval_sequence
-            .checked_add(1)
-            .ok_or(Error::Exhausted)?;
+        let sequence = group.tick_sequence.checked_add(1).ok_or(Error::Exhausted)?;
         let mut pages = 0usize;
         for index in 0..group.members {
             let member = self.capture_groups.member(take.group, index);
@@ -146,9 +138,7 @@ impl ResourceStore {
                 .checked_add(frames as u64)
                 .ok_or(Error::Exhausted)?;
             pages = pages
-                .checked_add(
-                    self.append_pages(version.written, self.interval_bound(member, frames))?,
-                )
+                .checked_add(self.append_pages(version.written, self.tick_bound(member))?)
                 .ok_or(Error::Capacity)?;
             if let Some(owner) = version.midi {
                 self.midi_indexes
@@ -163,9 +153,9 @@ impl ResourceStore {
             let mut member = self.capture_groups.member(take.group, index);
             let id = member.take.expect("validated take");
             let version = get(&self.versions, id.slot, id.generation).expect("validated take");
-            member.append = Some(AppendReservation {
+            member.append = Some(TickReservation {
                 pages: self
-                    .append_pages(version.written, self.interval_bound(member, frames))
+                    .append_pages(version.written, self.tick_bound(member))
                     .expect("validated append size"),
                 revision: if prepared {
                     version
@@ -187,14 +177,13 @@ impl ResourceStore {
             CapturePhase::Reserved
         };
         group.next_frame = Some(at);
-        group.interval_frames = frames;
-        group.interval_sequence = sequence;
+        group.tick_sequence = sequence;
         self.capture_groups.groups[take.group.slot as usize].value = Some(group);
-        Ok(CaptureIntervalId { take, sequence })
+        Ok(CaptureTickId { take, sequence })
     }
-    pub fn cancel_capture_interval(&mut self, interval: CaptureIntervalId) -> Result<(), Error> {
+    pub fn cancel_capture_tick(&mut self, interval: CaptureTickId) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
-        let mut group = self.capture_interval_info(interval)?;
+        let mut group = self.capture_tick_info(interval)?;
         for index in 0..group.members {
             let mut member = self.capture_groups.member(interval.take.group, index);
             self.reserved_pages -= member.append.take().expect("interval reservation").pages;
@@ -207,18 +196,17 @@ impl ResourceStore {
         } else {
             group.phase = CapturePhase::Recording;
         }
-        group.interval_frames = 0;
         self.capture_groups.groups[interval.take.group.slot as usize].value = Some(group);
         Ok(())
     }
     pub fn stage_capture_audio(
         &mut self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         ordinal: usize,
         samples: &[f32],
     ) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
-        let (group, mut member) = self.interval_member(interval, ordinal)?;
+        let (_, mut member) = self.tick_member(interval, ordinal)?;
         let Format::Audio { channels } = member.spec.format else {
             return Err(Error::InvalidShape);
         };
@@ -226,7 +214,7 @@ impl ResourceStore {
         if reservation.ready {
             return Err(Error::InvalidState);
         }
-        if samples.len() != group.interval_frames * channels as usize {
+        if samples.len() != self.quantum.frames() * channels as usize {
             return Err(Error::InvalidShape);
         }
         let bytes = samples.len() * 4;
@@ -244,12 +232,12 @@ impl ResourceStore {
     }
     pub fn stage_capture_midi(
         &mut self,
-        interval: CaptureIntervalId,
+        interval: CaptureTickId,
         ordinal: usize,
         input: &MidiBuffer,
     ) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
-        let (group, mut member) = self.interval_member(interval, ordinal)?;
+        let (_, mut member) = self.tick_member(interval, ordinal)?;
         if member.spec.format != Format::Midi {
             return Err(Error::InvalidShape);
         }
@@ -263,7 +251,7 @@ impl ResourceStore {
         self.charge_work(WorkClass::Render, 0, input.len())?;
         for index in 0..input.len() {
             let (offset, data) = input.get(index).ok_or(Error::InvalidEvent)?;
-            if offset as usize >= group.interval_frames
+            if offset as usize >= self.quantum.frames()
                 || data.len() > self.config.limits().midi_bytes_per_port
             {
                 return Err(Error::InvalidEvent);
@@ -304,9 +292,9 @@ impl ResourceStore {
             bytes -= count;
         }
     }
-    pub fn commit_capture_interval(&mut self, interval: CaptureIntervalId) -> Result<(), Error> {
+    pub fn commit_capture_tick(&mut self, interval: CaptureTickId) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
-        let mut group = self.capture_interval_info(interval)?;
+        let mut group = self.capture_tick_info(interval)?;
         if group.phase != CapturePhase::Reserved {
             return Err(Error::InvalidState);
         }
@@ -341,7 +329,7 @@ impl ResourceStore {
             self.reserved_pages -= reservation.pages - actual;
             version.reserved += actual;
             version.description.bytes += reservation.bytes;
-            version.description.frames += group.interval_frames as u64;
+            version.description.frames += self.quantum.frames() as u64;
             version.revision = version.revision.checked_next().expect("reserved revision");
             version
                 .capture
@@ -350,7 +338,7 @@ impl ResourceStore {
                 .next_frame = group
                 .next_frame
                 .expect("running boundary")
-                .checked_add(group.interval_frames)
+                .checked_add(self.quantum.frames())
                 .expect("reserved frame");
             self.charge_work(WorkClass::Render, reservation.bytes * 2, 0)
                 .expect("required copies are not budgeted");
@@ -401,10 +389,9 @@ impl ResourceStore {
             group
                 .next_frame
                 .expect("running boundary")
-                .checked_add(group.interval_frames)
+                .checked_add(self.quantum.frames())
                 .expect("reserved frame"),
         );
-        group.interval_frames = 0;
         group.phase = CapturePhase::Recording;
         self.capture_groups.groups[interval.take.group.slot as usize].value = Some(group);
         Ok(())

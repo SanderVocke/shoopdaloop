@@ -165,7 +165,7 @@ fn run(graceful: bool) -> Result<(), Error> {
         ..Config::default()
     }
     .prepare()?;
-    let mut store = ResourceStore::new(config)?;
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let resource = store.create()?;
     let old = store.begin_upload(
         resource,

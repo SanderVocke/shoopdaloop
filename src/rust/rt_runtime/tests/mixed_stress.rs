@@ -183,7 +183,7 @@ impl Host {
         }
         .prepare()
         .unwrap();
-        let mut store = ResourceStore::new(config).unwrap();
+        let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
         let playback = store.create().unwrap();
         let recording = store.create().unwrap();
         let id = store

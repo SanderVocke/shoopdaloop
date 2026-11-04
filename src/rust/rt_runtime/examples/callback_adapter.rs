@@ -91,7 +91,7 @@ fn main() -> Result<(), Error> {
         rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, FailOnce(true))],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
     )?;
     let input = [1.0; 8];

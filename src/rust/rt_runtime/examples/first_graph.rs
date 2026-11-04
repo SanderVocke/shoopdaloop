@@ -64,7 +64,7 @@ fn main() -> Result<(), Error> {
             },
         ],
     };
-    let resources = ResourceStore::new(config)?;
+    let resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     // Install the graph at prepare time: epoch 1, frame 0, no warm-up callback.
     let (control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
         config,

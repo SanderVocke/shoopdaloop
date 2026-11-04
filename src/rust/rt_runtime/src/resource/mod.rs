@@ -10,8 +10,8 @@ mod format;
 mod group;
 use group::CapturePool;
 pub use group::{
-    CaptureGroupConfig, CaptureGroupId, CaptureGroupInfo, CaptureGroupUsage, CaptureIntervalId,
-    CaptureMember, CapturePhase, CaptureTakeId,
+    CaptureGroupConfig, CaptureGroupId, CaptureGroupInfo, CaptureGroupUsage, CaptureMember,
+    CapturePhase, CaptureTakeId, CaptureTickId,
 };
 mod index;
 mod midi_index;
@@ -29,7 +29,7 @@ pub use render::{RenderIo, RenderWork};
 pub use request::{Reply, Request, ResourceCommand, ResourceIo};
 #[cfg(test)]
 mod tests;
-use crate::{Error, Frame, PreparedConfig, ResourceId, Revision};
+use crate::{Error, Frame, PreparedConfig, Quantum, ResourceId, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use format::Parser;
 pub use format::{encode_midi_record, Description, Format};
@@ -140,6 +140,7 @@ impl Cursor {
 }
 
 pub struct ResourceStore {
+    quantum: Quantum,
     scope: u32,
     config: PreparedConfig,
     data: Box<[u8]>,
@@ -195,8 +196,11 @@ fn release<T: Copy>(slots: &mut [Slot<T>], free: &mut Vec<usize>, index: usize) 
 }
 
 impl ResourceStore {
-    pub fn new(config: PreparedConfig) -> Result<Self, Error> {
+    pub fn new(config: PreparedConfig, quantum: Quantum) -> Result<Self, Error> {
         let limits = config.limits();
+        if quantum.frames() > limits.max_frames {
+            return Err(Error::InvalidConfig);
+        }
         for (count, size) in [
             (limits.resource_slots, size_of::<Slot<Version>>()),
             (limits.resource_slots, size_of::<Slot<Lease>>()),
@@ -221,6 +225,7 @@ impl ResourceStore {
         Ok(Self {
             scope,
             config,
+            quantum,
             data,
             pages,
             free_pages: (0..limits.resource_pages).rev().collect(),
@@ -253,6 +258,9 @@ impl ResourceStore {
         self.index_work = IndexWork::default();
         self.midi_indexes.work = MidiIndexWork::default();
         self.control_phase = false;
+    }
+    pub fn quantum(&self) -> Quantum {
+        self.quantum
     }
     pub fn config(&self) -> PreparedConfig {
         self.config

@@ -328,7 +328,7 @@ impl<P: Processor> Harness<P> {
 #[shoop_test]
 fn upload_prefix_returns_prepared_storage_and_rejects_invalid_ranges_without_writes() {
     let config = config();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let playback = store.create().unwrap();
     let recording = store.create().unwrap();
     let staged = store.create().unwrap();
@@ -413,7 +413,7 @@ fn upload_prefix_returns_prepared_storage_and_rejects_invalid_ranges_without_wri
 #[shoop_test]
 fn large_audio_midi_uploads_capture_and_exports_run_without_interrupting_resource_playback() {
     let config = config();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let playback = store.create().unwrap();
     let recording = store.create().unwrap();
     let original = floats(&vec![1.0; 2048]);
@@ -582,7 +582,7 @@ fn large_audio_midi_uploads_capture_and_exports_run_without_interrupting_resourc
 #[shoop_test]
 fn lease_exhaustion_keeps_old_playback_until_a_new_revision_can_be_pinned() {
     let config = config();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let playback = store.create().unwrap();
     let recording = store.create().unwrap();
     install(&mut store, playback, &floats(&[1.0; 16]));
@@ -702,7 +702,7 @@ fn background_midi_validation_cannot_spend_reserved_processor_capture_steps() {
     }
     .prepare()
     .unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let recording = store.create().unwrap();
     let background = store.create().unwrap();
     let mut h = Harness::new(config, MidiRecorder { recording }, store, true);
@@ -792,7 +792,7 @@ fn resource_payloads_survive_saturation_refusal_cancellation_recovery_and_discon
     }
     .prepare()
     .unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let resource = store.create().unwrap();
     let upload = store
         .begin_upload(
@@ -995,7 +995,7 @@ fn resource_io_reservations_leave_control_progress_and_cannot_reset_through_proc
         .prepare(),
         Err(Error::InvalidConfig)
     );
-    let mut store = ResourceStore::new(config()).unwrap();
+    let mut store = ResourceStore::new(config(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let resource = store.create().unwrap();
     install(&mut store, resource, &[0; 64]);
     let snapshot = store.snapshot(resource, Frame(0)).unwrap();

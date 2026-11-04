@@ -78,7 +78,7 @@ fn buffered_generic_publication_cannot_change_an_already_collected_tick() {
             Quantum::new(q).unwrap(),
             vec![],
             NoPlanner,
-            ResourceStore::new(config).unwrap(),
+            ResourceStore::new(config, Quantum::new(q).unwrap()).unwrap(),
         )
         .unwrap();
         runtime.prepare_host_buffering().unwrap();
@@ -114,7 +114,7 @@ fn buffered_capture_begins_at_an_eligible_tick_boundary() {
         }
         .prepare()
         .unwrap();
-        let mut resources = ResourceStore::new(config).unwrap();
+        let mut resources = ResourceStore::new(config, Quantum::new(q).unwrap()).unwrap();
         let resource = resources.create().unwrap();
         let (mut control, mut runtime) = GraphRuntime::<Unused>::prepare_for_host(
             config,

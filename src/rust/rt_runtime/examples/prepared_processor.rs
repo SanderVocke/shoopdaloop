@@ -96,7 +96,7 @@ fn main() -> Result<(), Error> {
         rt_runtime::Quantum::new(1).unwrap(),
         vec![PreparedNode::new(node, processor)],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
     )?;
 

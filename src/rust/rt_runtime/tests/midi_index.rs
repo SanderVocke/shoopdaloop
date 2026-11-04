@@ -34,6 +34,7 @@ fn store(
 ) -> ResourceStore {
     ResourceStore::with_midi_indexing(
         config(page, steps),
+        rt_runtime::Quantum::new(1).unwrap(),
         MidiIndexConfig {
             versions,
             checkpoints_per_version: checkpoints,
@@ -600,13 +601,18 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
         },
     ] {
         assert!(matches!(
-            ResourceStore::with_midi_indexing(config(16, 1), indexing),
+            ResourceStore::with_midi_indexing(
+                config(16, 1),
+                rt_runtime::Quantum::new(1).unwrap(),
+                indexing
+            ),
             Err(Error::InvalidConfig)
         ));
     }
     assert!(matches!(
         ResourceStore::with_midi_indexing(
             config(16, 1),
+            rt_runtime::Quantum::new(1).unwrap(),
             MidiIndexConfig {
                 versions: usize::MAX,
                 checkpoints_per_version: 2,
@@ -615,7 +621,8 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
         ),
         Err(Error::Capacity)
     ));
-    let mut store = ResourceStore::new(config(16, 1)).unwrap();
+    let mut store =
+        ResourceStore::new(config(16, 1), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let resource = store.create().unwrap();
     let initial = MidiState::default();
     let description = Description {

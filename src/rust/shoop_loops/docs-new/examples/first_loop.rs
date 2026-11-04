@@ -36,15 +36,11 @@ fn main() {
     .prepare()
     .unwrap();
     // Capture storage for the loop's takes: two banks, one stereo member each.
-    let mut resources = ResourceStore::with_capture_groups(
-        config,
-        None,
-        CaptureGroupConfig {
+    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), None, CaptureGroupConfig {
             groups: 2,
             members_per_group: 1,
             staging_bytes_per_group: 64,
-        },
-    )
+        })
     .unwrap();
 
     // 2. Describe the musical loop: one empty primitive loop, no sync source.

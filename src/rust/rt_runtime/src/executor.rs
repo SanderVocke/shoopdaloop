@@ -307,7 +307,7 @@ impl<P: Processor> GraphRuntime<P> {
         quantum: crate::Quantum,
         nodes: Vec<PreparedNode<P>>,
     ) -> Result<(Control<P>, Self), Error> {
-        Self::prepare_with_resources(config, quantum, nodes, ResourceStore::new(config)?)
+        Self::prepare_with_resources(config, quantum, nodes, ResourceStore::new(config, quantum)?)
     }
 
     /// Move prepared resource identities/content into the runtime before starting
@@ -362,7 +362,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             quantum,
             nodes,
             planner,
-            ResourceStore::new(config)?,
+            ResourceStore::new(config, quantum)?,
         )
     }
 
@@ -384,7 +384,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         quantum: crate::Quantum,
     ) -> Result<(Control<P, L, Q>, Self), Error> {
         planner.validate_quantum(quantum)?;
-        if quantum.frames() > config.limits().max_frames || resources.config() != config {
+        if quantum.frames() > config.limits().max_frames
+            || resources.config() != config
+            || resources.quantum() != quantum
+        {
             return Err(Error::InvalidConfig);
         }
         if config

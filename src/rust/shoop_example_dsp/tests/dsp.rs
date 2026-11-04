@@ -189,7 +189,7 @@ fn setup(initial: u32, fault: Fault, events: usize) -> Fixture {
             },
         )],
         NoPlanner,
-        ResourceStore::new(cfg).unwrap(),
+        ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap(),
         &graph,
     )
     .unwrap();

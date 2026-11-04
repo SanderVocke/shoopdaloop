@@ -220,6 +220,7 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
         for parts in [vec![32], vec![1; 32], vec![0, 5, 3, 0, 11, 13, 0]] {
             let mut store = ResourceStore::with_capture_groups(
                 config,
+                rt_runtime::Quantum::new(1).unwrap(),
                 Some(MidiIndexConfig {
                     versions: 3,
                     checkpoints_per_version: 8,
@@ -232,7 +233,8 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                 },
             )
             .unwrap();
-            let mut foreign = ResourceStore::new(config).unwrap();
+            let mut foreign =
+                ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
             let baseline = store.usage();
             let resources = [store.create().unwrap(), store.create().unwrap()];
             let background_resource = store.create().unwrap();
@@ -296,12 +298,11 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                     }
                 }
                 let cancelled =
-                    assert_no_heap(|| store.reserve_capture_interval(take, expected.start, 1))
-                        .unwrap();
+                    assert_no_heap(|| store.reserve_capture_tick(take, expected.start)).unwrap();
                 assert_no_heap(|| store.stage_capture_audio(cancelled, 0, &[1., 2.])).unwrap();
                 let before = state(&store, group, resources);
                 assert_eq!(
-                    assert_no_heap(|| store.commit_capture_interval(cancelled)),
+                    assert_no_heap(|| store.commit_capture_tick(cancelled)),
                     Err(Error::Incomplete)
                 );
                 assert_eq!(
@@ -314,10 +315,9 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                     Err(Error::InvalidState)
                 );
                 assert_eq!(state(&store, group, resources), before);
-                assert_no_heap(|| store.cancel_capture_interval(cancelled)).unwrap();
+                assert_no_heap(|| store.cancel_capture_tick(cancelled)).unwrap();
                 let next =
-                    assert_no_heap(|| store.reserve_capture_interval(take, expected.start, 1))
-                        .unwrap();
+                    assert_no_heap(|| store.reserve_capture_tick(take, expected.start)).unwrap();
                 let before = state(&store, group, resources);
                 assert_ne!(next, cancelled);
                 assert_eq!(
@@ -333,7 +333,7 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                     Err(Error::InvalidShape)
                 );
                 assert_eq!(state(&store, group, resources), before);
-                assert_no_heap(|| store.cancel_capture_interval(next)).unwrap();
+                assert_no_heap(|| store.cancel_capture_tick(next)).unwrap();
                 let mut at = 0;
                 let mut prefix = None;
                 for &frames in &parts {
@@ -349,13 +349,7 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                     let background_work = store.work();
                     let ceiling = at + frames;
                     while at < ceiling {
-                        let end = ceiling.min(if at == 0 {
-                            1
-                        } else if at < 8 {
-                            8
-                        } else {
-                            32
-                        });
+                        let end = (at + 1).min(ceiling);
                         let count = end - at;
                         let audio: Vec<_> = (at..end)
                             .flat_map(|frame| samples(expected.marker, frame))
@@ -370,11 +364,7 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                                 }
                             }
                             let interval = store
-                                .reserve_capture_interval(
-                                    take,
-                                    Frame(expected.start.0 + at as u64),
-                                    count,
-                                )
+                                .reserve_capture_tick(take, Frame(expected.start.0 + at as u64))
                                 .unwrap();
                             if round % 2 == 0 {
                                 store.stage_capture_audio(interval, 0, &audio).unwrap();
@@ -392,7 +382,7 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                             } else {
                                 store.stage_capture_audio(interval, 0, &audio).unwrap();
                             }
-                            store.commit_capture_interval(interval).unwrap();
+                            store.commit_capture_tick(interval).unwrap();
                             for resource in resources {
                                 let info = store.info(resource).unwrap();
                                 assert_eq!(info.description.frames, end as u64);

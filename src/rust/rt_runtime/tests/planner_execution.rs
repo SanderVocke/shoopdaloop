@@ -641,6 +641,7 @@ fn check_resource_allowances(required: bool, midi: bool) {
     let mut store = if midi {
         ResourceStore::with_midi_indexing(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             rt_runtime::resource::MidiIndexConfig {
                 versions: 1,
                 checkpoints_per_version: 3,
@@ -649,7 +650,7 @@ fn check_resource_allowances(required: bool, midi: bool) {
         )
         .unwrap()
     } else {
-        ResourceStore::new(config).unwrap()
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap()
     };
     let resource = store.create().unwrap();
     let upload = store

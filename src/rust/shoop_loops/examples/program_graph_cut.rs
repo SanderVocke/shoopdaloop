@@ -321,7 +321,7 @@ fn run(parts: &[usize]) {
             packet_bytes: 0,
         })
         .collect();
-    let mut resources = ResourceStore::new(config).unwrap();
+    let mut resources = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let Prepared {
         planner,
         nodes,

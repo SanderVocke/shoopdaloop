@@ -36,7 +36,7 @@ fn exercise(pages: usize, midi_reset: bool) {
     }
     .prepare()
     .unwrap();
-    let mut store = ResourceStore::new(config).unwrap();
+    let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let playback = store.create().unwrap();
     let audio_capture = store.create().unwrap();
     let midi_capture = store.create().unwrap();

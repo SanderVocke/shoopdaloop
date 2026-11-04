@@ -24,7 +24,7 @@ fn planner() -> PlannerId {
 }
 #[derive(Clone, Copy, Default)]
 struct Decision {
-    interval: Option<CaptureIntervalId>,
+    interval: Option<CaptureTickId>,
     stopped: bool,
 }
 struct CaptureClock {
@@ -51,7 +51,7 @@ impl Planner for CaptureClock {
             match context
                 .resources
                 .capture()
-                .reserve(self.take, context.frame, 1)
+                .reserve(self.take, context.frame)
             {
                 Ok(interval) => self.decisions[0].interval = Some(interval),
                 Err(Error::Capacity) => {
@@ -180,6 +180,7 @@ fn reservation_failure_changes_dependent_output_before_the_affected_sample() {
         .unwrap();
         let mut store = ResourceStore::with_capture_groups(
             config,
+            rt_runtime::Quantum::new(1).unwrap(),
             Some(MidiIndexConfig {
                 versions: 2,
                 checkpoints_per_version: 4,

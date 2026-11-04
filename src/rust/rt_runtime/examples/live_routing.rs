@@ -131,7 +131,7 @@ fn main() -> Result<(), Error> {
             PreparedNode::new(b, Gain(0.25)),
         ],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
     )?;
     let initial_epoch = runtime.epoch();

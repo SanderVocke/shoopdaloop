@@ -116,7 +116,7 @@ fn prepare(
             },
         )],
         NoPlanner,
-        ResourceStore::new(config)?,
+        ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?,
         &graph,
     )?;
     Ok((control, runtime, received_resets))
