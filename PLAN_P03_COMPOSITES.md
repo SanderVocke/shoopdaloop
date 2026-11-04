@@ -391,14 +391,14 @@ Lifecycle dependency cleanup and session capture/replacement integration remain.
 
 ### Stage 5 — service documents, editor operations and admission
 
-- [ ] Add canonical composite documents, stored timing basis/repeat intent and active/
+- [x] Add canonical composite documents, stored timing basis/repeat intent and active/
   pending plan versions to service state. Preserve stable public loop and event IDs;
   use variant/mapped backend identities instead of assuming every loop is primitive.
-- [ ] Add bounded app-protocol commands and service handlers for conversion,
+- [x] Add bounded app-protocol commands and service handlers for conversion,
   serial/parallel/positioned composition, group move/copy/delete, duration overrides,
   kind/mode changes and deliberate timing-basis updates. Prevalidate complete target
   sets, recursion/dependencies, modes, arithmetic, identities and capacity.
-- [ ] Prepare immutable plans from admitted service data; distinguish authored/pending
+- [x] Prepare immutable plans from admitted service data; distinguish authored/pending
   changes from active execution. Coalesce/supersede only through explicit outcomes
   and owning cancellation/collection. Keep results through UI connection loss.
 - [ ] Restore selection/target/default-action and explicit transport behavior,
@@ -605,3 +605,34 @@ and retain the normal/full test groups required before behavioral commits/pushes
   Warning-denying workspace build and dependency/tracing/parity audits passed.
   Chrome and independent loop-host rechecks are in progress. Earlier results
   above identify the pre-integration checkpoints (`47add1c9`, `1a170847`).
+
+- Service/editor milestone in progress: app protocol v21 carries canonical flat
+  documents with stable event IDs, original sample-clock timing basis, frozen
+  effective instance geometry and normalized spans, active/pending versions and
+  exact observed frames. All retained editor operations and transport preflight
+  run in the service; sample conversion quantizes each endpoint independently.
+- Confirmed natural-length changes create a new version without rebasing timing.
+  Source resizing does not recompile accepted spans. Deferred backend controls
+  preserve compose-then-Play and clear-then-Record ordering across generations.
+- Referenced Clear and track removal use a service-owned receipt-driven lifecycle:
+  stop affected ancestors, install empty reference-removing programs, change the
+  slot/track, then restore frozen surviving arrangements while stopped. Failures
+  before structural publication restore the original plans. Child media survives
+  composite Clear. Results explicitly list stopped ancestors, including after UI
+  loss. Other structural/editor admissions wait behind this finite workflow.
+- Production client details use accepted effective geometry and exact frame
+  playheads without primitive media reads. The editor shows original timing,
+  pending versions, cancellation, repeat waits and a deliberate sync-length update.
+  Reference-only details retain their historical timing projection.
+- Focused service/protocol/client/adapter/editor verification: **368 passed**.
+  Warning-denying full-feature workspace build and native suite passed: **2,783
+  passed / 7 skipped**. Test policy, parity and tracing inventory (**428 modules**)
+  passed. Node/Chrome milestone checks are still being run. Automatic monitoring,
+  files/New Session, the public capability and dependent-mode gate remain open.
+- The backend checkpoint `4abb0f0c` passed its complete GitHub platform matrix,
+  native JACK acceptance, coverage, documentation and CodeQL checks. No submitted
+  reviews or inline review threads were present when checked. This is validation
+  of that checkpoint, not approval or final-head P03 acceptance.
+- The target advanced to `a192b0ce` (profiling and render optimizations). Its
+  integration follows the service milestone; both workstreams independently
+  changed protocol shapes, so merged versions must be reconciled before delivery.

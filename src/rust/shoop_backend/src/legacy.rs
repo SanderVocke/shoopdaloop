@@ -6494,6 +6494,7 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    repeat_sync: false,
                     sync_source: self
                         .session
                         .primitive_sync_sources()
@@ -6584,6 +6585,9 @@ impl Backend for EngineBackend {
                     (
                         *id,
                         BackendCompositeState {
+                            observed_frame: 0,
+                            sync_source: None,
+                            repeat_sync: false,
                             prepared_unit_frames: 0,
                             waiting_repeat: false,
                             pending_stage: None,
@@ -6604,6 +6608,7 @@ impl Backend for EngineBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
             status: BackendStatus {
                 dsp_load_percent: 0.0,
@@ -7996,6 +8001,7 @@ impl Backend for FakeBackend {
         self.loops.insert(
             id,
             BackendLoopState {
+                repeat_sync: false,
                 content_revision: 0,
                 mode: BackendLoopMode::Stopped,
                 ..Default::default()
@@ -10422,6 +10428,7 @@ impl Backend for FakeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
             status: self.status,
             audio_drivers: self.audio_driver_state()?,

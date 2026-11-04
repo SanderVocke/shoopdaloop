@@ -4790,6 +4790,7 @@ dependencies = [
  "shoop_app_client",
  "shoop_app_protocol",
  "shoop_backend",
+ "shoop_loop_plan",
  "shoop_port_graph",
  "shoop_rt_backend",
  "shoop_rt_engine",

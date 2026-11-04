@@ -2132,6 +2132,9 @@ impl ApplicationModel {
                 target_loop_id,
                 kind,
             } => self.set_composite_kind(backend, target_loop_id, kind),
+            AppIntent::SetCompositeTimingBasis { .. } | AppIntent::CancelCompositeEdit { .. } => {
+                Err("prepared timing edits require the session service".to_owned())
+            }
             AppIntent::SetCompositeEventMode {
                 target_loop_id,
                 event,
@@ -12166,6 +12169,8 @@ impl ApplicationModel {
             });
         }
         CompositeDetailsState {
+            timing: None,
+            execution: Default::default(),
             kind: match composite.kind {
                 CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
                 CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,

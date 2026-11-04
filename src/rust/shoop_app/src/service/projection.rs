@@ -54,6 +54,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            composites: self.composite_views(),
             preview: {
                 let mut state = self.preview.clone();
                 state.master_preview_available = self.backend.supports_audio_preview()
@@ -69,7 +70,17 @@ impl Service {
                 .loops
                 .iter()
                 .filter_map(|(id, entry)| {
-                    let source = self.observed.loops.get(&entry.backend)?.sync_source?;
+                    let source = self
+                        .observed
+                        .composites
+                        .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+                        .and_then(|state| state.sync_source)
+                        .or_else(|| {
+                            self.observed
+                                .loops
+                                .get(&entry.backend)
+                                .and_then(|state| state.sync_source)
+                        })?;
                     self.loops.iter().find_map(|(source_id, source_entry)| {
                         (source_entry.backend == source).then_some((*id, *source_id))
                     })
@@ -520,11 +531,83 @@ impl Service {
                 track.view.controls = controls(state);
             }
         }
+        let loop_ids = self
+            .loops
+            .iter()
+            .map(|(id, entry)| (entry.backend, *id))
+            .collect::<BTreeMap<_, _>>();
         for entry in self.loops.values_mut() {
+            if let Some(state) = observed
+                .composites
+                .get(&BackendCompositeId::from_raw(entry.backend.raw()))
+            {
+                if let Some(active) = self
+                    .composites
+                    .get(&entry.view.id)
+                    .and_then(|owner| owner.active.as_ref())
+                    .filter(|active| active.version == state.active_plan_version)
+                {
+                    let view = &mut entry.view;
+                    view.structural_state = StructuralState::Confirmed;
+                    view.composite_kind = active.document.kind;
+                    view.selected_composite_kind = active.document.kind;
+                    view.content_revision = active.version;
+                    view.repeat_sync = state.repeat_sync;
+                    view.mode = mode(state.mode);
+                    view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
+                    view.next_transition_delay = state.next_transition_delay;
+                    view.length_frames = state.length;
+                    view.position = if state.length == 0 {
+                        0.0
+                    } else {
+                        state.position as f32 / state.length as f32
+                    };
+                    view.empty = state.length == 0;
+                    let frame = state.position.min(state.length.saturating_sub(1));
+                    let iteration = u128::from(frame)
+                        * u128::from(active.document.basis.sample_rate)
+                        / (u128::from(active.document.basis.unit_frames)
+                            * u128::from(active.prepared.sample_rate));
+                    view.composite_iteration = Some(u32::try_from(iteration).unwrap_or(u32::MAX));
+                    view.composite_cycle_count = state.cycle_count;
+                    view.active_composite_children = state
+                        .active_children
+                        .iter()
+                        .filter(|child| child.mode != BackendLoopMode::Stopped)
+                        .filter_map(|child| {
+                            let backend = match child.target {
+                                BackendCompositeTarget::Loop(id) => id,
+                                BackendCompositeTarget::Composite(id) => {
+                                    BackendLoopId::from_raw(id.raw())
+                                }
+                            };
+                            loop_ids.get(&backend).copied()
+                        })
+                        .collect::<Vec<_>>()
+                        .into();
+                    view.has_audio = false;
+                    view.has_midi = false;
+                    view.show_gain = false;
+                    view.stereo = false;
+                    view.peak_left_db = -200.0;
+                    view.peak_right_db = -200.0;
+                    view.midi_activity = false;
+                }
+                continue;
+            }
             if let Some(state) = observed.loops.get(&entry.backend) {
                 let view = &mut entry.view;
                 view.structural_state = StructuralState::Confirmed;
+                view.composite_kind = CompositeKind::None;
+                view.composite_iteration = None;
+                view.composite_cycle_count = 0;
+                view.active_composite_children = Arc::from([]);
+                view.has_audio = self.tracks[&entry.track].audio_channels > 0;
+                view.has_midi = self.tracks[&entry.track].midi;
+                view.show_gain = view.has_audio;
+                view.stereo = self.tracks[&entry.track].audio_channels == 2;
                 view.content_revision = state.content_revision;
+                view.repeat_sync = state.repeat_sync;
                 view.mode = mode(state.mode);
                 view.next_mode = state.next_mode.map(mode).unwrap_or(LoopMode::Unknown);
                 view.next_transition_delay = state.next_transition_delay;
@@ -659,6 +742,7 @@ impl Service {
         self.tracks.remove(&id);
         self.track_order.retain(|track| *track != id);
         self.loops.retain(|_, entry| entry.track != id);
+        self.composites.retain(|id, _| self.loops.contains_key(id));
         let ports: BTreeSet<_> = self.ports.iter().filter_map(|(port, entry)| matches!(entry.view.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == id).then_some(*port)).collect();
         self.ports.retain(|id, _| !ports.contains(id));
         self.connection_intent
@@ -683,7 +767,7 @@ fn direction(value: BackendPortDirection) -> PortDirection {
         BackendPortDirection::Output => PortDirection::Output,
     }
 }
-fn mode(value: BackendLoopMode) -> LoopMode {
+pub(super) fn mode(value: BackendLoopMode) -> LoopMode {
     match value {
         BackendLoopMode::Stopped => LoopMode::Stopped,
         BackendLoopMode::Playing => LoopMode::Playing,

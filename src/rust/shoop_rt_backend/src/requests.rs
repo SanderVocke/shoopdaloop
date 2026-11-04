@@ -13,6 +13,7 @@ use shoop_rt_protocol::Request;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Purpose {
     Composite(u64),
+    CompositeControl(u64),
     RepeatSync(BackendLoopId, bool),
     RemoveComposite(BackendLoopId),
     ResetComposite(BackendLoopId, shoop_rt_protocol::LoopSlotId),

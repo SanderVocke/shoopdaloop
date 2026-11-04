@@ -5048,6 +5048,7 @@ impl Backend for NativeBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
+                    repeat_sync: false,
                     sync_source: loop_.sync_source,
                     content_revision: 0,
                     mode: from_native_mode(state.mode),
@@ -5134,6 +5135,9 @@ impl Backend for NativeBackend {
                 Some((
                     *id,
                     BackendCompositeState {
+                        observed_frame: 0,
+                        sync_source: None,
+                        repeat_sync: false,
                         prepared_unit_frames: 0,
                         waiting_repeat: false,
                         pending_stage: None,
@@ -5153,6 +5157,7 @@ impl Backend for NativeBackend {
             })
             .collect();
         Ok(BackendSnapshot {
+            composite_operations: Vec::new(),
             composite_receipts: Vec::new(),
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,

@@ -372,6 +372,43 @@ impl CompositeLoopWidget {
             }
         });
 
+        if let Some(timing) = details.timing {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!("Timing: {} frames at {} Hz per cycle", timing.basis_frames, timing.basis_sample_rate));
+                if let Some(length) = tracks.iter().find(|track| track.is_sync).and_then(|track| track.loops.first()).map(|entry| entry.length_frames).filter(|length| *length > 0) {
+                    if ui.small_button("Use sync length").on_hover_text("Prepare a new arrangement using the sync loop's current length. A running pass keeps its accepted timing.").clicked() {
+                        intents.push(AppIntent::SetCompositeTimingBasis { target_loop_id: loop_id, sample_rate: timing.render_sample_rate, unit_frames: length });
+                    }
+                }
+            });
+        }
+        let execution = &details.execution;
+        if execution.restoring {
+            ui.label("Restoring arrangement after loop cleanup…");
+        } else if let Some(version) = execution.pending_version {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "Edit {version}: {} · active {}",
+                    execution.pending_stage.as_deref().unwrap_or("pending"),
+                    execution
+                        .active_version
+                        .map_or_else(|| "none".to_owned(), |version| version.to_string())
+                ));
+                if ui.small_button("Cancel edit").clicked() {
+                    intents.push(AppIntent::CancelCompositeEdit {
+                        target_loop_id: loop_id,
+                        version,
+                    });
+                }
+            });
+        }
+        if execution.waiting_repeat {
+            ui.label("Pass complete · waiting for the sync loop to repeat");
+        }
+        if let Some(error) = &execution.error {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+
         if details.events.is_empty() {
             ui.label(egui::RichText::new("Drag a loop here to arrange it.").strong());
             ui.label(
@@ -456,8 +493,7 @@ impl CompositeLoopWidget {
                 }
                 let cycle_width = self.cycle_width;
                 let frame_to_x = |frame: u64| {
-                    let cycle_length = details.cycle_length_frames.max(1) as f64;
-                    timeline_left + (frame as f64 / cycle_length * f64::from(cycle_width)) as f32
+                    timeline_left + (details.frame_cycles(frame) * f64::from(cycle_width)) as f32
                 };
 
                 painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
@@ -530,11 +566,12 @@ impl CompositeLoopWidget {
                                     context_event = Some(event_key);
                                     self.force_length_cycles =
                                         event.forced_n_cycles.unwrap_or_else(|| {
-                                            let cycle_length = details.cycle_length_frames.max(1);
-                                            event
-                                                .end_frame
-                                                .saturating_sub(event.start_frame)
-                                                .div_ceil(cycle_length)
+                                            details
+                                                .cycles_ceil(
+                                                    event
+                                                        .end_frame
+                                                        .saturating_sub(event.start_frame),
+                                                )
                                                 .max(1)
                                                 .try_into()
                                                 .unwrap_or(u32::MAX)
@@ -559,19 +596,26 @@ impl CompositeLoopWidget {
                                             .copied()
                                             .map(CompositeEventId::from)
                                             .collect(),
-                                        grabbed_offset: event.start_frame.saturating_sub(
-                                            details
-                                                .events
-                                                .iter()
-                                                .filter(|candidate| {
-                                                    self.selected_events.contains(
-                                                        &CompositeEventKey::from(*candidate),
-                                                    )
-                                                })
-                                                .map(|candidate| candidate.start_frame)
-                                                .min()
-                                                .unwrap_or(event.start_frame),
-                                        ) / details.cycle_length_frames.max(1),
+                                        grabbed_offset: details
+                                            .frame_cycles(
+                                                event.start_frame.saturating_sub(
+                                                    details
+                                                        .events
+                                                        .iter()
+                                                        .filter(|candidate| {
+                                                            self.selected_events.contains(
+                                                                &CompositeEventKey::from(
+                                                                    *candidate,
+                                                                ),
+                                                            )
+                                                        })
+                                                        .map(|candidate| candidate.start_frame)
+                                                        .min()
+                                                        .unwrap_or(event.start_frame),
+                                                ),
+                                            )
+                                            .round()
+                                            as u64,
                                     });
                                 }
                                 response.context_menu(|ui| {
@@ -1070,11 +1114,8 @@ impl CompositeLoopWidget {
 }
 
 fn timeline_cycles(details: &CompositeDetailsState) -> u64 {
-    let cycle_length = details.cycle_length_frames.max(1);
     details
-        .timeline_length_frames
-        .max(1)
-        .div_ceil(cycle_length)
+        .cycles_ceil(details.timeline_length_frames.max(1))
         .max(1)
 }
 
@@ -1101,6 +1142,8 @@ mod tests {
 
     fn details(events: Vec<CompositeEventDetailsState>) -> CompositeDetailsState {
         CompositeDetailsState {
+            timing: None,
+            execution: Default::default(),
             kind: CompositeKind::Regular,
             cycle_length_frames: 100,
             timeline_length_frames: events
@@ -1948,6 +1991,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let state = CompositeDetailsState {
+            timing: None,
+            execution: Default::default(),
             kind: CompositeKind::Regular,
             cycle_length_frames: 100,
             timeline_length_frames: 1_000,

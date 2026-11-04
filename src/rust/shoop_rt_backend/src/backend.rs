@@ -194,12 +194,24 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 .jobs
                 .iter()
                 .any(|job| job.sequence <= sequence)
+            || self
+                .composites
+                .controls
+                .keys()
+                .any(|pending| *pending <= sequence)
     }
     fn mutation_capacity(&self) -> usize {
         crate::MAX_TRACKED_MUTATIONS.saturating_sub(
             self.requests.outstanding()
                 + self.mutation_completions.len()
-                + self.composites.jobs.len(),
+                + self.composites.jobs.len()
+                + self.composites.controls.len()
+                + self
+                    .composites
+                    .jobs
+                    .iter()
+                    .map(|job| job.cancel_waiters.len())
+                    .sum::<usize>(),
         )
     }
 
@@ -690,6 +702,16 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let source_slot = source
             .map(|source| self.live_loop_slot(source))
             .transpose()?;
+        if self.pending_kind_change(loop_id)
+            || source.is_some_and(|id| self.pending_kind_change(id))
+        {
+            self.defer_composite_control(
+                loop_id,
+                crate::composites::control::Action::Sync(source),
+                false,
+            );
+            return Ok(());
+        }
         self.requests.push(
             Request::LoopSync {
                 loop_id: slot,
@@ -709,6 +731,22 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let mode = protocol_mode(mode)?;
         self.ready()?;
         let slot = self.live_loop_slot(loop_id)?;
+        if self.pending_clear(loop_id)
+            || mode != shoop_rt_protocol::LoopMode::Recording && self.pending_kind_change(loop_id)
+        {
+            self.defer_composite_control(
+                loop_id,
+                crate::composites::control::Action::Transport {
+                    mode,
+                    delay: cycles_delay,
+                    iteration: None,
+                },
+                mode == shoop_rt_protocol::LoopMode::Playing
+                    && self.pending_conversion(loop_id)
+                    && !self.pending_clear(loop_id),
+            );
+            return Ok(());
+        }
         self.requests.push(
             Request::LoopTransition {
                 loop_id: slot,
@@ -723,10 +761,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
         self.ready()?;
         let slot = self.live_loop_slot(loop_id)?;
-        self.requests.push(
-            Request::LoopClear { loop_id: slot },
-            Purpose::Clear(loop_id),
-        );
+        if self.pending_kind_change(loop_id)
+            || self
+                .mirror
+                .live_loop(loop_id)
+                .is_some_and(|entry| entry.program.is_some())
+        {
+            self.queue_clear(loop_id);
+        } else {
+            self.requests.push(
+                Request::LoopClear { loop_id: slot },
+                Purpose::Clear(loop_id),
+            );
+        }
         Ok(())
     }
 
@@ -1024,6 +1071,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             failures: core::mem::take(&mut self.mixer_failures),
         };
         Ok(BackendSnapshot {
+            composite_operations: self.composite_operations(),
             composite_receipts: core::mem::take(&mut self.composites.receipts),
             status,
             audio_drivers: self.driver_runtime_state(),

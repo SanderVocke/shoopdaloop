@@ -808,6 +808,7 @@ impl RemoteWorkletBackend {
                 self.snapshot.loops.insert(
                     *loop_id,
                     BackendLoopState {
+                        repeat_sync: false,
                         sync_source: None,
                         content_revision: 0,
                         mode: BackendLoopMode::Stopped,
@@ -1292,6 +1293,7 @@ impl RemoteWorkletBackend {
                 (
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
+                        repeat_sync: false,
                         sync_source: None,
                         content_revision: 0,
                         mode: from_wire_loop_mode(loop_.mode),
@@ -1325,6 +1327,9 @@ impl RemoteWorkletBackend {
                 (
                     BackendCompositeId::from_raw(composite.id),
                     BackendCompositeState {
+                        observed_frame: 0,
+                        sync_source: None,
+                        repeat_sync: false,
                         prepared_unit_frames: 0,
                         waiting_repeat: false,
                         pending_stage: None,

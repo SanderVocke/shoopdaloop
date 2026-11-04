@@ -333,7 +333,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn require_mutation_capacity(&self, count: usize) -> Result<()> {
         let used = self.requests.outstanding()
             + self.mutation_completions.len()
-            + self.composites.jobs.len();
+            + self.composites.jobs.len()
+            + self.composites.controls.len()
+            + self
+                .composites
+                .jobs
+                .iter()
+                .map(|job| job.cancel_waiters.len())
+                .sum::<usize>();
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
                 .requests
@@ -353,7 +360,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn idle(&self) -> bool {
         match self.link {
             Link::Ready => {
-                self.composites.jobs.is_empty()
+                self.composites.controls.is_empty()
+                    && self.composites.jobs.is_empty()
                     && self.requests.is_empty()
                     && !self.read_cancel_needed
                     && self.reads.idle()

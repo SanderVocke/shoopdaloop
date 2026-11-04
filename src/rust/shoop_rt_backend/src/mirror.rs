@@ -591,6 +591,7 @@ impl Mirror {
     pub fn loop_state(entry: &mut Loop, channels: u32) -> BackendLoopState {
         let view = entry.view;
         BackendLoopState {
+            repeat_sync: entry.repeat_sync,
             content_revision: entry.content,
             sync_source: entry.sync,
             mode: app_mode(view.mode),

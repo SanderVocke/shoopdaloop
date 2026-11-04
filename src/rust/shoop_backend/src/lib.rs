@@ -34,8 +34,9 @@ use anyhow::{anyhow, Result};
 use core::time::Duration;
 mod composite;
 pub use composite::{
-    BackendCompositeLimits, BackendCompositeOutcome, BackendCompositePending,
-    BackendCompositeReceipt, BackendCompositeSpan, BackendPreparedCompositePlan,
+    BackendCompositeLimits, BackendCompositeOperationState, BackendCompositeOutcome,
+    BackendCompositePending, BackendCompositeReceipt, BackendCompositeSpan,
+    BackendPreparedCompositePlan,
 };
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
@@ -704,6 +705,7 @@ pub fn dry_wet_routing_state(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
+    pub repeat_sync: bool,
     pub content_revision: u64,
     pub sync_source: Option<BackendLoopId>,
     pub mode: BackendLoopMode,
@@ -756,6 +758,9 @@ pub struct BackendActiveCompositeChild {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BackendCompositeState {
+    pub observed_frame: u64,
+    pub sync_source: Option<BackendLoopId>,
+    pub repeat_sync: bool,
     pub prepared_unit_frames: u64,
     pub waiting_repeat: bool,
     pub pending_stage: Option<BackendCompositePending>,
@@ -1159,6 +1164,7 @@ pub struct BackendMutationCompletion {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
+    pub composite_operations: Vec<BackendCompositeOperationState>,
     pub composite_receipts: Vec<BackendCompositeReceipt>,
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,

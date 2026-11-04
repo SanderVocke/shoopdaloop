@@ -16,6 +16,7 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        composites: Vec::new(),
         sync_sources: Vec::new(),
         preview: Default::default(),
         preview_bus: None,

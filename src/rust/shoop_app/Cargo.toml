@@ -13,6 +13,7 @@ default = ["std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_loop_plan = { path = "../shoop_loop_plan" }
 shoop_port_graph = { path = "../shoop_port_graph" }
 shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
 anyhow = { workspace = true }

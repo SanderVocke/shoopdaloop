@@ -472,7 +472,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.mirror.mixer_revision += 1;
     }
 
-    fn failure(
+    pub(crate) fn failure(
         &mut self,
         kind: BackendMutationKind,
         entity: Option<u64>,
@@ -493,6 +493,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if let Purpose::CompositeControl(sequence) = pending.purpose {
+            self.composite_control_answer(sequence, outcome);
+            return;
+        }
         if let Purpose::Composite(sequence) = pending.purpose {
             self.composite_answer(sequence, pending.request, outcome);
             return;
@@ -546,20 +550,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             (Purpose::ResetComposite(id, slot), None) => {
-                self.composites.applied_frames.remove(&id);
-                if let Some(entry) = self.mirror.loops.get_mut(&id) {
-                    let old = entry.slot;
-                    entry.slot = slot;
-                    entry.program = None;
-                    entry.program_spans.clear();
-                    entry.composite = None;
-                    entry.view = LoopView::default();
-                    self.mirror.slot_loops.remove(&old);
-                    self.mirror.slot_loops.insert(slot, id);
-                }
-                self.composites
-                    .removed
-                    .push(shoop_backend::BackendCompositeId::from_raw(id.raw()));
+                self.confirm_composite_reset(id, slot);
             }
             (Purpose::RemoveComposite(id), None) => {
                 if let Some(entry) = self.mirror.loops.get(&id) {
@@ -582,7 +573,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     refusal_text(refusal).to_owned(),
                 );
             }
-            (Purpose::Composite(_), _) => unreachable!("internal result handled above"),
+            (Purpose::CompositeControl(_) | Purpose::Composite(_), _) => {
+                unreachable!("internal result handled above")
+            }
             (Purpose::CreateBus(id), None) => {
                 if let Some(bus) = self.mirror.buses.get_mut(&id) {
                     bus.confirmed = true;

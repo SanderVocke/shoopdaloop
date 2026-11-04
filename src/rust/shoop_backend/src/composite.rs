@@ -39,6 +39,8 @@ pub enum BackendCompositePending {
     Queued,
     Staging,
     AwaitingRestart,
+    Confirming,
+    Cancelling,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,4 +58,11 @@ pub struct BackendCompositeReceipt {
     pub composite: BackendCompositeId,
     pub version: u64,
     pub outcome: BackendCompositeOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendCompositeOperationState {
+    pub composite: BackendCompositeId,
+    pub version: u64,
+    pub stage: BackendCompositePending,
 }

@@ -1,4 +1,5 @@
 //! Control-side prepared plans, logical edit receipts and confirmed timing identities.
+pub(crate) mod control;
 
 use crate::{
     mirror::{Loop, LoopView},
@@ -46,6 +47,7 @@ pub(crate) struct Job {
     outstanding: usize,
     retry_after: Option<u64>,
     cancel: Option<BackendCompositeOutcome>,
+    pub cancel_waiters: Vec<u64>,
     failure: Option<BackendCompositeOutcome>,
     applied: Option<u64>,
     telemetry: Option<Telemetry>,
@@ -56,6 +58,7 @@ pub(crate) struct Job {
 #[derive(Default)]
 pub(crate) struct Composites {
     pub jobs: VecDeque<Job>,
+    pub controls: BTreeMap<u64, control::Control>,
     pub next_stage: u64,
     pub next_version: u64,
     pub receipts: Vec<BackendCompositeReceipt>,
@@ -333,7 +336,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let version = self.composites.next_version;
         for job in &mut self.composites.jobs {
             if job.id == id {
-                job.cancel = Some(BackendCompositeOutcome::Superseded);
+                job.cancel
+                    .get_or_insert(BackendCompositeOutcome::Superseded);
             }
         }
         let sequence = self.requests.reserve_mutation();
@@ -357,6 +361,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             outstanding: 0,
             retry_after: None,
             cancel: None,
+            cancel_waiters: Vec::new(),
             failure: None,
             applied: None,
             telemetry: None,
@@ -532,7 +537,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter_mut()
             .find(|job| job.id == primitive(id) && job.version == version)
             .ok_or_else(|| anyhow!("unknown pending composite version"))?;
-        job.cancel = Some(BackendCompositeOutcome::Cancelled);
+        let sequence = self.requests.reserve_mutation();
+        job.cancel.get_or_insert(BackendCompositeOutcome::Cancelled);
+        job.cancel_waiters.push(sequence);
         Ok(())
     }
 
@@ -540,6 +547,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if !self.is_ready() {
             return;
         }
+        self.advance_composite_controls();
         let Some(mut job) = self.composites.jobs.pop_front() else {
             return;
         };
@@ -625,7 +633,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .iter()
             .chain(self.requests.in_flight.values())
             .any(|pending| {
-                pending.sequence != 0
+                !matches!(pending.purpose, Purpose::Composite(_))
                     && matches!(
                         pending.request,
                         Request::ResetComposite { .. }
@@ -671,6 +679,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let old = entry.slot;
         let previous = entry.program.is_none().then_some(old);
         let expected_version = entry.program.map_or(0, |p| p.version);
+        for span in &job.plan.spans {
+            let child = self
+                .mirror
+                .live_loop(target_id(span.target))
+                .ok_or_else(|| anyhow!("composite child was removed"))?;
+            if !child.confirmed {
+                return Ok(false);
+            }
+            if matches!(span.target, BackendCompositeTarget::Composite(_))
+                != child.program.is_some()
+            {
+                bail!("composite child kind changed before staging");
+            }
+        }
         let slot = if previous.is_some() {
             LoopSlotId(
                 self.mirror
@@ -681,17 +703,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         } else {
             old
         };
-        for span in &job.plan.spans {
-            let child = self
-                .mirror
-                .live_loop(target_id(span.target))
-                .ok_or_else(|| anyhow!("composite child was removed"))?;
-            if matches!(span.target, BackendCompositeTarget::Composite(_))
-                != child.program.is_some()
-            {
-                bail!("composite child kind changed before staging");
-            }
-        }
         job.spans = job
             .plan
             .spans
@@ -946,6 +957,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             sequence: job.sequence,
             result,
         });
+        let cancel_result = match &outcome {
+            BackendCompositeOutcome::Applied { .. } => {
+                Err("the composite version applied before cancellation".to_string())
+            }
+            BackendCompositeOutcome::ConnectionLost => Err(
+                "the composite cancellation outcome is unknown after connection loss".to_string(),
+            ),
+            _ => Ok(()),
+        };
+        for sequence in &job.cancel_waiters {
+            self.mutation_completions.push(BackendMutationCompletion {
+                sequence: *sequence,
+                result: cancel_result.clone(),
+            });
+        }
         self.composites.receipts.push(BackendCompositeReceipt {
             sequence: job.sequence,
             composite: composite(job.id),
@@ -955,9 +981,36 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     pub(crate) fn disconnect_composites(&mut self) {
+        self.disconnect_composite_controls();
         while let Some(job) = self.composites.jobs.pop_front() {
             self.finish_composite(job, BackendCompositeOutcome::ConnectionLost);
         }
+    }
+
+    fn composite_pending_stage(&self, job: &Job) -> BackendCompositePending {
+        if job.cancel.is_some() {
+            return BackendCompositePending::Cancelling;
+        }
+        match job.phase {
+            Phase::Queued => BackendCompositePending::Queued,
+            Phase::Confirming => BackendCompositePending::Confirming,
+            Phase::Commit if self.mirror.loops.get(&job.id).is_some_and(|entry| matches!(entry.composite, Some(Telemetry::Composite { pending_version: Some(version), pending_admitted: true, .. }) if version == job.version)) => BackendCompositePending::AwaitingRestart,
+            _ => BackendCompositePending::Staging,
+        }
+    }
+
+    pub(crate) fn composite_operations(
+        &self,
+    ) -> Vec<shoop_backend::BackendCompositeOperationState> {
+        self.composites
+            .jobs
+            .iter()
+            .map(|job| shoop_backend::BackendCompositeOperationState {
+                composite: composite(job.id),
+                version: job.version,
+                stage: self.composite_pending_stage(job),
+            })
+            .collect()
     }
 
     pub(crate) fn composite_states(&self) -> BTreeMap<BackendCompositeId, BackendCompositeState> {
@@ -1007,13 +1060,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 Some((
                     composite(id),
                     BackendCompositeState {
+                        observed_frame: match entry.composite {
+                            Some(Telemetry::Composite { frame, .. }) => frame,
+                            _ => 0,
+                        },
+                        sync_source: entry.sync,
+                        repeat_sync: entry.repeat_sync,
                         prepared_unit_frames: program.unit_frames,
                         waiting_repeat,
-                        pending_stage: pending.map(|job| match job.phase {
-                            Phase::Queued => BackendCompositePending::Queued,
-                            Phase::Commit if matches!(entry.composite, Some(Telemetry::Composite { pending_version: Some(version), pending_admitted: true, .. }) if version == job.version) => BackendCompositePending::AwaitingRestart,
-                            _ => BackendCompositePending::Staging,
-                        }),
+                        pending_stage: pending.map(|job| self.composite_pending_stage(job)),
                         active_applied_frame: self.composites.applied_frames.get(&id).copied(),
                         mode: app_mode(entry.view.mode),
                         next_mode: entry.view.next_mode.map(app_mode),
@@ -1043,11 +1098,49 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let entry = self
             .mirror
             .live_loop(id)
-            .filter(|e| e.program.is_some())
+            .filter(|entry| entry.program.is_some() || self.pending_conversion(id))
             .ok_or_else(|| anyhow!("unknown composite"))?;
         let mode = wire_mode(mode)?;
         if mode == LoopMode::Recording {
             bail!("a composite's outer mode is Play or Stop");
+        }
+        if let Some(iteration) = align {
+            let iteration =
+                u64::try_from(iteration).map_err(|_| anyhow!("negative composite iteration"))?;
+            let iterations = entry
+                .program
+                .map(|program| program.iterations)
+                .or_else(|| {
+                    self.composites
+                        .jobs
+                        .iter()
+                        .rev()
+                        .find(|job| job.id == id)
+                        .map(|job| job.plan.iterations)
+                })
+                .ok_or_else(|| anyhow!("composite has no accepted plan"))?;
+            if iteration >= iterations && !(iteration == 0 && iterations == 0) {
+                bail!("composite iteration is outside the accepted arrangement");
+            }
+        }
+        if self.pending_kind_change(id) {
+            let iteration = align
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| anyhow!("negative composite iteration"))?;
+            if iteration.is_some() && (delay.is_some() || mode != LoopMode::Playing) {
+                bail!("iteration alignment requires immediate Play");
+            }
+            self.defer_composite_control(
+                id,
+                control::Action::Transport {
+                    mode,
+                    delay,
+                    iteration,
+                },
+                true,
+            );
+            return Ok(());
         }
         let request = if let Some(iteration) = align {
             if delay.is_some() || mode != LoopMode::Playing {
@@ -1079,6 +1172,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .live_loop(id)
             .ok_or_else(|| anyhow!("unknown loop"))?
             .slot;
+        if self.pending_kind_change(id) {
+            self.defer_composite_control(id, control::Action::Repeat(enabled), false);
+            return Ok(());
+        }
         self.requests.push(
             Request::LoopRepeatSync {
                 loop_id: slot,

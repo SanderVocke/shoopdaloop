@@ -45,6 +45,7 @@ struct Fixture {
     initial_waits: usize,
     refuse_next_loop: Rc<Cell<bool>>,
     refuse_next_bus: Rc<Cell<bool>>,
+    refuse_next_lifecycle: Rc<Cell<bool>>,
 }
 fn fixture() -> Fixture {
     fixture_with_outputs(2)
@@ -86,10 +87,12 @@ fn fixture_with_outputs(outputs: usize) -> Fixture {
     };
     let refuse_next_loop = Rc::new(Cell::new(false));
     let refuse_next_bus = Rc::new(Cell::new(false));
+    let refuse_next_lifecycle = Rc::new(Cell::new(false));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
         refuse_bus: Rc::clone(&refuse_next_bus),
+        refuse_lifecycle: Rc::clone(&refuse_next_lifecycle),
         reply: None,
     });
     let backend = RtBackend::connect(client, clock).unwrap();
@@ -122,6 +125,7 @@ fn fixture_with_outputs(outputs: usize) -> Fixture {
         initial_waits,
         refuse_next_loop,
         refuse_next_bus,
+        refuse_next_lifecycle,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -1218,6 +1222,7 @@ struct RefuseLoop<C> {
     inner: C,
     refuse: Rc<Cell<bool>>,
     refuse_bus: Rc<Cell<bool>>,
+    refuse_lifecycle: Rc<Cell<bool>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -1227,6 +1232,24 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if let shoop_rt_protocol::ClientMessage::Request {
+            correlation,
+            request:
+                shoop_rt_protocol::Request::ResetComposite { .. }
+                | shoop_rt_protocol::Request::RemoveStrip { .. },
+        } = message
+        {
+            if self.refuse_lifecycle.replace(false) {
+                assert!(self.reply.is_none());
+                self.reply = Some(shoop_rt_protocol::EngineMessage::Result {
+                    correlation,
+                    outcome: shoop_rt_protocol::Outcome::Refused(
+                        shoop_rt_protocol::Refusal::Capacity,
+                    ),
+                });
+                return Ok(());
+            }
+        }
         if let shoop_rt_protocol::ClientMessage::Request {
             correlation,
             request:
@@ -3365,3 +3388,6 @@ fn session_replacement_retains_publications_until_unpublish_admission_and_comple
         }
     }
 }
+
+#[path = "support/composite_cases.rs"]
+mod composite_cases;

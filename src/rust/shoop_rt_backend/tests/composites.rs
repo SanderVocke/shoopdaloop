@@ -484,3 +484,35 @@ fn encoded_carrier_installs_and_runs_explicit_recording_and_reconciles_complete_
         .iter()
         .any(|receipt| matches!(receipt.outcome, BackendCompositeOutcome::Applied { .. })));
 }
+
+#[shoop_test]
+fn clear_then_record_in_one_control_turn_binds_the_restored_primitive_generation() {
+    let (mut backend, ids) = setup();
+    let comp = shoop_backend::BackendCompositeId::from_raw(ids[3].raw());
+    backend
+        .configure_prepared_composite_loop(comp, &plan(ids[1], None, 4))
+        .unwrap();
+    backend.wait_idle();
+    backend.clear_loop(ids[3]).unwrap();
+    let clear = backend.mutation_cursor();
+    backend
+        .transition_loop(ids[3], Mode::Recording, None)
+        .unwrap();
+    let record = backend.mutation_cursor();
+    backend.wait_idle();
+    let snapshot = backend.poll().unwrap();
+    for sequence in [clear, record] {
+        assert!(snapshot
+            .mutation_completions
+            .iter()
+            .any(|completion| completion.sequence == sequence && completion.result.is_ok()));
+    }
+    assert!(!snapshot.composites.contains_key(&comp));
+    assert_eq!(snapshot.loops[&ids[3]].mode, Mode::Recording);
+    backend.clock_mut().render(8);
+    backend
+        .transition_loop(ids[3], Mode::Stopped, None)
+        .unwrap();
+    backend.wait_idle();
+    assert!(backend.poll().unwrap().loops[&ids[3]].length >= 8);
+}
