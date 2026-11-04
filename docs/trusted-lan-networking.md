@@ -75,7 +75,7 @@ failed.
 
 ## Host settings and status
 
-**Session → Connected host settings…** queries the selected host through its
+**Main menu → Host → Connected host settings…** queries the selected host through its
 management endpoint. It shows requested startup settings, effective audio state,
 sample rate/buffer size, current smoothing and Master auto-connect, diagnostics,
 and the number of host-owned operations in progress. Refresh queries current

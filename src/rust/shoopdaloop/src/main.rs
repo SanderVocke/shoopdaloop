@@ -1410,96 +1410,33 @@ impl UnifiedApp {
     fn show(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if self.runtime.remote_entry.is_none() {
-                ui.menu_button("Session", |ui| {
-                    if ui.button("Host Manager…").clicked() {
-                        if let Err(error) = shoop_host::launch::launch_manager() {
-                            self.settings.report_action_error(error.to_string());
-                        }
-                        ui.close();
-                    }
-                    ui.menu_button("Advanced", |ui| {
-                        if ui.button("Import host profile…").clicked() {
-                            self.open_remote_profile(ui.ctx());
-                            ui.close();
-                        }
-                    });
-                });
-            }
             if let Some(entry) = self.runtime.remote_entry.clone() {
                 self.exit.intercept_close(ui.ctx());
-                ui.horizontal(|ui| {
-                    ui.menu_button("Session", |ui| {
-                        if ui.button("Host Manager…").clicked() {
-                            if let Err(error) = shoop_host::launch::launch_manager() {
-                                self.settings.report_action_error(error.to_string());
-                            }
-                            ui.close();
-                        }
-                        ui.menu_button("Advanced", |ui| {
-                            if ui
-                                .add_enabled(
-                                    !self.exit.open && !self.exit.is_pending(),
-                                    egui::Button::new("Import host profile…"),
-                                )
-                                .clicked()
-                            {
-                                self.open_remote_profile(ui.ctx());
-                                ui.close();
-                            }
-                        });
-                        if ui.button("Connected host settings…").clicked() {
-                            self.host_panel.open = true;
-                            ui.close();
-                        }
-                        if ui.button("Close UI only (keep host running)").clicked() {
-                            self.exit.close_ui(ui.ctx());
-                        }
-                        if ui.button("Close UI and host…").clicked() {
-                            self.exit.open = true;
-                            ui.close();
-                        }
-                    });
-                    ui.label(&entry.name);
-                });
                 self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
                 self.host_panel.show(ui.ctx(), &entry);
-                let status = self.runtime.handle.status();
-                match status.state {
-                    shoop_app_client::State::Ready => {}
-                    shoop_app_client::State::Lost => {
-                        ui.heading("Session connection lost");
-                        ui.label(status.error.as_deref().unwrap_or("The host may still be playing and recording. Connect again to read its current state."));
-                        if entry.transport == shoop_host::config::AppTransport::Socket
-                            && ui
-                                .add_enabled(
-                                    !self.exit.is_pending(),
-                                    egui::Button::new("Connect to endpoint"),
-                                )
-                                .clicked()
-                        {
-                            match Runtime::attach(&self.settings.active(), entry) {
-                                Ok(runtime) => {
-                                    self.use_connection(runtime, ui.ctx());
-                                }
-                                Err(error) => self.settings.report_action_error(error.to_string()),
-                            }
-                        }
-                        ui.ctx().request_repaint_after(Duration::from_millis(100));
-                        return;
-                    }
-                    state => {
-                        ui.spinner();
-                        ui.label(match state {
-                            shoop_app_client::State::Synchronizing => {
-                                "Receiving a coherent session snapshot…"
-                            }
-                            _ => "Attaching to session host…",
-                        });
-                        ui.ctx().request_repaint_after(Duration::from_millis(50));
-                        return;
-                    }
-                }
+            }
+            let status = self.runtime.handle.status();
+            self.widget.set_host_state(recovery::host_ui_state(
+                self.runtime.remote_entry.as_ref(),
+                &status,
+                &self.exit,
+            ));
+            if self.runtime.remote_entry.is_some() && status.state != shoop_app_client::State::Ready
+            {
+                let settings_state = self.settings.view();
+                let response =
+                    self.widget
+                        .show(ui, &self.runtime.snapshot(), &settings_state, None);
+                self.about_open |= response.about_requested;
+                show_about_dialog(
+                    ui.ctx(),
+                    &mut self.about_open,
+                    BuildIdentity::CURRENT,
+                    &settings_state.storage_location,
+                );
+                self.handle_host_actions(ui.ctx(), response.host_actions);
+                ui.ctx().request_repaint_after(Duration::from_millis(50));
+                return;
             }
         }
         if let Some((source, force_url_session)) = self.startup_session.take() {
@@ -1574,16 +1511,9 @@ impl UnifiedApp {
         let script_paths = Some(self.runtime.script_paths());
         #[cfg(target_arch = "wasm32")]
         let script_paths = None;
-        #[cfg(not(target_arch = "wasm32"))]
-        let controls_enabled = !self.exit.is_pending();
-        #[cfg(target_arch = "wasm32")]
-        let controls_enabled = true;
-        let response = ui
-            .add_enabled_ui(controls_enabled, |ui| {
-                self.widget
-                    .show(ui, &snapshot, &settings_state, script_paths)
-            })
-            .inner;
+        let response = self
+            .widget
+            .show(ui, &snapshot, &settings_state, script_paths);
         self.about_open |= response.about_requested;
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
@@ -1624,7 +1554,38 @@ impl UnifiedApp {
             #[cfg(target_arch = "wasm32")]
             save_file_output(output, Rc::clone(&self.pending_file_intents), lease);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.handle_host_actions(ui.ctx(), response.host_actions);
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_host_actions(
+        &mut self,
+        context: &egui::Context,
+        actions: Vec<shoop_egui::HostAction>,
+    ) {
+        for action in actions {
+            match action {
+                shoop_egui::HostAction::OpenManager => {
+                    if let Err(error) = shoop_host::launch::launch_manager() {
+                        self.settings.report_action_error(error.to_string());
+                    }
+                }
+                shoop_egui::HostAction::ImportProfile => self.open_remote_profile(context),
+                shoop_egui::HostAction::OpenSettings => self.host_panel.open = true,
+                shoop_egui::HostAction::CloseUi => self.exit.close_ui(context),
+                shoop_egui::HostAction::CloseUiAndHost => self.exit.open = true,
+                shoop_egui::HostAction::Reconnect => {
+                    if let Some(entry) = self.runtime.remote_entry.clone() {
+                        match Runtime::attach(&self.settings.active(), entry) {
+                            Ok(runtime) => self.use_connection(runtime, context),
+                            Err(error) => self.settings.report_action_error(error.to_string()),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn handle_ui_intent(&mut self, intent: AppIntent) {
