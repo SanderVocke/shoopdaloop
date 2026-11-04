@@ -366,3 +366,7 @@ src/rust/shoop_host_manager/src/args.rs,native_ui,excluded,Explicit advanced man
 src/rust/shoop_jack/src/lib.rs,native_engine_host,excluded,Signal-style shutdown notification only stores an atomic flag; tracing is not signal-safe.
 src/rust/shoop_rt_host_native/src/direct.rs,native_engine_host,excluded,Bounded audio and timestamped MIDI callback adapter; processing must not trace.
 src/rust/shoop_rt_host_native/src/jack_driver.rs,native_engine_host,instrumented_indirect,Host start and stop spans cover client lifecycle; callbacks use atomic counters without tracing.
+src/rust/shoop_app/src/service/preview.rs,app_session,instrumented_indirect,Preview staging and playback progression run inside the service tick and command boundaries.
+src/rust/shoop_rt_backend/src/preview.rs,application_ui_and_control,instrumented_indirect,Preview uploads use traced adapter requests and outcomes without media payload tracing.
+src/rust/shoop_rt_engine/src/preview.rs,realtime_engine,excluded,Prepared bounded preview control may run on the audio thread; host and adapter trace request boundaries.
+src/rust/shoopdaloop/src/persistence_io/preview.rs,application_ui_and_control,instrumented_indirect,Preview generation uses the codec worker and runs within the frontend persistence pump boundary.

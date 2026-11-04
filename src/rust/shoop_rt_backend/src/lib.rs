@@ -41,6 +41,7 @@ mod mirror;
 mod outgoing;
 mod persistence;
 mod prepared;
+mod preview;
 mod reads;
 mod requests;
 mod session;
@@ -146,6 +147,8 @@ pub struct RtBackend<C, K> {
     /// Telemetry arrived after the latest outcome.
     telemetry_fresh: bool,
     replacement: Option<Replacement>,
+    preview: Option<preview::Preview>,
+    preview_playing: u64,
     next_persistence: u64,
     canonical_content: alloc::collections::BTreeMap<
         shoop_backend::BackendLoopId,
@@ -195,6 +198,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             failure_sequence: 0,
             telemetry_fresh: false,
             replacement: None,
+            preview: None,
+            preview_playing: 0,
             next_persistence: 1,
             canonical_content: Default::default(),
             canonical_imports: Default::default(),
@@ -279,6 +284,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 );
                 self.read_cancel_needed = false;
             }
+            self.advance_preview();
             self.advance_persistence();
             let sent = self.send();
             let mut received = 0;
@@ -439,6 +445,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.requests.clear();
         self.reads.clear();
+        if let Some(preview) = &mut self.preview {
+            preview.job.disconnected(reason.clone());
+        }
         if let Some(replacement) = &mut self.replacement {
             replacement.job.disconnected(reason);
         }

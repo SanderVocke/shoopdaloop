@@ -13,6 +13,7 @@ type CommandResult = core::result::Result<Effect, CommandError>;
 impl Service {
     pub(super) fn execute(&mut self, command: Command) -> CommandResult {
         match command {
+            Command::Preview(command) => self.preview_command(command),
             Command::CommitPersistence(key) => self.commit_persistence(key),
             Command::AddTrack(spec) => self.add_track(spec),
             Command::AddLoop { track } => {

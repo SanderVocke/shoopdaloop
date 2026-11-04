@@ -45,6 +45,12 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            preview: {
+                let mut state = self.preview.clone();
+                state.master_preview_available = self.backend.supports_audio_preview()
+                    && self.buses.values().any(|b| b.view.name == "Master");
+                state
+            },
             bus_limits: self.backend.bus_limits(),
             persistence_epoch: self.persistence_epoch,
             revision: self.revision,

@@ -398,6 +398,19 @@ impl Wire for StripShape {
 impl Wire for Request {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::PreviewStart {
+                request_id,
+                bus,
+                content,
+                frames,
+            } => {
+                w.u8(29)?;
+                w.u64(request_id)?;
+                bus.put(w)?;
+                w.u64(content)?;
+                w.u64(frames)
+            }
+            Self::PreviewStop => w.u8(30),
             Self::CreateBus { bus, channels } => {
                 w.u8(27)?;
                 bus.put(w)?;
@@ -558,6 +571,13 @@ impl Wire for Request {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            29 => Self::PreviewStart {
+                request_id: r.u64()?,
+                bus: BusId::get(r)?,
+                content: r.u64()?,
+                frames: r.u64()?,
+            },
+            30 => Self::PreviewStop,
             27 => Self::CreateBus {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
@@ -866,6 +886,10 @@ impl Wire for Limits {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Preview { request_id } => {
+                w.u8(4)?;
+                w.u64(*request_id)
+            }
             Self::Engine {
                 frame,
                 callbacks,
@@ -925,6 +949,9 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            4 => Self::Preview {
+                request_id: r.u64()?,
+            },
             0 => Self::Engine {
                 frame: r.u64()?,
                 callbacks: r.u64()?,

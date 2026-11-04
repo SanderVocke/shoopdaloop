@@ -282,3 +282,99 @@ fn throttled_upload_and_download_preserve_control_latency_heartbeat_and_snapshot
     assert!(rig.snapshots - snapshots <= 30);
     assert!(rig.link.borrow().maximum <= 8);
 }
+
+#[shoop_test]
+fn master_preview_stages_over_bounded_wire_records_and_cancels_without_session_media_changes() {
+    use shoop_app_api::ClickTrackPreviewStatus;
+    let mut rig = Rig::new();
+    let attach = rig.client.attach().unwrap();
+    rig.send(attach);
+    for _ in 0..128 {
+        rig.step();
+        if rig.client.state() == State::Ready {
+            break;
+        }
+    }
+    assert_eq!(rig.client.state(), State::Ready);
+    let snapshot = rig.client.snapshot().unwrap();
+    let bus = snapshot
+        .buses
+        .iter()
+        .find(|b| b.name == "Master")
+        .unwrap()
+        .id;
+    let rate = snapshot.status.sample_rate;
+    let tracks: Vec<_> = snapshot
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .map(|l| (l.id, l.length_frames, l.content_revision))
+        .collect();
+    let command = |value| Command::Preview(value);
+    assert!(matches!(
+        rig.command(command(PreviewCommand::Begin {
+            request_id: 1,
+            bus,
+            sample_rate: rate,
+            frames: 12_000
+        })),
+        Outcome::Confirmed { .. }
+    ));
+    for offset in (0..12_000).step_by(PREVIEW_CHUNK_FRAMES) {
+        let count = PREVIEW_CHUNK_FRAMES.min(12_000 - offset);
+        assert!(matches!(
+            rig.command(command(PreviewCommand::Chunk {
+                request_id: 1,
+                offset: offset as u32,
+                samples: vec![0.25; count]
+            })),
+            Outcome::Confirmed { .. }
+        ));
+    }
+    assert!(matches!(
+        rig.command(command(PreviewCommand::Play { request_id: 1 })),
+        Outcome::Confirmed { .. }
+    ));
+    let mut playing = false;
+    for _ in 0..5000 {
+        rig.step();
+        if rig.client.snapshot().unwrap().preview.preview_status == ClickTrackPreviewStatus::Playing
+        {
+            playing = true;
+            break;
+        }
+        assert_ne!(
+            rig.client.snapshot().unwrap().preview.preview_status,
+            ClickTrackPreviewStatus::Failed,
+            "{:?}",
+            rig.client.snapshot().unwrap().preview
+        );
+    }
+    assert!(playing, "host never started preview");
+    assert!(matches!(
+        rig.command(command(PreviewCommand::Stop)),
+        Outcome::Confirmed { .. }
+    ));
+    for _ in 0..100 {
+        rig.step();
+    }
+    assert_eq!(
+        rig.client.snapshot().unwrap().preview.preview_status,
+        ClickTrackPreviewStatus::Cancelled
+    );
+    assert!(matches!(
+        rig.command(command(PreviewCommand::Play { request_id: 1 })),
+        Outcome::Refused { .. }
+    ));
+    let after = rig.client.snapshot().unwrap();
+    assert_eq!(
+        after
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .map(|l| (l.id, l.length_frames, l.content_revision))
+            .collect::<Vec<_>>(),
+        tracks
+    );
+    assert_eq!(after.persistence_epoch, 1);
+}

@@ -1098,3 +1098,98 @@ fn a_host_without_requested_outputs_writes_no_host_records_or_logs() {
         .unwrap();
     assert!(!status.success());
 }
+
+#[shoop_test]
+fn master_preview_plays_in_the_independent_host_without_creating_loop_content() {
+    for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
+        let mut host = host(transport);
+        let (mut client, mut connection) = attach(&host.entry, 990);
+        let state = client.snapshot().unwrap();
+        let master = state
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Master")
+            .unwrap()
+            .id;
+        let rate = state.status.sample_rate;
+        let content: Vec<_> = state
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .map(|entry| (entry.id, entry.length_frames, entry.content_revision))
+            .collect();
+        let mut submit = |preview| {
+            assert!(matches!(
+                command(&mut client, &mut connection, Command::Preview(preview)),
+                Outcome::Confirmed { .. }
+            ));
+        };
+        submit(PreviewCommand::Begin {
+            request_id: 7,
+            bus: master,
+            sample_rate: rate,
+            frames: 12_000,
+        });
+        for offset in (0..12_000).step_by(PREVIEW_CHUNK_FRAMES) {
+            submit(PreviewCommand::Chunk {
+                request_id: 7,
+                offset: offset as u32,
+                samples: vec![0.25; PREVIEW_CHUNK_FRAMES.min(12_000 - offset)],
+            });
+        }
+        submit(PreviewCommand::Play { request_id: 7 });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            connection.poll(&mut client).unwrap();
+            let state = client.snapshot().unwrap();
+            if state.preview.preview_status == ClickTrackPreviewStatus::Playing
+                && state
+                    .buses
+                    .iter()
+                    .find(|bus| bus.id == master)
+                    .unwrap()
+                    .output_peaks_db
+                    .iter()
+                    .any(|peak| *peak > -13.)
+            {
+                break;
+            }
+            assert_ne!(
+                state.preview.preview_status,
+                ClickTrackPreviewStatus::Failed,
+                "{:?}",
+                state.preview
+            );
+            assert!(
+                Instant::now() < deadline,
+                "host preview produced no bus output: {:?}",
+                state.preview
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(matches!(
+            command(
+                &mut client,
+                &mut connection,
+                Command::Preview(PreviewCommand::Stop)
+            ),
+            Outcome::Confirmed { .. }
+        ));
+        let state = client.snapshot().unwrap();
+        assert_eq!(
+            state.preview.preview_status,
+            ClickTrackPreviewStatus::Cancelled
+        );
+        assert_eq!(
+            state
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .map(|entry| (entry.id, entry.length_frames, entry.content_revision))
+                .collect::<Vec<_>>(),
+            content
+        );
+        drop(connection);
+        shutdown(&mut host, &mut client);
+    }
+}

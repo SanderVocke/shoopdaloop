@@ -181,7 +181,8 @@ impl ControlEndpoint {
         };
         match request {
             Request::CreateBus { bus: id, .. } | Request::RemoveBus { bus: id } => bus(id, WAITING),
-            Request::CancelBulk => false,
+            Request::PreviewStart { bus: id, .. } => bus(id, HARD),
+            Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
@@ -249,7 +250,7 @@ impl ControlEndpoint {
             }
         };
         match request {
-            Request::CancelBulk => {}
+            Request::PreviewStart { .. } | Request::PreviewStop | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
             | Request::ReplacementPrepare { .. }
