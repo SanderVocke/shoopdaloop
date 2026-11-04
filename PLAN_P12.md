@@ -233,6 +233,13 @@ Goals and these criteria require explicit user approval to change.
   All 42 adapter regressions pass, including exact initial-state retention and
   bounded in-flight counts for old/wide peers. Final browser/Node/CI remain open.
 
+- Local acceptance complete on production source `846ae91f`: 2,755 native tests
+  and 847 executions across ten affected Wasm/Node packages pass. Both actual
+  browser deployments pass timing, stopped pickups, exact save/load/save, resumed
+  playback and bus workflows with zero xruns. Final strict JACK and both native
+  transport probes pass. The hashed validation inventory and nine-criterion
+  evidence map are written; only PR CI/review and ledger closure remain.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
@@ -378,7 +385,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 8 — final end-to-end validation and evidence
 
-- [ ] Run formatting, warning-denying workspace build and the full reference plus
+- [x] Run formatting, warning-denying workspace build and the full reference plus
   production suite per `.agents/info/build.md` and `.agents/info/test.md`:
 
   ```sh
@@ -393,18 +400,18 @@ Each stage's verification must pass before its dependent stage is closed.
   python3 scripts/check_rt_engine_boundary.py
   ```
 
-- [ ] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
+- [x] Run affected native debug/release loop-host direct/wire/two-thread fixtures,
   heap guards and selected Miri cases covering shared raw leases, window activation,
   active-capture edits, MIDI pickup cancellation and refusal/retirement. Update
   inventories and keep hashed reports, source SHAs and seeds.
-- [ ] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
+- [x] Run Wasm/Node suites, no-default-feature/bare-metal checks and built worklet/
   codec artifact contracts using existing runners. Exercise all Q values and
   awkward host partitions, especially Q=1 exact reference cases and default Q=32.
-- [ ] Exercise packaged native client/host paths on sockets/shared memory and a
+- [x] Exercise packaged native client/host paths on sockets/shared memory and a
   native output fixture (JACK/dummy loopback as appropriate), including recording,
   live edits, scheduled pre-play, persistence and socket reattachment. Validate
   samples/MIDI and transport state, not just rendered labels or acknowledgments.
-- [ ] Extend/run actual hosted and isolated self-contained browser acceptance
+- [x] Extend/run actual hosted and isolated self-contained browser acceptance
   through the production AudioWorklet: edit audio/MIDI, play pickups, cancel/rearm,
   save/load/save and resume. Measure output/packet continuity and check errors,
   xruns and unchanged core/bus/preview workflows. Use existing browser runners and
@@ -417,7 +424,7 @@ Each stage's verification must pass before its dependent stage is closed.
 
 ### Stage 9 — PR, CI and automated review
 
-- [ ] Commit each completed milestone, push `feat/p12-loop-timing`, and create a
+- [x] Commit each completed milestone, push `feat/p12-loop-timing`, and create a
   PR with base **`feat/fixed-quantum-runtime`**. Describe final behavior, quantum
   precision, validation and evidence links for a reviewer without this discussion.
 - [ ] Verify the requested base actually triggers build/platform, browser, docs,

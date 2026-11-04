@@ -24,80 +24,118 @@ legacy/native fixtures and the independent legacy `shoop_engine`.
 | Invalid loop-end click | Do not change length for an end at/before the hovered channel's start | `end_is_loop_wide_and_invalid_end_clicks_do_not_collapse_the_loop` |
 | Frame precision | Exact master comparisons at Q=1; existing fixed-quantum logical-period alignment at Q>1; raw media/timestamps remain frame-precise | `ARCHITECTURE.md`, `PLAN_FIXED_QUANTUM_CLEANUP.md` |
 
-## Recorded validation
+## Acceptance mapping
 
-- Before behavioral changes: 18 targeted reference/backend/editor tests passed,
-  covering channel timing, alignment-adjusted details, armed-recording length
-  refusal and the complete details-pane test selection.
-- Initial window foundation: warning-denying workspace `cargo check` passed.
-- Initial window foundation: all 17 `shoop_loops --test runtime` cases passed,
-  including three new heap-guarded integration scenarios: absolute-position/raw
-  retention and independent channel windows; atomic stale/duplicate/armed-recording
-  refusals; and audible stopped pre-play with uninterrupted MIDI pickup notes.
-- Warning-denying workspace build and runtime/loop/engine dependency checks for
-  all four supported dependency-audit targets passed; the test-attribute policy
-  also passed.
-- RT transaction milestone: all 88 engine/adapter regression tests passed.
-  `timing_edits::window_edits_keep_raw_recordings_atomic_results_and_recoverable_state_at_every_quantum`
-  passes at Q=1/16/32/64/128 with guarded engine calls, actual recorded stereo
-  output/raw bulk comparisons, zero-length retention, resync and recording edits.
-  RT codec tests include full-window/result round-trips and malformed batch bounds.
-  The warning-denying workspace build and test-attribute policy pass.
-- Production capability is still disabled. Library evidence alone does not close
-  P12 or establish production persistence, recovery or browser support.
+The nine criteria in [PLAN_P12.md](../../../PLAN_P12.md) are unchanged.
+Implementation source is `846ae91f` (reconciled target `2e19210b`); the final
+validation inventory records exact source and report hashes.
 
-Final acceptance must add all nine plan criteria, final source/check identities,
-Q matrix, native/browser output artifacts, persistence/recovery results and review.
+| Criterion | Production behavior and executable evidence |
+| --- | --- |
+| 1. Editor/intents | `shoop_egui::details_pane` tests single/all relative offsets, shared ends, snap/preview/zoom, invalid clicks and Q-effective previews. `shoop_app::timing_commands_are_atomic_while_recording_and_reconcile_once_after_ui_loss` exercises typed/encoded commands and service-owned identity/alignment. The browser canary executes scalar and audio/MIDI per-channel intents through the service and worklet. |
+| 2. Admission | `channel_batch_refusal_and_armed_recording_length_refusal_do_not_partially_apply` checks execution-cut admission. `a_recording_behind_an_earlier_stop_blocks_length_and_capture_without_blocking_offsets` covers all armed transitions, retained capture clock and atomic combined refusal. Native JACK and socket probes edit live recording metadata and recover it after reattachment. |
+| 3. Playback/sync | `manual_period_edits_preserve_absolute_position_and_refuse_misalignment_atomically`, `manual_timing_keeps_absolute_position_raw_media_and_independent_channel_windows` and all-Q engine timing tests cover absolute/modulo/zero periods, raw retention, sync pulse/countdown preservation and unrelated playback. |
+| 4. Pre-play | `preplay_is_audible_while_stopped_and_pickup_notes_continue_across_start`, `cancelled_superseded_and_invalidated_pickups_release_notes_without_starting` and `retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups` compare samples/packets, independent channel lead-in, inside-Q onset, cancellation and notes crossing the start. The browser checks quiet stopped output, audible stopped pickup and confirmed playback. |
+| 5. Ownership/results | Service UI-loss test, RT `timing_edits` resync/revision tests and shared-candidate fence test cover bounded complete receipts, stale identities, exact-once reconciliation and retained old exports. `private_window_acknowledgment_keeps_replacement_cancellable` checks private preparation remains cancellable through cleanup. |
+| 6. Raw media/persistence | `timing_windows_preserve_raw_audio_midi_proofs_and_preplay_through_replacement` checks independent windows, gains, shortening/zero/re-extension, shared raw buffers, save/load/save and clear. Native JACK, packaged file probes and browser compare actual PCM/exact MIDI and channel metadata after fresh load; corrupt loads preserve the session. |
+| 7. Q/RT safety | Engine timing/output cases run Q=1/16/32/64/128. Shared raw-window sample oracle also runs host partitions 1/7/31/128. Render calls and ownership/refusal cleanup use heap guards. A 512 KiB callback-stack regression and compact checkpoint/reset oracle avoid full MIDI-state copies. Debug/release direct/wire/two-thread replay, no-std builds and selected Miri cases cover resource lifetime and callback boundaries. |
+| 8. Deployment | Typed/encoded service tests, packaged socket/shared-memory probes, actual JACK output and hosted/isolated HTML acceptance cover the admitted paths. Only socket reattachment is claimed. Browser uses the production main-thread service, codec Worker and AudioWorklet. |
+| 9. Closure | Full reference/production tests, retained legacy fixtures, capability/dependency audits and final PR checks are required below. Other parity capabilities retain their gates. |
 
-## Retained-media and deployment checkpoint
+The [validation inventory](loop-timing-validation.json) preserves source SHAs,
+report/log hashes, package counts, Miri seeds and built browser artifact hashes.
 
-Raw uploads carry a bounded private-source window header; raw durations need not
-be quantum aligned. Logical periods still must be aligned. Imported channel gains
-apply during rendering and raw export samples remain exact. The adapter retains
-validation proofs across window-only edits of the same immutable buffers.
+## Precision and resource contract
 
-- `shoop_rt_backend::persistence::timing_windows_preserve_raw_audio_midi_proofs_and_preplay_through_replacement`
-  covers independent audio/MIDI timing, channel gain, nonzero pre-play, zero length,
-  re-extension, raw-buffer sharing, save/load/save and clear.
-- `shoop_rt_engine::timing_edits::retained_raw_lead_in_starts_inside_quantum_and_carries_midi_pickups`
-  verifies actual output at Q=1/16/32/64/128, frame-precise raw media, different
-  channel lead-in onsets, no gap/duplicate pickup at start and delayed output cleanup.
-- `shoop_loops::runtime::timing_scenarios::cancelled_superseded_and_invalidated_pickups_release_notes_without_starting`
-  checks cancellation, replaced starts and source Stop against samples and packets.
-- Production service tests check typed/encoded channel batches, recording admission,
-  retained results, stale-attachment refusal and no render waits. Lua length getters
-  and change events observe confirmed edits without restarting the script.
-- `scripts/run_loops_hosts.py --native-only --profile debug/release`: both pass.
-- Bare-metal `thumbv7em-none-eabihf` build: pass.
-- Selected pinned Miri cases for raw windows, pickup continuity and atomic armed
-  refusal: pass, seed 0; reports retained locally for final source/hash inventory.
-- Packaged socket/shared-memory canaries: live timing and retained raw reads pass;
-  socket reattachment retains admitted recording metadata.
+Q is immutable and one of 1, 16, 32, 64 or 128 (default 32; browser 128).
+Logical periods remain Q-aligned: a nonaligned API request refuses, and the
+editor previews the effective aligned period. Exact-frame master comparisons
+use Q=1. Raw media, channel offsets and MIDI timestamps retain frame precision.
+This does not claim arbitrary-frame logical periods at Q>1.
 
-The capability is enabled for integration acceptance. Full-suite, final browser
-acceptance and final-head CI are still required before P12 can close.
+Timing edits transfer fixed-size metadata, independently of media length. Raw
+stored/shared media remain leased by settled/export cuts. Capture clocks and
+alignment do not move. Per-channel out-of-media spans produce silence; aligned
+capture windows retain their existing validation. No callback allocation, wait,
+lock, second transport clock or media-sized edit upload is introduced.
 
-## Completed deployment checks
+The merged target adds shared media and buffered processing. Stored/shared audio
+both support bounded window reads. Shared MIDI parameter-history validation uses
+checkpoint flags and bounded prefix replay instead of full-state stack copies.
+Prepared shared candidates fence the timing revision. P04/P05 remain OPEN at the
+application boundary despite the target's internal shared-media foundation.
 
-Hosted Chromium and an isolated self-contained HTML directory both pass the
-production intent/AudioWorklet timing and persistence workflow with zero xruns.
-The browser host checks a quiet stopped loop, arms synced playback near the start
-of a source cycle, then observes audible stopped pre-play and confirmed playback.
-`file://` navigation is blocked by this browser's organization policy; the isolated
-HTML was served by itself over localhost, as supported by the existing smoke.
+## Validation results
 
-The JACK loopback regression runs without the missing-backend allowance. Exact
-0.25 PCM and captured CC packets reach an independent JACK peer through both local
-and independent application hosts. Live recording offsets/pre-play, playing period
-edits, socket reattachment, retained raw reads and save/load remain verified.
+- Final combined native reference/production suite after target reconciliation
+  and the upload-window refinement: **2,755 passed**, seven intentionally skipped.
+  All **42 adapter regressions** also pass independently.
+- Formatting, warning-denying workspace builds, test attributes, all **422**
+  tracing-inventory modules, parity coverage and runtime/loop/engine dependency
+  checks pass. All **76** Python runner/report tests pass; updated inventory
+  assertions pass after adding the compact shared-MIDI Miri case.
+- Native loop-host debug and release direct/wire/two-thread replay: pass, with
+  complete media/receipt/owner reports and SHA-256 hashes.
+- Bare-metal builds: Cortex-M runtime/buffered/loops/ports plus no-default-feature
+  engine/service/adapter on `armv7a-none-eabi` and `aarch64-unknown-none` pass.
+- Pinned Miri `nightly-2026-05-04`, seed 0: four exact timing cases plus the compact
+  shared MIDI checkpoint/reset case pass on `6c0ab030`. Ten indexed MIDI cases
+  also passed at the earlier stack-safety checkpoint. These are selected-case
+  claims, not whole-workspace Miri claims.
+- Strict JACK test runs without `SHOOP_ALLOW_MISSING_BACKENDS`: exact 0.25 PCM and
+  captured CC packets pass through local and independent hosts. Recording timing,
+  playing length edits, raw retention, socket recovery and persistence pass.
+- Packaged socket/shared-memory transport probes pass. Both large-file probes
+  pass >32 MiB WAV/exact-MIDI, native input/output, corrupt-file refusal, fresh load,
+  exact resave and graceful shutdown; the socket probe also abandons in-flight
+  uploads/captures and reconciles service-owned work.
+- Worklet and codec artifact contracts pass with RT protocol **8** (app protocol
+  **21**). Hosted Chromium timing/pickup/save/load/save passes with **zero xruns**.
+  The isolated single-file HTML also passes with **zero xruns**, including fresh
+  owners, exact resave and restored playback. All **847 Wasm/Node executions across ten affected packages** pass.
 
-Native JACK exposed excessive validation-only MIDI state copies on its callback
-stack. Indexed parameter-history queries now reuse checkpoint metadata and bounded
-prefix replay without copying the whole state. Their independent prefix-state
-oracle and a heap-guarded 512 KiB callback-stack test pass. Ten selected MIDI index
-Miri tests pass in addition to the four timing/lead-in/cancellation cases.
+Browser diagnostics found serial initial-state packets could consume the load
+step's deadline under contention. Initial packets now share the negotiated bounded
+8/64 upload-credit window, preserving order. The regression measures both limits
+and compares all original initial-state packets after replacement. Private timing
+headers do not count as committing a replacement. This retains cancellation and
+atomic live publication while making the browser workflow reliable.
 
-All nine affected Wasm/Node packages pass (588 executions at that checkpoint).
-The final source additionally covers a Record queued behind a Stop: authoritative
-armed-state telemetry blocks length/capture/replacement while permitting offset
-and pre-play changes. Final-head gates and CI are recorded below when complete.
+The organization browser policy blocks `file://` navigation. Self-contained
+acceptance serves a directory containing only the embedded HTML over localhost,
+as supported by the existing runner; hosted assets cannot satisfy those reads.
+
+## Reproduction
+
+Enter the project's configured build environment first. The non-Nix validation
+host used Rust 1.99.1, nextest 0.9.116, Node 22.22.2, wasm-pack 0.15.0,
+wasm-bindgen 0.2.127 and Chromium. Use the repository-pinned CI tooling on CI.
+
+```sh
+cargo fmt --all -- --check
+RUSTFLAGS='-D warnings' cargo build --locked --workspace
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+python3 scripts/check_shoop_test_usage.py
+python3 scripts/check_tracing_coverage.py --require-closed
+python3 scripts/check_feature_parity.py
+python3 scripts/check_rt_runtime_boundary.py
+python3 scripts/check_loops_boundary.py
+python3 scripts/check_rt_engine_boundary.py
+python3 scripts/run_loops_hosts.py --native-only --profile debug
+python3 scripts/run_loops_hosts.py --native-only --profile release
+python3 scripts/run_wasm_tests.py --runtime node --profile dev
+```
+
+Native packaged and browser commands are documented in
+[the frontend README](../../../src/rust/shoopdaloop/README.md#verification).
+For strict JACK use the isolated dummy-server runner, or an available server
+without the missing-backend allowance. Miri's exact inventory is available from
+`scripts/run_rt_runtime_miri.py --list`; the four first `shoop_loops` shards and
+`rt_runtime` shard 12/34 select these five cases without reducing their workloads.
+
+## PR and review
+
+[PR #943](https://github.com/SanderVocke/shoopdaloop/pull/943) targets
+`feat/fixed-quantum-runtime`. The workflow filters include that requested base.
+Final-head CI and automated review are pending; the ledger remains OPEN until
+closure. No automated review or review comments had been provided at this checkpoint.
