@@ -2,6 +2,14 @@
 
 ## Status, baseline and delivery
 
+The original M0–M7 completion below is historical. Current execution/delivery is
+superseded by [PLAN_RECONCILE_GRAB.md](PLAN_RECONCILE_GRAB.md), targeting
+`feat/fixed-quantum-runtime`. The production integration uses immutable Quantum
+preparation and the sole tick lifecycle. See the
+[shared-history contract](src/rust/shoop_loops/docs/shared-history.md) for current
+history, preparation, publication and shutdown behavior. Its final-head CI gate
+must pass before that reconciliation is complete.
+
 M0–M7 executed on `feat/shared-midi-persistence`; delivered as unmerged
 [PR #927](https://github.com/SanderVocke/shoopdaloop/pull/927). Written under
 [write_plan.md](.agents/prompts/write_plan.md).

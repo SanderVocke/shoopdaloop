@@ -302,6 +302,7 @@ impl Pinned {
             resource
         };
         SharedTake {
+            frames: self.frames,
             audio: Some(upload(resource::Format::Audio { channels: 2 }, &self.audio)),
             midi: Some(upload(resource::Format::Midi, &self.midi)),
             ..stores
@@ -335,6 +336,83 @@ impl Pinned {
             h.request(protocol::Request::ContentFinish { id });
         }
     }
+}
+
+#[shoop_test]
+fn loaded_media_longer_than_live_history_uses_bounded_candidate_import_and_keeps_its_base() {
+    let mut h = Fixture::new(32, 31);
+    let (take, _, _) = h.grabs();
+    h.adopt(0, take);
+    let export = h.export_owned(0);
+    let mut pinned = Pinned::capture(&mut h, export);
+    let events = midi_events(&pinned.midi);
+    pinned.audio = pinned.audio.repeat(4);
+    pinned.midi.clear();
+    for period in 0..4 {
+        for (frame, packet) in &events {
+            let mut record = vec![0; 12 + packet.len()];
+            resource::encode_midi_record(period * pinned.frames + frame, packet, &mut record)
+                .unwrap();
+            pinned.midi.extend_from_slice(&record);
+        }
+    }
+    pinned.frames *= 4;
+    assert!(pinned.frames > 8 * h.q as u64);
+    let loaded = pinned.loaded(&mut h, take);
+    h.adopt(0, loaded);
+    let base = h.export(0);
+    let Reply::Candidate {
+        id,
+        status: CandidateStatus::Building,
+        ..
+    } = h.op(Operation::CandidateBegin {
+        target: target(0),
+        take: loaded,
+    })
+    else {
+        panic!("loaded candidate")
+    };
+    for _ in 0..128 {
+        if matches!(
+            h.op(Operation::CandidateStatus { id }),
+            Reply::Candidate {
+                status: CandidateStatus::Ready,
+                ..
+            }
+        ) {
+            break;
+        }
+    }
+    let patch = h.snapshot(take.midi.unwrap());
+    h.op(Operation::CandidateMidi {
+        id,
+        position: pinned.frames - 1,
+        input: patch.id,
+    });
+    h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+    for _ in 0..128 {
+        if matches!(
+            h.op(Operation::CandidateStatus { id }),
+            Reply::Candidate {
+                status: CandidateStatus::Ready,
+                ..
+            }
+        ) {
+            break;
+        }
+    }
+    assert!(matches!(
+        h.op(Operation::CandidatePublish { id }),
+        Reply::CandidatePublished { .. }
+    ));
+    assert_eq!(h.read(base.view.audio.unwrap().snapshot), pinned.audio);
+    assert_eq!(h.read(base.view.midi.unwrap().snapshot), pinned.midi);
+    for resource in [loaded.audio, loaded.midi].into_iter().flatten() {
+        h.resource(ResourceRequest::Remove { resource });
+    }
+    let mut stopped = h.engine.render.into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.resource_usage().free_pages, 12288);
 }
 
 #[shoop_test]

@@ -116,11 +116,13 @@ independent exports, stale/foreign handles, failure before publication and compl
 credit recovery. A capacity fixture checks small-write work at short and 30-second
 horizons.
 
-The loop-library fixture adds real resolver decisions, capture and renderer DSP,
-an independent sample oracle and callback-partition comparisons. It manually owns
-the composition. Additional fixtures exercise ordinary full-loop adoption,
-playback, exports, complete configuration replacement and teardown with both
-grabbed and imported COW sources. Codec tests round-trip pinned original and
-edited snapshots through session archives, exact audio and WAV, then load them
-into editable PCM. It implements neither MIDI history nor application
-replacing/grab policy, and establishes no device deadline guarantee.
+The scalar loop fixture is a fixed Q=1 reference with independent sample
+expectations. The production engine fixture uses Q=1/16/32/64/128 and host
+partitions 1/7/31/128, continuous mixed input history, retained overlapping grabs,
+private edits and coherent tick selection. Loaded/grabbed media also follows
+ordinary adoption, export, family and complete configuration replacement paths.
+Codec fixtures cover session archives, exact audio/MIDI and WAV, indexed reload
+and further edits. See the [fixed shared-history contract](../../../shoop_loops/docs/shared-history.md)
+for source completion, scheduling, finite capacity, shutdown and CI measurements.
+Application P04/P05 policy and physical-device deadline acceptance remain outside
+this foundation.

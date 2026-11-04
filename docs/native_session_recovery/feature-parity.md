@@ -83,7 +83,7 @@ The P04/P05 storage foundations have library evidence for both
 [shared MIDI](../../src/rust/rt_runtime/docs/reference/shared-midi.md), including
 immutable overlapping grabs, independent edits, ordinary loop-resource playback
 and persistence round trips. MIDI replacement prepares a complete private state
-index before an explicit publication cut. These foundations do not enable the
+index before an explicit publication cut. The [fixed integration contract](../../src/rust/shoop_loops/docs/shared-history.md) covers completed input watermarks, bounded private preparation and ordinary media publication; final-head validation is tracked in [PLAN_RECONCILE_GRAB.md](../../PLAN_RECONCILE_GRAB.md). These foundations do not enable the
 application grab policies or Replacing mode; both rows remain open.
 
 ## Preserved evidence and retirement record

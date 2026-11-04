@@ -114,6 +114,9 @@ impl Fixture {
         Self::new_with_rate(q, partition, 1000)
     }
     fn new_with_rate(q: usize, partition: usize, rate: u32) -> Self {
+        Self::new_shapes(q, partition, rate, true, true)
+    }
+    fn new_shapes(q: usize, partition: usize, rate: u32, audio: bool, midi: bool) -> Self {
         let d = EngineDescription {
             quantum: q,
             sample_rate: rate,
@@ -143,13 +146,13 @@ impl Fixture {
             SharedSettings {
                 histories: vec![HistorySettings {
                     source: 0,
-                    audio: Some(resource::shared_audio::Config {
+                    audio: audio.then_some(resource::shared_audio::Config {
                         channels: 2,
                         history_frames: 8 * q,
                         views: 24,
                         pages: 1024,
                     }),
-                    midi: Some(resource::shared_midi::Config {
+                    midi: midi.then_some(resource::shared_midi::Config {
                         history_frames: (8 * q) as u64,
                         chunks: 8,
                         views: 24,
@@ -518,6 +521,102 @@ impl Fixture {
 }
 fn failed(error: Error) -> Reply {
     Reply::Failed(shoop_loops::runtime::Failure::Runtime(error))
+}
+
+#[shoop_test]
+fn stopped_sources_support_audio_only_and_midi_only_completed_grabs() {
+    for (audio, midi) in [(true, false), (false, true)] {
+        let mut h = Fixture::new_shapes(32, 7, 1000, audio, midi);
+        let (take, sibling, _) = h.grabs();
+        assert_eq!((take.audio.is_some(), take.midi.is_some()), (audio, midi));
+        assert_eq!(
+            (sibling.audio.is_some(), sibling.midi.is_some()),
+            (audio, midi)
+        );
+        let mut stopped = h.engine.render.into_stopped();
+        stopped.cleanup().unwrap();
+        assert_eq!(stopped.resource_usage().free_pages, 12288);
+    }
+}
+
+#[shoop_test]
+fn fixed_shared_seek_stop_and_output_recovery_preserve_the_selected_revision() {
+    for partition in [1, 7, 31, 128] {
+        let mut h = Fixture::new(32, partition);
+        let (take, _, start) = h.grabs();
+        h.adopt(0, take);
+        let old = h.export(0);
+        let at = h.aligned_future(256);
+        let mut sequences = Vec::new();
+        for (frame, transition) in [
+            (
+                at,
+                Transition::Play {
+                    position: 32,
+                    retrigger: false,
+                },
+            ),
+            (
+                at + 64,
+                Transition::Play {
+                    position: 64,
+                    retrigger: true,
+                },
+            ),
+            (at + 128, Transition::Stop),
+        ] {
+            sequences.push(h.send(
+                frame,
+                Operation::Transition {
+                    target: target(0),
+                    timing: Timing::At,
+                    transition,
+                },
+            ));
+        }
+        h.run_to(at + 224);
+        for sequence in sequences {
+            assert!(matches!(h.result(sequence), Reply::Transition(_)));
+        }
+        for f in at + 32..at + 160 {
+            let core = f - 32;
+            let position = if core < at + 64 {
+                32 + core - at
+            } else {
+                64 + core - at - 64
+            };
+            assert_eq!(h.samples[0][f as usize], (start + position + 1) as f32);
+        }
+        assert!(h.samples[0][(at + 160) as usize..]
+            .iter()
+            .all(|sample| *sample == 0.));
+        h.midi_output = MidiBuffer::new(1, 3).unwrap();
+        h.op(Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Play {
+                position: 0,
+                retrigger: true,
+            },
+        });
+        let end = h.aligned_future(256);
+        h.run_to(end);
+        assert_eq!(h.engine.render.phase(), Phase::Running);
+        h.midi_output = MidiBuffer::new(4096, 32768).unwrap();
+        let end = h.aligned_future(256);
+        h.run_to(end);
+        assert_eq!(
+            h.read(old.view.audio.unwrap().snapshot).len(),
+            take.frames as usize * 8
+        );
+        assert_eq!(
+            midi_events(&h.read(old.view.midi.unwrap().snapshot)),
+            expected_midi(start, take.frames, 32)
+        );
+        let mut stopped = h.engine.render.into_stopped();
+        stopped.cleanup().unwrap();
+        assert_eq!(stopped.resource_usage().free_pages, 12288);
+    }
 }
 
 #[shoop_test]

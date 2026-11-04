@@ -41,8 +41,8 @@ The resolver still supplies non-wrapping intervals and discontinuity flags.
 See the [shared audio ownership reference](../../rt_runtime/docs/reference/shared-audio.md)
 for preparation, capacity and release contracts.
 
-`tests/shared_audio.rs` manually composes the production resolver, audio capture
-and audio renderer. An independent scalar oracle checks two overlapping stereo
+`tests/shared_audio.rs` composes a fixed Q=1 scalar resolver, audio capture
+and audio renderer as a reference oracle. An independent scalar oracle checks two overlapping stereo
 grabs, replacement across pages/wraps, retained original and intermediate exports,
 stop/resume and continued history capture with background transfers exhausted.
 Whole, single-frame and irregular callback partitions produce identical samples.
@@ -54,9 +54,10 @@ Registered shared audio also uses ordinary resource snapshots, so existing
 configuration replacement accept it without a second publication mechanism.
 Integration fixtures cover loaded PCM bases and grabbed history, playback and
 retained exports across replacement, and complete resource cleanup. Codec fixtures
-exercise session, exact-audio and WAV round trips. Replacing mode, MIDI history,
-host grab protocols and application P04/P05 capability restoration remain separate
-work. Native tests do not establish browser/device deadlines or a new cross-platform
+exercise session, exact-audio and WAV round trips. See the [fixed shared-history contract](shared-history.md) for mixed audio/MIDI
+history, private preparation and production tick publication. Continuous Replacing
+mode, host grab protocols and application P04/P05 capability restoration remain
+separate work. Native tests do not establish browser/device deadlines or a new cross-platform
 acceptance campaign.
 
 ## Verification boundary

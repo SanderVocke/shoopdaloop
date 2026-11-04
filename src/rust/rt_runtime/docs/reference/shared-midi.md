@@ -118,18 +118,18 @@ deadline certification or application P04/P05 behavior.
 
 ## Loop and persistence proof
 
-The resolver fixture exercises ordinary MIDI/audio renderers and MIDI capture at
-a common history cut across whole, one-frame and irregular callbacks. It checks
-raw splice contents and projected state independently, schedules preparation with
-explicit per-step quotas, and commits only at fixed musical cuts. Existing
-node-pair, Adopt/Select, export/MIDI-initial and ConfigurationReplace paths also
-exercise loaded and grabbed shared MIDI. Output exhaustion uses the existing
-runtime recovery path while required audio and media-state advancement continue.
+The scalar resolver fixture is a fixed Q=1 reference. Production engine fixtures
+exercise the ordinary graph/domain at Q=1/16/32/64/128 with whole, one-frame and
+irregular host callbacks. They retain packet/sample/state oracles, common completed
+cuts, fair bounded private preparation and coherent tick selection. Node-pair,
+Adopt/Select, export/MIDI-initial, family and ConfigurationReplace paths retain
+ordinary shared snapshot ownership.
 
-Session and exact-MIDI fixtures retain original/intermediate/final exports, save
-logical packets and supported restoration state, reload indexed bases, and edit
-those bases independently. Mixed audio/MIDI payloads survive removal and reload
-without storage identities entering file formats. Standard MIDI keeps the current
-conversion contract: the existing warning recommends exact MIDI for full state,
-timing is quantized, and realtime system-reset packets are dropped by conversion.
-Application P04/P05 mode flags and parity gaps remain unchanged.
+The mixed fixed-engine sequence retains original and published exports, saves
+session/exact/WAV data, reloads indexed bases, edits them independently and follows
+family/configuration replacement with complete teardown. SMF retains its existing
+quantized timing warning and drops realtime reset. Identity conversion and explicit
+rate/Q conversion keep separate contracts. See the
+[fixed shared-history contract](../../../shoop_loops/docs/shared-history.md) for
+source generations, watermark faults, callback budgets, cleanup and measurement
+scope. Application P04/P05 mode flags and parity gaps remain open.
