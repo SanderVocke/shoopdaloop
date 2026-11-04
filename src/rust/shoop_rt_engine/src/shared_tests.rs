@@ -135,7 +135,7 @@ impl Fixture {
                     source: 0,
                     audio: Some(resource::shared_audio::Config {
                         channels: 2,
-                        history_frames: (8 * q) as u64,
+                        history_frames: 8 * q,
                         views: 24,
                         pages: 1024,
                     }),
@@ -633,7 +633,7 @@ fn late_graph_fault_does_not_certify_history_written_in_an_unfinished_tick() {
     let mut stopped = h.engine.render.into_stopped();
     let status = stopped
         .planner
-        .history_status(0, &stopped.resources.render_io())
+        .history_status(0, &stopped.resources.io())
         .unwrap();
     assert_eq!(status.end, Frame(start));
     let (audio, _) = stopped.planner.shared_stores(0).unwrap();
