@@ -55,6 +55,7 @@ struct Fixture {
     burst: Option<u64>,
     last_execution: Option<Executed>,
     midi_overflows: usize,
+    transfer_bytes: usize,
     read_buffer: Option<(resource::Cursor, Box<[u8]>)>,
     #[cfg(not(target_arch = "wasm32"))]
     timings: Option<Vec<measurements::Callback>>,
@@ -171,6 +172,9 @@ impl Fixture {
         )
         .unwrap();
         let outbox = engine.outbox();
+        let transfer_bytes = crate::runtime_capacities(&d, &engine.endpoint.pool, q)
+            .budgets
+            .transfer_bytes;
         let mut h = Self {
             engine,
             outbox,
@@ -188,6 +192,7 @@ impl Fixture {
             burst: None,
             last_execution: None,
             midi_overflows: 0,
+            transfer_bytes,
             read_buffer: None,
             #[cfg(not(target_arch = "wasm32"))]
             timings: None,
@@ -1380,6 +1385,104 @@ fn candidate_preparation_is_fair_callback_bounded_and_cancellation_invalidates_t
             h.resource(ResourceRequest::Remove { resource });
         }
     }
+    let mut stopped = h.engine.render.into_stopped();
+    recover_all(&mut stopped, 12288);
+}
+
+#[shoop_test]
+fn history_playback_private_preparation_and_ready_publication_survive_exhausted_background_copy() {
+    let mut h = Fixture::new(32, 128);
+    let (first, second, _) = h.grabs();
+    h.adopt(0, first);
+    h.adopt(1, second);
+    h.op(Operation::Transition {
+        target: target(0),
+        timing: Timing::At,
+        transition: Transition::Play {
+            position: 0,
+            retrigger: false,
+        },
+    });
+    let a = h.audio_candidate(first);
+    let Reply::Candidate { id: b, .. } = h.op(Operation::CandidateBegin {
+        target: target(1),
+        take: second,
+    }) else {
+        panic!("candidate")
+    };
+    let patch = h.snapshot(second.midi.unwrap());
+    let source = h.snapshot(first.audio.unwrap());
+    let resource::Reply::Cursor(cursor) = h.resource(ResourceRequest::Cursor {
+        snapshot: source.id,
+    }) else {
+        panic!("cursor")
+    };
+    let at = h.now().div_ceil(128) * 128 + 256;
+    let start_reader = Command::Schedule {
+        at: Frame(at),
+        action: rt_runtime::schedule::Action::Processor {
+            node: h.engine.endpoint.pool.reader(),
+            operation: crate::EngineOp::ReadStart {
+                cursor,
+                bytes: 1024,
+            },
+        },
+        payload: Box::new([]),
+    };
+    h.engine
+        .endpoint
+        .control
+        .submit_prepared(Lane::Normal, start_reader)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    let publish = h.send(at + 32, Operation::CandidatePublish { id: a });
+    let build = h.send(
+        at + 32,
+        Operation::CandidateMidi {
+            id: b,
+            position: 0,
+            input: patch.id,
+        },
+    );
+    let work = h.send(at + 64, Operation::SharedWork);
+    h.run_to(at);
+    for _ in 0..(h.transfer_bytes - 1024) / 256 {
+        h.engine
+            .endpoint
+            .control
+            .submit_prepared(
+                Lane::Normal,
+                Command::Resource(ResourceCommand::new(ResourceRequest::Read {
+                    cursor,
+                    bytes: vec![0; 256].into_boxed_slice(),
+                })),
+            )
+            .unwrap_or_else(|e| panic!("{:?}", e.error));
+    }
+    h.render(128, true);
+    assert!(
+        matches!(h.result(publish), Reply::CandidatePublished { frame, .. } if frame == Frame(at + 32))
+    );
+    assert!(matches!(
+        h.result(build),
+        Reply::Candidate {
+            status: CandidateStatus::Building,
+            ..
+        }
+    ));
+    let Reply::SharedWork(work) = h.result(work) else {
+        panic!("work")
+    };
+    assert_eq!(work.background_bytes_remaining, 0);
+    assert!(work.edit_steps > 0 && work.edit_steps <= 8);
+    assert_eq!(work.history_failures, 0);
+    assert!(h.samples[0][(at + 32) as usize..(at + 128) as usize]
+        .iter()
+        .all(|sample| *sample > 0.));
+    h.op(Operation::CandidateCancel { id: b });
+    h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
+    h.resource(ResourceRequest::ReleaseSnapshot {
+        snapshot: source.id,
+    });
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, 12288);
 }

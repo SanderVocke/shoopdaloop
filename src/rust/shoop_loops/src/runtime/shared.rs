@@ -60,6 +60,8 @@ pub struct SharedWork {
     pub history_failures: usize,
     pub edit_steps: usize,
     pub jobs_scanned: usize,
+    pub background_bytes_remaining: usize,
+    pub background_steps_remaining: usize,
 }
 /// Prepared storage without allocator overhead. Reserved payload is a subset of
 /// the ordinary arena; MIDI state is a subset of store metadata.
@@ -973,9 +975,12 @@ impl LoopPlanner {
             Operation::SharedCapacity => Ok(Reply::SharedCapacity(
                 self.shared.as_ref().ok_or(Error::InvalidState)?.capacity(),
             )),
-            Operation::SharedWork => Ok(Reply::SharedWork(
-                self.shared.as_ref().ok_or(Error::InvalidState)?.work(),
-            )),
+            Operation::SharedWork => {
+                let mut work = self.shared.as_ref().ok_or(Error::InvalidState)?.work();
+                work.background_bytes_remaining = io.copy_remaining();
+                work.background_steps_remaining = io.steps_remaining();
+                Ok(Reply::SharedWork(work))
+            }
             Operation::HistoryStatus { source } => Ok(Reply::History(
                 self.shared
                     .as_ref()
