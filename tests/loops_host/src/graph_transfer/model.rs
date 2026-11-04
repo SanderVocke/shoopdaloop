@@ -49,8 +49,8 @@ fn random(seed: &mut u64) -> u64 {
         .wrapping_add(1442695040888963407);
     *seed
 }
-fn script(counts: Counts, nonce: u64) -> Vec<Payload> {
-    let generation = ((nonce >> 32) as u32).max(1);
+fn script(counts: Counts, seed: u64) -> Vec<Payload> {
+    let generation = ((seed >> 32) as u32).max(1);
     let node = |slot| NodeId::from_parts(slot, generation).unwrap();
     let mut result = Vec::new();
     for offset in 0..counts.steps {

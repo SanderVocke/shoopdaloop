@@ -156,6 +156,10 @@ impl HostBuffer {
     pub fn overflows(&self) -> usize {
         self.overflows
     }
+
+    pub fn clear_midi_output(&mut self, port: usize) {
+        self.midi_output[port].clear();
+    }
 }
 
 fn merge(result: Result<(), Error>, overflows: &mut usize) -> Result<(), Error> {
