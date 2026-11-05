@@ -939,3 +939,133 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
         assert_eq!(resources.usage(), baseline);
     });
 }
+
+#[shoop_test]
+fn recording_prefix_import_captures_live_tail_and_cannot_publish_holes() {
+    let mut resources = resources();
+    let baseline = resources.usage();
+    let pool = resources.prepare_indexed_midi_store(config()).unwrap();
+    let source = resources.indexed_midi_source(pool, 0).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    let mut encoded = [0; 360];
+    for tick in 0..12 {
+        encode_midi_record(
+            tick * Q as u64 + 3,
+            &[0xb0, 7, tick as u8],
+            &mut encoded[tick as usize * 30..tick as usize * 30 + 15],
+        )
+        .unwrap();
+        encode_midi_record(
+            tick * Q as u64 + 5,
+            &[0x90, 60, 80],
+            &mut encoded[tick as usize * 30 + 15..tick as usize * 30 + 30],
+        )
+        .unwrap();
+    }
+    let loaded = upload(&mut resources, &encoded, 12 * Q as u64);
+    resources.begin_callback();
+    let snapshot = resources.snapshot(loaded, Frame(0)).unwrap();
+    assert_no_heap(|| {
+        let (take, writer, import) = resources
+            .prepare_indexed_midi_recording(pool, snapshot.id, &MidiState::default())
+            .unwrap();
+        let mut expected = [0; 840];
+        expected[..360].copy_from_slice(&encoded);
+        for tick in 0..32 {
+            resources.begin_callback();
+            input.clear();
+            input.push(7, Q, &[0xb0, 1, tick as u8]).unwrap();
+            let frame = Frame(tick * Q as u64);
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, frame, &input)
+                .unwrap();
+            resources
+                .render_io()
+                .write_indexed_midi_tick(writer, source, frame)
+                .unwrap();
+            encode_midi_record(
+                (12 + tick) * Q as u64 + 7,
+                &[0xb0, 1, tick as u8],
+                &mut expected[360 + tick as usize * 15..375 + tick as usize * 15],
+            )
+            .unwrap();
+            if tick < 24 {
+                assert_eq!(
+                    resources.snapshot_indexed_midi_writer(writer),
+                    Err(Error::Busy)
+                );
+                assert_eq!(
+                    resources.finish_indexed_midi_writer(writer),
+                    Err(Error::Busy)
+                );
+                assert_eq!(
+                    resources.fix_indexed_midi_writer_window(writer),
+                    Err(Error::Busy)
+                );
+            }
+            let status = resources.progress_indexed_midi_import(import, 1).unwrap();
+            assert_eq!(
+                status,
+                if tick < 24 {
+                    Status::Building
+                } else {
+                    Status::Ready
+                }
+            );
+            resources.reclaim();
+        }
+        resources
+            .finish_indexed_midi_recording_import(import)
+            .unwrap();
+        let retained = resources.snapshot_indexed_midi_writer(writer).unwrap();
+        let complete = resources.snapshot(retained, Frame(1024)).unwrap();
+        resources.remove(retained).unwrap();
+        assert_eq!(complete.description.frames, 44 * Q as u64);
+        assert_eq!(bytes::<840>(&mut resources, complete), expected);
+        resources.fix_indexed_midi_writer_window(writer).unwrap();
+        input.clear();
+        resources
+            .render_io()
+            .append_indexed_midi_source(source, Frame(1024), &input)
+            .unwrap();
+        resources
+            .render_io()
+            .write_indexed_midi_window_tick(
+                writer,
+                source,
+                Frame(1024),
+                WriteSpan {
+                    position: 0,
+                    offset: 0,
+                    frames: Q,
+                },
+            )
+            .unwrap();
+        resources.finish_indexed_midi_writer(writer).unwrap();
+        let final_view = resources.snapshot(take, Frame(1056)).unwrap();
+        let mut final_expected = [0; 810];
+        final_expected.copy_from_slice(&expected[30..]);
+        assert_eq!(bytes::<810>(&mut resources, final_view), final_expected);
+        assert_eq!(bytes::<840>(&mut resources, complete), expected);
+        let (cancelled, writer, import) = resources
+            .prepare_indexed_midi_recording(pool, snapshot.id, &MidiState::default())
+            .unwrap();
+        resources.progress_indexed_midi_import(import, 1).unwrap();
+        resources.cancel_indexed_midi_writer(writer).unwrap();
+        assert_eq!(
+            resources.progress_indexed_midi_import(import, 1),
+            Err(Error::InvalidId)
+        );
+        for snapshot in [snapshot, complete, final_view] {
+            resources.release_snapshot(snapshot.id).unwrap();
+        }
+        for resource in [take, loaded, cancelled] {
+            resources.remove(resource).unwrap();
+        }
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+        assert_eq!(resources.usage(), baseline);
+    });
+}

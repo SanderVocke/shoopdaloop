@@ -25,6 +25,7 @@ pub(in crate::runtime) struct LiveJob {
     writer: Option<indexed_midi::WriterId>,
     pub ready: bool,
     pub active: bool,
+    pub following_recording: Option<Revision>,
     pub failure: Option<Error>,
 }
 pub(super) struct LiveSlot {
@@ -47,8 +48,9 @@ impl Shared {
             .iter()
             .enumerate()
             .find(|(_, slot)| {
-                slot.value
-                    .is_some_and(|job| job.fence.target == target && !job.active)
+                slot.value.is_some_and(|job| {
+                    job.fence.target == target && (!job.active || job.following_recording.is_some())
+                })
             })
             .map(|(slot, entry)| LiveWriterId {
                 scope: self.scope,
@@ -120,6 +122,7 @@ impl Shared {
             writer: None,
             ready: false,
             active: false,
+            following_recording: None,
             failure: None,
         };
         let maximum = match kind {
@@ -198,20 +201,162 @@ impl Shared {
         }
         Ok(id)
     }
+    pub fn begin_recording(
+        &mut self,
+        fence: Fence,
+        source: HistoryId,
+        revision: Revision,
+        frames: u64,
+        windows: Windows,
+        midi: Option<Snapshot>,
+        frame: Frame,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<LiveWriterId, Error> {
+        if self.live_for(fence.target).is_some() {
+            return Err(Error::Busy);
+        }
+        let status = self.status(source.source, fence.graph, io)?;
+        if status.id != source {
+            return Err(Error::InvalidId);
+        }
+        if let Some(error) = status.failure {
+            return Err(error);
+        }
+        if status.end != frame {
+            return Err(Error::Busy);
+        }
+        let h = self.source(source.source)?;
+        let channels = h.settings.audio.map_or(0, |audio| audio.channels as usize);
+        if windows
+            .audio
+            .iter()
+            .take(channels)
+            .chain(midi.map(|_| &windows.midi))
+            .any(|window| window.origin() != 0 || window.raw_frames.is_some())
+        {
+            return Err(Error::InvalidShape);
+        }
+        let store = h.indexed_midi.map(|source| source.store());
+        let slot = self
+            .live
+            .iter()
+            .position(|slot| slot.generation > 0 && slot.value.is_none())
+            .ok_or(Error::Capacity)?;
+        let id = LiveWriterId {
+            scope: self.scope,
+            slot: slot as u32,
+            generation: self.live[slot].generation,
+        };
+        let mut job = LiveJob {
+            fence,
+            source,
+            kind: indexed_midi::WriteKind::Growing {
+                maximum_frames: u64::MAX,
+            },
+            frames,
+            position: frames,
+            windows,
+            audio_frames: 0,
+            midi_frames: frames,
+            audio: None,
+            midi: None,
+            audio_revision: Revision(0),
+            audio_export: None,
+            midi_export: None,
+            import: None,
+            writer: None,
+            ready: midi.is_none(),
+            active: true,
+            following_recording: Some(revision),
+            failure: None,
+        };
+        let result = (|| {
+            if let Some(snapshot) = midi {
+                if snapshot.description.frames != frames {
+                    return Err(Error::InvalidShape);
+                }
+                let index = io.read_index(snapshot.id)?;
+                let initial = io.render().midi_seek(index, 0)?.state;
+                let (resource, writer, import) = io.prepare_indexed_midi_recording(
+                    store.ok_or(Error::InvalidShape)?,
+                    snapshot.id,
+                    &initial,
+                )?;
+                job.midi = Some(resource);
+                job.writer = Some(writer);
+                job.import = Some(import);
+                job.midi_export = Some(io.reserve_snapshot(resource, frame, u64::MAX)?);
+            }
+            Ok(())
+        })();
+        self.live[slot].value = Some(job);
+        if let Err(error) = result {
+            self.cancel_live(id, io)?;
+            return Err(error);
+        }
+        Ok(id)
+    }
+    fn attach_recording_audio(
+        &mut self,
+        id: LiveWriterId,
+        snapshot: Option<Snapshot>,
+        frame: Frame,
+        io: &mut ResourceIo<'_>,
+    ) -> Result<(), Error> {
+        let job = self.live_job(id)?;
+        if !job.ready || job.following_recording.is_none() {
+            return Err(Error::Busy);
+        }
+        if let Some(snapshot) = snapshot {
+            if snapshot.description.frames != job.frames {
+                return Err(Error::InvalidShape);
+            }
+            let store = self
+                .source(job.source.source)?
+                .audio
+                .ok_or(Error::InvalidShape)?;
+            let resource = io.fork_audio(store, snapshot.id)?;
+            let result = (|| {
+                let revision = io.info(resource)?.revision;
+                let export = io.reserve_snapshot(resource, frame, job.frames)?;
+                Ok((revision, export))
+            })();
+            match result {
+                Ok((revision, export)) => {
+                    let job = self.live[id.slot as usize].value.as_mut().unwrap();
+                    job.audio = Some(resource);
+                    job.audio_revision = revision;
+                    job.audio_export = Some(export);
+                }
+                Err(error) => {
+                    io.remove(resource)?;
+                    return Err(error);
+                }
+            }
+        }
+        let job = self.live[id.slot as usize].value.as_mut().unwrap();
+        job.audio_frames = job.frames;
+        job.midi_frames = job.frames;
+        Ok(())
+    }
     fn progress_live_job(
         job: &mut LiveJob,
         frame: Frame,
         steps: usize,
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
-        if job.ready || job.active || job.failure.is_some() {
+        if job.ready || job.active && job.following_recording.is_none() || job.failure.is_some() {
             return Ok(());
         }
         if let Some(import) = job.import {
             if io.progress_indexed_midi_import(import, steps)? != indexed_midi::Status::Ready {
                 return Ok(());
             }
-            job.midi = Some(io.finish_indexed_midi_import(import)?);
+            if job.following_recording.is_some() {
+                io.finish_indexed_midi_recording_import(import)?;
+            } else {
+                job.midi = Some(io.finish_indexed_midi_import(import)?);
+            }
             job.import = None;
         }
         if let Some(resource) = job.midi {
@@ -249,10 +394,11 @@ impl Shared {
                 let slot = self.live_turn;
                 self.live_turn = (slot + 1) % self.live.len();
                 self.work.jobs_scanned = self.work.jobs_scanned.saturating_add(1);
-                if self.live[slot]
-                    .value
-                    .is_some_and(|job| !job.ready && !job.active && job.failure.is_none())
-                {
+                if self.live[slot].value.is_some_and(|job| {
+                    !job.ready
+                        && (!job.active || job.following_recording.is_some())
+                        && job.failure.is_none()
+                }) {
                     selected = Some(slot);
                     break;
                 }
@@ -273,23 +419,30 @@ impl Shared {
         io: &mut ResourceIo<'_>,
     ) -> Result<(), Error> {
         let job = self.live_job(id)?;
-        if job.active || !job.ready {
+        if job.active && job.following_recording.is_none() || !job.ready {
             return Err(Error::Busy);
         }
         if let Some(error) = job.failure {
             return Err(error);
         }
         if let Some(writer) = job.writer {
-            io.start_indexed_midi_writer(
-                writer,
-                if job.kind == indexed_midi::WriteKind::Fixed {
-                    0
-                } else {
-                    position
-                },
-            )?;
+            if job.following_recording.is_some() {
+                io.fix_indexed_midi_writer_window(writer)?;
+            } else {
+                io.start_indexed_midi_writer(
+                    writer,
+                    if job.kind == indexed_midi::WriteKind::Fixed {
+                        0
+                    } else {
+                        position
+                    },
+                )?;
+            }
         }
         let job = self.live[id.slot as usize].value.as_mut().unwrap();
+        if job.following_recording.take().is_some() {
+            job.kind = indexed_midi::WriteKind::Fixed;
+        }
         job.active = true;
         job.position = position;
         Ok(())
@@ -605,7 +758,10 @@ impl LoopPlanner {
             return Ok(None);
         };
         let job = shared.live_job(id)?;
-        if job.active {
+        if job.active && job.following_recording.is_none() {
+            return Ok(None);
+        }
+        if job.following_recording.is_some() && decision.state.mode != Mode::Replacing {
             return Ok(None);
         }
         if let Some(error) = job.failure {
@@ -634,16 +790,25 @@ impl LoopPlanner {
         {
             return Err(Error::StaleRevision);
         }
-        if job.kind == indexed_midi::WriteKind::Fixed && job.frames != decision.state.content_length
+        if (job.kind == indexed_midi::WriteKind::Fixed || job.following_recording.is_some())
+            && job.frames != decision.state.content_length
         {
             return Err(Error::InvalidShape);
         }
-        if !matches!(
-            (job.kind, decision.state.mode),
-            (indexed_midi::WriteKind::Fixed, Mode::Replacing)
-                | (indexed_midi::WriteKind::Growing { .. }, Mode::Recording)
-        ) || decision.state.mode == Mode::Recording
-            && job.frames != decision.state.capture_frames
+        if job.following_recording.is_some_and(|revision| {
+            before.mode != Mode::Recording
+                || before.capture_revision != revision
+                || before.capture_frames != job.frames
+        }) {
+            return Err(Error::StaleRevision);
+        }
+        if job.following_recording.is_none()
+            && !matches!(
+                (job.kind, decision.state.mode),
+                (indexed_midi::WriteKind::Fixed, Mode::Replacing)
+                    | (indexed_midi::WriteKind::Growing { .. }, Mode::Recording)
+            )
+            || decision.state.mode == Mode::Recording && job.frames != decision.state.capture_frames
         {
             return Err(Error::InvalidShape);
         }
@@ -654,6 +819,34 @@ impl LoopPlanner {
             channels: row.binding.channels as u32,
             midi: row.binding.midi,
         })?;
+        if job.following_recording.is_some() {
+            let result = (|| {
+                let audio = if row.binding.channels > 0 {
+                    Some(
+                        io.snapshot(
+                            row.resources[row.active.ok_or(Error::InvalidState)?.bank][0]
+                                .ok_or(Error::InvalidState)?,
+                            self.resolver.frame(),
+                        )?,
+                    )
+                } else {
+                    None
+                };
+                let result = self
+                    .shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .attach_recording_audio(id, audio, self.resolver.frame(), io);
+                if let Some(audio) = audio {
+                    io.release_snapshot(audio.id)?;
+                }
+                result
+            })();
+            if let Err(error) = result {
+                self.ledger.retire(io, media)?;
+                return Err(error);
+            }
+        }
         Ok(Some(Take {
             writer: Some(id),
             revision: decision.state.capture_revision,

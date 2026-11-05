@@ -146,6 +146,10 @@ pub enum Operation {
         take: SharedTake,
         kind: indexed_midi::WriteKind,
     },
+    WriterPrepareRecording {
+        target: LoopId,
+        source: HistoryId,
+    },
     WriterStatus {
         id: LiveWriterId,
     },

@@ -1374,6 +1374,61 @@ impl LoopPlanner {
                     },
                 })
             }
+            Operation::WriterPrepareRecording { target, source } => {
+                let row = self.row(target)?;
+                let state = self.resolver.state(target)?;
+                let take = row.active.ok_or(Error::InvalidState)?;
+                if state.mode != Mode::Recording || take.writer.is_some() || row.prepared.is_some()
+                {
+                    return Err(Error::Busy.into());
+                }
+                let fence = Fence {
+                    timing_revision: row.timing_revision,
+                    target,
+                    revision: state.content_revision,
+                    length: state.content_length,
+                    graph,
+                    topology: self.resolver.epoch(),
+                };
+                let midi = if row.binding.midi {
+                    Some(
+                        io.snapshot(
+                            row.resources[take.bank][usize::from(row.binding.channels > 0)]
+                                .ok_or(Error::InvalidState)?,
+                            frame,
+                        )?,
+                    )
+                } else {
+                    None
+                };
+                let result = self
+                    .shared
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .begin_recording(
+                        fence,
+                        source,
+                        state.capture_revision,
+                        state.capture_frames,
+                        row.windows,
+                        midi,
+                        frame,
+                        io,
+                    );
+                if let Some(snapshot) = midi {
+                    io.release_snapshot(snapshot.id)?;
+                }
+                let id = result?;
+                let job = self.shared.as_ref().unwrap().live_job(id)?;
+                Ok(Reply::Writer {
+                    id,
+                    status: if job.ready {
+                        CandidateStatus::Ready
+                    } else {
+                        CandidateStatus::Building
+                    },
+                })
+            }
             Operation::WriterStatus { id } => {
                 let job = self
                     .shared
@@ -1394,7 +1449,8 @@ impl LoopPlanner {
             }
             Operation::WriterCancel { id } => {
                 let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
-                if shared.live_job(id)?.active {
+                let job = shared.live_job(id)?;
+                if job.active && job.following_recording.is_none() {
                     return Err(Error::Busy.into());
                 }
                 shared.cancel_live(id, io)?;

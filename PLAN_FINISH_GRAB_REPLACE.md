@@ -21,7 +21,7 @@ remain outstanding.
 | F0 | Complete: delivery branch, parent reconciliation, PR and gate inventory. |
 | F1 | Partial: behavior-to-test matrix and reference policy/window helpers exist; production-route expectations and final limits remain. |
 | F2 | Partial: normal native/worklet constructors prepare common thirty-second histories with separately budgeted storage; removal/reuse and typed sizing/readiness pass locally. Global retained-owner MIDI admission and measured default callback limits remain. |
-| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; ordinary-recording entry and global admission remain. |
+| F3 | Partial: continuous paired writers, resolver Replacing/prefix transitions, active exports, scheduled publication and reset outcomes pass local tests; long ordinary-recording preparation now follows live input; global admission and final lifecycle acceptance remain. |
 | F4–F8 | Outstanding: public protocol/adapter, service, UI/keyboard/Lua, persistence/recovery, production acceptance and parity closure. |
 
 Grab and Replacing are still disabled in the normal application. P04/P05 remain
@@ -667,6 +667,20 @@ with `resource::midi_packets::tests`. Run the neighboring index/packet group whe
 their shared interface changes. These are narrow development checks, not a
 replacement for the final production-route acceptance tests.
 
+Ordinary flat Recording can now prepare a long MIDI prefix in bounded callback
+steps while the same private semantic root captures every new input tick. The
+original recorder remains authoritative until the prefix is complete. An early
+Replacing request refuses before switching modes; cancellation or Stop discards
+only the private preparation. At the accepted cut, audio forks the current flat
+snapshot and the complete MIDI writer becomes fixed in place. A guarded resource
+oracle checks incomplete-publication guards, prefix/tail contents, one-tick erase,
+retained views and exact cleanup. The engine scenario records beyond the history
+horizon, cancels/retries preparation, replaces one tick, verifies exact paired
+media and logical-zero projection, and stops another incomplete preparation.
+All eight indexed-MIDI resource tests and 31 shared engine tests pass locally;
+one opt-in callback measurement remains unrun. Global retained/live MIDI admission,
+public protocol/service/client delivery and final acceptance are still open.
+
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.
@@ -739,7 +753,7 @@ host/platform combinations.
 - [x] Add fixed-domain/engine Replacing transitions and state without confusing
   them with the existing one-shot content Replace operation. Update cycle/phase,
   sync, repetition, pending transitions and mode-dependent output decisions.
-- [ ] Add growing capture from an adopted prefix, preserving duration/data/state
+- [x] Add growing capture from an adopted prefix, preserving duration/data/state
   and consuming the first live tick exactly once. Retain fixed-history, long loaded
   and previously replaced bases through the ordinary resource/media interfaces.
 - [ ] Implement the continuous COW audio/MIDI writer described above. Own every

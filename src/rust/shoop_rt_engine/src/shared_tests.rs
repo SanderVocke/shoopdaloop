@@ -2952,3 +2952,229 @@ fn replacing_maps_each_channel_window_and_preserves_raw_tails_manual_period_and_
     );
     recover_all(&mut stopped, capacity.total_resource_pages);
 }
+
+#[shoop_test]
+fn long_ordinary_recording_prepares_replacement_without_losing_input_during_building() {
+    let q = 32;
+    let mut h = Fixture::new_prepared_shapes(q, 7, 1000, true, true, true, true);
+    h.drain_protocol();
+    let start = h.aligned_future(128);
+    let record = h.send(
+        start,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Record {
+                monitor_previous: false,
+            },
+        },
+    );
+    h.result(record);
+    h.run_to(start + 80 * q as u64);
+    let Reply::History(history) = h.op(Operation::HistoryStatus { source: 0 }) else {
+        panic!("history")
+    };
+    let first = h.aligned_future(128);
+    let prepare = h.send(
+        first,
+        Operation::WriterPrepareRecording {
+            target: target(0),
+            source: history.id,
+        },
+    );
+    let premature = h.send(
+        first,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput { position: None },
+        },
+    );
+    let Reply::Writer {
+        id,
+        status: CandidateStatus::Building,
+    } = h.result(prepare)
+    else {
+        panic!("bounded preparation")
+    };
+    let refused = h.result(premature);
+    assert!(
+        matches!(
+            refused,
+            Reply::Transition(shoop_loops::Completion {
+                outcome: shoop_loops::Outcome::Failed { .. },
+                ..
+            })
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(h.op(Operation::WriterCancel { id }), Reply::Done);
+    let Reply::State(ordinary) = h.op(Operation::State { target: target(0) }) else {
+        panic!("state")
+    };
+    assert_eq!(ordinary.state.mode, shoop_loops::Mode::Recording);
+    assert!(!ordinary.state.capture_incomplete);
+    let Reply::Writer {
+        id,
+        status: CandidateStatus::Building,
+    } = h.op(Operation::WriterPrepareRecording {
+        target: target(0),
+        source: history.id,
+    })
+    else {
+        panic!("second preparation")
+    };
+    let mut ready = false;
+    for _ in 0..30 {
+        match h.op(Operation::WriterStatus { id }) {
+            Reply::Writer {
+                status: CandidateStatus::Ready,
+                ..
+            } => {
+                ready = true;
+                break;
+            }
+            Reply::Writer {
+                status: CandidateStatus::Building,
+                ..
+            } => {}
+            reply => panic!("preparation: {reply:?}"),
+        }
+    }
+    assert!(ready);
+    let replace = h.aligned_future(128);
+    let end = replace + q as u64;
+    let checkpoint = h.send(
+        replace,
+        Operation::Export {
+            target: target(0),
+            selection: Selection::Playback,
+        },
+    );
+    let pivot = h.send(
+        replace,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::ReplaceInput { position: None },
+        },
+    );
+    let exit = h.send(
+        end,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    let Reply::Export { media: old, .. } = h.result(checkpoint) else {
+        panic!("old recording")
+    };
+    let entered = h.result(pivot);
+    assert!(
+        matches!(entered, Reply::Transition(shoop_loops::Completion {
+        outcome: shoop_loops::Outcome::Applied { frame }, ..
+    }) if frame == Frame(replace)),
+        "{entered:?}"
+    );
+    h.result(exit);
+    let current = h.export(0);
+    let frames = replace - start;
+    assert_eq!(current.view.description.frames, frames);
+    assert_eq!(old.view.description.frames, frames);
+    assert_ne!(
+        current.view.description.revision,
+        old.view.description.revision
+    );
+    let old_audio = h.read(old.view.audio.unwrap().snapshot);
+    let audio = h.read(current.view.audio.unwrap().snapshot);
+    for raw in 0..frames as usize {
+        let old_sample = (start + raw as u64 + 1) as f32;
+        let new_sample = if raw < q {
+            (replace + raw as u64 + 1) as f32
+        } else {
+            old_sample
+        };
+        let at = raw * 8;
+        assert_eq!(
+            f32::from_le_bytes(old_audio[at..at + 4].try_into().unwrap()),
+            old_sample
+        );
+        assert_eq!(
+            f32::from_le_bytes(audio[at..at + 4].try_into().unwrap()),
+            new_sample
+        );
+        assert_eq!(
+            f32::from_le_bytes(audio[at + 4..at + 8].try_into().unwrap()),
+            -2. * new_sample
+        );
+    }
+    let old_midi = h.read(old.view.midi.unwrap().snapshot);
+    assert_eq!(midi_events(&old_midi), expected_midi(start, frames, q));
+    let mut expected = expected_midi(replace, q as u64, q);
+    expected.extend(
+        expected_midi(start, frames, q)
+            .into_iter()
+            .filter(|(at, _)| *at >= q as u64),
+    );
+    let current_midi = h.read(current.view.midi.unwrap().snapshot);
+    assert_eq!(midi_events(&current_midi), expected);
+    let again = h.aligned_future(128);
+    let record = h.send(
+        again,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Record {
+                monitor_previous: false,
+            },
+        },
+    );
+    h.result(record);
+    h.run_to(again + 24 * q as u64);
+    let stop = h.aligned_future(128);
+    let prepare = h.send(
+        stop,
+        Operation::WriterPrepareRecording {
+            target: target(0),
+            source: history.id,
+        },
+    );
+    let exit = h.send(
+        stop,
+        Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Stop,
+        },
+    );
+    let Reply::Writer {
+        id,
+        status: CandidateStatus::Building,
+    } = h.result(prepare)
+    else {
+        panic!("abandoned preparation")
+    };
+    h.result(exit);
+    assert_eq!(
+        h.op(Operation::WriterStatus { id }),
+        failed(Error::InvalidId)
+    );
+    let ordinary = h.export(0);
+    assert_eq!(
+        midi_events(&h.read(ordinary.view.midi.unwrap().snapshot)),
+        expected_midi(again, stop - again, q)
+    );
+    let initial = input_state(h.stimulus.unwrap(), replace, q);
+    let mut stopped = h.engine.render.into_stopped();
+    assert_eq!(
+        stopped
+            .resources
+            .render_io()
+            .midi_seek(current.view.midi.unwrap().index, 0)
+            .unwrap()
+            .state,
+        initial
+    );
+    recover_all(&mut stopped, 12288);
+}

@@ -443,7 +443,9 @@ impl LoopPlanner {
                         .as_ref()
                         .ok_or(Error::InvalidState)?
                         .live_job(id)?;
-                    let position = if matches!(job.kind, indexed_midi::WriteKind::Fixed) {
+                    let position = if job.kind == indexed_midi::WriteKind::Fixed
+                        || job.following_recording.is_some()
+                    {
                         decision.state.position
                     } else {
                         decision.state.capture_frames
@@ -468,6 +470,17 @@ impl LoopPlanner {
                 row.prepared = None;
                 row.next_bank = 1 - take.bank;
                 row.failure = None;
+            }
+            if let Some(shared) = &mut self.shared {
+                if let Some(id) = shared.live_for(decision.state.id) {
+                    let job = shared.live_job(id)?;
+                    if job.following_recording.is_some_and(|revision| {
+                        decision.state.mode != Mode::Recording
+                            || revision != decision.state.capture_revision
+                    }) {
+                        shared.cancel_live(id, io)?;
+                    }
+                }
             }
             let row = self.rows[slot].expect("row");
             if let Some(writer) = row
@@ -869,6 +882,7 @@ impl LoopPlanner {
                     | Operation::HistoryGrab { .. }
                     | Operation::HistoryWindow { .. }
                     | Operation::WriterBegin { .. }
+                    | Operation::WriterPrepareRecording { .. }
                     | Operation::WriterStatus { .. }
                     | Operation::WriterCancel { .. }
                     | Operation::CandidateBegin { .. }
@@ -1503,6 +1517,7 @@ impl LoopPlanner {
                 | Operation::HistoryGrab { .. }
                 | Operation::HistoryWindow { .. }
                 | Operation::WriterBegin { .. }
+                | Operation::WriterPrepareRecording { .. }
                 | Operation::WriterStatus { .. }
                 | Operation::WriterCancel { .. }
                 | Operation::CandidateBegin { .. }

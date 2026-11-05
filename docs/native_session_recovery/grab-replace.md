@@ -144,8 +144,8 @@ pages and 256 MiB ordinary loop memory:
 | Thirty-second input audio rings | 256 MiB (raw samples alone are 184,320,000 bytes) |
 | Shared audio owners and write workspace | 128 MiB plus 32 KiB |
 | Shared MIDI packet payload | 16 MiB |
-| Audio pool metadata (native layout) | 37,057,592 bytes |
-| MIDI pool metadata/state (native layout) | 50,698,328 bytes |
+| Audio pool metadata (native layout) | 37,058,624 bytes |
+| MIDI pool metadata/state (native layout) | 50,699,096 bytes |
 | MIDI packet bodies/records | 65,536 each |
 | MIDI retention quota per source | 2,048 events and 512 KiB serialized bytes |
 | Live writer slots | 8, subject to per-request storage admission |
@@ -186,3 +186,12 @@ No application success is claimed yet. Finish implementation and local acceptanc
 first; then use the plan's iterative CI correction loop for final broad/platform
 validation. Existing unsupported-backend tests remain valid until negotiated
 support is implemented.
+
+Long ordinary recordings now use a private prefix import that continues to capture
+live MIDI while it builds. The ordinary recorder remains authoritative until a
+complete replacement version is ready; premature entry refuses, and cancellation
+or Stop releases the private work. The accepted cut forks current audio and fixes
+the complete MIDI writer without replaying the intervening tail. Native guarded
+resource and engine oracles cover preparation beyond the history horizon, retry,
+one-tick replacement, immutable old exports and full cleanup. Public entry and
+global owner/live credit admission remain outstanding.

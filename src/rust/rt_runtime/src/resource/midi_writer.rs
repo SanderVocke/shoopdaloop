@@ -104,7 +104,7 @@ pub(super) struct Packet {
 pub(super) struct Core {
     indexes: store::Store<NonZeroU32>,
     packets: Packets,
-    config: Config,
+    pub(super) config: Config,
     q: usize,
     removals: Vec<NonZeroU32>,
     insertions: Box<[NonZeroU32]>,
@@ -402,6 +402,33 @@ impl Core {
         })();
         self.account(io);
         result
+    }
+    pub fn import_writer_reference(
+        &mut self,
+        io: &mut RenderIo<'_>,
+        writer: &mut Writer,
+        prefix_frames: u64,
+        base: midi_packets::BaseId,
+        frame: u64,
+        order: u64,
+        offset: usize,
+        bytes: usize,
+    ) -> Result<(), Error> {
+        if !matches!(writer.kind, Kind::Growing { .. }) || frame >= prefix_frames {
+            return Err(Error::InvalidFrame);
+        }
+        self.import_reference(io, &mut writer.media, base, frame, order, offset, bytes)
+    }
+    pub fn complete_writer_prefix(&self, writer: &mut Writer) {
+        writer.media.density_checked = true;
+    }
+    pub fn fix_writer_window(&self, writer: &mut Writer) -> Result<(), Error> {
+        if !matches!(writer.kind, Kind::Growing { .. }) || writer.media.frames == 0 {
+            return Err(Error::InvalidState);
+        }
+        writer.kind = Kind::Windowed;
+        writer.position = 0;
+        Ok(())
     }
     pub fn begin_writer(&self, media: Media, kind: Kind) -> Result<Admission, (Error, Media)> {
         if let Err(error) = self.indexes.len(media.root) {
