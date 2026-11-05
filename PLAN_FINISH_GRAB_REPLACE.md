@@ -341,6 +341,19 @@ scenario covers cancellation, foreign scope, competing upload and resource remov
 These are exit-resource primitives for the remaining coordinator writer lifecycle,
 not a completed Replacing mode or application feature.
 
+Clipped semantic MIDI views now materialize hidden category bounds through the
+bounded retirement scheduler. Shared leases preserve identical packet/state
+queries while out-of-window packet bodies become reclaimable. Source and writer
+ticks receive explicitly configured required cleanup steps, independently of
+optional transfer credits; pool usage exposes remaining packet/body and index
+ownership. New guarded scenarios retain a short view and peer, reset capture and
+recover all hidden packets while silent live input continues with optional budgets
+at zero. The ten index tests, four writer tests, two publication reservation tests
+and focused live-cleanup test pass locally with warnings denied; affected library
+builds, formatting, tracing and test-attribute checks pass. This closes a retained
+window leak risk before production sizing; global admission and normal app routing
+remain open. CI is deferred under Phase A.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record

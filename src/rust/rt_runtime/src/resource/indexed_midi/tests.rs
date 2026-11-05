@@ -29,6 +29,7 @@ fn config() -> Config {
         imports: 2,
         events_per_tick: 8,
         bytes_per_tick: 128,
+        maintenance_steps_per_tick: 32,
     }
 }
 fn resources() -> ResourceStore {
@@ -690,6 +691,68 @@ fn silent_source_ticks_avoid_projection_copies_and_writer_zero_uses_the_pre_inpu
         assert_eq!(before.channel(0).unwrap().controller(7), Some(55));
         assert_eq!(after.channel(0).unwrap().controller(7), Some(100));
         resources.release_snapshot(snapshot.id).unwrap();
+        resources.remove(take).unwrap();
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+        assert_eq!(resources.usage(), baseline);
+    });
+}
+
+#[shoop_test]
+fn required_cleanup_recovers_hidden_packets_while_capture_runs_without_optional_credits() {
+    let mut resources = resources();
+    let baseline = resources.usage();
+    let mut limits = config();
+    limits.history_frames = 512;
+    limits.history_events = 128;
+    limits.maintenance_steps_per_tick = 8;
+    let pool = resources.prepare_indexed_midi_store(limits).unwrap();
+    let source = resources.indexed_midi_source(pool, 0).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    assert_no_heap(|| {
+        for tick in 0..8 {
+            input.clear();
+            for event in 0..8 {
+                input
+                    .push(event as u32, Q, &[0xb0, (tick * 8 + event + 2) as u8, 1])
+                    .unwrap();
+            }
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, Frame(tick as u64 * Q as u64), &input)
+                .unwrap();
+        }
+        let take = resources
+            .grab_indexed_midi(source, Frame(0)..Frame(1), 32)
+            .unwrap();
+        let old = resources.snapshot(take, Frame(256)).unwrap();
+        let peer = resources.retain_snapshot(old.id).unwrap();
+        let source = resources
+            .render_io()
+            .reset_indexed_midi_source(source, Frame(256), &MidiState::default())
+            .unwrap();
+        input.clear();
+        resources.copy_remaining = 0;
+        resources.steps_remaining = 0;
+        for tick in 8..72 {
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, Frame(tick * Q as u64), &input)
+                .unwrap();
+        }
+        let usage = resources.indexed_midi_usage(pool).unwrap();
+        assert_eq!(usage.available_records, limits.packets.records - 1);
+        assert_eq!(usage.available_bodies, limits.packets.bodies - 1);
+        assert_eq!(usage.views, 3);
+        let mut expected = [0; 15];
+        encode_midi_record(0, &[0xb0, 2, 1], &mut expected).unwrap();
+        assert_eq!(bytes::<15>(&mut resources, old), expected);
+        assert_eq!(bytes::<15>(&mut resources, peer), expected);
+        assert_eq!(resources.copy_remaining(), 0);
+        assert_eq!(resources.steps_remaining(), 0);
+        resources.release_snapshot(old.id).unwrap();
+        resources.release_snapshot(peer.id).unwrap();
         resources.remove(take).unwrap();
         drain(&mut resources);
         resources.cleanup_indexed_midi_store(pool).unwrap();

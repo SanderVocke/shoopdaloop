@@ -100,6 +100,7 @@ struct Table {
     pages: [Option<NonZeroU32>; LEAVES],
     bounds: Option<(Cut, Cut)>,
     bound_id: u64,
+    trim: usize,
 }
 #[derive(Clone, Copy)]
 struct TableSlot {
@@ -144,6 +145,7 @@ pub(crate) struct Work {
     pub(crate) root_retains: usize,
     pub(crate) retired_tables: usize,
     pub(crate) retired_categories: usize,
+    pub(crate) metadata_queries: usize,
     pub(crate) counter_overflow: bool,
 }
 impl Work {
@@ -187,6 +189,7 @@ pub(crate) struct Store<V: Copy> {
     holds: Pool<V, HoldSummary>,
     sostenuto: Pool<V, SostenutoIndex<V>>,
     cursor: usize,
+    trim_turn: usize,
     next_bounds: u64,
     work: Cell<Work>,
 }
@@ -247,6 +250,7 @@ impl<V: Copy> Store<V> {
             holds: Pool::prepare(config.hold_nodes)?,
             sostenuto: Pool::prepare(config.sostenuto_nodes)?,
             cursor: 0,
+            trim_turn: 0,
             next_bounds: 1,
             work: Cell::new(Work::default()),
         })
@@ -283,6 +287,7 @@ impl<V: Copy> Store<V> {
             pages: [None; LEAVES],
             bounds: None,
             bound_id: 0,
+            trim: KEYS,
         });
         self.leases += 1;
         Ok(self.version(id))
@@ -394,6 +399,7 @@ impl<V: Copy> Store<V> {
         table.packets = root;
         table.bounds = Some((after, cut));
         table.bound_id = self.next_bounds;
+        table.trim = 0;
         self.next_bounds = next;
         Ok(version)
     }
@@ -912,13 +918,108 @@ impl<V: Copy> Store<V> {
             ],
         )
     }
+    fn metadata_query(&self) {
+        let mut work = self.work.get();
+        match work.metadata_queries.checked_add(1) {
+            Some(value) => work.metadata_queries = value,
+            None => {
+                work.metadata_queries = usize::MAX;
+                work.counter_overflow = true;
+            }
+        }
+        self.work.set(work);
+    }
+    fn trim_one(&mut self, values: &mut impl Values<V>) -> bool {
+        for _ in 0..self.tables.len() {
+            let index = self.trim_turn;
+            self.trim_turn = (index + 1) % self.tables.len();
+            self.metadata_query();
+            let Some(table) = self.tables[index]
+                .table
+                .filter(|t| t.references > 0 && t.bounds.is_some() && t.trim < KEYS)
+            else {
+                continue;
+            };
+            let page = table.trim / LEAF;
+            let end = ((page + 1) * LEAF).min(KEYS);
+            if table.pages[page].is_none() {
+                self.tables[index].table.as_mut().unwrap().trim = end;
+                return true;
+            }
+            let mut next = end;
+            let mut candidate = None;
+            for key in table.trim..end {
+                self.metadata_query();
+                let Some(bounds) = self.category_bounds(&table, key) else {
+                    continue;
+                };
+                let kind = Kind::category(key);
+                let root = self.category_root(&table, key);
+                if self.root_len(kind, root) == 0 {
+                    continue;
+                }
+                next = key + 1;
+                candidate = Some((key, kind, root, bounds));
+                break;
+            }
+            if let Some((key, kind, root, bounds)) = candidate {
+                let Ok(credit) = self.clip_credit(kind, root, bounds, values) else {
+                    return false;
+                };
+                let available = match kind {
+                    Kind::Packet => self.packets.free_nodes(),
+                    Kind::Scalar => self.scalars.free_nodes(),
+                    Kind::Hold => self.holds.free_nodes(),
+                    Kind::Sostenuto => self.sostenuto.free_nodes(),
+                };
+                if credit > available {
+                    return false;
+                }
+                let old = table.pages[page].map(|id| self.pages[slot(id)].unwrap());
+                if let Some(old) = old.filter(|old| old.references > 1) {
+                    if self.free_pages.is_empty() {
+                        return false;
+                    }
+                    let mut roots = [0usize; 4];
+                    for (offset, root) in old.roots.into_iter().enumerate() {
+                        let kind = Kind::category(page * LEAF + offset);
+                        roots[kind.index()] += usize::from(self.root_len(kind, root) > 0);
+                    }
+                    if roots
+                        .into_iter()
+                        .zip([
+                            self.packets.available_roots(),
+                            self.scalars.available_roots(),
+                            self.holds.available_roots(),
+                            self.sostenuto.available_roots(),
+                        ])
+                        .any(|(need, available)| need > available)
+                    {
+                        return false;
+                    }
+                }
+                let version = self.version(NonZeroU32::new(index as u32 + 1).unwrap());
+                // Materializing bounds changes ownership only. Shared leases of
+                // this same version keep identical packets and query semantics.
+                let page_id = self.unique_page(version, page);
+                let root = self.pages[slot(page_id)].unwrap().roots[key % LEAF];
+                let clipped = self.clip_root(kind, root, bounds, values);
+                let entry = self.pages[slot(page_id)].as_mut().unwrap();
+                entry.roots[key % LEAF] = clipped;
+                entry.bounds[key % LEAF] = table.bound_id;
+            }
+            self.tables[index].table.as_mut().unwrap().trim = next;
+            return true;
+        }
+        false
+    }
     pub(crate) fn maintain(&mut self, budget: usize, values: &mut impl Values<V>) -> usize {
         let mut reclaimed = 0;
         while reclaimed < budget {
             let mut progress = false;
-            for _ in 0..6 {
+            for _ in 0..7 {
                 let next = self.cursor;
-                self.cursor = (self.cursor + 1) % 6;
+                self.cursor = (self.cursor + 1) % 7;
                 match next {
                     0 => {
                         if let Some(id) = self.retired_tables.pop() {
@@ -962,7 +1063,8 @@ impl<V: Copy> Store<V> {
                     2 => progress = self.packets.maintain(1, values) > 0,
                     3 => progress = self.scalars.maintain(1, values) > 0,
                     4 => progress = self.holds.maintain(1, values) > 0,
-                    _ => progress = self.sostenuto.maintain(1, values) > 0,
+                    5 => progress = self.sostenuto.maintain(1, values) > 0,
+                    _ => progress = self.trim_one(values),
                 }
                 if progress {
                     break;

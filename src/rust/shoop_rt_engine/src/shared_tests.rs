@@ -215,6 +215,7 @@ impl Fixture {
                     imports: 2,
                     events_per_tick: 64,
                     bytes_per_tick: 2048,
+                    maintenance_steps_per_tick: 32,
                 }),
                 candidates: 2,
                 edit_steps_per_callback: 8,

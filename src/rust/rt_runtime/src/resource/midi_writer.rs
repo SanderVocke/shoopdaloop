@@ -168,6 +168,7 @@ impl Core {
             pages.table_copies.saturating_mul(66),
             pages.category_copies.saturating_mul(128),
             pages.root_retains,
+            pages.metadata_queries,
             pages.retired_tables.saturating_mul(66),
             pages.retired_categories.saturating_mul(128),
         ]
@@ -189,6 +190,15 @@ impl Core {
             .charge_work(WorkClass::Render, 0, steps)
             .expect("required index accounting");
         io.store.render_work.counter_overflow |= overflow;
+    }
+    pub fn available_records(&self) -> usize {
+        self.packets.available_records()
+    }
+    pub fn available_bodies(&self) -> usize {
+        self.packets.available_bodies()
+    }
+    pub fn index_leases(&self) -> usize {
+        self.indexes.leases()
     }
     pub fn empty(
         &mut self,

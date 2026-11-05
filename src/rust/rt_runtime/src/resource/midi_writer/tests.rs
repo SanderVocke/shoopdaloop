@@ -535,3 +535,82 @@ fn pooled_histories_keep_truthful_cuts_and_padded_grabs_continue_without_hidden_
         cleanup(&mut core, &mut resources);
     });
 }
+
+#[shoop_test]
+fn clipped_shared_versions_retire_hidden_category_packets_without_changing_queries() {
+    let mut resources = resources();
+    let mut core = Core::prepare(&mut resources, Quantum::new(Q).unwrap(), config()).unwrap();
+    let mut staged = Staging::prepare(8).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    let mut source = core
+        .begin_source(Frame(0), 256, 128, &MidiState::default())
+        .unwrap();
+    let mut oracle = Oracle::new(&[original(0, 0, &[0xb0, 2, 1])], &MidiState::default(), 32);
+    assert_no_heap(|| {
+        for tick in 0..8 {
+            input.clear();
+            for event in 0..8 {
+                input
+                    .push(event as u32, Q, &[0xb0, (tick * 8 + event + 2) as u8, 1])
+                    .unwrap();
+            }
+            core.stage(
+                &mut resources.render_io(),
+                &mut staged,
+                Frame(tick * Q as u64),
+                &input,
+            )
+            .unwrap();
+            core.commit_source(&mut resources.render_io(), &mut source, &staged)
+                .unwrap();
+            core.clear_stage(&mut staged).unwrap();
+        }
+        let take = core
+            .grab_source(&mut resources.render_io(), &source, Frame(0)..Frame(1), 32)
+            .unwrap();
+        let peer = core.retain(&take).unwrap();
+        check(&mut core, &mut resources, &take, &oracle);
+        core.reset_source(&mut source, Frame(256), &MidiState::default())
+            .unwrap();
+        let before = core.packets.available_records();
+        while core.maintain(&mut resources.render_io(), 1).unwrap() > 0 {}
+        assert!(core.packets.available_records() > before);
+        assert_eq!(
+            core.packets.available_records(),
+            config().packets.records - 1
+        );
+        assert_eq!(core.packets.available_bodies(), config().packets.bodies - 1);
+        check(&mut core, &mut resources, &take, &oracle);
+        check(&mut core, &mut resources, &peer, &oracle);
+        let writable = core.retain(&take).unwrap();
+        let mut writer = admit(&mut core, &mut resources, writable, Kind::Fixed, 0);
+        input.clear();
+        input.push(0, Q, &[0xb0, 3, 99]).unwrap();
+        core.stage(&mut resources.render_io(), &mut staged, Frame(256), &input)
+            .unwrap();
+        oracle.write(0, true, &MidiState::default(), &input);
+        core.write_tick(
+            &mut resources.render_io(),
+            &mut writer,
+            &MidiState::default(),
+            &staged,
+        )
+        .unwrap();
+        core.clear_stage(&mut staged).unwrap();
+        let changed = core.finish_writer(writer);
+        check(&mut core, &mut resources, &changed, &oracle);
+        assert_eq!(
+            core.state(&mut resources.render_io(), &peer, 32)
+                .unwrap()
+                .channel(0)
+                .unwrap()
+                .controller(3),
+            None
+        );
+        core.release(take).unwrap();
+        core.release(peer).unwrap();
+        core.release(changed).unwrap();
+        core.release_source(source).unwrap();
+        cleanup(&mut core, &mut resources);
+    });
+}

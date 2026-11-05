@@ -45,6 +45,7 @@ fn midi_config() -> indexed_midi::Config {
         imports: 1,
         events_per_tick: 8,
         bytes_per_tick: 128,
+        maintenance_steps_per_tick: 32,
     }
 }
 fn read<const N: usize>(resources: &mut ResourceStore, snapshot: Snapshot) -> [u8; N] {

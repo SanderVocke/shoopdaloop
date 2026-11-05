@@ -38,6 +38,8 @@ pub struct Config {
     pub imports: usize,
     pub events_per_tick: usize,
     pub bytes_per_tick: usize,
+    /// Required index/packet cleanup steps per source or writer tick.
+    pub maintenance_steps_per_tick: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StoreId {
@@ -205,6 +207,7 @@ pub(super) struct Store {
     writers: Arena<Job>,
     imports: Arena<Import>,
     closed: bool,
+    maintenance_steps: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capacity {
@@ -239,12 +242,18 @@ impl Config {
     }
     /// Allocation-free sizing; production history and writer reservations require additional admission policy.
     pub fn capacity(self, runtime: crate::PreparedConfig, q: Quantum) -> Result<Capacity, Error> {
+        self.sources
+            .checked_add(self.writers)
+            .and_then(|n| n.checked_mul(self.maintenance_steps_per_tick))
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)?;
         let tick_bytes = self
             .events_per_tick
             .checked_mul(12)
             .and_then(|n| n.checked_add(self.bytes_per_tick))
             .ok_or(Error::Capacity)?;
-        if self.views == 0
+        if self.maintenance_steps_per_tick == 0
+            || self.views == 0
             || self.events_per_tick == 0
             || self.bytes_per_tick == 0
             || self.events_per_tick > runtime.limits().midi_events_per_port
@@ -338,6 +347,7 @@ impl Store {
             writers,
             imports,
             closed: false,
+            maintenance_steps: config.maintenance_steps_per_tick,
         })
     }
     pub(super) fn reserve_export(&mut self) -> Result<Key, Error> {
@@ -370,7 +380,49 @@ impl Store {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Usage {
+    pub views: usize,
+    pub reserved_views: usize,
+    pub writers: usize,
+    pub imports: usize,
+    pub index_leases: usize,
+    pub available_records: usize,
+    pub available_bodies: usize,
+}
 impl ResourceStore {
+    pub fn indexed_midi_usage(&mut self, id: StoreId) -> Result<Usage, Error> {
+        self.with_indexed_midi(id, |_, pool| {
+            Ok(Usage {
+                views: pool
+                    .views
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.value.is_some())
+                    .count(),
+                reserved_views: pool
+                    .reserved_views
+                    .iter()
+                    .filter(|&&reserved| reserved)
+                    .count(),
+                writers: pool
+                    .writers
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.value.is_some())
+                    .count(),
+                imports: pool
+                    .imports
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.value.is_some())
+                    .count(),
+                index_leases: pool.core.index_leases(),
+                available_records: pool.core.available_records(),
+                available_bodies: pool.core.available_bodies(),
+            })
+        })
+    }
     pub fn prepare_indexed_midi_store(&mut self, config: Config) -> Result<StoreId, Error> {
         if self.indexed_midi_stores.len() == self.config.limits().resource_slots {
             return Err(Error::Capacity);
@@ -896,6 +948,8 @@ impl RenderIo<'_> {
             pool.core.clear_stage(&mut source.staged)?;
             source.cut = None;
             pool.core
+                .maintain(&mut resources.render_io(), pool.maintenance_steps)?;
+            pool.core
                 .stage(&mut resources.render_io(), &mut source.staged, frame, input)?;
             if source.before_dirty {
                 source.before = *source.history.as_ref().ok_or(Error::InvalidState)?.state();
@@ -976,6 +1030,8 @@ impl RenderIo<'_> {
             {
                 return Err(Error::InvalidFrame);
             }
+            pool.core
+                .maintain(&mut resources.render_io(), pool.maintenance_steps)?;
             let next = frame.checked_add(resources.quantum.frames())?;
             let writer = job.writer.as_mut().ok_or(Error::Busy)?;
             pool.core.write_tick(
