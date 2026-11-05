@@ -301,7 +301,6 @@ impl ControlEndpoint {
                             cursor.part = 0;
                         }
                     }
-                    cursor.index += 1;
                 }
                 4 => {
                     let Some(slot) = self.model.buses.get(cursor.index) else {
@@ -371,7 +370,10 @@ impl ControlEndpoint {
         };
         while out.available(Lane::Reliable) > 0 {
             let before = cursor;
-            let publication = if cursor.stage == 3 && cursor.part == 1 {
+            let publication = if cursor.stage == 3
+                && cursor.part == 2
+                && self.model.loops[cursor.index].is_some_and(|entry| entry.program.is_none())
+            {
                 let cells = &self.cells.loops[cursor.index];
                 let serial = cells.publication.load(core::sync::atomic::Ordering::SeqCst);
                 if serial % 2 != 0

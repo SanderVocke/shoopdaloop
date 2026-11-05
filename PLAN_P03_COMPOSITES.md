@@ -900,3 +900,9 @@ explicit response to a failure or identified risk, not a default milestone ritua
   conversion/clear revision reuse. Warning-denying application/host build and
   **17** selected protocol, recovery, timing, capture and replacement checks passed.
   Broad validation stays in CI.
+- Final-head CI found a resync cursor regression in the base reconciliation: an
+  extra loop-slot advance skipped adjacent primitives and composite descriptions.
+  The existing converted-composite recovery test reproduced it locally. Removed
+  the duplicate advance and moved the primitive timing publication guard to its
+  actual record position. The warning-denying engine build and five focused
+  composite, primitive-timing, routing and confirmed-state recovery checks passed.
