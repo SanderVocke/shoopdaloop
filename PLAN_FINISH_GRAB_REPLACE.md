@@ -37,9 +37,10 @@ records the gate inventory and reference behavior. A checked portable musical
 window resolver pins the cycle/phase, prefix-continuation, explicit padding and
 u64 range semantics before engine settlement uses them. It does not enable a
 capability or publish resources. F1 remains open until production routes and the
-capacity/admission policy are verified. Builds and
-tests run in CI under the user's standing instruction; local Cargo formatting is
-editing only. P04/P05 remain OPEN during implementation.
+capacity/admission policy are verified. Initially builds and tests ran only in CI.
+The user's 2026-11-05 testing-strategy update supersedes that routing: use limited,
+targeted native checks during development and CI for broad/cross-platform coverage,
+as specified below. P04/P05 remain OPEN during implementation.
 
 The production sizing investigation exposed checkpoint arrays multiplied by view
 slots that the page budget could never admit. MIDI preparation now estimates its
@@ -321,10 +322,55 @@ reattachment. Physical-device deadline certification is not implied by CI timing
   Preserve unsupported-backend capability tests; replace production refusal tests
   with success coverage only when that route is implemented.
 
+## Development verification strategy
+
+The user requested this strategy on 2026-11-05 to shorten development cycles.
+It supersedes the earlier CI-only iteration rule and the repository guidance to
+run complete gates before every behavior commit. Feature scope and acceptance
+criteria remain unchanged.
+
+- For each meaningful increment, run the smallest relevant native package/test
+  filter. Reuse existing fixtures and independent media/state oracles. Add a test
+  only for a new contract or a concrete regression; do not duplicate the same
+  assertion at every layer or add tests that merely mirror implementation details.
+- Use Q=32 and one representative callback partition for the main development
+  path. Add a boundary quantum/partition only when the changed logic depends on
+  it. Keep the broader quantum, callback, carrier and platform combinations in CI;
+  do not build a Cartesian product into every new test.
+- Storage/writer increments need the directly affected correctness test and,
+  where ownership or admission changes, a focused heap/pressure/retirement test.
+  Protocol increments need the affected codec/admission case. Service and client
+  increments need the affected public-action case. Run a small integration group
+  when crossing those boundaries, rather than the complete workspace suite.
+- Format changed Rust and use warning-denying compilation of the affected test
+  target. Run the relevant tracing/test-attribute/parity checks when their inputs
+  change. Do not run a workspace build, full native suite, browser packaging or
+  benchmark suite as a routine pre-commit step.
+- Push meaningful milestones. Let CI supply Windows/macOS, Wasm/Node/browser,
+  native-driver/carrier and broad regression coverage. Continue independent work
+  while CI runs; a full matrix result is not a dependency for the next increment.
+  Inspect failures as they arrive and rerun only affected failed checks after a
+  fix. Broaden local checks only for a failure or a specific unresolved risk.
+- Perform production-capacity measurements when the writer/pool design is usable
+  and again if that design or its limits change. Do not remeasure unchanged
+  foundations after every edit. Use a representative native end-to-end path at
+  integration milestones and reserve packaged native/browser acceptance for F8.
+- At final delivery, require fresh applicable CI and the public application
+  evidence below before closing P04/P05. Record exact source/base, failures and
+  skips. Pending or unrun checks are never described as green; do not rerun
+  successful checks without a relevant change or unresolved concern.
+
+For example, a category-index change should start with the
+`rt_runtime` `midi_state::indexed::store::tests` filter; packet-storage changes
+with `resource::midi_packets::tests`. Run the neighboring index/packet group when
+their shared interface changes. These are narrow development checks, not a
+replacement for the final production-route acceptance tests.
+
 ## Implementation stages
 
 Dependencies: F0 -> F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8.
-Verify each used interface before building its dependent layer. P04/P05 flags may
+Verify each used interface with targeted checks before building its dependent
+layer; do not wait for unrelated CI jobs. P04/P05 flags may
 be enabled separately after their own public-route gates pass; final completion
 requires both. Keep the checklist and evidence current throughout execution.
 
@@ -360,7 +406,9 @@ legacy production backend is used.
   supported track/channel pools, 30-second retention and loaded MIDI density.
 
 Verification: each acceptance criterion maps to a concrete public-route test and
-named lower-layer proof. A material departure from reference behavior or an
+named lower-layer proof, reusing scenarios where they cover several criteria.
+Develop policy using a focused parameterized test group, not repeated full app
+runs. A material departure from reference behavior or an
 additional feature-scope exclusion requires user approval, not a ledger footnote.
 
 ### F2 — Prepare and expose real input histories
@@ -379,7 +427,9 @@ Verification: normal production constructors capture while all loops are stopped
 with one input observed once. At real default pool sizes, preparation fits the
 documented budgets; 30-second and density-pressure cases are truthful. Dynamic
 tracks, rerouting, MIDI reset during a partial tick and teardown retain all owners
-and recover every credit. Test audio-only, MIDI-only, mixed and silent inputs.
+and recover every credit. Cover audio-only, MIDI-only, mixed and silent inputs
+without repeating each case across every host during development; CI covers the
+host/platform combinations.
 
 ### F3 — Finish the continuous RT writer and mode lifecycle
 
@@ -401,8 +451,10 @@ and recover every credit. Test audio-only, MIDI-only, mixed and silent inputs.
   clear/removal and terminal fault; emit truthful terminal outcomes and release all
   private state. Keep unrelated playback and ordinary recording working.
 
-Verification: allocator-guarded production fixed execution agrees with independent
-samples/packets/state for Q=1/16/32/64/128 and whole/one-frame/irregular callbacks.
+Verification: develop against a focused allocator-guarded fixed-execution group
+with independent samples/packets/state at Q=32 and one callback partition. CI
+covers Q=1/16/32/64/128 and whole/one-frame/irregular callbacks; add a targeted
+boundary case locally when a change depends on that boundary.
 Replacing output matches reference monitoring semantics. Prefix continuation grows
 beyond the history horizon; replacement stays fixed-length. Required work survives
 exhausted ordinary transfer budgets, and every cancellation/fault frees its credits.
@@ -426,6 +478,8 @@ Verification: actual protocol/adapter requests drive ordinary production hosts.
 One invalid/stale/full target leaves every target and solo peer unchanged. Admission,
 completion and resync agree on mode, next mode, phase, length, revision and cut.
 Old peers remain correctly unsupported; messages never exceed negotiated bounds.
+Use one native carrier for development integration and focused codec/admission
+tests for changed messages; CI verifies socket/shared-memory/MessagePort coverage.
 
 ### F5 — Restore authoritative service policy
 
@@ -444,6 +498,8 @@ Verification: production service + RT adapter passes the F1 behavior matrix, not
 just FakeBackend operation assertions. Real audio/MIDI exports prove correct
 windows and modes. Failure preserves confirmed state; a reattached client observes
 the same admitted operation and final media exactly once.
+Use a compact policy group and one representative real-media scenario while
+iterating; exercise the complete public sequence at F8.
 
 ### F6 — Enable the actual UI, keyboard and Lua workflows
 
@@ -463,6 +519,9 @@ Verification: a normal launched application can create a supported track, receiv
 input while stopped, click Grab, enter/exit Replacing, and play/export the result.
 Equivalent UI, keyboard and Lua actions produce equivalent confirmed data/state.
 No test manually installs histories or changes the capability map to pass.
+Test action routing with existing client/service fixtures. Reuse the production
+media oracle instead of repeating long media scenarios for every input method;
+leave browser/platform execution to CI and the F8 acceptance pass.
 
 ### F7 — Persistence, recovery and sustained-capacity acceptance
 
@@ -486,16 +545,22 @@ Verification: public-route save/load/edit and recovery retain exact supported
 media/state, old owners and request identity. No histories or writer internals enter
 file formats. Repeated operations reach a stable bounded resource usage and fully
 recover at teardown. Reports identify actual source, configuration and limits.
+Combine related lifecycle checks in a small native integration group. Add a
+separate fault/pressure test only when it exercises a distinct failure contract;
+do not multiply the full workflow across all media/carrier/platform combinations.
 
 ### F8 — End-to-end delivery and parity closure
 
-- [ ] Run the complete public sequence in packaged native and browser apps:
+- [ ] Run one representative complete public sequence in a packaged native app
+  and cover the browser equivalent in CI:
   stopped input -> selected/targeted Grab -> unsynced prefix continuation ->
   playback -> continuous audio/MIDI Replacing across wraps -> scheduled exit ->
   old/current exports -> save/load -> repeat edit -> UI detach/reattach -> teardown.
-  Include normal button, keyboard and Lua routes, stereo, MIDI-only/SysEx, mixed
-  tracks and multiple sources/users. Verify actual packets/samples and outcomes.
-- [ ] Push meaningful milestones and obtain fresh applicable CI on the final
+  Cover normal button, keyboard and Lua routes, stereo, MIDI-only/SysEx, mixed
+  tracks and multiple sources/users across a small complementary set of scenarios;
+  do not rerun the entire sequence for every combination. Verify actual
+  packets/samples and outcomes.
+- [ ] Obtain fresh applicable CI on the final
   source/base: warnings denied, full Rust suites, native hosts/drivers/carriers,
   required Node and Chrome libraries, real session/AudioWorklet/browser workflows,
   portable builds, formatting, tracing, test-attribute, parity and dependency gates.
@@ -514,12 +579,11 @@ recover at teardown. Reports identify actual source, configuration and limits.
   the delivered tree. Record final head/base, CI/review status, honest skips and
   remaining unrelated parity items. Leave the PR unmerged for the user.
 
-Verification routing: use CI for builds/tests, as requested by the user. Do not
-duplicate checks locally or substitute prior foundation CI. Honor standing user
-validation/waiver preferences where applicable and record actual outcomes. The
-previous final-consolidation no-wait instruction does not establish application
-validation for this new feature work. Additional waivers must be explicit; no
-unexecuted checks are labelled green. Writing this plan runs no implementation CI.
+Verification routing: follow the targeted-development strategy above. CI owns
+broad and cross-platform checks; full CI waiting is reserved for final delivery,
+not each increment. Honor standing user validation/waiver preferences where
+applicable and record actual outcomes. Prior foundation CI does not establish
+application acceptance. No pending or unexecuted check is labelled green.
 
 P04/P05 must remain OPEN until their respective application acceptance gates pass.
 Finish all stages before reporting full integration; partial RT progress must be
