@@ -324,6 +324,13 @@ reattachment. Physical-device deadline certification is not implied by CI timing
 
 ## Development verification strategy
 
+The first targeted native pass after adopting this strategy passed four packet
+slab tests and ten complete-query/tree/category tests, with warnings denied.
+Tracing inventory and test-attribute checks passed. It includes the type-annotation
+fix for the category oracle found by CI on `2707c466`; fresh broad CI is pending.
+These are library ownership/state proofs, not application acceptance. The new
+packed packet bodies/records are not yet connected to a live writer or host.
+
 The user requested this strategy on 2026-11-05 to shorten development cycles.
 It supersedes the earlier CI-only iteration rule and the repository guidance to
 run complete gates before every behavior commit. Feature scope and acceptance

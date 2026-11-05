@@ -165,7 +165,7 @@ fn shared_versions_preserve_complete_projection_and_original_order_through_repea
     let mut store = Store::prepare(config()).unwrap();
     let mut root = store.empty().unwrap();
     let mut snapshots = [None; 8];
-    let mut expected = [None; 128];
+    let mut expected: [Option<usize>; 128] = [None; 128];
     let mut saved = [[None; 128]; 8];
     let mut initial = MidiState::default();
     for ch in 0..16 {

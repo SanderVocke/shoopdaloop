@@ -4,7 +4,7 @@ use super::{interval::*, ChannelState, MidiState, ParameterFamily};
 use crate::{midi::Message, Frame};
 
 pub(crate) mod store;
-mod tree;
+pub(crate) mod tree;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct Cut {
@@ -54,7 +54,20 @@ pub(crate) struct Event {
     pub(crate) point: Point,
     data: [u8; 3],
 }
+#[derive(Clone, Copy)]
+pub(crate) struct StatePacket([u8; 3]);
+impl StatePacket {
+    pub(crate) fn at(self, point: Point) -> Event {
+        Event {
+            point,
+            data: self.0,
+        }
+    }
+}
 impl Event {
+    pub(crate) fn packet(self) -> StatePacket {
+        StatePacket(self.data)
+    }
     pub(crate) fn from_message(point: Point, message: Message<'_>) -> Option<Self> {
         let packet = message.data();
         if packet[0] != 0xff && !(0x80..0xf0).contains(&packet[0]) {

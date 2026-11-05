@@ -3,9 +3,9 @@
 Design investigation for F2/F3 of [the application plan](../../PLAN_FINISH_GRAB_REPLACE.md).
 This is not an implementation-complete contract or application parity evidence.
 The existing indexed candidate API remains available. Interval-summary and full
-projection query code now have linear packet-oracle tests. Fresh CI must validate
-them. The bounded ordered production store, work accounting and writer integration
-still need implementation and verification.
+projection query code have linear packet-oracle tests. Prepared ordered trees,
+shared category versions and packed immutable packet storage now pass targeted
+native tests. Full CI and live writer/application integration remain required.
 
 ## Why the continuous writer needs another index
 
@@ -47,11 +47,15 @@ complete audio/MIDI cut, not merely the content before writer entry.
 
 The prepared tree layer is implemented with COW AVL paths, cached interval
 summaries and deferred node/value release. Tests check snapshots, reference
-counts, balance, pressure and range-query work. These tests still need fresh CI;
-the packet slabs and live writer are not implemented by that layer. The separate
+counts, balance, pressure and range-query work. The separate
 category/version layer now has complete projection and packet-order oracles,
 including all six metadata-pressure paths and deferred ownership recovery. These
-new tests still need CI; this does not constitute a production writer.
+tests pass on native; broader CI is pending. This does not constitute a production
+writer. Packed append-only slabs now preserve full packets across callbacks and
+page boundaries. Compact ordered records independently retain their shared bodies;
+node, record, body and page retirement are incremental. Targeted heap-guarded tests
+cover short-message packing, spanning SysEx, immutable versions, pressure refusal
+and complete reclamation. No host preparation or live writer uses these slabs yet.
 Sostenuto aggregates can store compact record IDs and map only their result
 markers to ordered points. Subtree ownership keeps those records alive without
 repeating full timestamps in every aggregate.

@@ -24,6 +24,8 @@ pub use midi_read::{MidiCursor, MidiEvent, MidiPosition};
 mod audio_backing;
 mod midi_backing;
 pub use midi_backing::{MidiEditId, MidiImportId, MidiStoreId};
+#[allow(dead_code)] // Continuous shared MIDI storage is integrated in stages.
+mod midi_packets;
 mod render;
 mod request;
 #[allow(dead_code)] // Prepared history storage; engine integration is staged separately.
