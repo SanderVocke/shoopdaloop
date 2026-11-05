@@ -162,6 +162,28 @@ impl<'a> AudioPorts<'a> {
         let start = port * self.stride + self.start;
         Some(&mut self.outputs[start..start + self.frames])
     }
+    /// Borrow selected contiguous port banks, preserving the current frame window.
+    pub fn subset(
+        &mut self,
+        inputs: core::ops::Range<usize>,
+        outputs: core::ops::Range<usize>,
+    ) -> Result<AudioPorts<'_>, Error> {
+        if inputs.start > inputs.end
+            || inputs.end > self.input_count()
+            || outputs.start > outputs.end
+            || outputs.end > self.output_count()
+        {
+            return Err(Error::InvalidShape);
+        }
+        AudioPorts::new(
+            &self.inputs[inputs.start * self.stride..inputs.end * self.stride],
+            &mut self.outputs[outputs.start * self.stride..outputs.end * self.stride],
+            self.stride,
+            self.start,
+            self.frames,
+        )
+    }
+
     /// Disjoint input/output borrowing for a processor without temporary storage.
     pub fn pair(&mut self, input: usize, output: usize) -> Option<(&[f32], &mut [f32])> {
         if input >= self.input_count() || output >= self.output_count() {
@@ -417,6 +439,40 @@ mod tests {
     #[global_allocator]
     static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
         shoop_wasm_test_support::heap::TrackingAllocator;
+
+    #[shoop_test]
+    fn selected_port_banks_preserve_windows_and_leave_other_storage_untouched() {
+        let inputs: Vec<f32> = (0..48).map(|value| value as f32).collect();
+        let mut outputs = [9.; 80];
+        assert_no_heap(|| {
+            let mut view = AudioPorts::new(&inputs, &mut outputs, 16, 4, 8).unwrap();
+            {
+                let mut bank = view.subset(1..2, 2..4).unwrap();
+                assert_eq!(bank.input(0).unwrap(), &inputs[20..28]);
+                bank.output(0).unwrap().fill(2.5);
+                bank.output(1).unwrap().fill(3.5);
+            }
+            assert!(matches!(
+                view.subset(core::ops::Range { start: 2, end: 1 }, 0..1),
+                Err(Error::InvalidShape)
+            ));
+            assert!(matches!(view.subset(0..4, 0..1), Err(Error::InvalidShape)));
+            assert!(matches!(view.subset(0..1, 0..6), Err(Error::InvalidShape)));
+            let mut empty = view.subset(0..0, 0..0).unwrap();
+            assert!(empty.input(0).is_none());
+            assert!(empty.output(0).is_none());
+        });
+        for (index, sample) in outputs.into_iter().enumerate() {
+            let expected = if (36..44).contains(&index) {
+                2.5
+            } else if (52..60).contains(&index) {
+                3.5
+            } else {
+                9.
+            };
+            assert_eq!(sample, expected);
+        }
+    }
 
     type Packet = (u32, Vec<u8>);
 

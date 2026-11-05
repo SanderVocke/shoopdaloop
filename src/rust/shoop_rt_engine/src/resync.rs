@@ -202,14 +202,24 @@ impl ControlEndpoint {
                             cursor.channel = 0;
                             cursor.part += 1;
                         }
+                        part if part == controls.len() + 2 => {
+                            cursor.part += 1;
+                            if let Some(owner) = strip.processor {
+                                return Some(StateRecord::StripProcessor {
+                                    strip: strip.id,
+                                    kind: owner.kind,
+                                    slot: owner.slot,
+                                });
+                            }
+                        }
                         _ => {
                             let mut connections = Resync {
                                 index: cursor.index,
-                                part: cursor.part - controls.len() - 2,
+                                part: cursor.part - controls.len() - 3,
                                 ..*cursor
                             };
                             let record = self.next_connection(&mut connections);
-                            cursor.part = connections.part + controls.len() + 2;
+                            cursor.part = connections.part + controls.len() + 3;
                             cursor.channel = connections.channel;
                             cursor.bit = connections.bit;
                             if record.is_some() {

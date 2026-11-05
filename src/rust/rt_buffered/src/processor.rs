@@ -300,6 +300,21 @@ impl<B: Backend> BufferedProcessor<B> {
         Ok(&mut self.backend)
     }
 
+    /// Borrow computed output before its scheduled release. This does not advance
+    /// playback; storage remains owned by this adapter until release or reset.
+    pub fn completed_audio(&self, source: Frame, port: usize) -> Option<(BatchTag, &[f32])> {
+        if self.state == Lifecycle::Faulted || port >= self.ports.audio_outputs {
+            return None;
+        }
+        let frames = self.timing.batch_frames();
+        self.slots.iter().find_map(|slot| {
+            let tag = slot
+                .tag
+                .filter(|tag| tag.generation == self.generation && tag.source == source)?;
+            Some((tag, &slot.audio_output[port * frames..(port + 1) * frames]))
+        })
+    }
+
     /// Admit only source events in the next quantum, before collecting its audio.
     pub fn schedule_parameter(
         &mut self,

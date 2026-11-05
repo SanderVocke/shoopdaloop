@@ -329,6 +329,22 @@ reserved snapshot credits protect edit completion. Native and Wasm primitive
 regressions cover 8+8 channels and unequal side widths. Production graph routing,
 processor activity/latency and end-to-end host admission remain pending.
 
+Production hosted-graph milestone: RT protocol v10 admits generation-owned FX and
+synth tracks against the effective per-type limit. The graph separates dry live
+input/playback, processor sends, computed wet capture and delayed wet output.
+Source-aligned three-role capture shares one planner cut; ordinary wet playback
+has a pure node delay and bypasses DSP. Slots sleep only after releasing pending
+output, wake with fresh stream origins, and retire after graph removal. Controls
+accepted at a sleep boundary survive draining. Logical stereo balance is separate
+from each role's prepared channel capacity. An edit-only COW store reserves one
+quarter of the configured media arena when hosted processors need wet rerecording
+without retrospective history. Direct/shared-history regression suites still pass.
+Real FX/synth graph fixtures cover widths 1–8, record/wet play/dry play/rerecord,
+voice cleanup, exact impulse delay under irregular callbacks, and sample-exact
+synth comparison with nonaligned note pairs. This milestone does not close Stage 5:
+External port publication, complete transition/failure coverage, take metadata and
+public integration remain outstanding. Host capability bits remain gated.
+
 ### 6. Restore service operations, editors and track control MIDI
 
 - [ ] Enable DryWetTracks/DryWetModes/TrackFx only with real end-to-end support; replace

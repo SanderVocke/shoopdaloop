@@ -44,6 +44,7 @@ enum Source<'a> {
 
 pub struct AudioRenderer {
     channels: usize,
+    balance_channels: usize,
     max_frames: usize,
     bytes: Box<[u8]>,
     last: Box<[f32]>,
@@ -150,6 +151,7 @@ impl AudioRenderer {
         };
         Ok(Self {
             channels,
+            balance_channels: channels,
             max_frames,
             bytes: buffer(count * 4),
             last: buffer(channels),
@@ -158,6 +160,14 @@ impl AudioRenderer {
             ramp_position: ramp_frames,
             next_ramp_frames: ramp_frames,
         })
+    }
+
+    pub fn set_balance_channels(&mut self, channels: usize) -> Result<(), Error> {
+        if channels > self.channels {
+            return Err(Error::InvalidShape);
+        }
+        self.balance_channels = channels;
+        Ok(())
     }
 
     /// Smoothing for the following restarts; a restart ramp in progress keeps
@@ -281,7 +291,7 @@ impl AudioRenderer {
         if !playback.gain.is_finite() || !(-1.0..=1.0).contains(&playback.balance) {
             return Err(Error::InvalidParameter);
         }
-        let factors = balance_factors(channels, playback.balance);
+        let factors = balance_factors(self.balance_channels, playback.balance);
         let Some(source) = source else {
             for channel in 0..channels {
                 outputs.channel(channel).fill(0.0);

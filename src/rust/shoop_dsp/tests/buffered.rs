@@ -496,3 +496,44 @@ fn immediate_sleep_wake_preserves_controls_and_discards_audio_midi_and_voices() 
         });
     }
 }
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn supported_low_sample_rates_keep_all_enabled_racks_finite_across_type_changes() {
+    use shoop_dsp::backends::{FxBackend, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE};
+    for (rate, channels) in [
+        (8000., 1),
+        (8000., 2),
+        (8000., 8),
+        (11025., 2),
+        (16000., 2),
+        (22050., 2),
+        (48000., 2),
+    ] {
+        let mut h = Harness::new(FxBackend::prepare(rate, 64, channels).unwrap(), 64);
+        for stage in 0..6 {
+            h.control(STAGE_BASE + stage, 1.);
+        }
+        for kind in 0..3 {
+            h.control(REVERB_TYPE, kind as f32);
+            h.control(MODULATION_TYPE, kind as f32);
+            for tick in 0..128 {
+                for c in 0..channels {
+                    for f in 0..64 {
+                        h.input[c * 64 + f] = 0.25
+                            + if (tick * 64 + f + c * 7) % 37 == 0 {
+                                0.5
+                            } else {
+                                0.
+                            };
+                    }
+                }
+                assert_no_heap(|| h.render());
+                assert!(
+                    h.output.iter().all(|sample| sample.is_finite()),
+                    "rate={rate}, channels={channels}, kind={kind}, tick={tick}"
+                );
+            }
+        }
+    }
+}

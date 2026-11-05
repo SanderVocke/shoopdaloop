@@ -90,8 +90,10 @@ impl Builder {
             *count += 1;
             Ok(())
         };
-        for slot in 0..pool.processors() {
-            self.step(plan, pool.processor(slot), 0, &mut end)?;
+        for (slot, entry) in model.loops.iter().enumerate() {
+            if entry.is_some() {
+                self.step(plan, pool.playback(slot), 0, &mut end)?;
+            }
         }
         for (slot, strip) in model.strips.iter().enumerate() {
             let Some(strip) = strip else { continue };
@@ -120,7 +122,70 @@ impl Builder {
                     )?;
                 }
             }
+            if strip.processor.is_some() {
+                for (loop_slot, entry) in model.loops.iter().enumerate() {
+                    if entry.is_some_and(|entry| entry.strip == strip.id) {
+                        for channel in 0..strip.shape.audio_inputs as usize {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(
+                                    audio(pool.playback(loop_slot), channels + channel),
+                                    audio(node, 2 * channels + channel),
+                                ),
+                            )?;
+                        }
+                        if strip.shape.midi_input {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(midi(pool.playback(loop_slot), 0), midi(node, 1)),
+                            )?;
+                        }
+                    }
+                }
+            }
             self.step(plan, node, count, &mut end)?;
+        }
+        for slot in 0..pool.processors() {
+            let mut count = 0;
+            if let Some((strip_slot, strip)) = model
+                .strips
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, strip)| strip.as_ref().map(|s| (slot, s)))
+                .find(|(_, strip)| {
+                    strip
+                        .processor
+                        .and_then(|owner| owner.slot)
+                        .is_some_and(|owner| owner.index as usize == slot)
+                })
+            {
+                for bank in 0..2 {
+                    for channel in 0..strip.shape.audio_inputs as usize {
+                        push(
+                            &mut self.edges,
+                            &mut count,
+                            link(
+                                audio(
+                                    pool.strip_input(strip_slot),
+                                    (2 + bank) * channels + channel,
+                                ),
+                                audio(pool.processor(slot), channel),
+                            ),
+                        )?;
+                    }
+                }
+                push(
+                    &mut self.edges,
+                    &mut count,
+                    link(
+                        midi(pool.strip_input(strip_slot), 2),
+                        midi(pool.processor(slot), 0),
+                    ),
+                )?;
+            }
+            self.step(plan, pool.processor(slot), count, &mut end)?;
         }
         for (slot, entry) in model.loops.iter().enumerate() {
             let Some(entry) = entry else { continue };
@@ -131,12 +196,42 @@ impl Builder {
             let input = pool.strip_input(strip_slot);
             let capture = pool.capture(slot);
             let mut count = 0;
-            for channel in 0..strip.shape.audio_inputs as usize {
-                push(
-                    &mut self.edges,
-                    &mut count,
-                    link(audio(input, channel), audio(capture, channel)),
-                )?;
+            if let Some(owner) = strip.processor {
+                let prepared_width = if owner.kind == shoop_rt_protocol::ProcessorKind::OxiSynth {
+                    2
+                } else {
+                    channels
+                };
+                for channel in 0..strip.shape.audio_outputs as usize {
+                    let source = owner
+                        .slot
+                        .map_or(audio(input, 4 * channels + channel), |slot| {
+                            audio(
+                                pool.processor(slot.index as usize),
+                                prepared_width + channel,
+                            )
+                        });
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(source, audio(capture, channel)),
+                    )?;
+                }
+                for channel in 0..strip.shape.audio_inputs as usize {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(audio(input, channel), audio(capture, channels + channel)),
+                    )?;
+                }
+            } else {
+                for channel in 0..strip.shape.audio_inputs as usize {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(audio(input, channel), audio(capture, channel)),
+                    )?;
+                }
             }
             if strip.shape.midi_input {
                 push(
@@ -147,7 +242,6 @@ impl Builder {
             }
             self.step(plan, capture, count, &mut end)?;
             let playback = pool.playback(slot);
-            self.step(plan, playback, 0, &mut end)?;
             let fader = pool.fader(slot);
             let mut count = 0;
             for channel in 0..channels {
@@ -165,12 +259,28 @@ impl Builder {
             let node = pool.strip_output(slot);
             let mut count = 0;
             for channel in 0..strip.shape.audio_outputs as usize {
-                let source = source_channel(strip, channel);
-                if (strip.shape.audio_inputs as usize) > 0 {
+                let source = if strip.processor.is_some() {
+                    channel
+                } else {
+                    source_channel(strip, channel)
+                };
+                if strip.processor.is_none() && (strip.shape.audio_inputs as usize) > 0 {
                     push(
                         &mut self.edges,
                         &mut count,
                         link(audio(input, channels + source), audio(node, channel)),
+                    )?;
+                }
+                if let Some(owner) = strip.processor {
+                    let wet = owner
+                        .slot
+                        .map_or(audio(input, 4 * channels + channel), |slot| {
+                            audio(pool.processor(slot.index as usize), channel)
+                        });
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(wet, audio(node, channels + channel)),
                     )?;
                 }
                 for (loop_slot, entry) in model.loops.iter().enumerate() {

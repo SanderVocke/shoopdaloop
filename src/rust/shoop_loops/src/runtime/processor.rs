@@ -143,6 +143,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
             return Err(Error::InvalidId);
         }
         if let Some(audio) = &mut self.audio {
+            audio.set_balance_channels(view.audio_widths[0])?;
             audio.set_smoothing(view.smoothing);
             audio.render_port_range(
                 &mut block.resources.render(),
@@ -158,6 +159,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
             )?;
         }
         if let Some(audio) = &mut self.auxiliary {
+            audio.set_balance_channels(view.audio_widths[1])?;
             audio.set_smoothing(view.smoothing);
             audio.render_port_range(
                 &mut block.resources.render(),

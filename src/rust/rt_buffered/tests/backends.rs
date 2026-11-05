@@ -453,3 +453,65 @@ fn backend_latency_is_reported_but_not_added_twice_to_release_time() {
     assert_eq!(output.iter().position(|v| *v == 1.), Some(3));
     assert_eq!(output.iter().sum::<f32>(), 1.);
 }
+
+#[shoop_test]
+fn computed_capture_taps_keep_source_tags_without_early_playback_or_stale_reuse() {
+    for q in [1, 16, 128] {
+        for m in [1, 2, 3] {
+            for slack in [0, 1, 4] {
+                let mut node = gain(
+                    PortCounts {
+                        audio_inputs: 1,
+                        audio_outputs: 2,
+                        ..PortCounts::default()
+                    },
+                    q,
+                    m,
+                    slack,
+                );
+                let mut input = vec![0.; q];
+                let mut output = vec![0.; q * 2];
+                let latency = (m + slack) * q;
+                node.schedule_parameter(Frame(0), 0, 0.25).unwrap();
+                let mut last_source = None;
+                assert_no_heap(|| {
+                    for tick in 0..(m + slack + 2) * 3 {
+                        let frame = tick * q;
+                        for (index, sample) in input.iter_mut().enumerate() {
+                            *sample = (100 + frame + index) as f32;
+                        }
+                        render(&mut node, frame, &input, &mut output, &[], &mut []).unwrap();
+                        let source = tick / m * m * q;
+                        for port in 0..2 {
+                            let capture = node.completed_audio(Frame(source as u64), port);
+                            if (tick + 1) % m == 0 {
+                                let (tag, samples) = capture.unwrap();
+                                last_source = Some(tag.source);
+                                assert_eq!(tag.source, Frame(source as u64));
+                                assert_eq!(tag.sequence, (source / (m * q)) as u64);
+                                for (offset, sample) in samples.iter().enumerate() {
+                                    assert_eq!(*sample, (100 + source + offset) as f32 * 0.25);
+                                }
+                            } else {
+                                assert!(capture.is_none());
+                            }
+                            for offset in 0..q {
+                                let expected = if frame < latency {
+                                    0.
+                                } else {
+                                    (100 + frame + offset - latency) as f32 * 0.25
+                                };
+                                assert_eq!(output[port * q + offset], expected);
+                            }
+                        }
+                        assert!(node.completed_audio(Frame(source as u64), 2).is_none());
+                    }
+                    let source = last_source.unwrap();
+                    assert!(node.completed_audio(source, 0).is_some());
+                    node.abort(Frame(4096 * q as u64)).unwrap();
+                    assert!(node.completed_audio(source, 0).is_none());
+                });
+            }
+        }
+    }
+}

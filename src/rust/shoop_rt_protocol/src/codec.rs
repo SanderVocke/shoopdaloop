@@ -9,8 +9,8 @@ use crate::ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 use crate::message::{ClientMessage, DisconnectReason, EngineMessage};
 use crate::schema::*;
 use crate::{
-    BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES, MAX_RECORD_BYTES,
-    MAX_STRIP_CHANNELS,
+    ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES,
+    MAX_RECORD_BYTES, MAX_STRIP_CHANNELS,
 };
 
 pub use shoop_transport::CodecError;
@@ -115,6 +115,7 @@ macro_rules! tags {
     };
 }
 
+tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth });
 tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet });
 tags!(PortKind { 0 => PortKind::AudioIn, 1 => PortKind::AudioOut, 2 => PortKind::MidiIn, 3 => PortKind::MidiOut });
 tags!(Refusal {
@@ -517,6 +518,12 @@ impl Wire for Request {
                 w.u8(18)?;
                 w.u64(id)
             }
+            Self::CreateProcessedStrip { strip, shape, kind } => {
+                w.u8(35)?;
+                strip.put(w)?;
+                shape.put(w)?;
+                kind.put(w)
+            }
             Self::CreateStrip { strip, shape } => {
                 w.u8(0)?;
                 strip.put(w)?;
@@ -644,6 +651,11 @@ impl Wire for Request {
             },
             28 => Self::RemoveBus {
                 bus: BusId::get(r)?,
+            },
+            35 => Self::CreateProcessedStrip {
+                strip: StripId::get(r)?,
+                shape: StripShape::get(r)?,
+                kind: ProcessorKind::get(r)?,
             },
             0 => Self::CreateStrip {
                 strip: StripId::get(r)?,
@@ -1122,6 +1134,25 @@ impl Wire for ProcessorLimits {
         })
     }
 }
+impl Wire for ProcessorSlot {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.index >= 128 || self.generation == 0 {
+            return Err(CodecError::Invalid);
+        }
+        w.u16(self.index)?;
+        w.u32(self.generation)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let slot = Self {
+            index: r.u16()?,
+            generation: r.u32()?,
+        };
+        if slot.index >= 128 || slot.generation == 0 {
+            return Err(CodecError::Invalid);
+        }
+        Ok(slot)
+    }
+}
 impl Wire for ProcessorPreset {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u16(self.bank)?;
@@ -1146,6 +1177,15 @@ impl Wire for ProcessorPreset {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::StripProcessor { strip, kind, slot } => {
+                if (*kind == ProcessorKind::External) != slot.is_none() {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(14)?;
+                strip.put(w)?;
+                kind.put(w)?;
+                slot.put(w)
+            }
             Self::Processors(limits) => {
                 w.u8(12)?;
                 limits.put(w)
@@ -1224,6 +1264,15 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            14 => {
+                let strip = StripId::get(r)?;
+                let kind = ProcessorKind::get(r)?;
+                let slot = Option::get(r)?;
+                if (kind == ProcessorKind::External) != slot.is_none() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::StripProcessor { strip, kind, slot }
+            }
             12 => Self::Processors(ProcessorLimits::get(r)?),
             13 => Self::ProcessorPreset(ProcessorPreset::get(r)?),
 

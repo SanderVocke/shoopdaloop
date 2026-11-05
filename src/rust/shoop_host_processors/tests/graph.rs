@@ -1,0 +1,747 @@
+//! Real DSP banks exercised through production protocol admission and graph rendering.
+#![cfg(any(feature = "builtin-fx", feature = "oxisynth"))]
+use shoop_rt_engine::{testing::OfflineHost, EngineDescription, HostPorts, Segment};
+use shoop_rt_protocol::*;
+use shoop_wasm_test_support::{
+    heap::{assert_no_heap, TrackingAllocator},
+    shoop_test,
+};
+#[global_allocator]
+static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+fn description(channels: u8, kind: ProcessorKind) -> EngineDescription {
+    EngineDescription {
+        sample_rate: 8000,
+        quantum: 16,
+        max_frames: 128,
+        ramp_frames: 0,
+        strip_channels: channels,
+        host: HostPorts::numbered(channels.max(2) as usize, channels.max(2) as usize, 1),
+        segments: vec![Segment {
+            strips: 3,
+            loops: 4,
+        }],
+        resource_pages: 1024,
+        page_bytes: 512,
+        processors: ProcessorSettings {
+            builtin_fx: if kind == ProcessorKind::BuiltInFx {
+                ProcessorPolicy::On
+            } else {
+                ProcessorPolicy::Off
+            },
+            oxisynth: if kind == ProcessorKind::OxiSynth {
+                ProcessorPolicy::On
+            } else {
+                ProcessorPolicy::Off
+            },
+            fx_instances: 1,
+            synth_instances: 1,
+            memory_mb: 128,
+        },
+        ..EngineDescription::default()
+    }
+}
+fn tick(h: &mut OfflineHost, frames: usize) {
+    assert_no_heap(|| h.process(frames)).unwrap();
+}
+fn request(h: &mut OfflineHost, request: Request) -> Outcome {
+    let id = assert_no_heap(|| h.request(request)).unwrap();
+    for _ in 0..4000 {
+        while let Some(message) = assert_no_heap(|| h.receive()) {
+            if let EngineMessage::Result {
+                correlation,
+                outcome,
+            } = message
+            {
+                if correlation == id {
+                    return outcome;
+                }
+            }
+        }
+        tick(h, 16);
+    }
+    panic!("request timed out: {request:?}");
+}
+fn done(h: &mut OfflineHost, r: Request) {
+    assert_eq!(request(h, r), Outcome::Done, "{r:?}");
+}
+fn strip() -> StripId {
+    StripId(SlotId::new(0, 1))
+}
+fn looped() -> LoopSlotId {
+    LoopSlotId(SlotId::new(0, 1))
+}
+fn create(h: &mut OfflineHost, channels: u8, kind: ProcessorKind) {
+    create_with_host_width(h, channels, kind, channels.max(2));
+}
+fn create_with_host_width(
+    h: &mut OfflineHost,
+    channels: u8,
+    kind: ProcessorKind,
+    host_channels: u8,
+) {
+    h.connect().unwrap();
+    while h.receive().is_some() {}
+    done(
+        h,
+        Request::CreateProcessedStrip {
+            strip: strip(),
+            shape: StripShape {
+                audio_inputs: channels,
+                audio_outputs: channels,
+                midi_input: true,
+                midi_output: false,
+            },
+            kind,
+        },
+    );
+    for c in 0..channels {
+        for (kind, host) in [
+            (PortKind::AudioIn, c as u32),
+            (PortKind::AudioOut, host_channels as u32 + c as u32),
+        ] {
+            done(
+                h,
+                Request::Connect {
+                    port: EnginePort::Strip(StripPort {
+                        strip: strip(),
+                        kind,
+                        index: c,
+                    }),
+                    host: HostPortId(host),
+                    connected: true,
+                },
+            );
+        }
+    }
+    done(
+        h,
+        Request::Connect {
+            port: EnginePort::Strip(StripPort {
+                strip: strip(),
+                kind: PortKind::MidiIn,
+                index: 0,
+            }),
+            host: HostPortId(host_channels as u32 * 2),
+            connected: true,
+        },
+    );
+    done(
+        h,
+        Request::CreateLoop {
+            loop_id: looped(),
+            strip: strip(),
+        },
+    );
+}
+fn mode(h: &mut OfflineHost, mode: LoopMode) {
+    done(
+        h,
+        Request::LoopTransition {
+            loop_id: looped(),
+            mode,
+            delay: None,
+        },
+    );
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn fx_monitoring_capture_and_both_playback_paths_share_one_delay_at_every_width() {
+    for channels in 1..=8 {
+        let d = description(channels, ProcessorKind::BuiltInFx);
+        let mut h =
+            OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap())
+                .unwrap();
+        create(&mut h, channels, ProcessorKind::BuiltInFx);
+        let invalid = Request::CreateProcessedStrip {
+            strip: StripId(SlotId::new(1, 1)),
+            shape: StripShape {
+                audio_inputs: channels,
+                audio_outputs: channels,
+                midi_input: true,
+                midi_output: false,
+            },
+            kind: ProcessorKind::BuiltInFx,
+        };
+        assert_eq!(
+            request(&mut h, invalid),
+            Outcome::Refused(Refusal::Capacity)
+        );
+        done(
+            &mut h,
+            Request::StripControl {
+                strip: strip(),
+                control: StripControl::Monitoring(true),
+            },
+        );
+        for c in 0..channels as usize {
+            h.input_mut(c).fill(c as f32 + 0.25);
+        }
+        tick(&mut h, 64);
+        for c in 0..channels as usize {
+            assert_eq!(
+                &h.output(c)[32..64],
+                &[c as f32 + 0.25; 32],
+                "monitor width={channels} c={c}"
+            );
+        }
+        mode(&mut h, LoopMode::Recording);
+        tick(&mut h, 64);
+        mode(&mut h, LoopMode::Playing);
+        for c in 0..channels as usize {
+            h.input_mut(c).fill(0.);
+        }
+        done(
+            &mut h,
+            Request::StripControl {
+                strip: strip(),
+                control: StripControl::Monitoring(false),
+            },
+        );
+        tick(&mut h, 128);
+        for c in 0..channels as usize {
+            assert_eq!(
+                &h.output(c)[64..128],
+                &[c as f32 + 0.25; 64],
+                "wet width={channels} c={c}"
+            );
+        }
+        mode(&mut h, LoopMode::PlayingDryThroughWet);
+        tick(&mut h, 128);
+        for c in 0..channels as usize {
+            assert_eq!(
+                &h.output(c)[64..128],
+                &[c as f32 + 0.25; 64],
+                "dry width={channels} c={c}"
+            );
+        }
+        mode(&mut h, LoopMode::RecordingDryIntoWet);
+        tick(&mut h, 128);
+        mode(&mut h, LoopMode::Playing);
+        tick(&mut h, 128);
+        for c in 0..channels as usize {
+            assert_eq!(
+                &h.output(c)[64..128],
+                &[c as f32 + 0.25; 64],
+                "rerecorded width={channels} c={c}"
+            );
+        }
+        mode(&mut h, LoopMode::Stopped);
+        tick(&mut h, 128);
+        assert!(h.output(0)[32..128].iter().all(|v| *v == 0.));
+    }
+}
+
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn synth_production_monitoring_ignores_dry_audio_and_cleans_voices_on_sleep_and_reuse() {
+    let d = description(2, ProcessorKind::OxiSynth);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::OxiSynth);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.input_mut(0).fill(100.);
+    h.input_mut(1).fill(-100.);
+    tick(&mut h, 128);
+    assert!(h.output(0)[32..128].iter().all(|v| v.abs() < 1e-6));
+    h.midi_input_mut(0).push(3, 128, &[0x90, 60, 120]).unwrap();
+    tick(&mut h, 128);
+    tick(&mut h, 128);
+    assert!(h.output(0)[..128].iter().any(|v| v.abs() > 1e-5));
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(false),
+        },
+    );
+    tick(&mut h, 128);
+    assert!(h.output(0)[32..128].iter().all(|v| v.abs() < 1e-6));
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    tick(&mut h, 128);
+    assert!(h.output(0)[32..128].iter().all(|v| v.abs() < 1e-6));
+    done(&mut h, Request::RemoveStrip { strip: strip() });
+    tick(&mut h, 128);
+    assert!(h.output(0)[..128].iter().all(|v| v.abs() < 1e-6));
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn hosted_impulses_preserve_sample_offsets_and_count_node_and_host_delay_once() {
+    for quantum in [1, 16, 32, 64] {
+        let mut d = description(2, ProcessorKind::BuiltInFx);
+        d.quantum = quantum;
+        let mut h =
+            OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap())
+                .unwrap();
+        create(&mut h, 2, ProcessorKind::BuiltInFx);
+        done(
+            &mut h,
+            Request::StripControl {
+                strip: strip(),
+                control: StripControl::Monitoring(true),
+            },
+        );
+        h.input_mut(0).fill(0.);
+        h.input_mut(1).fill(0.);
+        h.input_mut(0)[3] = 0.75;
+        h.input_mut(1)[5] = -0.5;
+        let delay = quantum + if quantum > 1 { quantum } else { 0 };
+        let mut actual = [Vec::new(), Vec::new()];
+        for (index, frames) in [7, 13, 1, 27, 79, 1, 43, 85].into_iter().enumerate() {
+            if index > 0 {
+                h.input_mut(0).fill(0.);
+                h.input_mut(1).fill(0.);
+            }
+            tick(&mut h, frames);
+            for c in 0..2 {
+                actual[c].extend_from_slice(&h.output(c)[..frames]);
+            }
+        }
+        for c in 0..2 {
+            for (frame, &sample) in actual[c].iter().enumerate() {
+                let expected = if frame == delay + [3, 5][c] {
+                    [0.75, -0.5][c]
+                } else {
+                    0.
+                };
+                assert_eq!(sample, expected, "Q={quantum} c={c} frame={frame}");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn hosted_synth_matches_unbuffered_notes_with_sample_offsets_after_exact_declared_delay() {
+    use rt_buffered::{Backend, Batch, BatchTag};
+    use rt_runtime::{
+        buffer::{AudioPorts, MidiBuffer},
+        Frame,
+    };
+    let d = description(2, ProcessorKind::OxiSynth);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::OxiSynth);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    let mut raw = shoop_dsp::backends::SynthBackend::prepare(8000., 16).unwrap();
+    let mut input = MidiBuffer::new(64, 512).unwrap();
+    let zeros = [0.; 32];
+    let mut output = [0.; 32];
+    let mut expected = [Vec::new(), Vec::new()];
+    for tick_index in 0..9 {
+        input.clear();
+        if tick_index == 1 {
+            input.push(5, 16, &[0x90, 60, 120]).unwrap();
+        }
+        if tick_index == 6 {
+            input.push(7, 16, &[0x80, 60, 0]).unwrap();
+        }
+        assert_no_heap(|| {
+            raw.process(&mut Batch {
+                tag: BatchTag {
+                    generation: 1,
+                    sequence: tick_index,
+                    source: Frame(tick_index * 16),
+                },
+                frames: 16,
+                audio: AudioPorts::new(&zeros, &mut output, 16, 0, 16).unwrap(),
+                midi_inputs: core::slice::from_ref(&input),
+                midi_outputs: &mut [],
+                parameters: &[],
+            })
+        })
+        .unwrap();
+        if tick_index > 0 {
+            for c in 0..2 {
+                expected[c].extend_from_slice(&output[c * 16..c * 16 + 16]);
+            }
+        }
+    }
+    h.midi_input_mut(0).push(5, 128, &[0x90, 60, 120]).unwrap();
+    h.midi_input_mut(0).push(87, 128, &[0x80, 60, 0]).unwrap();
+    tick(&mut h, 128);
+    for c in 0..2 {
+        assert!(h.output(c)[..32].iter().all(|sample| sample.abs() < 1e-6));
+        assert_eq!(&h.output(c)[32..128], &expected[c][..96], "channel={c}");
+    }
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn recorded_wet_bypasses_enabled_dsp_and_dry_playback_processes_exactly_once() {
+    let d = description(2, ProcessorKind::BuiltInFx);
+    let mut bank = shoop_host_processors::prepare(&d).unwrap();
+    for instance in &mut bank.instances {
+        instance
+            .backend
+            .control(processors::STAGE_BASE + 1, 1.)
+            .unwrap();
+        instance
+            .backend
+            .control(processors::STAGE_BASE + 5, 0.)
+            .unwrap();
+        instance.backend.control(7, 0.).unwrap();
+        instance.backend.control(8, -6.).unwrap();
+    }
+    let mut h = OfflineHost::new_with_processors(&d, bank).unwrap();
+    create(&mut h, 2, ProcessorKind::BuiltInFx);
+    h.input_mut(0).fill(0.25);
+    h.input_mut(1).fill(0.25);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    for _ in 0..8 {
+        tick(&mut h, 128);
+        assert!(
+            h.output(0)[..128].iter().all(|sample| sample.is_finite()),
+            "host output {:?}",
+            &h.output(0)[..16]
+        );
+    }
+    let wet = h.output(0)[127];
+    assert!((wet - 0.25 * 10.0_f32.powf(-6. / 20.)).abs() < 1e-6);
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 128);
+    mode(&mut h, LoopMode::Playing);
+    h.input_mut(0).fill(0.);
+    h.input_mut(1).fill(0.);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(false),
+        },
+    );
+    for mode_value in [
+        LoopMode::Playing,
+        LoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet,
+        LoopMode::Playing,
+    ] {
+        mode(&mut h, mode_value);
+        tick(&mut h, 128);
+        for &sample in &h.output(0)[64..128] {
+            assert!(
+                (sample - wet).abs() < 1e-6,
+                "{mode_value:?}: {sample} vs {wet}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn synth_wet_capture_and_dry_midi_replay_both_remain_audible_without_monitoring() {
+    let d = description(2, ProcessorKind::OxiSynth);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::OxiSynth);
+    mode(&mut h, LoopMode::Recording);
+    h.midi_input_mut(0).push(5, 128, &[0x90, 60, 120]).unwrap();
+    h.midi_input_mut(0).push(119, 128, &[0x80, 60, 0]).unwrap();
+    tick(&mut h, 128);
+    for mode_value in [
+        LoopMode::Playing,
+        LoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet,
+        LoopMode::Playing,
+    ] {
+        mode(&mut h, mode_value);
+        tick(&mut h, 128);
+        assert!(
+            h.output(0)[32..128]
+                .iter()
+                .any(|sample| sample.abs() > 1e-4),
+            "{mode_value:?}"
+        );
+    }
+}
+
+#[cfg(feature = "oxisynth")]
+#[shoop_test]
+fn ordinary_midi_overflow_clears_sounding_synth_voices_and_keeps_the_track_usable() {
+    let mut d = description(2, ProcessorKind::OxiSynth);
+    d.midi_events = 32;
+    d.midi_bytes = 256;
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::OxiSynth);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.midi_input_mut(0).push(5, 128, &[0x90, 60, 120]).unwrap();
+    tick(&mut h, 128);
+    tick(&mut h, 128);
+    assert!(h.output(0)[..128].iter().any(|sample| sample.abs() > 1e-4));
+    assert_no_heap(|| {
+        h.request(Request::InjectMidi {
+            strip: strip(),
+            message: MidiMessage::new(&[0xb0, 1, 0]).unwrap(),
+        })
+    })
+    .unwrap();
+    for _ in 0..32 {
+        h.midi_input_mut(0).push(0, 16, &[0xb0, 1, 0]).unwrap();
+    }
+    tick(&mut h, 16);
+    tick(&mut h, 128);
+    assert!(h.output(0)[32..128]
+        .iter()
+        .all(|sample| sample.abs() < 1e-6));
+    h.midi_input_mut(0).push(5, 128, &[0x90, 64, 120]).unwrap();
+    tick(&mut h, 128);
+    tick(&mut h, 128);
+    assert!(h.output(0)[..128].iter().any(|sample| sample.abs() > 1e-4));
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn invalid_processor_output_faults_only_its_owner_and_direct_audio_keeps_running() {
+    use rt_buffered::{Backend, Batch};
+    use rt_runtime::{graph::PortCounts, Error};
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    struct Corrupt {
+        inner: Box<dyn Backend>,
+        fail: Arc<AtomicBool>,
+    }
+    impl Backend for Corrupt {
+        fn ports(&self) -> PortCounts {
+            self.inner.ports()
+        }
+        fn validate_parameter(&self, id: u32, value: f32) -> Result<(), Error> {
+            self.inner.validate_parameter(id, value)
+        }
+        fn parameter(&self, id: u32) -> Option<f32> {
+            self.inner.parameter(id)
+        }
+        fn control(&mut self, id: u32, value: f32) -> Result<(), Error> {
+            self.inner.control(id, value)
+        }
+        fn process(&mut self, batch: &mut Batch<'_>) -> Result<(), Error> {
+            self.inner.process(batch)?;
+            if self.fail.load(Ordering::Relaxed) {
+                batch.audio.output(0).unwrap()[0] = f32::NAN;
+            }
+            Ok(())
+        }
+        fn reset(&mut self) -> Result<(), Error> {
+            self.inner.reset()
+        }
+        fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
+            self.inner.reset_step(step)
+        }
+        fn suspend(&mut self) -> Result<(), Error> {
+            self.inner.suspend()
+        }
+    }
+    let d = description(2, ProcessorKind::BuiltInFx);
+    let fail = Arc::new(AtomicBool::new(false));
+    let mut bank = shoop_host_processors::prepare(&d).unwrap();
+    bank.instances = bank
+        .instances
+        .into_iter()
+        .map(|mut instance| {
+            instance.backend = Box::new(Corrupt {
+                inner: instance.backend,
+                fail: fail.clone(),
+            });
+            instance
+        })
+        .collect();
+    let mut h = OfflineHost::new_with_processors(&d, bank).unwrap();
+    create(&mut h, 2, ProcessorKind::BuiltInFx);
+    let direct = StripId(SlotId::new(1, 1));
+    done(
+        &mut h,
+        Request::CreateStrip {
+            strip: direct,
+            shape: StripShape {
+                audio_inputs: 1,
+                audio_outputs: 1,
+                midi_input: false,
+                midi_output: false,
+            },
+        },
+    );
+    for (kind, host) in [(PortKind::AudioIn, 1), (PortKind::AudioOut, 3)] {
+        done(
+            &mut h,
+            Request::Connect {
+                port: EnginePort::Strip(StripPort {
+                    strip: direct,
+                    kind,
+                    index: 0,
+                }),
+                host: HostPortId(host),
+                connected: true,
+            },
+        );
+    }
+    for track in [strip(), direct] {
+        done(
+            &mut h,
+            Request::StripControl {
+                strip: track,
+                control: StripControl::Monitoring(true),
+            },
+        );
+    }
+    h.input_mut(0).fill(0.25);
+    h.input_mut(1).fill(1.);
+    tick(&mut h, 128);
+    assert!(h.output(0)[64..128].iter().any(|sample| sample.abs() > 0.1));
+    fail.store(true, Ordering::Relaxed);
+    tick(&mut h, 128);
+    assert_eq!(&h.output(0)[32..128], &[0.; 96]);
+    assert_eq!(&h.output(1)[32..128], &[1.; 96]);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Faulted
+    );
+    done(&mut h, Request::RemoveStrip { strip: strip() });
+    tick(&mut h, 128);
+    assert_eq!(&h.output(1)[..128], &[1.; 128]);
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn rerecord_prerouting_keeps_processing_active_and_cancellation_keeps_monitoring_off() {
+    let d = description(2, ProcessorKind::BuiltInFx);
+    let mut h =
+        OfflineHost::new_with_processors(&d, shoop_host_processors::prepare(&d).unwrap()).unwrap();
+    create(&mut h, 2, ProcessorKind::BuiltInFx);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.input_mut(0).fill(0.25);
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 128);
+    mode(&mut h, LoopMode::Playing);
+    done(
+        &mut h,
+        Request::LoopTransition {
+            loop_id: looped(),
+            mode: LoopMode::RecordingDryIntoWet,
+            delay: Some(1),
+        },
+    );
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Running
+    );
+    mode(&mut h, LoopMode::Playing);
+    tick(&mut h, 64);
+    assert_eq!(
+        h.endpoint().processor_state(0).unwrap().phase,
+        shoop_rt_engine::ProcessorPhase::Owned
+    );
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn simultaneous_live_and_dry_playback_midi_merge_by_offset_and_keep_applied_order() {
+    use shoop_dsp::builtin_fx::BuiltInFxParameter;
+    let d = description(2, ProcessorKind::BuiltInFx);
+    let mut bank = shoop_host_processors::prepare(&d).unwrap();
+    for instance in &mut bank.instances {
+        instance
+            .backend
+            .control(processors::CC_BASE + 5, 13.)
+            .unwrap();
+    }
+    let mut h = OfflineHost::new_with_processors(&d, bank).unwrap();
+    create(&mut h, 2, ProcessorKind::BuiltInFx);
+    mode(&mut h, LoopMode::Recording);
+    for quantum in 0..8 {
+        h.midi_input_mut(0)
+            .push(quantum * 16, 128, &[0xb0, 13, 127])
+            .unwrap();
+    }
+    tick(&mut h, 128);
+    mode(&mut h, LoopMode::PlayingDryThroughWet);
+    done(
+        &mut h,
+        Request::StripControl {
+            strip: strip(),
+            control: StripControl::Monitoring(true),
+        },
+    );
+    h.midi_input_mut(0).push(15, 16, &[0xb0, 13, 1]).unwrap();
+    tick(&mut h, 16);
+    let state = h.endpoint().processor_state(0).unwrap();
+    assert_eq!(state.phase, shoop_rt_engine::ProcessorPhase::Running);
+    assert_eq!(state.values[5], BuiltInFxParameter::Drive.value_from_cc(1));
+    tick(&mut h, 128);
+}
+
+#[cfg(feature = "builtin-fx")]
+#[shoop_test]
+fn stereo_loop_balance_uses_logical_roles_in_an_eight_channel_prepared_host() {
+    let d = description(8, ProcessorKind::BuiltInFx);
+    let mut bank = shoop_host_processors::prepare(&d).unwrap();
+    for instance in &mut bank.instances {
+        for stage in 0..6 {
+            instance
+                .backend
+                .control(processors::STAGE_BASE + stage, 0.)
+                .unwrap();
+        }
+    }
+    let mut h = OfflineHost::new_with_processors(&d, bank).unwrap();
+    create_with_host_width(&mut h, 2, ProcessorKind::BuiltInFx, 8);
+    h.input_mut(0).fill(0.25);
+    h.input_mut(1).fill(0.5);
+    mode(&mut h, LoopMode::Recording);
+    tick(&mut h, 64);
+    mode(&mut h, LoopMode::Playing);
+    done(
+        &mut h,
+        Request::LoopBalance {
+            loop_id: looped(),
+            balance: -1.,
+        },
+    );
+    for mode_value in [LoopMode::Playing, LoopMode::PlayingDryThroughWet] {
+        mode(&mut h, mode_value);
+        tick(&mut h, 128);
+        assert_eq!(&h.output(0)[64..128], &[0.25; 64], "{mode_value:?}");
+        assert_eq!(&h.output(1)[64..128], &[0.; 64], "{mode_value:?}");
+    }
+}

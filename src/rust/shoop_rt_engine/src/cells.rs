@@ -39,12 +39,29 @@ impl Peak {
     }
 }
 
-#[derive(Default)]
 pub(crate) struct StripCells {
     pub input: Peak,
     pub output: Peak,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
+    pub owner_generation: AtomicU32,
+    pub processor_demand: AtomicBool,
+    pub forced_monitor_off: AtomicU32,
+    pub wet_gate: Box<[AtomicU32]>,
+}
+impl StripCells {
+    fn new(frames: usize) -> Self {
+        Self {
+            input: Peak::default(),
+            output: Peak::default(),
+            midi_in: AtomicBool::new(false),
+            midi_out: AtomicBool::new(false),
+            owner_generation: AtomicU32::new(0),
+            processor_demand: AtomicBool::new(false),
+            forced_monitor_off: AtomicU32::new(0),
+            wet_gate: (0..frames).map(|_| AtomicU32::new(0)).collect(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -106,6 +123,7 @@ impl Cells {
         buses: usize,
         bulk_bytes: usize,
         driver: DriverStatus,
+        frames: usize,
     ) -> Arc<Self> {
         let cells = Self {
             #[cfg(test)]
@@ -115,7 +133,7 @@ impl Cells {
             preview_playing: AtomicU64::new(0),
             endpoint_alive: AtomicBool::new(true),
             faulted: AtomicBool::new(false),
-            strips: (0..strips).map(|_| StripCells::default()).collect(),
+            strips: (0..strips).map(|_| StripCells::new(frames)).collect(),
             loops: (0..loops).map(|_| LoopCells::default()).collect(),
             buses: (0..buses).map(|_| Peak::default()).collect(),
             callbacks: AtomicU64::new(0),

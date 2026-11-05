@@ -143,8 +143,9 @@ impl LoopPlanner {
         let store = self
             .shared
             .as_ref()
-            .ok_or(Error::InvalidState)?
-            .audio_store(row.history_source)?;
+            .and_then(|shared| shared.audio_store(row.history_source).ok())
+            .or(self.wet_edits)
+            .ok_or(Error::InvalidState)?;
         let audio = view.audio.ok_or(Error::InvalidShape)?;
         let credit = io.reserve_snapshot()?;
         let resource = match io.fork_audio(store, audio.snapshot.id) {
@@ -528,9 +529,10 @@ impl LoopPlanner {
             let dry_playing = playing && decision.state.mode.dry_playback();
             let next = self
                 .resolver
-                .next_cycle_transition(row.binding.target)
+                .prerouting_transition(row.binding.target)
                 .map_err(runtime_error)?;
             self.views[slot] = View {
+                audio_widths: row.audio_widths,
                 decision,
                 dry_wet: row.dry_wet,
                 pre_recording: matches!(next, Some(Transition::Record { .. })),
@@ -853,6 +855,10 @@ impl LoopPlanner {
                     }
                 }
             }
+        }
+        if let Some(store) = self.wet_edits {
+            resources.cleanup_audio_store(store)?;
+            self.wet_edits = None;
         }
         self.pending.fill(None);
         if let Some(shared) = &mut self.shared {

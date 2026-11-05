@@ -260,7 +260,7 @@ worklet still had zero imports. These Wasm checks preceded the final setup-only
 storage-touch addition; the final full gates must include that revision.
 
 The loop foundation now publishes settled per-source demand, including recording
-and rerecording due in the next sync cycle. Lookahead is cached per loop at the
+and rerecording in the reference countdown window (a raw skip count of one). Lookahead is cached per loop at the
 same preview/commit boundary as playback/capture decisions, so consumers do not
 rescan pending transitions for every processor. Cancellation clears lookahead;
 wrap counting remains resolver-owned. Unaligned dry-play offsets refuse before
@@ -268,3 +268,57 @@ state changes, and self-synchronized dry modes retain delayed transition behavio
 Native loop/engine regressions and the warning-denying workspace build pass for
 these additions. Reference routing uses imminent recording/rerecording demand;
 monitoring behavior must follow that truth table when the production nodes connect.
+
+
+### Hosted production graph milestone
+
+RT protocol v10 adds processed-strip creation and generation-owned processor
+records. Admission enforces advertised type counts and shapes; configuration and
+binding complete before graph activation. Routing-only changes retain the owner.
+Removed owners retire after their graph cut; failed preparation returns claims.
+All prepared bank nodes remain in the graph for bounded cleanup while unassigned.
+
+The execution order is loop playback, strip input, hosted processors, captures,
+loop faders and strip outputs. Dry playback feeds processor inputs; ordinary wet
+playback bypasses processors. A read-only source-tagged completed-batch tap supplies
+wet capture at the same source frame as raw dry audio/MIDI. Scheduled wet release
+retains the buffered Q delay. Ordinary wet playback has the same pure Q delay;
+the host bridge adds Q once (zero bridge delay for Q=1). Sleep releases the pending
+batch before invalidating DSP state; immediate wake uses a fresh stream origin.
+Applied controls are retained when activity ends on their submission boundary.
+Processor faults silence their own outputs rather than faulting unrelated graph
+nodes. Remaining public fault projection and recovery tests are still required.
+
+Prepared primary/auxiliary widths remain independent. Logical widths govern loop
+stereo balance even in a wider prepared host. Rerecord uses prepared COW storage;
+when no input-history store exists, the engine reserves an edit-only store from
+one quarter of the existing media arena. It retains no retrospective input and
+performs no history copy. Snapshot metadata credits and dry leases stay separate.
+
+Native real-bank tests use 8 kHz, Q=16, up to eight dry plus eight wet channels,
+and guard render and protocol pumps against allocations and frees. They cover
+monitoring, ordinary capture/wet playback, dry-through-wet, wrapping wet rerecord,
+at-limit admission, and synth sleep/removal cleanup. Separate impulses verify
+Q=1/16/32/64 through irregular callbacks and exact node-plus-host delay. A real
+OxiSynth note pair at offsets 5 and 87 matches unbuffered backend samples exactly
+after the declared delay. Its reverb's existing tiny DC noise is retained in the
+reference comparison. Full native runtime/adapter/loop/core/protocol suites pass,
+as do workspace all-target checks, warning-denying build, tracing/test policy and
+all-target dependency/feature isolation audits. Later changes repeat their affected
+gates; packaged browser/native, full public/persistence and platform gates remain.
+
+External routing and public service/editor/persistence admission remain unfinished.
+The capability flags stay disabled until the complete production path is usable.
+
+The final milestone fixtures also exercise enabled drive gain to distinguish
+wet playback from double processing, synth wet capture and dry MIDI replay,
+ordinary MIDI-overflow voice cleanup, live-plus-playback MIDI offset ordering,
+rerecord prerouting/cancellation, isolated invalid DSP output, and stereo loop
+balance inside an eight-channel host. Supported low-rate racks clamp fixed EQ,
+reverb tone and reverb feedback filter cutoffs below Nyquist; the 48 kHz recipes
+retain their original values. All enabled stages remain finite at the tested
+8/11.025/16/22.05/48 kHz rates and through reverb/modulation type changes.
+Wasm Node passes 48 DSP tests, 188 loop tests and 14 host-factory/production-graph
+tests. Native real-bank graph tests pass all eleven scenarios. These remain
+library/production-graph evidence; public UI, External publication, full media and
+persistence/recovery, packaged browser and cross-platform CI gates are still open.

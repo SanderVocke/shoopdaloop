@@ -299,9 +299,9 @@ impl Resolver {
         self.preview.ok_or(Error::InvalidState)?;
         Ok(&self.scratch.decisions)
     }
-    /// Head delayed transition due on the next source pulse, after supersession
-    /// and cancellation have settled. The skip count is a pulse count, not time.
-    pub fn next_cycle_transition(&self, target: LoopId) -> Result<Option<Transition>, Error> {
+    /// Head delayed transition in the prerouting window, after supersession and
+    /// cancellation have settled. The reference routing window has skip count one.
+    pub fn prerouting_transition(&self, target: LoopId) -> Result<Option<Transition>, Error> {
         self.topology.node(target)?;
         let records = if self.preview.is_some() && !self.committed {
             &self.scratch.records
@@ -325,7 +325,7 @@ impl Resolver {
                 )
             });
         Ok(head
-            .filter(|record| record.remaining == 0)
+            .filter(|record| record.remaining == 1)
             .map(|record| record.request.transition))
     }
 

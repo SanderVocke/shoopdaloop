@@ -539,6 +539,7 @@ fn run(parts: &[usize]) {
                 previous: Some(owner(1)),
                 initial: Some(NodePairInitial {
                     history_source: 0,
+                    audio_widths: None,
                     dry_wet: false,
                     auxiliary: None,
                     target: owner(2),

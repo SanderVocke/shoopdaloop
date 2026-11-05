@@ -610,8 +610,8 @@ fn unaligned_dry_seek_is_refused_before_changing_the_usable_take() {
 }
 
 #[shoop_test]
-fn source_demand_enters_prerouting_only_in_the_last_cycle_and_cancellation_clears_it() {
-    for (steps, cancel, pre) in [(0, false, false), (2, false, true), (2, true, false)] {
+fn source_demand_matches_the_reference_countdown_window_and_cancellation_clears_it() {
+    for (steps, cancel, pre) in [(0, false, true), (2, false, false), (0, true, false)] {
         let mut h = Harness::new(2, 16);
         h.transition(Transition::Record {
             monitor_previous: false,

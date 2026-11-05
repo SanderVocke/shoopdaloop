@@ -9,6 +9,7 @@ pub(super) const HIGH_FREQUENCY_HZ: f32 = 8_000.0;
 pub(super) const HIGH_Q: f32 = 0.707;
 
 pub(super) struct EqProcessor {
+    high_frequency: f32,
     low: Vec<Box<dyn AudioUnit>>,
     mid: Vec<Box<dyn AudioUnit>>,
     high: Vec<Box<dyn AudioUnit>>,
@@ -27,6 +28,7 @@ impl EqProcessor {
     pub(super) fn new(sample_rate: f32, audio_channels: usize) -> Self {
         let sample_rate = sample_rate.max(1.0);
         Self {
+            high_frequency: HIGH_FREQUENCY_HZ.min(sample_rate * 0.45),
             low: (0..audio_channels)
                 .map(|_| prepare(Box::new(lowshelf()), sample_rate))
                 .collect(),
@@ -71,7 +73,7 @@ impl EqProcessor {
                     &mut mid_output,
                 );
                 self.high[channel].tick(
-                    &[mid_output[0], HIGH_FREQUENCY_HZ, HIGH_Q, high_gain],
+                    &[mid_output[0], self.high_frequency, HIGH_Q, high_gain],
                     &mut high_output,
                 );
                 output[channel][frame] = high_output[0];

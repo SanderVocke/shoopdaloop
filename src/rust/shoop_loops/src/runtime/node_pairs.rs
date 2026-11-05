@@ -60,6 +60,8 @@ pub struct NodePairInitial {
     pub auxiliary: Option<NodePairSourceId>,
     pub dry_wet: bool,
     pub history_source: u32,
+    /// Logical primary and auxiliary widths within the prepared port banks.
+    pub audio_widths: Option<[u8; 2]>,
     pub midi: Option<NodePairSourceId>,
     pub gain: f32,
     pub balance: f32,
@@ -411,6 +413,13 @@ impl NodePairs {
             return Err(Error::InvalidId);
         }
         let mut change = if let Some(initial) = edit.initial {
+            if initial.audio_widths.is_some_and(|widths| {
+                widths[0] as usize > binding.channels
+                    || widths[1] as usize > binding.auxiliary_channels
+                    || (!initial.dry_wet && widths[1] != 0)
+            }) {
+                return Err(Error::InvalidShape);
+            }
             if (initial.dry_wet && binding.auxiliary_channels == 0)
                 || (!initial.dry_wet && initial.auxiliary.is_some())
                 || !initial.gain.is_finite()
@@ -496,7 +505,10 @@ impl NodePairs {
             return Err(Error::InvalidState);
         }
         for input in bank.changes.iter().filter_map(|c| c.input()) {
-            for source in [input.audio, input.midi].into_iter().flatten() {
+            for source in [input.audio, input.auxiliary, input.midi]
+                .into_iter()
+                .flatten()
+            {
                 if io.render().snapshot(source.index)? != source.snapshot {
                     return Err(Error::InvalidId);
                 }
@@ -504,7 +516,10 @@ impl NodePairs {
         }
         while let Some(change) = bank.changes.pop() {
             if let Some(input) = change.into_input() {
-                for source in [input.audio, input.midi].into_iter().flatten() {
+                for source in [input.audio, input.auxiliary, input.midi]
+                    .into_iter()
+                    .flatten()
+                {
                     io.release_snapshot(source.snapshot.id)
                         .expect("validated owned source");
                 }

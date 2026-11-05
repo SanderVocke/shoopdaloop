@@ -441,6 +441,7 @@ pub enum Reply {
 }
 #[derive(Clone, Copy)]
 pub struct View {
+    pub audio_widths: [usize; 2],
     pub decision: Decision,
     pub audio: Option<ReadIndex>,
     pub auxiliary: Option<ReadIndex>,
@@ -474,6 +475,7 @@ struct Row {
     assigned: bool,
     dry_wet: bool,
     history_source: u32,
+    audio_widths: [usize; 2],
     reset_input: bool,
     groups: [[Option<CaptureGroupId>; 2]; 2],
     resources: [[[Option<rt_runtime::ResourceId>; 3]; 2]; 2],
@@ -547,6 +549,7 @@ pub struct SourceActivity {
 
 pub struct LoopPlanner {
     shared: Option<shared::Shared>,
+    wet_edits: Option<AudioStoreId>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
@@ -717,6 +720,7 @@ impl LoopPlanner {
                 assigned,
                 dry_wet: binding.dry_wet,
                 history_source: 0,
+                audio_widths: [binding.channels, binding.auxiliary_channels],
                 reset_input: false,
                 groups: [[None; 2]; 2],
                 resources: [[[None; 3]; 2]; 2],
@@ -882,6 +886,7 @@ impl LoopPlanner {
         catalog.sort_by_key(|m| (m.target, m.revision));
         let dummy = LoopId::from_parts(0, 1)?;
         let initial = View {
+            audio_widths: [0; 2],
             decision: Decision {
                 state: State::new(dummy, 0),
                 playback_discontinuity: false,
@@ -919,6 +924,7 @@ impl LoopPlanner {
         failures.clear();
         let planner = LoopPlanner {
             shared: None,
+            wet_edits: None,
             observer,
             settings,
             resolver,
@@ -941,6 +947,18 @@ impl LoopPlanner {
                 media: catalog.into_boxed_slice(),
             },
         })
+    }
+    /// Prepare source-aligned wet edits without maintaining an input history.
+    pub fn prepare_wet_edits(
+        &mut self,
+        resources: &mut ResourceStore,
+        config: shared_audio::Config,
+    ) -> Result<(), Error> {
+        if self.wet_edits.is_some() || config.history_frames != 0 {
+            return Err(Error::InvalidConfig);
+        }
+        self.wet_edits = Some(resources.prepare_audio_store(config, Frame(0))?);
+        Ok(())
     }
     /// Demand at the last settled boundary. A logical wrap is still owned only
     /// by the resolver; consumers use this aggregate solely to route signals.

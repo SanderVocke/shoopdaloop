@@ -26,6 +26,7 @@ shoop_dsp = { path = "../shoop_dsp", optional = true }
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

@@ -180,14 +180,14 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
     let credits = usize::from(description.reliable_credits);
     let pending = description.pending_transitions;
     let slots = pending + 2 * credits + loops * (PLANNED + 3) + 8 * buses + 64;
-    let ports = strips * (7 * channels + 5)
-        + loops * (4 * channels + 2)
+    let ports = strips * (14 * channels + 9)
+        + loops * (6 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + pool.processors() * (2 * channels + 3);
+        + pool.processors() * (3 * channels + 3);
     let edges = strips
         * (2 * channels * (audio_in + audio_out + buses * master_channels) + midi_in + midi_out)
-        + loops * (3 * channels + 2)
+        + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
         + pool.processors() * (3 * channels + 3);
@@ -206,7 +206,7 @@ fn runtime_capacities(description: &EngineDescription, pool: &Pool, graph_frames
         midi_events_per_port: description.midi_events,
         midi_bytes_per_port: description.midi_bytes,
         scheduled_events: slots,
-        resource_slots: 12 * loops + 16,
+        resource_slots: 20 * loops + 16,
         resource_pages: description.resource_pages,
         page_bytes,
         resource_io_bytes: stream::READ_PAGES * page_bytes,
@@ -409,9 +409,9 @@ pub fn prepare_with_shared_and_processors(
             replay_events: 64,
         }),
         CaptureGroupConfig {
-            groups: (2 * loops).max(1),
-            members_per_group: 2,
-            staging_bytes_per_group: quantum.frames() * channels * 4
+            groups: (4 * loops).max(1),
+            members_per_group: 3,
+            staging_bytes_per_group: quantum.frames() * channels * 8
                 + 12 * midi_events.max(rt_runtime::midi::ResetState::EVENTS)
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
@@ -431,6 +431,7 @@ pub fn prepare_with_shared_and_processors(
         buses,
         stream::RING_PAGES * description.page_bytes,
         driver,
+        quantum.frames(),
     );
     let smoothing = match description.smoothing_frames {
         0 => Smoothing::None,
@@ -441,7 +442,7 @@ pub fn prepare_with_shared_and_processors(
         .map(|slot| {
             Ok(Binding {
                 dry_wet: false,
-                auxiliary_channels: 0,
+                auxiliary_channels: channels,
                 target: LoopId::from_parts(slot as u32, 1)?,
                 playback: pool.playback(slot),
                 capture: pool.capture(slot),
@@ -486,6 +487,24 @@ pub fn prepare_with_shared_and_processors(
             observer: Some(Box::new(Observer(cells.clone()))),
         },
     )?;
+    if pool.processors() > 0
+        && shared_settings
+            .histories
+            .iter()
+            .filter(|history| history.audio.is_some())
+            .count()
+            < strips
+    {
+        planner.prepare_wet_edits(
+            &mut resources,
+            rt_runtime::resource::shared_audio::Config {
+                channels: channels as u32,
+                history_frames: 0,
+                views: 6 * loops + 8,
+                pages: description.resource_pages / 4,
+            },
+        )?;
+    }
     if !shared_settings.histories.is_empty() || shared_settings.candidates != 0 {
         if shared_settings.histories.iter().any(|h| {
             h.source as usize >= pool.strips()
@@ -534,7 +553,7 @@ pub fn prepare_with_shared_and_processors(
         parameters_per_quantum: 64,
     };
     for (slot, processor) in processors.instances.into_iter().enumerate() {
-        let node = HostedProcessor::new(
+        let mut node = HostedProcessor::new(
             processor.backend,
             processor_cells[slot].clone(),
             quantum,
@@ -542,6 +561,7 @@ pub fn prepare_with_shared_and_processors(
             slot,
             pool.processors(),
         )?;
+        node.attach(cells.clone());
         nodes.push(PreparedNode::new(
             pool.processor(slot),
             EngineNode::Processor(node),
@@ -714,6 +734,26 @@ pub fn prepare_with_shared_and_processors(
 #[cfg(test)]
 mod tests {
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn offline_minimal_host_resolves_auto_policy_without_implementations() {
+        let mut host = super::testing::OfflineHost::new(&super::EngineDescription {
+            processors: shoop_rt_protocol::ProcessorSettings::default(),
+            ..super::EngineDescription::default()
+        })
+        .unwrap();
+        let catalog = host.endpoint().processor_catalog();
+        assert!(catalog.kinds.is_empty());
+        assert_eq!(
+            catalog.effective.fx_unavailable,
+            Some(shoop_rt_protocol::processors::Unavailable::NotCompiled)
+        );
+        assert_eq!(
+            catalog.effective.synth_unavailable,
+            Some(shoop_rt_protocol::processors::Unavailable::NotCompiled)
+        );
+        assert_eq!(catalog.effective.memory_bytes, 256 << 20);
+    }
 
     #[shoop_test]
     fn owners_can_move_to_host_threads() {

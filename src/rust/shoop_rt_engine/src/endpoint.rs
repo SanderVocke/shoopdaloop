@@ -684,6 +684,16 @@ impl ControlEndpoint {
         delay: Option<u32>,
     ) -> Result<(), Refusal> {
         let entry = *self.model.find_loop(id).ok_or(Refusal::InvalidId)?;
+        if matches!(
+            mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && self
+            .model
+            .strip(entry.strip)
+            .is_none_or(|strip| strip.processor.is_none())
+        {
+            return Err(Refusal::Unsupported);
+        }
         let slot = id.0.index as usize;
         if !self.room(PLANNED + 1) {
             return Err(Refusal::Overloaded);
@@ -906,6 +916,7 @@ impl ControlEndpoint {
             Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
+            | Request::CreateProcessedStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }

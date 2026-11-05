@@ -79,16 +79,21 @@ impl LoopPlanner {
             {
                 return Err(Error::InvalidState.into());
             }
-            for group in row.groups.into_iter().flatten().flatten() {
-                let info = io.capture().info(group)?;
-                if info.phase != CapturePhase::Idle
-                    || info.members
-                        != usize::from(row.binding.channels > 0) + usize::from(row.binding.midi)
-                {
-                    return Err(Error::InvalidState.into());
-                }
-                if replace_all {
-                    io.capture().check_idle_group(group)?;
+            for bank in row.groups {
+                for (roles, group) in bank.into_iter().enumerate() {
+                    let Some(group) = group else {
+                        continue;
+                    };
+                    let info = io.capture().info(group)?;
+                    let members = usize::from(row.binding.channels > 0)
+                        + usize::from(row.binding.midi)
+                        + usize::from(roles == 1 && row.binding.auxiliary_channels > 0);
+                    if info.phase != CapturePhase::Idle || info.members != members {
+                        return Err(Error::InvalidState.into());
+                    }
+                    if replace_all {
+                        io.capture().check_idle_group(group)?;
+                    }
                 }
             }
             if let Some(initial) = edit.initial {
@@ -160,6 +165,10 @@ impl LoopPlanner {
                 row.binding.target = initial.target;
                 row.dry_wet = initial.dry_wet;
                 row.history_source = initial.history_source;
+                row.audio_widths = initial
+                    .audio_widths
+                    .map(|widths| widths.map(usize::from))
+                    .unwrap_or([row.binding.channels, row.binding.auxiliary_channels]);
                 row.binding.gain = initial.gain;
                 row.balance = initial.balance;
                 row.reset_input |= !initial.preserve_input;

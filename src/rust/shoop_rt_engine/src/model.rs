@@ -120,10 +120,17 @@ impl Banks {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProcessorOwner {
+    pub kind: shoop_rt_protocol::ProcessorKind,
+    pub slot: Option<shoop_rt_protocol::ProcessorSlot>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Strip {
     pub id: StripId,
     pub shape: StripShape,
+    pub processor: Option<ProcessorOwner>,
     pub controls: Controls,
     pub inputs: Banks,
     pub outputs: Banks,
@@ -184,6 +191,7 @@ pub(crate) enum Change {
     CreateStrip {
         strip: StripId,
         shape: StripShape,
+        processor: Option<ProcessorOwner>,
     },
     /// Removes the strip together with its loops.
     RemoveStrip {
@@ -340,12 +348,17 @@ impl Model {
                     }
                 }
             }
-            Change::CreateStrip { strip, shape } => {
+            Change::CreateStrip {
+                strip,
+                shape,
+                processor,
+            } => {
                 let slot = strip.0.index as usize;
                 self.strip_generations[slot] = strip.0.generation;
                 self.strips[slot] = Some(Strip {
                     id: strip,
                     shape,
+                    processor,
                     controls: Controls::default(),
                     inputs: Banks::default(),
                     outputs: Banks::default(),

@@ -40,6 +40,16 @@ fn loop_id(index: u32) -> LoopSlotId {
 
 fn client_samples() -> Vec<ClientMessage> {
     let requests = [
+        Request::CreateProcessedStrip {
+            strip: strip(0),
+            shape: StripShape {
+                audio_inputs: 2,
+                audio_outputs: 2,
+                midi_input: true,
+                midi_output: false,
+            },
+            kind: ProcessorKind::OxiSynth,
+        },
         Request::LoopTransition {
             loop_id: loop_id(0),
             mode: LoopMode::PlayingDryThroughWet,
@@ -313,6 +323,19 @@ fn engine_samples() -> Vec<EngineMessage> {
     let peaks = Peaks::new(&[0.5; MAX_STRIP_CHANNELS]).unwrap();
     let full: Vec<f32> = (0..BULK_CHUNK_SAMPLES).map(|i| i as f32 * 0.25).collect();
     vec![
+        EngineMessage::State(StateRecord::StripProcessor {
+            strip: strip(0),
+            kind: ProcessorKind::BuiltInFx,
+            slot: Some(ProcessorSlot {
+                index: 127,
+                generation: u32::MAX,
+            }),
+        }),
+        EngineMessage::State(StateRecord::StripProcessor {
+            strip: strip(1),
+            kind: ProcessorKind::External,
+            slot: None,
+        }),
         EngineMessage::State(StateRecord::Processors(ProcessorLimits {
             effective: processors::Effective {
                 fx_instances: 2,

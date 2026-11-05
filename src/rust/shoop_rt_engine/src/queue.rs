@@ -35,6 +35,7 @@ fn structural(request: &Request) -> bool {
         Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
+            | Request::CreateProcessedStrip { .. }
             | Request::RemoveStrip { .. }
             | Request::CreateLoop { .. }
             | Request::RemoveLoop { .. }
@@ -224,7 +225,8 @@ impl ControlEndpoint {
             }
             Request::BusControl { bus: id, .. } => bus(id, HARD),
             Request::SetSmoothing { .. } => false,
-            Request::CreateStrip { strip: id, .. } => strip(id.0.index, WAITING),
+            Request::CreateStrip { strip: id, .. }
+            | Request::CreateProcessedStrip { strip: id, .. } => strip(id.0.index, WAITING),
             Request::RemoveStrip { strip: id } => {
                 strip(id.0.index, WAITING)
                     || self.model.loops.iter().flatten().any(|entry| {
@@ -287,6 +289,7 @@ impl ControlEndpoint {
             Request::StripControl { strip: id, .. }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
+            | Request::CreateProcessedStrip { strip: id, .. }
             | Request::Connect {
                 port: EnginePort::Strip(shoop_rt_protocol::StripPort { strip: id, .. }),
                 ..
@@ -412,7 +415,75 @@ impl ControlEndpoint {
                 Some(_) if self.model.bus(bus).is_none() => Staged::Wait,
                 Some(_) => Staged::Change(Change::RemoveBus { bus }),
             },
-            Request::CreateStrip { strip, shape } => {
+            Request::CreateStrip { strip, shape }
+            | Request::CreateProcessedStrip { strip, shape, .. } => {
+                let processor = if let Request::CreateProcessedStrip { kind, .. } = request {
+                    if kind == shoop_rt_protocol::ProcessorKind::External {
+                        return Staged::Refused(Refusal::Unsupported);
+                    }
+                    if !shape.midi_input
+                        || shape.midi_output
+                        || shape.audio_inputs == 0
+                        || shape.audio_inputs != shape.audio_outputs
+                        || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth
+                            && shape.audio_inputs != 2)
+                    {
+                        return Staged::Refused(Refusal::InvalidValue);
+                    }
+                    let limit = match kind {
+                        shoop_rt_protocol::ProcessorKind::BuiltInFx => {
+                            self.processor_catalog.effective.fx_instances
+                        }
+                        shoop_rt_protocol::ProcessorKind::OxiSynth => {
+                            self.processor_catalog.effective.synth_instances
+                        }
+                        shoop_rt_protocol::ProcessorKind::External => 0,
+                    };
+                    if limit == 0 {
+                        return Staged::Refused(Refusal::Unsupported);
+                    }
+                    if next
+                        .strips
+                        .iter()
+                        .flatten()
+                        .filter(|strip| strip.processor.is_some_and(|owner| owner.kind == kind))
+                        .count()
+                        >= limit as usize
+                    {
+                        return Staged::Refused(Refusal::Capacity);
+                    }
+                    let available =
+                        self.processor_cells
+                            .iter()
+                            .enumerate()
+                            .find_map(|(index, cells)| {
+                                let state = cells.read()?;
+                                if state.kind != kind
+                                    || state.phase != crate::ProcessorPhase::Free
+                                    || next.strips.iter().flatten().any(|strip| {
+                                        strip
+                                            .processor
+                                            .and_then(|owner| owner.slot)
+                                            .is_some_and(|slot| slot.index as usize == index)
+                                    })
+                                {
+                                    return None;
+                                }
+                                Some(shoop_rt_protocol::ProcessorSlot {
+                                    index: index as u16,
+                                    generation: state.generation.checked_add(1)?,
+                                })
+                            });
+                    let Some(slot) = available else {
+                        return Staged::Refused(Refusal::Capacity);
+                    };
+                    Some(crate::model::ProcessorOwner {
+                        kind,
+                        slot: Some(slot),
+                    })
+                } else {
+                    None
+                };
                 let slot = strip.0.index as usize;
                 if slot >= next.strips.len() {
                     Staged::Refused(Refusal::Capacity)
@@ -428,7 +499,11 @@ impl ControlEndpoint {
                 } else if !replacing && self.model.strips[slot].is_some() {
                     Staged::Wait
                 } else {
-                    Staged::Change(Change::CreateStrip { strip, shape })
+                    Staged::Change(Change::CreateStrip {
+                        strip,
+                        shape,
+                        processor,
+                    })
                 }
             }
             Request::RemoveStrip { strip } => match next.strip(strip) {

@@ -13,6 +13,7 @@ const TONE_Q: f32 = 0.707;
 const MAX_TONE_TILT_DB: f32 = 6.0;
 
 pub(super) struct ReverbProcessor {
+    tone_high_frequency: f32,
     stereo_units: Option<[Box<dyn AudioUnit>; 3]>,
     mono_units: Vec<[Box<dyn AudioUnit>; 3]>,
     tone_low: Vec<Box<dyn AudioUnit>>,
@@ -39,7 +40,10 @@ impl ReverbProcessor {
         let sample_rate = sample_rate.max(1.0);
         let make_units = || {
             std::array::from_fn(|index| {
-                prepare(make_reverb(reverb_type_from_index(index)), sample_rate)
+                prepare(
+                    make_reverb(reverb_type_from_index(index), sample_rate),
+                    sample_rate,
+                )
             })
         };
         let (stereo_units, mono_units) = if audio_channels >= AUDIO_CHANNELS {
@@ -51,6 +55,7 @@ impl ReverbProcessor {
             (None, (0..audio_channels).map(|_| make_units()).collect())
         };
         Self {
+            tone_high_frequency: TONE_HIGH_HZ.min(sample_rate * 0.45),
             stereo_units,
             mono_units,
             tone_low: (0..audio_channels)
@@ -190,7 +195,7 @@ impl ReverbProcessor {
                     &mut low_output,
                 );
                 self.tone_high[channel].tick(
-                    &[low_output[0], TONE_HIGH_HZ, TONE_Q, high_gain],
+                    &[low_output[0], self.tone_high_frequency, TONE_Q, high_gain],
                     &mut high_output,
                 );
                 output[channel][frame] = input[channel][frame] + amount * high_output[0];
@@ -211,15 +216,25 @@ fn prepare(mut unit: Box<dyn AudioUnit>, sample_rate: f32) -> Box<dyn AudioUnit>
     unit
 }
 
-fn make_reverb(reverb_type: ReverbType) -> Box<dyn AudioUnit> {
+fn make_reverb(reverb_type: ReverbType, sample_rate: f32) -> Box<dyn AudioUnit> {
     match reverb_type {
         ReverbType::Room => Box::new(reverb_stereo(
             ROOM_SIZE_METERS,
             ROOM_TIME_SECONDS,
             ROOM_DAMPING,
         )),
-        ReverbType::Hall => Box::new(reverb2_stereo(20.0, 4.0, 0.8, 0.4, lowpole_hz(8_000.0))),
-        ReverbType::Plate => Box::new(reverb3_stereo(2.5, 0.8, lowpole_hz(10_000.0))),
+        ReverbType::Hall => Box::new(reverb2_stereo(
+            20.0,
+            4.0,
+            0.8,
+            0.4,
+            lowpole_hz(8_000.0_f32.min(sample_rate * 0.45)),
+        )),
+        ReverbType::Plate => Box::new(reverb3_stereo(
+            2.5,
+            0.8,
+            lowpole_hz(10_000.0_f32.min(sample_rate * 0.45)),
+        )),
     }
 }
 
