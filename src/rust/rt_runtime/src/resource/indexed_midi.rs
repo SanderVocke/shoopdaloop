@@ -143,6 +143,26 @@ impl<T> Arena<T> {
             .and_then(|e| e.value.as_mut())
             .ok_or(Error::InvalidId)
     }
+    fn distinct(&mut self, source: Key, target: Key) -> Result<(&T, &mut T), Error> {
+        self.get(source)?;
+        self.get(target)?;
+        if source.slot == target.slot {
+            return Err(Error::InvalidId);
+        }
+        if source.slot < target.slot {
+            let (left, right) = self.entries.split_at_mut(target.slot);
+            Ok((
+                left[source.slot].value.as_ref().unwrap(),
+                right[0].value.as_mut().unwrap(),
+            ))
+        } else {
+            let (left, right) = self.entries.split_at_mut(source.slot);
+            Ok((
+                right[0].value.as_ref().unwrap(),
+                left[target.slot].value.as_mut().unwrap(),
+            ))
+        }
+    }
     fn remove(&mut self, key: Key) -> Result<T, Error> {
         self.get(key)?;
         let entry = &mut self.entries[key.slot];
@@ -180,6 +200,7 @@ struct Import {
 pub(super) struct Store {
     pub(super) core: writer::Core,
     pub(super) views: Arena<writer::Media>,
+    reserved_views: Box<[bool]>,
     sources: Arena<Source>,
     writers: Arena<Job>,
     imports: Arena<Import>,
@@ -243,7 +264,10 @@ impl Config {
             .checked_add(writer::Core::prepared_bytes(self.core())?)
             .ok_or(Error::Capacity)?;
         for (count, size) in [
-            (self.views, size_of::<Entry<writer::Media>>()),
+            (
+                self.views,
+                size_of::<Entry<writer::Media>>() + size_of::<bool>(),
+            ),
             (
                 self.sources,
                 size_of::<Entry<Source>>()
@@ -309,11 +333,30 @@ impl Store {
         Ok(Self {
             core,
             views,
+            reserved_views: vec![false; config.views].into_boxed_slice(),
             sources,
             writers,
             imports,
             closed: false,
         })
+    }
+    pub(super) fn reserve_export(&mut self) -> Result<Key, Error> {
+        self.views.available()?;
+        let media = self.core.empty(Frame(0), 0, &MidiState::default())?;
+        let key = self.views.insert(media);
+        self.reserved_views[key.slot] = true;
+        Ok(key)
+    }
+    pub(super) fn publish_export(&mut self, key: Key, source: Key) -> Result<(), Error> {
+        self.views.get(key)?;
+        self.views.get(source)?;
+        if !self.reserved_views[key.slot] || self.reserved_views[source.slot] {
+            return Err(Error::InvalidState);
+        }
+        let (source, target) = self.views.distinct(source, key)?;
+        self.core.retarget_empty(target, source)?;
+        self.reserved_views[key.slot] = false;
+        Ok(())
     }
     pub(super) fn retain(&mut self, key: Key) -> Result<Key, Error> {
         self.views.available()?;
@@ -321,7 +364,9 @@ impl Store {
         Ok(self.views.insert(media))
     }
     pub(super) fn release(&mut self, key: Key) -> Result<(), Error> {
-        self.core.release(self.views.remove(key)?)
+        let media = self.views.remove(key)?;
+        self.reserved_views[key.slot] = false;
+        self.core.release(media)
     }
 }
 

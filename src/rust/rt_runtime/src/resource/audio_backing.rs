@@ -287,6 +287,9 @@ impl ResourceStore {
     /// Independently retain exactly this revision, even after resource removal.
     pub fn retain_snapshot(&mut self, id: SnapshotId) -> Result<Snapshot, Error> {
         let mut lease = get(&self.snapshots, id.slot, id.generation)?;
+        if lease.reservation.is_some() {
+            return Err(Error::InvalidState);
+        }
         let mut version = get(&self.versions, lease.version.slot, lease.version.generation)?;
         let references = version.references.checked_add(1).ok_or(Error::Exhausted)?;
         let slot = *self.free_snapshots.last().ok_or(Error::Capacity)?;

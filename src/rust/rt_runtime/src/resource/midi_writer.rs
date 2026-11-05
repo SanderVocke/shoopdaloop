@@ -214,6 +214,22 @@ impl Core {
             revision: media.revision,
         })
     }
+    pub fn retarget_empty(&mut self, empty: &mut Media, source: &Media) -> Result<(), Error> {
+        if self.indexes.len(empty.root)? != 0 {
+            return Err(Error::InvalidState);
+        }
+        self.indexes.len(source.root)?;
+        self.indexes.release(empty.root)?;
+        empty.root = self
+            .indexes
+            .retain(source.root)
+            .expect("reserved lease credit");
+        empty.origin = source.origin;
+        empty.frames = source.frames;
+        empty.initial = source.initial;
+        empty.revision = source.revision;
+        Ok(())
+    }
     pub fn release(&mut self, media: Media) -> Result<(), Error> {
         self.indexes.release(media.root)
     }

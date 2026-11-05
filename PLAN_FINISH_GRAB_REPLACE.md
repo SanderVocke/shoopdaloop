@@ -327,6 +327,20 @@ All 59 native resource tests and 23 engine shared-media tests pass with warnings
 denied (one CI release measurement intentionally ignored), along with the affected
 builds, formatting, tracing, test-attribute and parity checks.
 
+Publication reservations now own the final generic snapshot slot and a future
+shared backing view before a writer enters. Growing audio reserves the maximum
+future view credits as well as the initial immutable pin; MIDI reserves an empty
+semantic owner whose lease is retargeted to the complete final root. Publication
+uses no new snapshot/view/version/payload allocation and consumes no optional
+transfer/maintenance credits. Version/resource/generation fences preserve stale
+reservations for explicit cancellation, and generic snapshot release also reclaims
+abandoned future owners. A guarded paired audio/MIDI scenario fills every generic
+snapshot/version/resource slot and both backing view pools before capturing and
+publishing; old exports retain exact bytes and all credits recover. A companion
+scenario covers cancellation, foreign scope, competing upload and resource removal.
+These are exit-resource primitives for the remaining coordinator writer lifecycle,
+not a completed Replacing mode or application feature.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record

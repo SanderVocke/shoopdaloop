@@ -128,6 +128,7 @@ struct View {
     zero_from: Option<usize>,
     revision: Revision,
     writable: bool,
+    reserved: bool,
     retiring: bool,
     base: Option<usize>,
     credit: usize,
@@ -405,6 +406,7 @@ impl AudioStore {
     fn own(&mut self, mut view: View, writable: bool) -> Result<Handle, Error> {
         view.credit = view.mapping.credits(view.frames, self.page_frames);
         view.growing = None;
+        view.reserved = false;
         if self.closed {
             return Err(Error::InvalidState);
         }
@@ -488,6 +490,7 @@ impl AudioStore {
                 zero_from: None,
                 revision: Revision(0),
                 writable: true,
+                reserved: false,
                 retiring: false,
                 base: None,
                 credit,
@@ -543,6 +546,77 @@ impl AudioStore {
 
     pub fn fork(&mut self, take: TakeId) -> Result<TakeId, Error> {
         self.own(self.view(take.0)?, true).map(TakeId)
+    }
+
+    pub(in crate::resource) fn reserve_export(
+        &mut self,
+        take: TakeId,
+        maximum_frames: u64,
+    ) -> Result<ExportId, Error> {
+        let source = self.view(take.0)?;
+        let maximum = usize::try_from(maximum_frames).map_err(|_| Error::Capacity)?;
+        let limit = self.marks.len() * self.page_frames;
+        if maximum < source.frames {
+            return Err(Error::InvalidShape);
+        }
+        if maximum > limit
+            || maximum > 0
+                && (source.mapping.physical(maximum - 1) >= limit
+                    || source.mapping.prefix.is_none() && maximum > limit - source.mapping.first)
+        {
+            return Err(Error::Capacity);
+        }
+        let credit = source.mapping.credits(maximum, self.page_frames);
+        if self.free_views.is_empty() || credit > self.debt_limit - self.debt {
+            return Err(Error::Capacity);
+        }
+        Ok(ExportId(self.insert_view(
+            View {
+                root: None,
+                mapping: source.mapping,
+                frames: 0,
+                growing: None,
+                zero_from: Some(0),
+                revision: Revision(0),
+                writable: false,
+                reserved: true,
+                retiring: false,
+                base: None,
+                credit,
+            },
+            false,
+        )))
+    }
+    pub(in crate::resource) fn publish_reserved_export(
+        &mut self,
+        export: ExportId,
+        take: TakeId,
+    ) -> Result<(), Error> {
+        let mut source = self.view(take.0)?;
+        let target = self.view(export.0)?;
+        let credit = source.mapping.credits(source.frames, self.page_frames);
+        if !target.reserved || target.root.is_some() || target.base.is_some() {
+            return Err(Error::InvalidState);
+        }
+        if credit > target.credit {
+            return Err(Error::Capacity);
+        }
+        if let Some(base) = source.base {
+            if self.bases[base].expect("owned base").references == usize::MAX {
+                return Err(Error::Exhausted);
+            }
+        }
+        self.retain_root(source.root)?;
+        if let Some(base) = source.base {
+            self.bases[base].as_mut().expect("owned base").references += 1;
+        }
+        source.credit = credit;
+        source.writable = false;
+        source.reserved = false;
+        source.growing = None;
+        self.debt -= target.credit - credit;
+        self.views[export.0.slot as usize].value = Some(source);
+        Ok(())
     }
 
     pub fn export(&mut self, take: TakeId) -> Result<ExportId, Error> {
@@ -613,6 +687,7 @@ impl AudioStore {
                 zero_from: None,
                 revision: Revision(0),
                 writable: true,
+                reserved: false,
                 retiring: false,
                 base: Some(base_slot),
                 credit,
@@ -628,7 +703,9 @@ impl AudioStore {
     }
 
     pub fn export_index(&self, export: ExportId) -> Result<ReadIndex, Error> {
-        self.view(export.0)?;
+        if self.view(export.0)?.reserved {
+            return Err(Error::InvalidState);
+        }
         Ok(ReadIndex(export.0))
     }
 
@@ -962,6 +1039,7 @@ impl AudioStore {
                 zero_from: None,
                 revision: Revision(0),
                 writable: true,
+                reserved: false,
                 retiring: false,
                 base: None,
                 credit: 0,

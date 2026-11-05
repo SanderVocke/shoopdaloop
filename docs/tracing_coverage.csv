@@ -458,3 +458,5 @@ src/rust/shoop_host/src/private.rs,app_session,excluded,Platform credential file
 src/rust/shoop_transport/src/authenticated.rs,session_transport,excluded,Bounded credential admission for provisioned embedded hosts; failures return to connection owners without tracing credentials.
 src/rust/rt_profiling/src/wrapping.rs,portable_profiling,excluded,Bounded callback-context accounting outside rendering; profiling data is its own observability channel.
 src/rust/shoop_host_freertos/build.rs,build_support,excluded,Compile-time embedded target and generated board configuration; no application execution boundary.
+src/rust/rt_runtime/src/resource/reservation.rs,generic_realtime_library,excluded,Prepared snapshot and future backing credits with bounded publication and cancellation; no host tracing dependency.
+src/rust/rt_runtime/src/resource/reservation/tests.rs,test_support,excluded,Heap-guarded paired publication under saturated metadata and cancellation fences; no production boundary.

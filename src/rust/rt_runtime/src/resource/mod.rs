@@ -3,6 +3,8 @@
 //! Raw resource/snapshot IDs require same-store caller discipline. Scoped indexes
 //! additionally check instance and lease generation; copying either acquires no lease.
 
+mod reservation;
+pub use reservation::ReservedSnapshotId;
 mod boundary;
 pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};
 mod capture;
@@ -133,6 +135,7 @@ struct Version {
 }
 #[derive(Clone, Copy)]
 struct Lease {
+    reservation: Option<reservation::Reservation>,
     snapshot: Snapshot,
     version: UploadId,
     private_tail: Option<usize>,
@@ -703,6 +706,7 @@ impl ResourceStore {
             capture: version.capture,
         };
         self.snapshots[index].value = Some(Lease {
+            reservation: None,
             snapshot,
             version: active,
             private_tail,
@@ -829,6 +833,9 @@ impl ResourceStore {
     }
     pub fn release_snapshot(&mut self, id: SnapshotId) -> Result<(), Error> {
         let lease = get(&self.snapshots, id.slot, id.generation)?;
+        if let Some(reservation) = lease.reservation {
+            self.cancel_backing_reservation(reservation)?;
+        }
         if let Some(audio) = lease.audio {
             self.with_audio(audio.store, |_, store| store.release_export(audio.export))?;
         }
