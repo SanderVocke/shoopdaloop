@@ -47,6 +47,7 @@ pub(crate) enum Step {
     Configure,
     ContentAdopt,
     ContentSelect,
+    ContentMetadata,
     FamilySelect,
 }
 
@@ -81,7 +82,9 @@ enum Kind {
         id: LoopSlotId,
         frames: u64,
         audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        auxiliary: Option<shoop_loops::runtime::NodePairSourceId>,
         midi: Option<shoop_loops::runtime::NodePairSourceId>,
+        recorded: Option<shoop_rt_protocol::RecordedProcessorState>,
         family: Option<usize>,
     },
     Family {
@@ -120,6 +123,7 @@ pub(crate) struct Job {
     cancelled: bool,
     content_media: Option<shoop_loops::media::MediaId>,
     content_revision: Option<rt_runtime::Revision>,
+    metadata_published: bool,
 }
 
 impl Job {
@@ -148,6 +152,7 @@ impl Job {
             cancelled: false,
             content_media: None,
             content_revision: None,
+            metadata_published: false,
         }
     }
     pub(crate) fn batch(len: usize) -> Self {
@@ -190,13 +195,17 @@ impl Job {
         id: LoopSlotId,
         frames: u64,
         audio: Option<shoop_loops::runtime::NodePairSourceId>,
+        auxiliary: Option<shoop_loops::runtime::NodePairSourceId>,
         midi: Option<shoop_loops::runtime::NodePairSourceId>,
+        recorded: Option<shoop_rt_protocol::RecordedProcessorState>,
     ) -> Self {
         Self::new(Kind::Content {
             id,
             frames,
             audio,
+            auxiliary,
             midi,
+            recorded,
             family: None,
         })
     }
@@ -211,7 +220,9 @@ impl Job {
             id,
             frames,
             audio,
+            auxiliary: None,
             midi,
+            recorded: None,
             family: Some(slot),
         })
     }
@@ -248,6 +259,7 @@ impl ControlEndpoint {
             return true;
         };
         let base = crate::NodeConfiguration {
+            recorded_state: None,
             processor: None,
             generation: 0,
             token: if job.replacing() {
@@ -319,7 +331,17 @@ impl ControlEndpoint {
                 self.submit_configuration(
                     job,
                     self.pool.fader(slot),
-                    crate::NodeConfiguration { processor, ..base },
+                    crate::NodeConfiguration {
+                        processor,
+                        generation: entry.id.0.generation,
+                        recorded_state: if job.replacing() {
+                            self.replacement.initial[slot]
+                                .and_then(|initial| initial.recorded_state)
+                        } else {
+                            None
+                        },
+                        ..base
+                    },
                 );
             }
         }
@@ -562,6 +584,31 @@ impl ControlEndpoint {
                 if !self.room(1) {
                     return false;
                 }
+                if !job.metadata_published {
+                    let Kind::Content { id, recorded, .. } = job.kind else {
+                        unreachable!()
+                    };
+                    let operation = EngineOp::RecordedState {
+                        generation: id.0.generation,
+                        revision: job.content_revision.expect("adopted revision").0,
+                        state: recorded,
+                    };
+                    self.submit_job(
+                        job,
+                        Command::Schedule {
+                            at: Frame(0),
+                            action: rt_runtime::schedule::Action::Processor {
+                                node: self.pool.fader(id.0.index as usize),
+                                operation,
+                            },
+                            payload: Box::new([]),
+                        },
+                        Step::ContentMetadata,
+                        true,
+                    );
+                    job.metadata_published = true;
+                    return true;
+                }
                 if let Some(media) = job.content_media.take() {
                     self.submit_job_loop(job, Frame(0), Operation::Retire { media }, Step::Retire);
                 }
@@ -642,6 +689,7 @@ impl ControlEndpoint {
                 id,
                 frames,
                 audio,
+                auxiliary,
                 midi,
                 ..
             } => {
@@ -652,7 +700,7 @@ impl ControlEndpoint {
                     job,
                     Frame(0),
                     Operation::Adopt {
-                        auxiliary: None,
+                        auxiliary,
                         target: loop_id(id),
                         frames,
                         audio,
@@ -770,7 +818,7 @@ impl ControlEndpoint {
                             != strip.processor
                 })
                 .count();
-            if !self.room(count * 3) {
+            if !self.room(count * 4) {
                 return false;
             }
             job.processors_prepared = true;
@@ -803,6 +851,16 @@ impl ControlEndpoint {
                             value: strip.shape.audio_inputs as f32,
                         },
                     ),
+                    if job.replacing() {
+                        self.replacement.processor_states[index].map(|control| {
+                            EngineOp::ProcessorControl {
+                                generation: slot.generation,
+                                control,
+                            }
+                        })
+                    } else {
+                        None
+                    },
                     Some(EngineOp::ProcessorBind {
                         generation: slot.generation,
                         strip_generation: strip.id.0.generation,
@@ -978,7 +1036,11 @@ impl ControlEndpoint {
                             .midi
                             .map(|id| self.uploads.source(id, true, data.frames))
                             .transpose();
-                        let (Ok(audio), Ok(midi)) = (audio, midi) else {
+                        let auxiliary = data
+                            .dry_audio
+                            .map(|id| self.uploads.source(id, false, data.frames))
+                            .transpose();
+                        let (Ok(audio), Ok(auxiliary), Ok(midi)) = (audio, auxiliary, midi) else {
                             job.fail(Refusal::InvalidValue);
                             return true;
                         };
@@ -1003,7 +1065,7 @@ impl ControlEndpoint {
                                 .next
                                 .strip(entry.strip)
                                 .is_some_and(|strip| strip.processor.is_some()),
-                            auxiliary: None,
+                            auxiliary,
                             target: loop_id(created),
                             frames: data.frames,
                             audio,
@@ -1508,11 +1570,17 @@ impl ControlEndpoint {
             if let RuntimeResult::Execution(execution) = &result {
                 if let Some(Reply::Adopted { .. }) = execution.operation_result {
                     if let rt_runtime::schedule::Action::Planner {
-                        operation: Operation::Adopt { audio, midi, .. },
+                        operation:
+                            Operation::Adopt {
+                                audio,
+                                auxiliary,
+                                midi,
+                                ..
+                            },
                         ..
                     } = execution.action
                     {
-                        for source in [audio, midi].into_iter().flatten() {
+                        for source in [audio, auxiliary, midi].into_iter().flatten() {
                             self.uploads.consumed(source);
                         }
                     }
@@ -1531,7 +1599,10 @@ impl ControlEndpoint {
                         ..
                     } = execution.action
                     {
-                        for source in [initial.audio, initial.midi].into_iter().flatten() {
+                        for source in [initial.audio, initial.auxiliary, initial.midi]
+                            .into_iter()
+                            .flatten()
+                        {
                             self.uploads.consumed(source);
                         }
                     }

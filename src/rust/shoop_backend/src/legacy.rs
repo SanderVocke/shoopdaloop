@@ -3263,6 +3263,7 @@ impl EngineBackend {
                     })
                     .collect::<Result<Vec<_>>>()?;
                 loops.push(BackendLoopContent {
+                    recorded_processor_state: None,
                     source_id: loop_id.raw(),
                     length: loop_state.length(),
                     gain: channels.gain,
@@ -8001,6 +8002,7 @@ impl Backend for FakeBackend {
         self.loop_content.insert(
             id,
             BackendLoopContent {
+                recorded_processor_state: None,
                 source_id: id.raw(),
                 length: 0,
                 gain: 1.0,
@@ -9986,6 +9988,7 @@ impl Backend for FakeBackend {
                 staged.loop_content.insert(
                     *loop_id,
                     BackendLoopContent {
+                        recorded_processor_state: None,
                         source_id: loop_id.raw(),
                         ..source_loop.clone()
                     },

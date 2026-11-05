@@ -48,19 +48,40 @@ pub(crate) struct Validation {
 }
 impl Validation {
     pub fn new(image: Arc<BackendLoopContent>, channels: usize) -> Result<Self> {
-        if image.audio.len() > channels
-            || image.midi.len() > 1
-            || !image.gain.is_finite()
-            || !image.balance.is_finite()
-        {
+        let roles = image
+            .audio
+            .iter()
+            .any(|a| a.mode != BackendChannelMode::Direct)
+            || image
+                .midi
+                .iter()
+                .any(|m| m.mode != BackendChannelMode::Direct);
+        let dry = image
+            .audio
+            .iter()
+            .filter(|a| a.mode == BackendChannelMode::Dry)
+            .count();
+        let wet = image
+            .audio
+            .iter()
+            .filter(|a| a.mode == BackendChannelMode::Wet)
+            .count();
+        let shape = if roles {
+            dry <= channels
+                && wet <= channels
+                && image.audio.len() == dry + wet
+                && image.audio[..dry]
+                    .iter()
+                    .all(|a| a.mode == BackendChannelMode::Dry)
+        } else {
+            image.audio.len() <= channels
+        };
+        if !shape || image.midi.len() > 1 || !image.gain.is_finite() || !image.balance.is_finite() {
             bail!("unsupported content shape or controls");
         }
         let mut bytes = 0u64;
         for audio in &image.audio {
-            if audio.mode != BackendChannelMode::Direct
-                || !audio.gain.is_finite()
-                || audio.preplay != 0
-            {
+            if !audio.gain.is_finite() || audio.preplay != 0 {
                 bail!("audio requires unsupported channel mode, gain or preplay");
             }
             bytes = bytes
@@ -68,7 +89,12 @@ impl Validation {
                 .ok_or_else(|| anyhow!("media size overflow"))?;
         }
         if image.midi.iter().any(|m| {
-            m.mode != BackendChannelMode::Direct
+            m.mode
+                != if roles {
+                    BackendChannelMode::Dry
+                } else {
+                    BackendChannelMode::Direct
+                }
                 || m.preplay != 0
                 || m.start_state.len() > 16_384
                 || m.events.len() > MAX_MIDI_EVENTS
@@ -76,7 +102,7 @@ impl Validation {
             bail!("MIDI requires unsupported channel mode, preplay or event count");
         }
         let rendered_audio_bytes = u64::from(image.length)
-            .checked_mul(channels as u64 * 4)
+            .checked_mul(channels as u64 * 4 * if roles { 2 } else { 1 })
             .ok_or_else(|| anyhow!("prepared audio size overflow"))?;
         if bytes > MAX_MEDIA_BYTES {
             bail!("content exceeds the 256 MiB media budget");
@@ -173,7 +199,9 @@ impl Validation {
                 bail!("MIDI initial/preroll parameter history is not supported yet (P11)");
             }
         }
-        if self.bytes > MAX_MEDIA_BYTES {
+        if self.bytes > MAX_MEDIA_BYTES
+            || self.rendered_audio_bytes + self.rendered_midi_bytes > MAX_MEDIA_BYTES
+        {
             bail!("content exceeds the 256 MiB canonical or prepared media budget");
         }
         self.done = true;

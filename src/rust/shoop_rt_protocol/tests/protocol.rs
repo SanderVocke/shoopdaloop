@@ -149,6 +149,8 @@ fn client_samples() -> Vec<ClientMessage> {
         Request::ReplacementEdit {
             id: 1,
             edit: ReplacementEdit::Loop {
+                dry_audio: None,
+                recorded_state: None,
                 loop_id: loop_id(0),
                 strip: strip(0),
                 sync: Some(loop_id(1)),
@@ -231,6 +233,12 @@ fn client_samples() -> Vec<ClientMessage> {
         Request::ContentFamilyCommit { id: 9 },
         Request::ContentFamilyCancel { id: 9 },
         Request::ContentApply {
+            dry_audio: Some(3),
+            recorded_state: Some(RecordedProcessorState {
+                source_frame: 17,
+                kind: ProcessorKind::OxiSynth,
+                values: [0.; 64],
+            }),
             loop_id: loop_id(0),
             frames: 4,
             audio: Some(1),
@@ -241,6 +249,32 @@ fn client_samples() -> Vec<ClientMessage> {
             message: MidiMessage::new(&[0xb0, 7, 64]).unwrap(),
         },
         Request::ContentRelease { id: 1 },
+        Request::ReplacementEdit {
+            id: 2,
+            edit: ReplacementEdit::ProcessedStrip {
+                strip: strip(0),
+                shape: StripShape {
+                    audio_inputs: 3,
+                    audio_outputs: 3,
+                    midi_input: true,
+                    midi_output: false,
+                },
+                controls: StripPreset {
+                    input_gain: 1.,
+                    input_balance: 0.,
+                    monitoring: false,
+                    output_gain: 0.75,
+                    output_balance: 0.,
+                    output_mute: false,
+                },
+                kind: ProcessorKind::BuiltInFx,
+                default_dry: true,
+                state: Some(processors::Control::Restore {
+                    values: [0.; 64],
+                    replace_mappings: true,
+                }),
+            },
+        },
         Request::PreviewStart {
             request_id: 42,
             bus: BusId::MASTER,

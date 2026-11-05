@@ -71,13 +71,13 @@ impl ControlEndpoint {
                 record @ StateRecord::RecordedProcessorState {
                     loop_id,
                     content_revision,
-                    ..
+                    state,
                 },
             )) = self.recorded_record(entry.id)
             else {
                 continue;
             };
-            let key = (loop_id, content_revision);
+            let key = (loop_id, content_revision, state.is_some());
             if self.projected_recorded[index] == Some(key) {
                 continue;
             }

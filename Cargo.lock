@@ -5218,6 +5218,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_loops",
  "shoop_persistence_codec",
+ "shoop_processor_protocol",
  "shoop_rt_engine",
  "shoop_rt_protocol",
  "shoop_rt_transport",

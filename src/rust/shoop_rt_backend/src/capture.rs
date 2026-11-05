@@ -50,6 +50,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | shoop_rt_protocol::Request::CreateLoop { .. }
                 | shoop_rt_protocol::Request::RemoveLoop { .. }
                 | shoop_rt_protocol::Request::LoopClear { .. }
+                | shoop_rt_protocol::Request::ProcessorControl { .. }
+                | shoop_rt_protocol::Request::StripDefaultPlayback { .. }
+                | shoop_rt_protocol::Request::StripControl { .. }
                 | shoop_rt_protocol::Request::CancelBulk => true,
                 shoop_rt_protocol::Request::LoopTransition {
                     loop_id,
@@ -92,7 +95,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let entry = &self.mirror.loops[&id];
                 let (slot, version, length) = (entry.slot, entry.content, entry.view.length as u32);
                 let track = &self.mirror.tracks[&entry.track];
-                let (channels, midi) = (track.audio_channels as usize, track.midi);
+                let wet = track.audio_channels as usize;
+                let dry = (!matches!(track.topology, BackendTrackTopology::Direct { .. }))
+                    .then_some(track.topology.dry_audio_channels() as usize);
+                let (channels, midi) = (wet + dry.unwrap_or(0), track.midi);
                 let audio_bytes = u64::from(length)
                     .checked_mul(channels as u64 * 4)
                     .ok_or_else(|| anyhow!("audio size overflow"))?;
@@ -102,7 +108,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 let audio = if length == 0 || channels == 0 {
                     empty_audio(channels)
                 } else {
-                    match self.reads.audio(id, version, slot, channels) {
+                    let read = match dry {
+                        Some(dry) => self.reads.audio_roles(id, version, slot, dry, wet),
+                        None => self.reads.audio(id, version, slot, channels),
+                    };
+                    match read {
                         Outcome::Done(audio) => audio,
                         Outcome::Reading => return Ok(self.capture_pending(index, ids.len())),
                         Outcome::Failed(message) => bail!(message),
@@ -140,6 +150,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 };
                 let entry = &self.mirror.loops[&id];
                 let content = BackendLoopContent {
+                    recorded_processor_state: entry.recorded_state(),
                     source_id: id.raw(),
                     length,
                     gain: entry.gain,
@@ -147,8 +158,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     audio: audio
                         .channels
                         .into_iter()
-                        .map(|channel| BackendAudioContent {
-                            mode: BackendChannelMode::Direct,
+                        .enumerate()
+                        .map(|(index, channel)| BackendAudioContent {
+                            mode: match dry {
+                                Some(dry) if index < dry => BackendChannelMode::Dry,
+                                Some(_) => BackendChannelMode::Wet,
+                                None => BackendChannelMode::Direct,
+                            },
                             samples: channel.samples,
                             gain: 1.,
                             start_offset: channel.start_offset,
@@ -160,7 +176,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         .channels
                         .into_iter()
                         .map(|channel| BackendMidiContent {
-                            mode: BackendChannelMode::Direct,
+                            mode: if dry.is_some() {
+                                BackendChannelMode::Dry
+                            } else {
+                                BackendChannelMode::Direct
+                            },
                             length: channel.length,
                             start_state: initial.clone(),
                             events: channel.events,
@@ -244,16 +264,50 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         content
                     })
                     .collect();
+                let state = Mirror::track_state(track);
+                let (mut fx_maps, mut synth_maps) = (Vec::new(), Vec::new());
+                if let Some(editor) = state.fx.as_ref().and_then(|fx| fx.editor.as_ref()) {
+                    match editor {
+                        shoop_app_api::TrackProcessorEditorState::BuiltInFx(fx) => {
+                            fx_maps = fx
+                                .midi_cc_assignments
+                                .iter()
+                                .map(|a| BackendBuiltInFxMidiCcAssignment {
+                                    parameter: a.parameter,
+                                    channel: a.channel,
+                                    controller: a.controller,
+                                })
+                                .collect()
+                        }
+                        shoop_app_api::TrackProcessorEditorState::OxiSynth(synth) => {
+                            synth_maps = synth
+                                .midi_cc_assignments
+                                .iter()
+                                .map(|a| BackendOxiSynthMidiCcAssignment {
+                                    parameter: a.parameter,
+                                    channel: a.channel,
+                                    controller: a.controller,
+                                })
+                                .collect()
+                        }
+                    }
+                }
+                let processor_state =
+                    crate::processor_controls::track_kind(track).and_then(|kind| {
+                        let mut state = shoop_processor_protocol::state::State::new(kind).ok()?;
+                        state.values = track.processor_snapshot?.values;
+                        Some(state.encode())
+                    });
                 BackendSessionTrack {
                     source_id: id.raw(),
                     port_name_base: track.port_name_base.clone(),
                     topology: track.topology.clone(),
-                    state: Mirror::track_state(track),
+                    state,
                     loops,
                     ports: track.ports.iter().map(|id| ports[id].clone()).collect(),
-                    processor_state: None,
-                    builtin_fx_midi_cc_assignments: Vec::new(),
-                    oxisynth_midi_cc_assignments: Vec::new(),
+                    processor_state,
+                    builtin_fx_midi_cc_assignments: fx_maps,
+                    oxisynth_midi_cc_assignments: synth_maps,
                 }
             })
             .collect();

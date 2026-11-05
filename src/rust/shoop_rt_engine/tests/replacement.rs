@@ -104,6 +104,8 @@ fn complete_content_and_controls_publish_together_while_old_playback_survives_pr
         &mut h,
         1,
         ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loaded,
             strip,
             sync: None,
@@ -226,6 +228,8 @@ fn cancelling_prepared_replacement_discards_future_controls_and_keeps_old_music(
         &mut h,
         1,
         ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loop_id(0, 2),
             strip: next,
             sync: None,
@@ -282,6 +286,8 @@ fn cancelling_inflight_preparation_answers_both_requests_and_recycles_every_stag
             &mut h,
             id,
             ReplacementEdit::Loop {
+                dry_audio: None,
+                recorded_state: None,
                 loop_id: loop_id(0, 2),
                 strip: next,
                 sync: None,
@@ -326,6 +332,8 @@ fn failed_commit_preserves_recording_and_all_captured_frames() {
         &mut h,
         1,
         ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: loop_id(0, 2),
             strip: next,
             sync: None,
@@ -466,6 +474,8 @@ fn content_apply_keeps_loop_identity_and_playing_mode_and_refuses_active_capture
         upload(&mut h, audio_id, false, 4, &audio);
         upload(&mut h, midi_id, true, 4, &[]);
         h.done(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: id,
             frames: 4,
             audio: Some(audio_id),
@@ -498,6 +508,8 @@ fn content_apply_keeps_loop_identity_and_playing_mode_and_refuses_active_capture
     upload(&mut h, 26, true, 4, &[]);
     assert_eq!(
         h.apply(Request::ContentApply {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: id,
             frames: 4,
             audio: Some(25),
@@ -550,6 +562,8 @@ fn uploaded_midi_initial_state_survives_activation_and_bounded_export() {
     );
     h.done(Request::ContentFinish { id: 2 });
     h.done(Request::ContentApply {
+        dry_audio: None,
+        recorded_state: None,
         loop_id: id,
         frames: 4,
         audio: Some(1),

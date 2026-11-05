@@ -22,6 +22,7 @@ const INJECTED: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeConfiguration {
+    pub recorded_state: Option<shoop_rt_protocol::RecordedProcessorState>,
     pub processor: Option<shoop_rt_protocol::ProcessorKind>,
     pub generation: u32,
     pub token: u64,
@@ -41,6 +42,11 @@ pub struct NodeConfiguration {
 /// immediately before their frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineOp {
+    RecordedState {
+        generation: u32,
+        revision: u64,
+        state: Option<shoop_rt_protocol::RecordedProcessorState>,
+    },
     ProcessorControl {
         generation: u32,
         control: shoop_rt_protocol::processors::Control,
@@ -576,6 +582,11 @@ impl EngineNode {
                 node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
             }
             Self::Fader(node) => {
+                if let Some(state) = configuration.recorded_state {
+                    let cell = &node.cells.loops[node.slot];
+                    cell.recorded
+                        .publish(cell, configuration.generation, 0, Some(state));
+                }
                 node.processor = configuration.processor;
                 node.delay.fill(0.);
                 node.position = 0;
@@ -929,7 +940,8 @@ impl StripInput {
             | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
             | EngineOp::ProcessorParameter { .. }
-            | EngineOp::ProcessorControl { .. } => return Err(Error::InvalidParameter),
+            | EngineOp::ProcessorControl { .. }
+            | EngineOp::RecordedState { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -1041,7 +1053,8 @@ impl StripOutput {
             | EngineOp::ProcessorSuspend { .. }
             | EngineOp::ProcessorRetire { .. }
             | EngineOp::ProcessorParameter { .. }
-            | EngineOp::ProcessorControl { .. } => return Err(Error::InvalidParameter),
+            | EngineOp::ProcessorControl { .. }
+            | EngineOp::RecordedState { .. } => return Err(Error::InvalidParameter),
         }
         Ok(())
     }
@@ -1095,6 +1108,21 @@ impl LoopFader {
 impl LoopFader {
     pub(crate) fn apply(&mut self, operation: EngineOp) -> Result<(), Error> {
         match operation {
+            EngineOp::RecordedState {
+                generation,
+                revision,
+                state,
+            } => {
+                crate::recorded::validate_state(self.processor, state)
+                    .map_err(|_| Error::InvalidParameter)?;
+                let cell = &self.cells.loops[self.slot];
+                if cell.generation.load(Ordering::Relaxed) != generation
+                    || cell.content_revision.load(Ordering::Relaxed) != revision
+                {
+                    return Err(Error::InvalidId);
+                }
+                cell.recorded.publish(cell, generation, revision, state);
+            }
             EngineOp::Reset { .. } => {
                 self.processor = None;
                 self.delay.fill(0.);
@@ -1283,6 +1311,11 @@ impl EngineNode {
             {
                 return Err(Error::InvalidParameter);
             }
+            crate::recorded::validate_state(configuration.processor, configuration.recorded_state)
+                .map_err(|_| Error::InvalidParameter)?;
+            if configuration.recorded_state.is_some() && !matches!(self, Self::Fader(_)) {
+                return Err(Error::InvalidParameter);
+            }
             if matches!(self, Self::StripInput(node) if configuration.inputs as usize > node.channels)
                 || matches!(self, Self::StripOutput(node) if configuration.outputs as usize > node.channels)
                 || matches!(self, Self::Bus(node) if configuration.outputs as usize > node.channels)
@@ -1433,6 +1466,7 @@ mod tests {
         let node = host.endpoint().pool.strip_input(0);
         let at = host.endpoint().at();
         let configuration = NodeConfiguration {
+            recorded_state: None,
             processor: None,
             generation: 1,
             token: 1,

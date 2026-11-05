@@ -553,3 +553,35 @@ host-processor tests after this refinement. The warning-denying workspace build
 and test/tracing inventories pass. Wasm passes the retained-prefix fixture,
 core 83, backend 46 and both-DSP host 22 tests. Public capability admission remains
 gated pending complete writes and session persistence/replacement.
+
+### Role-aware writes and prepared replacement
+
+Protocol v17 carries separate dry and wet upload tokens and optional recorded
+processor settings. The adapter keeps canonical audio in dry-first, wet-second
+order, normalizes each role into its own prepared channel bank, and includes both
+banks in the finite media budget. Selected channel updates preserve the opposite
+role, MIDI and the recorded settings. The core adopts and consumes all three
+sources; the successful selection publishes settings against its confirmed loop
+generation and content revision before acknowledging the update.
+
+Full replacement prepares processed strips in inactive reserved DSP banks. Width,
+settings, preset and mappings are validated and applied before the pending graph
+is activated. Loaded take settings remain in the fenced node configuration until
+the new graph runs. The adapter resynchronizes the committed owners before the
+load completes, including processor and take metadata that may have been
+announced before the candidate mirror became public. A subsequent load waits
+asynchronously for a displaced same-type bank to finish bounded retirement.
+
+The real adapter/host fixture covers External 3→1, FX 3→3 and synth 2→2 imports,
+selected dry and wet edits, runtime reexports after discarding canonical caches,
+recorded settings, six repeated loads, cancellation after claiming the candidate
+DSP bank, and failed synth preset preparation followed by a successful load.
+Rendering is heap guarded. Service images, document conversion and public session
+admission remain gated until their separate persistence work is complete.
+
+The required native workspace gate passes 2,819 tests, with seven existing skips.
+The warning-denying workspace build, tracing/test inventories and four-target
+boundary audits pass. Node/Wasm passes backend 47, core 83, protocol 6 and the
+both-DSP host package's 22 tests. Post-commit resynchronization retains canonical
+dB controls when their amplitude matches exactly, preventing save/load rounding
+drift while still adopting changed engine controls.

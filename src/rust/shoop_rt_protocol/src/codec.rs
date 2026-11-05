@@ -615,12 +615,16 @@ impl Wire for Request {
             Self::ContentApply {
                 loop_id,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
             } => {
                 w.u8(25)?;
                 loop_id.put(w)?;
                 w.u64(frames)?;
+                dry_audio.put(w)?;
+                recorded_state.put(w)?;
                 audio.put(w)?;
                 midi.put(w)
             }
@@ -866,6 +870,8 @@ impl Wire for Request {
             25 => Self::ContentApply {
                 loop_id: LoopSlotId::get(r)?,
                 frames: r.u64()?,
+                dry_audio: Option::<u64>::get(r)?,
+                recorded_state: Option::<RecordedProcessorState>::get(r)?,
                 audio: Option::<u64>::get(r)?,
                 midi: Option::<u64>::get(r)?,
             },
@@ -902,11 +908,29 @@ impl Wire for crate::ReplacementEdit {
                 w.f32(controls.output_balance)?;
                 w.bool(controls.output_mute)
             }
+            Self::ProcessedStrip {
+                strip,
+                shape,
+                controls,
+                kind,
+                default_dry,
+                state,
+            } => {
+                w.u8(7)?;
+                strip.put(w)?;
+                shape.put(w)?;
+                controls.put(w)?;
+                kind.put(w)?;
+                w.bool(default_dry)?;
+                state.put(w)
+            }
             Self::Loop {
                 loop_id,
                 strip,
                 sync,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
                 gain,
@@ -917,6 +941,8 @@ impl Wire for crate::ReplacementEdit {
                 strip.put(w)?;
                 sync.put(w)?;
                 w.u64(frames)?;
+                dry_audio.put(w)?;
+                recorded_state.put(w)?;
                 audio.put(w)?;
                 midi.put(w)?;
                 w.f32(gain)?;
@@ -961,10 +987,20 @@ impl Wire for crate::ReplacementEdit {
                 strip: StripId::get(r)?,
                 sync: Option::get(r)?,
                 frames: r.u64()?,
+                dry_audio: Option::get(r)?,
+                recorded_state: Option::get(r)?,
                 audio: Option::get(r)?,
                 midi: Option::get(r)?,
                 gain: r.f32()?,
                 balance: r.f32()?,
+            },
+            7 => Self::ProcessedStrip {
+                strip: StripId::get(r)?,
+                shape: StripShape::get(r)?,
+                controls: crate::StripPreset::get(r)?,
+                kind: ProcessorKind::get(r)?,
+                default_dry: r.bool()?,
+                state: Option::get(r)?,
             },
             2 => Self::Connect {
                 port: EnginePort::get(r)?,
@@ -975,6 +1011,27 @@ impl Wire for crate::ReplacementEdit {
                 bus: BusPort::get(r)?,
             },
             _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for crate::StripPreset {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.f32(self.input_gain)?;
+        w.f32(self.input_balance)?;
+        w.bool(self.monitoring)?;
+        w.f32(self.output_gain)?;
+        w.f32(self.output_balance)?;
+        w.bool(self.output_mute)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            input_gain: r.f32()?,
+            input_balance: r.f32()?,
+            monitoring: r.bool()?,
+            output_gain: r.f32()?,
+            output_balance: r.f32()?,
+            output_mute: r.bool()?,
         })
     }
 }

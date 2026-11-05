@@ -12,7 +12,10 @@ use shoop_rt_protocol::Request;
 use shoop_rt_transport::carrier::Carrier;
 
 pub(crate) fn track_kind(track: &Track) -> Option<Kind> {
-    let BackendTrackTopology::DryWetProcessor { processor_type, .. } = &track.topology else {
+    topology_kind(&track.topology)
+}
+pub(crate) fn topology_kind(topology: &BackendTrackTopology) -> Option<Kind> {
+    let BackendTrackTopology::DryWetProcessor { processor_type, .. } = topology else {
         return None;
     };
     match processor_type.as_str() {
@@ -20,6 +23,88 @@ pub(crate) fn track_kind(track: &Track) -> Option<Kind> {
         TrackProcessorTypeId::OXISYNTH => Some(Kind::OxiSynth),
         _ => None,
     }
+}
+
+pub(crate) fn recorded_state(
+    topology: &BackendTrackTopology,
+    encoded: Option<&str>,
+) -> Result<Option<shoop_rt_protocol::RecordedProcessorState>> {
+    let Some(encoded) = encoded else {
+        return Ok(None);
+    };
+    let kind = topology_kind(topology)
+        .ok_or_else(|| anyhow!("recorded state requires a hosted processor"))?;
+    let mut state = State::decode(kind, encoded)?;
+    if kind == Kind::BuiltInFx {
+        state.values[55] = topology.dry_audio_channels() as f32;
+    }
+    Ok(Some(shoop_rt_protocol::RecordedProcessorState {
+        source_frame: 0,
+        kind,
+        values: state.values,
+    }))
+}
+
+pub(crate) fn session_state(track: &shoop_backend::BackendSessionTrack) -> Result<Option<Control>> {
+    let Some(kind) = topology_kind(&track.topology) else {
+        if track.processor_state.is_some()
+            || !track.builtin_fx_midi_cc_assignments.is_empty()
+            || !track.oxisynth_midi_cc_assignments.is_empty()
+            || track.state.fx.is_some()
+        {
+            return Err(anyhow!("this track has no hosted processor state"));
+        }
+        return Ok(None);
+    };
+    let mut state = match &track.processor_state {
+        Some(encoded) => State::decode(kind, encoded)?,
+        None => State::new(kind)?,
+    };
+    if kind == Kind::BuiltInFx {
+        if !track.oxisynth_midi_cc_assignments.is_empty() {
+            return Err(anyhow!("FX track has synth mappings"));
+        }
+        state.values[55] = track.topology.dry_audio_channels() as f32;
+        for assignment in &track.builtin_fx_midi_cc_assignments {
+            let index = BuiltInFxParameter::ALL
+                .iter()
+                .position(|p| *p == assignment.parameter)
+                .unwrap();
+            if state.values[32 + index] >= 0. {
+                return Err(anyhow!("duplicate processor mapping"));
+            }
+            state.values[32 + index] = cc_value(assignment.channel, assignment.controller)?;
+        }
+    } else {
+        if !track.builtin_fx_midi_cc_assignments.is_empty() {
+            return Err(anyhow!("synth track has FX mappings"));
+        }
+        for assignment in &track.oxisynth_midi_cc_assignments {
+            let index = OxiSynthParameter::ALL
+                .iter()
+                .position(|p| *p == assignment.parameter)
+                .unwrap();
+            if state.values[3 + index] >= 0. {
+                return Err(anyhow!("duplicate processor mapping"));
+            }
+            state.values[3 + index] = cc_value(assignment.channel, assignment.controller)?;
+        }
+    }
+    let mappings = if kind == Kind::BuiltInFx {
+        &state.values[32..55]
+    } else {
+        &state.values[3..5]
+    };
+    for (i, value) in mappings.iter().enumerate() {
+        if *value >= 0. && mappings[..i].contains(value) {
+            return Err(anyhow!("duplicate processor MIDI source"));
+        }
+    }
+    state.validate()?;
+    Ok(Some(Control::Restore {
+        values: state.values,
+        replace_mappings: true,
+    }))
 }
 pub(crate) fn track_fx_state(track: &Track) -> Option<TrackFxState> {
     let kind = track_kind(track)?;

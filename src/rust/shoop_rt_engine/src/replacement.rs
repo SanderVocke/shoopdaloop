@@ -23,6 +23,8 @@ pub(crate) enum State {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Initial {
     pub frames: u64,
+    pub dry_audio: Option<u64>,
+    pub recorded_state: Option<shoop_rt_protocol::RecordedProcessorState>,
     pub audio: Option<u64>,
     pub midi: Option<u64>,
 }
@@ -33,6 +35,7 @@ pub(crate) struct Replacement {
     base_revision: u64,
     pub candidate: Model,
     pub initial: Box<[Option<Initial>]>,
+    pub processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
 }
 impl Replacement {
     pub(crate) fn new(strips: usize, loops: usize, buses: usize) -> Self {
@@ -43,12 +46,14 @@ impl Replacement {
             base_revision: 0,
             candidate: Model::new(strips, loops, buses, 0, Default::default()),
             initial: vec![None; loops].into_boxed_slice(),
+            processor_states: vec![None; strips].into_boxed_slice(),
         }
     }
     pub(crate) fn clear(&mut self) {
         self.id = None;
         self.state = State::Empty;
         self.initial.fill(None);
+        self.processor_states.fill(None);
     }
 }
 
@@ -80,6 +85,7 @@ impl ControlEndpoint {
                 stage.candidate.loops.fill(None);
                 stage.candidate.buses.fill(None);
                 stage.initial.fill(None);
+                stage.processor_states.fill(None);
                 return Ok(Some(Outcome::Done));
             }
             Request::ReplacementEdit { id, .. }
@@ -175,36 +181,32 @@ impl ControlEndpoint {
                 shape,
                 controls,
             } => {
-                if !controls.input_gain.is_finite()
-                    || controls.input_gain < 0.
-                    || !controls.output_gain.is_finite()
-                    || controls.output_gain < 0.
-                    || !(-1.0..=1.0).contains(&controls.input_balance)
-                    || !(-1.0..=1.0).contains(&controls.output_balance)
-                {
-                    return Err(Refusal::InvalidValue);
-                }
-                let change = match self.stage(Request::CreateStrip { strip, shape }, true) {
-                    Staged::Change(change) => change,
-                    Staged::Refused(reason) => return Err(reason),
-                    _ => return Err(Refusal::Busy),
-                };
-                self.next.apply(change);
-                self.next.strip_mut(strip).expect("created strip").controls = Controls {
-                    input_gain: controls.input_gain,
-                    input_balance: controls.input_balance,
-                    monitoring: controls.monitoring,
-                    output_gain: controls.output_gain,
-                    output_balance: controls.output_balance,
-                    output_mute: controls.output_mute,
-                };
-                return Ok(());
+                return self.replacement_strip(strip, shape, controls, None, false, None);
+            }
+            ReplacementEdit::ProcessedStrip {
+                strip,
+                shape,
+                controls,
+                kind,
+                default_dry,
+                state,
+            } => {
+                return self.replacement_strip(
+                    strip,
+                    shape,
+                    controls,
+                    Some(kind),
+                    default_dry,
+                    state,
+                );
             }
             ReplacementEdit::Loop {
                 loop_id,
                 strip,
                 sync,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
                 gain,
@@ -230,6 +232,8 @@ impl ControlEndpoint {
                 entry.balance = balance;
                 self.replacement.initial[slot] = Some(Initial {
                     frames,
+                    dry_audio,
+                    recorded_state,
                     audio,
                     midi,
                 });
@@ -255,6 +259,72 @@ impl ControlEndpoint {
             Staged::Refused(reason) => Err(reason),
             Staged::Wait => Err(Refusal::Busy),
         }
+    }
+
+    fn replacement_strip(
+        &mut self,
+        strip: shoop_rt_protocol::StripId,
+        shape: shoop_rt_protocol::StripShape,
+        controls: shoop_rt_protocol::StripPreset,
+        kind: Option<shoop_rt_protocol::ProcessorKind>,
+        default_dry: bool,
+        state: Option<shoop_rt_protocol::processors::Control>,
+    ) -> Result<(), Refusal> {
+        if !controls.input_gain.is_finite()
+            || controls.input_gain < 0.
+            || !controls.output_gain.is_finite()
+            || controls.output_gain < 0.
+            || !(-1.0..=1.0).contains(&controls.input_balance)
+            || !(-1.0..=1.0).contains(&controls.output_balance)
+            || (default_dry && (kind.is_none() || shape.audio_outputs == 0))
+        {
+            return Err(Refusal::InvalidValue);
+        }
+        if let Some(state) = state {
+            let shoop_rt_protocol::processors::Control::Restore {
+                values,
+                replace_mappings: true,
+            } = state
+            else {
+                return Err(Refusal::InvalidValue);
+            };
+            let kind = kind.ok_or(Refusal::InvalidValue)?;
+            crate::recorded::validate_state(
+                Some(kind),
+                Some(shoop_rt_protocol::RecordedProcessorState {
+                    source_frame: 0,
+                    kind,
+                    values,
+                }),
+            )?;
+            if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx
+                && values[55] != shape.audio_inputs as f32
+            {
+                return Err(Refusal::InvalidValue);
+            }
+        }
+        let request = match kind {
+            Some(kind) => Request::CreateProcessedStrip { strip, shape, kind },
+            None => Request::CreateStrip { strip, shape },
+        };
+        let change = match self.stage(request, true) {
+            Staged::Change(change) => change,
+            Staged::Refused(reason) => return Err(reason),
+            _ => return Err(Refusal::Busy),
+        };
+        self.next.apply(change);
+        let entry = self.next.strip_mut(strip).expect("created strip");
+        entry.default_dry = default_dry;
+        entry.controls = Controls {
+            input_gain: controls.input_gain,
+            input_balance: controls.input_balance,
+            monitoring: controls.monitoring,
+            output_gain: controls.output_gain,
+            output_balance: controls.output_balance,
+            output_mute: controls.output_mute,
+        };
+        self.replacement.processor_states[strip.0.index as usize] = state;
+        Ok(())
     }
 
     fn set_replacement_bus(
@@ -289,18 +359,41 @@ impl ControlEndpoint {
                 }
             }
             let initial = self.replacement.initial[slot].ok_or(Refusal::InvalidValue)?;
+            let kind = self
+                .replacement
+                .candidate
+                .strip(entry.strip)
+                .and_then(|strip| strip.processor)
+                .map(|owner| owner.kind);
+            self.validate_recorded_kind(kind, initial.recorded_state)?;
+            if (kind.is_none() && initial.dry_audio.is_some())
+                || (initial.frames > 0 && kind.is_some() && initial.dry_audio.is_none())
+            {
+                return Err(Refusal::InvalidValue);
+            }
             if initial.frames > 0 && (initial.audio.is_none() || initial.midi.is_none()) {
                 return Err(Refusal::InvalidValue);
             }
-            for (token, midi) in [(initial.audio, false), (initial.midi, true)] {
+            for (token, midi) in [
+                (initial.audio, false),
+                (initial.dry_audio, false),
+                (initial.midi, true),
+            ] {
                 let Some(token) = token else { continue };
                 self.uploads.source(token, midi, initial.frames)?;
                 for prior in self.replacement.initial[..slot].iter().flatten() {
-                    if prior.audio == Some(token) || prior.midi == Some(token) {
+                    if prior.audio == Some(token)
+                        || prior.midi == Some(token)
+                        || prior.dry_audio == Some(token)
+                    {
                         return Err(Refusal::InvalidValue);
                     }
                 }
-                if initial.audio == initial.midi {
+                if initial.audio == initial.midi
+                    || (initial.dry_audio.is_some()
+                        && (initial.dry_audio == initial.audio
+                            || initial.dry_audio == initial.midi))
+                {
                     return Err(Refusal::InvalidValue);
                 }
             }

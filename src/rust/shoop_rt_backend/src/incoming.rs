@@ -17,7 +17,7 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::carrier::Carrier;
 
-use crate::mirror::{amplitude_db, LoopView};
+use crate::mirror::{amplitude_db, reconciled_db, LoopView};
 use crate::requests::{Pending, Purpose};
 use crate::{EngineClock, Link, RtBackend};
 
@@ -497,7 +497,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         continue;
                     };
                     if let Some(track) = self.mirror.tracks.get_mut(id) {
-                        track.controls.apply(app_control(control));
+                        let control = match control {
+                            StripControl::InputGain(value) => BackendTrackControl::InputGainDb(
+                                reconciled_db(track.controls.input_gain_db, value),
+                            ),
+                            StripControl::OutputGain(value) => BackendTrackControl::OutputGainDb(
+                                reconciled_db(track.controls.output_gain_db, value),
+                            ),
+                            _ => app_control(control),
+                        };
+                        track.controls.apply(control);
                     }
                 }
                 StateRecord::Loop {
@@ -546,7 +555,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 StateRecord::Bus { bus, control } => {
                     if let Some(entry) = self.mirror.buses.values_mut().find(|b| b.slot == bus) {
                         entry.apply(match control {
-                            BusControl::Gain(v) => BackendBusControl::GainDb(amplitude_db(v)),
+                            BusControl::Gain(v) => {
+                                BackendBusControl::GainDb(reconciled_db(entry.gain_db, v))
+                            }
                             BusControl::Balance(v) => BackendBusControl::Balance(v),
                             BusControl::Mute(v) => BackendBusControl::Mute(v),
                         });

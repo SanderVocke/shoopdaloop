@@ -504,6 +504,14 @@ impl ControlEndpoint {
                                     })
                                 });
                         let Some(slot) = available else {
+                            if self.processor_cells.iter().any(|cells| {
+                                cells.read().is_some_and(|state| {
+                                    state.kind == kind
+                                        && state.phase == crate::ProcessorPhase::Retiring
+                                })
+                            }) {
+                                return Staged::Wait;
+                            }
                             return Staged::Refused(Refusal::Capacity);
                         };
                         Some(crate::model::ProcessorOwner {

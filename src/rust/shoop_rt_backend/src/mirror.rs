@@ -36,6 +36,14 @@ pub(crate) fn db_amplitude(db: f32) -> f32 {
     libm::powf(10.0, db / 20.0)
 }
 
+pub(crate) fn reconciled_db(previous: f32, amplitude: f32) -> f32 {
+    if db_amplitude(previous).to_bits() == amplitude.to_bits() {
+        previous
+    } else {
+        amplitude_db(amplitude)
+    }
+}
+
 /// Peaks received since the previous snapshot; without new telemetry the previous reading
 /// holds.
 #[derive(Clone, Debug, Default)]
@@ -194,6 +202,17 @@ pub(crate) struct Loop {
     /// Changes whenever the recorded content may have changed.
     pub content: u64,
     pub rt_content_revision: u64,
+}
+
+impl Loop {
+    pub(crate) fn recorded_state(&self) -> Option<alloc::string::String> {
+        let (_, recorded) = self
+            .recorded
+            .filter(|(revision, _)| *revision == self.rt_content_revision)?;
+        let mut state = shoop_processor_protocol::state::State::new(recorded.kind).ok()?;
+        state.values = recorded.values;
+        Some(state.encode())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -603,15 +622,7 @@ impl Mirror {
     pub fn loop_state(entry: &mut Loop, channels: u32, dry_channels: u32) -> BackendLoopState {
         let view = entry.view;
         BackendLoopState {
-            recorded_processor_state: entry
-                .recorded
-                .filter(|(revision, _)| *revision == entry.rt_content_revision)
-                .and_then(|(_, recorded)| {
-                    let mut state =
-                        shoop_processor_protocol::state::State::new(recorded.kind).ok()?;
-                    state.values = recorded.values;
-                    Some(state.encode())
-                }),
+            recorded_processor_state: entry.recorded_state(),
             content_revision: entry.content,
             sync_source: entry.sync,
             mode: app_mode(view.mode),

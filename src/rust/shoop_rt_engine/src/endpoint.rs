@@ -155,7 +155,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
-    pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64)>]>,
+    pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_processors: Box<
@@ -869,11 +869,15 @@ impl ControlEndpoint {
             Request::ContentApply {
                 loop_id: id,
                 frames,
+                dry_audio,
+                recorded_state,
                 audio,
                 midi,
             } => {
                 if self.model.find_loop(id).is_none() {
                     Err(Refusal::InvalidId)
+                } else if self.validate_recorded(id, recorded_state).is_err() {
+                    Err(Refusal::InvalidValue)
                 } else {
                     let sources = audio
                         .map(|id| self.uploads.source(id, false, frames))
@@ -882,16 +886,24 @@ impl ControlEndpoint {
                             midi.map(|id| self.uploads.source(id, true, frames))
                                 .transpose()
                                 .map(|midi| (audio, midi))
+                        })
+                        .and_then(|(audio, midi)| {
+                            dry_audio
+                                .map(|id| self.uploads.source(id, false, frames))
+                                .transpose()
+                                .map(|dry| (audio, dry, midi))
                         });
                     match sources {
                         Err(refusal) => Err(refusal),
-                        Ok((audio, midi)) => {
+                        Ok((audio, dry, midi)) => {
                             if self.job.is_some() {
                                 return Err(());
                             }
                             self.touched_loops[id.0.index as usize] = crate::queue::HARD;
-                            return self
-                                .begin_job(correlation, Job::content(id, frames, audio, midi));
+                            return self.begin_job(
+                                correlation,
+                                Job::content(id, frames, audio, dry, midi, recorded_state),
+                            );
                         }
                     }
                 }

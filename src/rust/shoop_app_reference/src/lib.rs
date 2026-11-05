@@ -13672,6 +13672,7 @@ fn session_bundle_to_backend(
                 return Err(format!("loop {} channel shape is invalid", loop_.id));
             }
             loops.push(BackendLoopContent {
+                recorded_processor_state: None,
                 source_id: loop_.id,
                 length: u32::try_from(loop_.length_frames)
                     .map_err(|_| "loop length exceeds engine range".to_owned())?,

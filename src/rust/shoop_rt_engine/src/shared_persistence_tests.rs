@@ -693,6 +693,8 @@ fn fixed_shared_publication_round_trips_reload_edit_family_and_session_replaceme
     h.request(protocol::Request::ReplacementEdit {
         id: 1,
         edit: protocol::ReplacementEdit::Loop {
+            dry_audio: None,
+            recorded_state: None,
             loop_id: protocol::LoopSlotId(protocol::SlotId::new(0, 2)),
             strip,
             sync: None,

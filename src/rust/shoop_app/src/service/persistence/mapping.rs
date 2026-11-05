@@ -92,6 +92,7 @@ pub(super) fn backend_loop(
     content: &image::Loop,
 ) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
+        recorded_processor_state: None,
         source_id: content.id.raw(),
         length: content.frames as u32,
         gain: content.gain,

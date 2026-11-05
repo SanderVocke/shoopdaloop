@@ -1742,6 +1742,7 @@ impl NativeRuntime {
                     })
                     .collect::<Result<Vec<_>>>()?;
                 loops.push(BackendLoopContent {
+                    recorded_processor_state: None,
                     source_id: loop_id.raw(),
                     length: loop_state.length,
                     gain: loop_.gain,

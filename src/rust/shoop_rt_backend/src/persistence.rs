@@ -169,16 +169,25 @@ impl Job {
         {
             self.fail("engine omitted the prepared content revision".to_owned());
         }
-        if self.retries < 1024
+        let retiring_wait = outcome == Outcome::Refused(Refusal::Busy)
+            && matches!(
+                request,
+                Request::ReplacementEdit {
+                    edit: shoop_rt_protocol::ReplacementEdit::ProcessedStrip { .. },
+                    ..
+                }
+            );
+        if (self.retries < 1024 || retiring_wait)
             && !matches!(request, Request::ContentWrite { .. })
             && (outcome == Outcome::Refused(Refusal::Overloaded)
                 || (outcome == Outcome::Refused(Refusal::Busy)
                     && matches!(
                         request,
                         Request::ReplacementBegin { .. } | Request::ContentFamilyBegin { .. }
-                    )))
+                    )
+                    || retiring_wait))
         {
-            self.retries += 1;
+            self.retries = self.retries.saturating_add(1);
             self.retry_after = Some(callbacks.saturating_add(1));
             self.work.push_front(Work::Request(request));
             return;
@@ -360,6 +369,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.connection_failures
                     .append(&mut replacement.connection_failures);
                 self.reads.clear();
+                self.link = crate::Link::Resyncing;
+                self.resync = Some(Vec::new());
+                if let Err(error) = self.client.resync() {
+                    self.lose(format!(
+                        "could not resynchronize the committed session: {error:?}"
+                    ));
+                }
             }
         }
     }
@@ -371,7 +387,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .replacement
             .as_ref()
             .ok_or_else(|| anyhow!("no session replacement"))?;
-        if !replacement.job.finished {
+        if !replacement.job.finished
+            || (replacement.published && matches!(self.link, crate::Link::Resyncing))
+        {
             return Ok(shoop_backend::BackendAsyncResult::Pending(
                 shoop_backend::BackendOperationProgress {
                     key: replacement.job.id,

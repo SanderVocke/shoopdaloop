@@ -238,6 +238,8 @@ pub enum Request {
     ContentApply {
         loop_id: LoopSlotId,
         frames: u64,
+        dry_audio: Option<u64>,
+        recorded_state: Option<RecordedProcessorState>,
         audio: Option<u64>,
         midi: Option<u64>,
     },

@@ -493,6 +493,21 @@ check the ordered dry samples and computed wet results. Existing Direct bulk pat
 remain covered. Role-aware writes, candidate replacement and persistence codecs
 are still open; public admission remains gated.
 
+Role-aware write/replacement milestone: protocol v17 carries independent dry/wet
+uploads and recorded take settings. Canonical validation budgets both prepared
+banks; selected edits preserve the opposite role and MIDI. Processed candidate
+strips claim reserved inactive banks, restore width/settings/mappings before the
+graph cut, and publish loaded take metadata only with the new generation. The
+adapter resynchronizes committed owners before acknowledging a successful load.
+Repeated loads wait for bounded retirement; cancellation after candidate Claim
+and unavailable synth preset preparation preserve the old session. The real
+External 3→1, FX N=3 and synth fixtures check six repeated loads each and force RT
+media reexports. Service images/document conversion and public admission are still
+outstanding; this does not close Stage 7. The required native workspace gate
+passes 2,819 tests (seven existing skips); warning-denying build and boundary/
+inventory checks pass. Node/Wasm passes backend 47, core 83, protocol 6 and
+both-DSP host 22 tests.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
 - [ ] Exercise the packaged production application: launch hosts with both/either/

@@ -1201,4 +1201,314 @@ mod track_role_tests {
         assert_eq!(stack.mirror.strip_slots.free(), free);
         assert_eq!(stack.mirror.tracks.len(), 1);
     }
+
+    #[shoop_test]
+    fn media_updates_keep_independent_dry_wet_banks_and_midi_in_the_rendered_take() {
+        use shoop_backend::{
+            BackendAudioChannelUpdate, BackendChannelMode, BackendLoopContentUpdate,
+            BackendMidiChannelUpdate, BackendMidiEvent,
+        };
+        for (topology, dry, wet) in [
+            (
+                BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                3,
+                1,
+            ),
+            (
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::BUILTIN_FX.into(),
+                    dry_audio_channels: 3,
+                    wet_audio_channels: 3,
+                    dry_midi: true,
+                },
+                3,
+                3,
+            ),
+            (
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: shoop_app_api::TrackProcessorTypeId::OXISYNTH.into(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                2,
+                2,
+            ),
+        ] {
+            let mut stack = stack();
+            // Foundation admission until the service persistence path is enabled.
+            stack.capabilities = stack
+                .capabilities
+                .union(shoop_rt_protocol::Capabilities::EXTERNAL_DRY_WET);
+            let created = stack.create_track_topology("media", topology, 1).unwrap();
+            stack.wait_idle();
+            let id = created.loops[0];
+            use shoop_app_api::{
+                BuiltInFxControl, BuiltInFxMidiCcAssignment, BuiltInFxParameter, OxiSynthControl,
+                OxiSynthMidiCcAssignment, OxiSynthParameter,
+            };
+            use shoop_backend::BackendTrackFxControl;
+            let kind =
+                crate::processor_controls::track_kind(&stack.mirror.tracks[&created.track_id]);
+            let controls = match kind {
+                Some(shoop_rt_protocol::ProcessorKind::BuiltInFx) => alloc::vec![
+                    BackendTrackFxControl::BuiltInFx(BuiltInFxControl::SetParameter(
+                        BuiltInFxParameter::DriveOutput,
+                        -6.
+                    )),
+                    BackendTrackFxControl::BuiltInFx(BuiltInFxControl::AssignMidiCc(
+                        BuiltInFxMidiCcAssignment {
+                            parameter: BuiltInFxParameter::DriveOutput,
+                            channel: 2,
+                            controller: 19
+                        }
+                    )),
+                ],
+                Some(shoop_rt_protocol::ProcessorKind::OxiSynth) => alloc::vec![
+                    BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset("0:40".into())),
+                    BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverbSend(0.5)),
+                    BackendTrackFxControl::OxiSynth(OxiSynthControl::AssignMidiCc(
+                        OxiSynthMidiCcAssignment {
+                            parameter: OxiSynthParameter::ReverbSend,
+                            channel: 2,
+                            controller: 19
+                        }
+                    )),
+                ],
+                _ => Vec::new(),
+            };
+            for control in controls {
+                stack
+                    .set_track_fx_control(created.track_id, control)
+                    .unwrap();
+            }
+            stack
+                .set_track_default_playback_mode(
+                    created.track_id,
+                    shoop_backend::BackendDefaultPlaybackMode::DryThroughWet,
+                )
+                .unwrap();
+            stack.wait_idle();
+            let recorded = if wet == dry {
+                stack
+                    .transition_loop(id, shoop_backend::BackendLoopMode::Recording, None)
+                    .unwrap();
+                stack.wait_idle();
+                for _ in 0..4 {
+                    stack.clock.wait();
+                }
+                stack
+                    .transition_loop(id, shoop_backend::BackendLoopMode::Stopped, None)
+                    .unwrap();
+                stack.wait_idle();
+                let captured = stack.capture_session().unwrap();
+                let state = captured.tracks[0].loops[0].recorded_processor_state.clone();
+                assert!(state.is_some());
+                state
+            } else {
+                None
+            };
+            let events = alloc::vec![
+                BackendMidiEvent {
+                    frame: 3,
+                    data: alloc::vec![0x90, 60, 99].into()
+                },
+                BackendMidiEvent {
+                    frame: 31,
+                    data: alloc::vec![0x80, 60, 0].into()
+                }
+            ];
+            stack
+                .replace_loop_content(
+                    id,
+                    &BackendLoopContentUpdate {
+                        length: Some(64),
+                        audio: (0..dry + wet)
+                            .map(|channel| BackendAudioChannelUpdate {
+                                channel,
+                                samples: alloc::vec![channel as f32 + 0.25; 64].into(),
+                                start_offset: None,
+                                capture_alignment_frames: None,
+                                preplay: None,
+                            })
+                            .collect(),
+                        midi: alloc::vec![BackendMidiChannelUpdate {
+                            channel: 0,
+                            length: 64,
+                            start_state: alloc::vec![alloc::vec![0xb0, 7, 99]],
+                            events: events.clone().into(),
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None
+                        }],
+                    },
+                )
+                .unwrap();
+            for (channel, value) in [(dry, 9.5), (0, -0.5)] {
+                stack
+                    .replace_loop_content(
+                        id,
+                        &BackendLoopContentUpdate {
+                            audio: alloc::vec![BackendAudioChannelUpdate {
+                                channel,
+                                samples: alloc::vec![value; 64].into(),
+                                start_offset: None,
+                                capture_alignment_frames: None,
+                                preplay: None
+                            }],
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
+            // Force an immutable export from runtime storage, beyond the canonical import cache.
+            stack.canonical_content.remove(&id);
+            stack.prepared_content.remove(&id);
+            stack.canonical_imports.remove(&id);
+            stack.reads.forget(id);
+            let saved = stack.capture_session().unwrap();
+            let content = &saved.tracks[0].loops[0];
+            assert_eq!(content.recorded_processor_state, recorded);
+            assert_eq!(content.audio.len(), dry + wet);
+            for (channel, audio) in content.audio.iter().enumerate() {
+                assert_eq!(
+                    audio.mode,
+                    if channel < dry {
+                        BackendChannelMode::Dry
+                    } else {
+                        BackendChannelMode::Wet
+                    }
+                );
+                let expected = if channel == 0 {
+                    -0.5
+                } else if channel == dry {
+                    9.5
+                } else {
+                    channel as f32 + 0.25
+                };
+                assert_eq!(audio.samples.as_ref(), &alloc::vec![expected; 64]);
+            }
+            assert_eq!(content.midi[0].mode, BackendChannelMode::Dry);
+            assert_eq!(content.midi[0].events.as_ref(), &events);
+            assert_eq!(content.midi[0].start_state.len(), 65);
+            assert_eq!(content.midi[0].start_state[0], alloc::vec![0xb0, 7, 99]);
+            assert!(content.midi[0].start_state[1..]
+                .iter()
+                .all(|packet| matches!(
+                    packet.as_slice(),
+                    [0xe0..=0xef, 0, 64] | [0xb0..=0xbf, 64 | 66 | 69, 0]
+                )));
+            let before = content.clone();
+            assert!(stack
+                .replace_loop_content(
+                    id,
+                    &BackendLoopContentUpdate {
+                        audio: alloc::vec![BackendAudioChannelUpdate {
+                            channel: dry,
+                            samples: alloc::vec![f32::NAN; 64].into(),
+                            start_offset: None,
+                            capture_alignment_frames: None,
+                            preplay: None
+                        }],
+                        ..Default::default()
+                    }
+                )
+                .is_err());
+            assert_eq!(stack.capture_session().unwrap().tracks[0].loops[0], before);
+            let mut previous = id;
+            for _ in 0..6 {
+                let mapping = stack.replace_session(&saved).unwrap();
+                let loaded = mapping.loops[&id.raw()];
+                assert_ne!(loaded, previous);
+                stack.wait_idle();
+                let mut after = stack.capture_session().unwrap();
+                let track = &mut after.tracks[0];
+                assert_eq!(track.topology, saved.tracks[0].topology);
+                assert_eq!(
+                    track.state.default_playback_mode,
+                    saved.tracks[0].state.default_playback_mode
+                );
+                assert_eq!(track.processor_state, saved.tracks[0].processor_state);
+                assert_eq!(
+                    track.builtin_fx_midi_cc_assignments,
+                    saved.tracks[0].builtin_fx_midi_cc_assignments
+                );
+                assert_eq!(
+                    track.oxisynth_midi_cc_assignments,
+                    saved.tracks[0].oxisynth_midi_cc_assignments
+                );
+                track.loops[0].source_id = id.raw();
+                assert_eq!(track.loops[0], before);
+                // The prepared replacement has distinct runtime owners, including metadata.
+                stack.canonical_content.remove(&loaded);
+                stack.prepared_content.remove(&loaded);
+                stack.canonical_imports.remove(&loaded);
+                stack.reads.forget(loaded);
+                let mut rendered = stack
+                    .capture_session()
+                    .unwrap()
+                    .tracks
+                    .remove(0)
+                    .loops
+                    .remove(0);
+                rendered.source_id = id.raw();
+                assert_eq!(rendered, before);
+                previous = loaded;
+            }
+            if let Some(kind) = kind {
+                let before = stack.capture_session().unwrap();
+                let active = stack
+                    .mirror
+                    .tracks
+                    .values()
+                    .next()
+                    .unwrap()
+                    .processor_slot
+                    .unwrap();
+                for _ in 0..3 {
+                    stack.start_replacement(&saved).unwrap();
+                    let mut prepared = false;
+                    for _ in 0..10_000 {
+                        stack.clock.wait();
+                        let endpoint = stack.client.carrier_mut().endpoint();
+                        prepared = (0..endpoint.processor_catalog().kinds.len()).any(|slot| {
+                            slot != active.index as usize
+                                && endpoint.processor_state(slot).is_some_and(|state| {
+                                    state.kind == kind
+                                        && state.phase == shoop_rt_engine::ProcessorPhase::Owned
+                                })
+                        });
+                        if prepared {
+                            break;
+                        }
+                        stack.pump();
+                    }
+                    assert!(
+                        prepared,
+                        "candidate did not claim its prepared processor bank"
+                    );
+                    stack.cancel_session_replacement().unwrap();
+                    assert!(stack
+                        .replace_session(&saved)
+                        .unwrap_err()
+                        .to_string()
+                        .contains("cancelled"));
+                    assert_eq!(stack.capture_session().unwrap(), before);
+                }
+                if kind == shoop_rt_protocol::ProcessorKind::OxiSynth {
+                    let mut invalid = saved.clone();
+                    let mut state = shoop_processor_protocol::state::State::new(kind).unwrap();
+                    state.values[2] = 1024. * 128.;
+                    invalid.tracks[0].processor_state = Some(state.encode());
+                    assert!(stack.replace_session(&invalid).is_err());
+                    assert_eq!(stack.capture_session().unwrap(), before);
+                    stack.replace_session(&saved).unwrap();
+                }
+            }
+        }
+    }
 }
