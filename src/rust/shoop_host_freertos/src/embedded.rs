@@ -565,6 +565,11 @@ fn authenticate(
 
 pub fn run() {
     let description = EngineDescription {
+        // The board arena retains its direct recording/playback reservation.
+        history: shoop_rt_protocol::host::InputHistorySettings {
+            seconds: 0,
+            ..Default::default()
+        },
         quantum: crate::PROCESSING_QUANTUM,
         host: HostPorts::numbered(2, 2, crate::MIDI_PORTS),
         max_frames: crate::QUANTUM,

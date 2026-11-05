@@ -14,6 +14,12 @@ codecs and scripts remain on the client machine. The
 signed firmware, device credentials provisioned on SD, A/B updates and recovery.
 The direct-load development mode below compiles its explicit test credential.
 
+The firmware exposes its existing direct recording/playback, media and recovery
+capabilities. Input-history Grab and Replacing are delivered by the native OS and
+browser hosts; this adapter requires a separate firmware reservation before
+advertising those capabilities. Its recording, media and board arenas retain
+their existing budgets.
+
 ## Reproducible inputs
 
 `pins.json` records the tested tool versions and immutable AMD source commit.

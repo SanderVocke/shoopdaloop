@@ -566,6 +566,12 @@ fn prepare_complete(
         }
         planner.prepare_shared(&mut resources, shared_settings)?;
     }
+    let mut node_midi = midi_layout::Layout::new(description)?;
+    if pool.processors() == 0 && !description.external_dry_wet {
+        node_midi.playback_merge = Default::default();
+        node_midi.global = Default::default();
+        node_midi.send = Default::default();
+    }
     let settings = NodeSettings {
         external_midi: description
             .external_dry_wet
@@ -575,7 +581,7 @@ fn prepare_complete(
         master_channels,
         frames: quantum.frames(),
         ramp: description.ramp_frames,
-        midi: midi_layout::Layout::new(description)?,
+        midi: node_midi,
     };
     let mut nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>> = loop_nodes
         .into_iter()
@@ -827,6 +833,51 @@ mod tests {
     use shoop_rt_protocol::{LoopSlotId, Outcome, Request, SlotId, StripId, StripShape};
     use shoop_wasm_test_support::heap::assert_no_heap;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test(no_wasm = "native firmware arena and media-overlap sizing")]
+    fn direct_firmware_preparation_preserves_media_overlap_headroom() {
+        for (recording_mb, midi_ports, media_mb, arena_mb) in
+            [(32, 1, 16, 320), (128, 1, 64, 768), (128, 16, 64, 768)]
+        {
+            let description = super::EngineDescription {
+                history: shoop_rt_protocol::host::InputHistorySettings {
+                    seconds: 0,
+                    ..Default::default()
+                },
+                max_frames: 256,
+                resource_pages: recording_mb * 1024 * 1024 / 4096,
+                host: super::HostPorts::numbered(2, 2, midi_ports),
+                midi_bytes: if midi_ports == 1 { 2048 } else { 4096 },
+                ..Default::default()
+            };
+            let (engine, memory) = shoop_wasm_test_support::heap::measure_memory(|| {
+                super::prepare(
+                    &description,
+                    shoop_rt_protocol::DriverStatus {
+                        kind: shoop_rt_protocol::DriverKind::Dummy,
+                        state: shoop_rt_protocol::DriverRunState::Running,
+                        sample_rate: description.sample_rate,
+                        buffer_frames: description.max_frames as u32,
+                    },
+                )
+                .unwrap()
+            });
+            assert!(
+                memory.peak < (arena_mb - 3 * media_mb) * 1024 * 1024,
+                "recording={recording_mb} MiB, ports={midi_ports}: {memory:?}"
+            );
+            assert!(!engine
+                .endpoint
+                .capabilities()
+                .contains(shoop_rt_protocol::Capabilities::INPUT_BATCH));
+            assert!(!engine
+                .endpoint
+                .capabilities()
+                .contains(shoop_rt_protocol::Capabilities::REPLACING));
+            let mut stopped = engine.render.into_stopped();
+            stopped.cleanup().unwrap();
+        }
+    }
 
     #[shoop_test]
     fn late_control_topology_appends_respect_each_render_callback_budget() {

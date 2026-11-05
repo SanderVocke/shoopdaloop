@@ -76,9 +76,9 @@ uses direct-track normal engine preparation without hosted processors.
 
 | Prepared shape (16 sources / 128 loops / Q32) | Processor budget | Processor bytes | Complete peak bytes | Preparation ms |
 | --- | --- | --- | --- | --- |
-| 2 ch / host max 512 | 256 MiB | 198,959,872 | 3,458,138,693 | 1468 |
-| 2 ch / host max 128 | 256 MiB | 198,959,872 | 3,128,407,109 | 1373 |
-| 8 ch / host max 128 | 512 MiB | 346,440,448 | 4,080,206,525 | 2187 |
+| 2 ch / host max 512 | 256 MiB | 198,959,872 | 3,458,138,693 | 1718 |
+| 2 ch / host max 128 | 256 MiB | 198,959,872 | 3,128,407,109 | 1650 |
+| 8 ch / host max 128 | 512 MiB | 346,440,448 | 4,080,206,525 | 2464 |
 
 All listed prepared callbacks pass the heap guard and teardown recovers all pages.
 The eight-channel processor shape explicitly uses a 512-MiB processor budget;
@@ -95,15 +95,15 @@ Deadlines at 48 kHz are 5.333 ms and 0.667 ms respectively.
 
 | Shape | p50 ms | p99 ms | Max ms | Misses | Max accounted validation steps |
 | --- | --- | --- | --- | --- | --- |
-| 2 ch / 256 frames / 8 events | 2.503 | 13.017 | 13.608 | 4/160 | 157,518 |
-| 8 ch / 256 frames / 8 events | 3.358 | 5.005 | 5.342 | 1/160 | 157,902 |
-| 2 ch / 32 frames / 256 events | 14.018 | 37.622 | 39.222 | 160/160 | 4,808,984 |
+| 2 ch / 256 frames / 8 events | 2.633 | 3.800 | 3.869 | 0/160 | 157,518 |
+| 8 ch / 256 frames / 8 events | 3.635 | 5.013 | 5.184 | 0/160 | 157,902 |
+| 2 ch / 32 frames / 256 events | 17.027 | 46.369 | 47.398 | 160/160 | 4,808,984 |
 
-The table is the delivery measurement round at `2ec4abcb` on target `273853aa`,
-before the optional idle-live-queue scan correction. All three measurement rounds
-remain in the raw JSON, with configuration source hashes. Earlier loaded rounds
-include an extreme-density maximum of 175.125 ms and are retained in full. These
-runs overlapped other local tests/builds. Every miss and tail is retained in
+The table is the corrected-source measurement round at `e03e1bc8` on target
+`273853aa`. All four measurement rounds remain in the raw JSON, with source pins.
+Earlier loaded rounds include representative deadline misses and an extreme-density
+maximum of 175.125 ms; all are retained in full. These runs overlapped other local
+tests/builds and packaged application acceptance. Every miss and tail is retained in
 [raw measurements](grab-replace-measurements.json); they are not discarded as
 outliers. Extreme density is finite and allocator-safe but exceeds the available
 wall-clock budget in this environment. This is not physical-device deadline
@@ -189,3 +189,14 @@ Local release measurement covers all twenty Q/partition combinations; 39 focused
 shared-engine cases, the raw worklet/profiling contract and five trace-transport
 cases pass. The fresh binary also passes the archive's compiled-script rejection
 check. Final CI is required for the corrected source before closing P04/P05.
+
+The FreeRTOS firmware adapter retains its existing direct record/play scope;
+this native OS/browser application delivery does not add firmware input editing.
+It explicitly avoids desktop input-history reservations and negotiates those
+capabilities as unavailable. Its existing 32/128-MiB recording, 16/64-MiB media
+and 320/768-MiB arena contracts remain unchanged. Preparation now omits processor-
+only MIDI banks where processors and external dry/wet are unavailable; all
+admitted MIDI restoration and normal input/output capacities remain intact.
+Native allocation tests retain room for three simultaneous media owners. Actual
+QEMU recovery peaks at 355,649,560 bytes and ZedBoard boot/restart at 248,796,872;
+both return Rust heap usage to zero. Fresh final-source firmware CI is required.

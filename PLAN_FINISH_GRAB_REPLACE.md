@@ -580,6 +580,22 @@ launcher resolves Cargo's actual target directory so coverage instrumentation
 runs its newly built executable instead of a nonexistent default-target binary.
 These corrections do not waive any CI gates. Fresh source/base CI remains required.
 
+The next CI round exposed firmware memory regressions. The separate FreeRTOS
+adapter inherited the new desktop history default despite its pre-existing direct
+record/play scope. It now explicitly retains that scope, advertises no input-batch
+or Replacing capability, and keeps its recording/media/arena budgets unchanged.
+The plan's native OS companion and browser acceptance scope still uses the normal
+thirty-second history; no application retention or recording capacity is reduced.
+Core preparation also stops reserving processor-send, global-controller and dry-
+playback MIDI banks when neither prepared processors nor external dry/wet support
+can use them. Hosts with those features retain complete original capacities.
+A native allocation regression reserves three simultaneous media owners within
+both existing board arenas, including the sixteen-port USB shape. Actual QEMU
+recovery passes upload-loss/reattachment/exact download and ownerless shutdown at
+355,649,560 peak bytes with zero Rust owners after teardown. ZedBoard production
+boot/restart passes at 248,796,872 peak bytes with the same zero-owner result.
+Full fixture and final firmware CI still validate the resulting source.
+
 ## Findings that determine the work
 
 The semantic index now has a shared category/version store with compact record
@@ -587,9 +603,9 @@ IDs, sparse category pages and preflight across all affected indexes before any
 mutation. Immutable versions retain one handle; edits fork shared directories,
 category pages and ordered paths. Tests compare full projection and original
 packet order through repeated edits and retained versions, exercise each
-metadata limit before mutation, and recover every prepared owner. These tests
-need fresh CI. Payload slabs, continuous writers and application integration
-remain unfinished.
+metadata limit before mutation, and recover every prepared owner. Payload slabs,
+continuous paired writers and application integration are complete; final evidence
+and CI pins are recorded in the delivery section and application acceptance report.
 
 On 2026-11-05, the parent #930 was observed merged at `0ef7581b` into
 `feat/backend-replacement`. The delivery branch is rebased onto that
@@ -599,13 +615,13 @@ the duplicate before fresh validation. Focused shared-media and native jobs on
 `0d2f525f` passed, validating the complete query and pooled audio kernel but not
 the later tree/category/coordinator increments.
 
-| Layer | Existing support and remaining gap |
+| Layer | Delivered support |
 | --- | --- |
-| `rt_runtime` / `shoop_loops` | Shared audio/MIDI history, immutable grabs, private edits, indexed imports and fenced publication exist. The resolver and explicit coordinator route now support Replacing and prefix Recording with continuous paired writers. Ordinary recording entry and global live admission still need integration. One-shot CandidateMidi remains separate. |
-| Production preparation | `shoop_rt_engine::prepare` now constructs the common thirty-second source pools with a separate arena allowance, and native/worklet setup carries the same settings. Per-owner MIDI credits and default callback measurements remain open. |
-| Engine protocol / adapter | No negotiated Grab or Replacing capability/operation exists. `shoop_rt_backend::grab_loops` refuses Grab; its mode conversion refuses Replacing. |
-| Service / clients | Grab, AdoptRingbuffers, GrabClicked, default-recording Grab and Replacing remain refused. UI and Lua consequently cannot reach the primitives. Several media/read/cache guards recognize Recording only. |
-| Documentation | P04/P05 correctly remain OPEN. Their remaining-work descriptions must be replaced with actual application evidence before either status changes. |
+| `rt_runtime` / `shoop_loops` | Shared audio/MIDI histories, immutable grabs, indexed imports, continuous fixed/growing paired writers, ordinary Recording entry and protected global live admission. One-shot CandidateMidi remains a separate edit operation. |
+| Production preparation | Common thirty-second source pools with a separate arena allowance, matching native/worklet settings, protected live MIDI credits and measured default/wide callback and memory costs. |
+| Engine protocol / adapter | Negotiated RT protocol23 input batches, retained outcomes, cancellation, authoritative cuts and adapter-owned mutation settlement/cache invalidation. |
+| Service / clients | Normal Grab, AdoptRingbuffers, selected GrabClicked/default Grab and exact-list Lua/Control. Primitive Replacing is discoverable in the UI; active/scheduled writer guards and incomplete-capture state are projected consistently. |
+| Documentation | Application behavior, exact media/state oracles, measured costs and final validation are linked in the acceptance report; P04/P05 closure follows the final CI gates. |
 
 Reference behavior is preserved in `shoop_app_reference`, the test-only legacy
 backend and `shoop_engine`. Important facts to preserve:
