@@ -100,28 +100,58 @@ Changes to RT/app schemas and worklet configuration must version their wire
 contracts together. Generation-fenced reconnect publishes actual state rather
 than replaying mutations. UI disconnect does not reset voices or buffered output.
 Only implemented facets are advertised; general P09/P10 controls, Carla and bus
-FX remain separately refused. P06/P07 remain open until evidence is linked.
+FX remain separately refused. P06 closes under the qualified user-directed closure
+below; P07 remains open for Carla.
 
 ## Validation evidence
 
-### Integrated validation at `649d1fbe`
+### User-directed closure and remaining CI
 
-Candidate: `649d1fbe3ea71c63fe32e13b3d6ad49037080f28`, reconciled against
+On 2026-11-05 the user instructed: “preempt that. go ahead and close the plan now.”
+The hosted-processor plan and P06 are closed under that delivery decision, without
+waiting for the entire platform matrix. This supersedes the earlier CI-wait gate;
+it does not turn failed or unfinished checks into passing evidence. P07 remains
+OPEN for Carla, P08 for bus FX and P17 for dependent composite modes. PR #946
+remains open and unmerged against `feat/backend-replacement`.
+
+Implementation source `8a1be130` has a clear automated review, all 3,006 native
+coverage tests pass (nine skipped), both Codecov checks pass, and all four isolated
+DSP/startup jobs, real Node DSP, Miri, shared-media, bare-metal and platform process
+inspection checks pass. Targeted production/native/browser evidence is below.
+
+At closure inspection, the independent runtime-host fixture build fails under
+`-D warnings` because `measure_memory` is unused, after the application tests pass:
+
+- [Linux debug](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251128/job/127289414110).
+- [Linux release](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251128/job/127289413562): all 2,032 application tests pass (four skipped).
+- [Windows debug](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251128/job/127289413797): all 2,022 application tests pass (four skipped).
+
+The remaining platform/browser/firmware jobs are unfinished at closure. These CI
+failures and results remain PR follow-up; no fully green matrix is claimed. The
+closure commit changes Markdown only. The saturated-synth deadline limitation in
+the measurement evidence also remains explicit.
+
+### Integrated validation at `8a1be130`
+
+Candidate: `8a1be13098880c22ddae0d3e85d80bc684c41ee2`, reconciled against
 `feat/backend-replacement` at `40db766d95b62eeb5de5c830e012f422fc9517ca` in
 [PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946). Engine/application/
 worklet configuration versions are 21/29/6. Automated review reports no major
 issues for this candidate
-([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6659058625));
+([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6659834542));
 the applicable owner-admission finding is fixed and resolved. The following
-checkpoint CI gates expose the two service gaps addressed below; P06 and final
-plan acceptance remain open pending a complete passing integration run.
+CI gates below contain passing, failed and unfinished jobs. The qualified
+user-directed closure above replaces waiting for their completion.
+
+Current-head native coverage passes all **3,006 tests / nine skipped**
+([job](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251128/job/127289413940)).
 
 | Gate | Evidence |
 | --- | --- |
-| Native Linux/macOS/Windows debug/release, coverage, packaged carriers, Node/Chrome Wasm, hosted/self-contained Chromium, Firefox, JACK, bare-metal and policy checks | [Build and Test 42034699325](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699325) |
-| Independent neither/FX/synth/both builds and startup, excluded assets/imports, real Node DSP, selected Miri, startup/memory/callback measurements | [Hosted processors 42034699772](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699772) |
-| Firmware, board profiles, USB and network deployment | [Firmware 42034699431](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699431) |
-| Static analysis and documentation | [CodeQL 42034699471](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699471), [Docs 42034699652](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699652) |
+| Native Linux/macOS/Windows debug/release, coverage, packaged carriers, Node/Chrome Wasm, hosted/self-contained Chromium, Firefox, JACK, bare-metal and policy checks | [Build and Test 42040251128](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251128) |
+| Independent neither/FX/synth/both builds and startup, excluded assets/imports, real Node DSP, selected Miri, startup/memory/callback measurements | [Hosted processors 42040251127](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251127) |
+| Firmware, board profiles, USB and network deployment | [Firmware 42040251101](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251101) |
+| Static analysis and documentation | [CodeQL 42040251118](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251118), [Docs 42040251070](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251070) |
 
 Focused local reconciliation validation uses real DSP, guarded engine calls,
 public service archives and packaged native/browser paths. Counts and the exact
@@ -129,19 +159,20 @@ admission, latency and profiling regressions appear below. Broad suites and the
 platform matrix run in CI rather than being repeated locally. Historical entries
 retain their original source pins and superseded intermediate status.
 
-The [current measurement artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699772/artifacts/13417757962)
-records PR merge checkout `09e41a9a2bb105f4504f808d8eab82db1b39633f`. Its tree
-`8bcf5145d1b74e891c127df42bd9f2c0b3334c0e` equals the candidate's tree. The Ubuntu
-runner exposes four logical CPUs on Intel Xeon 6975P-C under KVM, using rustc
-1.99.1 / LLVM 23.1.1. At 48 kHz/Q128, M=1/S=0, 256 callbacks and 1,024
+The [current measurement artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42040251127/artifacts/13420204031)
+records PR merge checkout `55e593d9851723343d54e6b9d2edaade2ce8a012`. Its tree
+`becf6da67a33c62e89632d92f67676347e5fb246` equals the candidate's tree. The Ubuntu
+runner exposes four logical CPUs on Intel Xeon Platinum 8573C under Microsoft
+virtualization, using rustc 1.99.1 / LLVM 23.1.1. At 48 kHz/Q128, M=1/S=0,
+256 callbacks and 1,024
 equal-offset MIDI events per callback, eight-channel/all-stage FX observes
-508/545 microseconds mean/peak; stereo/256-voice synth observes 2,251/2,689
+728/872 microseconds mean/peak; stereo/256-voice synth observes 2,842/2,945
 microseconds. The block period is 2,666.67 microseconds: this run again provides
 no saturated-synth deadline margin. Shared-VM wall-clock observations and the
 browser smoke's zero-xrun workload do not establish a maximum-load guarantee.
 Earlier higher peaks remain documented below.
 
-Widths 1/2/8 prepare in 15/190/260 ms. Requested allocation peaks are
+Widths 1/2/8 prepare in 20/250/337 ms. Requested allocation peaks are
 8,799,344/84,578,472/137,316,376 bytes, below complete reservations of
 54,532,576/198,793,088/346,273,664 bytes; retained storage is
 8,799,344/84,570,312/137,308,216 bytes. Hardware xruns, distributed event offsets
@@ -994,3 +1025,20 @@ Record and the broader retained reference editor remain usable. All seventeen
 composite-widget cases and the real-service projection case pass; client/UI/product
 and reference packages build with warnings denied. This local UI projection adds
 no wire format or additional composite execution support.
+
+The service follow-up at `8454cb34` passes all **3,006 native coverage tests /
+nine skipped** and both Codecov checks in
+[run 42037611836](https://github.com/SanderVocke/shoopdaloop/actions/runs/42037611836/job/127280492729).
+Editor follow-up `8a1be130` has a clear automated review
+([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6659834542));
+its final integrated platform/browser/firmware results are retained under the
+user-directed closure above.
+
+The earlier `649d1fbe` measurement used PR merge checkout
+`09e41a9a2bb105f4504f808d8eab82db1b39633f`, with identical candidate tree
+`8bcf5145d1b74e891c127df42bd9f2c0b3334c0e`, on four logical Intel Xeon 6975P-C
+CPUs under KVM and the same Rust/LLVM versions. Its
+[artifact](https://github.com/SanderVocke/shoopdaloop/actions/runs/42034699772/artifacts/13417757962)
+observes FX mean/peak 508/545 us, synth 2,251/2,689 us, and width 1/2/8 preparation
+in 15/190/260 ms, with the same memory values. It also exceeds the synth block
+period and does not establish deadline margin.

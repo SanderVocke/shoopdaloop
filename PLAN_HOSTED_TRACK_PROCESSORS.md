@@ -5,14 +5,26 @@
 Implementation started on `feat/hosted-track-processors` from `2e19210b`. Written under
 [write_plan.md](.agents/prompts/write_plan.md).
 
-Current progress: Stages 1–4 are complete. Stages 5–7 are implemented, with their
-final acceptance gates still open. Stage 8 validates the P03 reconciliation with
-target `40db766d`. The dedicated processor matrix, Miri, JACK, shared media and
-all platform process inspections pass at `649d1fbe`; automated review reports no
-major issues after the RT owner-admission fix. Broad CI passes 3,004 of 3,006
-native tests and finds two composite-service reconciliation gaps. Targeted fixes
-below pass all 24 composite-service cases; final integrated CI must run again.
-Implemented checkboxes do not claim that all delivery gates have passed.
+**CLOSED on 2026-11-05 at the user's request.** All eight implementation/delivery
+stages are closed. Final implementation source is
+`8a1be13098880c22ddae0d3e85d80bc684c41ee2`, targeting `feat/backend-replacement`
+at `40db766d`. Native coverage passes all 3,006 tests, the independent processor
+matrix and Miri pass, and automated review reports no major issues.
+
+The user directed: “preempt that. go ahead and close the plan now.” This explicitly
+supersedes waiting for every remaining platform CI result before plan closure
+(acceptance criterion 9 and Stage 8 delivery timing). Functional scope and test
+assertions are unchanged. Completed checkboxes record closure under that decision;
+they do not assert that every CI job passed. P06 closes with this qualification;
+P07 remains open for Carla, P08 for bus FX, and P17 for dependent composite modes.
+
+Known CI follow-up at closure: Linux debug/release and Windows debug pass their
+application tests but fail the independent runtime-host fixture build because
+`measure_memory` is unused with warnings denied. Other platform/browser/firmware
+jobs are unfinished. These results remain visible on
+[PR #946](https://github.com/SanderVocke/shoopdaloop/pull/946); fixing or waiting for
+those checks is deferred from this closed plan. See the
+[closure evidence](docs/native_session_recovery/track-processors.md#user-directed-closure-and-remaining-ci).
 
 - Start from `feat/fixed-quantum-runtime`, inspected at `2e19210b`.
 - Reference: fetched `master` at `92079fb6`, plus executable behavior retained in
@@ -89,10 +101,11 @@ repeat after every change. Product scope and correctness requirements remain.
   the entire implementation is finished. Continue development while CI runs. For a
   failure, reproduce the affected test or job locally when useful, fix it, and rerun
   that targeted check; let CI repeat the broad matrices.
-- **Completion:** required CI and applicable automated review still need to pass on
-  the delivered revision. Record job links and platform limitations honestly. Do
-  not substitute mocks for platform evidence or weaken audio, MIDI, lifetime,
-  failure, optionality or persistence assertions to make checks faster.
+- **Completion:** the user-directed closure above supersedes waiting for all CI
+  before closing this plan. Record passing, failed and unfinished checks separately,
+  with exact source pins and links. Automated review is clear. Do not substitute
+  mocks for platform evidence or weaken audio, MIDI, lifetime, failure, optionality
+  or persistence assertions to make checks faster.
 
 ## Goals and scope
 
@@ -200,8 +213,10 @@ These goals and criteria must not change without explicit user approval.
 9. **Public usability and delivery.** Actual add-track forms, controls, Connections,
    editors, UI/Lua actions and packaged resources work through the production
    service on native and browser paths. Tests prove audio/MIDI results, not merely
-   descriptor presence. Required regression/platform CI and automated PR review
-   are completed with evidence tied to the delivered revision. Keep P07 explicitly
+   descriptor presence. Regression/platform CI and automated review have evidence
+   tied to the delivered revision. The explicit user-directed closure above defers
+   waiting for the remaining CI results; it does not declare failed or unfinished
+   checks successful. Keep P07 explicitly
    partial for Carla and P08 open for bus FX; close other rows only against their
    full acceptance criteria and evidence.
 
@@ -394,7 +409,7 @@ warning-denying product builds and tracing/test inventories pass.
   these modes, including audio/MIDI preroll, initial silence and pending-output tails.
   Keep active take metadata immutable and compensate each delay once. Restore
   default-mode actions while keeping explicit Play regular.
-- [ ] Verify deterministic audio impulses and MIDI note pairs through actual FX/synth
+- [x] Verify deterministic audio impulses and MIDI note pairs through actual FX/synth
   nodes for every mode and reference routing case, with aligned/nonaligned transitions,
   record-to-play, canceled scheduling, wet-only playback, looping/rerecord across wraps,
   simultaneous loops, dry-media identity preservation, no double processing, no drift,
@@ -482,7 +497,7 @@ writes, grab/candidate interactions and transactional persistence remain open.
 - [x] Restore track MIDI Learn and the global FX-control input with reference filtering,
   additive routing, idle-value retention and bounded saturation handling. MIDI-origin
   values enter authoritative projection/save state; control-only traffic is not recorded.
-- [ ] Verify actual public UI and Lua default/explicit actions, each editor control class,
+- [x] Verify actual public UI and Lua default/explicit actions, each editor control class,
   learned/removed mappings, stale/invalid controls, operation supersession/results,
   active/inactive/global+dry MIDI routing and slow/full telemetry. Use distinct tracks
   to detect cross-instance state leaks. Test attach/reconnect during an admitted
@@ -541,12 +556,12 @@ until persistence, media and recorded-state support is complete.
 - [x] Restore dry/wet audio channel import/export labels/order, exact MIDI/SMF routes,
   content replacement and recorded-take state. Stage processor candidates in the
   reserved bank and publish graph, state and media atomically with existing fences.
-- [ ] Verify structure-only and full save/load/save for mono/N FX, synth and unequal
+- [x] Verify structure-only and full save/load/save for mono/N FX, synth and unequal
   External roles; changed presets, mapped MIDI values and recorded/rerecorded takes;
   successful/failed recorded-state restoration, role selection/import remapping,
   sample-rate consent and rebuilt DSP at the accepted host rate. Loaded loops remain
   stopped under the existing contract.
-- [ ] Verify malformed/old supported state, unavailable startup types, unsupported
+- [x] Verify malformed/old supported state, unavailable startup types, unsupported
   document dependencies, exhausted budgets, cancellation, failed preparation and
   replacement at full admitted capacity. Old audio/media/state must remain usable;
   candidate reservations must return. Cover UI loss before/after acceptance/commit,
@@ -856,15 +871,24 @@ composite widget cases and the real-service details projection pass; changed cli
 UI, product and reference packages build with warnings denied. This UI-local
 projection change does not alter the wire versions or execute deferred modes.
 
+Follow-up source `8a1be130` includes the editor admission fix. Automated review
+reports no major issues
+([receipt](https://github.com/SanderVocke/shoopdaloop/pull/946#issuecomment-6659834542)).
+The preceding `8454cb34` coverage run passes all 3,006 native tests (nine skips)
+and both Codecov checks, confirming the two service fixes without changing their
+state/error oracles. Current-head platform, browser and firmware CI remains in
+progress at the subsequent user-directed closure; the closure evidence records
+passed, failed and unfinished checks separately.
+
 ### 8. Final end-to-end validation, evidence and PR delivery
 
-- [ ] Exercise a focused packaged production smoke path locally when packaging or
+- [x] Exercise a focused packaged production smoke path locally when packaging or
   public flows change; use CI for the complete acceptance matrix: launch hosts with both/either/
   neither processor enabled; create mono/N FX and synth tracks through the real UI;
   edit/learn controls; monitor/record/play dry and wet, rerecord, save/reload/export;
   disconnect/reattach and verify continuing sound and confirmed state. Include External
   routing on supported native hosts and ordinary wet output to existing buses.
-- [ ] Run targeted native carrier regressions locally when those paths change. CI
+- [x] Run targeted native carrier regressions locally when those paths change. CI
   covers the full typed/in-process and socket/shared-memory scenarios, Linux
   dummy/CPAL/JACK integration, Windows/macOS builds/tests, and real hosted/self-contained
   Chromium plus existing Firefox browser acceptance. Use Web MIDI fixtures/audio-output
@@ -875,19 +899,20 @@ projection change does not alter the wire versions or execute deferred modes.
   measurement job and selected CI Miri
   coverage for portable ownership/lifecycle logic using existing tooling; do not
   claim that it certifies the third-party DSP implementation.
-- [ ] Complete the CI gates below and the focused local checks, record links and
-  exact revisions in `track-processors.md`, and update README/usage/startup docs and
-  the parity ledger. P06 closes only with complete scoped evidence; P07 names this
-  restoration while remaining open for Carla. P01/P02/P11 expand their supported
+- [x] Complete the focused local checks, record exact source pins and CI links,
+  and update usage/startup docs and the parity ledger. Record failed and unfinished
+  CI explicitly under the user's closure instruction; do not claim a green matrix.
+  P06 closes with that qualification; P07 records the built-in restoration and
+  remains open for Carla. P01/P02/P11 expand their supported
   document/media subset; P08 and general P09/P10 stay open as applicable. Preserve
   unsupported-feature diagnostics and reference provenance.
-- [ ] Commit and push compilable milestones; create a draft PR early so CI runs
+- [x] Commit and push compilable milestones; create a draft PR early so CI runs
   alongside implementation. Update it with final scope and validation evidence and
-  mark it ready when the implementation is complete. Work until required CI is green;
-  inspect automated reviews, address applicable feedback and rerun affected checks
-  repeatedly until the reviewer approves. Record unavailable checks honestly; a
-  prior milestone's macOS waiver does not apply to this work. Leave the PR reviewable
-  without merging unless instructed.
+  mark it ready when the implementation is complete. Inspect automated reviews
+  and address applicable feedback: final implementation review is clear. Under the
+  user's closure instruction, stop waiting for the remaining CI and retain its
+  failures/unfinished results as PR follow-up. Leave the PR reviewable without
+  merging unless instructed.
 
 ## Reference anchors and verification gates
 
@@ -951,7 +976,8 @@ the README's native transport/persistence, browser and packaging probes with sco
 FX/synth scenarios. Real-backend jobs omit `SHOOP_ALLOW_MISSING_BACKENDS=1` where
 actual host facilities are provided. Keep unavailable checks distinct from passing
 checks. Before behavior-changing pushes, pass the affected local tests; CI owns
-full regressions and cross-platform validation before final completion.
+full regressions and cross-platform validation; remaining results and failures
+are retained as PR follow-up under the explicit closure decision above.
 
 ## Execution contract
 
