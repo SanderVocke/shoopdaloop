@@ -208,22 +208,20 @@ fn socket_controls(entry: &HostEntry, parent: LoopId) -> Result<composite::Versi
             .any(|r| r.id == delayed && matches!(r.outcome, Outcome::Confirmed { .. })),
         "recovery lost the original delayed operation result"
     );
-    let event = original.document.instances[0].instance_id;
+    let added_child = client.snapshot().unwrap().tracks[1].loops[6].id;
     let edit = submit(
         &mut client,
         &mut connection,
-        Command::Composite(composite::Edit::Duration {
+        Command::Composite(composite::Edit::Insert {
             target: parent,
-            event,
-            n_cycles: Some(500_000),
+            source: added_child,
+            start_cycle: 0,
         }),
     )?;
     wait(&mut client, &mut connection, |c| {
-        c.snapshot()
-            .unwrap()
-            .composites
-            .iter()
-            .any(|v| v.loop_id == parent && v.pending.is_some())
+        c.snapshot().unwrap().composites.iter().any(|v| {
+            v.loop_id == parent && v.pending_stage == Some(composite::PendingStage::AwaitingRestart)
+        })
     })?;
     let pending = client
         .snapshot()

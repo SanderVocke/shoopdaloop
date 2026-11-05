@@ -128,6 +128,10 @@ Follow-up local verification passed the warning-denying full-feature build and
 native **2,839 passed / 7 skipped**, app **60** / codec **21** in Node and Chrome,
 and the expanded actual socket workflow. Production runtime code is unchanged
 by this canary/dependency-audit follow-up; its fresh platform matrix is pending.
+The staged-edit probe changes the current target set and waits for
+`AwaitingRestart` before disconnecting, so safe early adoption cannot satisfy that
+recovery case accidentally. Its complete socket/file workflow and warning-denying
+build passed after this final probe refinement.
 
 ## Reproduction and limits
 

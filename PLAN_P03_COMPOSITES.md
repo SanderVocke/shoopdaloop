@@ -777,3 +777,7 @@ and retain the normal/full test groups required before behavioral commits/pushes
   Follow-up validation passed: warning-denying workspace build, native **2,839
   passed / 7 skipped**, app/codec **81 passed** in native, Node and Chrome, and
   the expanded production socket canary. The fresh platform matrix remains.
+- The final staged-edit probe changes the current target set and requires
+  `AwaitingRestart` before detaching. This proves deferred ownership explicitly;
+  merely extending a future end could legitimately publish early. Its warning-
+  denying build and complete socket/file workflow passed.
