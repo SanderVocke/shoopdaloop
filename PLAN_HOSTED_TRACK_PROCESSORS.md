@@ -15,6 +15,44 @@ Implementation started on `feat/hosted-track-processors` from `2e19210b`. Writte
 - Follow `AGENTS.md`, `.agents/index.md`, `.agents/rules/{mandates,style}.md` and
   `.agents/info/{build,test}.md` during execution. No merge is authorized here.
 
+## Testing strategy: focused local checks, broader CI coverage
+
+Updated at the user's request to shorten the development loop. This strategy
+supersedes the earlier expectation of running full local regression, platform and
+feature matrices at each milestone. The staged verification lists below define
+coverage to deliver across local tests and CI; they are not a local checklist to
+repeat after every change. Product scope and correctness requirements remain.
+
+- **During implementation:** run the smallest meaningful test set for the changed
+  behavior. Prefer a filtered existing test or one production-path fixture with a
+  clear audio/MIDI/state oracle. Add a regression for a demonstrated failure or a
+  material new boundary; avoid duplicating the same case across every host, width
+  and execution environment locally.
+- **Before a Rust milestone commit:** format, build the changed production packages
+  with warnings denied, and pass the relevant targeted tests. Run the test-attribute
+  check when tests change. Run tracing or dependency/feature audits when their
+  inventories or boundaries change. A workspace build or full test suite is not
+  required for every local commit or push.
+- **Native versus Wasm locally:** use one representative native production route by
+  default. Run a filtered Wasm/worklet smoke check when changing a Wasm-specific
+  interface, packaging, imports or render-time behavior that the native fixture
+  cannot exercise. Do not repeatedly run the full Wasm suite or four feature builds.
+- **CI owns broad coverage:** full workspace regressions and warning-denying builds;
+  Windows/macOS builds and tests; Linux host/transport integration; Chromium and
+  Firefox packaged browser paths; native/Wasm neither/FX/synth/both build and startup
+  matrices; excluded-asset/import checks; complete policy/boundary inventories; and
+  selected Miri lifecycle checks. Use existing jobs and fixtures where possible.
+  Startup/resource and callback-cost measurements can run once in a representative
+  CI job, with configuration and limitations recorded.
+- **Get CI feedback early:** push compilable milestones and open a draft PR before
+  the entire implementation is finished. Continue development while CI runs. For a
+  failure, reproduce the affected test or job locally when useful, fix it, and rerun
+  that targeted check; let CI repeat the broad matrices.
+- **Completion:** required CI and applicable automated review still need to pass on
+  the delivered revision. Record job links and platform limitations honestly. Do
+  not substitute mocks for platform evidence or weaken audio, MIDI, lifetime,
+  failure, optionality or persistence assertions to make checks faster.
+
 ## Goals and scope
 
 Restore built-in FunDSP FX and OxiSynth in the production host, using synchronous
@@ -311,8 +349,8 @@ checks run alongside Stages 5–7.
   record-to-play, canceled scheduling, wet-only playback, looping/rerecord across wraps,
   simultaneous loops, dry-media identity preservation, no double processing, no drift,
   and no stuck notes. Cover External unequal widths, all admitted FX widths and synth
-  shape; prove maximum dry plus maximum wet is supported simultaneously. Exercise
-  native CPAL/JACK/dummy and worklet partitioning, plus failure rollback; commit.
+  shape; prove maximum dry plus maximum wet is supported simultaneously. Use a targeted native fixture for local failure/partition regressions; cover
+  CPAL/JACK/dummy and worklet partitioning in CI; commit.
 
 Immediate-wake prerequisite: FX delay invalidation and a pinned opt-in FunDSP
 reset patch eliminate delay-length scans on sleep/wake. Opaque backends now have a
@@ -510,28 +548,32 @@ both-DSP host 22 tests.
 
 ### 8. Final end-to-end validation, evidence and PR delivery
 
-- [ ] Exercise the packaged production application: launch hosts with both/either/
+- [ ] Exercise a focused packaged production smoke path locally when packaging or
+  public flows change; use CI for the complete acceptance matrix: launch hosts with both/either/
   neither processor enabled; create mono/N FX and synth tracks through the real UI;
   edit/learn controls; monitor/record/play dry and wet, rerecord, save/reload/export;
   disconnect/reattach and verify continuing sound and confirmed state. Include External
   routing on supported native hosts and ordinary wet output to existing buses.
-- [ ] Run native typed/in-process and socket/shared-memory carrier scenarios, Linux
+- [ ] Run targeted native carrier regressions locally when those paths change. CI
+  covers the full typed/in-process and socket/shared-memory scenarios, Linux
   dummy/CPAL/JACK integration, Windows/macOS builds/tests, and real hosted/self-contained
   Chromium plus existing Firefox browser acceptance. Use Web MIDI fixtures/audio-output
   assertions where hardware is unavailable; do not call a mock-only path platform proof.
 - [ ] Measure bounded callback cost at maximum admitted channel/voice/control load,
   startup latency and memory. Report hardware/configuration, peak cost/xruns and
-  limits; synthetic stream slack is not a deadline guarantee. Add selected Miri
+  limits; synthetic stream slack is not a deadline guarantee. Use one representative
+  measurement job and selected CI Miri
   coverage for portable ownership/lifecycle logic using existing tooling; do not
   claim that it certifies the third-party DSP implementation.
-- [ ] Run the required gates below, finish focused feature-matrix CI, record links and
+- [ ] Complete the CI gates below and the focused local checks, record links and
   exact revisions in `track-processors.md`, and update README/usage/startup docs and
   the parity ledger. P06 closes only with complete scoped evidence; P07 names this
   restoration while remaining open for Carla. P01/P02/P11 expand their supported
   document/media subset; P08 and general P09/P10 stay open as applicable. Preserve
   unsupported-feature diagnostics and reference provenance.
-- [ ] Commit completed milestones, push the implementation branch and create/update
-  the PR with final scope and validation evidence. Work until required CI is green;
+- [ ] Commit and push compilable milestones; create a draft PR early so CI runs
+  alongside implementation. Update it with final scope and validation evidence and
+  mark it ready when the implementation is complete. Work until required CI is green;
   inspect automated reviews, address applicable feedback and rerun affected checks
   repeatedly until the reviewer approves. Record unavailable checks honestly; a
   prior milestone's macOS waiver does not apply to this work. Leave the PR reviewable
@@ -560,8 +602,24 @@ passing reference tests alone is insufficient:
   `shoopdaloop` packaged/UI probes. Register extracted package tests with the same
   Wasm and tracing inventories.
 
-Use the repository's selected build environment. Baseline full gates, plus the
-new native/Wasm neither/FX/synth/both feature and startup matrix:
+Use the repository's selected build environment. The normal local loop is:
+
+```sh
+cargo fmt --all
+RUSTFLAGS="-D warnings" cargo build -p <changed-production-package>
+cargo test -p <affected-package> <focused-test-filter>
+# When Rust tests change:
+python3 scripts/check_shoop_test_usage.py
+```
+
+Choose the relevant packages and filters for each change. For example, a role-aware
+import fix can use the real-host adapter media/replacement fixture; a codec change
+can use its round-trip and malformed-input tests plus one service save/load test.
+Run additional tests when a failure or unresolved concern calls for them. Do not
+repeat previously green broad suites solely because another milestone was reached.
+
+CI runs the broader gates and the native/Wasm neither/FX/synth/both feature and
+startup matrix:
 
 ```sh
 cargo fmt --all -- --check
@@ -576,12 +634,13 @@ python3 scripts/check_shoop_test_usage.py
 python3 scripts/run_wasm_tests.py --runtime node --profile dev
 ```
 
-Extend dependency/feature audits to prove the new boundaries and excluded assets;
-do not rely on the workspace's unified feature build for isolation. Run real-backend
-tests without `SHOOP_ALLOW_MISSING_BACKENDS=1`. Use the existing README's native
-transport/persistence probes, browser smoke and release-packaging commands extended
-with the FX/synth scenarios. Before Rust commits run `cargo fmt --all` and the
-warning-denying build; before behavior-changing pushes run the required suites.
+Feature-isolated CI jobs prove excluded dependencies/assets and import-free worklets;
+a unified workspace feature build is insufficient for that proof. Platform CI uses
+the README's native transport/persistence, browser and packaging probes with scoped
+FX/synth scenarios. Real-backend jobs omit `SHOOP_ALLOW_MISSING_BACKENDS=1` where
+actual host facilities are provided. Keep unavailable checks distinct from passing
+checks. Before behavior-changing pushes, pass the affected local tests; CI owns
+full regressions and cross-platform validation before final completion.
 
 ## Execution contract
 
