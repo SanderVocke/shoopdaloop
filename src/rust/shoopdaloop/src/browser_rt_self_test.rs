@@ -207,7 +207,7 @@ impl NewEngineSelfTest {
                     ) || (self.large
                         && matches!(self.step, Step::BusZeroSaving | Step::BusZeroLoaded))
                     {
-                        if self.step == Step::Composites { Duration::from_secs(300) } else { Duration::from_secs(120) }
+                        if self.step == Step::Composites { Duration::from_secs(300) } else { Duration::from_secs(240) }
                     } else {
                         STEP_TIMEOUT
                     } => {}

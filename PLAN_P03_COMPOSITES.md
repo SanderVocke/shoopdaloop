@@ -925,3 +925,11 @@ explicit response to a failure or identified risk, not a default milestone ritua
   Identity refusal. The Zynq probe now waits for a snapshot at least as new as the
   revision in each successful command outcome before deriving subsequent IDs or
   transfer keys. Its warning-denying native build passes; CI owns emulator checks.
+- At `03b13c89`, all **2,906** native coverage tests passed (**8 skipped**),
+  together with firmware/USB gates and the composite browser/worklet scenarios.
+  The release large-media workflow exceeded its 120-second phase deadline. The
+  exact CI artifact passed locally with zero xruns; a two-CPU diagnostic run kept
+  acknowledging chunks and reached 54 of 66 MiB before that deadline. Allow 240
+  seconds for the existing large-media phases and 900 seconds for the complete
+  large-media browser scenario. Ordinary/composite budgets and all exact media,
+  rendering, recovery and ownership assertions stay intact.

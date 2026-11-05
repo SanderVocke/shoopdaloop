@@ -587,7 +587,7 @@ try {
         return candidate.newEngineSelfTest === 'passed';
       },
       'the new engine workflow did not finish',
-      largeMedia ? 600_000 : 300_000,
+      largeMedia ? 900_000 : 300_000,
     );
     if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {
       throw new Error(`composite acceptance incomplete: ${JSON.stringify(state)}`);
